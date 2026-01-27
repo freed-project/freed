@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
+import { useNewsletter } from '../context/NewsletterContext'
 
 const WTF_CAPTIONS = [
   "What They Fear",
@@ -19,6 +20,7 @@ const WTF_CAPTIONS = [
 
 export default function Navigation() {
   const location = useLocation()
+  const { openModal } = useNewsletter()
   const [captionIndex, setCaptionIndex] = useState(0)
   const [isHovering, setIsHovering] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -99,7 +101,7 @@ export default function Navigation() {
             GitHub
           </a>
           
-          <button className="btn-primary text-sm">
+          <button onClick={openModal} className="btn-primary text-sm">
             Get FREED
           </button>
         </div>
@@ -172,7 +174,7 @@ export default function Navigation() {
                 GitHub
               </a>
               
-              <button className="btn-primary text-lg px-12 py-4 mt-4">
+              <button onClick={() => { openModal(); setMobileMenuOpen(false); }} className="btn-primary text-lg px-12 py-4 mt-4">
                 Get FREED
               </button>
             </div>

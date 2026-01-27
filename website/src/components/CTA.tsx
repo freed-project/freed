@@ -1,7 +1,9 @@
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
+import { useNewsletter } from '../context/NewsletterContext'
 
 export default function CTA() {
+  const { openModal } = useNewsletter()
   return (
     <section className="py-16 sm:py-24 px-4 sm:px-6 md:px-12 lg:px-8">
       <div className="max-w-4xl mx-auto">
@@ -52,6 +54,7 @@ export default function CTA() {
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
+                onClick={openModal}
                 className="btn-primary text-base px-8 py-3 w-full sm:w-auto"
               >
                 Download for Chrome

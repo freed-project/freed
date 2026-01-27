@@ -1,6 +1,8 @@
 import { motion } from 'framer-motion'
+import { useNewsletter } from '../context/NewsletterContext'
 
 export default function Manifesto() {
+  const { openModal } = useNewsletter()
   return (
     <section className="py-24 sm:py-32 px-4 sm:px-6 md:px-12 lg:px-8">
       <div className="max-w-3xl mx-auto">
@@ -114,6 +116,7 @@ export default function Manifesto() {
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
+              onClick={openModal}
               className="btn-primary text-base px-8 py-3"
             >
               Get FREED

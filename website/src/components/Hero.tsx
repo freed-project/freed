@@ -1,8 +1,10 @@
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import HeroAnimation from './HeroAnimation'
+import { useNewsletter } from '../context/NewsletterContext'
 
 export default function Hero() {
+  const { openModal } = useNewsletter()
   return (
     <section className="relative min-h-screen flex items-center justify-center px-4 sm:px-6 md:px-12 lg:px-8 pt-24 pb-16 md:pt-20">
       {/* Open Source badge - aligned with nav container right edge, hidden on mobile */}
@@ -57,6 +59,7 @@ export default function Hero() {
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
+              onClick={openModal}
               className="btn-primary text-base px-8 py-3 w-full sm:w-auto"
             >
               Get FREED
