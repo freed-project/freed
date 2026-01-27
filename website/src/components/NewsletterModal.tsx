@@ -14,18 +14,47 @@ export default function NewsletterModal({ isOpen, onClose }: NewsletterModalProp
     e.preventDefault()
     setStatus('loading')
 
-    // For now, simulate success - replace with actual email service
-    // Options: Mailchimp, ConvertKit, Buttondown, Formspree, etc.
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    setStatus('success')
-    setEmail('')
-    
-    // Auto-close after success
-    setTimeout(() => {
-      onClose()
-      setStatus('idle')
-    }, 2000)
+    const apiUrl = import.meta.env.VITE_NEWSLETTER_API_URL
+
+    // Development fallback - simulate success if no API configured
+    if (!apiUrl) {
+      console.warn('VITE_NEWSLETTER_API_URL not configured - simulating success')
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      setStatus('success')
+      setEmail('')
+      setTimeout(() => {
+        onClose()
+        setStatus('idle')
+      }, 2000)
+      return
+    }
+
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || 'Subscription failed')
+      }
+
+      setStatus('success')
+      setEmail('')
+
+      // Auto-close after success
+      setTimeout(() => {
+        onClose()
+        setStatus('idle')
+      }, 2000)
+    } catch (error) {
+      console.error('Newsletter subscription error:', error)
+      setStatus('error')
+      // Reset to idle after showing error
+      setTimeout(() => setStatus('idle'), 3000)
+    }
   }
 
   return (

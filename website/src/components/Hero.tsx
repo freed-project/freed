@@ -94,12 +94,12 @@ export default function Hero() {
         </motion.div>
       </div>
       
-      {/* Scroll indicator - hidden on mobile */}
+      {/* Scroll indicator - hidden on mobile and tablet */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 1.5 }}
-        className="hidden sm:block absolute bottom-8 left-1/2 -translate-x-1/2"
+        className="hidden lg:block absolute bottom-8 left-1/2 -translate-x-1/2"
       >
         <motion.div
           animate={{ y: [0, 8, 0] }}
