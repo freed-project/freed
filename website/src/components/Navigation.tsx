@@ -1,42 +1,62 @@
-import { Link, useLocation } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import { useState } from 'react'
-import { useNewsletter } from '../context/NewsletterContext'
+import { Link, useLocation } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import { useState } from "react";
+import { useNewsletter } from "../context/NewsletterContext";
 
 const WTF_CAPTIONS = [
+  // Core brand
   "What They Fear",
   "Why Trust Facebook?",
-  "Wreck Their Fuckery",
   "Where's The Friend?",
-  "Withdraw The Feed",
-  "Watch Them Fall",
-  "We Took Freedom",
   "Without Their Filters",
   "Wrest The Feed",
-  "Why They're Fucked",
   "We're Taking Freedom",
-  "Withhold Their Feed",
-]
+  // Rebellion
+  "Watch Them Flounder",
+  "Witness The Fall",
+  "Where They Failed",
+  // Empowerment
+  "Write The Future",
+  "Win Through Focus",
+  "Wield True Freedom",
+  "We Think Freely",
+  "Worth The Fight",
+  "Will To Freedom",
+  // Pointed critique
+  "Where's The Filter?",
+  "Without Their Facade",
+  // Philosophical
+  "When Truth Frees",
+  "Where Thoughts Flow",
+  "Wisdom Trumps Fear",
+  "Witness True Freedom",
+  "Wake The Faithful",
+  // Declarative
+  "We're The Future",
+  "Wage Total Freedom",
+  "Win The Future",
+  "Without Their Footprint",
+];
 
 export default function Navigation() {
-  const location = useLocation()
-  const { openModal } = useNewsletter()
-  const [captionIndex, setCaptionIndex] = useState(0)
-  const [isHovering, setIsHovering] = useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  
+  const location = useLocation();
+  const { openModal } = useNewsletter();
+  const [captionIndex, setCaptionIndex] = useState(0);
+  const [isHovering, setIsHovering] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   const handleMouseEnter = () => {
-    setCaptionIndex((prev) => (prev + 1) % WTF_CAPTIONS.length)
-    setIsHovering(true)
-  }
-  
+    setCaptionIndex((prev) => (prev + 1) % WTF_CAPTIONS.length);
+    setIsHovering(true);
+  };
+
   const navItems = [
-    { path: '/', label: 'Home' },
-    { path: '/manifesto', label: 'Manifesto' },
-  ]
-  
+    { path: "/", label: "Home" },
+    { path: "/manifesto", label: "Manifesto" },
+  ];
+
   return (
-    <motion.nav 
+    <motion.nav
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5 }}
@@ -44,24 +64,29 @@ export default function Navigation() {
     >
       {/* Frosted glass background */}
       <div className="absolute inset-0 bg-freed-black/70 backdrop-blur-xl border-b border-freed-border" />
-      
+
       <div className="max-w-6xl mx-auto flex items-center justify-between relative z-10">
         {/* Logo with rotating WTF caption */}
-        <Link 
-          to="/" 
+        <Link
+          to="/"
           className="flex items-baseline gap-0.5 group relative"
           onMouseEnter={handleMouseEnter}
           onMouseLeave={() => setIsHovering(false)}
         >
           <span className="relative text-xl sm:text-2xl font-bold text-text-primary">
             FREED
-            <span 
+            <span
               className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
-              style={{ background: 'linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #8b5cf6, #ec4899)' }}
+              style={{
+                background:
+                  "linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #8b5cf6, #ec4899)",
+              }}
             />
           </span>
-          <span className="text-sm sm:text-base font-bold gradient-text">.WTF</span>
-          
+          <span className="text-sm sm:text-base font-bold gradient-text relative">
+            .WTF
+          </span>
+
           {/* WTF caption tooltip - changes on each hover, hidden on mobile */}
           {isHovering && (
             <motion.div
@@ -75,7 +100,7 @@ export default function Navigation() {
             </motion.div>
           )}
         </Link>
-        
+
         {/* Desktop Nav Links */}
         <div className="hidden md:flex items-center gap-8">
           {navItems.map((item) => (
@@ -84,14 +109,14 @@ export default function Navigation() {
               to={item.path}
               className={`text-sm font-medium transition-colors ${
                 location.pathname === item.path
-                  ? 'text-text-primary'
-                  : 'text-text-secondary hover:text-text-primary'
+                  ? "text-text-primary"
+                  : "text-text-secondary hover:text-text-primary"
               }`}
             >
               {item.label}
             </Link>
           ))}
-          
+
           <a
             href="https://github.com/freed-project/freed"
             target="_blank"
@@ -100,7 +125,7 @@ export default function Navigation() {
           >
             GitHub
           </a>
-          
+
           <button onClick={openModal} className="btn-primary text-sm">
             Get FREED
           </button>
@@ -113,15 +138,15 @@ export default function Navigation() {
           aria-label="Toggle menu"
         >
           <motion.span
-            animate={{ 
-              rotate: mobileMenuOpen ? 45 : 0, 
+            animate={{
+              rotate: mobileMenuOpen ? 45 : 0,
               y: mobileMenuOpen ? 0 : -6,
             }}
             transition={{ duration: 0.2 }}
             className="absolute w-6 h-0.5 bg-text-primary rounded-full origin-center"
           />
           <motion.span
-            animate={{ 
+            animate={{
               opacity: mobileMenuOpen ? 0 : 1,
               scaleX: mobileMenuOpen ? 0 : 1,
             }}
@@ -129,8 +154,8 @@ export default function Navigation() {
             className="absolute w-6 h-0.5 bg-text-primary rounded-full"
           />
           <motion.span
-            animate={{ 
-              rotate: mobileMenuOpen ? -45 : 0, 
+            animate={{
+              rotate: mobileMenuOpen ? -45 : 0,
               y: mobileMenuOpen ? 0 : 6,
             }}
             transition={{ duration: 0.2 }}
@@ -157,14 +182,14 @@ export default function Navigation() {
                   onClick={() => setMobileMenuOpen(false)}
                   className={`text-2xl font-medium transition-colors ${
                     location.pathname === item.path
-                      ? 'text-text-primary'
-                      : 'text-text-secondary'
+                      ? "text-text-primary"
+                      : "text-text-secondary"
                   }`}
                 >
                   {item.label}
                 </Link>
               ))}
-              
+
               <a
                 href="https://github.com/freed-project/freed"
                 target="_blank"
@@ -173,8 +198,14 @@ export default function Navigation() {
               >
                 GitHub
               </a>
-              
-              <button onClick={() => { openModal(); setMobileMenuOpen(false); }} className="btn-primary text-lg px-12 py-4 mt-4">
+
+              <button
+                onClick={() => {
+                  openModal();
+                  setMobileMenuOpen(false);
+                }}
+                className="btn-primary text-lg px-12 py-4 mt-4"
+              >
                 Get FREED
               </button>
             </div>
@@ -182,5 +213,5 @@ export default function Navigation() {
         )}
       </AnimatePresence>
     </motion.nav>
-  )
+  );
 }

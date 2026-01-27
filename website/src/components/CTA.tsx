@@ -29,8 +29,8 @@ export default function CTA() {
               transition={{ delay: 0.2 }}
               className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 relative z-10"
             >
-              Ready to be{' '}
-              <span className="gradient-text">FREED</span>?
+              Ready for {' '}
+              <span className="gradient-text">Freed</span>om?
             </motion.h2>
             
             <motion.p

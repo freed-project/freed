@@ -18,10 +18,10 @@ export default function Hero() {
   }, []);
 
   return (
-    <section className="relative min-h-screen flex items-center justify-center px-6 sm:px-6 md:px-16 lg:px-8 pt-24 pb-16 md:pt-20">
+    <section className="relative min-h-screen flex items-center justify-center px-4 sm:px-6 pt-24 pb-16 md:pt-20">
       {/* Open Source badge - aligned with nav container right edge, hidden on mobile */}
-      <div className="hidden lg:block absolute top-20 left-0 right-0 mt-4 px-6 sm:px-6 md:px-16 lg:px-8">
-        <div className="max-w-7xl mx-auto flex justify-end">
+      <div className="hidden lg:block absolute top-20 left-0 right-0 mt-4 px-4 sm:px-6">
+        <div className="max-w-6xl mx-auto flex justify-end">
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -37,7 +37,7 @@ export default function Hero() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-8 lg:gap-4 items-center">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-8 lg:gap-4 items-center">
         {/* Animation - shows first on mobile */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}

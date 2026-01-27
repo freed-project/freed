@@ -1,11 +1,5 @@
 # FREED
 
-**What They Fear.**
-
-> *The platforms built empires on your attention—and you just walked out the door.*
-
----
-
 ## Mental Sovereignty. Digital Dignity. Your MIND is not for sale.
 
 FREED is an open-source browser extension that captures your social media feeds locally and lets you build your own unified timeline. No algorithms. No manipulation. No data collection. Just you, your content, and the people you actually care about.
