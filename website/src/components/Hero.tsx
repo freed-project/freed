@@ -21,7 +21,7 @@ export default function Hero() {
     <section className="relative min-h-screen flex items-center justify-center px-4 sm:px-6 md:px-12 lg:px-8 pt-24 pb-16 md:pt-20">
       {/* Open Source badge - aligned with nav container right edge, hidden on mobile */}
       <div className="hidden lg:block absolute top-20 left-0 right-0 mt-4 px-4 sm:px-6 md:px-12 lg:px-8">
-        <div className="max-w-6xl mx-auto flex justify-end">
+        <div className="max-w-7xl mx-auto flex justify-end">
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -37,13 +37,13 @@ export default function Hero() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_1.3fr] gap-8 lg:gap-8 items-center">
         {/* Animation - shows first on mobile */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.8, delay: 0.2 }}
-          className="relative order-1 lg:order-2 max-w-xs sm:max-w-sm mx-auto lg:max-w-none"
+          className="relative order-1 lg:order-2 max-w-xs sm:max-w-sm mx-auto lg:max-w-none lg:scale-110 lg:origin-center"
         >
           <HeroAnimation />
         </motion.div>
