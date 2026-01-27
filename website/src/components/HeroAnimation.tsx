@@ -43,12 +43,50 @@ const PLATFORMS = [
   },
 ];
 
-// Data particles that flow from outside to center
-const PARTICLES = Array.from({ length: 12 }, (_, i) => ({
+// Generate spiral path for SVG
+function generateSpiralPath(startAngle: number, rotations: number = 1) {
+  const points: string[] = [];
+  const steps = 40;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const angle = startAngle + t * rotations * Math.PI * 2;
+    const radius = 160 * (1 - t * 0.85);
+    const x = 200 + radius * Math.cos(angle);
+    const y = 200 + radius * Math.sin(angle);
+    points.push(`${i === 0 ? 'M' : 'L'} ${x} ${y}`);
+  }
+  return points.join(' ');
+}
+
+// Spiral particles using keyframe positions
+const SPIRAL_PARTICLES = Array.from({ length: 8 }, (_, i) => {
+  const startAngle = (i * Math.PI * 2) / 8;
+  // Pre-calculate waypoints for the spiral
+  const waypoints = [];
+  const steps = 8;
+  for (let j = 0; j <= steps; j++) {
+    const t = j / steps;
+    const angle = startAngle + t * 1.5 * Math.PI * 2;
+    const radius = 160 * (1 - t * 0.85);
+    waypoints.push({
+      x: 200 + radius * Math.cos(angle),
+      y: 200 + radius * Math.sin(angle),
+    });
+  }
+  return {
+    id: i,
+    delay: i * 0.35,
+    duration: 3.5,
+    waypoints,
+  };
+});
+
+// Straight particles
+const STRAIGHT_PARTICLES = Array.from({ length: 8 }, (_, i) => ({
   id: i,
-  angle: i * 30,
-  delay: i * 0.25,
-  duration: 2 + Math.random() * 0.5,
+  angle: i * 45,
+  delay: i * 0.4,
+  duration: 2.5,
 }));
 
 export default function HeroAnimation() {
@@ -69,10 +107,9 @@ export default function HeroAnimation() {
             <stop offset="50%" stopColor="#8b5cf6" />
             <stop offset="100%" stopColor="#06b6d4" />
           </linearGradient>
-          <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0" />
-            <stop offset="50%" stopColor="#8b5cf6" stopOpacity="0.6" />
-            <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0" />
+          <linearGradient id="spiralGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.8" />
+            <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.2" />
           </linearGradient>
           <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
             <feGaussianBlur stdDeviation="4" result="coloredBlur" />
@@ -89,13 +126,31 @@ export default function HeroAnimation() {
             </feMerge>
           </filter>
           <filter id="particleGlow" x="-200%" y="-200%" width="500%" height="500%">
-            <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+            <feGaussianBlur stdDeviation="3" result="coloredBlur" />
             <feMerge>
               <feMergeNode in="coloredBlur" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
         </defs>
+
+        {/* Rotating spiral lines */}
+        <motion.g
+          animate={{ rotate: 360 }}
+          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+          style={{ transformOrigin: "200px 200px" }}
+        >
+          {[0, 120, 240].map((angle) => (
+            <path
+              key={angle}
+              d={generateSpiralPath((angle * Math.PI) / 180, 1)}
+              fill="none"
+              stroke="url(#spiralGradient)"
+              strokeWidth="1"
+              opacity="0.3"
+            />
+          ))}
+        </motion.g>
 
         {/* Outer rotating ring */}
         <motion.g
@@ -114,44 +169,92 @@ export default function HeroAnimation() {
           />
         </motion.g>
 
-        {/* Connection lines pulsing outward from center */}
-        {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => (
-          <motion.line
-            key={angle}
+        {/* Inner rotating ring (opposite direction) */}
+        <motion.g
+          animate={{ rotate: -360 }}
+          transition={{ duration: 45, repeat: Infinity, ease: "linear" }}
+          style={{ transformOrigin: "200px 200px" }}
+        >
+          <circle
+            cx="200"
+            cy="200"
+            r="120"
+            fill="none"
+            stroke="url(#ringGradient)"
+            strokeWidth="1"
+            strokeDasharray="8 12"
+            opacity="0.5"
+          />
+        </motion.g>
+
+        {/* Radar sweep line */}
+        <motion.g
+          animate={{ rotate: 360 }}
+          transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+          style={{ transformOrigin: "200px 200px" }}
+        >
+          <line
             x1="200"
             y1="200"
             x2="200"
-            y2="50"
-            stroke="url(#lineGradient)"
-            strokeWidth="1"
-            transform={`rotate(${angle} 200 200)`}
-            initial={{ pathLength: 0, opacity: 0 }}
-            animate={{ pathLength: 1, opacity: [0, 0.4, 0] }}
+            y2="30"
+            stroke="url(#spiralGradient)"
+            strokeWidth="2"
+            opacity="0.6"
+          />
+          {/* Radar sweep fade trail */}
+          <path
+            d="M 200 200 L 200 30 A 170 170 0 0 0 170 35 L 200 200"
+            fill="url(#spiralGradient)"
+            opacity="0.15"
+          />
+        </motion.g>
+
+        {/* Spiral particles flowing inward */}
+        {SPIRAL_PARTICLES.map((particle) => (
+          <motion.circle
+            key={`spiral-${particle.id}`}
+            r="5"
+            fill="#8b5cf6"
+            filter="url(#particleGlow)"
+            initial={{ 
+              cx: particle.waypoints[0].x, 
+              cy: particle.waypoints[0].y,
+              opacity: 0,
+              scale: 0,
+            }}
+            animate={{
+              cx: particle.waypoints.map(w => w.x),
+              cy: particle.waypoints.map(w => w.y),
+              opacity: [0, 0.9, 0.9, 0.9, 0.9, 0.9, 0.5, 0],
+              scale: [0, 1, 1, 1, 1, 1, 0.5, 0],
+            }}
             transition={{
-              duration: 3,
+              duration: particle.duration,
               repeat: Infinity,
-              delay: angle / 120,
-              ease: "easeInOut",
+              delay: particle.delay,
+              ease: "easeIn",
             }}
           />
         ))}
 
-        {/* Data particles flowing inward */}
-        {PARTICLES.map((particle) => {
-          const startX = 200 + 160 * Math.cos((particle.angle * Math.PI) / 180);
-          const startY = 200 + 160 * Math.sin((particle.angle * Math.PI) / 180);
+        {/* Straight particles for variety */}
+        {STRAIGHT_PARTICLES.map((particle) => {
+          const startX = 200 + 165 * Math.cos((particle.angle * Math.PI) / 180);
+          const startY = 200 + 165 * Math.sin((particle.angle * Math.PI) / 180);
 
           return (
             <motion.circle
-              key={particle.id}
-              r="4"
-              fill="#8b5cf6"
+              key={`straight-${particle.id}`}
+              r="3"
+              fill="#06b6d4"
               filter="url(#particleGlow)"
-              initial={{ cx: startX, cy: startY, opacity: 0 }}
+              initial={{ cx: startX, cy: startY, opacity: 0, scale: 0 }}
               animate={{
                 cx: [startX, 200],
                 cy: [startY, 200],
-                opacity: [0, 1, 1, 0],
+                opacity: [0, 0.8, 0.8, 0],
+                scale: [0, 1, 1, 0],
               }}
               transition={{
                 duration: particle.duration,
@@ -221,8 +324,8 @@ export default function HeroAnimation() {
           opacity="0.15"
           filter="url(#glow)"
           animate={{
-            r: [55, 62, 55],
-            opacity: [0.15, 0.25, 0.15],
+            r: [55, 65, 55],
+            opacity: [0.15, 0.3, 0.15],
           }}
           transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
         />
@@ -275,6 +378,30 @@ export default function HeroAnimation() {
               ease: "easeOut",
             }}
             style={{ transformOrigin: "200px 200px" }}
+          />
+        ))}
+
+        {/* Circular pulse rings */}
+        {[1, 2].map((i) => (
+          <motion.circle
+            key={`circle-pulse-${i}`}
+            cx="200"
+            cy="200"
+            r="60"
+            fill="none"
+            stroke="#06b6d4"
+            strokeWidth="1"
+            initial={{ r: 60, opacity: 0.4 }}
+            animate={{
+              r: [60, 170],
+              opacity: [0.4, 0],
+            }}
+            transition={{
+              duration: 3,
+              repeat: Infinity,
+              delay: i * 1.5,
+              ease: "easeOut",
+            }}
           />
         ))}
       </svg>

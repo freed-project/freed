@@ -13,7 +13,7 @@ export default function Hero() {
   useEffect(() => {
     const interval = setInterval(() => {
       setWordIndex((prev) => (prev + 1) % ROTATING_WORDS.length)
-    }, 3000)
+    }, 4500)
     return () => clearInterval(interval)
   }, [])
 
@@ -54,7 +54,7 @@ export default function Hero() {
           className="order-2 lg:order-1 text-center lg:text-left"
         >
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-tight mb-4 sm:mb-6">
-            <span className="gradient-text">Take Back</span>
+            <span className="text-text-primary">Take Back</span>
             <br />
             <span className="text-text-primary">Your </span>
             <span className="relative inline-block">
@@ -64,7 +64,7 @@ export default function Hero() {
                   initial={{ y: 20, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   exit={{ y: -20, opacity: 0 }}
-                  transition={{ duration: 0.4, ease: 'easeInOut' }}
+                  transition={{ duration: 2, ease: 'easeInOut' }}
                   className="inline-block gradient-text"
                 >
                   {ROTATING_WORDS[wordIndex]}

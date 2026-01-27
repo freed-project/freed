@@ -1,0 +1,15 @@
+# Cloudflare Worker Configuration
+# To deploy: npx wrangler deploy
+
+name = "freed-newsletter"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# Environment variables (set these in Cloudflare dashboard or use wrangler secret)
+# BREVO_API_KEY = "your-api-key"  # Use: npx wrangler secret put BREVO_API_KEY
+# BREVO_LIST_ID = "2"             # Your Brevo list ID
+# ALLOWED_ORIGIN = "https://freed.sh"
+
+[vars]
+ALLOWED_ORIGIN = "https://freed.sh"
+BREVO_LIST_ID = "2"
