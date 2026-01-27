@@ -1,10 +1,22 @@
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import HeroAnimation from './HeroAnimation'
 import { useNewsletter } from '../context/NewsletterContext'
 
+const ROTATING_WORDS = ['Feed', 'Life', 'Mind']
+
 export default function Hero() {
   const { openModal } = useNewsletter()
+  const [wordIndex, setWordIndex] = useState(0)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setWordIndex((prev) => (prev + 1) % ROTATING_WORDS.length)
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
   return (
     <section className="relative min-h-screen flex items-center justify-center px-4 sm:px-6 md:px-12 lg:px-8 pt-24 pb-16 md:pt-20">
       {/* Open Source badge - aligned with nav container right edge, hidden on mobile */}
@@ -44,7 +56,21 @@ export default function Hero() {
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-tight mb-4 sm:mb-6">
             <span className="gradient-text">Take Back</span>
             <br />
-            <span className="text-text-primary">Your Feed</span>
+            <span className="text-text-primary">Your </span>
+            <span className="relative inline-block">
+              <AnimatePresence mode="wait">
+                <motion.span
+                  key={wordIndex}
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: -20, opacity: 0 }}
+                  transition={{ duration: 0.4, ease: 'easeInOut' }}
+                  className="inline-block gradient-text"
+                >
+                  {ROTATING_WORDS[wordIndex]}
+                </motion.span>
+              </AnimatePresence>
+            </span>
           </h1>
           
           <p className="text-lg sm:text-xl md:text-2xl text-text-primary font-medium mb-3 sm:mb-4">
