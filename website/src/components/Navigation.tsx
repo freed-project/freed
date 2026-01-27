@@ -93,7 +93,7 @@ export default function Navigation() {
           ))}
           
           <a
-            href="https://github.com/freed-project"
+            href="https://github.com/freed-project/freed"
             target="_blank"
             rel="noopener noreferrer"
             className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
@@ -166,7 +166,7 @@ export default function Navigation() {
               ))}
               
               <a
-                href="https://github.com/freed-project"
+                href="https://github.com/freed-project/freed"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-2xl font-medium text-text-secondary"

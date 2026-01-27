@@ -51,7 +51,7 @@ export default function Footer() {
             <ul className="space-y-2">
               <li>
                 <a 
-                  href="https://github.com/freed-project" 
+                  href="https://github.com/freed-project/freed" 
                   target="_blank" 
                   rel="noopener noreferrer"
                   className="text-text-secondary text-sm hover:text-text-primary transition-colors"
