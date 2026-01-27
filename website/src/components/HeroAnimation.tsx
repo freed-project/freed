@@ -96,7 +96,7 @@ export default function HeroAnimation() {
   const iconSize = 20;
 
   return (
-    <div className="relative w-full aspect-square max-w-2xl mx-auto">
+    <div className="relative w-full aspect-square max-w-4xl mx-auto">
       <svg viewBox="-50 -50 500 500" className="w-full h-full">
         <defs>
           <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
