@@ -19,7 +19,8 @@ const ORBIT_PARAMS = [
   { duration: 60, direction: -1 },  // Reddit - counter-clockwise
 ]
 
-const orbitRadius = 140
+// Orbit radius - just outside the dashed ring (r=155)
+const orbitRadius = 175
 
 // Generate spiral waypoints from a platform position to center
 function generateSpiralWaypoints(startAngle: number, spiralTurns: number = 1.5) {
@@ -28,8 +29,8 @@ function generateSpiralWaypoints(startAngle: number, spiralTurns: number = 1.5) 
   
   for (let i = 0; i <= steps; i++) {
     const t = i / steps
-    // Spiral inward: radius decreases, angle increases
-    const radius = orbitRadius * (1 - t * 0.85)
+    // Spiral inward: radius decreases from orbit to center
+    const radius = orbitRadius * (1 - t * 0.9)
     const angle = startAngle + t * spiralTurns * Math.PI * 2
     waypoints.push({
       x: 200 + radius * Math.cos(angle),
@@ -114,7 +115,7 @@ export default function HeroAnimation() {
           <circle
             cx="200"
             cy="200"
-            r="190"
+            r="155"
             fill="none"
             stroke="url(#ringGradient)"
             strokeWidth="1"
@@ -122,14 +123,14 @@ export default function HeroAnimation() {
           />
         </motion.g>
 
-        {/* Connection lines from center outward */}
+        {/* Connection lines from center outward to ring */}
         {[0, 60, 120, 180, 240, 300].map((angle) => (
           <motion.line
             key={angle}
             x1="200"
             y1="200"
             x2="200"
-            y2="30"
+            y2="50"
             stroke="url(#lineGradient)"
             strokeWidth="1"
             transform={`rotate(${angle} 200 200)`}
