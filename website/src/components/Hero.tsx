@@ -1,21 +1,21 @@
-import { motion, AnimatePresence } from 'framer-motion'
-import { Link } from 'react-router-dom'
-import { useState, useEffect } from 'react'
-import HeroAnimation from './HeroAnimation'
-import { useNewsletter } from '../context/NewsletterContext'
+import { motion, AnimatePresence } from "framer-motion";
+import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import HeroAnimation from "./HeroAnimation";
+import { useNewsletter } from "../context/NewsletterContext";
 
-const ROTATING_WORDS = ['Feed', 'Life', 'Mind']
+const ROTATING_WORDS = ["Feed", "Life", "Mind"];
 
 export default function Hero() {
-  const { openModal } = useNewsletter()
-  const [wordIndex, setWordIndex] = useState(0)
+  const { openModal } = useNewsletter();
+  const [wordIndex, setWordIndex] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setWordIndex((prev) => (prev + 1) % ROTATING_WORDS.length)
-    }, 4500)
-    return () => clearInterval(interval)
-  }, [])
+      setWordIndex((prev) => (prev + 1) % ROTATING_WORDS.length);
+    }, 6000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <section className="relative min-h-screen flex items-center justify-center px-4 sm:px-6 md:px-12 lg:px-8 pt-24 pb-16 md:pt-20">
@@ -29,7 +29,9 @@ export default function Hero() {
           >
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-freed-border bg-freed-surface/50">
               <span className="w-2 h-2 rounded-full bg-glow-purple animate-pulse" />
-              <span className="text-sm text-text-secondary">Open Source & Free Forever</span>
+              <span className="text-sm text-text-secondary">
+                Open Source & Free Forever
+              </span>
             </div>
           </motion.div>
         </div>
@@ -64,7 +66,7 @@ export default function Hero() {
                   initial={{ y: 20, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   exit={{ y: -20, opacity: 0 }}
-                  transition={{ duration: 2, ease: 'easeInOut' }}
+                  transition={{ duration: 0.5, ease: "easeInOut" }}
                   className="inline-block gradient-text"
                 >
                   {ROTATING_WORDS[wordIndex]}
@@ -72,15 +74,18 @@ export default function Hero() {
               </AnimatePresence>
             </span>
           </h1>
-          
+
           <p className="text-lg sm:text-xl md:text-2xl text-text-primary font-medium mb-3 sm:mb-4">
-            The platforms built empires on your attention. You walked out the door.
+            The platforms built empires on your attention. You walked out the
+            door.
           </p>
-          
+
           <p className="text-base sm:text-lg text-text-secondary max-w-xl mx-auto lg:mx-0 mb-6 sm:mb-8">
-            Mental sovereignty. Digital dignity. Your feed, your rules. Torch the ads, tune your algo, and connect IRL with a live map of your peeps.
+            Mental sovereignty. Digital dignity. Your feed, your rules. Torch
+            the ads, tune your algo, and connect IRL with a live map of your
+            peeps.
           </p>
-          
+
           <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center lg:justify-start">
             <motion.button
               whileHover={{ scale: 1.02 }}
@@ -90,7 +95,7 @@ export default function Hero() {
             >
               Get FREED
             </motion.button>
-            
+
             <Link to="/manifesto" className="w-full sm:w-auto">
               <motion.button
                 whileHover={{ scale: 1.02 }}
@@ -101,25 +106,35 @@ export default function Hero() {
               </motion.button>
             </Link>
           </div>
-          
+
           {/* Stats */}
           <div className="flex justify-center lg:justify-start gap-6 sm:gap-8 mt-8 sm:mt-12 pt-6 sm:pt-8 border-t border-freed-border">
             <div className="text-center lg:text-left">
-              <p className="text-2xl sm:text-3xl font-bold text-text-primary">100%</p>
-              <p className="text-xs sm:text-sm text-text-secondary">Local Storage</p>
+              <p className="text-2xl sm:text-3xl font-bold text-text-primary">
+                100%
+              </p>
+              <p className="text-xs sm:text-sm text-text-secondary">
+                Local Storage
+              </p>
             </div>
             <div className="text-center lg:text-left">
-              <p className="text-2xl sm:text-3xl font-bold text-text-primary">0</p>
-              <p className="text-xs sm:text-sm text-text-secondary">Data Collected</p>
+              <p className="text-2xl sm:text-3xl font-bold text-text-primary">
+                0
+              </p>
+              <p className="text-xs sm:text-sm text-text-secondary">
+                Data Collected
+              </p>
             </div>
             <div className="text-center lg:text-left">
-              <p className="text-2xl sm:text-3xl font-bold text-text-primary">∞</p>
+              <p className="text-2xl sm:text-3xl font-bold text-text-primary">
+                ∞
+              </p>
               <p className="text-xs sm:text-sm text-text-secondary">Freedom</p>
             </div>
           </div>
         </motion.div>
       </div>
-      
+
       {/* Scroll indicator - hidden on mobile and tablet */}
       <motion.div
         initial={{ opacity: 0 }}
@@ -136,5 +151,5 @@ export default function Hero() {
         </motion.div>
       </motion.div>
     </section>
-  )
+  );
 }

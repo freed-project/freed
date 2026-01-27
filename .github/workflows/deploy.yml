@@ -36,6 +36,8 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          VITE_NEWSLETTER_API_URL: ${{ secrets.VITE_NEWSLETTER_API_URL }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
