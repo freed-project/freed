@@ -55,7 +55,7 @@ export default function Navigation() {
             FREED
             <span 
               className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
-              style={{ background: 'linear-gradient(to right, #3b82f6, #8b5cf6, #ec4899, #ef4444, #f97316, #eab308, #22c55e, #3b82f6)' }}
+              style={{ background: 'linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #8b5cf6, #ec4899)' }}
             />
           </span>
           <span className="text-sm sm:text-base font-bold gradient-text">.WTF</span>
@@ -107,41 +107,53 @@ export default function Navigation() {
         {/* Mobile Hamburger Button */}
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="md:hidden flex flex-col justify-center items-center w-8 h-8 gap-1.5"
+          className="md:hidden relative w-8 h-8 flex items-center justify-center"
           aria-label="Toggle menu"
         >
           <motion.span
-            animate={{ rotate: mobileMenuOpen ? 45 : 0, y: mobileMenuOpen ? 6 : 0 }}
-            className="w-6 h-0.5 bg-text-primary rounded-full"
+            animate={{ 
+              rotate: mobileMenuOpen ? 45 : 0, 
+              y: mobileMenuOpen ? 0 : -6,
+            }}
+            transition={{ duration: 0.2 }}
+            className="absolute w-6 h-0.5 bg-text-primary rounded-full origin-center"
           />
           <motion.span
-            animate={{ opacity: mobileMenuOpen ? 0 : 1 }}
-            className="w-6 h-0.5 bg-text-primary rounded-full"
+            animate={{ 
+              opacity: mobileMenuOpen ? 0 : 1,
+              scaleX: mobileMenuOpen ? 0 : 1,
+            }}
+            transition={{ duration: 0.2 }}
+            className="absolute w-6 h-0.5 bg-text-primary rounded-full"
           />
           <motion.span
-            animate={{ rotate: mobileMenuOpen ? -45 : 0, y: mobileMenuOpen ? -6 : 0 }}
-            className="w-6 h-0.5 bg-text-primary rounded-full"
+            animate={{ 
+              rotate: mobileMenuOpen ? -45 : 0, 
+              y: mobileMenuOpen ? 0 : 6,
+            }}
+            transition={{ duration: 0.2 }}
+            className="absolute w-6 h-0.5 bg-text-primary rounded-full origin-center"
           />
         </button>
       </div>
 
-      {/* Mobile Menu */}
+      {/* Mobile Menu - Full Screen */}
       <AnimatePresence>
         {mobileMenuOpen && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
-            className="md:hidden absolute top-full left-0 right-0 bg-freed-black/95 backdrop-blur-xl border-b border-freed-border overflow-hidden"
+            className="md:hidden fixed inset-0 top-[60px] bg-freed-black/70 backdrop-blur-xl z-40"
           >
-            <div className="px-4 py-6 flex flex-col gap-4">
+            <div className="h-full flex flex-col justify-center items-center gap-8 px-6">
               {navItems.map((item) => (
                 <Link
                   key={item.path}
                   to={item.path}
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`text-lg font-medium transition-colors py-2 ${
+                  className={`text-2xl font-medium transition-colors ${
                     location.pathname === item.path
                       ? 'text-text-primary'
                       : 'text-text-secondary'
@@ -155,12 +167,12 @@ export default function Navigation() {
                 href="https://github.com/freed-project"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-lg font-medium text-text-secondary py-2"
+                className="text-2xl font-medium text-text-secondary"
               >
                 GitHub
               </a>
               
-              <button className="btn-primary text-base mt-2 w-full">
+              <button className="btn-primary text-lg px-12 py-4 mt-4">
                 Get FREED
               </button>
             </div>

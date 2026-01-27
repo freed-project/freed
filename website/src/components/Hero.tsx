@@ -4,19 +4,22 @@ import HeroAnimation from './HeroAnimation'
 
 export default function Hero() {
   return (
-    <section className="relative min-h-screen flex items-center justify-center px-4 sm:px-6 pt-24 pb-16 md:pt-20">
-      {/* Open Source badge - positioned under right edge of nav, hidden on mobile */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.3 }}
-        className="hidden lg:block absolute top-20 right-6 mt-4"
-      >
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-freed-border bg-freed-surface/50">
-          <span className="w-2 h-2 rounded-full bg-glow-purple animate-pulse" />
-          <span className="text-sm text-text-secondary">Open Source & Free Forever</span>
+    <section className="relative min-h-screen flex items-center justify-center px-4 sm:px-6 md:px-12 lg:px-8 pt-24 pb-16 md:pt-20">
+      {/* Open Source badge - aligned with nav container right edge, hidden on mobile */}
+      <div className="hidden lg:block absolute top-20 left-0 right-0 mt-4 px-4 sm:px-6 md:px-12 lg:px-8">
+        <div className="max-w-6xl mx-auto flex justify-end">
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+          >
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-freed-border bg-freed-surface/50">
+              <span className="w-2 h-2 rounded-full bg-glow-purple animate-pulse" />
+              <span className="text-sm text-text-secondary">Open Source & Free Forever</span>
+            </div>
+          </motion.div>
         </div>
-      </motion.div>
+      </div>
 
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
         {/* Animation - shows first on mobile */}
@@ -36,17 +39,6 @@ export default function Hero() {
           transition={{ duration: 0.8, delay: 0.3 }}
           className="order-2 lg:order-1 text-center lg:text-left"
         >
-          {/* Mobile-only Open Source badge */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.4 }}
-            className="lg:hidden inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-freed-border bg-freed-surface/50 mb-6"
-          >
-            <span className="w-2 h-2 rounded-full bg-glow-purple animate-pulse" />
-            <span className="text-sm text-text-secondary">Open Source & Free Forever</span>
-          </motion.div>
-
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-tight mb-4 sm:mb-6">
             <span className="gradient-text">Take Back</span>
             <br />
@@ -54,11 +46,11 @@ export default function Hero() {
           </h1>
           
           <p className="text-lg sm:text-xl md:text-2xl text-text-primary font-medium mb-3 sm:mb-4">
-            The platforms built empires on your attention... You just walked out the door.
+            The platforms built empires on your attention. You walked out the door.
           </p>
           
           <p className="text-base sm:text-lg text-text-secondary max-w-xl mx-auto lg:mx-0 mb-6 sm:mb-8">
-            Mental sovereignty. Digital dignity. Your feed, your rules—ad-free, algorithm-free, with a live map of where your people actually are.
+            Mental sovereignty. Digital dignity. Your feed, your rules. Torch the ads, tune your algo, and connect IRL with a live map of your peeps.
           </p>
           
           <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center lg:justify-start">

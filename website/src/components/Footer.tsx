@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 
 export default function Footer() {
   return (
-    <footer className="relative z-10 border-t border-freed-border py-8 sm:py-12 px-4 sm:px-6">
+    <footer className="relative z-10 border-t border-freed-border py-8 sm:py-12 px-4 sm:px-6 md:px-12 lg:px-8">
       <div className="max-w-6xl mx-auto">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           {/* Brand */}
@@ -12,7 +12,7 @@ export default function Footer() {
                 FREED
                 <span 
                   className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
-                  style={{ background: 'linear-gradient(to right, #3b82f6, #8b5cf6, #ec4899, #ef4444, #f97316, #eab308, #22c55e, #3b82f6)' }}
+                  style={{ background: 'linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #8b5cf6, #ec4899)' }}
                 />
               </span>
               <span className="text-sm font-bold gradient-text">.WTF</span>
