@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- Primary Meta Tags -->
+    <title>FREED - Take Back Your Feed</title>
+    <meta name="title" content="FREED - Take Back Your Feed" />
+    <meta name="description" content="A Ulysses pact against algorithmic manipulation. Capture your social feeds locally, create your own unified timeline, and see where your friends actually are." />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://freed.wtf/" />
+    <meta property="og:title" content="FREED - Take Back Your Feed" />
+    <meta property="og:description" content="A Ulysses pact against algorithmic manipulation. Capture your social feeds locally, create your own unified timeline, and see where your friends actually are." />
+    <meta property="og:image" content="https://freed.wtf/og-image.png" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://freed.wtf/" />
+    <meta property="twitter:title" content="FREED - Take Back Your Feed" />
+    <meta property="twitter:description" content="A Ulysses pact against algorithmic manipulation. Capture your social feeds locally, create your own unified timeline, and see where your friends actually are." />
+    <meta property="twitter:image" content="https://freed.wtf/og-image.png" />
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    
+    <!-- Theme Color -->
+    <meta name="theme-color" content="#0a0a0a" />
+  </head>
+  <body>
+    <!-- GitHub Pages SPA redirect handler -->
+    <script type="text/javascript">
+      (function(l) {
+        if (l.search[1] === '/' ) {
+          var decoded = l.search.slice(1).split('&').map(function(s) { 
+            return s.replace(/~and~/g, '&')
+          }).join('?');
+          window.history.replaceState(null, null,
+              l.pathname.slice(0, -1) + decoded + l.hash
+          );
+        }
+      }(window.location))
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
