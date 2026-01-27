@@ -19,16 +19,48 @@ const ORBIT_PARAMS = [
   { duration: 60, direction: -1 },  // Reddit - counter-clockwise
 ]
 
-// Data particles that flow inward
-const PARTICLES = Array.from({ length: 12 }, (_, i) => ({
-  id: i,
-  angle: i * 30,
-  delay: i * 0.25,
-  duration: 2 + Math.random() * 0.5,
-}))
+const orbitRadius = 140
+
+// Generate spiral waypoints from a platform position to center
+function generateSpiralWaypoints(startAngle: number, spiralTurns: number = 1.5) {
+  const steps = 12
+  const waypoints: { x: number; y: number }[] = []
+  
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps
+    // Spiral inward: radius decreases, angle increases
+    const radius = orbitRadius * (1 - t * 0.85)
+    const angle = startAngle + t * spiralTurns * Math.PI * 2
+    waypoints.push({
+      x: 200 + radius * Math.cos(angle),
+      y: 200 + radius * Math.sin(angle),
+    })
+  }
+  
+  return waypoints
+}
+
+// Create particles for each platform - 3 particles per platform with staggered timing
+const SPIRAL_PARTICLES = PLATFORMS.flatMap((platform, platformIndex) => {
+  const baseAngle = ((platformIndex * 360) / PLATFORMS.length - 90) * (Math.PI / 180)
+  const particlesPerPlatform = 3
+  
+  return Array.from({ length: particlesPerPlatform }, (_, particleIndex) => {
+    // Alternate spiral direction for visual interest
+    const spiralDirection = platformIndex % 2 === 0 ? 1.5 : -1.5
+    const waypoints = generateSpiralWaypoints(baseAngle, spiralDirection)
+    
+    return {
+      id: `${platform.id}-${particleIndex}`,
+      platformIndex,
+      waypoints,
+      delay: particleIndex * 1.2 + platformIndex * 0.3,
+      duration: 3 + Math.random() * 0.5,
+    }
+  })
+})
 
 export default function HeroAnimation() {
-  const orbitRadius = 140
   const iconSize = 20
 
   return (
@@ -59,6 +91,13 @@ export default function HeroAnimation() {
           </filter>
           <filter id="iconGlow" x="-100%" y="-100%" width="300%" height="300%">
             <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+            <feMerge>
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="particleGlow" x="-200%" y="-200%" width="500%" height="500%">
+            <feGaussianBlur stdDeviation="2" result="coloredBlur" />
             <feMerge>
               <feMergeNode in="coloredBlur" />
               <feMergeNode in="SourceGraphic" />
@@ -105,31 +144,33 @@ export default function HeroAnimation() {
           />
         ))}
 
-        {/* Data particles flowing inward */}
-        {PARTICLES.map((particle) => {
-          const startX = 200 + Math.cos((particle.angle * Math.PI) / 180) * 180
-          const startY = 200 + Math.sin((particle.angle * Math.PI) / 180) * 180
-
-          return (
-            <motion.circle
-              key={particle.id}
-              r="4"
-              fill="#8b5cf6"
-              initial={{ cx: startX, cy: startY, opacity: 0 }}
-              animate={{
-                cx: [startX, 200],
-                cy: [startY, 200],
-                opacity: [0, 1, 1, 0],
-              }}
-              transition={{
-                duration: particle.duration,
-                repeat: Infinity,
-                delay: particle.delay,
-                ease: 'easeIn',
-              }}
-            />
-          )
-        })}
+        {/* Spiral particles emerging from each platform logo */}
+        {SPIRAL_PARTICLES.map((particle) => (
+          <motion.circle
+            key={particle.id}
+            r="4"
+            fill="#8b5cf6"
+            filter="url(#particleGlow)"
+            initial={{
+              cx: particle.waypoints[0].x,
+              cy: particle.waypoints[0].y,
+              opacity: 0,
+              scale: 0,
+            }}
+            animate={{
+              cx: particle.waypoints.map((w) => w.x),
+              cy: particle.waypoints.map((w) => w.y),
+              opacity: [0, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.7, 0.4, 0.1, 0, 0],
+              scale: [0, 1, 1, 1, 1, 1, 1, 1, 0.8, 0.5, 0.2, 0, 0],
+            }}
+            transition={{
+              duration: particle.duration,
+              repeat: Infinity,
+              delay: particle.delay,
+              ease: 'linear',
+            }}
+          />
+        ))}
 
         {/* Platform icons orbiting - slow random rotation */}
         {PLATFORMS.map((platform, i) => {
