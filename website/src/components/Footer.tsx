@@ -2,17 +2,21 @@ import { Link } from 'react-router-dom'
 
 export default function Footer() {
   return (
-    <footer className="relative z-10 border-t border-freed-border py-12 px-6">
+    <footer className="relative z-10 border-t border-freed-border py-8 sm:py-12 px-4 sm:px-6">
       <div className="max-w-6xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           {/* Brand */}
-          <div className="col-span-1 md:col-span-2">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-glow-blue to-glow-purple flex items-center justify-center">
-                <span className="text-white font-bold text-sm">F</span>
-              </div>
-              <span className="text-xl font-bold text-text-primary">FREED</span>
-            </div>
+          <div className="col-span-2 md:col-span-2">
+            <Link to="/" className="inline-flex items-baseline gap-0.5 mb-4">
+              <span className="relative text-xl font-bold text-text-primary">
+                FREED
+                <span 
+                  className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
+                  style={{ background: 'linear-gradient(to right, #3b82f6, #8b5cf6, #ec4899, #ef4444, #f97316, #eab308, #22c55e, #3b82f6)' }}
+                />
+              </span>
+              <span className="text-sm font-bold gradient-text">.WTF</span>
+            </Link>
             <p className="text-text-secondary text-sm max-w-md">
               Take back your feed. FREED is open-source software that puts you in control 
               of your social media experience.

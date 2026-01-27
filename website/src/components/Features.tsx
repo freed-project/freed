@@ -35,7 +35,7 @@ const features = [
 
 export default function Features() {
   return (
-    <section id="features" className="py-24 px-6">
+    <section id="features" className="py-16 sm:py-24 px-4 sm:px-6">
       <div className="max-w-6xl mx-auto">
         {/* Section Header */}
         <motion.div
@@ -43,12 +43,12 @@ export default function Features() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="text-center mb-16"
+          className="text-center mb-10 sm:mb-16"
         >
-          <h2 className="text-4xl md:text-5xl font-bold mb-4">
+          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4">
             <span className="gradient-text">Features</span> for Freedom
           </h2>
-          <p className="text-text-secondary text-lg max-w-2xl mx-auto">
+          <p className="text-text-secondary text-base sm:text-lg max-w-2xl mx-auto px-4">
             Everything you need to break free from algorithmic manipulation 
             and build genuine human connections.
           </p>

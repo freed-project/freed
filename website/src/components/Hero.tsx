@@ -4,13 +4,13 @@ import HeroAnimation from './HeroAnimation'
 
 export default function Hero() {
   return (
-    <section className="relative min-h-screen flex items-center justify-center px-6 pt-20">
+    <section className="relative min-h-screen flex items-center justify-center px-4 sm:px-6 pt-24 pb-16 md:pt-20">
       {/* Open Source badge - positioned under right edge of nav, hidden on mobile */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.3 }}
-        className="hidden md:block absolute top-20 right-6 mt-4"
+        className="hidden lg:block absolute top-20 right-6 mt-4"
       >
         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-freed-border bg-freed-surface/50">
           <span className="w-2 h-2 rounded-full bg-glow-purple animate-pulse" />
@@ -18,41 +18,63 @@ export default function Hero() {
         </div>
       </motion.div>
 
-      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
+        {/* Animation - shows first on mobile */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.8, delay: 0.2 }}
+          className="relative order-1 lg:order-2 max-w-xs sm:max-w-sm mx-auto lg:max-w-none"
+        >
+          <HeroAnimation />
+        </motion.div>
+
         {/* Text Content */}
         <motion.div
-          initial={{ opacity: 0, x: -30 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.8, delay: 0.2 }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, delay: 0.3 }}
+          className="order-2 lg:order-1 text-center lg:text-left"
         >
-          <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold leading-tight mb-6">
+          {/* Mobile-only Open Source badge */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.4 }}
+            className="lg:hidden inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-freed-border bg-freed-surface/50 mb-6"
+          >
+            <span className="w-2 h-2 rounded-full bg-glow-purple animate-pulse" />
+            <span className="text-sm text-text-secondary">Open Source & Free Forever</span>
+          </motion.div>
+
+          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-tight mb-4 sm:mb-6">
             <span className="gradient-text">Take Back</span>
             <br />
             <span className="text-text-primary">Your Feed</span>
           </h1>
           
-          <p className="text-xl md:text-2xl text-text-primary font-medium mb-4">
+          <p className="text-lg sm:text-xl md:text-2xl text-text-primary font-medium mb-3 sm:mb-4">
             The platforms built empires on your attention... You just walked out the door.
           </p>
           
-          <p className="text-lg text-text-secondary max-w-xl mb-8">
+          <p className="text-base sm:text-lg text-text-secondary max-w-xl mx-auto lg:mx-0 mb-6 sm:mb-8">
             Mental sovereignty. Digital dignity. Your feed, your rules—ad-free, algorithm-free, with a live map of where your people actually are.
           </p>
           
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center lg:justify-start">
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
-              className="btn-primary text-base px-8 py-3"
+              className="btn-primary text-base px-8 py-3 w-full sm:w-auto"
             >
               Get FREED
             </motion.button>
             
-            <Link to="/manifesto">
+            <Link to="/manifesto" className="w-full sm:w-auto">
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="btn-secondary text-base px-8 py-3"
+                className="btn-secondary text-base px-8 py-3 w-full"
               >
                 Read the Manifesto
               </motion.button>
@@ -60,39 +82,29 @@ export default function Hero() {
           </div>
           
           {/* Stats */}
-          <div className="flex gap-8 mt-12 pt-8 border-t border-freed-border">
-            <div>
-              <p className="text-3xl font-bold text-text-primary">100%</p>
-              <p className="text-sm text-text-secondary">Local Storage</p>
+          <div className="flex justify-center lg:justify-start gap-6 sm:gap-8 mt-8 sm:mt-12 pt-6 sm:pt-8 border-t border-freed-border">
+            <div className="text-center lg:text-left">
+              <p className="text-2xl sm:text-3xl font-bold text-text-primary">100%</p>
+              <p className="text-xs sm:text-sm text-text-secondary">Local Storage</p>
             </div>
-            <div>
-              <p className="text-3xl font-bold text-text-primary">0</p>
-              <p className="text-sm text-text-secondary">Data Collected</p>
+            <div className="text-center lg:text-left">
+              <p className="text-2xl sm:text-3xl font-bold text-text-primary">0</p>
+              <p className="text-xs sm:text-sm text-text-secondary">Data Collected</p>
             </div>
-            <div>
-              <p className="text-3xl font-bold text-text-primary">∞</p>
-              <p className="text-sm text-text-secondary">Freedom</p>
+            <div className="text-center lg:text-left">
+              <p className="text-2xl sm:text-3xl font-bold text-text-primary">∞</p>
+              <p className="text-xs sm:text-sm text-text-secondary">Freedom</p>
             </div>
           </div>
         </motion.div>
-        
-        {/* Animation */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.8, delay: 0.4 }}
-          className="relative"
-        >
-          <HeroAnimation />
-        </motion.div>
       </div>
       
-      {/* Scroll indicator */}
+      {/* Scroll indicator - hidden on mobile */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 1.5 }}
-        className="absolute bottom-8 left-1/2 -translate-x-1/2"
+        className="hidden sm:block absolute bottom-8 left-1/2 -translate-x-1/2"
       >
         <motion.div
           animate={{ y: [0, 8, 0] }}

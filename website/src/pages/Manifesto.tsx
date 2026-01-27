@@ -2,20 +2,20 @@ import { motion } from 'framer-motion'
 
 export default function Manifesto() {
   return (
-    <section className="py-32 px-6">
+    <section className="py-24 sm:py-32 px-4 sm:px-6">
       <div className="max-w-3xl mx-auto">
         <motion.article
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="prose prose-invert prose-lg"
+          className="prose prose-invert prose-base sm:prose-lg"
         >
           {/* Header */}
-          <header className="text-center mb-16">
-            <h1 className="text-5xl md:text-6xl font-bold mb-6">
+          <header className="text-center mb-10 sm:mb-16">
+            <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
               <span className="gradient-text">The FREED Manifesto</span>
             </h1>
-            <p className="text-text-secondary text-xl">
+            <p className="text-text-secondary text-lg sm:text-xl">
               A declaration of digital independence.
             </p>
           </header>
