@@ -9,28 +9,40 @@ const PLATFORMS = [
   { id: 'reddit', color: '#FF4500', path: 'M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z' },
 ]
 
-// Randomized orbit parameters for each platform (seeded for consistency)
-const ORBIT_PARAMS = [
-  { duration: 55, direction: 1 },   // X - clockwise
-  { duration: 70, direction: -1 },  // Facebook - counter-clockwise
-  { duration: 48, direction: 1 },   // Instagram - clockwise
-  { duration: 65, direction: -1 },  // YouTube - counter-clockwise
-  { duration: 52, direction: 1 },   // LinkedIn - clockwise
-  { duration: 60, direction: -1 },  // Reddit - counter-clockwise
+// Slow random spin parameters for each logo (they spin in place, not orbit)
+const SPIN_PARAMS = [
+  { duration: 25, direction: 1 },   // X - slow clockwise
+  { duration: 35, direction: -1 },  // Facebook - slow counter-clockwise
+  { duration: 30, direction: 1 },   // Instagram - slow clockwise
+  { duration: 40, direction: -1 },  // YouTube - slow counter-clockwise
+  { duration: 28, direction: 1 },   // LinkedIn - slow clockwise
+  { duration: 32, direction: -1 },  // Reddit - slow counter-clockwise
 ]
 
-// Orbit radius - just outside the dashed ring (r=155)
-const orbitRadius = 175
+// Ring and logo positioning
+const ringRadius = 130
+const logoRadius = 175 // Logos fully outside the ring (130 + 22 icon radius + gap)
+
+// Calculate fixed positions for each platform logo
+const LOGO_POSITIONS = PLATFORMS.map((_, i) => {
+  const angle = ((i * 360) / PLATFORMS.length - 90) * (Math.PI / 180)
+  return {
+    cx: 200 + logoRadius * Math.cos(angle),
+    cy: 200 + logoRadius * Math.sin(angle),
+    angle,
+  }
+})
 
 // Generate spiral waypoints from a platform position to center
-function generateSpiralWaypoints(startAngle: number, spiralTurns: number = 1.5) {
+function generateSpiralWaypoints(startX: number, startY: number, startAngle: number, spiralTurns: number = 1.5) {
   const steps = 12
   const waypoints: { x: number; y: number }[] = []
+  const startRadius = Math.sqrt((startX - 200) ** 2 + (startY - 200) ** 2)
   
   for (let i = 0; i <= steps; i++) {
     const t = i / steps
-    // Spiral inward: radius decreases from orbit to center
-    const radius = orbitRadius * (1 - t * 0.9)
+    // Spiral inward: radius decreases from logo position to center
+    const radius = startRadius * (1 - t * 0.92)
     const angle = startAngle + t * spiralTurns * Math.PI * 2
     waypoints.push({
       x: 200 + radius * Math.cos(angle),
@@ -43,13 +55,13 @@ function generateSpiralWaypoints(startAngle: number, spiralTurns: number = 1.5) 
 
 // Create particles for each platform - 3 particles per platform with staggered timing
 const SPIRAL_PARTICLES = PLATFORMS.flatMap((platform, platformIndex) => {
-  const baseAngle = ((platformIndex * 360) / PLATFORMS.length - 90) * (Math.PI / 180)
+  const { cx, cy, angle } = LOGO_POSITIONS[platformIndex]
   const particlesPerPlatform = 3
   
   return Array.from({ length: particlesPerPlatform }, (_, particleIndex) => {
     // Alternate spiral direction for visual interest
     const spiralDirection = platformIndex % 2 === 0 ? 1.5 : -1.5
-    const waypoints = generateSpiralWaypoints(baseAngle, spiralDirection)
+    const waypoints = generateSpiralWaypoints(cx, cy, angle, spiralDirection)
     
     return {
       id: `${platform.id}-${particleIndex}`,
@@ -106,7 +118,7 @@ export default function HeroAnimation() {
           </filter>
         </defs>
 
-        {/* Outer rotating ring - larger */}
+        {/* Outer rotating dashed ring */}
         <motion.g
           animate={{ rotate: 360 }}
           transition={{ duration: 90, repeat: Infinity, ease: 'linear' }}
@@ -115,7 +127,7 @@ export default function HeroAnimation() {
           <circle
             cx="200"
             cy="200"
-            r="155"
+            r={ringRadius}
             fill="none"
             stroke="url(#ringGradient)"
             strokeWidth="1"
@@ -130,7 +142,7 @@ export default function HeroAnimation() {
             x1="200"
             y1="200"
             x2="200"
-            y2="50"
+            y2={200 - ringRadius}
             stroke="url(#lineGradient)"
             strokeWidth="1"
             transform={`rotate(${angle} 200 200)`}
@@ -173,26 +185,14 @@ export default function HeroAnimation() {
           />
         ))}
 
-        {/* Platform icons orbiting - slow random rotation */}
+        {/* Platform icons - stationary but slowly spinning in place */}
         {PLATFORMS.map((platform, i) => {
-          const angle = (i * 360) / PLATFORMS.length - 90
-          const angleRad = (angle * Math.PI) / 180
-          const cx = 200 + orbitRadius * Math.cos(angleRad)
-          const cy = 200 + orbitRadius * Math.sin(angleRad)
-          const { duration, direction } = ORBIT_PARAMS[i]
+          const { cx, cy } = LOGO_POSITIONS[i]
+          const { duration, direction } = SPIN_PARAMS[i]
 
           return (
-            <motion.g
-              key={platform.id}
-              animate={{ rotate: 360 * direction }}
-              transition={{
-                duration: duration,
-                repeat: Infinity,
-                ease: 'linear',
-              }}
-              style={{ transformOrigin: '200px 200px' }}
-            >
-              {/* Icon background circle */}
+            <g key={platform.id}>
+              {/* Icon background circle - stationary */}
               <circle
                 cx={cx}
                 cy={cy}
@@ -202,9 +202,9 @@ export default function HeroAnimation() {
                 strokeWidth="2"
                 filter="url(#iconGlow)"
               />
-              {/* Platform icon - counter-rotate to stay upright */}
+              {/* Platform icon - slowly spins in place */}
               <motion.g
-                animate={{ rotate: -360 * direction }}
+                animate={{ rotate: 360 * direction }}
                 transition={{
                   duration: duration,
                   repeat: Infinity,
@@ -216,7 +216,7 @@ export default function HeroAnimation() {
                   <path d={platform.path} fill={platform.color} />
                 </g>
               </motion.g>
-            </motion.g>
+            </g>
           )
         })}
 

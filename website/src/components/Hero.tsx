@@ -2,10 +2,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import HeroAnimation from "./HeroAnimation";
+import { useNewsletter } from "../context/NewsletterContext";
 
 const ROTATING_WORDS = ["Feed", "Life", "Mind"];
 
 export default function Hero() {
+  const { openModal } = useNewsletter();
   const [wordIndex, setWordIndex] = useState(0);
 
   useEffect(() => {
@@ -85,18 +87,14 @@ export default function Hero() {
           </p>
 
           <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center lg:justify-start">
-            <div className="relative group w-full sm:w-auto">
-              <motion.button
-                disabled
-                className="btn-primary text-base px-8 py-3 w-full sm:w-auto opacity-60 cursor-not-allowed"
-              >
-                Get FREED
-              </motion.button>
-              <div className="absolute -top-10 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-freed-surface border border-freed-border rounded-lg text-xs text-text-secondary whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                COMING SOON
-                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-freed-border" />
-              </div>
-            </div>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={openModal}
+              className="btn-primary text-base px-8 py-3 w-full sm:w-auto"
+            >
+              Get FREED
+            </motion.button>
 
             <Link to="/manifesto" className="w-full sm:w-auto">
               <motion.button

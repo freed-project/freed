@@ -1,7 +1,9 @@
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
+import { useNewsletter } from '../context/NewsletterContext'
 
 export default function CTA() {
+  const { openModal } = useNewsletter()
   return (
     <section className="py-16 sm:py-24 px-4 sm:px-6 md:px-12 lg:px-8">
       <div className="max-w-4xl mx-auto">
@@ -49,18 +51,14 @@ export default function CTA() {
               transition={{ delay: 0.4 }}
               className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center relative z-10"
             >
-              <div className="relative group w-full sm:w-auto">
-                <motion.button
-                  disabled
-                  className="btn-primary text-base px-8 py-3 w-full sm:w-auto opacity-60 cursor-not-allowed"
-                >
-                  Download for Chrome
-                </motion.button>
-                <div className="absolute -top-10 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-freed-surface border border-freed-border rounded-lg text-xs text-text-secondary whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
-                  COMING SOON
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-freed-border" />
-                </div>
-              </div>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={openModal}
+                className="btn-primary text-base px-8 py-3 w-full sm:w-auto"
+              >
+                Download for Chrome
+              </motion.button>
               
               <Link to="/manifesto" className="w-full sm:w-auto">
                 <motion.button
