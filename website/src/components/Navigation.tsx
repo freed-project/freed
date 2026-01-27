@@ -9,12 +9,9 @@ const WTF_CAPTIONS = [
   "Why Trust Facebook?",
   "Where's The Friend?",
   "Without Their Filters",
-  "Wrest The Feed",
-  "We're Taking Freedom",
   // Rebellion
   "Watch Them Flounder",
   "Witness The Fall",
-  "Where They Failed",
   // Empowerment
   "Write The Future",
   "Win Through Focus",
@@ -26,11 +23,10 @@ const WTF_CAPTIONS = [
   "Where's The Filter?",
   "Without Their Facade",
   // Philosophical
-  "When Truth Frees",
+  "Where Truth Frees",
   "Where Thoughts Flow",
   "Wisdom Trumps Fear",
   "Witness True Freedom",
-  "Wake The Faithful",
   // Declarative
   "We're The Future",
   "Wage Total Freedom",

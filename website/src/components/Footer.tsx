@@ -33,14 +33,14 @@ export default function Footer() {
                 </Link>
               </li>
               <li>
+                <a href="/#features" className="text-text-secondary text-sm hover:text-text-primary transition-colors">
+                  Features
+                </a>
+              </li>
+              <li>
                 <Link to="/manifesto" className="text-text-secondary text-sm hover:text-text-primary transition-colors">
                   Manifesto
                 </Link>
-              </li>
-              <li>
-                <a href="#features" className="text-text-secondary text-sm hover:text-text-primary transition-colors">
-                  Features
-                </a>
               </li>
             </ul>
           </div>
@@ -59,16 +59,16 @@ export default function Footer() {
                   GitHub
                 </a>
               </li>
-              <li>
-                <a href="#" className="text-text-secondary text-sm hover:text-text-primary transition-colors">
-                  Documentation
-                </a>
-              </li>
-              <li>
-                <a href="#" className="text-text-secondary text-sm hover:text-text-primary transition-colors">
-                  Privacy Policy
-                </a>
-              </li>
+              {/*<li>*/}
+              {/*  <a href="#" className="text-text-secondary text-sm hover:text-text-primary transition-colors">*/}
+              {/*    Documentation*/}
+              {/*  </a>*/}
+              {/*</li>*/}
+              {/*<li>*/}
+              {/*  <a href="#" className="text-text-secondary text-sm hover:text-text-primary transition-colors">*/}
+              {/*    Privacy Policy*/}
+              {/*  </a>*/}
+              {/*</li>*/}
             </ul>
           </div>
         </div>

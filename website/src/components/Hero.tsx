@@ -77,8 +77,7 @@ export default function Hero() {
           </h1>
 
           <p className="text-lg sm:text-xl md:text-2xl text-text-primary font-medium mb-3 sm:mb-4">
-            The platforms built empires on your attention. You walked out the
-            door.
+            They built empires on your attention. Today, the walls come down.
           </p>
 
           <p className="text-base sm:text-lg text-text-secondary max-w-xl mx-auto lg:mx-0 mb-6 sm:mb-8">
