@@ -3,6 +3,7 @@ import Layout from './components/Layout'
 import Landing from './pages/Landing'
 import Manifesto from './pages/Manifesto'
 import NewsletterModal from './components/NewsletterModal'
+import ScrollToTop from './components/ScrollToTop'
 import { NewsletterProvider, useNewsletter } from './context/NewsletterContext'
 
 function AppContent() {
@@ -11,6 +12,7 @@ function AppContent() {
   return (
     <>
       <BrowserRouter>
+        <ScrollToTop />
         <Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={<Landing />} />
