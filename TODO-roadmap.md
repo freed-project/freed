@@ -15,87 +15,84 @@ Capture social media and RSS locally. Tune the feel algo yourself. Sync across d
 ## Architecture Overview
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                              CAPTURE LAYER                                    │
-│                                                                               │
-│   ┌─────────────────────────────────────────────────────────────────────┐    │
-│   │                    API-BASED CAPTURE (Background)                    │    │
-│   │                                                                      │    │
-│   │   ┌──────────────┐                                                   │    │
-│   │   │  capture-x   │  X/Twitter GraphQL APIs                          │    │
-│   │   │              │  • HomeLatestTimeline (chronological feed)       │    │
-│   │   │              │  • Session cookie auth                           │    │
-│   │   └──────────────┘                                                   │    │
-│   └─────────────────────────────────────────────────────────────────────┘    │
-│                                                                               │
-│   ┌─────────────────────────────────────────────────────────────────────┐    │
-│   │                    RSS-BASED CAPTURE (Universal)                     │    │
-│   │                                                                      │    │
-│   │   ┌──────────────┐  Blogs, newsletters, video, podcasts, social     │    │
-│   │   │ capture-rss  │  • Medium        • Substack      • Ghost         │    │
-│   │   │              │  • YouTube       • Podcasts      • Reddit        │    │
-│   │   │              │  • GitHub        • Mastodon      • Bluesky       │    │
-│   │   │              │  • Personal blogs & any RSS/Atom feed            │    │
-│   │   └──────────────┘                                                   │    │
-│   └─────────────────────────────────────────────────────────────────────┘    │
-│                                                                               │
-│   ┌─────────────────────────────────────────────────────────────────────┐    │
-│   │                    DOM-BASED CAPTURE (Future/Fallback)               │    │
-│   │                                                                      │    │
-│   │   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐              │    │
-│   │   │   Facebook   │  │  Instagram   │  │   LinkedIn   │              │    │
-│   │   │  (Very Hard) │  │    (Hard)    │  │   (Future)   │              │    │
-│   │   └──────────────┘  └──────────────┘  └──────────────┘              │    │
-│   └─────────────────────────────────────────────────────────────────────┘    │
-│                                                                               │
-│                                    │                                          │
-│                                    ▼                                          │
-│              ┌────────────────────────────────────────┐                       │
-│              │     @freed/shared (FeedItem Schema)    │                       │
-│              └────────────────────┬───────────────────┘                       │
-│                                   ▼                                           │
-│              ┌────────────────────────────────────────┐                       │
-│              │         Automerge CRDT Document        │                       │
-│              └────────────────────┬───────────────────┘                       │
-└───────────────────────────────────┼──────────────────────────────────────────┘
-                                  │
-┌─────────────────────────────────┼───────────────────────────────────┐
-│                           SYNC LAYER                                 │
-│                                 │                                    │
-│            ┌────────────────────┴───────────────────┐                │
-│            │            automerge-repo              │                │
-│            │  • WebRTC (LAN peer-to-peer)          │                │
-│            │  • Cloud backup (encrypted)           │                │
-│            │  • Optional relay server              │                │
-│            └────────────────────┬───────────────────┘                │
-└─────────────────────────────────┼───────────────────────────────────┘
-                                  │
-┌─────────────────────────────────┼───────────────────────────────────┐
-│                          READER LAYER                                │
-│                                 │                                    │
-│            ┌────────────────────┴───────────────────┐                │
-│            ▼                                        ▼                │
-│   ┌─────────────────┐                    ┌─────────────────┐        │
-│   │   Desktop PWA   │                    │    Phone PWA    │        │
-│   │ (freed.wtf/app) │                    │  (same codebase)│        │
-│   │                 │                    │                 │        │
-│   │ • Unified feed  │                    │ • Mobile-first  │        │
-│   │ • Friend map    │                    │ • Offline       │        │
-│   │ • Settings      │                    │ • Add to home   │        │
-│   └─────────────────┘                    └─────────────────┘        │
-│                                                                      │
-│   ┌─────────────────────────────────────────────────────────┐       │
-│   │              Browser Extension (Supplemental)            │       │
-│   │  • Ulysses mode (block platform feeds)                  │       │
-│   │  • New tab integration (optional)                       │       │
-│   │  • DOM capture fallback when APIs fail                  │       │
-│   └─────────────────────────────────────────────────────────┘       │
-│                                                                      │
-│   ┌─────────────────────────────────────────────────────────┐       │
-│   │              Tauri Native App (Future)                   │       │
-│   │  • Push notifications • Background sync                 │       │
-│   └─────────────────────────────────────────────────────────┘       │
-└──────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────┐
+│                           CAPTURE LAYER                               │
+│                                                                       │
+│  ┌─────────────────────────────────────────────────────────────────┐  │
+│  │                 API-BASED CAPTURE (Background)                  │  │
+│  │  ┌──────────────┐                                               │  │
+│  │  │  capture-x   │  X/Twitter GraphQL APIs                       │  │
+│  │  │              │  • HomeLatestTimeline (chronological feed)    │  │
+│  │  │              │  • Session cookie auth                        │  │
+│  │  └──────────────┘                                               │  │
+│  └─────────────────────────────────────────────────────────────────┘  │
+│                                                                       │
+│  ┌─────────────────────────────────────────────────────────────────┐  │
+│  │                 RSS-BASED CAPTURE (Universal)                   │  │
+│  │  ┌──────────────┐  Blogs, newsletters, video, podcasts, social  │  │
+│  │  │ capture-rss  │  • Medium     • Substack    • Ghost           │  │
+│  │  │              │  • YouTube    • Podcasts    • Reddit          │  │
+│  │  │              │  • GitHub     • Mastodon    • Bluesky         │  │
+│  │  │              │  • Personal blogs & any RSS/Atom feed         │  │
+│  │  └──────────────┘                                               │  │
+│  └─────────────────────────────────────────────────────────────────┘  │
+│                                                                       │
+│  ┌─────────────────────────────────────────────────────────────────┐  │
+│  │                 DOM-BASED CAPTURE (Future/Fallback)             │  │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │  │
+│  │  │   Facebook   │  │  Instagram   │  │   LinkedIn   │           │  │
+│  │  │  (Very Hard) │  │    (Hard)    │  │   (Future)   │           │  │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘           │  │
+│  └─────────────────────────────────────────────────────────────────┘  │
+│                                                                       │
+│                                 │                                     │
+│                                 ▼                                     │
+│            ┌─────────────────────────────────────────┐                │
+│            │     @freed/shared (FeedItem Schema)     │                │
+│            └──────────────────┬──────────────────────┘                │
+│                               │                                       │
+│                               ▼                                       │
+│            ┌─────────────────────────────────────────┐                │
+│            │        Automerge CRDT Document          │                │
+│            └──────────────────┬──────────────────────┘                │
+└───────────────────────────────┼───────────────────────────────────────┘
+                                │
+┌───────────────────────────────┼───────────────────────────────────────┐
+│                          SYNC LAYER                                   │
+│                               │                                       │
+│            ┌──────────────────┴──────────────────────┐                │
+│            │            automerge-repo               │                │
+│            │  • WebRTC (LAN peer-to-peer)            │                │
+│            │  • Cloud backup (encrypted)             │                │
+│            │  • Optional relay server                │                │
+│            └──────────────────┬──────────────────────┘                │
+└───────────────────────────────┼───────────────────────────────────────┘
+                                │
+┌───────────────────────────────┼───────────────────────────────────────┐
+│                         READER LAYER                                  │
+│                               │                                       │
+│          ┌────────────────────┴─────────────────────┐                 │
+│          ▼                                          ▼                 │
+│  ┌─────────────────┐                    ┌─────────────────┐           │
+│  │   Desktop PWA   │                    │    Phone PWA    │           │
+│  │ (freed.wtf/app) │                    │ (same codebase) │           │
+│  │ • Unified feed  │                    │ • Mobile-first  │           │
+│  │ • Friend map    │                    │ • Offline       │           │
+│  │ • Settings      │                    │ • Add to home   │           │
+│  └─────────────────┘                    └─────────────────┘           │
+│                                                                       │
+│  ┌─────────────────────────────────────────────────────────────────┐  │
+│  │               Browser Extension (Supplemental)                  │  │
+│  │  • Ulysses mode (block platform feeds)                          │  │
+│  │  • New tab integration (optional)                               │  │
+│  │  • DOM capture fallback when APIs fail                          │  │
+│  └─────────────────────────────────────────────────────────────────┘  │
+│                                                                       │
+│  ┌─────────────────────────────────────────────────────────────────┐  │
+│  │               Tauri Native App (Future)                         │  │
+│  │  • Push notifications • Background sync                         │  │
+│  └─────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -376,13 +373,13 @@ freed/
 
 ### Phase 1: Foundation
 
-**Status:** Not Started
+**Status:** Complete ✓
 
-- [ ] Bun monorepo setup with workspaces
-- [ ] `@freed/shared` package with types
-- [ ] Automerge document schema
-- [ ] Basic project scaffolding
-- [ ] CI/CD pipeline
+- [x] Bun monorepo setup with workspaces
+- [x] `@freed/shared` package with types
+- [x] Automerge document schema
+- [x] Basic project scaffolding
+- [x] CI/CD pipeline
 
 **Deliverable:** Empty monorepo with shared types, ready for capture packages.
 
@@ -390,25 +387,25 @@ freed/
 
 ### Phase 2: Capture Skills (Parallel)
 
-**Status:** Not Started
+**Status:** Complete ✓
 
 #### 2a: X Capture (`capture-x`)
 
-- [ ] X GraphQL client implementation
-- [ ] `HomeLatestTimeline` endpoint (chronological feed)
-- [ ] Cookie extraction from browser profiles
-- [ ] Tweet -> FeedItem normalization
-- [ ] OpenClaw skill wrapper (`skills/capture-x/`)
-- [ ] Rate limiting and error handling
+- [x] X GraphQL client implementation
+- [x] `HomeLatestTimeline` endpoint (chronological feed)
+- [x] Cookie extraction from browser profiles
+- [x] Tweet -> FeedItem normalization
+- [x] OpenClaw skill wrapper (`skills/capture-x/`)
+- [x] Rate limiting and error handling
 
 #### 2b: RSS Capture (`capture-rss`)
 
-- [ ] RSS/Atom parser integration
-- [ ] OPML import
-- [ ] Feed URL discovery helper
-- [ ] RSS item -> FeedItem normalization
-- [ ] OpenClaw skill wrapper (`skills/capture-rss/`)
-- [ ] Conditional GET (If-Modified-Since, ETag)
+- [x] RSS/Atom parser integration
+- [x] OPML import
+- [x] Feed URL discovery helper
+- [x] RSS item -> FeedItem normalization
+- [x] OpenClaw skill wrapper (`skills/capture-rss/`)
+- [x] Conditional GET (If-Modified-Since, ETag)
 
 **Deliverable:** Two OpenClaw skills that capture content to local Automerge documents.
 
@@ -518,10 +515,10 @@ freed/
 
 Track progress session by session:
 
-| Date       | Focus                 | Completed       | Notes                                                     |
-| ---------- | --------------------- | --------------- | --------------------------------------------------------- |
-| 2026-01-30 | Architecture planning | Unified roadmap | Decided on OpenClaw skills + Automerge + PWA architecture |
-|            |                       |                 |                                                           |
+| Date       | Focus                 | Completed                   | Notes                                                     |
+| ---------- | --------------------- | --------------------------- | --------------------------------------------------------- |
+| 2026-01-30 | Architecture planning | Unified roadmap             | Decided on OpenClaw skills + Automerge + PWA architecture |
+| 2026-01-30 | Phase 1-2 build       | Foundation + Capture skills | Monorepo, @freed/shared, capture-x, capture-rss complete  |
 
 ---
 
