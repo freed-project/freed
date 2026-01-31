@@ -21,53 +21,68 @@ FREED captures social media and RSS feeds locally, presents them through a unifi
 ## Features
 
 ### 🌊 Unified Feed
+
 One feed combining X posts, blog articles, YouTube videos, newsletters, and podcasts—ranked by your preferences, not their engagement algorithms.
 
 ### 🔒 Local-First Privacy
+
 All data stays on your device. FREED captures to a local Automerge document. We literally cannot see what you capture.
 
 ### 🐦 X/Twitter Capture
+
 Three modes for controlling X capture:
+
 - **Mirror** — Capture from everyone you follow on X
 - **Whitelist** — Only capture from accounts you specify
 - **Mirror + Blacklist** — Mirror your follows minus specific accounts
 
 ### 📡 RSS Integration
+
 Subscribe to any RSS/Atom feed. Special handling for:
+
 - YouTube channels, Reddit, Mastodon, GitHub releases
 - Medium, Substack, Ghost, and other newsletters
 - Podcasts (RSS is their native format)
 - OPML import for migrating from other readers
 
 ### 🔄 Cross-Device Sync
+
 Automerge CRDT enables conflict-free sync:
+
 - WebRTC for peer-to-peer on local network
 - Encrypted cloud backup (Google Drive, iCloud, Dropbox)
 - No central server required
 
-### ⚓ Ulysses Mode *(Coming Soon)*
+### ⚓ Ulysses Mode _(Coming Soon)_
+
 Browser extension that blocks platform feeds and redirects to FREED. Choose your constraints before the Sirens start singing.
 
-### 📍 Friend Map *(Coming Soon)*
+### 📍 Friend Map _(Coming Soon)_
+
 See where your friends are posting from. Location extraction from geo-tags and text builds a map of your social circle. Social media should facilitate human connection, not replace it.
 
 ---
 
 ## Planned Platforms
 
-### 📘 Facebook *(Planned)*
+### 📘 Facebook _(Planned)_
+
 DOM-based capture for Facebook feeds and stories. Challenging due to obfuscated selectors, but on the roadmap.
 
-### 📸 Instagram *(Planned)*
+### 📸 Instagram _(Planned)_
+
 Capture posts, stories, and reels from your Instagram feed. Similar DOM-based approach to Facebook.
 
-### 🦋 Bluesky *(Planned)*
+### 🦋 Bluesky _(Planned)_
+
 Native AT Protocol integration for richer data than RSS alone.
 
-### 🐘 Mastodon *(Planned)*
+### 🐘 Mastodon _(Planned)_
+
 Enhanced capture via Mastodon API (beyond current RSS support) for notifications and direct messages.
 
-### 💼 LinkedIn *(Future)*
+### 💼 LinkedIn _(Future)_
+
 Professional network capture. Lower priority but architecturally supported.
 
 ---
@@ -165,31 +180,31 @@ npx tsx src/index.ts sync
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| Language | TypeScript |
-| Runtime | Bun / Node |
-| Monorepo | npm workspaces |
-| Storage | Automerge CRDT |
-| Sync | automerge-repo (WebRTC + cloud) |
-| PWA | React + Tailwind (coming soon) |
-| Capture | OpenClaw skills |
+| Layer    | Technology                      |
+| -------- | ------------------------------- |
+| Language | TypeScript                      |
+| Runtime  | Bun / Node                      |
+| Monorepo | npm workspaces                  |
+| Storage  | Automerge CRDT                  |
+| Sync     | automerge-repo (WebRTC + cloud) |
+| PWA      | React + Tailwind (coming soon)  |
+| Capture  | OpenClaw skills                 |
 
 ---
 
 ## Development Status
 
-| Phase | Status |
-|-------|--------|
-| Marketing Site | ✅ Complete |
+| Phase                                | Status      |
+| ------------------------------------ | ----------- |
+| Marketing Site                       | ✅ Complete |
 | Foundation (monorepo, types, schema) | ✅ Complete |
-| X Capture | ✅ Complete |
-| RSS Capture | ✅ Complete |
-| Sync Layer | ⚪ Pending |
-| PWA Reader | ⚪ Pending |
-| Browser Extension | ⚪ Pending |
-| Friend Map | ⚪ Pending |
-| Facebook/Instagram | ⚪ Future |
+| X Capture                            | ✅ Complete |
+| RSS Capture                          | ✅ Complete |
+| Sync Layer                           | ⚪ Pending  |
+| PWA Reader                           | ⚪ Pending  |
+| Browser Extension                    | ⚪ Pending  |
+| Friend Map                           | ⚪ Pending  |
+| Facebook/Instagram                   | ⚪ Future   |
 
 See [TODO-roadmap.md](TODO-roadmap.md) for detailed roadmap.
 
@@ -200,6 +215,7 @@ See [TODO-roadmap.md](TODO-roadmap.md) for detailed roadmap.
 FREED uses two configuration layers:
 
 **Operational settings** (`~/.freed/config.json`):
+
 ```json
 {
   "capture-x": { "pollInterval": 5, "browser": "chrome" },
@@ -208,6 +224,7 @@ FREED uses two configuration layers:
 ```
 
 **Subscriptions & preferences** (Automerge document—syncs across devices):
+
 - RSS feed subscriptions
 - X capture mode (mirror/whitelist/blacklist)
 - Feed weights and display preferences
@@ -219,6 +236,7 @@ FREED uses two configuration layers:
 FREED is open source and welcomes contributions. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Areas where we need help:
+
 - PWA reader UI/UX
 - Additional capture skills (Mastodon API, Bluesky AT Protocol)
 - Sync layer implementation
@@ -243,6 +261,7 @@ MIT License. See [LICENSE](LICENSE).
 ## 🧭 Philosophy
 
 FREED exists because:
+
 - Your attention belongs to you
 - Algorithms should serve your goals, not theirs
 - Social media should facilitate human connection, not replace it
@@ -252,4 +271,4 @@ Read the manifesto at [freed.wtf/manifesto](https://freed.wtf/manifesto).
 
 ---
 
-*Built for humans, not engagement metrics.*
+_Built for humans, not engagement metrics._
