@@ -1,0 +1,26 @@
+{
+  "name": "@freed/capture-rss",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@freed/shared": "*",
+    "rss-parser": "^3.13.0",
+    "fast-xml-parser": "^4.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  }
+}
