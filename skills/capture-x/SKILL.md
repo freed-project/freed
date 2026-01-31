@@ -2,7 +2,7 @@
 name: capture-x
 description: Captures posts from X/Twitter using GraphQL APIs for background feed aggregation
 user-invocable: true
-metadata: {"requires": {"bins": ["bun"]}}
+metadata: { "requires": { "bins": ["bun"] } }
 ---
 
 # X Feed Capture
@@ -13,10 +13,10 @@ Captures posts from X/Twitter using their internal GraphQL API. Runs in the back
 
 Three modes for controlling what gets captured:
 
-| Mode | Description |
-|------|-------------|
-| `mirror` | Capture from everyone you follow on X (default) |
-| `whitelist` | Only capture from explicitly listed accounts |
+| Mode               | Description                                           |
+| ------------------ | ----------------------------------------------------- |
+| `mirror`           | Capture from everyone you follow on X (default)       |
+| `whitelist`        | Only capture from explicitly listed accounts          |
 | `mirror_blacklist` | Mirror your follows, but exclude blacklisted accounts |
 
 ### Set Mode
@@ -85,11 +85,11 @@ Mode and lists are stored in the Automerge document (syncs across devices).
 
 ### Options
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `pollInterval` | 5 | Minutes between polls |
-| `browser` | "chrome" | Browser for cookie extraction (chrome/firefox/edge/brave) |
-| `maxItemsPerPoll` | 50 | Maximum tweets to fetch per poll |
+| Option            | Default  | Description                                               |
+| ----------------- | -------- | --------------------------------------------------------- |
+| `pollInterval`    | 5        | Minutes between polls                                     |
+| `browser`         | "chrome" | Browser for cookie extraction (chrome/firefox/edge/brave) |
+| `maxItemsPerPoll` | 50       | Maximum tweets to fetch per poll                          |
 
 ## Authentication
 
@@ -130,6 +130,7 @@ X's API has rate limits. This skill:
 - Waits automatically before retrying
 
 Typical limits:
+
 - ~500 requests per 15 minutes
 - Each poll is 1 request
 

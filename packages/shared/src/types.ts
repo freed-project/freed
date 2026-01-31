@@ -1,6 +1,6 @@
 /**
  * @freed/shared - Core type definitions for FREED
- * 
+ *
  * "Their algorithms optimize for profit. Optimize yours for life."
  */
 
@@ -12,30 +12,34 @@
  * Supported content platforms
  */
 export type Platform =
-  | 'x'           // X/Twitter
-  | 'rss'         // Generic RSS/Atom
-  | 'youtube'     // YouTube (via RSS)
-  | 'reddit'      // Reddit (via RSS)
-  | 'mastodon'    // Mastodon (via RSS)
-  | 'github'      // GitHub (via Atom)
-  | 'facebook'    // Facebook (DOM capture)
-  | 'instagram'   // Instagram (DOM capture)
-  | 'linkedin'    // LinkedIn (DOM capture, future)
+  | "x" // X/Twitter
+  | "rss" // Generic RSS/Atom
+  | "youtube" // YouTube (via RSS)
+  | "reddit" // Reddit (via RSS)
+  | "mastodon" // Mastodon (via RSS)
+  | "github" // GitHub (via Atom)
+  | "facebook" // Facebook (DOM capture)
+  | "instagram" // Instagram (DOM capture)
+  | "linkedin"; // LinkedIn (DOM capture, future)
 
 /**
  * Content type classification
  */
-export type ContentType = 'post' | 'story' | 'article' | 'video' | 'podcast'
+export type ContentType = "post" | "story" | "article" | "video" | "podcast";
 
 /**
  * Media type classification
  */
-export type MediaType = 'image' | 'video' | 'link'
+export type MediaType = "image" | "video" | "link";
 
 /**
  * Location source type
  */
-export type LocationSource = 'geo_tag' | 'check_in' | 'sticker' | 'text_extraction'
+export type LocationSource =
+  | "geo_tag"
+  | "check_in"
+  | "sticker"
+  | "text_extraction";
 
 // =============================================================================
 // Feed Item
@@ -45,66 +49,66 @@ export type LocationSource = 'geo_tag' | 'check_in' | 'sticker' | 'text_extracti
  * Author information
  */
 export interface Author {
-  id: string
-  handle: string
-  displayName: string
-  avatarUrl?: string
+  id: string;
+  handle: string;
+  displayName: string;
+  avatarUrl?: string;
 }
 
 /**
  * Content structure
  */
 export interface Content {
-  text?: string
-  mediaUrls: string[]
-  mediaTypes: MediaType[]
-  linkPreview?: LinkPreview
+  text?: string;
+  mediaUrls: string[];
+  mediaTypes: MediaType[];
+  linkPreview?: LinkPreview;
 }
 
 /**
  * Link preview information
  */
 export interface LinkPreview {
-  url: string
-  title?: string
-  description?: string
+  url: string;
+  title?: string;
+  description?: string;
 }
 
 /**
  * Engagement metrics (captured for user-controlled ranking, hidden by default in UI)
  */
 export interface Engagement {
-  likes?: number
-  reposts?: number
-  comments?: number
-  views?: number
+  likes?: number;
+  reposts?: number;
+  comments?: number;
+  views?: number;
 }
 
 /**
  * Location information
  */
 export interface Location {
-  name: string
-  coordinates?: { lat: number; lng: number }
-  source: LocationSource
+  name: string;
+  coordinates?: { lat: number; lng: number };
+  source: LocationSource;
 }
 
 /**
  * RSS-specific source information
  */
 export interface RssSourceInfo {
-  feedUrl: string
-  feedTitle: string
-  siteUrl: string
+  feedUrl: string;
+  feedTitle: string;
+  siteUrl: string;
 }
 
 /**
  * User interaction state
  */
 export interface UserState {
-  hidden: boolean
-  bookmarked: boolean
-  readAt?: number
+  hidden: boolean;
+  bookmarked: boolean;
+  readAt?: number;
 }
 
 /**
@@ -112,40 +116,40 @@ export interface UserState {
  */
 export interface FeedItem {
   /** Unique identifier: "platform:id" (e.g., "x:123" or "rss:https://...") */
-  globalId: string
-  
+  globalId: string;
+
   /** Source platform */
-  platform: Platform
-  
+  platform: Platform;
+
   /** Content type classification */
-  contentType: ContentType
-  
+  contentType: ContentType;
+
   /** When FREED captured this item (Unix timestamp) */
-  capturedAt: number
-  
+  capturedAt: number;
+
   /** Original publish timestamp (Unix timestamp) */
-  publishedAt: number
-  
+  publishedAt: number;
+
   /** Author information */
-  author: Author
-  
+  author: Author;
+
   /** Content data */
-  content: Content
-  
+  content: Content;
+
   /** Engagement metrics (optional, for user-controlled ranking) */
-  engagement?: Engagement
-  
+  engagement?: Engagement;
+
   /** Location information (optional) */
-  location?: Location
-  
+  location?: Location;
+
   /** RSS-specific source info (optional) */
-  rssSource?: RssSourceInfo
-  
+  rssSource?: RssSourceInfo;
+
   /** User interaction state */
-  userState: UserState
-  
+  userState: UserState;
+
   /** Extracted/inferred topics */
-  topics: string[]
+  topics: string[];
 }
 
 // =============================================================================
@@ -158,29 +162,29 @@ export interface FeedItem {
  * - whitelist: Only capture from explicitly listed accounts
  * - mirror_blacklist: Mirror follows but exclude blacklisted accounts
  */
-export type XCaptureMode = 'mirror' | 'whitelist' | 'mirror_blacklist'
+export type XCaptureMode = "mirror" | "whitelist" | "mirror_blacklist";
 
 /**
  * An X account for whitelist/blacklist
  */
 export interface XAccount {
   /** User ID (rest_id) */
-  id: string
-  
+  id: string;
+
   /** Username/handle (without @) */
-  handle: string
-  
+  handle: string;
+
   /** Display name */
-  displayName?: string
-  
+  displayName?: string;
+
   /** Avatar URL */
-  avatarUrl?: string
-  
+  avatarUrl?: string;
+
   /** When this account was added */
-  addedAt: number
-  
+  addedAt: number;
+
   /** Optional note about why this account is listed */
-  note?: string
+  note?: string;
 }
 
 /**
@@ -188,19 +192,19 @@ export interface XAccount {
  */
 export interface XCapturePreferences {
   /** Capture mode */
-  mode: XCaptureMode
-  
+  mode: XCaptureMode;
+
   /** Whitelist: accounts to capture (used when mode is 'whitelist') */
-  whitelist: Record<string, XAccount>
-  
+  whitelist: Record<string, XAccount>;
+
   /** Blacklist: accounts to exclude (used when mode is 'mirror_blacklist') */
-  blacklist: Record<string, XAccount>
-  
+  blacklist: Record<string, XAccount>;
+
   /** Include retweets in capture */
-  includeRetweets: boolean
-  
+  includeRetweets: boolean;
+
   /** Include replies in capture */
-  includeReplies: boolean
+  includeReplies: boolean;
 }
 
 // =============================================================================
@@ -212,31 +216,31 @@ export interface XCapturePreferences {
  */
 export interface RssFeed {
   /** Feed URL */
-  url: string
-  
+  url: string;
+
   /** Feed title */
-  title: string
-  
+  title: string;
+
   /** Website URL */
-  siteUrl?: string
-  
+  siteUrl?: string;
+
   /** Last successful fetch timestamp */
-  lastFetched?: number
-  
+  lastFetched?: number;
+
   /** ETag for conditional GET */
-  etag?: string
-  
+  etag?: string;
+
   /** Last-Modified header for conditional GET */
-  lastModified?: string
-  
+  lastModified?: string;
+
   /** Feed image URL */
-  imageUrl?: string
-  
+  imageUrl?: string;
+
   /** Whether this feed is enabled */
-  enabled: boolean
-  
+  enabled: boolean;
+
   /** Custom poll interval in minutes (overrides default) */
-  pollInterval?: number
+  pollInterval?: number;
 }
 
 // =============================================================================
@@ -248,16 +252,16 @@ export interface RssFeed {
  */
 export interface WeightPreferences {
   /** Recency weight (0-100): How much to prioritize new content */
-  recency: number
-  
+  recency: number;
+
   /** Platform weights: Platform -> weight multiplier */
-  platforms: Record<string, number>
-  
+  platforms: Record<string, number>;
+
   /** Topic weights: Topic -> weight multiplier */
-  topics: Record<string, number>
-  
+  topics: Record<string, number>;
+
   /** Author weights: Author ID -> weight multiplier */
-  authors: Record<string, number>
+  authors: Record<string, number>;
 }
 
 /**
@@ -265,13 +269,13 @@ export interface WeightPreferences {
  */
 export interface UlyssesPreferences {
   /** Whether Ulysses mode is enabled */
-  enabled: boolean
-  
+  enabled: boolean;
+
   /** Platforms to block feeds on */
-  blockedPlatforms: string[]
-  
+  blockedPlatforms: string[];
+
   /** Allowed paths per platform (e.g., /messages, /notifications) */
-  allowedPaths: Record<string, string[]>
+  allowedPaths: Record<string, string[]>;
 }
 
 /**
@@ -279,13 +283,13 @@ export interface UlyssesPreferences {
  */
 export interface SyncPreferences {
   /** Cloud backup provider */
-  cloudProvider?: 'gdrive' | 'icloud' | 'dropbox'
-  
+  cloudProvider?: "gdrive" | "icloud" | "dropbox";
+
   /** Whether auto-backup is enabled */
-  autoBackup: boolean
-  
+  autoBackup: boolean;
+
   /** Backup frequency */
-  backupFrequency?: 'hourly' | 'daily' | 'manual'
+  backupFrequency?: "hourly" | "daily" | "manual";
 }
 
 /**
@@ -293,24 +297,24 @@ export interface SyncPreferences {
  */
 export interface DisplayPreferences {
   /** Items per page */
-  itemsPerPage: number
-  
+  itemsPerPage: number;
+
   /** Compact mode */
-  compactMode: boolean
-  
+  compactMode: boolean;
+
   /** Show engagement counts (default: false - opt-in only) */
-  showEngagementCounts: boolean
+  showEngagementCounts: boolean;
 }
 
 /**
  * Complete user preferences
  */
 export interface UserPreferences {
-  weights: WeightPreferences
-  ulysses: UlyssesPreferences
-  sync: SyncPreferences
-  display: DisplayPreferences
-  xCapture: XCapturePreferences
+  weights: WeightPreferences;
+  ulysses: UlyssesPreferences;
+  sync: SyncPreferences;
+  display: DisplayPreferences;
+  xCapture: XCapturePreferences;
 }
 
 // =============================================================================
@@ -322,13 +326,13 @@ export interface UserPreferences {
  */
 export interface DocumentMeta {
   /** Unique device identifier */
-  deviceId: string
-  
+  deviceId: string;
+
   /** Last sync timestamp */
-  lastSync: number
-  
+  lastSync: number;
+
   /** Document version for migrations */
-  version: number
+  version: number;
 }
 
 // =============================================================================
@@ -344,33 +348,33 @@ export function createDefaultPreferences(): UserPreferences {
       recency: 50,
       platforms: {},
       topics: {},
-      authors: {}
+      authors: {},
     },
     ulysses: {
       enabled: false,
       blockedPlatforms: [],
       allowedPaths: {
-        x: ['/messages', '/notifications', '/compose', '/settings', '/i/'],
-        facebook: ['/messages', '/notifications', '/settings', '/marketplace'],
-        instagram: ['/direct', '/accounts', '/explore/tags']
-      }
+        x: ["/messages", "/notifications", "/compose", "/settings", "/i/"],
+        facebook: ["/messages", "/notifications", "/settings", "/marketplace"],
+        instagram: ["/direct", "/accounts", "/explore/tags"],
+      },
     },
     sync: {
-      autoBackup: false
+      autoBackup: false,
     },
     display: {
       itemsPerPage: 20,
       compactMode: false,
-      showEngagementCounts: false // Hidden by default
+      showEngagementCounts: false, // Hidden by default
     },
     xCapture: {
-      mode: 'mirror', // Default: capture from everyone you follow
+      mode: "mirror", // Default: capture from everyone you follow
       whitelist: {},
       blacklist: {},
       includeRetweets: true,
-      includeReplies: false
-    }
-  }
+      includeReplies: false,
+    },
+  };
 }
 
 /**
@@ -380,6 +384,6 @@ export function createDefaultMeta(): DocumentMeta {
   return {
     deviceId: crypto.randomUUID(),
     lastSync: 0,
-    version: 1
-  }
+    version: 1,
+  };
 }
