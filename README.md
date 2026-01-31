@@ -20,33 +20,55 @@ FREED captures social media and RSS feeds locally, presents them through a unifi
 
 ## Features
 
-### Unified Feed
+### 🌊 Unified Feed
 One feed combining X posts, blog articles, YouTube videos, newsletters, and podcasts—ranked by your preferences, not their engagement algorithms.
 
-### Local-First Privacy
+### 🔒 Local-First Privacy
 All data stays on your device. FREED captures to a local Automerge document. We literally cannot see what you capture.
 
-### X Capture Modes
+### 🐦 X/Twitter Capture
 Three modes for controlling X capture:
 - **Mirror** — Capture from everyone you follow on X
 - **Whitelist** — Only capture from accounts you specify
 - **Mirror + Blacklist** — Mirror your follows minus specific accounts
 
-### RSS Integration
+### 📡 RSS Integration
 Subscribe to any RSS/Atom feed. Special handling for:
 - YouTube channels, Reddit, Mastodon, GitHub releases
 - Medium, Substack, Ghost, and other newsletters
 - Podcasts (RSS is their native format)
 - OPML import for migrating from other readers
 
-### Cross-Device Sync
+### 🔄 Cross-Device Sync
 Automerge CRDT enables conflict-free sync:
 - WebRTC for peer-to-peer on local network
 - Encrypted cloud backup (Google Drive, iCloud, Dropbox)
 - No central server required
 
-### Ulysses Mode (Coming Soon)
+### ⚓ Ulysses Mode *(Coming Soon)*
 Browser extension that blocks platform feeds and redirects to FREED. Choose your constraints before the Sirens start singing.
+
+### 📍 Friend Map *(Coming Soon)*
+See where your friends are posting from. Location extraction from geo-tags and text builds a map of your social circle. Social media should facilitate human connection, not replace it.
+
+---
+
+## Planned Platforms
+
+### 📘 Facebook *(Planned)*
+DOM-based capture for Facebook feeds and stories. Challenging due to obfuscated selectors, but on the roadmap.
+
+### 📸 Instagram *(Planned)*
+Capture posts, stories, and reels from your Instagram feed. Similar DOM-based approach to Facebook.
+
+### 🦋 Bluesky *(Planned)*
+Native AT Protocol integration for richer data than RSS alone.
+
+### 🐘 Mastodon *(Planned)*
+Enhanced capture via Mastodon API (beyond current RSS support) for notifications and direct messages.
+
+### 💼 LinkedIn *(Future)*
+Professional network capture. Lower priority but architecturally supported.
 
 ---
 
@@ -192,7 +214,7 @@ FREED uses two configuration layers:
 
 ---
 
-## Contributing
+## 💜 Contributing
 
 FREED is open source and welcomes contributions. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -204,7 +226,7 @@ Areas where we need help:
 
 ---
 
-## Legal
+## ⚖️ Legal
 
 FREED operates locally on your device using your own authenticated sessions—similar to RSS readers and browser developer tools. All data stays local. We have no servers and collect no data.
 
@@ -212,13 +234,13 @@ See [docs/LEGAL.md](docs/LEGAL.md) for details.
 
 ---
 
-## License
+## 📜 License
 
 MIT License. See [LICENSE](LICENSE).
 
 ---
 
-## Philosophy
+## 🧭 Philosophy
 
 FREED exists because:
 - Your attention belongs to you
