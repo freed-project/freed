@@ -1,0 +1,11 @@
+[install]
+# Use exact versions for reproducibility
+exact = true
+
+[install.lockfile]
+# Save the lockfile
+save = true
+
+[run]
+# Enable hot reloading for development
+bun = true
