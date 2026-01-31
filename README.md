@@ -1,32 +1,91 @@
 # FREED
 
-## Mental Sovereignty. Digital Dignity. Your MIND is not for sale.
+> **Their algorithms optimize for profit. Optimize yours for life.**
 
-FREED is an open-source browser extension that captures your social media feeds locally and lets you build your own unified timeline. No algorithms. No manipulation. No data collection. Just you, your content, and the people you actually care about.
+FREED captures social media and RSS feeds locally, presents them through a unified timeline you control, and syncs across devices without any data leaving your possession.
 
 **Website:** [freed.wtf](https://freed.wtf)
 
 ---
 
+## What It Does
+
+- **Captures X/Twitter** via background polling using their GraphQL API
+- **Aggregates RSS/Atom feeds** from blogs, YouTube, Reddit, Substack, podcasts, and more
+- **Normalizes everything** into a single unified feed format
+- **Syncs across devices** via Automerge CRDT—no cloud service required
+- **Runs locally** as OpenClaw skills—no servers, no tracking
+
+---
+
 ## Features
 
-### 🔒 Local-First Privacy
-All your data stays on your device. No servers, no tracking, no telemetry. We literally cannot see what you capture.
+### Unified Feed
+One feed combining X posts, blog articles, YouTube videos, newsletters, and podcasts—ranked by your preferences, not their engagement algorithms.
 
-### 🌊 Unified Feed
-One feed combining X, Facebook, and Instagram—weighted by what matters to you, not what maximizes their engagement metrics.
+### Local-First Privacy
+All data stays on your device. FREED captures to a local Automerge document. We literally cannot see what you capture.
 
-### 📍 Friend Map
-See where your friends actually are in real life. Location extraction from posts and stories builds a live map. Social media should facilitate human connection, not replace it.
+### X Capture Modes
+Three modes for controlling X capture:
+- **Mirror** — Capture from everyone you follow on X
+- **Whitelist** — Only capture from accounts you specify
+- **Mirror + Blacklist** — Mirror your follows minus specific accounts
 
-### ⚓ Ulysses Mode
-A Ulysses pact against algorithmic manipulation. Block the platform feeds entirely and engage only through FREED. Choose your constraints before the Sirens start singing.
+### RSS Integration
+Subscribe to any RSS/Atom feed. Special handling for:
+- YouTube channels, Reddit, Mastodon, GitHub releases
+- Medium, Substack, Ghost, and other newsletters
+- Podcasts (RSS is their native format)
+- OPML import for migrating from other readers
 
-### 🔄 Cross-Device Sync
-CRDT-powered sync across all your devices. Peer-to-peer when available, encrypted cloud backup when you want it.
+### Cross-Device Sync
+Automerge CRDT enables conflict-free sync:
+- WebRTC for peer-to-peer on local network
+- Encrypted cloud backup (Google Drive, iCloud, Dropbox)
+- No central server required
 
-### 💜 Open Source
-MIT licensed. Fork it, audit it, improve it. The algorithm that serves you best is the one you wrote yourself.
+### Ulysses Mode (Coming Soon)
+Browser extension that blocks platform feeds and redirects to FREED. Choose your constraints before the Sirens start singing.
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        CAPTURE LAYER                            │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
+│  │ capture-x   │  │ capture-rss │  │ Future: DOM scrapers    │  │
+│  │ (GraphQL)   │  │ (RSS/Atom)  │  │ (Facebook, Instagram)   │  │
+│  └──────┬──────┘  └──────┬──────┘  └────────────┬────────────┘  │
+│         └────────────────┼─────────────────────┘                │
+│                          ▼                                      │
+│              ┌───────────────────────┐                          │
+│              │   @freed/shared       │                          │
+│              │   (FeedItem Schema)   │                          │
+│              └───────────┬───────────┘                          │
+│                          ▼                                      │
+│              ┌───────────────────────┐                          │
+│              │  Automerge CRDT Doc   │                          │
+│              └───────────────────────┘                          │
+└─────────────────────────────────────────────────────────────────┘
+                           │
+┌──────────────────────────┼──────────────────────────────────────┐
+│                     SYNC LAYER                                  │
+│              ┌───────────┴───────────┐                          │
+│              │    automerge-repo     │                          │
+│              │  WebRTC + Cloud Backup│                          │
+│              └───────────────────────┘                          │
+└─────────────────────────────────────────────────────────────────┘
+                           │
+┌──────────────────────────┼──────────────────────────────────────┐
+│                    READER LAYER                                 │
+│    ┌─────────────┐              ┌─────────────┐                 │
+│    │ Desktop PWA │              │  Phone PWA  │                 │
+│    └─────────────┘              └─────────────┘                 │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -34,34 +93,65 @@ MIT licensed. Fork it, audit it, improve it. The algorithm that serves you best 
 
 ```
 freed/
-├── website/          # Marketing site (freed.wtf)
-├── docs/             # Documentation
-│   ├── ARCHITECTURE.md
-│   ├── DESIGN.md
-│   ├── MARKETING.md
-│   ├── ROADMAP.md
-│   └── LEGAL.md
-├── freed/            # Main monorepo (coming soon)
-│   ├── packages/
-│   │   ├── shared/   # Shared types, CRDT schema
-│   │   ├── extension/# Browser extension
-│   │   └── pwa/      # Progressive Web App
-│   └── docs/
-└── mobile/           # Tauri mobile app (Phase 2)
+├── packages/
+│   ├── shared/              # @freed/shared - types, Automerge schema
+│   ├── capture-x/           # @freed/capture-x - X GraphQL client
+│   └── capture-rss/         # @freed/capture-rss - RSS parser
+├── skills/
+│   ├── capture-x/           # OpenClaw skill for X capture
+│   └── capture-rss/         # OpenClaw skill for RSS capture
+├── website/                 # Marketing site (freed.wtf)
+├── workers/                 # Cloudflare Workers
+├── docs/                    # Documentation
+└── TODO-roadmap.md          # Master roadmap
+```
+
+---
+
+## Quick Start
+
+### Capture RSS Feeds
+
+```bash
+# Add a feed (auto-discovers RSS URL)
+cd skills/capture-rss && npx tsx src/index.ts add https://simonwillison.net
+
+# Import from OPML
+npx tsx src/index.ts import ~/Downloads/feedly-export.opml
+
+# Sync all feeds
+npx tsx src/index.ts sync
+
+# View recent items
+npx tsx src/index.ts recent 20
+```
+
+### Capture X/Twitter
+
+```bash
+cd skills/capture-x && npx tsx src/index.ts status
+
+# Set capture mode
+npx tsx src/index.ts mode mirror_blacklist
+npx tsx src/index.ts blacklist add @annoying_account
+
+# Sync timeline
+npx tsx src/index.ts sync
 ```
 
 ---
 
 ## Tech Stack
 
-- **Language:** TypeScript
-- **Runtime:** Bun
-- **Build:** Vite
-- **Extensions:** Chrome (MV3), Safari iOS, Firefox Android
-- **Storage:** Automerge (CRDT) + IndexedDB
-- **Sync:** WebRTC P2P + encrypted cloud backup
-- **PWA:** React + Tailwind + Workbox
-- **Maps:** MapLibre GL JS + Nominatim
+| Layer | Technology |
+|-------|------------|
+| Language | TypeScript |
+| Runtime | Bun / Node |
+| Monorepo | npm workspaces |
+| Storage | Automerge CRDT |
+| Sync | automerge-repo (WebRTC + cloud) |
+| PWA | React + Tailwind (coming soon) |
+| Capture | OpenClaw skills |
 
 ---
 
@@ -69,58 +159,74 @@ freed/
 
 | Phase | Status |
 |-------|--------|
-| Marketing Site | 🟡 In Progress |
-| Foundation | ⚪ Pending |
-| X Capture | ⚪ Pending |
-| Facebook/Instagram | ⚪ Pending |
-| Location/Friend Map | ⚪ Pending |
+| Marketing Site | ✅ Complete |
+| Foundation (monorepo, types, schema) | ✅ Complete |
+| X Capture | ✅ Complete |
+| RSS Capture | ✅ Complete |
 | Sync Layer | ⚪ Pending |
-| Mobile Extensions | ⚪ Pending |
-| Ulysses Mode | ⚪ Pending |
-| Polish | ⚪ Pending |
-| Native Mobile | ⚪ Future |
+| PWA Reader | ⚪ Pending |
+| Browser Extension | ⚪ Pending |
+| Friend Map | ⚪ Pending |
+| Facebook/Instagram | ⚪ Future |
+
+See [TODO-roadmap.md](TODO-roadmap.md) for detailed roadmap.
+
+---
+
+## Configuration
+
+FREED uses two configuration layers:
+
+**Operational settings** (`~/.freed/config.json`):
+```json
+{
+  "capture-x": { "pollInterval": 5, "browser": "chrome" },
+  "capture-rss": { "pollInterval": 30 }
+}
+```
+
+**Subscriptions & preferences** (Automerge document—syncs across devices):
+- RSS feed subscriptions
+- X capture mode (mirror/whitelist/blacklist)
+- Feed weights and display preferences
 
 ---
 
 ## Contributing
 
-FREED is open source and welcomes contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+FREED is open source and welcomes contributions. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Areas where we need help:
-- Platform-specific DOM selectors
-- Browser compatibility testing
-- UI/UX design
-- Documentation and translations
-- Community building
+- PWA reader UI/UX
+- Additional capture skills (Mastodon API, Bluesky AT Protocol)
+- Sync layer implementation
+- Documentation and testing
 
 ---
 
 ## Legal
 
-FREED operates in the user's browser on their own authenticated session—similar to ad blockers and browser developer tools. All data stays local. We have no servers and collect no data.
+FREED operates locally on your device using your own authenticated sessions—similar to RSS readers and browser developer tools. All data stays local. We have no servers and collect no data.
 
-See [docs/LEGAL.md](docs/LEGAL.md) for full legal framework.
+See [docs/LEGAL.md](docs/LEGAL.md) for details.
 
 ---
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License. See [LICENSE](LICENSE).
 
 ---
 
 ## Philosophy
 
-> "The algorithm that serves you best is the one you wrote yourself."
-> — *The Codex of Digital Autonomy*
-
-FREED exists because we believe:
+FREED exists because:
 - Your attention belongs to you
-- Algorithms should be transparent
-- Technology should connect humans, not replace connection
-- Freedom requires intentionality
+- Algorithms should serve your goals, not theirs
+- Social media should facilitate human connection, not replace it
+- A unified view of content you care about shouldn't require surrendering your data
 
-Read the full manifesto at [freed.wtf/manifesto](https://freed.wtf/manifesto).
+Read the manifesto at [freed.wtf/manifesto](https://freed.wtf/manifesto).
 
 ---
 
