@@ -149,6 +149,61 @@ export interface FeedItem {
 }
 
 // =============================================================================
+// X/Twitter Capture
+// =============================================================================
+
+/**
+ * X capture mode
+ * - mirror: Capture from everyone you follow on X
+ * - whitelist: Only capture from explicitly listed accounts
+ * - mirror_blacklist: Mirror follows but exclude blacklisted accounts
+ */
+export type XCaptureMode = 'mirror' | 'whitelist' | 'mirror_blacklist'
+
+/**
+ * An X account for whitelist/blacklist
+ */
+export interface XAccount {
+  /** User ID (rest_id) */
+  id: string
+  
+  /** Username/handle (without @) */
+  handle: string
+  
+  /** Display name */
+  displayName?: string
+  
+  /** Avatar URL */
+  avatarUrl?: string
+  
+  /** When this account was added */
+  addedAt: number
+  
+  /** Optional note about why this account is listed */
+  note?: string
+}
+
+/**
+ * X capture preferences
+ */
+export interface XCapturePreferences {
+  /** Capture mode */
+  mode: XCaptureMode
+  
+  /** Whitelist: accounts to capture (used when mode is 'whitelist') */
+  whitelist: Record<string, XAccount>
+  
+  /** Blacklist: accounts to exclude (used when mode is 'mirror_blacklist') */
+  blacklist: Record<string, XAccount>
+  
+  /** Include retweets in capture */
+  includeRetweets: boolean
+  
+  /** Include replies in capture */
+  includeReplies: boolean
+}
+
+// =============================================================================
 // RSS Feed
 // =============================================================================
 
@@ -255,6 +310,7 @@ export interface UserPreferences {
   ulysses: UlyssesPreferences
   sync: SyncPreferences
   display: DisplayPreferences
+  xCapture: XCapturePreferences
 }
 
 // =============================================================================
@@ -306,6 +362,13 @@ export function createDefaultPreferences(): UserPreferences {
       itemsPerPage: 20,
       compactMode: false,
       showEngagementCounts: false // Hidden by default
+    },
+    xCapture: {
+      mode: 'mirror', // Default: capture from everyone you follow
+      whitelist: {},
+      blacklist: {},
+      includeRetweets: true,
+      includeReplies: false
     }
   }
 }

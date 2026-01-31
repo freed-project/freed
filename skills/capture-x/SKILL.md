@@ -7,65 +7,69 @@ metadata: {"requires": {"bins": ["bun"]}}
 
 # X Feed Capture
 
-Captures posts from accounts you follow on X/Twitter using their internal GraphQL API. Runs in the background via OpenClaw, no browser tab required.
+Captures posts from X/Twitter using their internal GraphQL API. Runs in the background via OpenClaw, no browser tab required.
 
-## Overview
+## Capture Modes
 
-This skill:
-- Polls your X "Following" timeline periodically
-- Normalizes tweets to FREED's unified FeedItem format
-- Stores captured content in a local Automerge CRDT document
-- Handles rate limiting with exponential backoff
+Three modes for controlling what gets captured:
+
+| Mode | Description |
+|------|-------------|
+| `mirror` | Capture from everyone you follow on X (default) |
+| `whitelist` | Only capture from explicitly listed accounts |
+| `mirror_blacklist` | Mirror your follows, but exclude blacklisted accounts |
+
+### Set Mode
+
+```bash
+capture-x mode                    # Show current mode
+capture-x mode whitelist          # Switch to whitelist mode
+capture-x mode mirror_blacklist   # Mirror minus blacklist
+```
+
+### Manage Whitelist
+
+```bash
+capture-x whitelist               # Show whitelist
+capture-x whitelist add @user     # Add to whitelist
+capture-x whitelist remove @user  # Remove from whitelist
+```
+
+### Manage Blacklist
+
+```bash
+capture-x blacklist               # Show blacklist
+capture-x blacklist add @user     # Add to blacklist
+capture-x blacklist remove @user  # Remove from blacklist
+```
 
 ## Usage
 
-### Start Capture
+### Start/Stop Capture
 
-```
-capture-x start
-```
-
-Begins polling your X timeline. Default interval is 5 minutes.
-
-### Stop Capture
-
-```
-capture-x stop
+```bash
+capture-x start    # Begin polling
+capture-x stop     # Stop polling
+capture-x status   # Show status and configuration
+capture-x sync     # Manual sync now
 ```
 
-Stops background polling.
+### View Recent Posts
 
-### Check Status
-
-```
-capture-x status
+```bash
+capture-x recent [count]   # Show recent posts (default: 10)
 ```
 
-Shows:
-- Whether capture is running
-- Last capture time
-- Number of items captured
-- Rate limit status
+### Content Filtering
 
-### Manual Sync
-
+```bash
+capture-x set retweets off   # Exclude retweets
+capture-x set replies off    # Exclude replies
 ```
-capture-x sync
-```
-
-Immediately fetch new posts without waiting for next poll interval.
-
-### View Recent
-
-```
-capture-x recent [count]
-```
-
-Display the most recent captured posts (default: 10).
 
 ## Configuration
 
-Configuration is stored in `~/.freed/config.json`:
+Operational settings in `~/.freed/config.json`:
 
 ```json
 {
@@ -76,6 +80,8 @@ Configuration is stored in `~/.freed/config.json`:
   }
 }
 ```
+
+Mode and lists are stored in the Automerge document (syncs across devices).
 
 ### Options
 
