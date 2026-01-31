@@ -1,0 +1,17 @@
+{
+  "name": "@freed/skill-capture-x",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "bun run src/index.ts start",
+    "stop": "bun run src/index.ts stop",
+    "status": "bun run src/index.ts status",
+    "sync": "bun run src/index.ts sync"
+  },
+  "dependencies": {
+    "@freed/shared": "*",
+    "@freed/capture-x": "*",
+    "@automerge/automerge": "^2.2.0"
+  }
+}
