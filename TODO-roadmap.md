@@ -76,8 +76,8 @@ Capture social media and RSS locally. Tune the feel algo yourself. Sync across d
 │  ┌─────────────────┐                    ┌─────────────────┐           │
 │  │   Desktop PWA   │                    │    Phone PWA    │           │
 │  │ (freed.wtf/app) │                    │ (same codebase) │           │
-│  │ • Unified feed  │                    │ • Mobile-first  │           │
-│  │ • Friend map    │                    │ • Offline       │           │
+│  │ • Unified feed   │                    │ • Mobile-first   │           │
+│  │ • Friend map    │                    │ • Offline        │           │
 │  │ • Settings      │                    │ • Add to home   │           │
 │  └─────────────────┘                    └─────────────────┘           │
 │                                                                       │
@@ -90,7 +90,7 @@ Capture social media and RSS locally. Tune the feel algo yourself. Sync across d
 │                                                                       │
 │  ┌─────────────────────────────────────────────────────────────────┐  │
 │  │               Tauri Native App (Future)                         │  │
-│  │  • Push notifications • Background sync                         │  │
+│  │  • Push notifications • Background sync                          │  │
 │  └─────────────────────────────────────────────────────────────────┘  │
 └───────────────────────────────────────────────────────────────────────┘
 ```
