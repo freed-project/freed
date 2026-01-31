@@ -1,0 +1,19 @@
+{
+  "name": "@freed/skill-capture-rss",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "add": "bun run src/index.ts add",
+    "import": "bun run src/index.ts import",
+    "list": "bun run src/index.ts list",
+    "remove": "bun run src/index.ts remove",
+    "sync": "bun run src/index.ts sync",
+    "export": "bun run src/index.ts export"
+  },
+  "dependencies": {
+    "@freed/shared": "*",
+    "@freed/capture-rss": "*",
+    "@automerge/automerge": "^2.2.0"
+  }
+}
