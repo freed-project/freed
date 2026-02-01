@@ -133,6 +133,18 @@ OPML import supported for migrating existing subscriptions.
 | **Hacker News** | RSS             | `capture-rss` | Easy       | Algolia RSS feeds                          |
 | **GitHub**      | Atom            | `capture-rss` | Easy       | Releases, commits, issues                  |
 
+### Save for Later (Phase 4.5)
+
+| Feature               | Description                                   |
+| --------------------- | --------------------------------------------- |
+| **Browser Extension** | One-click save from any page                  |
+| **Share Sheet**       | Save from mobile via system share             |
+| **Manual URL Entry**  | Paste URL directly in app                     |
+| **Reader View**       | Preserved article content for offline reading |
+| **Normalize to Feed** | Outputs `FeedItem` with `platform: "saved"`   |
+
+> **Note:** Tags, highlights, and archive are unified across all `FeedItem` types—not specific to saved items.
+
 ### Tier 3: Walled Gardens (Phase 7+)
 
 | Source        | Method       | Skill               | Difficulty | Notes                              |
@@ -415,14 +427,19 @@ freed/
 
 **Status:** Not Started
 
+**Architecture:** OpenClaw local relay + cloud backup. No external servers.
+
 - [ ] automerge-repo integration
 - [ ] IndexedDB storage adapter (browser)
 - [ ] Filesystem storage adapter (OpenClaw/Node)
-- [ ] WebRTC peer discovery (LAN sync)
-- [ ] Cloud backup to Google Drive (encrypted)
-- [ ] Sync status indicators
+- [ ] **OpenClaw local WebSocket relay** (instant sync on home network)
+- [ ] QR code / manual pairing for PWA ↔ OpenClaw
+- [ ] Cloud sync to Google Drive / iCloud / Dropbox (user's account)
+- [ ] Sync status indicators ("Local" / "Cloud" / "Offline")
 
-**Deliverable:** Captured content syncs between desktop and phone.
+**Deliverable:** Instant sync at home via OpenClaw, cloud sync when away. Zero external infrastructure.
+
+**Detailed Plan:** See [docs/PHASE-3-4-EXECUTION-PLAN.md](docs/PHASE-3-4-EXECUTION-PLAN.md)
 
 ---
 
@@ -430,34 +447,142 @@ freed/
 
 **Status:** Not Started
 
+**Design:** Timeline-focused, minimal chrome, content-first
+
 - [ ] React + Tailwind + Framer Motion setup
+- [ ] AppShell layout (sidebar + timeline)
 - [ ] Unified feed view with ranking algorithm
+- [ ] Per-source unread tracking (opt-in for newsletters, priority sources)
+- [ ] Reading enhancements (focus mode, font options)
+- [ ] Virtual scrolling for large feeds
 - [ ] Feed settings (weights, filters)
 - [ ] RSS subscription management
 - [ ] Mobile-first responsive design
 - [ ] Offline support (Workbox service worker)
 - [ ] Add to homescreen prompt
 
-**Deliverable:** Mobile-friendly PWA at freed.wtf/app that displays unified feed.
+**Deliverable:** Mobile-friendly PWA at freed.wtf/app.
+
+**Detailed Plan:** See [docs/PHASE-3-4-EXECUTION-PLAN.md](docs/PHASE-3-4-EXECUTION-PLAN.md)
 
 ---
 
-### Phase 5: Browser Extension
+### Phase 4.5: Save for Later (`capture-save`)
 
 **Status:** Not Started
 
-- [ ] Chrome MV3 extension scaffold
-- [ ] Ulysses mode (feed blocking overlay)
-- [ ] Allowed paths configuration
-- [ ] Optional new tab page integration
-- [ ] DOM capture fallback (when APIs fail)
-- [ ] Sync with PWA via shared Automerge doc
+Independent capture layer for manually saved URLs (like capture-x and capture-rss).
 
-**Deliverable:** Extension that blocks platform feeds and optionally captures via DOM.
+- [ ] `@freed/capture-save` package scaffold
+- [ ] URL metadata extraction (title, description, image)
+- [ ] Article content extraction (Readability-style parser)
+- [ ] Reader view generation (preserved HTML/text)
+- [ ] Normalize to `FeedItem` with `platform: "saved"`
+- [ ] OpenClaw skill wrapper (`skills/capture-save/`)
+- [ ] CLI: `capture-save add <url>`
+
+**Deliverable:** `@freed/capture-save` package and skill for saving any URL.
 
 ---
 
-### Phase 6: Location & Friend Map
+### Phase 5: Desktop App (Tauri)
+
+**Status:** Not Started
+
+The universal capture engine for non-technical users. Packages all capture + sync + UI into a native desktop app.
+
+**Architecture:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      FREED Desktop (Tauri)                      │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │                    WebView (React PWA)                   │   │
+│  │  ┌─────────┐  ┌─────────────────────────────────────┐   │   │
+│  │  │ Sources │  │         Unified Timeline            │   │   │
+│  │  │ ─────── │  │                                     │   │   │
+│  │  │ All     │  │  [Article cards with glass UI]      │   │   │
+│  │  │ X       │  │                                     │   │   │
+│  │  │ RSS     │  │                                     │   │   │
+│  │  │ Saved   │  └─────────────────────────────────────┘   │   │
+│  │  └─────────┘                                             │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                              │                                  │
+│  ┌───────────────────────────┼───────────────────────────────┐ │
+│  │                    Native Layer (Rust)                     │ │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │ │
+│  │  │capture-x │  │capture-  │  │capture-  │  │  Local   │  │ │
+│  │  │  (API)   │  │   rss    │  │   dom    │  │  Relay   │  │ │
+│  │  └──────────┘  └──────────┘  └──────────┘  └──────────┘  │ │
+│  │                      │                                     │ │
+│  │               ┌──────┴──────┐                              │ │
+│  │               │  Playwright │  (headless, system Chrome)   │ │
+│  │               └─────────────┘                              │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**UI Design:** Three-column layout, dark theme, native vibrancy
+
+| Element           | Implementation                                   |
+| ----------------- | ------------------------------------------------ |
+| Window background | Tauri `vibrancy: "under-window"` (native blur)   |
+| Sidebar           | Translucent, CSS `backdrop-filter` on dark base  |
+| Buttons           | CSS glass approximation (Phase 1), SwiftUI later |
+| Cards             | Dark cards with subtle borders, content-first    |
+| Reader pane       | Clean typography, large hero images              |
+
+**Design Tokens:**
+
+```css
+/* Dark glass theme */
+--bg-primary: rgba(18, 18, 18, 0.85);
+--bg-sidebar: rgba(28, 28, 30, 0.7);
+--bg-card: rgba(44, 44, 46, 0.9);
+--border-glass: rgba(255, 255, 255, 0.08);
+--text-primary: rgba(255, 255, 255, 0.92);
+--text-secondary: rgba(255, 255, 255, 0.55);
+--accent: #ff6b35; /* FREED orange */
+```
+
+**Tasks:**
+
+- [ ] Tauri 2.0 project scaffold (`packages/desktop/`)
+- [ ] Embed PWA React app in WebView
+- [ ] Native window vibrancy (macOS)
+- [ ] Menu bar icon + background mode
+- [ ] Local WebSocket relay (same as OpenClaw)
+- [ ] Playwright subprocess for DOM capture
+- [ ] System tray with sync status
+- [ ] QR code display for phone pairing
+- [ ] Auto-launch on login (optional)
+- [ ] macOS notarization + DMG packaging
+- [ ] Windows installer (later)
+
+**Deliverable:** Native desktop app with capture, sync, and reader UI. No CLI required.
+
+---
+
+### Phase 6: Browser Extension
+
+**Status:** Not Started
+
+Supplement to Desktop App—quick saves and Ulysses mode.
+
+- [ ] Chrome MV3 extension scaffold
+- [ ] **One-click save** (integrates with `capture-save`)
+- [ ] Ulysses mode (feed blocking overlay)
+- [ ] Allowed paths configuration
+- [ ] Optional new tab page integration
+- [ ] DOM capture fallback (when Desktop App not running)
+- [ ] Sync with Desktop/PWA via shared Automerge doc
+
+**Deliverable:** Extension with save button and Ulysses mode.
+
+---
+
+### Phase 7: Location & Friend Map
 
 **Status:** Not Started
 
@@ -472,21 +597,25 @@ freed/
 
 ---
 
-### Phase 7: Facebook + Instagram Capture
+### Phase 8: Facebook + Instagram Capture
 
-**Status:** Future
+**Status:** Not Started
 
-- [ ] Facebook DOM capture (content script fallback)
-- [ ] Facebook stories capture
-- [ ] Instagram DOM capture
-- [ ] Instagram stories capture
-- [ ] API-based capture if feasible
+**Requires:** Phase 5 Desktop App (Playwright for DOM scraping)
 
-**Note:** These platforms are significantly harder due to anti-scraping. May require DOM-based approach rather than API.
+- [ ] `@freed/capture-facebook` package
+- [ ] `@freed/capture-instagram` package
+- [ ] DOM selectors for feed parsing
+- [ ] Session/cookie management
+- [ ] Stories capture
+- [ ] Rate limiting to avoid bans
+- [ ] Selector maintenance strategy (they change often)
+
+**Note:** DOM scraping is fragile. These platforms actively fight scrapers. Lower priority than X + RSS.
 
 ---
 
-### Phase 8: Polish
+### Phase 9: Polish
 
 **Status:** Future
 
@@ -496,18 +625,7 @@ freed/
 - [ ] Keyboard shortcuts
 - [ ] Performance optimization
 - [ ] Accessibility audit
-
----
-
-### Phase 9: Native Mobile (Tauri)
-
-**Status:** Future
-
-- [ ] Tauri 2.0 project setup
-- [ ] iOS/Android builds
-- [ ] Push notifications
-- [ ] Background sync
-- [ ] App Store submissions
+- [ ] Native Liquid Glass buttons (SwiftUI, macOS only)
 
 ---
 
@@ -530,6 +648,10 @@ Track progress session by session:
 4. **X first, then RSS** - Build in parallel; X proves harder capture, RSS proves the pipeline
 5. **`capture-` prefix** - Consistent naming for all capture packages
 6. **Browser extension as supplement** - Ulysses mode + DOM fallback, not primary capture
+7. **Zero external infrastructure** - OpenClaw local relay + user's cloud storage, no servers we operate
+8. **Tauri for Desktop App** - Smaller binary than Electron, native vibrancy, Swift plugin potential
+9. **System Chrome for DOM scraping** - Playwright `channel: 'chrome'` avoids bundling browsers
+10. **Tiered accessibility** - PWA-only → Desktop App → OpenClaw (increasing capability/complexity)
 
 ---
 

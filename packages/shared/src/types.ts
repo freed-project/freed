@@ -20,7 +20,8 @@ export type Platform =
   | "github" // GitHub (via Atom)
   | "facebook" // Facebook (DOM capture)
   | "instagram" // Instagram (DOM capture)
-  | "linkedin"; // LinkedIn (DOM capture, future)
+  | "linkedin" // LinkedIn (DOM capture, future)
+  | "saved"; // Manually saved URLs (bookmarks)
 
 /**
  * Content type classification
@@ -103,12 +104,70 @@ export interface RssSourceInfo {
 }
 
 /**
+ * Preserved article content for reader view
+ * Used by capture-save and optionally by capture-rss for full articles
+ */
+export interface PreservedContent {
+  /** Extracted article HTML */
+  html: string;
+
+  /** Plain text version */
+  text: string;
+
+  /** Extracted author */
+  author?: string;
+
+  /** Publication date */
+  publishedAt?: number;
+
+  /** Word count */
+  wordCount: number;
+
+  /** Estimated reading time in minutes */
+  readingTime: number;
+
+  /** When content was preserved */
+  preservedAt: number;
+}
+
+/**
  * User interaction state
  */
 export interface UserState {
+  /** Hide from feed */
   hidden: boolean;
-  bookmarked: boolean;
+
+  /** Read timestamp */
   readAt?: number;
+
+  /** Saved for later */
+  saved: boolean;
+
+  /** When item was saved */
+  savedAt?: number;
+
+  /** Archived (removed from active queue, kept in library) */
+  archived: boolean;
+
+  /** User-assigned tags */
+  tags: string[];
+
+  /** User highlights/annotations */
+  highlights?: Highlight[];
+}
+
+/**
+ * Text highlight/annotation
+ */
+export interface Highlight {
+  /** Highlighted text */
+  text: string;
+
+  /** Optional note */
+  note?: string;
+
+  /** When highlight was created */
+  createdAt: number;
 }
 
 /**
@@ -144,6 +203,9 @@ export interface FeedItem {
 
   /** RSS-specific source info (optional) */
   rssSource?: RssSourceInfo;
+
+  /** Preserved article content for reader view (optional) */
+  preservedContent?: PreservedContent;
 
   /** User interaction state */
   userState: UserState;
@@ -241,6 +303,12 @@ export interface RssFeed {
 
   /** Custom poll interval in minutes (overrides default) */
   pollInterval?: number;
+
+  /** Track unread count for this feed (default: false) */
+  trackUnread: boolean;
+
+  /** User-assigned folder/category */
+  folder?: string;
 }
 
 // =============================================================================
@@ -293,6 +361,25 @@ export interface SyncPreferences {
 }
 
 /**
+ * Reading enhancement intensity
+ */
+export type ReadingIntensity = "light" | "normal" | "strong";
+
+/**
+ * Reading enhancements configuration
+ */
+export interface ReadingEnhancements {
+  /**
+   * Focus mode: bolds word beginnings to create fixation points
+   * Aids reading speed and focus for some users
+   */
+  focusMode: boolean;
+
+  /** Focus mode intensity */
+  focusIntensity: ReadingIntensity;
+}
+
+/**
  * Display preferences
  */
 export interface DisplayPreferences {
@@ -304,6 +391,9 @@ export interface DisplayPreferences {
 
   /** Show engagement counts (default: false - opt-in only) */
   showEngagementCounts: boolean;
+
+  /** Reading enhancements */
+  reading: ReadingEnhancements;
 }
 
 /**
@@ -366,6 +456,10 @@ export function createDefaultPreferences(): UserPreferences {
       itemsPerPage: 20,
       compactMode: false,
       showEngagementCounts: false, // Hidden by default
+      reading: {
+        focusMode: false,
+        focusIntensity: "normal",
+      },
     },
     xCapture: {
       mode: "mirror", // Default: capture from everyone you follow

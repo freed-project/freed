@@ -1,20 +1,17 @@
 /**
  * @freed/shared - Automerge document schema
- * 
+ *
  * CRDT-based storage for conflict-free multi-device sync
  */
 
-import * as A from '@automerge/automerge'
+import * as A from "@automerge/automerge";
 import type {
   FeedItem,
   RssFeed,
   UserPreferences,
-  DocumentMeta
-} from './types.js'
-import {
-  createDefaultPreferences,
-  createDefaultMeta
-} from './types.js'
+  DocumentMeta,
+} from "./types.js";
+import { createDefaultPreferences, createDefaultMeta } from "./types.js";
 
 // =============================================================================
 // Document Schema
@@ -22,22 +19,22 @@ import {
 
 /**
  * Root FREED document structure
- * 
+ *
  * This is the Automerge document that syncs across all devices.
  * Using Record<string, T> for CRDT-friendly map operations.
  */
 export interface FreedDoc {
   /** Feed items indexed by globalId */
-  feedItems: Record<string, FeedItem>
-  
+  feedItems: Record<string, FeedItem>;
+
   /** RSS feed subscriptions indexed by URL */
-  rssFeeds: Record<string, RssFeed>
-  
+  rssFeeds: Record<string, RssFeed>;
+
   /** User preferences */
-  preferences: UserPreferences
-  
+  preferences: UserPreferences;
+
   /** Document metadata */
-  meta: DocumentMeta
+  meta: DocumentMeta;
 }
 
 // =============================================================================
@@ -52,9 +49,11 @@ export function createEmptyDoc(): FreedDoc {
     feedItems: {},
     rssFeeds: {},
     preferences: createDefaultPreferences(),
-    meta: createDefaultMeta()
-  }
-  return A.from(doc as unknown as Record<string, unknown>) as unknown as FreedDoc
+    meta: createDefaultMeta(),
+  };
+  return A.from(
+    doc as unknown as Record<string, unknown>,
+  ) as unknown as FreedDoc;
 }
 
 /**
@@ -65,9 +64,11 @@ export function createDocFromData(data: Partial<FreedDoc>): FreedDoc {
     feedItems: data.feedItems ?? {},
     rssFeeds: data.rssFeeds ?? {},
     preferences: data.preferences ?? createDefaultPreferences(),
-    meta: data.meta ?? createDefaultMeta()
-  }
-  return A.from(doc as unknown as Record<string, unknown>) as unknown as FreedDoc
+    meta: data.meta ?? createDefaultMeta(),
+  };
+  return A.from(
+    doc as unknown as Record<string, unknown>,
+  ) as unknown as FreedDoc;
 }
 
 // =============================================================================
@@ -76,17 +77,17 @@ export function createDocFromData(data: Partial<FreedDoc>): FreedDoc {
 
 /**
  * Add a feed item to the document
- * 
+ *
  * @param doc - The Automerge document (mutable within A.change)
  * @param item - The feed item to add
  */
 export function addFeedItem(doc: FreedDoc, item: FeedItem): void {
-  doc.feedItems[item.globalId] = item
+  doc.feedItems[item.globalId] = item;
 }
 
 /**
  * Update a feed item in the document
- * 
+ *
  * @param doc - The Automerge document (mutable within A.change)
  * @param globalId - The item's global ID
  * @param updates - Partial updates to apply
@@ -94,60 +95,61 @@ export function addFeedItem(doc: FreedDoc, item: FeedItem): void {
 export function updateFeedItem(
   doc: FreedDoc,
   globalId: string,
-  updates: Partial<FeedItem>
+  updates: Partial<FeedItem>,
 ): void {
-  const existing = doc.feedItems[globalId]
+  const existing = doc.feedItems[globalId];
   if (existing) {
-    Object.assign(existing, updates)
+    Object.assign(existing, updates);
   }
 }
 
 /**
  * Remove a feed item from the document
- * 
+ *
  * @param doc - The Automerge document (mutable within A.change)
  * @param globalId - The item's global ID
  */
 export function removeFeedItem(doc: FreedDoc, globalId: string): void {
-  delete doc.feedItems[globalId]
+  delete doc.feedItems[globalId];
 }
 
 /**
  * Mark a feed item as read
- * 
+ *
  * @param doc - The Automerge document (mutable within A.change)
  * @param globalId - The item's global ID
  */
 export function markAsRead(doc: FreedDoc, globalId: string): void {
-  const item = doc.feedItems[globalId]
+  const item = doc.feedItems[globalId];
   if (item) {
-    item.userState.readAt = Date.now()
+    item.userState.readAt = Date.now();
   }
 }
 
 /**
  * Toggle bookmark status for a feed item
- * 
+ *
  * @param doc - The Automerge document (mutable within A.change)
  * @param globalId - The item's global ID
  */
-export function toggleBookmark(doc: FreedDoc, globalId: string): void {
-  const item = doc.feedItems[globalId]
+export function toggleSaved(doc: FreedDoc, globalId: string): void {
+  const item = doc.feedItems[globalId];
   if (item) {
-    item.userState.bookmarked = !item.userState.bookmarked
+    item.userState.saved = !item.userState.saved;
+    item.userState.savedAt = item.userState.saved ? Date.now() : undefined;
   }
 }
 
 /**
  * Hide a feed item
- * 
+ *
  * @param doc - The Automerge document (mutable within A.change)
  * @param globalId - The item's global ID
  */
 export function hideItem(doc: FreedDoc, globalId: string): void {
-  const item = doc.feedItems[globalId]
+  const item = doc.feedItems[globalId];
   if (item) {
-    item.userState.hidden = true
+    item.userState.hidden = true;
   }
 }
 
@@ -157,17 +159,17 @@ export function hideItem(doc: FreedDoc, globalId: string): void {
 
 /**
  * Add an RSS feed subscription
- * 
+ *
  * @param doc - The Automerge document (mutable within A.change)
  * @param feed - The RSS feed to add
  */
 export function addRssFeed(doc: FreedDoc, feed: RssFeed): void {
-  doc.rssFeeds[feed.url] = feed
+  doc.rssFeeds[feed.url] = feed;
 }
 
 /**
  * Update an RSS feed
- * 
+ *
  * @param doc - The Automerge document (mutable within A.change)
  * @param url - The feed URL
  * @param updates - Partial updates to apply
@@ -175,34 +177,34 @@ export function addRssFeed(doc: FreedDoc, feed: RssFeed): void {
 export function updateRssFeed(
   doc: FreedDoc,
   url: string,
-  updates: Partial<RssFeed>
+  updates: Partial<RssFeed>,
 ): void {
-  const existing = doc.rssFeeds[url]
+  const existing = doc.rssFeeds[url];
   if (existing) {
-    Object.assign(existing, updates)
+    Object.assign(existing, updates);
   }
 }
 
 /**
  * Remove an RSS feed subscription
- * 
+ *
  * @param doc - The Automerge document (mutable within A.change)
  * @param url - The feed URL
  */
 export function removeRssFeed(doc: FreedDoc, url: string): void {
-  delete doc.rssFeeds[url]
+  delete doc.rssFeeds[url];
 }
 
 /**
  * Toggle feed enabled status
- * 
+ *
  * @param doc - The Automerge document (mutable within A.change)
  * @param url - The feed URL
  */
 export function toggleFeedEnabled(doc: FreedDoc, url: string): void {
-  const feed = doc.rssFeeds[url]
+  const feed = doc.rssFeeds[url];
   if (feed) {
-    feed.enabled = !feed.enabled
+    feed.enabled = !feed.enabled;
   }
 }
 
@@ -212,20 +214,20 @@ export function toggleFeedEnabled(doc: FreedDoc, url: string): void {
 
 /**
  * Update user preferences
- * 
+ *
  * @param doc - The Automerge document (mutable within A.change)
  * @param updates - Partial preference updates
  */
 export function updatePreferences(
   doc: FreedDoc,
-  updates: Partial<UserPreferences>
+  updates: Partial<UserPreferences>,
 ): void {
-  Object.assign(doc.preferences, updates)
+  Object.assign(doc.preferences, updates);
 }
 
 /**
  * Set author weight
- * 
+ *
  * @param doc - The Automerge document (mutable within A.change)
  * @param authorId - The author's ID
  * @param weight - Weight value (0-100)
@@ -233,14 +235,14 @@ export function updatePreferences(
 export function setAuthorWeight(
   doc: FreedDoc,
   authorId: string,
-  weight: number
+  weight: number,
 ): void {
-  doc.preferences.weights.authors[authorId] = weight
+  doc.preferences.weights.authors[authorId] = weight;
 }
 
 /**
  * Set topic weight
- * 
+ *
  * @param doc - The Automerge document (mutable within A.change)
  * @param topic - The topic
  * @param weight - Weight value (0-100)
@@ -248,14 +250,14 @@ export function setAuthorWeight(
 export function setTopicWeight(
   doc: FreedDoc,
   topic: string,
-  weight: number
+  weight: number,
 ): void {
-  doc.preferences.weights.topics[topic] = weight
+  doc.preferences.weights.topics[topic] = weight;
 }
 
 /**
  * Set platform weight
- * 
+ *
  * @param doc - The Automerge document (mutable within A.change)
  * @param platform - The platform
  * @param weight - Weight value (0-100)
@@ -263,9 +265,9 @@ export function setTopicWeight(
 export function setPlatformWeight(
   doc: FreedDoc,
   platform: string,
-  weight: number
+  weight: number,
 ): void {
-  doc.preferences.weights.platforms[platform] = weight
+  doc.preferences.weights.platforms[platform] = weight;
 }
 
 // =============================================================================
@@ -274,11 +276,11 @@ export function setPlatformWeight(
 
 /**
  * Update last sync timestamp
- * 
+ *
  * @param doc - The Automerge document (mutable within A.change)
  */
 export function updateLastSync(doc: FreedDoc): void {
-  doc.meta.lastSync = Date.now()
+  doc.meta.lastSync = Date.now();
 }
 
 // =============================================================================
@@ -290,8 +292,8 @@ export function updateLastSync(doc: FreedDoc): void {
  */
 export function getFeedItemsSorted(doc: FreedDoc): FeedItem[] {
   return Object.values(doc.feedItems)
-    .filter(item => !item.userState.hidden)
-    .sort((a, b) => b.publishedAt - a.publishedAt)
+    .filter((item) => !item.userState.hidden)
+    .sort((a, b) => b.publishedAt - a.publishedAt);
 }
 
 /**
@@ -299,20 +301,29 @@ export function getFeedItemsSorted(doc: FreedDoc): FeedItem[] {
  */
 export function getFeedItemsByPlatform(
   doc: FreedDoc,
-  platform: string
+  platform: string,
 ): FeedItem[] {
   return Object.values(doc.feedItems)
-    .filter(item => item.platform === platform && !item.userState.hidden)
-    .sort((a, b) => b.publishedAt - a.publishedAt)
+    .filter((item) => item.platform === platform && !item.userState.hidden)
+    .sort((a, b) => b.publishedAt - a.publishedAt);
 }
 
 /**
- * Get bookmarked items
+ * Get saved items
  */
-export function getBookmarkedItems(doc: FreedDoc): FeedItem[] {
+export function getSavedItems(doc: FreedDoc): FeedItem[] {
   return Object.values(doc.feedItems)
-    .filter(item => item.userState.bookmarked)
-    .sort((a, b) => b.publishedAt - a.publishedAt)
+    .filter((item) => item.userState.saved && !item.userState.archived)
+    .sort((a, b) => (b.userState.savedAt ?? 0) - (a.userState.savedAt ?? 0));
+}
+
+/**
+ * Get archived items
+ */
+export function getArchivedItems(doc: FreedDoc): FeedItem[] {
+  return Object.values(doc.feedItems)
+    .filter((item) => item.userState.archived)
+    .sort((a, b) => b.publishedAt - a.publishedAt);
 }
 
 /**
@@ -320,20 +331,20 @@ export function getBookmarkedItems(doc: FreedDoc): FeedItem[] {
  */
 export function getUnreadItems(doc: FreedDoc): FeedItem[] {
   return Object.values(doc.feedItems)
-    .filter(item => !item.userState.readAt && !item.userState.hidden)
-    .sort((a, b) => b.publishedAt - a.publishedAt)
+    .filter((item) => !item.userState.readAt && !item.userState.hidden)
+    .sort((a, b) => b.publishedAt - a.publishedAt);
 }
 
 /**
  * Get enabled RSS feeds
  */
 export function getEnabledFeeds(doc: FreedDoc): RssFeed[] {
-  return Object.values(doc.rssFeeds).filter(feed => feed.enabled)
+  return Object.values(doc.rssFeeds).filter((feed) => feed.enabled);
 }
 
 /**
  * Check if a feed item exists
  */
 export function hasFeedItem(doc: FreedDoc, globalId: string): boolean {
-  return globalId in doc.feedItems
+  return globalId in doc.feedItems;
 }
