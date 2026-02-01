@@ -212,6 +212,12 @@ export interface FeedItem {
 
   /** Extracted/inferred topics */
   topics: string[];
+
+  /** Pre-computed priority score (0-100), calculated by Desktop/OpenClaw */
+  priority?: number;
+
+  /** When priority was last calculated (Unix timestamp) */
+  priorityComputedAt?: number;
 }
 
 // =============================================================================

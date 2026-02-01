@@ -9,6 +9,13 @@
 
 Mobile companion to the Desktop App—for on-the-go reading. Timeline-focused, minimal chrome, content-first design.
 
+**Key architectural decisions:**
+
+- **Shared codebase** — Same React app embedded in Desktop WebView and deployed to freed.wtf/app
+- **Thin client** — Displays pre-computed rankings from Desktop/OpenClaw, minimal local computation
+- **Light saves** — Can save URLs with metadata extraction (og tags); full article extraction requires Desktop
+- **Offline-first** — Service worker caches feed data and images for offline reading
+
 ---
 
 ## Design Philosophy
@@ -149,46 +156,29 @@ export function applyFocusMode(
 
 ---
 
-## Feed Ranking
+## Feed Display
+
+PWA displays items sorted by pre-computed `priority` score from Desktop/OpenClaw:
 
 ```typescript
-// packages/pwa/src/lib/ranking.ts
-export function rankFeedItems(
-  items: FeedItem[],
-  preferences: UserPreferences,
-): FeedItem[] {
-  const { weights } = preferences;
-
-  return items
-    .map((item) => ({ item, score: calculateScore(item, weights) }))
-    .sort((a, b) => b.score - a.score)
-    .map(({ item }) => item);
+// packages/pwa/src/lib/feed.ts
+export function sortFeedItems(items: FeedItem[]): FeedItem[] {
+  return [...items].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
 }
 
-function calculateScore(
-  item: FeedItem,
-  weights: UserPreferences["weights"],
-): number {
-  let score = 0;
+// Optional: local filtering (doesn't recompute scores)
+export function filterByPlatform(items: FeedItem[], platform: Platform | null): FeedItem[] {
+  if (!platform) return items;
+  return items.filter(item => item.platform === platform);
+}
 
-  // Recency (decays over time)
-  const ageHours = (Date.now() - item.publishedAt) / (1000 * 60 * 60);
-  score += Math.max(0, 100 - ageHours * 2) * (weights.recency / 100);
-
-  // Platform weight
-  score += (weights.platforms[item.platform] ?? 50) * 0.3;
-
-  // Author weight
-  score += (weights.authors[item.author.id] ?? 50) * 0.3;
-
-  // Topic weights
-  for (const topic of item.topics) {
-    score += (weights.topics[topic] ?? 50) * 0.1;
-  }
-
-  return score;
+export function filterByAuthor(items: FeedItem[], authorId: string | null): FeedItem[] {
+  if (!authorId) return items;
+  return items.filter(item => item.author.id === authorId);
 }
 ```
+
+**Note:** Ranking algorithm runs on Desktop/OpenClaw (see Phase 5). PWA is a thin client that displays and filters.
 
 ---
 

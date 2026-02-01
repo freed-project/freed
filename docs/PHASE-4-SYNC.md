@@ -235,22 +235,36 @@ export function createSyncManager(repo: Repo): SyncManager {
 
 ---
 
+## Cloud Provider Strategy
+
+**All three providers supported from day one:**
+
+| Provider | Complexity | Notes |
+|----------|------------|-------|
+| Google Drive | Medium | Well-documented APIs, OAuth works from browser |
+| Dropbox | Low | Simple OAuth, good cross-platform support |
+| iCloud | High | Best for Apple users, web API access is limited |
+
+Each provider stores a single Automerge binary file. CRDT handles merge conflicts automatically.
+
+---
+
 ## Tasks
 
-| Task | Description                           | Complexity |
-| ---- | ------------------------------------- | ---------- |
-| 4.1  | Create `@freed/sync` package scaffold | Low        |
-| 4.2  | Implement IndexedDB storage adapter   | Medium     |
-| 4.3  | Implement Filesystem storage adapter  | Medium     |
-| 4.4  | WebSocket relay server                | Medium     |
-| 4.5  | PWA WebSocket client + auto-connect   | Medium     |
-| 4.6  | QR code pairing flow                  | Low        |
-| 4.7  | Google Drive sync integration         | High       |
-| 4.8  | iCloud sync integration               | High       |
-| 4.9  | Dropbox sync integration              | Medium     |
-| 4.10 | Sync status observable                | Low        |
-| 4.11 | "Last synced" UI indicator            | Low        |
-| 4.12 | Manual "Sync now" button              | Low        |
+| Task | Description | Complexity |
+|------|-------------|------------|
+| 4.1 | Create `@freed/sync` package scaffold | Low |
+| 4.2 | Implement IndexedDB storage adapter | Medium |
+| 4.3 | Implement Filesystem storage adapter | Medium |
+| 4.4 | WebSocket relay server | Medium |
+| 4.5 | PWA WebSocket client + auto-connect | Medium |
+| 4.6 | QR code pairing flow | Low |
+| 4.7 | Google Drive sync integration | Medium |
+| 4.8 | Dropbox sync integration | Low |
+| 4.9 | iCloud sync integration | High |
+| 4.10 | Sync status observable | Low |
+| 4.11 | "Last synced" UI indicator | Low |
+| 4.12 | Manual "Sync now" button | Low |
 
 ---
 

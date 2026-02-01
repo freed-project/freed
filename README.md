@@ -8,6 +8,18 @@ Capture your social/rss/newsletter feeds locally. Tune the ranking algo yourself
 
 ---
 
+## Features
+
+- 🌊 **Unified feed** — X, RSS, YouTube, newsletters, podcasts in one timeline
+- ⚖️ **Your ranking** — Weight by recency, author, topic, custom semantics. Not engagement
+- 🔒 **Local-first** — All data on your device, we can't see it
+- 🔄 **Cross-device sync** — Automerge CRDT via local relay and cloud backup
+- 📌 **Save for later** — Capture any URL with reader view
+- ⚓ **Ulysses mode** — Block platform feeds, stay intentional
+- 📍 **Friend map** — See where friends are posting from
+
+---
+
 ## Architecture
 
 ```
@@ -34,18 +46,6 @@ Capture your social/rss/newsletter feeds locally. Tune the ranking algo yourself
 | `capture-linkedin`  | LinkedIn                                                             | DOM scraping           | Phase 12   |
 | `capture-tiktok`    | TikTok                                                               | TBD                    | Phase 12   |
 | `capture-threads`   | Threads                                                              | TBD                    | Phase 12   |
-
----
-
-## Features
-
-- 🌊 **Unified feed** — X, RSS, YouTube, newsletters, podcasts in one timeline
-- ⚖️ **Your ranking** — Weight by recency, author, topic—not engagement
-- 🔒 **Local-first** — All data on your device, we can't see it
-- 🔄 **Cross-device sync** — Automerge CRDT via local relay or cloud backup
-- 📌 **Save for later** — Capture any URL with reader view
-- ⚓ **Ulysses mode** — Block platform feeds, stay intentional
-- 📍 **Friend map** — See where friends are posting from
 
 ---
 
@@ -124,10 +124,12 @@ LinkedIn, TikTok, Threads, etc. [Plan](docs/PHASE-12-ADDITIONAL-PLATFORMS.md)
 ## Key Decisions
 
 1. **Desktop App as hub** — Capture + sync + UI in one installable package
-2. **Zero external infrastructure** — Local relay + user's cloud storage
+2. **Zero external infrastructure** — Local relay + user's cloud storage (GDrive, Dropbox, iCloud)
 3. **Automerge CRDT** — Conflict-free multi-device sync
-4. **Tiered accessibility** — PWA-only → Desktop → OpenClaw (increasing capability)
-5. **Capture layer pattern** — Each source normalizes to unified `FeedItem`
+4. **Shared React codebase** — `packages/pwa/` embedded in Desktop AND deployed standalone
+5. **TypeScript capture via subprocess** — Existing TS packages run via Node/Bun, not rewritten in Rust
+6. **Ranking on core, display on edge** — Desktop/OpenClaw computes `priority`, PWA just displays
+7. **Capture layer pattern** — Each source normalizes to unified `FeedItem`
 
 ---
 
