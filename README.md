@@ -71,9 +71,13 @@ npx tsx src/index.ts sync
 
 ## Roadmap
 
-### Phase 0–2: Foundation ✓
+### Phase 1: Foundation ✓
 
-Marketing site, monorepo, `capture-x`, `capture-rss`.
+Marketing site, monorepo, Automerge schema, CI/CD.
+
+### Phase 2: Capture Skills ✓
+
+`capture-x` and `capture-rss` packages with OpenClaw skill wrappers.
 
 ### Phase 3: Save for Later
 
