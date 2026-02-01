@@ -19,19 +19,19 @@ Final polish, accessibility, and advanced features for power users.
 // packages/pwa/src/components/onboarding/OnboardingWizard.tsx
 export function OnboardingWizard() {
   const [step, setStep] = useState(0);
-  
+
   const steps = [
-    { title: 'Welcome', component: WelcomeStep },
-    { title: 'Connect X', component: ConnectXStep },
-    { title: 'Add RSS', component: AddRssStep },
-    { title: 'Set Preferences', component: PreferencesStep },
-    { title: 'Sync Setup', component: SyncSetupStep },
+    { title: "Welcome", component: WelcomeStep },
+    { title: "Connect X", component: ConnectXStep },
+    { title: "Add RSS", component: AddRssStep },
+    { title: "Set Preferences", component: PreferencesStep },
+    { title: "Sync Setup", component: SyncSetupStep },
   ];
-  
+
   return (
     <div className="onboarding-wizard">
       <ProgressIndicator current={step} total={steps.length} />
-      {steps[step].component({ onNext: () => setStep(s => s + 1) })}
+      {steps[step].component({ onNext: () => setStep((s) => s + 1) })}
     </div>
   );
 }
@@ -43,7 +43,7 @@ export function OnboardingWizard() {
 // packages/pwa/src/components/stats/StatsDashboard.tsx
 export function StatsDashboard() {
   const stats = useStats();
-  
+
   return (
     <div className="stats-grid">
       <StatCard
@@ -74,28 +74,35 @@ export function StatsDashboard() {
 // packages/pwa/src/lib/export.ts
 export async function exportToJson(doc: FreedDoc): Promise<string> {
   const exportData = {
-    version: '1.0',
+    version: "1.0",
     exportedAt: new Date().toISOString(),
     items: Object.values(doc.feedItems),
     feeds: Object.values(doc.rssFeeds),
     preferences: doc.preferences,
   };
-  
+
   return JSON.stringify(exportData, null, 2);
 }
 
 export async function exportToCsv(items: FeedItem[]): Promise<string> {
-  const headers = ['globalId', 'platform', 'author', 'publishedAt', 'title', 'url'];
-  const rows = items.map(item => [
+  const headers = [
+    "globalId",
+    "platform",
+    "author",
+    "publishedAt",
+    "title",
+    "url",
+  ];
+  const rows = items.map((item) => [
     item.globalId,
     item.platform,
     item.author.displayName,
     new Date(item.publishedAt).toISOString(),
-    item.content.linkPreview?.title ?? '',
-    item.content.linkPreview?.url ?? '',
+    item.content.linkPreview?.title ?? "",
+    item.content.linkPreview?.url ?? "",
   ]);
-  
-  return [headers, ...rows].map(row => row.join(',')).join('\n');
+
+  return [headers, ...rows].map((row) => row.join(",")).join("\n");
 }
 ```
 
@@ -106,28 +113,28 @@ export async function exportToCsv(items: FeedItem[]): Promise<string> {
 export function useKeyboardShortcuts() {
   useEffect(() => {
     const handlers: Record<string, () => void> = {
-      'j': () => navigateToNextItem(),
-      'k': () => navigateToPrevItem(),
-      'o': () => openCurrentItem(),
-      's': () => saveCurrentItem(),
-      'h': () => hideCurrentItem(),
-      '/': () => focusSearch(),
-      '?': () => showShortcutsHelp(),
-      'Escape': () => closeCurrentPanel(),
+      j: () => navigateToNextItem(),
+      k: () => navigateToPrevItem(),
+      o: () => openCurrentItem(),
+      s: () => saveCurrentItem(),
+      h: () => hideCurrentItem(),
+      "/": () => focusSearch(),
+      "?": () => showShortcutsHelp(),
+      Escape: () => closeCurrentPanel(),
     };
-    
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isInputFocused()) return;
-      
+
       const handler = handlers[e.key];
       if (handler) {
         e.preventDefault();
         handler();
       }
     };
-    
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 }
 ```
@@ -173,9 +180,9 @@ export function useKeyboardShortcuts() {
 ```css
 /* Ensure WCAG AA compliance */
 :root {
-  --text-primary: rgba(255, 255, 255, 0.92);   /* 14:1 on dark bg */
-  --text-secondary: rgba(255, 255, 255, 0.70); /* 7:1 on dark bg */
-  --accent: #FF6B35;                           /* 4.5:1 minimum */
+  --text-primary: rgba(255, 255, 255, 0.92); /* 14:1 on dark bg */
+  --text-secondary: rgba(255, 255, 255, 0.7); /* 7:1 on dark bg */
+  --accent: #ff6b35; /* 4.5:1 minimum */
 }
 ```
 
@@ -191,10 +198,10 @@ Advanced automation for power users who run OpenClaw.
 // skills/capture-scheduler/src/index.ts
 export async function scheduleCaptures(config: ScheduleConfig): Promise<void> {
   const jobs = [
-    { name: 'X capture', cron: '*/15 * * * *', skill: 'capture-x' },
-    { name: 'RSS sync', cron: '*/30 * * * *', skill: 'capture-rss' },
+    { name: "X capture", cron: "*/15 * * * *", skill: "capture-x" },
+    { name: "RSS sync", cron: "*/30 * * * *", skill: "capture-rss" },
   ];
-  
+
   for (const job of jobs) {
     // Register with OpenClaw scheduler
   }
@@ -212,7 +219,7 @@ rules:
         - "@favorite_author"
         - "@another_author"
     boost: 50
-    
+
   - name: "Deprioritize promotional content"
     condition:
       content_contains:
@@ -228,10 +235,10 @@ rules:
 // skills/archive/src/index.ts
 export async function archiveOldItems(
   doc: FreedDoc,
-  config: ArchiveConfig
+  config: ArchiveConfig,
 ): Promise<void> {
   const cutoff = Date.now() - config.maxAgeDays * 24 * 60 * 60 * 1000;
-  
+
   for (const [id, item] of Object.entries(doc.feedItems)) {
     if (item.publishedAt < cutoff && !item.userState.saved) {
       // Move to archive
@@ -255,7 +262,7 @@ import SwiftUI
 struct LiquidGlassButton: View {
     let title: String
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
             Text(title)
@@ -271,20 +278,20 @@ struct LiquidGlassButton: View {
 
 ## Tasks
 
-| Task | Description | Complexity |
-|------|-------------|------------|
-| 10.1 | Onboarding wizard | Medium |
-| 10.2 | Statistics dashboard | Medium |
-| 10.3 | Export to JSON | Low |
-| 10.4 | Export to CSV | Low |
-| 10.5 | Keyboard shortcuts | Medium |
-| 10.6 | Screen reader support | Medium |
-| 10.7 | Reduced motion support | Low |
-| 10.8 | Color contrast audit | Low |
-| 10.9 | OpenClaw scheduled captures | Medium |
-| 10.10 | Custom ranking rules | High |
-| 10.11 | Feed archival automation | Medium |
-| 10.12 | Native Liquid Glass buttons | High |
+| Task  | Description                 | Complexity |
+| ----- | --------------------------- | ---------- |
+| 10.1  | Onboarding wizard           | Medium     |
+| 10.2  | Statistics dashboard        | Medium     |
+| 10.3  | Export to JSON              | Low        |
+| 10.4  | Export to CSV               | Low        |
+| 10.5  | Keyboard shortcuts          | Medium     |
+| 10.6  | Screen reader support       | Medium     |
+| 10.7  | Reduced motion support      | Low        |
+| 10.8  | Color contrast audit        | Low        |
+| 10.9  | OpenClaw scheduled captures | Medium     |
+| 10.10 | Custom ranking rules        | High       |
+| 10.11 | Feed archival automation    | Medium     |
+| 10.12 | Native Liquid Glass buttons | High       |
 
 ---
 

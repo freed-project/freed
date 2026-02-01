@@ -120,12 +120,15 @@ export interface FocusOptions {
   intensity: "light" | "normal" | "strong";
 }
 
-export function applyFocusMode(text: string, options: FocusOptions): TextSegment[] {
+export function applyFocusMode(
+  text: string,
+  options: FocusOptions,
+): TextSegment[] {
   if (!options.enabled) return [{ text, emphasis: false }];
-  
+
   const segments: TextSegment[] = [];
   const words = text.split(/(\s+)/);
-  
+
   for (const word of words) {
     if (/^\s+$/.test(word)) {
       segments.push({ text: word, emphasis: false });
@@ -139,7 +142,7 @@ export function applyFocusMode(text: string, options: FocusOptions): TextSegment
       segments.push({ text: word, emphasis: false });
     }
   }
-  
+
   return segments;
 }
 ```
@@ -152,34 +155,37 @@ export function applyFocusMode(text: string, options: FocusOptions): TextSegment
 // packages/pwa/src/lib/ranking.ts
 export function rankFeedItems(
   items: FeedItem[],
-  preferences: UserPreferences
+  preferences: UserPreferences,
 ): FeedItem[] {
   const { weights } = preferences;
-  
+
   return items
-    .map(item => ({ item, score: calculateScore(item, weights) }))
+    .map((item) => ({ item, score: calculateScore(item, weights) }))
     .sort((a, b) => b.score - a.score)
     .map(({ item }) => item);
 }
 
-function calculateScore(item: FeedItem, weights: UserPreferences["weights"]): number {
+function calculateScore(
+  item: FeedItem,
+  weights: UserPreferences["weights"],
+): number {
   let score = 0;
-  
+
   // Recency (decays over time)
   const ageHours = (Date.now() - item.publishedAt) / (1000 * 60 * 60);
   score += Math.max(0, 100 - ageHours * 2) * (weights.recency / 100);
-  
+
   // Platform weight
   score += (weights.platforms[item.platform] ?? 50) * 0.3;
-  
+
   // Author weight
   score += (weights.authors[item.author.id] ?? 50) * 0.3;
-  
+
   // Topic weights
   for (const topic of item.topics) {
     score += (weights.topics[topic] ?? 50) * 0.1;
   }
-  
+
   return score;
 }
 ```
@@ -188,21 +194,21 @@ function calculateScore(item: FeedItem, weights: UserPreferences["weights"]): nu
 
 ## Tasks
 
-| Task | Description | Complexity |
-|------|-------------|------------|
-| 6.1 | Vite + React + Tailwind scaffold | Low |
-| 6.2 | AppShell layout (sidebar + timeline) | Medium |
-| 6.3 | Feed components (list, item, expanded) | Medium |
-| 6.4 | Virtual scrolling (1000+ items) | Medium |
-| 6.5 | Focus mode text renderer | Low |
-| 6.6 | Feed ranking algorithm | Medium |
-| 6.7 | Platform/author filters | Low |
-| 6.8 | Settings panel | Medium |
-| 6.9 | RSS subscription management | Medium |
-| 6.10 | Connect to sync layer | Medium |
-| 6.11 | PWA manifest + service worker | Medium |
-| 6.12 | Offline support + image caching | High |
-| 6.13 | Add to homescreen prompt | Low |
+| Task | Description                            | Complexity |
+| ---- | -------------------------------------- | ---------- |
+| 6.1  | Vite + React + Tailwind scaffold       | Low        |
+| 6.2  | AppShell layout (sidebar + timeline)   | Medium     |
+| 6.3  | Feed components (list, item, expanded) | Medium     |
+| 6.4  | Virtual scrolling (1000+ items)        | Medium     |
+| 6.5  | Focus mode text renderer               | Low        |
+| 6.6  | Feed ranking algorithm                 | Medium     |
+| 6.7  | Platform/author filters                | Low        |
+| 6.8  | Settings panel                         | Medium     |
+| 6.9  | RSS subscription management            | Medium     |
+| 6.10 | Connect to sync layer                  | Medium     |
+| 6.11 | PWA manifest + service worker          | Medium     |
+| 6.12 | Offline support + image caching        | High       |
+| 6.13 | Add to homescreen prompt               | Low        |
 
 ---
 

@@ -16,18 +16,26 @@ Capture your social feeds locally. Tune the ranking algorithm yourself. Sync acr
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              CAPTURE LAYER                                   │
 │                                                                             │
-│   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐       │
-│   │  capture-x  │  │ capture-rss │  │ capture-save│  │ capture-dom │       │
-│   │  (X/Twitter)│  │ (RSS/Atom)  │  │ (Save URLs) │  │ (FB/IG/etc) │       │
-│   └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘       │
-│          │                │                │                │               │
-│          └────────────────┴────────────────┴────────────────┘               │
-│                                    │                                        │
-│                                    ▼                                        │
-│                        ┌─────────────────────┐                              │
-│                        │  FeedItem (unified) │                              │
-│                        │  Automerge CRDT Doc │                              │
-│                        └──────────┬──────────┘                              │
+│   ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐   │
+│   │ capture-x │ │capture-rss│ │capture-   │ │ capture-  │ │ capture-  │   │
+│   │           │ │           │ │   save    │ │ facebook  │ │ instagram │   │
+│   └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └─────┬─────┘   │
+│         │             │             │             │             │         │
+│         └─────────────┴─────────────┴─────────────┴─────────────┘         │
+│                                    │                                       │
+│                 ┌──────────────────┴──────────────────┐                    │
+│                 │                                     │                    │
+│   ┌───────────┐ │ ┌───────────┐ ┌───────────┐       │                    │
+│   │ capture-  │ │ │ capture-  │ │ capture-  │  ...  │                    │
+│   │ linkedin  │ │ │  tiktok   │ │  threads  │       │                    │
+│   └─────┬─────┘ │ └─────┬─────┘ └─────┬─────┘       │                    │
+│         └───────┴───────┴─────────────┘             │                    │
+│                                    │                                       │
+│                                    ▼                                       │
+│                        ┌─────────────────────┐                             │
+│                        │  FeedItem (unified) │                             │
+│                        │  Automerge CRDT Doc │                             │
+│                        └──────────┬──────────┘                             │
 └───────────────────────────────────┼─────────────────────────────────────────┘
                                     │
 ┌───────────────────────────────────┼─────────────────────────────────────────┐
@@ -63,15 +71,18 @@ Capture your social feeds locally. Tune the ranking algorithm yourself. Sync acr
 
 ---
 
-## Capture Sources
+## Capture Layers
 
-| Tier | Sources | Method | Status |
-|------|---------|--------|--------|
-| **1** | X/Twitter | GraphQL API | ✓ Complete |
-| **1** | RSS/Atom (blogs, Medium, Substack, YouTube, podcasts, Mastodon, Reddit, GitHub) | Standard parsing | ✓ Complete |
-| **2** | Save for Later | URL extraction | Phase 3 |
-| **3** | Facebook, Instagram | DOM scraping | Phase 7 |
-| **4** | LinkedIn, TikTok, Threads | TBD | Future |
+| Package | Sources | Method | Phase |
+|---------|---------|--------|-------|
+| `capture-x` | X/Twitter | GraphQL API | ✓ Complete |
+| `capture-rss` | Blogs, Medium, Substack, YouTube, podcasts, Mastodon, Reddit, GitHub | RSS/Atom | ✓ Complete |
+| `capture-save` | Any URL | Readability extraction | Phase 3 |
+| `capture-facebook` | Facebook | DOM scraping | Phase 7 |
+| `capture-instagram` | Instagram | DOM scraping | Phase 7 |
+| `capture-linkedin` | LinkedIn | DOM scraping | Phase 11 |
+| `capture-tiktok` | TikTok | TBD | Phase 11 |
+| `capture-threads` | Threads | TBD | Phase 11 |
 
 ---
 
@@ -139,9 +150,11 @@ Mobile companion for on-the-go reading. Timeline-focused, offline-capable.
 
 ### Phase 7: Facebook + Instagram
 
-DOM scraping via Desktop App's headless browser. Fragile by nature.
+DOM scraping via Desktop App's headless browser. Each platform is its own capture layer.
 
-**Deliverable:** `capture-facebook`, `capture-instagram` packages
+**Deliverables:**
+- `@freed/capture-facebook`
+- `@freed/capture-instagram`
 
 **Plan:** [docs/PHASE-7-SOCIAL-CAPTURE.md](docs/PHASE-7-SOCIAL-CAPTURE.md)
 
@@ -175,6 +188,19 @@ Onboarding, statistics, accessibility, OpenClaw power features.
 
 ---
 
+### Phase 11: Additional Platforms
+
+Expand capture to more walled gardens. Each platform gets its own capture layer.
+
+**Deliverables:**
+- `@freed/capture-linkedin`
+- `@freed/capture-tiktok`
+- `@freed/capture-threads`
+
+**Plan:** [docs/PHASE-11-ADDITIONAL-PLATFORMS.md](docs/PHASE-11-ADDITIONAL-PLATFORMS.md)
+
+---
+
 ## Key Decisions
 
 1. **Desktop App as hub** — Capture + sync + UI in one installable package
@@ -182,16 +208,6 @@ Onboarding, statistics, accessibility, OpenClaw power features.
 3. **Automerge CRDT** — Conflict-free multi-device sync
 4. **Tiered accessibility** — PWA-only → Desktop → OpenClaw (increasing capability)
 5. **Capture layer pattern** — Each source normalizes to unified `FeedItem`
-
----
-
-## Risks
-
-| Risk | Mitigation |
-|------|------------|
-| X API changes | Community tracks changes; abstract API layer |
-| Facebook/Instagram too hard | Accept as lower priority; X + RSS provide core value |
-| Automerge doc grows large | Prune old items, archive by time range |
 
 ---
 

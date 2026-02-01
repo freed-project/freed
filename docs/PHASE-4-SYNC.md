@@ -85,7 +85,7 @@ export function startLocalRelay(repo: Repo, port = DEFAULT_PORT): void {
   const wss = new WebSocketServer({ port });
   const adapter = new NodeWSServerAdapter(wss);
   repo.networkSubsystem.addNetworkAdapter(adapter);
-  
+
   console.log(`FREED sync relay running on ws://localhost:${port}`);
 }
 ```
@@ -97,12 +97,12 @@ export function startLocalRelay(repo: Repo, port = DEFAULT_PORT): void {
 import { BrowserWebSocketClientAdapter } from "@automerge/automerge-repo-network-websocket";
 
 export async function connectToLocalRelay(
-  repo: Repo, 
+  repo: Repo,
   host: string,
-  port = 8765
+  port = 8765,
 ): Promise<boolean> {
   const url = `ws://${host}:${port}`;
-  
+
   try {
     const ws = new WebSocket(url);
     await new Promise((resolve, reject) => {
@@ -111,7 +111,7 @@ export async function connectToLocalRelay(
       setTimeout(reject, 2000);
     });
     ws.close();
-    
+
     const adapter = new BrowserWebSocketClientAdapter(url);
     repo.networkSubsystem.addNetworkAdapter(adapter);
     return true;
@@ -134,10 +134,10 @@ interface CloudConfig {
 
 export async function syncToCloud(
   doc: A.Doc<unknown>,
-  config: CloudConfig
+  config: CloudConfig,
 ): Promise<void> {
   const binary = A.save(doc);
-  
+
   switch (config.provider) {
     case "gdrive":
       await syncToGoogleDrive(binary, config.credentials);
@@ -153,11 +153,11 @@ export async function syncToCloud(
 
 export async function syncFromCloud(
   localDoc: A.Doc<unknown>,
-  config: CloudConfig
+  config: CloudConfig,
 ): Promise<A.Doc<unknown>> {
   const remoteBinary = await fetchFromCloud(config);
   if (!remoteBinary) return localDoc;
-  
+
   const remoteDoc = A.load(remoteBinary);
   return A.merge(localDoc, remoteDoc);
 }
@@ -182,10 +182,18 @@ export function createSyncManager(repo: Repo): SyncManager {
       if (await this.tryLocalRelay()) return;
       await this.syncCloud();
     },
-    subscribe(listener: (status: SyncStatus) => void): () => void { /* ... */ },
-    async tryLocalRelay(): Promise<boolean> { /* ... */ },
-    async syncCloud(): Promise<void> { /* ... */ },
-    getStatus(): SyncStatus { /* ... */ },
+    subscribe(listener: (status: SyncStatus) => void): () => void {
+      /* ... */
+    },
+    async tryLocalRelay(): Promise<boolean> {
+      /* ... */
+    },
+    async syncCloud(): Promise<void> {
+      /* ... */
+    },
+    getStatus(): SyncStatus {
+      /* ... */
+    },
   };
 }
 ```
@@ -229,20 +237,20 @@ export function createSyncManager(repo: Repo): SyncManager {
 
 ## Tasks
 
-| Task | Description | Complexity |
-|------|-------------|------------|
-| 4.1 | Create `@freed/sync` package scaffold | Low |
-| 4.2 | Implement IndexedDB storage adapter | Medium |
-| 4.3 | Implement Filesystem storage adapter | Medium |
-| 4.4 | WebSocket relay server | Medium |
-| 4.5 | PWA WebSocket client + auto-connect | Medium |
-| 4.6 | QR code pairing flow | Low |
-| 4.7 | Google Drive sync integration | High |
-| 4.8 | iCloud sync integration | High |
-| 4.9 | Dropbox sync integration | Medium |
-| 4.10 | Sync status observable | Low |
-| 4.11 | "Last synced" UI indicator | Low |
-| 4.12 | Manual "Sync now" button | Low |
+| Task | Description                           | Complexity |
+| ---- | ------------------------------------- | ---------- |
+| 4.1  | Create `@freed/sync` package scaffold | Low        |
+| 4.2  | Implement IndexedDB storage adapter   | Medium     |
+| 4.3  | Implement Filesystem storage adapter  | Medium     |
+| 4.4  | WebSocket relay server                | Medium     |
+| 4.5  | PWA WebSocket client + auto-connect   | Medium     |
+| 4.6  | QR code pairing flow                  | Low        |
+| 4.7  | Google Drive sync integration         | High       |
+| 4.8  | iCloud sync integration               | High       |
+| 4.9  | Dropbox sync integration              | Medium     |
+| 4.10 | Sync status observable                | Low        |
+| 4.11 | "Last synced" UI indicator            | Low        |
+| 4.12 | Manual "Sync now" button              | Low        |
 
 ---
 
@@ -278,6 +286,7 @@ export function createSyncManager(repo: Repo): SyncManager {
 For privacy-conscious users (journalists, activists, researchers). **Not required for v1.**
 
 **Rationale for making it optional:**
+
 - Most synced content is publicly available (tweets, RSS)
 - Cloud providers already encrypt at rest
 - Key management adds UX complexity (lose passphrase = lose data)
@@ -296,7 +305,10 @@ interface EncryptionConfig {
   key?: Uint8Array;
 }
 
-export async function deriveKey(passphrase: string, salt: Uint8Array): Promise<Uint8Array> {
+export async function deriveKey(
+  passphrase: string,
+  salt: Uint8Array,
+): Promise<Uint8Array> {
   return scrypt(passphrase, salt, { N: 2 ** 17, r: 8, p: 1, dkLen: 32 });
 }
 
@@ -317,6 +329,7 @@ export function decryptDoc(data: Uint8Array, key: Uint8Array): Uint8Array {
 ```
 
 **User flow:**
+
 1. User enables encryption in settings
 2. User enters passphrase (we derive key, discard passphrase)
 3. All cloud syncs encrypt before upload, decrypt after download

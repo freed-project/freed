@@ -75,34 +75,37 @@ packages/extension/
 
 ```tsx
 // packages/extension/src/popup/Popup.tsx
-import { useState } from 'react';
-import { saveCurrentPage } from '../shared/save';
+import { useState } from "react";
+import { saveCurrentPage } from "../shared/save";
 
 export function Popup() {
-  const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
-  
+  const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
+
   const handleSave = async () => {
-    setStatus('saving');
-    
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    setStatus("saving");
+
+    const [tab] = await chrome.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
     await saveCurrentPage(tab.url!, tab.title!);
-    
-    setStatus('saved');
+
+    setStatus("saved");
     setTimeout(() => window.close(), 1000);
   };
-  
+
   return (
     <div className="p-4 w-64">
       <h1 className="text-lg font-bold mb-4">Save to FREED</h1>
-      
+
       <button
         onClick={handleSave}
-        disabled={status === 'saving'}
+        disabled={status === "saving"}
         className="w-full py-2 px-4 bg-orange-500 text-white rounded"
       >
-        {status === 'idle' && 'Save Page'}
-        {status === 'saving' && 'Saving...'}
-        {status === 'saved' && '✓ Saved'}
+        {status === "idle" && "Save Page"}
+        {status === "saving" && "Saving..."}
+        {status === "saved" && "✓ Saved"}
       </button>
     </div>
   );
@@ -113,12 +116,15 @@ export function Popup() {
 
 ```typescript
 // packages/extension/src/shared/save.ts
-export async function saveCurrentPage(url: string, title: string): Promise<void> {
+export async function saveCurrentPage(
+  url: string,
+  title: string,
+): Promise<void> {
   // Try Desktop App first
   const desktopConnected = await tryDesktopConnection();
-  
+
   if (desktopConnected) {
-    await sendToDesktop({ type: 'save-url', url, title });
+    await sendToDesktop({ type: "save-url", url, title });
   } else {
     // Fall back to direct capture-save
     const metadata = await extractMetadata(url);
@@ -138,38 +144,40 @@ export async function saveCurrentPage(url: string, title: string): Promise<void>
 ```typescript
 // packages/extension/src/content/ulysses.ts
 const BLOCKED_FEEDS = {
-  'twitter.com': ['/', '/home'],
-  'x.com': ['/', '/home'],
-  'facebook.com': ['/', '/home.php'],
-  'instagram.com': ['/'],
+  "twitter.com": ["/", "/home"],
+  "x.com": ["/", "/home"],
+  "facebook.com": ["/", "/home.php"],
+  "instagram.com": ["/"],
 };
 
 const ALLOWED_PATHS = {
-  'twitter.com': ['/messages', '/notifications', '/settings'],
-  'x.com': ['/messages', '/notifications', '/settings'],
-  'facebook.com': ['/messages', '/marketplace', '/settings'],
-  'instagram.com': ['/direct', '/accounts'],
+  "twitter.com": ["/messages", "/notifications", "/settings"],
+  "x.com": ["/messages", "/notifications", "/settings"],
+  "facebook.com": ["/messages", "/marketplace", "/settings"],
+  "instagram.com": ["/direct", "/accounts"],
 };
 
 export function checkUlyssesMode(): void {
   const { hostname, pathname } = window.location;
-  
+
   const blocked = BLOCKED_FEEDS[hostname];
   const allowed = ALLOWED_PATHS[hostname];
-  
+
   if (!blocked) return; // Not a social site
-  
-  const isBlockedPath = blocked.some(p => pathname === p || pathname.startsWith(p + '/'));
-  const isAllowedPath = allowed.some(p => pathname.startsWith(p));
-  
+
+  const isBlockedPath = blocked.some(
+    (p) => pathname === p || pathname.startsWith(p + "/"),
+  );
+  const isAllowedPath = allowed.some((p) => pathname.startsWith(p));
+
   if (isBlockedPath && !isAllowedPath) {
     showUlyssesOverlay();
   }
 }
 
 function showUlyssesOverlay(): void {
-  const overlay = document.createElement('div');
-  overlay.id = 'freed-ulysses-overlay';
+  const overlay = document.createElement("div");
+  overlay.id = "freed-ulysses-overlay";
   overlay.innerHTML = `
     <div class="ulysses-content">
       <h1>🧭 Ulysses Mode Active</h1>
@@ -181,10 +189,10 @@ function showUlyssesOverlay(): void {
       </div>
     </div>
   `;
-  
+
   document.body.appendChild(overlay);
-  
-  document.getElementById('ulysses-bypass')?.addEventListener('click', () => {
+
+  document.getElementById("ulysses-bypass")?.addEventListener("click", () => {
     setBypassTimer(5 * 60 * 1000);
     overlay.remove();
   });
@@ -201,14 +209,14 @@ function showUlyssesOverlay(): void {
 
 export async function captureCurrentFeed(): Promise<FeedItem[]> {
   const { hostname } = window.location;
-  
+
   switch (hostname) {
-    case 'twitter.com':
-    case 'x.com':
+    case "twitter.com":
+    case "x.com":
       return captureXFeed();
-    case 'facebook.com':
+    case "facebook.com":
       return captureFacebookFeed();
-    case 'instagram.com':
+    case "instagram.com":
       return captureInstagramFeed();
     default:
       return [];
@@ -233,18 +241,14 @@ async function captureXFeed(): Promise<FeedItem[]> {
   "name": "FREED",
   "version": "1.0.0",
   "description": "Escape the attention economy",
-  
-  "permissions": [
-    "activeTab",
-    "storage",
-    "scripting"
-  ],
-  
+
+  "permissions": ["activeTab", "storage", "scripting"],
+
   "action": {
     "default_popup": "popup.html",
     "default_icon": "icon-48.png"
   },
-  
+
   "content_scripts": [
     {
       "matches": [
@@ -257,7 +261,7 @@ async function captureXFeed(): Promise<FeedItem[]> {
       "css": ["ulysses.css"]
     }
   ],
-  
+
   "background": {
     "service_worker": "background.js"
   }
@@ -268,16 +272,16 @@ async function captureXFeed(): Promise<FeedItem[]> {
 
 ## Tasks
 
-| Task | Description | Complexity |
-|------|-------------|------------|
-| 9.1 | Chrome MV3 extension scaffold | Medium |
-| 9.2 | Popup UI for one-click save | Low |
-| 9.3 | Integration with capture-save | Medium |
-| 9.4 | Ulysses mode content script | Medium |
-| 9.5 | Allowed paths configuration | Low |
-| 9.6 | DOM capture fallback | High |
-| 9.7 | Sync with Desktop/PWA | Medium |
-| 9.8 | Firefox compatibility | Medium |
+| Task | Description                   | Complexity |
+| ---- | ----------------------------- | ---------- |
+| 9.1  | Chrome MV3 extension scaffold | Medium     |
+| 9.2  | Popup UI for one-click save   | Low        |
+| 9.3  | Integration with capture-save | Medium     |
+| 9.4  | Ulysses mode content script   | Medium     |
+| 9.5  | Allowed paths configuration   | Low        |
+| 9.6  | DOM capture fallback          | High       |
+| 9.7  | Sync with Desktop/PWA         | Medium     |
+| 9.8  | Firefox compatibility         | Medium     |
 
 ---
 
