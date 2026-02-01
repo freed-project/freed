@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+    <channel>
+        <title>FREED Updates</title>
+        <link>https://freed.wtf</link>
+        <description>Progress updates, technical deep-dives, and philosophical rants about the attention economy. From the team building FREED.</description>
+        <lastBuildDate>Sun, 01 Feb 2026 20:05:27 GMT</lastBuildDate>
+        <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
+        <generator>https://github.com/jpmonette/feed</generator>
+        <language>en</language>
+        <image>
+            <title>FREED Updates</title>
+            <url>https://freed.wtf/favicon.svg</url>
+            <link>https://freed.wtf</link>
+        </image>
+        <copyright>All rights reserved 2026, FREED Project</copyright>
+        <item>
+            <title><![CDATA[Introducing FREED: Take Back Your Feed]]></title>
+            <link>https://freed.wtf/updates/introducing-freed</link>
+            <guid isPermaLink="false">https://freed.wtf/updates/introducing-freed</guid>
+            <pubDate>Sun, 01 Feb 2026 00:00:00 GMT</pubDate>
+            <description><![CDATA[Our first newsletter. Why we built FREED, what we believe, and where we're headed.]]></description>
+            <author>The FREED Team</author>
+            <category>announcement</category>
+            <category>philosophy</category>
+        </item>
+    </channel>
+</rss>

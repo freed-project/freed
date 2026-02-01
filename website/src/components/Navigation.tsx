@@ -49,6 +49,8 @@ export default function Navigation() {
   const navItems = [
     { path: "/", label: "Home" },
     { path: "/manifesto", label: "Manifesto" },
+    { path: "/roadmap", label: "Roadmap" },
+    { path: "/updates", label: "Updates" },
   ];
 
   return (

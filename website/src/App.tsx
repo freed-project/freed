@@ -1,13 +1,16 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import Layout from './components/Layout'
-import Landing from './pages/Landing'
-import Manifesto from './pages/Manifesto'
-import NewsletterModal from './components/NewsletterModal'
-import ScrollToTop from './components/ScrollToTop'
-import { NewsletterProvider, useNewsletter } from './context/NewsletterContext'
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import Layout from "./components/Layout";
+import Landing from "./pages/Landing";
+import Manifesto from "./pages/Manifesto";
+import Roadmap from "./pages/Roadmap";
+import Updates from "./pages/Updates";
+import Post from "./pages/Post";
+import NewsletterModal from "./components/NewsletterModal";
+import ScrollToTop from "./components/ScrollToTop";
+import { NewsletterProvider, useNewsletter } from "./context/NewsletterContext";
 
 function AppContent() {
-  const { isOpen, closeModal } = useNewsletter()
+  const { isOpen, closeModal } = useNewsletter();
 
   return (
     <>
@@ -17,12 +20,15 @@ function AppContent() {
           <Route path="/" element={<Layout />}>
             <Route index element={<Landing />} />
             <Route path="manifesto" element={<Manifesto />} />
+            <Route path="roadmap" element={<Roadmap />} />
+            <Route path="updates" element={<Updates />} />
+            <Route path="updates/:slug" element={<Post />} />
           </Route>
         </Routes>
       </BrowserRouter>
       <NewsletterModal isOpen={isOpen} onClose={closeModal} />
     </>
-  )
+  );
 }
 
 function App() {
@@ -30,7 +36,7 @@ function App() {
     <NewsletterProvider>
       <AppContent />
     </NewsletterProvider>
-  )
+  );
 }
 
-export default App
+export default App;
