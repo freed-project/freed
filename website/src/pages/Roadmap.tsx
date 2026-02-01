@@ -16,6 +16,8 @@ const phases: Phase[] = [
     title: "Foundation",
     description: "Marketing site, monorepo, Automerge schema, CI/CD.",
     status: "complete",
+    planLink:
+      "https://github.com/freed-project/freed/blob/main/docs/PHASE-1-FOUNDATION.md",
   },
   {
     number: 2,
@@ -23,6 +25,8 @@ const phases: Phase[] = [
     description:
       "capture-x and capture-rss packages with OpenClaw skill wrappers.",
     status: "complete",
+    planLink:
+      "https://github.com/freed-project/freed/blob/main/docs/PHASE-2-CAPTURE-SKILLS.md",
   },
   {
     number: 3,

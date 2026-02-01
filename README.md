@@ -16,7 +16,7 @@ Capture your social/rss/newsletter feeds locally. Tune the ranking algo yourself
 - 🔄 **Cross-device sync** — Automerge CRDT via local relay and cloud backup
 - 📌 **Save for later** — Capture any URL with reader view
 - ⚓ **Ulysses mode** — Block platform feeds, stay intentional
-- 📍 **Friend map** — See where friends are posting from
+- 📍 **Friend map** — See where your people are posting from
 
 ---
 
@@ -49,35 +49,15 @@ Capture your social/rss/newsletter feeds locally. Tune the ranking algo yourself
 
 ---
 
-## Quick Start
-
-### RSS Capture
-
-```bash
-cd skills/capture-rss && npx tsx src/index.ts add https://simonwillison.net
-npx tsx src/index.ts sync
-npx tsx src/index.ts recent 20
-```
-
-### X/Twitter Capture
-
-```bash
-cd skills/capture-x && npx tsx src/index.ts status
-npx tsx src/index.ts mode mirror_blacklist
-npx tsx src/index.ts sync
-```
-
----
-
 ## Roadmap
 
 ### Phase 1: Foundation ✓
 
-Marketing site, monorepo, Automerge schema, CI/CD.
+Marketing site, monorepo, Automerge schema, CI/CD. [Plan](docs/PHASE-1-FOUNDATION.md)
 
 ### Phase 2: Capture Skills ✓
 
-`capture-x` and `capture-rss` packages with OpenClaw skill wrappers.
+`capture-x` and `capture-rss` packages with OpenClaw skill wrappers. [Plan](docs/PHASE-2-CAPTURE-SKILLS.md)
 
 ### Phase 3: Save for Later
 
@@ -130,6 +110,26 @@ LinkedIn, TikTok, Threads, etc. [Plan](docs/PHASE-12-ADDITIONAL-PLATFORMS.md)
 5. **TypeScript capture via subprocess** — Existing TS packages run via Node/Bun, not rewritten in Rust
 6. **Ranking on core, display on edge** — Desktop/OpenClaw computes `priority`, PWA just displays
 7. **Capture layer pattern** — Each source normalizes to unified `FeedItem`
+
+---
+
+## Quick Start
+
+### RSS Capture
+
+```bash
+cd skills/capture-rss && npx tsx src/index.ts add https://simonwillison.net
+npx tsx src/index.ts sync
+npx tsx src/index.ts recent 20
+```
+
+### X/Twitter Capture
+
+```bash
+cd skills/capture-x && npx tsx src/index.ts status
+npx tsx src/index.ts mode mirror_blacklist
+npx tsx src/index.ts sync
+```
 
 ---
 
