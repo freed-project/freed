@@ -1,14 +1,14 @@
-# Phase 3-4 Execution Plan
+# Phase 4-5 Execution Plan
 
-> **Scope:** Sync Layer + PWA Reader  
+> **Scope:** Sync Layer (Phase 4) + PWA Reader (Phase 5)  
 > **Prepared:** 2026-01-30  
-> **Dependencies:** Phase 1-2 (Complete ✓)
+> **Dependencies:** Phase 1-2 (Capture layers ✓), Phase 3 (Save for Later)
 
 ---
 
 ## Overview
 
-Phase 3 establishes device-to-device sync via Automerge CRDT. Phase 4 delivers the reader interface—a timeline-focused PWA.
+Phase 4 establishes device-to-device sync via Automerge CRDT. Phase 5 delivers the reader interface—a timeline-focused PWA.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -53,9 +53,9 @@ Phase 3 establishes device-to-device sync via Automerge CRDT. Phase 4 delivers t
 
 ---
 
-## Phase 3: Sync Layer
+## Phase 4: Sync Layer
 
-### 3.1 Architecture Overview
+### 4.1 Architecture Overview
 
 **Two sync modes, zero external infrastructure:**
 
@@ -69,7 +69,7 @@ Phase 3 establishes device-to-device sync via Automerge CRDT. Phase 4 delivers t
 - Cloud storage = backup + away-from-home sync
 - Images cached locally per device (not synced via cloud)
 
-### 3.2 Create `@freed/sync` Package
+### 4.2 Create `@freed/sync` Package
 
 **New package:** `packages/sync/`
 
@@ -102,7 +102,7 @@ packages/sync/
 }
 ```
 
-### 3.3 OpenClaw Local Relay
+### 4.3 OpenClaw Local Relay
 
 OpenClaw hosts a WebSocket server on the local network. PWA connects for instant sync when at home.
 
@@ -167,7 +167,7 @@ export async function connectToLocalRelay(
 2. **Manual entry** — User enters IP in PWA settings
 3. **mDNS discovery** — PWA auto-discovers `openclaw.local` (requires mDNS support)
 
-### 3.4 Cloud Storage Sync
+### 4.4 Cloud Storage Sync
 
 For when PWA is away from home network. User's own cloud account—we never see the data.
 
@@ -231,7 +231,7 @@ async function syncToGoogleDrive(
 }
 ```
 
-### 3.5 Sync Flow
+### 4.5 Sync Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -256,7 +256,7 @@ async function syncToGoogleDrive(
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.6 Sync Status API
+### 4.6 Sync Status API
 
 ```typescript
 // packages/sync/src/status.ts
@@ -297,7 +297,7 @@ export function createSyncManager(repo: Repo): SyncManager {
 }
 ```
 
-### 3.7 Phase 3 Tasks
+### 4.7 Phase 4 Tasks
 
 | Task  | Description                           | Est. Complexity |
 | ----- | ------------------------------------- | --------------- |
@@ -314,13 +314,13 @@ export function createSyncManager(repo: Repo): SyncManager {
 | 3.4.2 | "Last synced" UI indicator            | Low             |
 | 3.4.3 | Manual "Sync now" button              | Low             |
 
-**Phase 3 Deliverable:** `@freed/sync` package with instant local sync (OpenClaw relay) and cloud backup (GDrive/iCloud/Dropbox). No external servers.
+**Phase 4 Deliverable:** `@freed/sync` package with instant local sync (OpenClaw relay) and cloud backup (GDrive/iCloud/Dropbox). No external servers.
 
 ---
 
-## Phase 4: PWA Reader
+## Phase 5: PWA Reader
 
-### 4.1 Design Philosophy
+### 5.1 Design Philosophy
 
 **Core Principles:**
 
@@ -336,9 +336,9 @@ export function createSyncManager(repo: Repo): SyncManager {
 3. **Custom ranking** — User-controlled weights, not engagement
 4. **Source filtering** — View by platform, author, or topic
 
-> **Note:** Save for Later is implemented as a separate capture layer (`@freed/capture-save`) in Phase 4.5, following the same architecture as `capture-x` and `capture-rss`. The PWA displays saved items but doesn't implement the capture logic.
+> **Note:** Save for Later is implemented as a separate capture layer (`@freed/capture-save`) in Phase 3, following the same architecture as `capture-x` and `capture-rss`. The PWA displays saved items but doesn't implement the capture logic.
 
-### 4.2 Create `@freed/pwa` Package
+### 5.2 Create `@freed/pwa` Package
 
 **New package:** `packages/pwa/`
 
@@ -430,7 +430,7 @@ packages/pwa/
 }
 ```
 
-### 4.3 Reading Enhancements
+### 5.3 Reading Enhancements
 
 Optional reading enhancements to improve focus and comfort:
 
@@ -492,7 +492,7 @@ function getEmphasisCount(
 }
 ```
 
-### 4.4 Feed Ranking Algorithm
+### 5.4 Feed Ranking Algorithm
 
 ```typescript
 // packages/pwa/src/lib/ranking.ts
@@ -567,7 +567,7 @@ export function filterByContentType(
 }
 ```
 
-### 4.5 Core Components
+### 5.5 Core Components
 
 #### App Shell (sidebar + timeline layout)
 
@@ -751,7 +751,7 @@ function getPlatformIcon(platform: string): string {
 }
 ```
 
-### 4.6 Settings Panel
+### 5.6 Settings Panel
 
 ```tsx
 // packages/pwa/src/components/settings/DisplaySettings.tsx
@@ -822,7 +822,7 @@ export function DisplaySettings() {
 }
 ```
 
-### 4.7 PWA Configuration
+### 5.7 PWA Configuration
 
 ```typescript
 // packages/pwa/vite.config.ts
@@ -877,7 +877,7 @@ export default defineConfig({
 });
 ```
 
-### 4.8 Phase 4 Tasks
+### 5.8 Phase 5 Tasks
 
 | Task  | Description                               | Est. Complexity |
 | ----- | ----------------------------------------- | --------------- |
@@ -911,9 +911,9 @@ export default defineConfig({
 | 4.9.2 | Add to homescreen flow                    | Low             |
 | 4.9.3 | Offline indicator                         | Low             |
 
-**Phase 4 Deliverable:** Mobile-first PWA at freed.wtf/app with per-source unread tracking and unified feed.
+**Phase 5 Deliverable:** Mobile-first PWA at freed.wtf/app with per-source unread tracking and unified feed.
 
-> **Note:** Save for Later (`capture-save`) is Phase 4.5—a separate capture layer with its own package and execution plan.
+> **Note:** Save for Later (`capture-save`) is Phase 3—a separate capture layer with its own package and execution plan.
 
 ---
 
@@ -922,7 +922,7 @@ export default defineConfig({
 ### Recommended Sequence
 
 ```
-Phase 3: Sync Layer
+Phase 4: Sync Layer
 ├── 3.1 Package scaffold + IndexedDB adapter
 ├── 3.2 Filesystem adapter
 ├── 3.3 BroadcastChannel (tab sync)
@@ -930,7 +930,7 @@ Phase 3: Sync Layer
 ├── 3.5 Cloud backup encryption utilities
 └── 3.6 Google Drive integration
 
-Phase 4: PWA Reader (can start after 3.1-3.4)
+Phase 5: PWA Reader (can start after 4.1-4.4)
 ├── 4.1 Package scaffold + Vite config
 ├── 4.2 AppShell + basic layout
 ├── 4.3 Reading enhancements
@@ -944,9 +944,9 @@ Phase 4: PWA Reader (can start after 3.1-3.4)
 
 ### Parallelization Opportunities
 
-- **3.2 + 3.3**: Local relay and cloud sync can be developed in parallel
-- **4.3 + 4.4**: Reading enhancements and Feed components are independent
-- **4.6 + 4.7**: Settings and Source management are independent
+- **4.2 + 4.3**: Local relay and cloud sync can be developed in parallel
+- **5.3 + 5.4**: Reading enhancements and Feed components are independent
+- **5.6 + 5.7**: Settings and Source management are independent
 
 ---
 
@@ -1171,7 +1171,7 @@ One of several reading enhancements:
 
 ## Success Criteria
 
-### Phase 3 Complete When:
+### Phase 4 Complete When:
 
 - [ ] Data persists in IndexedDB (browser) and filesystem (OpenClaw)
 - [ ] OpenClaw hosts WebSocket relay on local network
@@ -1181,7 +1181,7 @@ One of several reading enhancements:
 - [ ] QR code or manual pairing connects PWA to OpenClaw
 - [ ] Sync status UI shows "Local" vs "Cloud" vs "Offline"
 
-### Phase 4 Complete When:
+### Phase 5 Complete When:
 
 - [ ] PWA loads at freed.wtf/app
 - [ ] Feed displays items from Automerge document

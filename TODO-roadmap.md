@@ -423,7 +423,25 @@ freed/
 
 ---
 
-### Phase 3: Sync Layer
+### Phase 3: Save for Later (`capture-save`)
+
+**Status:** Not Started
+
+Independent capture layer for manually saved URLs (like capture-x and capture-rss).
+
+- [ ] `@freed/capture-save` package scaffold
+- [ ] URL metadata extraction (title, description, image)
+- [ ] Article content extraction (Readability-style parser)
+- [ ] Reader view generation (preserved HTML/text)
+- [ ] Normalize to `FeedItem` with `platform: "saved"`
+- [ ] OpenClaw skill wrapper (`skills/capture-save/`)
+- [ ] CLI: `capture-save add <url>`
+
+**Deliverable:** `@freed/capture-save` package and skill for saving any URL.
+
+---
+
+### Phase 4: Sync Layer
 
 **Status:** Not Started
 
@@ -439,11 +457,11 @@ freed/
 
 **Deliverable:** Instant sync at home via OpenClaw, cloud sync when away. Zero external infrastructure.
 
-**Detailed Plan:** See [docs/PHASE-3-4-EXECUTION-PLAN.md](docs/PHASE-3-4-EXECUTION-PLAN.md)
+**Detailed Plan:** See [docs/PHASE-4-5-EXECUTION-PLAN.md](docs/PHASE-4-5-EXECUTION-PLAN.md)
 
 ---
 
-### Phase 4: PWA Reader
+### Phase 5: PWA Reader
 
 **Status:** Not Started
 
@@ -463,29 +481,11 @@ freed/
 
 **Deliverable:** Mobile-friendly PWA at freed.wtf/app.
 
-**Detailed Plan:** See [docs/PHASE-3-4-EXECUTION-PLAN.md](docs/PHASE-3-4-EXECUTION-PLAN.md)
+**Detailed Plan:** See [docs/PHASE-4-5-EXECUTION-PLAN.md](docs/PHASE-4-5-EXECUTION-PLAN.md)
 
 ---
 
-### Phase 4.5: Save for Later (`capture-save`)
-
-**Status:** Not Started
-
-Independent capture layer for manually saved URLs (like capture-x and capture-rss).
-
-- [ ] `@freed/capture-save` package scaffold
-- [ ] URL metadata extraction (title, description, image)
-- [ ] Article content extraction (Readability-style parser)
-- [ ] Reader view generation (preserved HTML/text)
-- [ ] Normalize to `FeedItem` with `platform: "saved"`
-- [ ] OpenClaw skill wrapper (`skills/capture-save/`)
-- [ ] CLI: `capture-save add <url>`
-
-**Deliverable:** `@freed/capture-save` package and skill for saving any URL.
-
----
-
-### Phase 5: Desktop App (Tauri)
+### Phase 6: Desktop App (Tauri)
 
 **Status:** Not Started
 
@@ -564,7 +564,7 @@ The universal capture engine for non-technical users. Packages all capture + syn
 
 ---
 
-### Phase 6: Browser Extension
+### Phase 7: Browser Extension
 
 **Status:** Not Started
 
@@ -582,7 +582,7 @@ Supplement to Desktop App—quick saves and Ulysses mode.
 
 ---
 
-### Phase 7: Location & Friend Map
+### Phase 8: Location & Friend Map
 
 **Status:** Not Started
 
@@ -597,11 +597,11 @@ Supplement to Desktop App—quick saves and Ulysses mode.
 
 ---
 
-### Phase 8: Facebook + Instagram Capture
+### Phase 9: Facebook + Instagram Capture
 
 **Status:** Not Started
 
-**Requires:** Phase 5 Desktop App (Playwright for DOM scraping)
+**Requires:** Phase 6 Desktop App (Playwright for DOM scraping)
 
 - [ ] `@freed/capture-facebook` package
 - [ ] `@freed/capture-instagram` package
@@ -615,7 +615,7 @@ Supplement to Desktop App—quick saves and Ulysses mode.
 
 ---
 
-### Phase 9: Polish
+### Phase 10: Polish
 
 **Status:** Future
 
