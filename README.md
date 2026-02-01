@@ -11,46 +11,11 @@ Capture your social feeds locally. Tune the ranking algorithm yourself. Sync acr
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              CAPTURE LAYER                                   │
-│                                                                             │
-│   ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐   │
-│   │ capture-x │ │capture-rss│ │capture-   │ │ capture-  │ │ capture-  │   │
-│   │           │ │           │ │   save    │ │ facebook  │ │ instagram │   │
-│   └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └─────┬─────┘   │
-│         │             │             │             │             │         │
-│         └─────────────┴─────────────┴─────────────┴─────────────┘         │
-│                                    │                                       │
-│                                    ▼                                       │
-│                        ┌─────────────────────┐                             │
-│                        │  FeedItem (unified) │                             │
-│                        │  Automerge CRDT Doc │                             │
-│                        └──────────┬──────────┘                             │
-└───────────────────────────────────┼─────────────────────────────────────────┘
-                                    │
-┌───────────────────────────────────┼─────────────────────────────────────────┐
-│                              SYNC LAYER                                      │
-│                                    │                                        │
-│          ┌─────────────────────────┴─────────────────────────┐              │
-│          │                                                   │              │
-│    Local Relay (WebSocket)                         Cloud Backup             │
-│    instant sync on LAN                         GDrive/iCloud/Dropbox        │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-┌───────────────────────────────────┼─────────────────────────────────────────┐
-│                             CLIENT LAYER                                     │
-│          ┌────────────────────────┴────────────────────────┐                │
-│          ▼                                                 ▼                │
-│   ┌─────────────┐                                   ┌─────────────┐         │
-│   │ Desktop App │ ◄─────────────────────────────────│  Phone PWA  │         │
-│   │  (primary)  │          real-time sync           │  (mobile)   │         │
-│   └─────────────┘                                   └─────────────┘         │
-│                                                                             │
-│   ┌─────────────────────────────────────────────────────────────────┐       │
-│   │                    Browser Extension (optional)                  │       │
-│   │                 One-click save • Ulysses mode                   │       │
-│   └─────────────────────────────────────────────────────────────────┘       │
-└─────────────────────────────────────────────────────────────────────────────┘
+  Capture Layers              Sync                    Clients
+ ─────────────────      ─────────────────      ─────────────────
+  X, RSS, Facebook,  →   Automerge CRDT   →    Desktop App
+  Instagram, etc.        Local + Cloud          Phone PWA
+                                                Extension
 ```
 
 **Desktop App is the hub.** It runs capture, hosts the sync relay, and provides the reader UI. Phone PWA syncs to it for mobile reading. OpenClaw users can run capture headlessly instead.
@@ -59,16 +24,16 @@ Capture your social feeds locally. Tune the ranking algorithm yourself. Sync acr
 
 ## Capture Layers
 
-| Package | Sources | Method | Status |
-|---------|---------|--------|--------|
-| `capture-x` | X/Twitter | GraphQL API | ✓ Complete |
-| `capture-rss` | Blogs, Medium, Substack, YouTube, podcasts, Mastodon, Reddit, GitHub | RSS/Atom | ✓ Complete |
-| `capture-save` | Any URL | Readability extraction | Phase 3 |
-| `capture-facebook` | Facebook | DOM scraping | Phase 7 |
-| `capture-instagram` | Instagram | DOM scraping | Phase 7 |
-| `capture-linkedin` | LinkedIn | DOM scraping | Phase 12 |
-| `capture-tiktok` | TikTok | TBD | Phase 12 |
-| `capture-threads` | Threads | TBD | Phase 12 |
+| Package             | Sources                                                              | Method                 | Status     |
+| ------------------- | -------------------------------------------------------------------- | ---------------------- | ---------- |
+| `capture-x`         | X/Twitter                                                            | GraphQL API            | ✓ Complete |
+| `capture-rss`       | Blogs, Medium, Substack, YouTube, podcasts, Mastodon, Reddit, GitHub | RSS/Atom               | ✓ Complete |
+| `capture-save`      | Any URL                                                              | Readability extraction | Phase 3    |
+| `capture-facebook`  | Facebook                                                             | DOM scraping           | Phase 7    |
+| `capture-instagram` | Instagram                                                            | DOM scraping           | Phase 7    |
+| `capture-linkedin`  | LinkedIn                                                             | DOM scraping           | Phase 12   |
+| `capture-tiktok`    | TikTok                                                               | TBD                    | Phase 12   |
+| `capture-threads`   | Threads                                                              | TBD                    | Phase 12   |
 
 ---
 
@@ -85,6 +50,7 @@ All data stays on your device. We literally cannot see what you capture.
 ### 🐦 X/Twitter Capture
 
 Three modes:
+
 - **Mirror** — Capture from everyone you follow
 - **Whitelist** — Only specified accounts
 - **Mirror + Blacklist** — Mirror minus specific accounts
@@ -171,7 +137,7 @@ Headless capture for power users. [Plan](docs/PHASE-11-OPENCLAW.md)
 
 ### Phase 12: Additional Platforms
 
-LinkedIn, TikTok, Threads. [Plan](docs/PHASE-12-ADDITIONAL-PLATFORMS.md)
+LinkedIn, TikTok, Threads, etc. [Plan](docs/PHASE-12-ADDITIONAL-PLATFORMS.md)
 
 ---
 
@@ -205,6 +171,7 @@ LinkedIn, TikTok, Threads. [Plan](docs/PHASE-12-ADDITIONAL-PLATFORMS.md)
 FREED is open source. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Areas where we need help:
+
 - Desktop app UI
 - Additional capture layers
 - Sync layer implementation
