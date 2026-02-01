@@ -2,7 +2,7 @@
 
 > **Their algorithms optimize for profit. Optimize yours for life.**
 
-Capture your social feeds locally. Tune the ranking algorithm yourself. Sync across devices. No cloud dependency, no tracking, no algorithmic manipulation.
+Capture your social/rss/newsletter feeds locally. Tune the ranking algo yourself. Sync across devices. No cloud dependency, no tracking, no algorithmic manipulation.
 
 **Website:** [freed.wtf](https://freed.wtf)
 
@@ -39,37 +39,13 @@ Capture your social feeds locally. Tune the ranking algorithm yourself. Sync acr
 
 ## Features
 
-### 🌊 Unified Feed
-
-One feed combining X posts, blog articles, YouTube videos, newsletters, and podcasts—ranked by your preferences, not their engagement algorithms.
-
-### 🔒 Local-First Privacy
-
-All data stays on your device. We literally cannot see what you capture.
-
-### 🐦 X/Twitter Capture
-
-Three modes:
-
-- **Mirror** — Capture from everyone you follow
-- **Whitelist** — Only specified accounts
-- **Mirror + Blacklist** — Mirror minus specific accounts
-
-### 📡 RSS Integration
-
-Subscribe to any RSS/Atom feed. OPML import for migrating from other readers.
-
-### 🔄 Cross-Device Sync
-
-Automerge CRDT enables conflict-free sync via local relay or cloud backup (Google Drive, iCloud, Dropbox). No central server.
-
-### ⚓ Ulysses Mode _(Coming Soon)_
-
-Browser extension that blocks platform feeds and redirects to FREED.
-
-### 📍 Friend Map _(Coming Soon)_
-
-See where your friends are posting from.
+- **Unified feed** — X, RSS, YouTube, newsletters, podcasts in one timeline
+- **Your ranking** — Weight by recency, author, topic—not engagement
+- **Local-first** — All data on your device, we can't see it
+- **Cross-device sync** — Automerge CRDT via local relay or cloud backup
+- **Save for later** — Capture any URL with reader view
+- **Ulysses mode** — Block platform feeds, stay intentional
+- **Friend map** — See where friends are posting from
 
 ---
 
