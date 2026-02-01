@@ -22,7 +22,7 @@ Device-to-device sync via Automerge CRDT. Two sync modes, zero external infrastr
 │         ▼                                                       │
 │  ┌─────────────┐                                                │
 │  │ Cloud Sync  │  (GDrive / iCloud / Dropbox)                  │
-│  │  (backup)   │  User's own account, encrypted                │
+│  │  (backup)   │  User's own account                           │
 │  └─────────────┘                                                │
 │                                                                 │
 │  AWAY FROM HOME (5-30s sync):                                   │
@@ -270,3 +270,56 @@ export function createSyncManager(repo: Repo): SyncManager {
   }
 }
 ```
+
+---
+
+## Optional Enhancement: Client-Side Encryption
+
+For privacy-conscious users (journalists, activists, researchers). **Not required for v1.**
+
+**Rationale for making it optional:**
+- Most synced content is publicly available (tweets, RSS)
+- Cloud providers already encrypt at rest
+- Key management adds UX complexity (lose passphrase = lose data)
+- The paranoid users who need it will find the setting
+
+**Implementation (future):**
+
+```typescript
+// packages/sync/src/encryption.ts
+import { scrypt } from "@noble/hashes/scrypt";
+import { xchacha20poly1305 } from "@noble/ciphers/chacha";
+
+interface EncryptionConfig {
+  enabled: boolean;
+  // Derived from user passphrase, never stored
+  key?: Uint8Array;
+}
+
+export async function deriveKey(passphrase: string, salt: Uint8Array): Promise<Uint8Array> {
+  return scrypt(passphrase, salt, { N: 2 ** 17, r: 8, p: 1, dkLen: 32 });
+}
+
+export function encryptDoc(data: Uint8Array, key: Uint8Array): Uint8Array {
+  const nonce = crypto.getRandomValues(new Uint8Array(24));
+  const cipher = xchacha20poly1305(key, nonce);
+  const encrypted = cipher.encrypt(data);
+  // Prepend nonce to ciphertext
+  return new Uint8Array([...nonce, ...encrypted]);
+}
+
+export function decryptDoc(data: Uint8Array, key: Uint8Array): Uint8Array {
+  const nonce = data.slice(0, 24);
+  const ciphertext = data.slice(24);
+  const cipher = xchacha20poly1305(key, nonce);
+  return cipher.decrypt(ciphertext);
+}
+```
+
+**User flow:**
+1. User enables encryption in settings
+2. User enters passphrase (we derive key, discard passphrase)
+3. All cloud syncs encrypt before upload, decrypt after download
+4. Local relay sync remains unencrypted (same network = trusted)
+
+**If passphrase lost:** Data unrecoverable. Cloud backup becomes useless. User must start fresh.
