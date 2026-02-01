@@ -1,0 +1,298 @@
+# Phase 9: Browser Extension
+
+> **Status:** Not Started  
+> **Dependencies:** Phase 7 (Facebook/Instagram), Phase 8 (Friend Map)
+
+---
+
+## Overview
+
+Supplement to the Desktop App—quick saves and Ulysses mode. Not a primary capture mechanism.
+
+---
+
+## Features
+
+1. **One-click save** — Save any page to FREED library
+2. **Ulysses mode** — Block social media feeds, allow specific paths
+3. **DOM capture fallback** — When Desktop App not running
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Browser Extension (MV3)                       │
+│                                                                 │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐             │
+│  │   Popup     │  │  Content    │  │  Background │             │
+│  │   (Save)    │  │  Scripts    │  │  Worker     │             │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘             │
+│         │                │                │                     │
+│         └────────────────┼────────────────┘                     │
+│                          ▼                                      │
+│                  ┌──────────────┐                               │
+│                  │   Automerge  │                               │
+│                  │   (shared)   │                               │
+│                  └──────────────┘                               │
+│                          │                                      │
+│              ┌───────────┴───────────┐                          │
+│              ▼                       ▼                          │
+│       Desktop App               Cloud Sync                      │
+│       (if running)              (fallback)                      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Package Structure
+
+```
+packages/extension/
+├── src/
+│   ├── popup/
+│   │   ├── Popup.tsx        # Save button UI
+│   │   └── popup.html
+│   ├── content/
+│   │   ├── ulysses.ts       # Feed blocking overlay
+│   │   └── dom-capture.ts   # Fallback capture
+│   ├── background/
+│   │   └── worker.ts        # Background service
+│   └── shared/
+│       ├── storage.ts       # Chrome storage wrapper
+│       └── sync.ts          # Connect to Desktop/Cloud
+├── manifest.json
+├── package.json
+└── vite.config.ts
+```
+
+---
+
+## One-Click Save
+
+### Popup UI
+
+```tsx
+// packages/extension/src/popup/Popup.tsx
+import { useState } from 'react';
+import { saveCurrentPage } from '../shared/save';
+
+export function Popup() {
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  
+  const handleSave = async () => {
+    setStatus('saving');
+    
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    await saveCurrentPage(tab.url!, tab.title!);
+    
+    setStatus('saved');
+    setTimeout(() => window.close(), 1000);
+  };
+  
+  return (
+    <div className="p-4 w-64">
+      <h1 className="text-lg font-bold mb-4">Save to FREED</h1>
+      
+      <button
+        onClick={handleSave}
+        disabled={status === 'saving'}
+        className="w-full py-2 px-4 bg-orange-500 text-white rounded"
+      >
+        {status === 'idle' && 'Save Page'}
+        {status === 'saving' && 'Saving...'}
+        {status === 'saved' && '✓ Saved'}
+      </button>
+    </div>
+  );
+}
+```
+
+### Save Integration
+
+```typescript
+// packages/extension/src/shared/save.ts
+export async function saveCurrentPage(url: string, title: string): Promise<void> {
+  // Try Desktop App first
+  const desktopConnected = await tryDesktopConnection();
+  
+  if (desktopConnected) {
+    await sendToDesktop({ type: 'save-url', url, title });
+  } else {
+    // Fall back to direct capture-save
+    const metadata = await extractMetadata(url);
+    const item = await createFeedItem(metadata);
+    await saveToLocalStorage(item);
+    await syncToCloud();
+  }
+}
+```
+
+---
+
+## Ulysses Mode
+
+### Content Script
+
+```typescript
+// packages/extension/src/content/ulysses.ts
+const BLOCKED_FEEDS = {
+  'twitter.com': ['/', '/home'],
+  'x.com': ['/', '/home'],
+  'facebook.com': ['/', '/home.php'],
+  'instagram.com': ['/'],
+};
+
+const ALLOWED_PATHS = {
+  'twitter.com': ['/messages', '/notifications', '/settings'],
+  'x.com': ['/messages', '/notifications', '/settings'],
+  'facebook.com': ['/messages', '/marketplace', '/settings'],
+  'instagram.com': ['/direct', '/accounts'],
+};
+
+export function checkUlyssesMode(): void {
+  const { hostname, pathname } = window.location;
+  
+  const blocked = BLOCKED_FEEDS[hostname];
+  const allowed = ALLOWED_PATHS[hostname];
+  
+  if (!blocked) return; // Not a social site
+  
+  const isBlockedPath = blocked.some(p => pathname === p || pathname.startsWith(p + '/'));
+  const isAllowedPath = allowed.some(p => pathname.startsWith(p));
+  
+  if (isBlockedPath && !isAllowedPath) {
+    showUlyssesOverlay();
+  }
+}
+
+function showUlyssesOverlay(): void {
+  const overlay = document.createElement('div');
+  overlay.id = 'freed-ulysses-overlay';
+  overlay.innerHTML = `
+    <div class="ulysses-content">
+      <h1>🧭 Ulysses Mode Active</h1>
+      <p>The feed is blocked. What did you come here to do?</p>
+      <div class="ulysses-actions">
+        <a href="/messages">Messages</a>
+        <a href="/notifications">Notifications</a>
+        <button id="ulysses-bypass">Bypass (5 min)</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+  
+  document.getElementById('ulysses-bypass')?.addEventListener('click', () => {
+    setBypassTimer(5 * 60 * 1000);
+    overlay.remove();
+  });
+}
+```
+
+---
+
+## DOM Capture Fallback
+
+```typescript
+// packages/extension/src/content/dom-capture.ts
+// When Desktop App isn't running, capture from active tab
+
+export async function captureCurrentFeed(): Promise<FeedItem[]> {
+  const { hostname } = window.location;
+  
+  switch (hostname) {
+    case 'twitter.com':
+    case 'x.com':
+      return captureXFeed();
+    case 'facebook.com':
+      return captureFacebookFeed();
+    case 'instagram.com':
+      return captureInstagramFeed();
+    default:
+      return [];
+  }
+}
+
+// Limited capture - only what's visible
+async function captureXFeed(): Promise<FeedItem[]> {
+  const tweets = document.querySelectorAll('[data-testid="tweet"]');
+  // ... extract visible tweets
+}
+```
+
+---
+
+## Manifest
+
+```json
+// packages/extension/manifest.json
+{
+  "manifest_version": 3,
+  "name": "FREED",
+  "version": "1.0.0",
+  "description": "Escape the attention economy",
+  
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting"
+  ],
+  
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon-48.png"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": [
+        "*://twitter.com/*",
+        "*://x.com/*",
+        "*://facebook.com/*",
+        "*://instagram.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["ulysses.css"]
+    }
+  ],
+  
+  "background": {
+    "service_worker": "background.js"
+  }
+}
+```
+
+---
+
+## Tasks
+
+| Task | Description | Complexity |
+|------|-------------|------------|
+| 9.1 | Chrome MV3 extension scaffold | Medium |
+| 9.2 | Popup UI for one-click save | Low |
+| 9.3 | Integration with capture-save | Medium |
+| 9.4 | Ulysses mode content script | Medium |
+| 9.5 | Allowed paths configuration | Low |
+| 9.6 | DOM capture fallback | High |
+| 9.7 | Sync with Desktop/PWA | Medium |
+| 9.8 | Firefox compatibility | Medium |
+
+---
+
+## Success Criteria
+
+- [ ] Extension installs from Chrome Web Store
+- [ ] One-click save captures page to FREED
+- [ ] Ulysses mode blocks social feeds
+- [ ] Allowed paths (messages, settings) accessible
+- [ ] Bypass timer works
+- [ ] Syncs with Desktop App when available
+- [ ] Falls back to cloud sync when Desktop offline
+
+---
+
+## Deliverable
+
+Chrome extension with save button and Ulysses mode.

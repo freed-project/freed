@@ -439,6 +439,8 @@ Independent capture layer for manually saved URLs (like capture-x and capture-rs
 
 **Deliverable:** `@freed/capture-save` package and skill for saving any URL.
 
+**Detailed Plan:** [docs/PHASE-3-SAVE-FOR-LATER.md](docs/PHASE-3-SAVE-FOR-LATER.md)
+
 ---
 
 ### Phase 4: Sync Layer
@@ -457,7 +459,7 @@ Independent capture layer for manually saved URLs (like capture-x and capture-rs
 
 **Deliverable:** Instant sync at home via OpenClaw, cloud sync when away. Zero external infrastructure.
 
-**Detailed Plan:** See [docs/PHASE-4-6-EXECUTION-PLAN.md](docs/PHASE-4-6-EXECUTION-PLAN.md)
+**Detailed Plan:** [docs/PHASE-4-SYNC.md](docs/PHASE-4-SYNC.md)
 
 ---
 
@@ -538,6 +540,8 @@ Independent capture layer for manually saved URLs (like capture-x and capture-rs
 
 **Deliverable:** Native desktop app with capture, sync, and reader UI. No CLI required.
 
+**Detailed Plan:** [docs/PHASE-5-DESKTOP.md](docs/PHASE-5-DESKTOP.md)
+
 ---
 
 ### Phase 6: PWA Reader
@@ -562,7 +566,7 @@ Mobile companion to the Desktop App—for on-the-go reading.
 
 **Deliverable:** Mobile-friendly PWA at freed.wtf/app.
 
-**Detailed Plan:** See [docs/PHASE-4-6-EXECUTION-PLAN.md](docs/PHASE-4-6-EXECUTION-PLAN.md)
+**Detailed Plan:** [docs/PHASE-6-PWA.md](docs/PHASE-6-PWA.md)
 
 ---
 
@@ -582,6 +586,8 @@ Mobile companion to the Desktop App—for on-the-go reading.
 
 **Note:** DOM scraping is fragile. These platforms actively fight scrapers. Most location data for Friend Map comes from here.
 
+**Detailed Plan:** [docs/PHASE-7-SOCIAL-CAPTURE.md](docs/PHASE-7-SOCIAL-CAPTURE.md)
+
 ---
 
 ### Phase 8: Location & Friend Map
@@ -598,6 +604,8 @@ Mobile companion to the Desktop App—for on-the-go reading.
 - [ ] Friend map UI with recency indicators
 
 **Deliverable:** Friend Map view showing where friends have posted from.
+
+**Detailed Plan:** [docs/PHASE-8-FRIEND-MAP.md](docs/PHASE-8-FRIEND-MAP.md)
 
 ---
 
@@ -617,6 +625,8 @@ Supplement to Desktop App—quick saves and Ulysses mode.
 
 **Deliverable:** Extension with save button and Ulysses mode.
 
+**Detailed Plan:** [docs/PHASE-9-BROWSER-EXTENSION.md](docs/PHASE-9-BROWSER-EXTENSION.md)
+
 ---
 
 ### Phase 10: Polish + OpenClaw Enhancements
@@ -632,16 +642,7 @@ Supplement to Desktop App—quick saves and Ulysses mode.
 - [ ] Native Liquid Glass buttons (SwiftUI, macOS only)
 - [ ] OpenClaw skill improvements (advanced automation for power users)
 
----
-
-## Work Sessions Log
-
-Track progress session by session:
-
-| Date       | Focus                 | Completed                   | Notes                                                     |
-| ---------- | --------------------- | --------------------------- | --------------------------------------------------------- |
-| 2026-01-30 | Architecture planning | Unified roadmap             | Decided on OpenClaw skills + Automerge + PWA architecture |
-| 2026-01-30 | Phase 1-2 build       | Foundation + Capture skills | Monorepo, @freed/shared, capture-x, capture-rss complete  |
+**Detailed Plan:** [docs/PHASE-10-POLISH.md](docs/PHASE-10-POLISH.md)
 
 ---
 
