@@ -2,19 +2,73 @@
 
 > **Their algorithms optimize for profit. Optimize yours for life.**
 
-FREED captures social media and RSS feeds locally, presents them through a unified timeline you control, and syncs across devices without any data leaving your possession.
+Capture your social feeds locally. Tune the ranking algorithm yourself. Sync across devices. No cloud dependency, no tracking, no algorithmic manipulation.
 
 **Website:** [freed.wtf](https://freed.wtf)
 
 ---
 
-## What It Does
+## Architecture
 
-- **Captures X/Twitter** via background polling using their GraphQL API
-- **Aggregates RSS/Atom feeds** from blogs, YouTube, Reddit, Substack, podcasts, and more
-- **Normalizes everything** into a single unified feed format
-- **Syncs across devices** via Automerge CRDT—no cloud service required
-- **Runs locally** as OpenClaw skills—no servers, no tracking
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              CAPTURE LAYER                                   │
+│                                                                             │
+│   ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌───────────┐   │
+│   │ capture-x │ │capture-rss│ │capture-   │ │ capture-  │ │ capture-  │   │
+│   │           │ │           │ │   save    │ │ facebook  │ │ instagram │   │
+│   └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └─────┬─────┘ └─────┬─────┘   │
+│         │             │             │             │             │         │
+│         └─────────────┴─────────────┴─────────────┴─────────────┘         │
+│                                    │                                       │
+│                                    ▼                                       │
+│                        ┌─────────────────────┐                             │
+│                        │  FeedItem (unified) │                             │
+│                        │  Automerge CRDT Doc │                             │
+│                        └──────────┬──────────┘                             │
+└───────────────────────────────────┼─────────────────────────────────────────┘
+                                    │
+┌───────────────────────────────────┼─────────────────────────────────────────┐
+│                              SYNC LAYER                                      │
+│                                    │                                        │
+│          ┌─────────────────────────┴─────────────────────────┐              │
+│          │                                                   │              │
+│    Local Relay (WebSocket)                         Cloud Backup             │
+│    instant sync on LAN                         GDrive/iCloud/Dropbox        │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+┌───────────────────────────────────┼─────────────────────────────────────────┐
+│                             CLIENT LAYER                                     │
+│          ┌────────────────────────┴────────────────────────┐                │
+│          ▼                                                 ▼                │
+│   ┌─────────────┐                                   ┌─────────────┐         │
+│   │ Desktop App │ ◄─────────────────────────────────│  Phone PWA  │         │
+│   │  (primary)  │          real-time sync           │  (mobile)   │         │
+│   └─────────────┘                                   └─────────────┘         │
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────┐       │
+│   │                    Browser Extension (optional)                  │       │
+│   │                 One-click save • Ulysses mode                   │       │
+│   └─────────────────────────────────────────────────────────────────┘       │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Desktop App is the hub.** It runs capture, hosts the sync relay, and provides the reader UI. Phone PWA syncs to it for mobile reading. OpenClaw users can run capture headlessly instead.
+
+---
+
+## Capture Layers
+
+| Package | Sources | Method | Status |
+|---------|---------|--------|--------|
+| `capture-x` | X/Twitter | GraphQL API | ✓ Complete |
+| `capture-rss` | Blogs, Medium, Substack, YouTube, podcasts, Mastodon, Reddit, GitHub | RSS/Atom | ✓ Complete |
+| `capture-save` | Any URL | Readability extraction | Phase 3 |
+| `capture-facebook` | Facebook | DOM scraping | Phase 7 |
+| `capture-instagram` | Instagram | DOM scraping | Phase 7 |
+| `capture-linkedin` | LinkedIn | DOM scraping | Phase 12 |
+| `capture-tiktok` | TikTok | TBD | Phase 12 |
+| `capture-threads` | Threads | TBD | Phase 12 |
 
 ---
 
@@ -26,193 +80,112 @@ One feed combining X posts, blog articles, YouTube videos, newsletters, and podc
 
 ### 🔒 Local-First Privacy
 
-All data stays on your device. FREED captures to a local Automerge document. We literally cannot see what you capture.
+All data stays on your device. We literally cannot see what you capture.
 
 ### 🐦 X/Twitter Capture
 
-Three modes for controlling X capture:
-
-- **Mirror** — Capture from everyone you follow on X
-- **Whitelist** — Only capture from accounts you specify
-- **Mirror + Blacklist** — Mirror your follows minus specific accounts
+Three modes:
+- **Mirror** — Capture from everyone you follow
+- **Whitelist** — Only specified accounts
+- **Mirror + Blacklist** — Mirror minus specific accounts
 
 ### 📡 RSS Integration
 
-Subscribe to any RSS/Atom feed. Special handling for:
-
-- YouTube channels, Reddit, Mastodon, GitHub releases
-- Medium, Substack, Ghost, and other newsletters
-- Podcasts (RSS is their native format)
-- OPML import for migrating from other readers
+Subscribe to any RSS/Atom feed. OPML import for migrating from other readers.
 
 ### 🔄 Cross-Device Sync
 
-Automerge CRDT enables conflict-free sync:
-
-- WebRTC for peer-to-peer on local network
-- Encrypted cloud backup (Google Drive, iCloud, Dropbox)
-- No central server required
+Automerge CRDT enables conflict-free sync via local relay or cloud backup (Google Drive, iCloud, Dropbox). No central server.
 
 ### ⚓ Ulysses Mode _(Coming Soon)_
 
-Browser extension that blocks platform feeds and redirects to FREED. Choose your constraints before the Sirens start singing.
+Browser extension that blocks platform feeds and redirects to FREED.
 
 ### 📍 Friend Map _(Coming Soon)_
 
-See where your friends are posting from. Location extraction from geo-tags and text builds a map of your social circle. Social media should facilitate human connection, not replace it.
-
----
-
-## Planned Platforms
-
-### 📘 Facebook _(Planned)_
-
-DOM-based capture for Facebook feeds and stories. Challenging due to obfuscated selectors, but on the roadmap.
-
-### 📸 Instagram _(Planned)_
-
-Capture posts, stories, and reels from your Instagram feed. Similar DOM-based approach to Facebook.
-
-### 🦋 Bluesky _(Planned)_
-
-Native AT Protocol integration for richer data than RSS alone.
-
-### 🐘 Mastodon _(Planned)_
-
-Enhanced capture via Mastodon API (beyond current RSS support) for notifications and direct messages.
-
-### 💼 LinkedIn _(Future)_
-
-Professional network capture. Lower priority but architecturally supported.
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        CAPTURE LAYER                            │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │
-│  │ capture-x   │  │ capture-rss │  │ Future: DOM scrapers    │  │
-│  │ (GraphQL)   │  │ (RSS/Atom)  │  │ (Facebook, Instagram)   │  │
-│  └──────┬──────┘  └──────┬──────┘  └────────────┬────────────┘  │
-│         └────────────────┼─────────────────────┘                │
-│                          ▼                                      │
-│              ┌───────────────────────┐                          │
-│              │   @freed/shared       │                          │
-│              │   (FeedItem Schema)   │                          │
-│              └───────────┬───────────┘                          │
-│                          ▼                                      │
-│              ┌───────────────────────┐                          │
-│              │  Automerge CRDT Doc   │                          │
-│              └───────────────────────┘                          │
-└─────────────────────────────────────────────────────────────────┘
-                           │
-┌──────────────────────────┼──────────────────────────────────────┐
-│                     SYNC LAYER                                  │
-│              ┌───────────┴───────────┐                          │
-│              │    automerge-repo     │                          │
-│              │  WebRTC + Cloud Backup│                          │
-│              └───────────────────────┘                          │
-└─────────────────────────────────────────────────────────────────┘
-                           │
-┌──────────────────────────┼──────────────────────────────────────┐
-│                    READER LAYER                                 │
-│    ┌─────────────┐              ┌─────────────┐                 │
-│    │ Desktop PWA │              │  Phone PWA  │                 │
-│    └─────────────┘              └─────────────┘                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Project Structure
-
-```
-freed/
-├── packages/
-│   ├── shared/              # @freed/shared - types, Automerge schema
-│   ├── capture-x/           # @freed/capture-x - X GraphQL client
-│   └── capture-rss/         # @freed/capture-rss - RSS parser
-├── skills/
-│   ├── capture-x/           # OpenClaw skill for X capture
-│   └── capture-rss/         # OpenClaw skill for RSS capture
-├── website/                 # Marketing site (freed.wtf)
-├── workers/                 # Cloudflare Workers
-├── docs/                    # Documentation
-└── TODO-roadmap.md          # Master roadmap
-```
+See where your friends are posting from.
 
 ---
 
 ## Quick Start
 
-### Capture RSS Feeds
+### RSS Capture
 
 ```bash
-# Add a feed (auto-discovers RSS URL)
 cd skills/capture-rss && npx tsx src/index.ts add https://simonwillison.net
-
-# Import from OPML
-npx tsx src/index.ts import ~/Downloads/feedly-export.opml
-
-# Sync all feeds
 npx tsx src/index.ts sync
-
-# View recent items
 npx tsx src/index.ts recent 20
 ```
 
-### Capture X/Twitter
+### X/Twitter Capture
 
 ```bash
 cd skills/capture-x && npx tsx src/index.ts status
-
-# Set capture mode
 npx tsx src/index.ts mode mirror_blacklist
-npx tsx src/index.ts blacklist add @annoying_account
-
-# Sync timeline
 npx tsx src/index.ts sync
 ```
 
 ---
 
-## Tech Stack
+## Roadmap
 
-| Layer    | Technology                      |
-| -------- | ------------------------------- |
-| Language | TypeScript                      |
-| Runtime  | Bun / Node                      |
-| Monorepo | npm workspaces                  |
-| Storage  | Automerge CRDT                  |
-| Sync     | automerge-repo (WebRTC + cloud) |
-| PWA      | React + Tailwind (coming soon)  |
-| Capture  | OpenClaw skills                 |
+### Phase 0–2: Foundation ✓
+
+Marketing site, monorepo, `capture-x`, `capture-rss`.
+
+### Phase 3: Save for Later
+
+URL capture with Readability extraction. [Plan](docs/PHASE-3-SAVE-FOR-LATER.md)
+
+### Phase 4: Sync Layer
+
+Local WebSocket relay + cloud backup. [Plan](docs/PHASE-4-SYNC.md)
+
+### Phase 5: Desktop App 🎯
+
+**HIGHEST PRIORITY** — Native app bundling capture, sync, and reader UI. [Plan](docs/PHASE-5-DESKTOP.md)
+
+### Phase 6: PWA Reader
+
+Mobile companion at freed.wtf/app. [Plan](docs/PHASE-6-PWA.md)
+
+### Phase 7: Facebook + Instagram
+
+DOM scraping via headless browser. [Plan](docs/PHASE-7-SOCIAL-CAPTURE.md)
+
+### Phase 8: Friend Map
+
+Location-based social view. [Plan](docs/PHASE-8-FRIEND-MAP.md)
+
+### Phase 9: Browser Extension
+
+Quick saves and Ulysses mode. [Plan](docs/PHASE-9-BROWSER-EXTENSION.md)
+
+### Phase 10: Polish
+
+Onboarding, statistics, accessibility. [Plan](docs/PHASE-10-POLISH.md)
+
+### Phase 11: OpenClaw Integration
+
+Headless capture for power users. [Plan](docs/PHASE-11-OPENCLAW.md)
+
+### Phase 12: Additional Platforms
+
+LinkedIn, TikTok, Threads. [Plan](docs/PHASE-12-ADDITIONAL-PLATFORMS.md)
 
 ---
 
-## Development Status
+## Key Decisions
 
-| Phase                                | Status      |
-| ------------------------------------ | ----------- |
-| Marketing Site                       | ✅ Complete |
-| Foundation (monorepo, types, schema) | ✅ Complete |
-| X Capture                            | ✅ Complete |
-| RSS Capture                          | ✅ Complete |
-| Sync Layer                           | ⚪ Pending  |
-| PWA Reader                           | ⚪ Pending  |
-| Browser Extension                    | ⚪ Pending  |
-| Friend Map                           | ⚪ Pending  |
-| Facebook/Instagram                   | ⚪ Future   |
-
-See [TODO-roadmap.md](TODO-roadmap.md) for detailed roadmap.
+1. **Desktop App as hub** — Capture + sync + UI in one installable package
+2. **Zero external infrastructure** — Local relay + user's cloud storage
+3. **Automerge CRDT** — Conflict-free multi-device sync
+4. **Tiered accessibility** — PWA-only → Desktop → OpenClaw (increasing capability)
+5. **Capture layer pattern** — Each source normalizes to unified `FeedItem`
 
 ---
 
 ## Configuration
-
-FREED uses two configuration layers:
 
 **Operational settings** (`~/.freed/config.json`):
 
@@ -223,49 +196,41 @@ FREED uses two configuration layers:
 }
 ```
 
-**Subscriptions & preferences** (Automerge document—syncs across devices):
-
-- RSS feed subscriptions
-- X capture mode (mirror/whitelist/blacklist)
-- Feed weights and display preferences
+**Subscriptions & preferences** sync via Automerge document.
 
 ---
 
-## 💜 Contributing
+## Contributing
 
-FREED is open source and welcomes contributions. See [CONTRIBUTING.md](CONTRIBUTING.md).
+FREED is open source. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Areas where we need help:
-
-- PWA reader UI/UX
-- Additional capture skills (Mastodon API, Bluesky AT Protocol)
+- Desktop app UI
+- Additional capture layers
 - Sync layer implementation
-- Documentation and testing
+- Testing
 
 ---
 
-## ⚖️ Legal
+## Legal
 
-FREED operates locally on your device using your own authenticated sessions—similar to RSS readers and browser developer tools. All data stays local. We have no servers and collect no data.
+FREED operates locally using your own authenticated sessions. All data stays local. We have no servers and collect no data.
 
-See [docs/LEGAL.md](docs/LEGAL.md) for details.
-
----
-
-## 📜 License
-
-MIT License. See [LICENSE](LICENSE).
+See [docs/LEGAL.md](docs/LEGAL.md).
 
 ---
 
-## 🧭 Philosophy
+## License
 
-FREED exists because:
+MIT. See [LICENSE](LICENSE).
+
+---
+
+## Philosophy
 
 - Your attention belongs to you
 - Algorithms should serve your goals, not theirs
 - Social media should facilitate human connection, not replace it
-- A unified view of content you care about shouldn't require surrendering your data
 
 Read the manifesto at [freed.wtf/manifesto](https://freed.wtf/manifesto).
 
