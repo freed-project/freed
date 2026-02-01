@@ -39,13 +39,13 @@ Capture your social/rss/newsletter feeds locally. Tune the ranking algo yourself
 
 ## Features
 
-- **Unified feed** — X, RSS, YouTube, newsletters, podcasts in one timeline
-- **Your ranking** — Weight by recency, author, topic—not engagement
-- **Local-first** — All data on your device, we can't see it
-- **Cross-device sync** — Automerge CRDT via local relay or cloud backup
-- **Save for later** — Capture any URL with reader view
-- **Ulysses mode** — Block platform feeds, stay intentional
-- **Friend map** — See where friends are posting from
+- 🌊 **Unified feed** — X, RSS, YouTube, newsletters, podcasts in one timeline
+- ⚖️ **Your ranking** — Weight by recency, author, topic—not engagement
+- 🔒 **Local-first** — All data on your device, we can't see it
+- 🔄 **Cross-device sync** — Automerge CRDT via local relay or cloud backup
+- 📌 **Save for later** — Capture any URL with reader view
+- ⚓ **Ulysses mode** — Block platform feeds, stay intentional
+- 📍 **Friend map** — See where friends are posting from
 
 ---
 
