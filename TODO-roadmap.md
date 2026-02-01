@@ -457,39 +457,15 @@ Independent capture layer for manually saved URLs (like capture-x and capture-rs
 
 **Deliverable:** Instant sync at home via OpenClaw, cloud sync when away. Zero external infrastructure.
 
-**Detailed Plan:** See [docs/PHASE-4-5-EXECUTION-PLAN.md](docs/PHASE-4-5-EXECUTION-PLAN.md)
+**Detailed Plan:** See [docs/PHASE-4-6-EXECUTION-PLAN.md](docs/PHASE-4-6-EXECUTION-PLAN.md)
 
 ---
 
-### Phase 5: PWA Reader
+### Phase 5: Desktop App (Tauri)
 
 **Status:** Not Started
 
-**Design:** Timeline-focused, minimal chrome, content-first
-
-- [ ] React + Tailwind + Framer Motion setup
-- [ ] AppShell layout (sidebar + timeline)
-- [ ] Unified feed view with ranking algorithm
-- [ ] Per-source unread tracking (opt-in for newsletters, priority sources)
-- [ ] Reading enhancements (focus mode, font options)
-- [ ] Virtual scrolling for large feeds
-- [ ] Feed settings (weights, filters)
-- [ ] RSS subscription management
-- [ ] Mobile-first responsive design
-- [ ] Offline support (Workbox service worker)
-- [ ] Add to homescreen prompt
-
-**Deliverable:** Mobile-friendly PWA at freed.wtf/app.
-
-**Detailed Plan:** See [docs/PHASE-4-5-EXECUTION-PLAN.md](docs/PHASE-4-5-EXECUTION-PLAN.md)
-
----
-
-### Phase 6: Desktop App (Tauri)
-
-**Status:** Not Started
-
-The universal capture engine for non-technical users. Packages all capture + sync + UI into a native desktop app.
+**🎯 HIGHEST PRIORITY** — The universal liberation tool. Anyone can install this and escape algorithmic manipulation without technical setup.
 
 **Architecture:**
 
@@ -552,7 +528,7 @@ The universal capture engine for non-technical users. Packages all capture + syn
 - [ ] Embed PWA React app in WebView
 - [ ] Native window vibrancy (macOS)
 - [ ] Menu bar icon + background mode
-- [ ] Local WebSocket relay (same as OpenClaw)
+- [ ] Local WebSocket relay (for phone sync)
 - [ ] Playwright subprocess for DOM capture
 - [ ] System tray with sync status
 - [ ] QR code display for phone pairing
@@ -564,7 +540,68 @@ The universal capture engine for non-technical users. Packages all capture + syn
 
 ---
 
-### Phase 7: Browser Extension
+### Phase 6: PWA Reader
+
+**Status:** Not Started
+
+Mobile companion to the Desktop App—for on-the-go reading.
+
+**Design:** Timeline-focused, minimal chrome, content-first
+
+- [ ] React + Tailwind + Framer Motion setup
+- [ ] AppShell layout (sidebar + timeline)
+- [ ] Unified feed view with ranking algorithm
+- [ ] Per-source unread tracking (opt-in for newsletters, priority sources)
+- [ ] Reading enhancements (focus mode, font options)
+- [ ] Virtual scrolling for large feeds
+- [ ] Feed settings (weights, filters)
+- [ ] RSS subscription management
+- [ ] Mobile-first responsive design
+- [ ] Offline support (Workbox service worker)
+- [ ] Add to homescreen prompt
+
+**Deliverable:** Mobile-friendly PWA at freed.wtf/app.
+
+**Detailed Plan:** See [docs/PHASE-4-6-EXECUTION-PLAN.md](docs/PHASE-4-6-EXECUTION-PLAN.md)
+
+---
+
+### Phase 7: Facebook + Instagram Capture
+
+**Status:** Not Started
+
+**Requires:** Phase 5 Desktop App (Playwright for DOM scraping)
+
+- [ ] `@freed/capture-facebook` package
+- [ ] `@freed/capture-instagram` package
+- [ ] DOM selectors for feed parsing
+- [ ] Session/cookie management
+- [ ] Stories capture
+- [ ] Rate limiting to avoid bans
+- [ ] Selector maintenance strategy (they change often)
+
+**Note:** DOM scraping is fragile. These platforms actively fight scrapers. Most location data for Friend Map comes from here.
+
+---
+
+### Phase 8: Location & Friend Map
+
+**Status:** Not Started
+
+**Requires:** Phase 7 (Instagram provides most geo-tagged content)
+
+- [ ] Location extraction from geo-tags
+- [ ] Location extraction from text patterns
+- [ ] Nominatim geocoding integration
+- [ ] Geocoding cache layer
+- [ ] MapLibre GL JS integration
+- [ ] Friend map UI with recency indicators
+
+**Deliverable:** Friend Map view showing where friends have posted from.
+
+---
+
+### Phase 9: Browser Extension
 
 **Status:** Not Started
 
@@ -582,40 +619,7 @@ Supplement to Desktop App—quick saves and Ulysses mode.
 
 ---
 
-### Phase 8: Location & Friend Map
-
-**Status:** Not Started
-
-- [ ] Location extraction from geo-tags
-- [ ] Location extraction from text patterns
-- [ ] Nominatim geocoding integration
-- [ ] Geocoding cache layer
-- [ ] MapLibre GL JS integration
-- [ ] Friend map UI with recency indicators
-
-**Deliverable:** Friend Map view showing where friends have posted from.
-
----
-
-### Phase 9: Facebook + Instagram Capture
-
-**Status:** Not Started
-
-**Requires:** Phase 6 Desktop App (Playwright for DOM scraping)
-
-- [ ] `@freed/capture-facebook` package
-- [ ] `@freed/capture-instagram` package
-- [ ] DOM selectors for feed parsing
-- [ ] Session/cookie management
-- [ ] Stories capture
-- [ ] Rate limiting to avoid bans
-- [ ] Selector maintenance strategy (they change often)
-
-**Note:** DOM scraping is fragile. These platforms actively fight scrapers. Lower priority than X + RSS.
-
----
-
-### Phase 10: Polish
+### Phase 10: Polish + OpenClaw Enhancements
 
 **Status:** Future
 
@@ -626,6 +630,7 @@ Supplement to Desktop App—quick saves and Ulysses mode.
 - [ ] Performance optimization
 - [ ] Accessibility audit
 - [ ] Native Liquid Glass buttons (SwiftUI, macOS only)
+- [ ] OpenClaw skill improvements (advanced automation for power users)
 
 ---
 

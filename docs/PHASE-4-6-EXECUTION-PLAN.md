@@ -1,6 +1,6 @@
-# Phase 4-5 Execution Plan
+# Phase 4 & 6 Execution Plan
 
-> **Scope:** Sync Layer (Phase 4) + PWA Reader (Phase 5)  
+> **Scope:** Sync Layer (Phase 4) + PWA Reader (Phase 6)  
 > **Prepared:** 2026-01-30  
 > **Dependencies:** Phase 1-2 (Capture layers ✓), Phase 3 (Save for Later)
 
@@ -8,7 +8,7 @@
 
 ## Overview
 
-Phase 4 establishes device-to-device sync via Automerge CRDT. Phase 5 delivers the reader interface—a timeline-focused PWA.
+Phase 4 establishes device-to-device sync via Automerge CRDT. Phase 6 delivers the reader interface—a timeline-focused PWA.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -318,9 +318,9 @@ export function createSyncManager(repo: Repo): SyncManager {
 
 ---
 
-## Phase 5: PWA Reader
+## Phase 6: PWA Reader
 
-### 5.1 Design Philosophy
+### 6.1 Design Philosophy
 
 **Core Principles:**
 
@@ -338,7 +338,7 @@ export function createSyncManager(repo: Repo): SyncManager {
 
 > **Note:** Save for Later is implemented as a separate capture layer (`@freed/capture-save`) in Phase 3, following the same architecture as `capture-x` and `capture-rss`. The PWA displays saved items but doesn't implement the capture logic.
 
-### 5.2 Create `@freed/pwa` Package
+### 6.2 Create `@freed/pwa` Package
 
 **New package:** `packages/pwa/`
 
@@ -430,7 +430,7 @@ packages/pwa/
 }
 ```
 
-### 5.3 Reading Enhancements
+### 6.3 Reading Enhancements
 
 Optional reading enhancements to improve focus and comfort:
 
@@ -492,7 +492,7 @@ function getEmphasisCount(
 }
 ```
 
-### 5.4 Feed Ranking Algorithm
+### 6.4 Feed Ranking Algorithm
 
 ```typescript
 // packages/pwa/src/lib/ranking.ts
@@ -567,7 +567,7 @@ export function filterByContentType(
 }
 ```
 
-### 5.5 Core Components
+### 6.5 Core Components
 
 #### App Shell (sidebar + timeline layout)
 
@@ -751,7 +751,7 @@ function getPlatformIcon(platform: string): string {
 }
 ```
 
-### 5.6 Settings Panel
+### 6.6 Settings Panel
 
 ```tsx
 // packages/pwa/src/components/settings/DisplaySettings.tsx
@@ -822,7 +822,7 @@ export function DisplaySettings() {
 }
 ```
 
-### 5.7 PWA Configuration
+### 6.7 PWA Configuration
 
 ```typescript
 // packages/pwa/vite.config.ts
@@ -877,7 +877,7 @@ export default defineConfig({
 });
 ```
 
-### 5.8 Phase 5 Tasks
+### 6.8 Phase 6 Tasks
 
 | Task  | Description                               | Est. Complexity |
 | ----- | ----------------------------------------- | --------------- |
@@ -911,7 +911,7 @@ export default defineConfig({
 | 4.9.2 | Add to homescreen flow                    | Low             |
 | 4.9.3 | Offline indicator                         | Low             |
 
-**Phase 5 Deliverable:** Mobile-first PWA at freed.wtf/app with per-source unread tracking and unified feed.
+**Phase 6 Deliverable:** Mobile-first PWA at freed.wtf/app with per-source unread tracking and unified feed.
 
 > **Note:** Save for Later (`capture-save`) is Phase 3—a separate capture layer with its own package and execution plan.
 
@@ -930,7 +930,7 @@ Phase 4: Sync Layer
 ├── 3.5 Cloud backup encryption utilities
 └── 3.6 Google Drive integration
 
-Phase 5: PWA Reader (can start after 4.1-4.4)
+Phase 6: PWA Reader (can start after 4.1-4.4)
 ├── 4.1 Package scaffold + Vite config
 ├── 4.2 AppShell + basic layout
 ├── 4.3 Reading enhancements
@@ -945,8 +945,8 @@ Phase 5: PWA Reader (can start after 4.1-4.4)
 ### Parallelization Opportunities
 
 - **4.2 + 4.3**: Local relay and cloud sync can be developed in parallel
-- **5.3 + 5.4**: Reading enhancements and Feed components are independent
-- **5.6 + 5.7**: Settings and Source management are independent
+- **6.3 + 6.4**: Reading enhancements and Feed components are independent
+- **6.6 + 6.7**: Settings and Source management are independent
 
 ---
 
@@ -1181,7 +1181,7 @@ One of several reading enhancements:
 - [ ] QR code or manual pairing connects PWA to OpenClaw
 - [ ] Sync status UI shows "Local" vs "Cloud" vs "Offline"
 
-### Phase 5 Complete When:
+### Phase 6 Complete When:
 
 - [ ] PWA loads at freed.wtf/app
 - [ ] Feed displays items from Automerge document
