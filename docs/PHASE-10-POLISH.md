@@ -1,4 +1,4 @@
-# Phase 10: Polish + OpenClaw Enhancements
+# Phase 10: Polish
 
 > **Status:** Future  
 > **Dependencies:** All previous phases
@@ -7,7 +7,7 @@
 
 ## Overview
 
-Final polish, accessibility, and advanced features for power users.
+Final polish, accessibility, and UX refinements.
 
 ---
 
@@ -188,69 +188,6 @@ export function useKeyboardShortcuts() {
 
 ---
 
-## OpenClaw Enhancements
-
-Advanced automation for power users who run OpenClaw.
-
-### Scheduled Captures
-
-```typescript
-// skills/capture-scheduler/src/index.ts
-export async function scheduleCaptures(config: ScheduleConfig): Promise<void> {
-  const jobs = [
-    { name: "X capture", cron: "*/15 * * * *", skill: "capture-x" },
-    { name: "RSS sync", cron: "*/30 * * * *", skill: "capture-rss" },
-  ];
-
-  for (const job of jobs) {
-    // Register with OpenClaw scheduler
-  }
-}
-```
-
-### Custom Ranking Rules
-
-```yaml
-# ~/.freed/ranking.yml
-rules:
-  - name: "Boost favorite authors"
-    condition:
-      author_handle:
-        - "@favorite_author"
-        - "@another_author"
-    boost: 50
-
-  - name: "Deprioritize promotional content"
-    condition:
-      content_contains:
-        - "sponsored"
-        - "ad"
-        - "promo"
-    penalty: 30
-```
-
-### Feed Archival
-
-```typescript
-// skills/archive/src/index.ts
-export async function archiveOldItems(
-  doc: FreedDoc,
-  config: ArchiveConfig,
-): Promise<void> {
-  const cutoff = Date.now() - config.maxAgeDays * 24 * 60 * 60 * 1000;
-
-  for (const [id, item] of Object.entries(doc.feedItems)) {
-    if (item.publishedAt < cutoff && !item.userState.saved) {
-      // Move to archive
-      await archiveItem(item);
-      delete doc.feedItems[id];
-    }
-  }
-}
-```
-
----
-
 ## Native Liquid Glass (macOS)
 
 SwiftUI buttons for true Liquid Glass aesthetic:
@@ -278,20 +215,17 @@ struct LiquidGlassButton: View {
 
 ## Tasks
 
-| Task  | Description                 | Complexity |
-| ----- | --------------------------- | ---------- |
-| 10.1  | Onboarding wizard           | Medium     |
-| 10.2  | Statistics dashboard        | Medium     |
-| 10.3  | Export to JSON              | Low        |
-| 10.4  | Export to CSV               | Low        |
-| 10.5  | Keyboard shortcuts          | Medium     |
-| 10.6  | Screen reader support       | Medium     |
-| 10.7  | Reduced motion support      | Low        |
-| 10.8  | Color contrast audit        | Low        |
-| 10.9  | OpenClaw scheduled captures | Medium     |
-| 10.10 | Custom ranking rules        | High       |
-| 10.11 | Feed archival automation    | Medium     |
-| 10.12 | Native Liquid Glass buttons | High       |
+| Task | Description | Complexity |
+|------|-------------|------------|
+| 10.1 | Onboarding wizard | Medium |
+| 10.2 | Statistics dashboard | Medium |
+| 10.3 | Export to JSON | Low |
+| 10.4 | Export to CSV | Low |
+| 10.5 | Keyboard shortcuts | Medium |
+| 10.6 | Screen reader support | Medium |
+| 10.7 | Reduced motion support | Low |
+| 10.8 | Color contrast audit | Low |
+| 10.9 | Native Liquid Glass buttons | High |
 
 ---
 
@@ -303,10 +237,9 @@ struct LiquidGlassButton: View {
 - [ ] Keyboard navigation complete
 - [ ] Screen reader accessible
 - [ ] Reduced motion respected
-- [ ] OpenClaw power features work
 
 ---
 
 ## Deliverable
 
-Polished, accessible app with power user features for OpenClaw users.
+Polished, accessible app.

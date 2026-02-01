@@ -80,9 +80,9 @@ Capture your social feeds locally. Tune the ranking algorithm yourself. Sync acr
 | `capture-save` | Any URL | Readability extraction | Phase 3 |
 | `capture-facebook` | Facebook | DOM scraping | Phase 7 |
 | `capture-instagram` | Instagram | DOM scraping | Phase 7 |
-| `capture-linkedin` | LinkedIn | DOM scraping | Phase 11 |
-| `capture-tiktok` | TikTok | TBD | Phase 11 |
-| `capture-threads` | Threads | TBD | Phase 11 |
+| `capture-linkedin` | LinkedIn | DOM scraping | Phase 12 |
+| `capture-tiktok` | TikTok | TBD | Phase 12 |
+| `capture-threads` | Threads | TBD | Phase 12 |
 
 ---
 
@@ -182,13 +182,27 @@ Quick saves and Ulysses mode (feed blocking).
 
 ### Phase 10: Polish
 
-Onboarding, statistics, accessibility, OpenClaw power features.
+Onboarding, statistics, accessibility audit.
 
 **Plan:** [docs/PHASE-10-POLISH.md](docs/PHASE-10-POLISH.md)
 
 ---
 
-### Phase 11: Additional Platforms
+### Phase 11: OpenClaw Integration
+
+Headless capture for power users. Run FREED without the Desktop App.
+
+**Deliverables:**
+- OpenClaw skill wrappers for all capture layers
+- Scheduled capture automation
+- Custom ranking rules (YAML config)
+- Feed archival automation
+
+**Plan:** [docs/PHASE-11-OPENCLAW.md](docs/PHASE-11-OPENCLAW.md)
+
+---
+
+### Phase 12: Additional Platforms
 
 Expand capture to more walled gardens. Each platform gets its own capture layer.
 
@@ -197,7 +211,7 @@ Expand capture to more walled gardens. Each platform gets its own capture layer.
 - `@freed/capture-tiktok`
 - `@freed/capture-threads`
 
-**Plan:** [docs/PHASE-11-ADDITIONAL-PLATFORMS.md](docs/PHASE-11-ADDITIONAL-PLATFORMS.md)
+**Plan:** [docs/PHASE-12-ADDITIONAL-PLATFORMS.md](docs/PHASE-12-ADDITIONAL-PLATFORMS.md)
 
 ---
 
