@@ -2,86 +2,173 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================
+   FREED Design System - Glowmorphic Dark Theme
+   Aligned with marketing site (freed.wtf)
+   ============================================ */
+
 :root {
-  /* Dark glass theme */
-  --bg-primary: rgba(18, 18, 18, 0.85);
-  --bg-sidebar: rgba(28, 28, 30, 0.7);
-  --bg-card: rgba(44, 44, 46, 0.9);
-  --bg-card-hover: rgba(58, 58, 60, 0.9);
-  --bg-input: rgba(38, 38, 40, 0.8);
+  /* Core colors - matches marketing site */
+  --freed-black: #0a0a0a;
+  --freed-dark: #0f0f0f;
+  --freed-surface: #141414;
+  --freed-border: rgba(255, 255, 255, 0.08);
+  
+  /* Glow colors - blue/purple/cyan gradient */
+  --glow-blue: #3b82f6;
+  --glow-purple: #8b5cf6;
+  --glow-cyan: #06b6d4;
+  
+  /* Text colors */
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
 
-  /* Glass borders */
-  --border-glass: rgba(255, 255, 255, 0.08);
-  --border-glass-strong: rgba(255, 255, 255, 0.15);
-
-  /* Text */
-  --text-primary: rgba(255, 255, 255, 0.92);
-  --text-secondary: rgba(255, 255, 255, 0.55);
-  --text-tertiary: rgba(255, 255, 255, 0.35);
-
-  /* Accent */
-  --accent: #ff6b35;
-  --accent-hover: #ff8555;
-  --accent-muted: rgba(255, 107, 53, 0.15);
+  /* Glass backgrounds */
+  --bg-card: rgba(255, 255, 255, 0.03);
+  --bg-card-hover: rgba(255, 255, 255, 0.05);
+  --bg-sidebar: rgba(20, 20, 20, 0.8);
+  --bg-input: rgba(255, 255, 255, 0.05);
 
   /* Spacing */
   --sidebar-width: 240px;
-  --card-radius: 12px;
+  --card-radius: 16px;
   --button-radius: 8px;
+  
+  /* Mobile safe areas */
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Base styles */
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background: #121212;
+  min-height: 100dvh; /* Dynamic viewport height for mobile */
+  background: var(--freed-black);
   color: var(--text-primary);
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  line-height: 1.6;
+  /* Prevent overscroll bounce on iOS */
+  overscroll-behavior: none;
 }
 
-/* Glass button component */
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Gradient text utility - matches marketing site */
+.gradient-text {
+  background: linear-gradient(135deg, var(--glow-blue), var(--glow-purple), var(--glow-cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Glow effects - matches marketing site */
+.glow-sm {
+  box-shadow: 
+    0 0 10px rgba(139, 92, 246, 0.2),
+    0 0 20px rgba(59, 130, 246, 0.1);
+}
+
+.glow-md {
+  box-shadow: 
+    0 0 20px rgba(139, 92, 246, 0.3),
+    0 0 40px rgba(59, 130, 246, 0.15),
+    0 0 60px rgba(139, 92, 246, 0.05);
+}
+
+/* Glassmorphic card - matches marketing site */
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--freed-border);
+  border-radius: var(--card-radius);
+}
+
+.glass-card:hover {
+  background: var(--bg-card-hover);
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+/* Primary button - gradient with glow */
+.btn-primary {
+  position: relative;
+  background: linear-gradient(135deg, var(--glow-blue), var(--glow-purple));
+  color: white;
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--button-radius);
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+  overflow: hidden;
+}
+
+.btn-primary:hover {
+  transform: scale(1.03);
+  box-shadow: 0 0 25px rgba(139, 92, 246, 0.4);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+/* Secondary button */
+.btn-secondary {
+  background: transparent;
+  color: var(--text-primary);
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--button-radius);
+  border: 1px solid var(--freed-border);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  border-color: var(--glow-purple);
+  background: rgba(139, 92, 246, 0.1);
+}
+
+/* Glass button - for icons and small actions */
 .glass-button {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.12) 0%,
-    rgba(255, 255, 255, 0.05) 100%
-  );
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid var(--border-glass);
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--freed-border);
   border-radius: var(--button-radius);
   color: var(--text-primary);
   padding: 8px 16px;
   font-weight: 500;
   transition: all 0.15s ease;
-  box-shadow:
-    0 2px 8px rgba(0, 0, 0, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .glass-button:hover {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.18) 0%,
-    rgba(255, 255, 255, 0.08) 100%
-  );
-  border-color: var(--border-glass-strong);
-  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(139, 92, 246, 0.3);
 }
 
 .glass-button:active {
-  transform: translateY(0);
-  box-shadow:
-    0 1px 4px rgba(0, 0, 0, 0.15),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transform: scale(0.98);
 }
 
 /* Feed card component */
 .feed-card {
   background: var(--bg-card);
-  border: 1px solid var(--border-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--freed-border);
   border-radius: var(--card-radius);
   padding: 16px;
   transition: all 0.15s ease;
@@ -89,13 +176,39 @@ body {
 
 .feed-card:hover {
   background: var(--bg-card-hover);
-  border-color: var(--border-glass-strong);
+  border-color: rgba(139, 92, 246, 0.2);
 }
 
-/* Scrollbar styling */
+/* Mobile-specific: larger touch targets */
+@media (max-width: 640px) {
+  .feed-card {
+    padding: 12px;
+    border-radius: 12px;
+  }
+  
+  .glass-button, .btn-primary, .btn-secondary {
+    min-height: 44px; /* iOS recommended touch target */
+    padding: 12px 16px;
+  }
+}
+
+/* Selection color */
+::selection {
+  background: rgba(139, 92, 246, 0.4);
+  color: white;
+}
+
+/* Scrollbar styling - thin on mobile */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
+}
+
+@media (min-width: 768px) {
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
 }
 
 ::-webkit-scrollbar-track {
@@ -103,10 +216,67 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Hide scrollbar on mobile for cleaner look */
+@media (max-width: 640px) {
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Bottom navigation for mobile */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(10, 10, 10, 0.9);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--freed-border);
+  padding-bottom: var(--safe-area-bottom);
+  z-index: 50;
+}
+
+/* Pull to refresh indicator */
+.pull-indicator {
+  background: linear-gradient(135deg, var(--glow-blue), var(--glow-purple));
+  border-radius: 50%;
+}
+
+/* Sync status indicator */
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.sync-dot.connected {
+  background: #22c55e;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+}
+
+.sync-dot.disconnected {
+  background: var(--text-muted);
+}
+
+.sync-dot.syncing {
+  background: var(--glow-purple);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }

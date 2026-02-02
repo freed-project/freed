@@ -10,6 +10,7 @@ interface HeaderProps {
 export function Header({ onMenuClick }: HeaderProps) {
   const [addFeedOpen, setAddFeedOpen] = useState(false);
   const isSyncing = useAppStore((s) => s.isSyncing);
+  const syncConnected = useAppStore((s) => s.syncConnected);
   const feeds = useAppStore((s) => s.feeds);
   const feedCount = Object.keys(feeds).length;
 
@@ -19,11 +20,11 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   return (
     <>
-      <header className="h-14 flex items-center px-4 border-b border-glass-border bg-glass-primary/50 backdrop-blur-xl">
+      <header className="h-14 flex items-center px-4 border-b border-[rgba(255,255,255,0.08)] bg-[#0a0a0a]/90 backdrop-blur-xl sticky top-0 z-30">
         {/* Mobile menu button */}
         <button
           onClick={onMenuClick}
-          className="md:hidden p-2 rounded-lg hover:bg-white/10 transition-colors"
+          className="md:hidden p-2 -ml-2 rounded-lg hover:bg-white/10 transition-colors"
           aria-label="Open menu"
         >
           <svg
@@ -41,13 +42,18 @@ export function Header({ onMenuClick }: HeaderProps) {
           </svg>
         </button>
 
-        {/* Logo */}
-        <div className="flex items-center gap-2 ml-2 md:ml-0">
-          <span className="text-xl font-bold text-accent">FREED</span>
+        {/* Logo - hidden on mobile (shown in sidebar) */}
+        <div className="hidden md:flex items-center gap-2">
+          <span className="text-xl font-bold gradient-text">FREED</span>
+        </div>
+
+        {/* Mobile title */}
+        <div className="md:hidden flex-1 text-center">
+          <span className="text-lg font-semibold">Feed</span>
         </div>
 
         {/* Actions */}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           {/* Refresh button */}
           {feedCount > 0 && (
             <button
@@ -75,7 +81,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           {/* Add feed button */}
           <button
             onClick={() => setAddFeedOpen(true)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent/20 text-accent hover:bg-accent/30 transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors"
           >
             <svg
               className="w-4 h-4"
@@ -95,15 +101,15 @@ export function Header({ onMenuClick }: HeaderProps) {
             </span>
           </button>
 
-          {/* Sync status */}
-          <div className="flex items-center gap-2 text-sm text-white/55 ml-2">
+          {/* Sync status - only on desktop */}
+          <div className="hidden sm:flex items-center gap-2 text-sm text-[#71717a] ml-2">
             <span
-              className={`w-2 h-2 rounded-full ${
-                isSyncing ? "bg-yellow-500 animate-pulse" : "bg-green-500"
+              className={`sync-dot ${
+                isSyncing ? "syncing" : syncConnected ? "connected" : "disconnected"
               }`}
             />
-            <span className="hidden sm:inline">
-              {isSyncing ? "Syncing..." : feedCount > 0 ? "Synced" : "Ready"}
+            <span>
+              {isSyncing ? "Syncing..." : syncConnected ? "Synced" : feedCount > 0 ? "Local" : "Ready"}
             </span>
           </div>
         </div>

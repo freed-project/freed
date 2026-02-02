@@ -107,11 +107,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     onClick={() => handleSourceClick(source)}
                     className={`
                       w-full flex items-center gap-3 px-3 py-2 rounded-lg
-                      text-left text-sm transition-colors
+                      text-left text-sm transition-all
                       ${
                         isActive(source)
-                          ? "bg-accent/20 text-white"
-                          : "text-white/70 hover:bg-white/5 hover:text-white"
+                          ? "bg-[#8b5cf6]/20 text-white border border-[#8b5cf6]/30"
+                          : "text-[#a1a1aa] hover:bg-white/5 hover:text-white"
                       }
                     `}
                   >
@@ -129,13 +129,13 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </div>
 
           {/* X Connection */}
-          <div className="mb-6 p-3 bg-white/5 rounded-lg">
+          <div className="mb-6 p-3 rounded-xl bg-white/5 border border-[rgba(255,255,255,0.08)]">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium">X / Twitter</span>
               {xAuth.isAuthenticated ? (
                 <span className="text-xs text-green-400">Connected</span>
               ) : (
-                <span className="text-xs text-white/50">Not connected</span>
+                <span className="text-xs text-[#71717a]">Not connected</span>
               )}
             </div>
             {xAuth.isAuthenticated ? (
@@ -143,13 +143,13 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 <button
                   onClick={handleSyncX}
                   disabled={xSyncing || isLoading}
-                  className="flex-1 text-xs px-2 py-1.5 bg-accent/20 text-accent rounded hover:bg-accent/30 disabled:opacity-50"
+                  className="flex-1 text-xs px-2 py-1.5 bg-[#8b5cf6]/20 text-[#8b5cf6] rounded-lg hover:bg-[#8b5cf6]/30 disabled:opacity-50 transition-colors"
                 >
                   {xSyncing ? "Syncing..." : "Sync Now"}
                 </button>
                 <button
                   onClick={handleDisconnectX}
-                  className="text-xs px-2 py-1.5 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30"
+                  className="text-xs px-2 py-1.5 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors"
                 >
                   Disconnect
                 </button>
@@ -157,7 +157,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             ) : (
               <button
                 onClick={handleConnectX}
-                className="w-full text-xs px-2 py-1.5 bg-accent/20 text-accent rounded hover:bg-accent/30"
+                className="w-full text-xs px-2 py-1.5 bg-[#8b5cf6]/20 text-[#8b5cf6] rounded-lg hover:bg-[#8b5cf6]/30 transition-colors"
               >
                 Connect X Account
               </button>
