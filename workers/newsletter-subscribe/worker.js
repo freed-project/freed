@@ -11,7 +11,7 @@
  * 4. Go to Settings → Variables → Add:
  *    - BREVO_API_KEY: Your Brevo API key (from https://app.brevo.com/settings/keys/api)
  *    - BREVO_LIST_ID: Your contact list ID (number)
- *    - ALLOWED_ORIGIN: Your website URL (e.g., https://freed.sh)
+ *    - ALLOWED_ORIGIN: Your website URL (e.g., https://freed.wtf)
  * 5. Copy the worker URL and set it as VITE_NEWSLETTER_API_URL in your .env
  */
 

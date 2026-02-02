@@ -1,4 +1,11 @@
-# FREED Workers
+# FREED Workers (Deprecated)
+
+> **Note:** This directory is deprecated. Newsletter subscriptions now use Vercel Edge Functions.
+> See `website/api/subscribe.ts` and `TODO-newsletter.md` for the current setup.
+
+---
+
+## Legacy: Cloudflare Workers
 
 Serverless functions for the FREED website.
 
@@ -27,17 +34,17 @@ Proxies newsletter signups to Brevo (formerly Sendinblue), keeping API keys secu
 
    ```bash
    cd workers/newsletter-subscribe
-   
+
    # Install wrangler if you haven't
    npm install -g wrangler
-   
+
    # Login to Cloudflare
    wrangler login
-   
+
    # Set your API key as a secret (won't be visible in code)
    wrangler secret put BREVO_API_KEY
    # Paste your Brevo API key when prompted
-   
+
    # Deploy
    wrangler deploy
    ```
@@ -64,7 +71,7 @@ Without this variable set, the modal will simulate success (useful for UI develo
 ### Cost Breakdown
 
 - **Cloudflare Workers**: Free tier = 100k requests/day (more than enough)
-- **Brevo**: 
+- **Brevo**:
   - Free to store unlimited contacts
   - Pay per email sent (~$25 for 90k emails)
   - No monthly subscriber fees like Mailchimp
@@ -78,6 +85,7 @@ curl -X POST https://your-worker.workers.dev \
 ```
 
 Should return:
+
 ```json
-{"success": true, "message": "Successfully subscribed"}
+{ "success": true, "message": "Successfully subscribed" }
 ```
