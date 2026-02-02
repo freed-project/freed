@@ -167,14 +167,20 @@ export function sortFeedItems(items: FeedItem[]): FeedItem[] {
 }
 
 // Optional: local filtering (doesn't recompute scores)
-export function filterByPlatform(items: FeedItem[], platform: Platform | null): FeedItem[] {
+export function filterByPlatform(
+  items: FeedItem[],
+  platform: Platform | null,
+): FeedItem[] {
   if (!platform) return items;
-  return items.filter(item => item.platform === platform);
+  return items.filter((item) => item.platform === platform);
 }
 
-export function filterByAuthor(items: FeedItem[], authorId: string | null): FeedItem[] {
+export function filterByAuthor(
+  items: FeedItem[],
+  authorId: string | null,
+): FeedItem[] {
   if (!authorId) return items;
-  return items.filter(item => item.author.id === authorId);
+  return items.filter((item) => item.author.id === authorId);
 }
 ```
 

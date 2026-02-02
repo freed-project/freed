@@ -1,0 +1,9 @@
+{
+  "name": "capture-save-skill",
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@freed/capture-save": "*",
+    "@freed/shared": "*"
+  }
+}

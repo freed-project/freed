@@ -37,12 +37,12 @@ packages/capture-x/
 export async function extractCookies(browser: Browser): Promise<XCookies>;
 
 // Supported browsers
-export type Browser = 'chrome' | 'firefox' | 'edge' | 'brave';
+export type Browser = "chrome" | "firefox" | "edge" | "brave";
 
 // Required cookies for API access
 export interface XCookies {
-  ct0: string;         // CSRF token
-  auth_token: string;  // Session token
+  ct0: string; // CSRF token
+  auth_token: string; // Session token
 }
 ```
 
@@ -52,10 +52,10 @@ export interface XCookies {
 export class XClient {
   // Fetch home timeline (following feed)
   async getHomeTimeline(cursor?: string): Promise<TimelineResponse>;
-  
+
   // Fetch user's following list
   async getFollowing(userId: string): Promise<User[]>;
-  
+
   // Get current user info
   async getMe(): Promise<User>;
 }
@@ -63,11 +63,11 @@ export class XClient {
 
 #### Capture Modes
 
-| Mode | Description |
-|------|-------------|
-| `mirror` | Capture from everyone you follow on X (default) |
-| `whitelist` | Only capture from explicitly listed accounts |
-| `mirror_blacklist` | Mirror follows, exclude blacklisted accounts |
+| Mode               | Description                                     |
+| ------------------ | ----------------------------------------------- |
+| `mirror`           | Capture from everyone you follow on X (default) |
+| `whitelist`        | Only capture from explicitly listed accounts    |
+| `mirror_blacklist` | Mirror follows, exclude blacklisted accounts    |
 
 #### Normalization (`normalize.ts`)
 
@@ -76,8 +76,8 @@ export class XClient {
 export function tweetToFeedItem(tweet: Tweet): FeedItem {
   return {
     globalId: `x:${tweet.rest_id}`,
-    platform: 'x',
-    contentType: 'post',
+    platform: "x",
+    contentType: "post",
     capturedAt: Date.now(),
     publishedAt: new Date(tweet.legacy.created_at).getTime(),
     author: {
@@ -200,13 +200,13 @@ export function generateOpml(feeds: RssFeed[]): string;
 
 RSS feeds from known platforms get special handling:
 
-| Platform | Detection | Content Type |
-|----------|-----------|--------------|
-| YouTube | `youtube.com/feeds` | `video` |
-| Reddit | `reddit.com/.rss` | `post` |
-| Mastodon | ActivityPub signature | `post` |
-| GitHub | `github.com/*.atom` | `post` |
-| Podcast | `<enclosure type="audio/*">` | `podcast` |
+| Platform | Detection                    | Content Type |
+| -------- | ---------------------------- | ------------ |
+| YouTube  | `youtube.com/feeds`          | `video`      |
+| Reddit   | `reddit.com/.rss`            | `post`       |
+| Mastodon | ActivityPub signature        | `post`       |
+| GitHub   | `github.com/*.atom`          | `post`       |
+| Podcast  | `<enclosure type="audio/*">` | `podcast`    |
 
 ---
 
@@ -227,7 +227,7 @@ capture-x mode mirror_blacklist   # Mirror minus blacklist
 capture-x whitelist add @user
 capture-x whitelist remove @user
 
-# Blacklist management  
+# Blacklist management
 capture-x blacklist add @user
 capture-x blacklist remove @user
 
@@ -265,32 +265,32 @@ capture-rss recent [count]
 
 ## Key Decisions
 
-| Decision | Rationale |
-|----------|-----------|
-| Browser cookie extraction | Use existing X session, no OAuth complexity |
-| Internal GraphQL API | Same API as web client, full access to timeline |
-| Multi-format RSS parser | Support RSS 1.0, 2.0, and Atom without external deps |
-| Platform detection from RSS | Better content typing (video, podcast, etc.) |
-| Conditional GET (ETag/Last-Modified) | Reduce bandwidth, respect server caching |
+| Decision                             | Rationale                                            |
+| ------------------------------------ | ---------------------------------------------------- |
+| Browser cookie extraction            | Use existing X session, no OAuth complexity          |
+| Internal GraphQL API                 | Same API as web client, full access to timeline      |
+| Multi-format RSS parser              | Support RSS 1.0, 2.0, and Atom without external deps |
+| Platform detection from RSS          | Better content typing (video, podcast, etc.)         |
+| Conditional GET (ETag/Last-Modified) | Reduce bandwidth, respect server caching             |
 
 ---
 
 ## Tasks
 
-| Task | Description | Status |
-|------|-------------|--------|
-| 2.1 | Create `@freed/capture-x` package | ✓ |
-| 2.2 | Implement browser cookie extraction | ✓ |
-| 2.3 | Build GraphQL API client | ✓ |
-| 2.4 | Normalize tweets to FeedItem | ✓ |
-| 2.5 | Implement capture modes (mirror/whitelist/blacklist) | ✓ |
-| 2.6 | Create OpenClaw skill wrapper for X | ✓ |
-| 2.7 | Create `@freed/capture-rss` package | ✓ |
-| 2.8 | Build RSS/Atom parser | ✓ |
-| 2.9 | Implement feed discovery | ✓ |
-| 2.10 | Normalize RSS items to FeedItem | ✓ |
-| 2.11 | Add OPML import/export | ✓ |
-| 2.12 | Create OpenClaw skill wrapper for RSS | ✓ |
+| Task | Description                                          | Status |
+| ---- | ---------------------------------------------------- | ------ |
+| 2.1  | Create `@freed/capture-x` package                    | ✓      |
+| 2.2  | Implement browser cookie extraction                  | ✓      |
+| 2.3  | Build GraphQL API client                             | ✓      |
+| 2.4  | Normalize tweets to FeedItem                         | ✓      |
+| 2.5  | Implement capture modes (mirror/whitelist/blacklist) | ✓      |
+| 2.6  | Create OpenClaw skill wrapper for X                  | ✓      |
+| 2.7  | Create `@freed/capture-rss` package                  | ✓      |
+| 2.8  | Build RSS/Atom parser                                | ✓      |
+| 2.9  | Implement feed discovery                             | ✓      |
+| 2.10 | Normalize RSS items to FeedItem                      | ✓      |
+| 2.11 | Add OPML import/export                               | ✓      |
+| 2.12 | Create OpenClaw skill wrapper for RSS                | ✓      |
 
 ---
 

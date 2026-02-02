@@ -1,0 +1,21 @@
+{
+  "name": "@freed/capture-save",
+  "version": "0.1.0",
+  "description": "Save any URL to your FREED library",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@freed/shared": "*",
+    "@mozilla/readability": "^0.5.0",
+    "jsdom": "^24.0.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.1.6",
+    "typescript": "^5.3.0"
+  }
+}

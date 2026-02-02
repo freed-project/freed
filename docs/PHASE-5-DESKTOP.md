@@ -76,13 +76,13 @@ packages/desktop/
 
 **Three-column layout, dark theme, native vibrancy**
 
-| Element | Implementation |
-|---------|----------------|
-| Window background | Tauri `vibrancy: "under-window"` (native blur) |
-| Sidebar | Translucent, CSS `backdrop-filter` on dark base |
-| Buttons | CSS glass approximation, SwiftUI later |
-| Cards | Dark cards with subtle borders, content-first |
-| Reader pane | Clean typography, large hero images |
+| Element           | Implementation                                  |
+| ----------------- | ----------------------------------------------- |
+| Window background | Tauri `vibrancy: "under-window"` (native blur)  |
+| Sidebar           | Translucent, CSS `backdrop-filter` on dark base |
+| Buttons           | CSS glass approximation, SwiftUI later          |
+| Cards             | Dark cards with subtle borders, content-first   |
+| Reader pane       | Clean typography, large hero images             |
 
 ---
 
@@ -100,8 +100,8 @@ packages/desktop/
   --text-primary: rgba(255, 255, 255, 0.92);
   --text-secondary: rgba(255, 255, 255, 0.55);
   --text-tertiary: rgba(255, 255, 255, 0.35);
-  --accent: #FF6B35;
-  --accent-hover: #FF8555;
+  --accent: #ff6b35;
+  --accent-hover: #ff8555;
 }
 ```
 
@@ -112,17 +112,19 @@ packages/desktop/
 ```json
 // src-tauri/tauri.conf.json
 {
-  "windows": [{
-    "title": "FREED",
-    "width": 1200,
-    "height": 800,
-    "transparent": true,
-    "decorations": false,
-    "macOSConfig": {
-      "vibrancy": "under-window",
-      "vibrancyState": "followsWindowActiveState"
+  "windows": [
+    {
+      "title": "FREED",
+      "width": 1200,
+      "height": 800,
+      "transparent": true,
+      "decorations": false,
+      "macOSConfig": {
+        "vibrancy": "under-window",
+        "vibrancyState": "followsWindowActiveState"
+      }
     }
-  }]
+  ]
 }
 ```
 
@@ -134,23 +136,23 @@ For DOM capture (Facebook, Instagram), use system Chrome via Playwright subproce
 
 ```typescript
 // capture-service/src/dom-capture.ts
-import { chromium } from 'playwright-core';
+import { chromium } from "playwright-core";
 
 export async function captureDomFeed(
-  platform: 'facebook' | 'instagram',
-  cookies: Cookie[]
+  platform: "facebook" | "instagram",
+  cookies: Cookie[],
 ): Promise<FeedItem[]> {
-  const browser = await chromium.launch({ 
-    channel: 'chrome',  // Use system Chrome
-    headless: true 
+  const browser = await chromium.launch({
+    channel: "chrome", // Use system Chrome
+    headless: true,
   });
-  
+
   const context = await browser.newContext();
   await context.addCookies(cookies);
-  
+
   const page = await context.newPage();
   // Platform-specific capture logic...
-  
+
   await browser.close();
   return items;
 }
@@ -160,19 +162,19 @@ export async function captureDomFeed(
 
 ## Tasks
 
-| Task | Description | Complexity |
-|------|-------------|------------|
-| 5.1 | Tauri 2.0 project scaffold | Medium |
-| 5.2 | Embed PWA React app in WebView | Medium |
-| 5.3 | Native window vibrancy (macOS) | Low |
-| 5.4 | Menu bar icon + background mode | Medium |
-| 5.5 | Local WebSocket relay | Medium |
-| 5.6 | Playwright subprocess setup | High |
-| 5.7 | System tray with sync status | Low |
-| 5.8 | QR code display for phone pairing | Low |
-| 5.9 | Auto-launch on login (optional) | Low |
-| 5.10 | macOS notarization + DMG packaging | High |
-| 5.11 | Windows installer | Medium |
+| Task | Description                        | Complexity |
+| ---- | ---------------------------------- | ---------- |
+| 5.1  | Tauri 2.0 project scaffold         | Medium     |
+| 5.2  | Embed PWA React app in WebView     | Medium     |
+| 5.3  | Native window vibrancy (macOS)     | Low        |
+| 5.4  | Menu bar icon + background mode    | Medium     |
+| 5.5  | Local WebSocket relay              | Medium     |
+| 5.6  | Playwright subprocess setup        | High       |
+| 5.7  | System tray with sync status       | Low        |
+| 5.8  | QR code display for phone pairing  | Low        |
+| 5.9  | Auto-launch on login (optional)    | Low        |
+| 5.10 | macOS notarization + DMG packaging | High       |
+| 5.11 | Windows installer                  | Medium     |
 
 ---
 

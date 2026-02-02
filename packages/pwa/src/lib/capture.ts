@@ -1,0 +1,273 @@
+/**
+ * Capture service for fetching RSS feeds in the browser
+ */
+
+import type { FeedItem, RssFeed } from "@freed/shared";
+import { rankFeedItems } from "@freed/shared";
+import { useAppStore } from "./store";
+
+// Simple RSS XML parser for browser
+interface RssChannel {
+  title: string;
+  link: string;
+  description: string;
+  items: RssItem[];
+}
+
+interface RssItem {
+  title: string;
+  link: string;
+  description?: string;
+  pubDate?: string;
+  content?: string;
+  author?: string;
+}
+
+/**
+ * Parse RSS/Atom XML into structured data
+ */
+function parseRssFeed(xml: string, feedUrl: string): RssChannel {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xml, "application/xml");
+
+  // Check for Atom format
+  const atomFeed = doc.querySelector("feed");
+  if (atomFeed) {
+    return parseAtom(atomFeed, feedUrl);
+  }
+
+  // RSS format
+  const channel = doc.querySelector("channel");
+  if (!channel) {
+    throw new Error("Invalid RSS feed: no channel element");
+  }
+
+  const title = channel.querySelector("title")?.textContent || feedUrl;
+  const link = channel.querySelector("link")?.textContent || feedUrl;
+  const description = channel.querySelector("description")?.textContent || "";
+
+  const items: RssItem[] = [];
+  channel.querySelectorAll("item").forEach((item) => {
+    items.push({
+      title: item.querySelector("title")?.textContent || "Untitled",
+      link: item.querySelector("link")?.textContent || "",
+      description: item.querySelector("description")?.textContent || undefined,
+      pubDate: item.querySelector("pubDate")?.textContent || undefined,
+      content:
+        item.querySelector("content\\:encoded")?.textContent || undefined,
+      author: item.querySelector("author")?.textContent || undefined,
+    });
+  });
+
+  return { title, link, description, items };
+}
+
+/**
+ * Parse Atom format
+ */
+function parseAtom(feed: Element, feedUrl: string): RssChannel {
+  const title = feed.querySelector("title")?.textContent || feedUrl;
+  const linkEl =
+    feed.querySelector('link[rel="alternate"]') || feed.querySelector("link");
+  const link = linkEl?.getAttribute("href") || feedUrl;
+
+  const items: RssItem[] = [];
+  feed.querySelectorAll("entry").forEach((entry) => {
+    const entryLinkEl =
+      entry.querySelector('link[rel="alternate"]') ||
+      entry.querySelector("link");
+    items.push({
+      title: entry.querySelector("title")?.textContent || "Untitled",
+      link: entryLinkEl?.getAttribute("href") || "",
+      description: entry.querySelector("summary")?.textContent || undefined,
+      pubDate:
+        entry.querySelector("published")?.textContent ||
+        entry.querySelector("updated")?.textContent ||
+        undefined,
+      content: entry.querySelector("content")?.textContent || undefined,
+      author: entry.querySelector("author > name")?.textContent || undefined,
+    });
+  });
+
+  return { title, link, description: "", items };
+}
+
+/**
+ * Convert parsed RSS items to FeedItems
+ */
+function rssToFeedItems(channel: RssChannel, feedUrl: string): FeedItem[] {
+  const now = Date.now();
+  const siteHost = new URL(channel.link).hostname;
+
+  return channel.items.map((item, index) => {
+    const publishedAt = item.pubDate
+      ? new Date(item.pubDate).getTime()
+      : now - index * 3600000; // Fallback: 1 hour apart
+
+    return {
+      globalId: `rss:${item.link || feedUrl + "#" + index}`,
+      platform: "rss" as const,
+      contentType: "article" as const,
+      capturedAt: now,
+      publishedAt,
+      author: {
+        id: siteHost,
+        handle: siteHost,
+        displayName: channel.title,
+      },
+      content: {
+        text: stripHtml(item.description || item.content || ""),
+        mediaUrls: [],
+        mediaTypes: [],
+        linkPreview: item.link
+          ? {
+              url: item.link,
+              title: item.title,
+              description: item.description,
+            }
+          : undefined,
+      },
+      preservedContent: item.content
+        ? {
+            html: item.content,
+            text: stripHtml(item.content),
+            wordCount: stripHtml(item.content).split(/\s+/).length,
+            readingTime: Math.ceil(
+              stripHtml(item.content).split(/\s+/).length / 200,
+            ),
+            preservedAt: now,
+          }
+        : undefined,
+      rssSource: {
+        feedUrl,
+        feedTitle: channel.title,
+        siteUrl: channel.link,
+      },
+      userState: {
+        hidden: false,
+        saved: false,
+        archived: false,
+        tags: [],
+      },
+      topics: [],
+    };
+  });
+}
+
+/**
+ * Strip HTML tags from text
+ */
+function stripHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  return doc.body.textContent || "";
+}
+
+/**
+ * Fetch and parse an RSS feed
+ */
+export async function fetchRssFeed(feedUrl: string): Promise<FeedItem[]> {
+  // Use a CORS proxy for browser requests
+  const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(feedUrl)}`;
+
+  const response = await fetch(proxyUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch feed: ${response.status}`);
+  }
+
+  const xml = await response.text();
+  const channel = parseRssFeed(xml, feedUrl);
+  return rssToFeedItems(channel, feedUrl);
+}
+
+/**
+ * Add a new RSS feed and fetch its items
+ */
+export async function addRssFeed(feedUrl: string): Promise<void> {
+  const store = useAppStore.getState();
+
+  store.setLoading(true);
+  store.setError(null);
+
+  try {
+    // Fetch items
+    const newItems = await fetchRssFeed(feedUrl);
+
+    // Rank new items
+    const rankedItems = rankFeedItems(newItems, store.preferences.weights);
+
+    // Add feed to store
+    const feed: RssFeed = {
+      url: feedUrl,
+      title: rankedItems[0]?.rssSource?.feedTitle || feedUrl,
+      siteUrl: rankedItems[0]?.rssSource?.siteUrl,
+      lastFetched: Date.now(),
+      enabled: true,
+      trackUnread: false,
+    };
+
+    store.addFeed(feed);
+
+    // Merge items (deduplicate by globalId)
+    const existingIds = new Set(store.items.map((i) => i.globalId));
+    const uniqueNewItems = rankedItems.filter(
+      (item) => !existingIds.has(item.globalId),
+    );
+
+    store.setItems([...uniqueNewItems, ...store.items]);
+  } catch (error) {
+    store.setError(
+      error instanceof Error ? error.message : "Failed to add feed",
+    );
+    throw error;
+  } finally {
+    store.setLoading(false);
+  }
+}
+
+/**
+ * Refresh all subscribed RSS feeds
+ */
+export async function refreshAllFeeds(): Promise<void> {
+  const store = useAppStore.getState();
+  const feeds = Object.values(store.feeds);
+
+  if (feeds.length === 0) return;
+
+  store.setSyncing(true);
+  store.setError(null);
+
+  try {
+    const allNewItems: FeedItem[] = [];
+
+    for (const feed of feeds) {
+      if (!feed.enabled) continue;
+
+      try {
+        const items = await fetchRssFeed(feed.url);
+        allNewItems.push(...items);
+
+        // Update feed's lastFetched
+        store.addFeed({ ...feed, lastFetched: Date.now() });
+      } catch (error) {
+        console.error(`Failed to fetch ${feed.url}:`, error);
+      }
+    }
+
+    // Rank and merge
+    const rankedItems = rankFeedItems(allNewItems, store.preferences.weights);
+    const existingIds = new Set(store.items.map((i) => i.globalId));
+    const uniqueNewItems = rankedItems.filter(
+      (item) => !existingIds.has(item.globalId),
+    );
+
+    if (uniqueNewItems.length > 0) {
+      store.setItems([...uniqueNewItems, ...store.items]);
+    }
+  } catch (error) {
+    store.setError(
+      error instanceof Error ? error.message : "Failed to refresh feeds",
+    );
+  } finally {
+    store.setSyncing(false);
+  }
+}
