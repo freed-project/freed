@@ -192,28 +192,24 @@ export async function addRssFeed(feedUrl: string): Promise<void> {
     // Fetch items
     const newItems = await fetchRssFeed(feedUrl);
 
-    // Rank new items
-    const rankedItems = rankFeedItems(newItems, store.preferences.weights);
+    if (newItems.length === 0) {
+      throw new Error("No items found in feed");
+    }
 
-    // Add feed to store
+    // Add feed to store (persisted via Automerge)
     const feed: RssFeed = {
       url: feedUrl,
-      title: rankedItems[0]?.rssSource?.feedTitle || feedUrl,
-      siteUrl: rankedItems[0]?.rssSource?.siteUrl,
+      title: newItems[0]?.rssSource?.feedTitle || feedUrl,
+      siteUrl: newItems[0]?.rssSource?.siteUrl,
       lastFetched: Date.now(),
       enabled: true,
       trackUnread: false,
     };
 
-    store.addFeed(feed);
+    await store.addFeed(feed);
 
-    // Merge items (deduplicate by globalId)
-    const existingIds = new Set(store.items.map((i) => i.globalId));
-    const uniqueNewItems = rankedItems.filter(
-      (item) => !existingIds.has(item.globalId),
-    );
-
-    store.setItems([...uniqueNewItems, ...store.items]);
+    // Add items (persisted via Automerge, deduplication handled there)
+    await store.addItems(newItems);
   } catch (error) {
     store.setError(
       error instanceof Error ? error.message : "Failed to add feed",
@@ -246,22 +242,16 @@ export async function refreshAllFeeds(): Promise<void> {
         const items = await fetchRssFeed(feed.url);
         allNewItems.push(...items);
 
-        // Update feed's lastFetched
-        store.addFeed({ ...feed, lastFetched: Date.now() });
+        // Update feed's lastFetched (persisted via Automerge)
+        await store.addFeed({ ...feed, lastFetched: Date.now() });
       } catch (error) {
         console.error(`Failed to fetch ${feed.url}:`, error);
       }
     }
 
-    // Rank and merge
-    const rankedItems = rankFeedItems(allNewItems, store.preferences.weights);
-    const existingIds = new Set(store.items.map((i) => i.globalId));
-    const uniqueNewItems = rankedItems.filter(
-      (item) => !existingIds.has(item.globalId),
-    );
-
-    if (uniqueNewItems.length > 0) {
-      store.setItems([...uniqueNewItems, ...store.items]);
+    // Add all new items (deduplication handled by Automerge layer)
+    if (allNewItems.length > 0) {
+      await store.addItems(allNewItems);
     }
   } catch (error) {
     store.setError(
