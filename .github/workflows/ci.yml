@@ -29,7 +29,7 @@ jobs:
 
       - name: Run tests
         run: bun test
-        continue-on-error: true  # Tests may not exist yet
+        continue-on-error: true # Tests may not exist yet
 
   lint:
     runs-on: ubuntu-latest
@@ -47,4 +47,4 @@ jobs:
 
       - name: Lint
         run: bun run lint
-        continue-on-error: true  # Lint config may not exist yet
+        continue-on-error: true # Lint config may not exist yet

@@ -10,40 +10,40 @@
  * A parsed RSS/Atom feed
  */
 export interface ParsedFeed {
-  title: string
-  description?: string
-  link?: string
-  feedUrl: string
-  language?: string
-  lastBuildDate?: string
+  title: string;
+  description?: string;
+  link?: string;
+  feedUrl: string;
+  language?: string;
+  lastBuildDate?: string;
   image?: {
-    url: string
-    title?: string
-    link?: string
-  }
-  items: ParsedFeedItem[]
+    url: string;
+    title?: string;
+    link?: string;
+  };
+  items: ParsedFeedItem[];
 }
 
 /**
  * A parsed RSS/Atom feed item
  */
 export interface ParsedFeedItem {
-  title?: string
-  link?: string
-  guid?: string
-  pubDate?: string
-  creator?: string
-  content?: string
-  contentSnippet?: string
-  summary?: string
-  categories?: string[]
+  title?: string;
+  link?: string;
+  guid?: string;
+  pubDate?: string;
+  creator?: string;
+  content?: string;
+  contentSnippet?: string;
+  summary?: string;
+  categories?: string[];
   enclosure?: {
-    url: string
-    type?: string
-    length?: string
-  }
-  'media:content'?: MediaContent | MediaContent[]
-  'media:thumbnail'?: MediaThumbnail
+    url: string;
+    type?: string;
+    length?: string;
+  };
+  "media:content"?: MediaContent | MediaContent[];
+  "media:thumbnail"?: MediaThumbnail;
 }
 
 /**
@@ -51,12 +51,12 @@ export interface ParsedFeedItem {
  */
 export interface MediaContent {
   $: {
-    url: string
-    type?: string
-    medium?: string
-    width?: string
-    height?: string
-  }
+    url: string;
+    type?: string;
+    medium?: string;
+    width?: string;
+    height?: string;
+  };
 }
 
 /**
@@ -64,10 +64,10 @@ export interface MediaContent {
  */
 export interface MediaThumbnail {
   $: {
-    url: string
-    width?: string
-    height?: string
-  }
+    url: string;
+    width?: string;
+    height?: string;
+  };
 }
 
 // =============================================================================
@@ -79,13 +79,13 @@ export interface MediaThumbnail {
  */
 export interface FetchOptions {
   /** ETag from previous fetch for conditional GET */
-  etag?: string
+  etag?: string;
   /** Last-Modified header from previous fetch */
-  lastModified?: string
+  lastModified?: string;
   /** Request timeout in milliseconds */
-  timeout?: number
+  timeout?: number;
   /** Custom user agent */
-  userAgent?: string
+  userAgent?: string;
 }
 
 /**
@@ -93,13 +93,13 @@ export interface FetchOptions {
  */
 export interface FetchResult {
   /** Whether the feed was unchanged (304 response) */
-  unchanged: boolean
+  unchanged: boolean;
   /** Parsed feed data (undefined if unchanged) */
-  feed?: ParsedFeed
+  feed?: ParsedFeed;
   /** ETag header from response */
-  etag?: string
+  etag?: string;
   /** Last-Modified header from response */
-  lastModified?: string
+  lastModified?: string;
 }
 
 // =============================================================================
@@ -112,39 +112,39 @@ export interface FetchResult {
 export interface OPMLDocument {
   opml: {
     head?: {
-      title?: string
-      dateCreated?: string
-      ownerName?: string
-    }
+      title?: string;
+      dateCreated?: string;
+      ownerName?: string;
+    };
     body: {
-      outline: OPMLOutline | OPMLOutline[]
-    }
-  }
+      outline: OPMLOutline | OPMLOutline[];
+    };
+  };
 }
 
 /**
  * An OPML outline element
  */
 export interface OPMLOutline {
-  '@_text'?: string
-  '@_title'?: string
-  '@_type'?: string
-  '@_xmlUrl'?: string
-  '@_htmlUrl'?: string
-  '@_description'?: string
-  '@_category'?: string
-  outline?: OPMLOutline | OPMLOutline[]
+  "@_text"?: string;
+  "@_title"?: string;
+  "@_type"?: string;
+  "@_xmlUrl"?: string;
+  "@_htmlUrl"?: string;
+  "@_description"?: string;
+  "@_category"?: string;
+  outline?: OPMLOutline | OPMLOutline[];
 }
 
 /**
  * A feed extracted from OPML
  */
 export interface OPMLFeed {
-  url: string
-  title: string
-  siteUrl?: string
-  description?: string
-  category?: string
+  url: string;
+  title: string;
+  siteUrl?: string;
+  description?: string;
+  category?: string;
 }
 
 // =============================================================================
@@ -155,15 +155,15 @@ export interface OPMLFeed {
  * A discovered feed
  */
 export interface DiscoveredFeed {
-  url: string
-  title?: string
-  type: 'rss' | 'atom' | 'json'
+  url: string;
+  title?: string;
+  type: "rss" | "atom" | "json";
 }
 
 /**
  * Platform-specific feed patterns
  */
 export interface PlatformPattern {
-  match: RegExp
-  transform: (url: string, match: RegExpMatchArray) => string
+  match: RegExp;
+  transform: (url: string, match: RegExpMatchArray) => string;
 }

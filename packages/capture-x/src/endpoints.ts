@@ -1,6 +1,6 @@
 /**
  * X/Twitter GraphQL endpoint definitions
- * 
+ *
  * Query IDs and feature flags are subject to change.
  * Reference: github.com/fa0311/TwitterInternalAPIDocument
  */
@@ -9,13 +9,14 @@
 // Base Configuration
 // =============================================================================
 
-export const X_API_BASE = 'https://x.com/i/api/graphql'
+export const X_API_BASE = "https://x.com/i/api/graphql";
 
 /**
  * Static bearer token used by X web client
  * This is a public token - authentication is done via cookies
  */
-export const X_BEARER_TOKEN = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA'
+export const X_BEARER_TOKEN =
+  "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
 
 // =============================================================================
 // Feature Flags
@@ -48,8 +49,8 @@ export const COMMON_FEATURES = {
   rweb_video_timestamps_enabled: true,
   longform_notetweets_rich_text_read_enabled: true,
   longform_notetweets_inline_media_enabled: true,
-  responsive_web_enhance_cards_enabled: false
-}
+  responsive_web_enhance_cards_enabled: false,
+};
 
 /**
  * Timeline-specific features
@@ -58,8 +59,8 @@ export const TIMELINE_FEATURES = {
   ...COMMON_FEATURES,
   responsive_web_home_pinned_timelines_enabled: true,
   blue_business_profile_image_shape_enabled: true,
-  profile_foundations_has_custom_visual_feature_enabled: false
-}
+  profile_foundations_has_custom_visual_feature_enabled: false,
+};
 
 // =============================================================================
 // Endpoint Definitions
@@ -67,57 +68,57 @@ export const TIMELINE_FEATURES = {
 
 export interface EndpointDefinition {
   /** GraphQL query ID (changes occasionally) */
-  queryId: string
+  queryId: string;
   /** Endpoint name */
-  operationName: string
+  operationName: string;
   /** Required feature flags */
-  features: Record<string, boolean>
+  features: Record<string, boolean>;
 }
 
 /**
  * HomeLatestTimeline - Get chronological "Following" feed
  */
 export const HomeLatestTimeline: EndpointDefinition = {
-  queryId: 'HJFjzBgCs16TqxewQOeLNg',
-  operationName: 'HomeLatestTimeline',
-  features: TIMELINE_FEATURES
-}
+  queryId: "HJFjzBgCs16TqxewQOeLNg",
+  operationName: "HomeLatestTimeline",
+  features: TIMELINE_FEATURES,
+};
 
 /**
  * HomeTimeline - Get algorithmic "For You" feed
  */
 export const HomeTimeline: EndpointDefinition = {
-  queryId: 's6ERr1UxkxxBx4YundNsXw',
-  operationName: 'HomeTimeline',
-  features: TIMELINE_FEATURES
-}
+  queryId: "s6ERr1UxkxxBx4YundNsXw",
+  operationName: "HomeTimeline",
+  features: TIMELINE_FEATURES,
+};
 
 /**
  * Following - Get list of accounts user follows
  */
 export const Following: EndpointDefinition = {
-  queryId: 'eWTmcJY3EMh-dxIR7CYTKw',
-  operationName: 'Following',
-  features: COMMON_FEATURES
-}
+  queryId: "eWTmcJY3EMh-dxIR7CYTKw",
+  operationName: "Following",
+  features: COMMON_FEATURES,
+};
 
 /**
  * UserTweets - Get tweets from a specific user
  */
 export const UserTweets: EndpointDefinition = {
-  queryId: 'E3opETHurmVJflFsUBVuUQ',
-  operationName: 'UserTweets',
-  features: COMMON_FEATURES
-}
+  queryId: "E3opETHurmVJflFsUBVuUQ",
+  operationName: "UserTweets",
+  features: COMMON_FEATURES,
+};
 
 /**
  * TweetDetail - Get a single tweet with replies
  */
 export const TweetDetail: EndpointDefinition = {
-  queryId: 'VWFGPVAGkZMGRKGe3GFFnA',
-  operationName: 'TweetDetail',
-  features: COMMON_FEATURES
-}
+  queryId: "VWFGPVAGkZMGRKGe3GFFnA",
+  operationName: "TweetDetail",
+  features: COMMON_FEATURES,
+};
 
 // =============================================================================
 // Request Building
@@ -127,7 +128,7 @@ export const TweetDetail: EndpointDefinition = {
  * Build the URL for a GraphQL request
  */
 export function buildGraphQLUrl(endpoint: EndpointDefinition): string {
-  return `${X_API_BASE}/${endpoint.queryId}/${endpoint.operationName}`
+  return `${X_API_BASE}/${endpoint.queryId}/${endpoint.operationName}`;
 }
 
 /**
@@ -135,12 +136,12 @@ export function buildGraphQLUrl(endpoint: EndpointDefinition): string {
  */
 export function buildRequestBody(
   endpoint: EndpointDefinition,
-  variables: Record<string, unknown>
+  variables: Record<string, unknown>,
 ): string {
   return JSON.stringify({
     variables: JSON.stringify(variables),
-    features: JSON.stringify(endpoint.features)
-  })
+    features: JSON.stringify(endpoint.features),
+  });
 }
 
 /**
@@ -148,21 +149,21 @@ export function buildRequestBody(
  */
 export function getHomeLatestTimelineVariables(
   cursor?: string,
-  count: number = 20
+  count: number = 20,
 ): Record<string, unknown> {
   const variables: Record<string, unknown> = {
     count,
     includePromotedContent: true,
     latestControlAvailable: true,
-    requestContext: 'launch',
-    withCommunity: true
-  }
-  
+    requestContext: "launch",
+    withCommunity: true,
+  };
+
   if (cursor) {
-    variables.cursor = cursor
+    variables.cursor = cursor;
   }
-  
-  return variables
+
+  return variables;
 }
 
 /**
@@ -171,19 +172,19 @@ export function getHomeLatestTimelineVariables(
 export function getFollowingVariables(
   userId: string,
   cursor?: string,
-  count: number = 20
+  count: number = 20,
 ): Record<string, unknown> {
   const variables: Record<string, unknown> = {
     userId,
     count,
-    includePromotedContent: false
-  }
-  
+    includePromotedContent: false,
+  };
+
   if (cursor) {
-    variables.cursor = cursor
+    variables.cursor = cursor;
   }
-  
-  return variables
+
+  return variables;
 }
 
 /**
@@ -192,7 +193,7 @@ export function getFollowingVariables(
 export function getUserTweetsVariables(
   userId: string,
   cursor?: string,
-  count: number = 20
+  count: number = 20,
 ): Record<string, unknown> {
   const variables: Record<string, unknown> = {
     userId,
@@ -200,12 +201,12 @@ export function getUserTweetsVariables(
     includePromotedContent: true,
     withQuickPromoteEligibilityTweetFields: true,
     withVoice: true,
-    withV2Timeline: true
-  }
-  
+    withV2Timeline: true,
+  };
+
   if (cursor) {
-    variables.cursor = cursor
+    variables.cursor = cursor;
   }
-  
-  return variables
+
+  return variables;
 }

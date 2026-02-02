@@ -1,7 +1,11 @@
 {
   "name": "freed",
   "private": true,
-  "workspaces": ["packages/*", "skills/*", "website"],
+  "workspaces": [
+    "packages/*",
+    "skills/*",
+    "website"
+  ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "dev": "npm run dev --workspaces --if-present",

@@ -123,6 +123,32 @@ Vite + React + TypeScript site deployed to GitHub Pages at freed.wtf.
 - Mobile-responsive design
 - Glassmorphic dark theme
 
+**Remaining Polish:**
+
+- [ ] Finish Unified Feed icon (wave design)
+- [ ] Finish Ulysses Mode icon (mermaid/siren design)
+
+#### Newsletter Infrastructure
+
+The newsletter system uses Brevo for contact management and email delivery, proxied through a Cloudflare Worker to keep API keys server-side.
+
+**Setup:**
+
+1. Brevo account with API key and contact list
+2. Cloudflare Worker deployed at `workers/newsletter-subscribe/`
+3. Environment variables: `BREVO_API_KEY`, `BREVO_LIST_ID`, `ALLOWED_ORIGIN`
+
+**Files:**
+
+| File | Purpose |
+|------|---------|
+| `workers/newsletter-subscribe/worker.js` | Cloudflare Worker (Brevo proxy) |
+| `workers/newsletter-subscribe/wrangler.toml` | Worker configuration |
+| `website/src/components/NewsletterModal.tsx` | Modal component |
+| `website/src/context/NewsletterContext.tsx` | Modal state management |
+
+**Cost:** Free tier for both Brevo (contact storage) and Cloudflare Workers. ~$10-25 per bulk email send.
+
 ### 4. CI/CD Pipeline
 
 GitHub Actions workflows for continuous integration and deployment.

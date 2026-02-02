@@ -2,7 +2,7 @@
 name: capture-rss
 description: Captures posts from RSS/Atom feeds for unified feed aggregation
 user-invocable: true
-metadata: {"requires": {"bins": ["bun"]}}
+metadata: { "requires": { "bins": ["bun"] } }
 ---
 
 # RSS Feed Capture
@@ -12,6 +12,7 @@ Captures content from RSS and Atom feeds. Works with blogs, newsletters, YouTube
 ## Overview
 
 This skill:
+
 - Polls your subscribed RSS/Atom feeds periodically
 - Normalizes content to FREED's unified FeedItem format
 - Uses conditional GET (ETag/Last-Modified) for efficient polling
@@ -29,6 +30,7 @@ capture-rss add <url>
 Add a feed by URL. Auto-discovers RSS feed from website URL.
 
 Examples:
+
 ```
 capture-rss add https://example.com/blog
 capture-rss add https://username.substack.com
@@ -92,36 +94,41 @@ Configuration in `~/.freed/config.json`:
 
 ### Options
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `pollInterval` | 30 | Minutes between polls |
-| `maxItemsPerFeed` | 50 | Maximum items to keep per feed |
-| `concurrency` | 5 | Parallel feed requests |
+| Option            | Default | Description                    |
+| ----------------- | ------- | ------------------------------ |
+| `pollInterval`    | 30      | Minutes between polls          |
+| `maxItemsPerFeed` | 50      | Maximum items to keep per feed |
+| `concurrency`     | 5       | Parallel feed requests         |
 
 ## Supported Sources
 
 Works with any RSS/Atom feed. Special handling for:
 
 ### Newsletters
+
 - Substack (`*.substack.com/feed`)
 - Medium (`medium.com/feed/@username`)
 - Ghost blogs (`*/rss/`)
 - Buttondown, Beehiiv, etc.
 
 ### Video
+
 - YouTube channels (auto-discovers feed URL)
 - Nebula, Vimeo (if RSS provided)
 
 ### Social
+
 - Mastodon (`instance/@user.rss`)
 - Reddit (`/r/subreddit/.rss`, `/user/name/.rss`)
 - Bluesky (via RSS bridge)
 
 ### Code
+
 - GitHub releases (`/releases.atom`)
 - GitHub commits (`/commits.atom`)
 
 ### Podcasts
+
 - Any podcast feed (RSS is native format)
 
 ## Feed Discovery
@@ -137,6 +144,7 @@ If discovery fails, provide the direct feed URL.
 ## Data Storage
 
 Feed items stored in `~/.freed/data/feed.automerge`:
+
 - Same format as X/Twitter captures
 - Enables unified feed across all sources
 - CRDT sync across devices

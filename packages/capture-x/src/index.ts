@@ -1,14 +1,14 @@
 /**
  * @freed/capture-x - X/Twitter capture package
- * 
+ *
  * Captures posts from X/Twitter using their internal GraphQL API.
  */
 
 // Re-export types
-export * from './types.js'
+export * from "./types.js";
 
 // Re-export client
-export { XClient } from './client.js'
+export { XClient } from "./client.js";
 
 // Re-export auth utilities
 export {
@@ -16,8 +16,8 @@ export {
   extractCookiesAuto,
   validateCookies,
   parseCookieString,
-  type SupportedBrowser
-} from './auth.js'
+  type SupportedBrowser,
+} from "./auth.js";
 
 // Re-export normalization
 export {
@@ -27,8 +27,8 @@ export {
   extractMediaUrls,
   extractMediaTypes,
   extractLinkPreview,
-  cleanTweetText
-} from './normalize.js'
+  cleanTweetText,
+} from "./normalize.js";
 
 // Re-export endpoint definitions
 export {
@@ -38,5 +38,5 @@ export {
   HomeTimeline,
   Following,
   UserTweets,
-  TweetDetail
-} from './endpoints.js'
+  TweetDetail,
+} from "./endpoints.js";
