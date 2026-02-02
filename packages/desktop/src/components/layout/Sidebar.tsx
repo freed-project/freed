@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { useAppStore } from "../../lib/store";
+import { openXLogin, loadStoredCookies, disconnectX } from "../../lib/x-auth";
+import { captureXTimeline } from "../../lib/x-capture";
 
 interface SidebarProps {
   open: boolean;
@@ -15,6 +18,10 @@ const sources = [
 export function Sidebar({ open, onClose }: SidebarProps) {
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
+  const xAuth = useAppStore((s) => s.xAuth);
+  const setXAuth = useAppStore((s) => s.setXAuth);
+  const isLoading = useAppStore((s) => s.isLoading);
+  const [xSyncing, setXSyncing] = useState(false);
 
   const handleSourceClick = (source: (typeof sources)[0]) => {
     if (source.savedOnly) {
@@ -30,6 +37,41 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       return activeFilter.savedOnly === true;
     }
     return activeFilter.platform === source.id && !activeFilter.savedOnly;
+  };
+
+  const handleConnectX = async () => {
+    const cookies = await openXLogin();
+    if (cookies) {
+      setXAuth({ isAuthenticated: true, cookies });
+      // Immediately capture timeline after connecting
+      setXSyncing(true);
+      try {
+        await captureXTimeline(cookies);
+      } catch (error) {
+        console.error("Failed to capture X timeline:", error);
+      } finally {
+        setXSyncing(false);
+      }
+    }
+  };
+
+  const handleSyncX = async () => {
+    const cookies = loadStoredCookies();
+    if (!cookies) return;
+    
+    setXSyncing(true);
+    try {
+      await captureXTimeline(cookies);
+    } catch (error) {
+      console.error("Failed to capture X timeline:", error);
+    } finally {
+      setXSyncing(false);
+    }
+  };
+
+  const handleDisconnectX = () => {
+    disconnectX();
+    setXAuth({ isAuthenticated: false });
   };
 
   return (
@@ -77,10 +119,49 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                       {source.icon}
                     </span>
                     <span>{source.label}</span>
+                    {source.id === "x" && xAuth.isAuthenticated && (
+                      <span className="ml-auto w-2 h-2 rounded-full bg-green-500" />
+                    )}
                   </button>
                 </li>
               ))}
             </ul>
+          </div>
+
+          {/* X Connection */}
+          <div className="mb-6 p-3 bg-white/5 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">X / Twitter</span>
+              {xAuth.isAuthenticated ? (
+                <span className="text-xs text-green-400">Connected</span>
+              ) : (
+                <span className="text-xs text-white/50">Not connected</span>
+              )}
+            </div>
+            {xAuth.isAuthenticated ? (
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSyncX}
+                  disabled={xSyncing || isLoading}
+                  className="flex-1 text-xs px-2 py-1.5 bg-accent/20 text-accent rounded hover:bg-accent/30 disabled:opacity-50"
+                >
+                  {xSyncing ? "Syncing..." : "Sync Now"}
+                </button>
+                <button
+                  onClick={handleDisconnectX}
+                  className="text-xs px-2 py-1.5 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30"
+                >
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleConnectX}
+                className="w-full text-xs px-2 py-1.5 bg-accent/20 text-accent rounded hover:bg-accent/30"
+              >
+                Connect X Account
+              </button>
+            )}
           </div>
 
           <div>

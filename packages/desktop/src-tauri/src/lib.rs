@@ -40,6 +40,38 @@ async fn fetch_url(url: String) -> Result<String, String> {
     response.text().await.map_err(|e| e.to_string())
 }
 
+/// Make authenticated request to X API
+#[tauri::command]
+async fn x_api_request(
+    url: String,
+    body: String,
+    headers: std::collections::HashMap<String, String>,
+) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+        .build()
+        .map_err(|e| e.to_string())?;
+    
+    let mut request = client.post(&url).body(body);
+    
+    for (key, value) in headers {
+        request = request.header(&key, &value);
+    }
+    
+    let response = request
+        .send()
+        .await
+        .map_err(|e| format!("X API request failed: {}", e))?;
+    
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("X API error {}: {}", status, body));
+    }
+    
+    response.text().await.map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -54,7 +86,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_version, get_platform, fetch_url])
+        .invoke_handler(tauri::generate_handler![get_version, get_platform, fetch_url, x_api_request])
         .run(tauri::generate_context!())
         .expect("error while running FREED");
 }

@@ -9,9 +9,7 @@ import type { FeedItem, UserPreferences, RssFeed } from "@freed/shared";
 import { createDefaultPreferences, rankFeedItems } from "@freed/shared";
 import {
   initDoc,
-  getDoc,
   subscribe,
-  docAddFeedItem,
   docAddFeedItems,
   docAddRssFeed,
   docRemoveRssFeed,
@@ -21,6 +19,7 @@ import {
   docUpdatePreferences,
 } from "./automerge";
 import type { FreedDoc } from "@freed/shared/schema";
+import { loadStoredCookies } from "./x-auth";
 
 // Filter options for the feed view
 interface FilterOptions {
@@ -125,9 +124,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         set(hydrateFromDoc(updatedDoc));
       });
 
+      // Load X auth state from storage
+      const xCookies = loadStoredCookies();
+      const xAuth = xCookies
+        ? { isAuthenticated: true, cookies: xCookies }
+        : { isAuthenticated: false };
+
       // Hydrate initial state
       set({
         ...hydrateFromDoc(doc),
+        xAuth,
         isInitialized: true,
         isLoading: false,
       });
