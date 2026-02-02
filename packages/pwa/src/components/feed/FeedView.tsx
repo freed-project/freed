@@ -1,7 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { FeedList } from "./FeedList";
 import { ReaderView } from "./ReaderView";
+import { PullToRefresh } from "../PullToRefresh";
 import { useAppStore } from "../../lib/store";
+import { refreshAllFeeds } from "../../lib/capture";
 import { sortByPriority, filterFeedItems } from "@freed/shared";
 import type { FeedItem } from "@freed/shared";
 
@@ -26,11 +28,17 @@ export function FeedView() {
     setSelectedItem(null);
   };
 
+  const handleRefresh = useCallback(async () => {
+    await refreshAllFeeds();
+  }, []);
+
   return (
     <>
-      <div className="h-full overflow-auto p-3 sm:p-4 pb-20 sm:pb-4 hide-scrollbar">
-        <FeedList items={filteredItems} onItemClick={handleItemClick} />
-      </div>
+      <PullToRefresh onRefresh={handleRefresh}>
+        <div className="p-3 sm:p-4 pb-20 sm:pb-4">
+          <FeedList items={filteredItems} onItemClick={handleItemClick} />
+        </div>
+      </PullToRefresh>
 
       {selectedItem && (
         <ReaderView item={selectedItem} onClose={handleCloseReader} />

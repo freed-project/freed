@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { AppShell } from "./components/layout/AppShell";
 import { FeedView } from "./components/feed/FeedView";
+import { ToastContainer } from "./components/Toast";
 import { useAppStore } from "./lib/store";
 import {
   connect,
@@ -68,9 +69,12 @@ function App() {
   }
 
   return (
-    <AppShell>
-      <FeedView />
-    </AppShell>
+    <>
+      <AppShell>
+        <FeedView />
+      </AppShell>
+      <ToastContainer />
+    </>
   );
 }
 

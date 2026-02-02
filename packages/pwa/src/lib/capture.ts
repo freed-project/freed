@@ -5,6 +5,7 @@
 import type { FeedItem, RssFeed } from "@freed/shared";
 import { rankFeedItems } from "@freed/shared";
 import { useAppStore } from "./store";
+import { toast } from "../components/Toast";
 
 // Simple RSS XML parser for browser
 interface RssChannel {
@@ -210,10 +211,12 @@ export async function addRssFeed(feedUrl: string): Promise<void> {
 
     // Add items (persisted via Automerge, deduplication handled there)
     await store.addItems(newItems);
+    
+    toast.success(`Added ${feed.title} with ${newItems.length} items`);
   } catch (error) {
-    store.setError(
-      error instanceof Error ? error.message : "Failed to add feed",
-    );
+    const message = error instanceof Error ? error.message : "Failed to add feed";
+    store.setError(message);
+    toast.error(message);
     throw error;
   } finally {
     store.setLoading(false);
@@ -252,11 +255,14 @@ export async function refreshAllFeeds(): Promise<void> {
     // Add all new items (deduplication handled by Automerge layer)
     if (allNewItems.length > 0) {
       await store.addItems(allNewItems);
+      toast.success(`Refreshed ${feeds.length} feeds`);
+    } else {
+      toast.info("No new items");
     }
   } catch (error) {
-    store.setError(
-      error instanceof Error ? error.message : "Failed to refresh feeds",
-    );
+    const message = error instanceof Error ? error.message : "Failed to refresh feeds";
+    store.setError(message);
+    toast.error(message);
   } finally {
     store.setSyncing(false);
   }
