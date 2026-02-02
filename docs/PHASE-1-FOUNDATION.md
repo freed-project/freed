@@ -118,7 +118,7 @@ Vite + React + TypeScript site deployed to GitHub Pages at freed.wtf.
 
 **Features:**
 
-- Newsletter signup (Brevo via Cloudflare Worker)
+- Newsletter signup (Brevo via Vercel Edge Function)
 - RSS feed generation at build time
 - Mobile-responsive design
 - Glassmorphic dark theme
@@ -130,24 +130,23 @@ Vite + React + TypeScript site deployed to GitHub Pages at freed.wtf.
 
 #### Newsletter Infrastructure
 
-The newsletter system uses Brevo for contact management and email delivery, proxied through a Cloudflare Worker to keep API keys server-side.
+The newsletter system uses Brevo for contact management and email delivery, proxied through a Vercel Edge Function to keep API keys server-side.
 
 **Setup:**
 
 1. Brevo account with API key and contact list
-2. Cloudflare Worker deployed at `workers/newsletter-subscribe/`
-3. Environment variables: `BREVO_API_KEY`, `BREVO_LIST_ID`, `ALLOWED_ORIGIN`
+2. Vercel project with environment variables: `BREVO_API_KEY`, `BREVO_LIST_ID`
+3. Frontend calls `/api/subscribe` (same domain, no CORS)
 
 **Files:**
 
-| File | Purpose |
-|------|---------|
-| `workers/newsletter-subscribe/worker.js` | Cloudflare Worker (Brevo proxy) |
-| `workers/newsletter-subscribe/wrangler.toml` | Worker configuration |
-| `website/src/components/NewsletterModal.tsx` | Modal component |
-| `website/src/context/NewsletterContext.tsx` | Modal state management |
+| File                                         | Purpose                        |
+| -------------------------------------------- | ------------------------------ |
+| `website/api/subscribe.ts`                   | Vercel Edge Function (Brevo)   |
+| `website/src/components/NewsletterModal.tsx` | Modal component                |
+| `website/src/context/NewsletterContext.tsx`  | Modal state management         |
 
-**Cost:** Free tier for both Brevo (contact storage) and Cloudflare Workers. ~$10-25 per bulk email send.
+**Cost:** Free tier for both Brevo (contact storage) and Vercel (Hobby plan). ~$10-25 per bulk email send.
 
 ### 4. CI/CD Pipeline
 
