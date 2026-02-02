@@ -28,7 +28,7 @@ export function FeedView() {
 
   return (
     <>
-      <div className="h-full overflow-auto p-4">
+      <div className="h-full overflow-auto p-3 sm:p-4 pb-20 sm:pb-4 hide-scrollbar">
         <FeedList items={filteredItems} onItemClick={handleItemClick} />
       </div>
 

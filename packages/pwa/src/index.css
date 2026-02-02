@@ -13,12 +13,12 @@
   --freed-dark: #0f0f0f;
   --freed-surface: #141414;
   --freed-border: rgba(255, 255, 255, 0.08);
-  
+
   /* Glow colors - blue/purple/cyan gradient */
   --glow-blue: #3b82f6;
   --glow-purple: #8b5cf6;
   --glow-cyan: #06b6d4;
-  
+
   /* Text colors */
   --text-primary: #fafafa;
   --text-secondary: #a1a1aa;
@@ -34,7 +34,7 @@
   --sidebar-width: 240px;
   --card-radius: 16px;
   --button-radius: 8px;
-  
+
   /* Mobile safe areas */
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
@@ -51,7 +51,11 @@ body {
   min-height: 100dvh; /* Dynamic viewport height for mobile */
   background: var(--freed-black);
   color: var(--text-primary);
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.6;
@@ -66,7 +70,12 @@ body {
 
 /* Gradient text utility - matches marketing site */
 .gradient-text {
-  background: linear-gradient(135deg, var(--glow-blue), var(--glow-purple), var(--glow-cyan));
+  background: linear-gradient(
+    135deg,
+    var(--glow-blue),
+    var(--glow-purple),
+    var(--glow-cyan)
+  );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -74,13 +83,13 @@ body {
 
 /* Glow effects - matches marketing site */
 .glow-sm {
-  box-shadow: 
+  box-shadow:
     0 0 10px rgba(139, 92, 246, 0.2),
     0 0 20px rgba(59, 130, 246, 0.1);
 }
 
 .glow-md {
-  box-shadow: 
+  box-shadow:
     0 0 20px rgba(139, 92, 246, 0.3),
     0 0 40px rgba(59, 130, 246, 0.15),
     0 0 60px rgba(139, 92, 246, 0.05);
@@ -185,8 +194,10 @@ body {
     padding: 12px;
     border-radius: 12px;
   }
-  
-  .glass-button, .btn-primary, .btn-secondary {
+
+  .glass-button,
+  .btn-primary,
+  .btn-secondary {
     min-height: 44px; /* iOS recommended touch target */
     padding: 12px 16px;
   }
@@ -277,6 +288,11 @@ body {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }

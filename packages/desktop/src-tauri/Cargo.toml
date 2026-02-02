@@ -20,6 +20,9 @@ serde_json = "1"
 window-vibrancy = "0.6"
 reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.26"
+futures-util = "0.3"
+local-ip-address = "0.6"
 
 [features]
 default = ["custom-protocol"]

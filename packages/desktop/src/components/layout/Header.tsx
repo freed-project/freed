@@ -20,7 +20,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   return (
     <>
       <header
-        className="h-12 flex items-center pr-4 border-b border-glass-border bg-glass-primary/50 backdrop-blur-xl"
+        className="h-12 flex items-center pr-4 border-b border-[rgba(255,255,255,0.08)] bg-[#0a0a0a]/80 backdrop-blur-xl"
         data-tauri-drag-region
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       >
@@ -81,7 +81,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           {/* Add feed button */}
           <button
             onClick={() => setAddFeedOpen(true)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent/20 text-accent hover:bg-accent/30 transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors"
           >
             <svg
               className="w-4 h-4"
@@ -102,10 +102,10 @@ export function Header({ onMenuClick }: HeaderProps) {
           </button>
 
           {/* Sync status */}
-          <div className="flex items-center gap-2 text-sm text-white/55 ml-2">
+          <div className="flex items-center gap-2 text-sm text-[#71717a] ml-2">
             <span
-              className={`w-2 h-2 rounded-full ${
-                isSyncing ? "bg-yellow-500 animate-pulse" : "bg-green-500"
+              className={`sync-dot ${
+                isSyncing ? "syncing" : "connected"
               }`}
             />
             <span className="hidden sm:inline">

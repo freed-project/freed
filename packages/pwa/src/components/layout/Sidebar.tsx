@@ -45,8 +45,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const handleConnectSync = () => {
     const url = window.prompt(
       "Enter your desktop's sync URL:\n\n" +
-      "Find this in the desktop app under Settings > Sync.\n" +
-      "It looks like: ws://192.168.1.x:8765"
+        "Find this in the desktop app under Settings > Sync.\n" +
+        "It looks like: ws://192.168.1.x:8765",
     );
     if (url) {
       storeRelayUrl(url);
@@ -88,8 +88,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-white/10"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -128,7 +138,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium">Desktop Sync</span>
               <div className="flex items-center gap-2">
-                <span className={`sync-dot ${syncConnected ? 'connected' : 'disconnected'}`} />
+                <span
+                  className={`sync-dot ${syncConnected ? "connected" : "disconnected"}`}
+                />
                 <span className="text-xs text-[#71717a]">
                   {syncConnected ? "Connected" : "Offline"}
                 </span>

@@ -13,12 +13,12 @@
   --freed-dark: #0f0f0f;
   --freed-surface: #141414;
   --freed-border: rgba(255, 255, 255, 0.08);
-  
+
   /* Glow colors - blue/purple/cyan gradient */
   --glow-blue: #3b82f6;
   --glow-purple: #8b5cf6;
   --glow-cyan: #06b6d4;
-  
+
   /* Text colors */
   --text-primary: #fafafa;
   --text-secondary: #a1a1aa;
@@ -48,7 +48,11 @@ body {
 
 body {
   color: var(--text-primary);
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.6;
@@ -63,7 +67,12 @@ body {
 
 /* Gradient text utility */
 .gradient-text {
-  background: linear-gradient(135deg, var(--glow-blue), var(--glow-purple), var(--glow-cyan));
+  background: linear-gradient(
+    135deg,
+    var(--glow-blue),
+    var(--glow-purple),
+    var(--glow-cyan)
+  );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -71,13 +80,13 @@ body {
 
 /* Glow effects */
 .glow-sm {
-  box-shadow: 
+  box-shadow:
     0 0 10px rgba(139, 92, 246, 0.2),
     0 0 20px rgba(59, 130, 246, 0.1);
 }
 
 .glow-md {
-  box-shadow: 
+  box-shadow:
     0 0 20px rgba(139, 92, 246, 0.3),
     0 0 40px rgba(59, 130, 246, 0.15),
     0 0 60px rgba(139, 92, 246, 0.05);
@@ -222,6 +231,11 @@ body {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }

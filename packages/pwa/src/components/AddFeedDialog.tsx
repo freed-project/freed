@@ -44,7 +44,7 @@ export function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
       <div className="relative w-full sm:max-w-md sm:mx-4 bg-[#141414] border border-[rgba(255,255,255,0.08)] rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl">
         {/* Mobile drag indicator */}
         <div className="sm:hidden w-12 h-1 bg-white/20 rounded-full mx-auto mb-4" />
-        
+
         <h2 className="text-xl font-semibold mb-4">Add RSS Feed</h2>
 
         <form onSubmit={handleSubmit}>
@@ -94,7 +94,9 @@ export function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
 
         {/* Example feeds */}
         <div className="mt-6 pt-4 border-t border-[rgba(255,255,255,0.08)]">
-          <p className="text-xs text-[#71717a] mb-3">Try these example feeds:</p>
+          <p className="text-xs text-[#71717a] mb-3">
+            Try these example feeds:
+          </p>
           <div className="flex flex-wrap gap-2">
             {[
               "https://simonwillison.net/atom/everything/",

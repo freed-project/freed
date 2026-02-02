@@ -58,7 +58,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const handleSyncX = async () => {
     const cookies = loadStoredCookies();
     if (!cookies) return;
-    
+
     setXSyncing(true);
     try {
       await captureXTimeline(cookies);

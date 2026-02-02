@@ -105,11 +105,21 @@ export function Header({ onMenuClick }: HeaderProps) {
           <div className="hidden sm:flex items-center gap-2 text-sm text-[#71717a] ml-2">
             <span
               className={`sync-dot ${
-                isSyncing ? "syncing" : syncConnected ? "connected" : "disconnected"
+                isSyncing
+                  ? "syncing"
+                  : syncConnected
+                    ? "connected"
+                    : "disconnected"
               }`}
             />
             <span>
-              {isSyncing ? "Syncing..." : syncConnected ? "Synced" : feedCount > 0 ? "Local" : "Ready"}
+              {isSyncing
+                ? "Syncing..."
+                : syncConnected
+                  ? "Synced"
+                  : feedCount > 0
+                    ? "Local"
+                    : "Ready"}
             </span>
           </div>
         </div>

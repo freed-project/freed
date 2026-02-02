@@ -1,214 +1,220 @@
 /**
- * Sync client for Automerge document synchronization
+ * Sync Server Controller for FREED Desktop
  *
- * Desktop hosts a WebSocket server, PWA connects to it.
- * Uses simple document broadcast for sync.
+ * Desktop runs a WebSocket relay server via Tauri (Rust backend).
+ * This module provides TypeScript interface to control and monitor it.
+ * PWAs connect to this server to sync their Automerge documents.
  */
 
-import { getDocBinary, mergeDoc } from "./automerge";
-import { useAppStore } from "./store";
+import { invoke } from "@tauri-apps/api/core";
+import { getDocBinary, subscribe } from "./automerge";
 
-// Sync message types
-type SyncMessageType = "doc" | "request" | "ping" | "pong";
+// Sync status
+let isServerRunning = false;
+let clientCount = 0;
+let pollInterval: ReturnType<typeof setInterval> | null = null;
+let changeUnsubscribe: (() => void) | null = null;
 
-interface SyncMessage {
-  type: SyncMessageType;
-  payload?: string; // Base64 encoded for doc messages
-}
+// Status callbacks
+type StatusCallback = (status: SyncStatus) => void;
+const statusCallbacks = new Set<StatusCallback>();
 
-// Singleton WebSocket connection (client mode - for PWA)
-let ws: WebSocket | null = null;
-let reconnectTimer: NodeJS.Timeout | null = null;
-let isConnected = false;
-
-// Server mode state
-let serverPort = 8765;
-let serverStarted = false;
-
-/**
- * Get local IP addresses for QR code display
- */
-export function getLocalIPs(): string[] {
-  // This would need to be implemented via Tauri command
-  // For now, return localhost
-  return ["127.0.0.1"];
+export interface SyncStatus {
+  serverRunning: boolean;
+  clientCount: number;
+  syncUrl: string;
 }
 
 /**
- * Get connection URL for QR code
+ * Get the local IP address
  */
-export function getConnectionUrl(): string {
-  const ip = getLocalIPs()[0] || "localhost";
-  return `ws://${ip}:${serverPort}`;
-}
-
-/**
- * Encode document for transmission
- */
-function encodeDoc(data: Uint8Array): string {
-  // Convert to base64
-  let binary = "";
-  for (let i = 0; i < data.length; i++) {
-    binary += String.fromCharCode(data[i]);
-  }
-  return btoa(binary);
-}
-
-/**
- * Decode document from transmission
- */
-function decodeDoc(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-/**
- * Handle incoming sync message
- */
-async function handleMessage(message: SyncMessage): Promise<void> {
-  switch (message.type) {
-    case "doc":
-      if (message.payload) {
-        const doc = decodeDoc(message.payload);
-        await mergeDoc(doc);
-        console.log("[Sync] Received and merged document");
-      }
-      break;
-
-    case "request":
-      // Send our current document
-      broadcastDoc();
-      break;
-
-    case "ping":
-      // Respond with pong
-      send({ type: "pong" });
-      break;
-
-    case "pong":
-      // Connection is alive
-      break;
-  }
-}
-
-/**
- * Send a message (client mode only)
- */
-function send(message: SyncMessage): void {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(message));
-  }
-}
-
-/**
- * Broadcast current document to all peers
- */
-export function broadcastDoc(): void {
+export async function getLocalIP(): Promise<string> {
   try {
-    const doc = getDocBinary();
-    const message: SyncMessage = {
-      type: "doc",
-      payload: encodeDoc(doc),
-    };
-    send(message);
-    console.log("[Sync] Broadcast document");
+    return await invoke<string>("get_local_ip");
+  } catch {
+    return "localhost";
+  }
+}
+
+/**
+ * Get the sync relay URL for PWA to connect to
+ */
+export async function getSyncUrl(): Promise<string> {
+  try {
+    return await invoke<string>("get_sync_url");
+  } catch {
+    const ip = await getLocalIP();
+    return `ws://${ip}:8765`;
+  }
+}
+
+/**
+ * Get number of connected sync clients
+ */
+export async function getClientCount(): Promise<number> {
+  try {
+    return await invoke<number>("get_sync_client_count");
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Broadcast document to all connected clients
+ */
+export async function broadcastDoc(): Promise<void> {
+  try {
+    const docBytes = getDocBinary();
+    // Convert Uint8Array to regular array for Tauri serialization
+    await invoke("broadcast_doc", { docBytes: Array.from(docBytes) });
+    console.log("[Sync] Broadcast document:", docBytes.length, "bytes");
   } catch (error) {
     console.error("[Sync] Failed to broadcast:", error);
   }
 }
 
 /**
- * Connect to sync relay (client mode - for PWA)
- */
-export function connect(url: string): void {
-  if (ws) {
-    ws.close();
-  }
-
-  console.log(`[Sync] Connecting to ${url}...`);
-  ws = new WebSocket(url);
-
-  ws.onopen = () => {
-    console.log("[Sync] Connected to relay");
-    isConnected = true;
-    useAppStore.getState().setSyncing(false);
-
-    // Request current document from peers
-    send({ type: "request" });
-  };
-
-  ws.onmessage = async (event) => {
-    try {
-      const message = JSON.parse(event.data) as SyncMessage;
-      await handleMessage(message);
-    } catch (error) {
-      console.error("[Sync] Failed to handle message:", error);
-    }
-  };
-
-  ws.onclose = () => {
-    console.log("[Sync] Disconnected from relay");
-    isConnected = false;
-    ws = null;
-
-    // Reconnect after delay
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    reconnectTimer = setTimeout(() => {
-      if (!isConnected) {
-        connect(url);
-      }
-    }, 5000);
-  };
-
-  ws.onerror = (error) => {
-    console.error("[Sync] WebSocket error:", error);
-  };
-}
-
-/**
- * Disconnect from sync relay
- */
-export function disconnect(): void {
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
-  if (ws) {
-    ws.close();
-    ws = null;
-  }
-  isConnected = false;
-}
-
-/**
- * Check if connected to relay
+ * Check if sync server is running
  */
 export function isRelayConnected(): boolean {
-  return isConnected;
+  return isServerRunning;
 }
 
 /**
- * Get sync status
+ * Get current client count
  */
-export function getSyncStatus(): {
-  connected: boolean;
-  serverRunning: boolean;
-  port: number;
-} {
+export function getConnectedClients(): number {
+  return clientCount;
+}
+
+/**
+ * Get current sync status
+ */
+export async function getSyncStatus(): Promise<SyncStatus> {
   return {
-    connected: isConnected,
-    serverRunning: serverStarted,
-    port: serverPort,
+    serverRunning: isServerRunning,
+    clientCount: await getClientCount(),
+    syncUrl: await getSyncUrl(),
   };
 }
 
-// For desktop: We'll need to start the relay server via Tauri
-// This is a placeholder - actual implementation would use Tauri shell to run the Node server
-export function setServerStarted(started: boolean, port = 8765): void {
-  serverStarted = started;
-  serverPort = port;
+/**
+ * Subscribe to sync status changes
+ */
+export function onStatusChange(callback: StatusCallback): () => void {
+  statusCallbacks.add(callback);
+  
+  // Immediately call with current status
+  getSyncStatus().then(callback);
+  
+  return () => {
+    statusCallbacks.delete(callback);
+  };
+}
+
+/**
+ * Notify all status listeners
+ */
+async function notifyStatus(): Promise<void> {
+  const status = await getSyncStatus();
+  for (const callback of statusCallbacks) {
+    callback(status);
+  }
+}
+
+/**
+ * Start polling for client count updates
+ */
+function startPolling(): void {
+  if (pollInterval) return;
+
+  pollInterval = setInterval(async () => {
+    const newCount = await getClientCount();
+    if (newCount !== clientCount) {
+      clientCount = newCount;
+      await notifyStatus();
+    }
+  }, 2000);
+}
+
+/**
+ * Stop polling
+ */
+function stopPolling(): void {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
+}
+
+/**
+ * Start sync server
+ * The WebSocket server is started automatically by Tauri on app launch.
+ * This function sets up the document change subscription to broadcast updates.
+ */
+export async function startSync(): Promise<void> {
+  if (isServerRunning) return;
+  
+  isServerRunning = true;
+  
+  // Start polling for client count
+  startPolling();
+
+  // Subscribe to local document changes and broadcast to clients
+  changeUnsubscribe = subscribe(async () => {
+    await broadcastDoc();
+  });
+
+  // Log sync URL
+  const url = await getSyncUrl();
+  console.log("[Sync] Server running at:", url);
+  
+  await notifyStatus();
+}
+
+/**
+ * Stop sync (but server keeps running - it's managed by Tauri)
+ */
+export function stopSync(): void {
+  stopPolling();
+
+  if (changeUnsubscribe) {
+    changeUnsubscribe();
+    changeUnsubscribe = null;
+  }
+
+  isServerRunning = false;
+  clientCount = 0;
+  
+  notifyStatus();
+}
+
+// Legacy exports for compatibility with existing code
+export function connect(): void {
+  startSync();
+}
+
+export function disconnect(): void {
+  stopSync();
+}
+
+// For backwards compatibility with old API
+export function getLocalIPs(): string[] {
+  return ["localhost"]; // Real IP fetched async via getLocalIP()
+}
+
+export function getConnectionUrl(): string {
+  return "ws://localhost:8765"; // Real URL fetched async via getSyncUrl()
+}
+
+export function getSyncStatusSync(): { connected: boolean; serverRunning: boolean; port: number } {
+  return {
+    connected: isServerRunning,
+    serverRunning: isServerRunning,
+    port: 8765,
+  };
+}
+
+export function setServerStarted(started: boolean): void {
+  isServerRunning = started;
 }
