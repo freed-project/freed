@@ -1,6 +1,6 @@
 # Phase 1: Foundation
 
-> **Status:** ✓ Complete  
+> **Status:** 🚧 Nearly Complete  
 > **Dependencies:** None
 
 ---
@@ -123,8 +123,17 @@ Vite + React + TypeScript site deployed to GitHub Pages at freed.wtf.
 - Mobile-responsive design
 - Glassmorphic dark theme
 
-**Remaining Polish:**
+**Remaining Work:**
 
+- [ ] Finish first updates blog post (001-introducing-freed)
+- [ ] Finish the manifesto
+- [ ] Complete newsletter subscription system:
+  - [ ] Create Brevo account and contact list
+  - [ ] Import existing 90k subscribers
+  - [ ] Set `BREVO_API_KEY` and `BREVO_LIST_ID` in Vercel
+  - [ ] Configure freed.wtf domain in Vercel
+- [ ] Send our first email newsletter
+- [ ] Fix navigation bar vertical clipping on overscroll (iOS/macOS bounce)
 - [ ] Finish Unified Feed icon (wave design)
 - [ ] Finish Ulysses Mode icon (mermaid/siren design)
 
@@ -140,11 +149,11 @@ The newsletter system uses Brevo for contact management and email delivery, prox
 
 **Files:**
 
-| File                                         | Purpose                        |
-| -------------------------------------------- | ------------------------------ |
-| `website/api/subscribe.ts`                   | Vercel Edge Function (Brevo)   |
-| `website/src/components/NewsletterModal.tsx` | Modal component                |
-| `website/src/context/NewsletterContext.tsx`  | Modal state management         |
+| File                                         | Purpose                      |
+| -------------------------------------------- | ---------------------------- |
+| `website/api/subscribe.ts`                   | Vercel Edge Function (Brevo) |
+| `website/src/components/NewsletterModal.tsx` | Modal component              |
+| `website/src/context/NewsletterContext.tsx`  | Modal state management       |
 
 **Cost:** Free tier for both Brevo (contact storage) and Vercel (Hobby plan). ~$10-25 per bulk email send.
 
