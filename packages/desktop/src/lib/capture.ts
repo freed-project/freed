@@ -1,12 +1,14 @@
 /**
- * Capture service for fetching RSS feeds in the browser
+ * Capture service for fetching RSS feeds
+ *
+ * Uses Tauri backend to bypass CORS restrictions.
  */
 
+import { invoke } from "@tauri-apps/api/core";
 import type { FeedItem, RssFeed } from "@freed/shared";
-import { rankFeedItems } from "@freed/shared";
 import { useAppStore } from "./store";
 
-// Simple RSS XML parser for browser
+// Simple RSS XML parser
 interface RssChannel {
   title: string;
   link: string;
@@ -24,11 +26,24 @@ interface RssItem {
 }
 
 /**
+ * Fetch URL via Tauri backend (bypasses CORS)
+ */
+async function fetchUrl(url: string): Promise<string> {
+  return invoke<string>("fetch_url", { url });
+}
+
+/**
  * Parse RSS/Atom XML into structured data
  */
 function parseRssFeed(xml: string, feedUrl: string): RssChannel {
   const parser = new DOMParser();
   const doc = parser.parseFromString(xml, "application/xml");
+
+  // Check for parse errors
+  const parseError = doc.querySelector("parsererror");
+  if (parseError) {
+    throw new Error("Invalid XML: " + parseError.textContent);
+  }
 
   // Check for Atom format
   const atomFeed = doc.querySelector("feed");
@@ -94,7 +109,12 @@ function parseAtom(feed: Element, feedUrl: string): RssChannel {
  */
 function rssToFeedItems(channel: RssChannel, feedUrl: string): FeedItem[] {
   const now = Date.now();
-  const siteHost = new URL(channel.link).hostname;
+  let siteHost: string;
+  try {
+    siteHost = new URL(channel.link).hostname;
+  } catch {
+    siteHost = feedUrl;
+  }
 
   return channel.items.map((item, index) => {
     const publishedAt = item.pubDate
@@ -160,18 +180,10 @@ function stripHtml(html: string): string {
 }
 
 /**
- * Fetch and parse an RSS feed
+ * Fetch and parse an RSS feed via Tauri backend
  */
 export async function fetchRssFeed(feedUrl: string): Promise<FeedItem[]> {
-  // Use a CORS proxy for browser requests
-  const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(feedUrl)}`;
-
-  const response = await fetch(proxyUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch feed: ${response.status}`);
-  }
-
-  const xml = await response.text();
+  const xml = await fetchUrl(feedUrl);
   const channel = parseRssFeed(xml, feedUrl);
   return rssToFeedItems(channel, feedUrl);
 }
@@ -189,28 +201,24 @@ export async function addRssFeed(feedUrl: string): Promise<void> {
     // Fetch items
     const newItems = await fetchRssFeed(feedUrl);
 
-    // Rank new items
-    const rankedItems = rankFeedItems(newItems, store.preferences.weights);
+    if (newItems.length === 0) {
+      throw new Error("No items found in feed");
+    }
 
-    // Add feed to store
+    // Add feed to store (persisted via Automerge)
     const feed: RssFeed = {
       url: feedUrl,
-      title: rankedItems[0]?.rssSource?.feedTitle || feedUrl,
-      siteUrl: rankedItems[0]?.rssSource?.siteUrl,
+      title: newItems[0]?.rssSource?.feedTitle || feedUrl,
+      siteUrl: newItems[0]?.rssSource?.siteUrl,
       lastFetched: Date.now(),
       enabled: true,
       trackUnread: false,
     };
 
-    store.addFeed(feed);
+    await store.addFeed(feed);
 
-    // Merge items (deduplicate by globalId)
-    const existingIds = new Set(store.items.map((i) => i.globalId));
-    const uniqueNewItems = rankedItems.filter(
-      (item) => !existingIds.has(item.globalId)
-    );
-
-    store.setItems([...uniqueNewItems, ...store.items]);
+    // Add items (persisted via Automerge, deduplication handled there)
+    await store.addItems(newItems);
   } catch (error) {
     store.setError(
       error instanceof Error ? error.message : "Failed to add feed"
@@ -243,22 +251,16 @@ export async function refreshAllFeeds(): Promise<void> {
         const items = await fetchRssFeed(feed.url);
         allNewItems.push(...items);
 
-        // Update feed's lastFetched
-        store.addFeed({ ...feed, lastFetched: Date.now() });
+        // Update feed's lastFetched (persisted via Automerge)
+        await store.addFeed({ ...feed, lastFetched: Date.now() });
       } catch (error) {
         console.error(`Failed to fetch ${feed.url}:`, error);
       }
     }
 
-    // Rank and merge
-    const rankedItems = rankFeedItems(allNewItems, store.preferences.weights);
-    const existingIds = new Set(store.items.map((i) => i.globalId));
-    const uniqueNewItems = rankedItems.filter(
-      (item) => !existingIds.has(item.globalId)
-    );
-
-    if (uniqueNewItems.length > 0) {
-      store.setItems([...uniqueNewItems, ...store.items]);
+    // Add all new items (deduplication handled by Automerge layer)
+    if (allNewItems.length > 0) {
+      await store.addItems(allNewItems);
     }
   } catch (error) {
     store.setError(
