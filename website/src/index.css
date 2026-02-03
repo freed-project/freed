@@ -26,12 +26,19 @@ html {
 }
 
 body {
-  font-family: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-manrope), "Manrope", system-ui, -apple-system,
+    sans-serif;
   background-color: var(--color-freed-black);
   color: var(--color-text-primary);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Logo typography - Space Grotesk */
+.font-logo {
+  font-family: var(--font-space-grotesk), "Space Grotesk", system-ui, sans-serif;
+  letter-spacing: -0.02em;
 }
 
 /* Accessibility: Focus styles */

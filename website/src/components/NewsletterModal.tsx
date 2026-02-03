@@ -140,6 +140,12 @@ export default function NewsletterModal() {
                   // Form state
                   <>
                     <div className="text-center mb-6">
+                      <div className="flex justify-center mb-3">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-glow-purple/20 text-glow-purple border border-glow-purple/30">
+                          <span className="w-1.5 h-1.5 rounded-full bg-glow-purple animate-pulse" />
+                          Email updates coming soon
+                        </span>
+                      </div>
                       <h3
                         id="newsletter-title"
                         className="text-2xl font-bold text-text-primary mb-2"

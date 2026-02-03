@@ -1,11 +1,32 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { Manrope, Space_Grotesk } from "next/font/google";
 import { NewsletterProvider } from "@/context/NewsletterContext";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import NewsletterModal from "@/components/NewsletterModal";
 import "@/index.css";
 
+const manrope = Manrope({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-manrope",
+});
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-space-grotesk",
+});
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  themeColor: "#0a0a0a",
+};
+
 export const metadata: Metadata = {
+  metadataBase: new URL("https://freed.wtf"),
   title: {
     default: "FREED - Take Back Your Feed",
     template: "%s | FREED",
@@ -21,6 +42,20 @@ export const metadata: Metadata = {
     "feed aggregator",
   ],
   authors: [{ name: "FREED Team" }],
+  creator: "FREED Team",
+  publisher: "FREED",
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
+  alternates: {
+    canonical: "/",
+    types: {
+      "application/rss+xml": "/feed.xml",
+      "application/atom+xml": "/atom.xml",
+    },
+  },
   openGraph: {
     type: "website",
     locale: "en_US",
@@ -39,6 +74,13 @@ export const metadata: Metadata = {
   robots: {
     index: true,
     follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
   },
 };
 
@@ -48,15 +90,26 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>
+    <html lang="en" className={`${manrope.variable} ${spaceGrotesk.variable}`}>
+      <body className={manrope.className}>
         <NewsletterProvider>
+          {/* Skip to main content link for accessibility */}
+          <a
+            href="#main-content"
+            className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-glow-purple focus:text-white focus:rounded-lg focus:outline-none"
+          >
+            Skip to main content
+          </a>
+
           <div className="min-h-screen flex flex-col overflow-x-hidden">
             {/* Noise texture overlay */}
-            <div className="noise-overlay" />
+            <div className="noise-overlay" aria-hidden="true" />
 
             {/* Background gradient orbs */}
-            <div className="fixed inset-0 overflow-hidden pointer-events-none">
+            <div
+              className="fixed inset-0 overflow-hidden pointer-events-none"
+              aria-hidden="true"
+            >
               <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-glow-purple/10 blur-[120px]" />
               <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-glow-blue/10 blur-[100px]" />
               <div className="absolute top-[40%] right-[20%] w-[300px] h-[300px] rounded-full bg-glow-cyan/5 blur-[80px]" />
@@ -64,7 +117,9 @@ export default function RootLayout({
 
             <Navigation />
 
-            <main className="flex-grow relative z-10">{children}</main>
+            <main id="main-content" className="flex-grow relative z-10">
+              {children}
+            </main>
 
             <Footer />
           </div>

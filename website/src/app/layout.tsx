@@ -4,7 +4,7 @@ import { NewsletterProvider } from "@/context/NewsletterContext";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import NewsletterModal from "@/components/NewsletterModal";
-import FontSwitcher from "@/components/FontSwitcher";
+// import FontSwitcher from "@/components/FontSwitcher";
 import "../index.css";
 
 const inter = Inter({
@@ -87,6 +87,27 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className={inter.className}>
+        <div
+          style={{
+            position: "fixed",
+            bottom: "24px",
+            right: "24px",
+            zIndex: 99999,
+            width: "56px",
+            height: "56px",
+            borderRadius: "50%",
+            backgroundColor: "#8b5cf6",
+            color: "white",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "24px",
+            fontWeight: "bold",
+            boxShadow: "0 4px 20px rgba(139, 92, 246, 0.5)",
+          }}
+        >
+          F
+        </div>
         <NewsletterProvider>
           {/* Skip to main content link for accessibility */}
           <a
@@ -119,7 +140,6 @@ export default function RootLayout({
             <Footer />
           </div>
           <NewsletterModal />
-          <FontSwitcher />
         </NewsletterProvider>
       </body>
     </html>

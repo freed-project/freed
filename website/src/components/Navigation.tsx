@@ -75,7 +75,7 @@ export default function Navigation() {
           onMouseEnter={handleMouseEnter}
           onMouseLeave={() => setIsHovering(false)}
         >
-          <span className="relative text-xl sm:text-2xl font-bold text-text-primary">
+          <span className="relative text-xl sm:text-2xl font-bold text-text-primary font-logo">
             FREED
             <span
               className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
@@ -85,7 +85,7 @@ export default function Navigation() {
               }}
             />
           </span>
-          <span className="text-sm sm:text-base font-bold gradient-text relative">
+          <span className="text-sm sm:text-base font-bold gradient-text relative font-logo">
             .WTF
           </span>
 

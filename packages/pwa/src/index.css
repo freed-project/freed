@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,6 +10,9 @@
    ============================================ */
 
 :root {
+  /* Typography */
+  --font-body: 'Manrope', system-ui, -apple-system, sans-serif;
+  --font-logo: 'Space Grotesk', system-ui, sans-serif;
   /* Core colors - matches marketing site */
   --freed-black: #0a0a0a;
   --freed-dark: #0f0f0f;
@@ -51,16 +56,18 @@ body {
   min-height: 100dvh; /* Dynamic viewport height for mobile */
   background: var(--freed-black);
   color: var(--text-primary);
-  font-family:
-    "Inter",
-    system-ui,
-    -apple-system,
-    sans-serif;
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.6;
   /* Prevent overscroll bounce on iOS */
   overscroll-behavior: none;
+}
+
+/* Logo typography */
+.font-logo {
+  font-family: var(--font-logo);
+  letter-spacing: -0.02em;
 }
 
 #root {

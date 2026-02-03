@@ -11,7 +11,7 @@ export default function Footer() {
           {/* Brand */}
           <div className="col-span-2 md:col-span-2">
             <Link href="/" className="inline-flex items-baseline gap-0.5 mb-4">
-              <span className="relative text-xl font-bold text-text-primary">
+              <span className="relative text-xl font-bold text-text-primary font-logo">
                 FREED
                 <span
                   className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
@@ -21,7 +21,9 @@ export default function Footer() {
                   }}
                 />
               </span>
-              <span className="text-sm font-bold gradient-text">.WTF</span>
+              <span className="text-sm font-bold gradient-text font-logo">
+                .WTF
+              </span>
             </Link>
             <p className="text-text-secondary text-sm max-w-md">
               Take back your feed. FREED is open-source software that puts you
