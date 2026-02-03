@@ -623,6 +623,9 @@ export default function RoadmapContent() {
           <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
             <span className="gradient-text">Roadmap</span>
           </h1>
+          <p className="text-text-secondary text-base sm:text-lg mb-2">
+            Built for humans, not algorithms.
+          </p>
           {/*<p className="text-text-secondary text-lg sm:text-xl mb-2">*/}
           {/*  We build in daylight.*/}
           {/*</p>*/}

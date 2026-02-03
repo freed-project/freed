@@ -3,8 +3,7 @@
 ## Brand Identity
 
 **Name:** Freed  
-**Domain:** freed.wtf  
-**Backronym:** "What They Fear"
+**Domain:** freed.wtf
 
 > _The platforms built empires on your attention—and you just walked out the door._
 
@@ -38,7 +37,7 @@ The attention economy treats your focus as a commodity to be extracted and aucti
 - "Mental Sovereignty in the Attention Economy"
 - "Your algorithm. Your rules."
 - "The feed that keeps you free."
-- "Built for humans, not engagement metrics."
+- "Built for humans, not algorithms."
 
 **Manifesto-style:**
 

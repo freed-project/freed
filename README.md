@@ -250,4 +250,4 @@ Read the manifesto at [freed.wtf/manifesto](https://freed.wtf/manifesto).
 
 ---
 
-_Built for humans, not engagement metrics._
+_Built for humans, not algorithms._

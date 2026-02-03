@@ -103,7 +103,7 @@ export default function Footer() {
             License.
           </p>
           <p className="text-text-muted text-sm">
-            Built for humans , not algorithms.
+            Built for humans, not algorithms.
             <br />
             An{" "}
             <a
