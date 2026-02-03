@@ -1,5 +1,5 @@
 /**
- * @freed/capture-save - Save any URL to your FREED library
+ * @freed/capture-save - Save any URL to your Freed library
  */
 
 export { extractMetadata } from "./extract.js";
@@ -14,7 +14,7 @@ import { urlToFeedItem } from "./normalize.js";
 import type { SaveOptions } from "./types.js";
 
 /**
- * Save a URL to FREED with full article extraction
+ * Save a URL to Freed with full article extraction
  *
  * @param url - URL to save
  * @param options - Save options (tags, metadataOnly)
@@ -22,7 +22,7 @@ import type { SaveOptions } from "./types.js";
  */
 export async function saveUrl(
   url: string,
-  options: SaveOptions = {},
+  options: SaveOptions = {}
 ): Promise<FeedItem> {
   // Always extract metadata
   const metadata = await extractMetadata(url);

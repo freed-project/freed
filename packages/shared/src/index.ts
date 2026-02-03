@@ -1,5 +1,5 @@
 /**
- * @freed/shared - Shared types and utilities for FREED
+ * @freed/shared - Shared types and utilities for Freed
  *
  * "Their algorithms optimize for profit. Optimize yours for life."
  */

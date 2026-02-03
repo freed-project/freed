@@ -28,11 +28,11 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL("https://freed.wtf"),
   title: {
-    default: "FREED - Take Back Your Feed",
-    template: "%s | FREED",
+    default: "Freed - Take Back Your Feed",
+    template: "%s | Freed",
   },
   description:
-    "Take back your feed. FREED is open-source software that puts you in control of your social media experience. Local-first, private, and free forever.",
+    "Take back your feed. Freed is open-source software that puts you in control of your social media experience. Local-first, private, and free forever.",
   keywords: [
     "social media",
     "RSS reader",
@@ -41,9 +41,9 @@ export const metadata: Metadata = {
     "open source",
     "feed aggregator",
   ],
-  authors: [{ name: "FREED Team" }],
-  creator: "FREED Team",
-  publisher: "FREED",
+  authors: [{ name: "Freed Team" }],
+  creator: "Freed Team",
+  publisher: "Freed",
   formatDetection: {
     email: false,
     address: false,
@@ -60,16 +60,16 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_US",
     url: "https://freed.wtf",
-    siteName: "FREED",
-    title: "FREED - Take Back Your Feed",
+    siteName: "Freed",
+    title: "Freed - Take Back Your Feed",
     description:
-      "Take back your feed. FREED is open-source software that puts you in control of your social media experience.",
+      "Take back your feed. Freed is open-source software that puts you in control of your social media experience.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "FREED - Take Back Your Feed",
+    title: "Freed - Take Back Your Feed",
     description:
-      "Take back your feed. FREED is open-source software that puts you in control of your social media experience.",
+      "Take back your feed. Freed is open-source software that puts you in control of your social media experience.",
   },
   robots: {
     index: true,

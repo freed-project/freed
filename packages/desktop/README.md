@@ -37,7 +37,7 @@ The binary will be at `src-tauri/target/release/freed-desktop`
 npm run tauri:build
 ```
 
-The macOS app bundle will be at `src-tauri/target/release/bundle/macos/FREED.app`
+The macOS app bundle will be at `src-tauri/target/release/bundle/macos/Freed.app`
 
 ## Architecture
 

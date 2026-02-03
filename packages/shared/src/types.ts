@@ -1,5 +1,5 @@
 /**
- * @freed/shared - Core type definitions for FREED
+ * @freed/shared - Core type definitions for Freed
  *
  * "Their algorithms optimize for profit. Optimize yours for life."
  */
@@ -183,7 +183,7 @@ export interface FeedItem {
   /** Content type classification */
   contentType: ContentType;
 
-  /** When FREED captured this item (Unix timestamp) */
+  /** When Freed captured this item (Unix timestamp) */
   capturedAt: number;
 
   /** Original publish timestamp (Unix timestamp) */

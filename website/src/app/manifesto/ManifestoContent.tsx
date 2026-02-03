@@ -18,7 +18,7 @@ export default function ManifestoContent() {
           {/* Header */}
           <header className="text-center mb-10 sm:mb-16">
             <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
-              <span className="gradient-text">The FREED Manifesto</span>
+              <span className="gradient-text">The Freed Manifesto</span>
             </h1>
             <p className="text-text-secondary text-lg sm:text-xl">
               A declaration of digital independence.
@@ -56,9 +56,9 @@ export default function ManifestoContent() {
                 <em>before</em> facing temptation.
               </p>
               <p>
-                FREED is your mast. You configure it once—deciding what content
+                Freed is your mast. You configure it once—deciding what content
                 matters to you, how your feed should be weighted, which
-                platforms to block—and then you engage only through FREED. The
+                platforms to block—and then you engage only through Freed. The
                 algorithm that serves you best is the one you wrote yourself.
               </p>
             </section>
@@ -72,14 +72,14 @@ export default function ManifestoContent() {
                   <strong className="text-text-primary">
                     Your data belongs to you.
                   </strong>{" "}
-                  FREED stores everything locally. We have no servers, collect
+                  Freed stores everything locally. We have no servers, collect
                   no telemetry, and never see your content.
                 </li>
                 <li>
                   <strong className="text-text-primary">
                     Algorithms should be transparent.
                   </strong>{" "}
-                  FREED's ranking is open source. You can read, modify, and
+                  Freed's ranking is open source. You can read, modify, and
                   improve it.
                 </li>
                 <li>
@@ -110,7 +110,7 @@ export default function ManifestoContent() {
                 from the infinite scroll.
               </p>
               <p>
-                FREED is open source because we believe tools for liberation
+                Freed is open source because we believe tools for liberation
                 should belong to everyone. Fork it, audit it, improve it. Build
                 the future of social media with us.
               </p>
@@ -140,7 +140,7 @@ export default function ManifestoContent() {
               onClick={openModal}
               className="btn-primary text-base px-8 py-3"
             >
-              Get FREED
+              Get Freed
             </motion.button>
           </motion.div>
         </motion.article>

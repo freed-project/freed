@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * capture-save OpenClaw skill
- * Save any URL to your FREED library
+ * Save any URL to your Freed library
  */
 
 import { saveUrl } from "@freed/capture-save";
@@ -39,7 +39,7 @@ function saveDoc(doc: Automerge.Doc<FreedDoc>): void {
 
 async function addUrl(
   url: string,
-  options: { tags?: string[]; metadataOnly?: boolean },
+  options: { tags?: string[]; metadataOnly?: boolean }
 ): Promise<void> {
   console.log(`Saving ${url}...`);
 
@@ -55,7 +55,7 @@ async function addUrl(
   console.log(`✓ Saved: ${item.content.linkPreview?.title || url}`);
   if (item.preservedContent) {
     console.log(
-      `  ${item.preservedContent.wordCount} words, ${item.preservedContent.readingTime} min read`,
+      `  ${item.preservedContent.wordCount} words, ${item.preservedContent.readingTime} min read`
     );
   }
   if (options.tags?.length) {
@@ -147,7 +147,7 @@ switch (command) {
     const url = args[1];
     if (!url) {
       console.error(
-        "Usage: capture-save add <url> [--tags tag1,tag2] [--metadata-only]",
+        "Usage: capture-save add <url> [--tags tag1,tag2] [--metadata-only]"
       );
       process.exit(1);
     }
@@ -176,7 +176,7 @@ switch (command) {
     break;
   }
   default:
-    console.log(`capture-save - Save any URL to your FREED library
+    console.log(`capture-save - Save any URL to your Freed library
 
 Commands:
   add <url>           Save a URL

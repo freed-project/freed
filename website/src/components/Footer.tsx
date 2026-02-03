@@ -26,7 +26,7 @@ export default function Footer() {
               </span>
             </Link>
             <p className="text-text-secondary text-sm max-w-md">
-              Take back your feed. FREED is open-source software that puts you
+              Take back your feed. Freed is open-source software that puts you
               in control of your social media experience.
             </p>
           </div>
@@ -99,11 +99,22 @@ export default function Footer() {
         {/* Bottom */}
         <div className="mt-12 pt-8 border-t border-freed-border flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-text-muted text-sm">
-            &copy; {new Date().getFullYear()} FREED. Open source under MIT
+            &copy; {new Date().getFullYear()} Freed. Open source under MIT
             License.
           </p>
           <p className="text-text-muted text-sm">
-            Built for humans, not algorithms.
+            Built for humans , not algorithms.
+            <br />
+            An{" "}
+            <a
+              href="https://AubreyFalconer.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:no-underline transition-colors"
+            >
+              Aubrey Falconer
+            </a>{" "}
+            project.
           </p>
         </div>
       </div>

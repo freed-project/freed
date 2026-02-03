@@ -106,7 +106,7 @@ export function opmlFeedsToRssFeeds(feeds: OPMLFeed[]): RssFeed[] {
  */
 export function generateOPML(
   feeds: RssFeed[],
-  title: string = "FREED Feed Subscriptions",
+  title: string = "Freed Feed Subscriptions"
 ): string {
   const outlines: OPMLOutline[] = feeds.map((feed) => ({
     "@_type": "rss",

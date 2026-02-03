@@ -60,7 +60,7 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
 
         <h2 className="text-xl font-semibold mb-2">Connect to Desktop</h2>
         <p className="text-sm text-[#71717a] mb-6">
-          Enter the sync URL from your FREED desktop app to sync your feeds
+          Enter the sync URL from your Freed desktop app to sync your feeds
           across devices.
         </p>
 

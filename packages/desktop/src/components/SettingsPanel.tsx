@@ -1,5 +1,10 @@
 import { useState, useEffect } from "react";
-import { getSyncUrl, getClientCount, onStatusChange, type SyncStatus } from "../lib/sync";
+import {
+  getSyncUrl,
+  getClientCount,
+  onStatusChange,
+  type SyncStatus,
+} from "../lib/sync";
 
 interface SettingsPanelProps {
   open: boolean;
@@ -39,7 +44,9 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
 
   // Generate a simple QR code using a data URL
   // For a real implementation, use a library like qrcode
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(syncUrl)}&bgcolor=0a0a0a&color=fafafa`;
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
+    syncUrl
+  )}&bgcolor=0a0a0a&color=fafafa`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -57,8 +64,18 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-white/10 transition-colors"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -66,12 +83,14 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         {/* Sync Section */}
         <div className="space-y-6">
           <div>
-            <h3 className="text-sm font-medium text-[#a1a1aa] mb-3">Mobile Sync</h3>
-            
+            <h3 className="text-sm font-medium text-[#a1a1aa] mb-3">
+              Mobile Sync
+            </h3>
+
             {/* QR Code */}
             <div className="flex flex-col items-center p-4 bg-white/5 rounded-xl border border-[rgba(255,255,255,0.08)] mb-4">
               <p className="text-xs text-[#71717a] mb-3">
-                Scan with your phone to connect FREED PWA
+                Scan with your phone to connect Freed PWA
               </p>
               {syncUrl && (
                 <img
@@ -81,7 +100,9 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                 />
               )}
               <p className="text-xs text-[#71717a] mt-3 text-center">
-                Open <span className="text-[#8b5cf6]">freed.wtf/app</span> on your phone,<br />
+                Open <span className="text-[#8b5cf6]">freed.wtf/app</span> on
+                your phone,
+                <br />
                 then scan this QR code
               </p>
             </div>
@@ -110,17 +131,23 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
             {/* Connected Devices */}
             <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl">
               <div className="flex items-center gap-2">
-                <span className={`sync-dot ${clientCount > 0 ? 'connected' : 'disconnected'}`} />
+                <span
+                  className={`sync-dot ${
+                    clientCount > 0 ? "connected" : "disconnected"
+                  }`}
+                />
                 <span className="text-sm">Connected devices</span>
               </div>
-              <span className="text-sm font-medium text-[#a1a1aa]">{clientCount}</span>
+              <span className="text-sm font-medium text-[#a1a1aa]">
+                {clientCount}
+              </span>
             </div>
           </div>
 
           {/* Version Info */}
           <div className="pt-4 border-t border-[rgba(255,255,255,0.08)]">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-[#71717a]">FREED Desktop</span>
+              <span className="text-[#71717a]">Freed Desktop</span>
               <span className="text-[#a1a1aa]">v0.1.0</span>
             </div>
           </div>

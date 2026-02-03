@@ -7,7 +7,7 @@
 
 ## Overview
 
-Core infrastructure for the FREED project: monorepo setup, shared types, Automerge CRDT schema, marketing site, and CI/CD pipeline.
+Core infrastructure for the Freed project: monorepo setup, shared types, Automerge CRDT schema, marketing site, and CI/CD pipeline.
 
 ---
 

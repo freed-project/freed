@@ -1,4 +1,4 @@
-//! FREED Desktop Application
+//! Freed Desktop Application
 //!
 //! Native desktop app that bundles capture, sync relay, and reader UI.
 
@@ -43,7 +43,7 @@ fn get_platform() -> String {
 #[tauri::command]
 async fn fetch_url(url: String) -> Result<String, String> {
     let client = reqwest::Client::builder()
-        .user_agent("FREED/1.0 (https://freed.wtf)")
+        .user_agent("Freed/1.0 (https://freed.wtf)")
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -274,5 +274,5 @@ pub fn run() {
             broadcast_doc
         ])
         .run(tauri::generate_context!())
-        .expect("error while running FREED");
+        .expect("error while running Freed");
 }

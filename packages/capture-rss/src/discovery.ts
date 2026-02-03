@@ -153,7 +153,7 @@ export async function discoverFeed(url: string): Promise<string | null> {
   try {
     const response = await fetch(url, {
       headers: {
-        "User-Agent": "FREED/1.0 Feed Discovery",
+        "User-Agent": "Freed/1.0 Feed Discovery",
       },
     });
 
@@ -190,7 +190,7 @@ export async function discoverAllFeeds(url: string): Promise<DiscoveredFeed[]> {
   // Try to find feeds in HTML
   try {
     const response = await fetch(url, {
-      headers: { "User-Agent": "FREED/1.0 Feed Discovery" },
+      headers: { "User-Agent": "Freed/1.0 Feed Discovery" },
     });
 
     if (response.ok) {
@@ -257,7 +257,7 @@ function extractFeedFromHtml(html: string, baseUrl: string): string | null {
  */
 function extractAllFeedsFromHtml(
   html: string,
-  baseUrl: string,
+  baseUrl: string
 ): DiscoveredFeed[] {
   const feeds: DiscoveredFeed[] = [];
 
@@ -278,8 +278,8 @@ function extractAllFeedsFromHtml(
         const type = match[1].includes("atom")
           ? "atom"
           : match[1].includes("json")
-            ? "json"
-            : "rss";
+          ? "json"
+          : "rss";
         feeds.push({
           url,
           title: titleMatch?.[1],
@@ -305,7 +305,7 @@ async function isValidFeed(url: string): Promise<boolean> {
   try {
     const response = await fetch(url, {
       method: "HEAD",
-      headers: { "User-Agent": "FREED/1.0 Feed Discovery" },
+      headers: { "User-Agent": "Freed/1.0 Feed Discovery" },
       signal: AbortSignal.timeout(5000),
     });
 

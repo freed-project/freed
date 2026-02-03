@@ -482,7 +482,7 @@ const phases: Phase[] = [
   {
     number: 11,
     title: "OpenClaw Integration 🦞",
-    description: "Headless capture for power users. Run FREED without the GUI.",
+    description: "Headless capture for power users. Run Freed without the GUI.",
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-11-OPENCLAW.md",

@@ -1,7 +1,7 @@
 /**
  * capture-rss OpenClaw skill
  *
- * Background RSS/Atom feed capture for FREED
+ * Background RSS/Atom feed capture for Freed
  */
 
 import { homedir } from "os";
@@ -162,7 +162,7 @@ async function addFeedByUrl(url: string): Promise<void> {
 
   if (!feedUrl) {
     console.error(
-      "Could not find RSS feed. Try providing the direct feed URL.",
+      "Could not find RSS feed. Try providing the direct feed URL."
     );
     process.exit(1);
   }
@@ -312,7 +312,7 @@ async function syncAllFeeds(): Promise<void> {
   // Fetch all feeds
   const results = await fetchFeeds(
     feedRequests,
-    config["capture-rss"].concurrency,
+    config["capture-rss"].concurrency
   );
 
   let totalAdded = 0;
@@ -383,7 +383,7 @@ function exportOPML(filePath: string): void {
     process.exit(1);
   }
 
-  const opml = generateOPML(feeds, "FREED Feed Subscriptions");
+  const opml = generateOPML(feeds, "Freed Feed Subscriptions");
   writeFileSync(filePath, opml);
 
   console.log(`Exported ${feeds.length} feeds to: ${filePath}`);
@@ -469,7 +469,7 @@ async function main(): Promise<void> {
 
     default:
       console.log(`
-capture-rss - RSS/Atom feed capture for FREED
+capture-rss - RSS/Atom feed capture for Freed
 
 Commands:
   add <url>           Add a feed (auto-discovers RSS URL)

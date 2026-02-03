@@ -1,7 +1,7 @@
 {
   "name": "@freed/sync",
   "version": "0.1.0",
-  "description": "Cross-device sync for FREED",
+  "description": "Cross-device sync for Freed",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "FREED",
+  "productName": "Freed",
   "version": "0.1.0",
   "identifier": "wtf.freed.desktop",
   "build": {
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "FREED",
+        "title": "Freed",
         "width": 1200,
         "height": 800,
         "minWidth": 800,

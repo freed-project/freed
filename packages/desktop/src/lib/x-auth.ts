@@ -35,7 +35,7 @@ export function storeCookies(cookies: XCookies): void {
 export function loadStoredCookies(): XCookies | null {
   const stored = localStorage.getItem(X_COOKIES_KEY);
   if (!stored) return null;
-  
+
   try {
     const cookies = JSON.parse(stored) as XCookies;
     if (cookies.ct0 && cookies.authToken) {
@@ -44,7 +44,7 @@ export function loadStoredCookies(): XCookies | null {
   } catch {
     // Invalid stored data
   }
-  
+
   return null;
 }
 
@@ -80,7 +80,7 @@ export function parseCookieString(cookieString: string): XCookies | null {
 
 /**
  * Validate cookies by making a test request
- * 
+ *
  * TODO: Implement via Tauri command when needed
  */
 export async function validateCookies(_cookies: XCookies): Promise<boolean> {
@@ -90,7 +90,7 @@ export async function validateCookies(_cookies: XCookies): Promise<boolean> {
 
 /**
  * Open X login window
- * 
+ *
  * This creates a new WebView window pointing to X's login page.
  * After login, we'll extract the cookies.
  */
@@ -98,16 +98,16 @@ export async function openXLogin(): Promise<XCookies | null> {
   return new Promise((resolve) => {
     // Create a modal dialog for entering cookies manually
     // In a full implementation, we'd open a WebView window
-    
+
     const cookieString = window.prompt(
-      "FREED needs your X/Twitter cookies to capture your timeline.\n\n" +
-      "To get them:\n" +
-      "1. Open x.com in your browser\n" +
-      "2. Log in if needed\n" +
-      "3. Open DevTools (F12)\n" +
-      "4. Go to Application > Cookies > x.com\n" +
-      "5. Copy the values of 'ct0' and 'auth_token'\n\n" +
-      "Paste your cookies in format: ct0=xxx; auth_token=xxx"
+      "Freed needs your X/Twitter cookies to capture your timeline.\n\n" +
+        "To get them:\n" +
+        "1. Open x.com in your browser\n" +
+        "2. Log in if needed\n" +
+        "3. Open DevTools (F12)\n" +
+        "4. Go to Application > Cookies > x.com\n" +
+        "5. Copy the values of 'ct0' and 'auth_token'\n\n" +
+        "Paste your cookies in format: ct0=xxx; auth_token=xxx"
     );
 
     if (!cookieString) {
@@ -128,12 +128,12 @@ export async function openXLogin(): Promise<XCookies | null> {
 
 /**
  * Initialize X auth state
- * 
+ *
  * Checks for stored cookies and validates them.
  */
 export async function initXAuth(): Promise<XAuthState> {
   const stored = loadStoredCookies();
-  
+
   if (!stored) {
     return { isAuthenticated: false };
   }

@@ -1,8 +1,8 @@
 [package]
 name = "freed-desktop"
 version = "0.1.0"
-description = "FREED Desktop - Escape algorithmic manipulation"
-authors = ["FREED"]
+description = "Freed Desktop - Escape algorithmic manipulation"
+authors = ["Freed"]
 edition = "2021"
 
 [lib]

@@ -7,9 +7,10 @@
 
 ## Overview
 
-Headless capture for power users. Run FREED without the Desktop App—just OpenClaw on a server or always-on machine.
+Headless capture for power users. Run Freed without the Desktop App—just OpenClaw on a server or always-on machine.
 
 **Who this is for:**
+
 - Users who already run OpenClaw
 - Self-hosters who want server-side capture
 - Power users who prefer CLI over GUI
@@ -64,7 +65,7 @@ metadata:
 
 # X Capture
 
-Capture your X timeline to FREED.
+Capture your X timeline to Freed.
 
 ## Commands
 
@@ -111,9 +112,9 @@ export interface ScheduleConfig {
 
 export async function scheduleCaptures(config: ScheduleConfig): Promise<void> {
   const jobs = [
-    { skill: "capture-x", cron: "*/15 * * * *" },      // Every 15 min
-    { skill: "capture-rss", cron: "*/30 * * * *" },    // Every 30 min
-    { skill: "capture-save", cron: "0 * * * *" },      // Every hour
+    { skill: "capture-x", cron: "*/15 * * * *" }, // Every 15 min
+    { skill: "capture-rss", cron: "*/30 * * * *" }, // Every 30 min
+    { skill: "capture-save", cron: "0 * * * *" }, // Every hour
   ];
 
   for (const job of jobs) {
@@ -165,10 +166,7 @@ export interface RankingRule {
   penalty?: number;
 }
 
-export function applyCustomRules(
-  item: FeedItem,
-  rules: RankingRule[]
-): number {
+export function applyCustomRules(item: FeedItem, rules: RankingRule[]): number {
   let adjustment = 0;
 
   for (const rule of rules) {
@@ -208,7 +206,7 @@ export async function archiveOldItems(
       if (config.preserveSaved && item.userState.saved) {
         continue;
       }
-      
+
       await appendToArchive(item, config.archivePath);
       delete doc.feedItems[id];
       archived++;
@@ -239,18 +237,18 @@ description: Archive old feed items
 
 ## Tasks
 
-| Task | Description | Complexity |
-|------|-------------|------------|
-| 11.1 | Skill wrapper for capture-x | Low |
-| 11.2 | Skill wrapper for capture-rss | Low |
-| 11.3 | Skill wrapper for capture-save | Low |
-| 11.4 | Capture scheduler skill | Medium |
-| 11.5 | Custom ranking rules parser | Medium |
-| 11.6 | Ranking rules integration | Medium |
-| 11.7 | Archive skill | Medium |
-| 11.8 | Archive search | Medium |
-| 11.9 | Local relay for PWA sync | Medium |
-| 11.10 | Documentation for self-hosters | Low |
+| Task  | Description                    | Complexity |
+| ----- | ------------------------------ | ---------- |
+| 11.1  | Skill wrapper for capture-x    | Low        |
+| 11.2  | Skill wrapper for capture-rss  | Low        |
+| 11.3  | Skill wrapper for capture-save | Low        |
+| 11.4  | Capture scheduler skill        | Medium     |
+| 11.5  | Custom ranking rules parser    | Medium     |
+| 11.6  | Ranking rules integration      | Medium     |
+| 11.7  | Archive skill                  | Medium     |
+| 11.8  | Archive search                 | Medium     |
+| 11.9  | Local relay for PWA sync       | Medium     |
+| 11.10 | Documentation for self-hosters | Low        |
 
 ---
 
@@ -268,4 +266,4 @@ description: Archive old feed items
 
 ## Deliverable
 
-Full FREED functionality via OpenClaw CLI—no Desktop App required.
+Full Freed functionality via OpenClaw CLI—no Desktop App required.

@@ -284,7 +284,7 @@ const features = [
     icon: <UlyssesIcon />,
     title: "Ulysses Mode",
     description:
-      "Bind yourself to your values. Block algorithmic feeds and only engage through FREED.",
+      "Bind yourself to your values. Block algorithmic feeds and only engage through Freed.",
   },
   {
     icon: <SyncIcon />,

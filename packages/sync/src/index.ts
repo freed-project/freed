@@ -1,5 +1,5 @@
 /**
- * @freed/sync - Cross-device sync for FREED
+ * @freed/sync - Cross-device sync for Freed
  */
 
 export { FilesystemStorage } from "./storage/filesystem.js";
@@ -81,7 +81,7 @@ export class SyncManager<T extends DocType = DocType> {
    */
   async update(
     changeFn: (doc: T) => void,
-    message?: string,
+    message?: string
   ): Promise<Automerge.Doc<T>> {
     if (!this.doc) {
       throw new Error("Document not initialized. Call init() first.");

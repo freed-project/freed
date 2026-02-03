@@ -1,5 +1,5 @@
 /**
- * Sync Server Controller for FREED Desktop
+ * Sync Server Controller for Freed Desktop
  *
  * Desktop runs a WebSocket relay server via Tauri (Rust backend).
  * This module provides TypeScript interface to control and monitor it.
@@ -103,10 +103,10 @@ export async function getSyncStatus(): Promise<SyncStatus> {
  */
 export function onStatusChange(callback: StatusCallback): () => void {
   statusCallbacks.add(callback);
-  
+
   // Immediately call with current status
   getSyncStatus().then(callback);
-  
+
   return () => {
     statusCallbacks.delete(callback);
   };
@@ -154,9 +154,9 @@ function stopPolling(): void {
  */
 export async function startSync(): Promise<void> {
   if (isServerRunning) return;
-  
+
   isServerRunning = true;
-  
+
   // Start polling for client count
   startPolling();
 
@@ -168,7 +168,7 @@ export async function startSync(): Promise<void> {
   // Log sync URL
   const url = await getSyncUrl();
   console.log("[Sync] Server running at:", url);
-  
+
   await notifyStatus();
 }
 
@@ -185,7 +185,7 @@ export function stopSync(): void {
 
   isServerRunning = false;
   clientCount = 0;
-  
+
   notifyStatus();
 }
 
@@ -207,7 +207,11 @@ export function getConnectionUrl(): string {
   return "ws://localhost:8765"; // Real URL fetched async via getSyncUrl()
 }
 
-export function getSyncStatusSync(): { connected: boolean; serverRunning: boolean; port: number } {
+export function getSyncStatusSync(): {
+  connected: boolean;
+  serverRunning: boolean;
+  port: number;
+} {
   return {
     connected: isServerRunning,
     serverRunning: isServerRunning,

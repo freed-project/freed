@@ -1,6 +1,6 @@
-# FREED Marketing Site
+# Freed Marketing Site
 
-Marketing website for FREED - Take Back Your Feed.
+Marketing website for Freed - Take Back Your Feed.
 
 **Live at:** [freed.wtf](https://freed.wtf)
 
@@ -33,6 +33,7 @@ npm run preview
 The site auto-deploys to GitHub Pages on push to `main` via GitHub Actions.
 
 To set up:
+
 1. Go to repository Settings → Pages
 2. Set Source to "GitHub Actions"
 3. Push to main branch

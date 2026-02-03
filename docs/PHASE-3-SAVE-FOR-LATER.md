@@ -175,14 +175,14 @@ skills/capture-save/
 ```yaml
 ---
 name: capture-save
-description: Save any URL to your FREED library
+description: Save any URL to your Freed library
 user-invocable: true
 metadata: {"requires": {"bins": ["bun"]}}
 ---
 
 # Save for Later
 
-Capture any URL to your FREED library with full article extraction.
+Capture any URL to your Freed library with full article extraction.
 
 ## Usage
 

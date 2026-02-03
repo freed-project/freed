@@ -215,7 +215,7 @@ npm run typecheck  # Type-check all packages
 
 ## Contributing
 
-FREED is open source. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Freed is open source. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Areas where we need help:
 
@@ -228,7 +228,7 @@ Areas where we need help:
 
 ## Legal
 
-FREED operates locally using your own authenticated sessions. All data stays local. We have no servers and collect no data.
+Freed operates locally using your own authenticated sessions. All data stays local. We have no servers and collect no data.
 
 See [docs/LEGAL.md](docs/LEGAL.md).
 

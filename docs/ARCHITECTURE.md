@@ -1,8 +1,8 @@
-# FREED Technical Architecture
+# Freed Technical Architecture
 
 ## Overview
 
-FREED is a privacy-first, local-first system for capturing social media content and presenting it through a user-controlled unified feed.
+Freed is a privacy-first, local-first system for capturing social media content and presenting it through a user-controlled unified feed.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -407,7 +407,7 @@ function calculateWeight(item: FeedItem, prefs: UserPreferences): number {
 When enabled, content scripts:
 
 1. Detect feed pages via URL patterns
-2. Overlay block screen with redirect to FREED PWA
+2. Overlay block screen with redirect to Freed PWA
 3. Allow escape paths (DMs, notifications, settings)
 
 ```typescript
@@ -445,13 +445,13 @@ const ULYSSES_ALLOWED_PATHS = {
 
 ## Future: Complete Sovereignty Loop
 
-FREED handles **consumption**. For **publishing**, we plan to integrate with [POSSE Party](https://posseparty.com/).
+Freed handles **consumption**. For **publishing**, we plan to integrate with [POSSE Party](https://posseparty.com/).
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    DIGITAL SOVEREIGNTY                       │
 │                                                              │
-│   YOUR SITE ──POSSE──→ Platforms ──FREED──→ YOUR FEED       │
+│   YOUR SITE ──POSSE──→ Platforms ──Freed──→ YOUR FEED       │
 │      ↑                                          │            │
 │      └──────────────── YOU ─────────────────────┘            │
 │                                                              │
@@ -463,7 +463,7 @@ FREED handles **consumption**. For **publishing**, we plan to integrate with [PO
 
 This completes the loop:
 
-- **Read** through FREED (your algorithm, your data)
+- **Read** through Freed (your algorithm, your data)
 - **Write** through POSSE (your site first, then platforms)
 - Your content lives on YOUR domain, not just platform servers
 - Full IndieWeb alignment

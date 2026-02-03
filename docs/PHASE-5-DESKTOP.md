@@ -24,7 +24,7 @@ The universal liberation tool. Anyone can install this and escape algorithmic ma
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      FREED Desktop (Tauri)                      │
+│                      Freed Desktop (Tauri)                      │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │                    WebView (React PWA)                   │   │
@@ -115,7 +115,7 @@ packages/desktop/
 {
   "windows": [
     {
-      "title": "FREED",
+      "title": "Freed",
       "width": 1200,
       "height": 800,
       "transparent": true,

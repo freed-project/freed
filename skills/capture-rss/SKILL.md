@@ -14,7 +14,7 @@ Captures content from RSS and Atom feeds. Works with blogs, newsletters, YouTube
 This skill:
 
 - Polls your subscribed RSS/Atom feeds periodically
-- Normalizes content to FREED's unified FeedItem format
+- Normalizes content to Freed's unified FeedItem format
 - Uses conditional GET (ETag/Last-Modified) for efficient polling
 - Auto-discovers feed URLs from website URLs
 - Supports OPML import/export for migration

@@ -15,7 +15,7 @@ import type {
 // =============================================================================
 
 const DEFAULT_TIMEOUT = 30000;
-const DEFAULT_USER_AGENT = "FREED/1.0 (https://freed.wtf) Feed Reader";
+const DEFAULT_USER_AGENT = "Freed/1.0 (https://freed.wtf) Feed Reader";
 
 // =============================================================================
 // Parser Setup
@@ -59,7 +59,7 @@ const parser = createParser();
  */
 export async function fetchFeed(
   url: string,
-  options: FetchOptions = {},
+  options: FetchOptions = {}
 ): Promise<FetchResult> {
   const headers: Record<string, string> = {
     "User-Agent": options.userAgent || DEFAULT_USER_AGENT,
@@ -79,7 +79,7 @@ export async function fetchFeed(
   const controller = new AbortController();
   const timeoutId = setTimeout(
     () => controller.abort(),
-    options.timeout || DEFAULT_TIMEOUT,
+    options.timeout || DEFAULT_TIMEOUT
   );
 
   try {
@@ -126,7 +126,7 @@ export async function fetchFeed(
 
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(
-        `Request timeout after ${options.timeout || DEFAULT_TIMEOUT}ms`,
+        `Request timeout after ${options.timeout || DEFAULT_TIMEOUT}ms`
       );
     }
 
@@ -210,7 +210,7 @@ export async function getFeedMetadata(url: string): Promise<{
  */
 export async function fetchFeeds(
   feeds: Array<{ url: string; etag?: string; lastModified?: string }>,
-  concurrency: number = 5,
+  concurrency: number = 5
 ): Promise<Array<{ url: string; result: FetchResult | { error: string } }>> {
   const results: Array<{
     url: string;
@@ -234,7 +234,7 @@ export async function fetchFeeds(
             },
           };
         }
-      }),
+      })
     );
 
     results.push(...batchResults);

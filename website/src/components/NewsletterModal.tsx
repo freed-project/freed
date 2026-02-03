@@ -127,7 +127,7 @@ export default function NewsletterModal() {
                       You're In!
                     </h3>
                     <p className="text-text-secondary">
-                      We'll let you know when FREED is ready for you.
+                      We'll let you know when Freed is ready for you.
                     </p>
                     <button
                       onClick={handleClose}
@@ -150,7 +150,7 @@ export default function NewsletterModal() {
                         id="newsletter-title"
                         className="text-2xl font-bold text-text-primary mb-2"
                       >
-                        Get <span className="gradient-text">FREED</span>
+                        Get <span className="gradient-text">Freed</span>
                       </h3>
                       <p className="text-text-secondary">
                         Be the first to know when we launch. Join the waitlist

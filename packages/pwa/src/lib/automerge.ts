@@ -1,5 +1,5 @@
 /**
- * Automerge document management for FREED PWA
+ * Automerge document management for Freed PWA
  *
  * Handles loading, saving, and syncing the Automerge CRDT document.
  */
@@ -123,7 +123,10 @@ export async function docUpdateFeedItem(
 }
 
 export async function docRemoveFeedItem(globalId: string): Promise<FreedDoc> {
-  return applyChange((doc) => removeFeedItem(doc, globalId), "Remove feed item");
+  return applyChange(
+    (doc) => removeFeedItem(doc, globalId),
+    "Remove feed item"
+  );
 }
 
 export async function docMarkAsRead(globalId: string): Promise<FreedDoc> {

@@ -86,7 +86,7 @@ export function startLocalRelay(repo: Repo, port = DEFAULT_PORT): void {
   const adapter = new NodeWSServerAdapter(wss);
   repo.networkSubsystem.addNetworkAdapter(adapter);
 
-  console.log(`FREED sync relay running on ws://localhost:${port}`);
+  console.log(`Freed sync relay running on ws://localhost:${port}`);
 }
 ```
 

@@ -25,19 +25,19 @@ interface PostMeta {
 const posts: PostMeta[] = [
   {
     slug: "introducing-freed",
-    title: "Introducing FREED: Take Back Your Feed",
+    title: "Introducing Freed: Take Back Your Feed",
     description:
-      "Our first newsletter. Why we built FREED, what we believe, and where we're headed.",
+      "Our first newsletter. Why we built Freed, what we believe, and where we're headed.",
     date: "2026-02-01",
-    author: "The FREED Team",
+    author: "The Freed Team",
     tags: ["announcement", "philosophy"],
   },
 ];
 
 const SITE_URL = "https://freed.wtf";
-const SITE_TITLE = "FREED Updates";
+const SITE_TITLE = "Freed Updates";
 const SITE_DESCRIPTION =
-  "Progress updates, technical deep-dives, and philosophical rants about the attention economy. From the team building FREED.";
+  "Progress updates, technical deep-dives, and philosophical rants about the attention economy. From the team building Freed.";
 
 async function generateFeed() {
   const feed = new Feed({
@@ -48,13 +48,13 @@ async function generateFeed() {
     language: "en",
     image: `${SITE_URL}/favicon.svg`,
     favicon: `${SITE_URL}/favicon.svg`,
-    copyright: `All rights reserved ${new Date().getFullYear()}, FREED Project`,
+    copyright: `All rights reserved ${new Date().getFullYear()}, Freed Project`,
     feedLinks: {
       rss2: `${SITE_URL}/feed.xml`,
       atom: `${SITE_URL}/atom.xml`,
     },
     author: {
-      name: "The FREED Team",
+      name: "The Freed Team",
       link: SITE_URL,
     },
   });

@@ -3,16 +3,16 @@ import { definePost } from "../types";
 export default definePost(
   {
     slug: "introducing-freed",
-    title: "Introducing FREED: Take Back Your Feed",
+    title: "Introducing Freed: Take Back Your Feed",
     description:
-      "Our first newsletter. Why we built FREED, what we believe, and where we're headed.",
+      "Our first newsletter. Why we built Freed, what we believe, and where we're headed.",
     date: "2026-02-01",
-    author: "The FREED Team",
+    author: "The Freed Team",
     tags: ["announcement", "philosophy"],
   },
   <>
     <p>
-      Welcome to the first FREED newsletter. If you're reading this, you've
+      Welcome to the first Freed newsletter. If you're reading this, you've
       either subscribed to our email list or discovered us through RSS—which, by
       the way, is exactly the kind of choice we think you should have.
     </p>
@@ -29,9 +29,9 @@ export default definePost(
       it.
     </p>
 
-    <h2>What FREED Actually Is</h2>
+    <h2>What Freed Actually Is</h2>
     <p>
-      FREED captures your social feeds locally—X, RSS, YouTube, newsletters,
+      Freed captures your social feeds locally—X, RSS, YouTube, newsletters,
       podcasts—and creates a unified timeline that <em>you</em> control. No
       engagement optimization. No algorithmic manipulation. Just content from
       people you actually care about, weighted by criteria you define.
@@ -66,7 +66,7 @@ export default definePost(
     </p>
 
     <h2>How You Can Help</h2>
-    <p>FREED is open source and MIT licensed. We need help with:</p>
+    <p>Freed is open source and MIT licensed. We need help with:</p>
     <ul>
       <li>Desktop app UI (Tauri + React)</li>
       <li>Additional capture layers</li>
@@ -87,7 +87,7 @@ export default definePost(
 
     <h2>Stay Connected</h2>
     <p>
-      This newsletter will be your primary source for FREED updates. We'll share
+      This newsletter will be your primary source for Freed updates. We'll share
       progress, technical deep-dives, and occasional philosophical rants about
       the attention economy.
     </p>
@@ -103,7 +103,7 @@ export default definePost(
     <p>
       Until next time,
       <br />
-      The FREED Team
+      The Freed Team
     </p>
-  </>,
+  </>
 );

@@ -18,7 +18,7 @@ import { createDefaultPreferences, createDefaultMeta } from "./types.js";
 // =============================================================================
 
 /**
- * Root FREED document structure
+ * Root Freed document structure
  *
  * This is the Automerge document that syncs across all devices.
  * Using Record<string, T> for CRDT-friendly map operations.
@@ -42,7 +42,7 @@ export interface FreedDoc {
 // =============================================================================
 
 /**
- * Create a new empty FREED document
+ * Create a new empty Freed document
  */
 export function createEmptyDoc(): FreedDoc {
   const doc: FreedDoc = {
@@ -52,7 +52,7 @@ export function createEmptyDoc(): FreedDoc {
     meta: createDefaultMeta(),
   };
   return A.from(
-    doc as unknown as Record<string, unknown>,
+    doc as unknown as Record<string, unknown>
   ) as unknown as FreedDoc;
 }
 
@@ -67,7 +67,7 @@ export function createDocFromData(data: Partial<FreedDoc>): FreedDoc {
     meta: data.meta ?? createDefaultMeta(),
   };
   return A.from(
-    doc as unknown as Record<string, unknown>,
+    doc as unknown as Record<string, unknown>
   ) as unknown as FreedDoc;
 }
 
@@ -95,7 +95,7 @@ export function addFeedItem(doc: FreedDoc, item: FeedItem): void {
 export function updateFeedItem(
   doc: FreedDoc,
   globalId: string,
-  updates: Partial<FeedItem>,
+  updates: Partial<FeedItem>
 ): void {
   const existing = doc.feedItems[globalId];
   if (existing) {
@@ -177,7 +177,7 @@ export function addRssFeed(doc: FreedDoc, feed: RssFeed): void {
 export function updateRssFeed(
   doc: FreedDoc,
   url: string,
-  updates: Partial<RssFeed>,
+  updates: Partial<RssFeed>
 ): void {
   const existing = doc.rssFeeds[url];
   if (existing) {
@@ -220,7 +220,7 @@ export function toggleFeedEnabled(doc: FreedDoc, url: string): void {
  */
 export function updatePreferences(
   doc: FreedDoc,
-  updates: Partial<UserPreferences>,
+  updates: Partial<UserPreferences>
 ): void {
   Object.assign(doc.preferences, updates);
 }
@@ -235,7 +235,7 @@ export function updatePreferences(
 export function setAuthorWeight(
   doc: FreedDoc,
   authorId: string,
-  weight: number,
+  weight: number
 ): void {
   doc.preferences.weights.authors[authorId] = weight;
 }
@@ -250,7 +250,7 @@ export function setAuthorWeight(
 export function setTopicWeight(
   doc: FreedDoc,
   topic: string,
-  weight: number,
+  weight: number
 ): void {
   doc.preferences.weights.topics[topic] = weight;
 }
@@ -265,7 +265,7 @@ export function setTopicWeight(
 export function setPlatformWeight(
   doc: FreedDoc,
   platform: string,
-  weight: number,
+  weight: number
 ): void {
   doc.preferences.weights.platforms[platform] = weight;
 }
@@ -301,7 +301,7 @@ export function getFeedItemsSorted(doc: FreedDoc): FeedItem[] {
  */
 export function getFeedItemsByPlatform(
   doc: FreedDoc,
-  platform: string,
+  platform: string
 ): FeedItem[] {
   return Object.values(doc.feedItems)
     .filter((item) => item.platform === platform && !item.userState.hidden)

@@ -1,7 +1,7 @@
 /**
  * capture-x OpenClaw skill
  *
- * Background X/Twitter feed capture for FREED
+ * Background X/Twitter feed capture for Freed
  * Supports three modes: mirror, whitelist, mirror_blacklist
  */
 
@@ -157,7 +157,7 @@ function filterByMode(items: FeedItem[], doc: FreedDoc): FeedItem[] {
         const authorHandle = item.author.handle.toLowerCase();
         return Object.values(prefs.whitelist).some(
           (acc) =>
-            acc.id === authorId || acc.handle.toLowerCase() === authorHandle,
+            acc.id === authorId || acc.handle.toLowerCase() === authorHandle
         );
       });
 
@@ -168,7 +168,7 @@ function filterByMode(items: FeedItem[], doc: FreedDoc): FeedItem[] {
         const authorHandle = item.author.handle.toLowerCase();
         return !Object.values(prefs.blacklist).some(
           (acc) =>
-            acc.id === authorId || acc.handle.toLowerCase() === authorHandle,
+            acc.id === authorId || acc.handle.toLowerCase() === authorHandle
         );
       });
 
@@ -215,7 +215,7 @@ async function captureTimeline(): Promise<{
   const result = await extractCookiesAuto();
   if (!result) {
     throw new Error(
-      "Could not extract cookies. Make sure you are logged into X in your browser.",
+      "Could not extract cookies. Make sure you are logged into X in your browser."
     );
   }
 
@@ -226,7 +226,7 @@ async function captureTimeline(): Promise<{
   const client = new XClient(result.cookies);
   const timeline = await client.getHomeLatestTimeline(
     undefined,
-    config["capture-x"].maxItemsPerPoll,
+    config["capture-x"].maxItemsPerPoll
   );
 
   // Convert to feed items
@@ -282,12 +282,12 @@ function setMode(mode: string): void {
   if (mode === "whitelist") {
     const count = Object.keys(doc.preferences.xCapture.whitelist).length;
     console.log(
-      `Whitelist has ${count} accounts. Use 'capture-x whitelist add @handle' to add more.`,
+      `Whitelist has ${count} accounts. Use 'capture-x whitelist add @handle' to add more.`
     );
   } else if (mode === "mirror_blacklist") {
     const count = Object.keys(doc.preferences.xCapture.blacklist).length;
     console.log(
-      `Blacklist has ${count} accounts. Use 'capture-x blacklist add @handle' to add more.`,
+      `Blacklist has ${count} accounts. Use 'capture-x blacklist add @handle' to add more.`
     );
   }
 }
@@ -340,13 +340,15 @@ function showList(list: "whitelist" | "blacklist"): void {
   }
 
   console.log(
-    `\n=== ${list.charAt(0).toUpperCase() + list.slice(1)} (${accounts.length} accounts) ===\n`,
+    `\n=== ${list.charAt(0).toUpperCase() + list.slice(1)} (${
+      accounts.length
+    } accounts) ===\n`
   );
 
   for (const acc of accounts.sort((a, b) => a.handle.localeCompare(b.handle))) {
     const added = new Date(acc.addedAt).toLocaleDateString();
     console.log(
-      `  @${acc.handle} (added ${added})${acc.note ? ` - ${acc.note}` : ""}`,
+      `  @${acc.handle} (added ${added})${acc.note ? ` - ${acc.note}` : ""}`
     );
   }
 }
@@ -371,7 +373,7 @@ async function start(): Promise<void> {
   try {
     const result = await captureTimeline();
     console.log(
-      `Initial capture complete. Added ${result.added} new items (${result.filtered} filtered, ${result.total} total).`,
+      `Initial capture complete. Added ${result.added} new items (${result.filtered} filtered, ${result.total} total).`
     );
   } catch (error) {
     console.error("Initial capture failed:", error);
@@ -398,7 +400,9 @@ async function status(): Promise<void> {
   console.log("\n=== capture-x Status ===\n");
   console.log(`Running: ${state.running ? "Yes" : "No"}`);
   console.log(
-    `Last capture: ${state.lastCapture ? new Date(state.lastCapture).toLocaleString() : "Never"}`,
+    `Last capture: ${
+      state.lastCapture ? new Date(state.lastCapture).toLocaleString() : "Never"
+    }`
   );
   console.log(`Items captured: ${state.itemsCaptured}`);
   console.log(`Total items in feed: ${Object.keys(doc.feedItems).length}`);
@@ -426,7 +430,7 @@ async function sync(): Promise<void> {
   try {
     const result = await captureTimeline();
     console.log(
-      `Sync complete. Added ${result.added} new items (${result.filtered} filtered, ${result.total} total).`,
+      `Sync complete. Added ${result.added} new items (${result.filtered} filtered, ${result.total} total).`
     );
   } catch (error) {
     console.error("Sync failed:", error);
@@ -458,14 +462,14 @@ async function setCookies(cookieString: string): Promise<void> {
 
   if (!cookies) {
     console.error(
-      'Invalid cookie string. Expected format: "ct0=xxx; auth_token=yyy"',
+      'Invalid cookie string. Expected format: "ct0=xxx; auth_token=yyy"'
     );
     process.exit(1);
   }
 
   writeFileSync(
     join(FREED_DIR, "x-cookies.json"),
-    JSON.stringify(cookies, null, 2),
+    JSON.stringify(cookies, null, 2)
   );
   console.log("Cookies saved successfully.");
 }
@@ -544,13 +548,13 @@ async function main(): Promise<void> {
         console.log(`Current mode: ${doc.preferences.xCapture.mode}`);
         console.log("\nAvailable modes:");
         console.log(
-          "  mirror          - Capture from everyone you follow on X",
+          "  mirror          - Capture from everyone you follow on X"
         );
         console.log(
-          "  whitelist       - Only capture from whitelisted accounts",
+          "  whitelist       - Only capture from whitelisted accounts"
         );
         console.log(
-          "  mirror_blacklist - Mirror follows but exclude blacklisted accounts",
+          "  mirror_blacklist - Mirror follows but exclude blacklisted accounts"
         );
       } else {
         setMode(args[1]);
@@ -594,7 +598,7 @@ async function main(): Promise<void> {
 
     default:
       console.log(`
-capture-x - X/Twitter feed capture for FREED
+capture-x - X/Twitter feed capture for Freed
 
 Commands:
   start              Start background capture

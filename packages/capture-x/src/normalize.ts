@@ -93,22 +93,19 @@ export function extractMediaTypes(tweet: XTweetResult): MediaType[] {
  * Extract link preview from tweet card or URL entities
  */
 export function extractLinkPreview(
-  tweet: XTweetResult,
+  tweet: XTweetResult
 ): Content["linkPreview"] | undefined {
   // Try to get from card first
   if (tweet.card?.legacy) {
     const card = tweet.card.legacy;
-    const bindings = card.binding_values.reduce(
-      (acc, b) => {
-        if (b.value.string_value) {
-          acc[b.key] = b.value.string_value;
-        } else if (b.value.image_value) {
-          acc[b.key] = b.value.image_value.url;
-        }
-        return acc;
-      },
-      {} as Record<string, string>,
-    );
+    const bindings = card.binding_values.reduce((acc, b) => {
+      if (b.value.string_value) {
+        acc[b.key] = b.value.string_value;
+      } else if (b.value.image_value) {
+        acc[b.key] = b.value.image_value.url;
+      }
+      return acc;
+    }, {} as Record<string, string>);
 
     return {
       url: bindings.url || card.url,
@@ -124,7 +121,7 @@ export function extractLinkPreview(
     const nonMediaUrls = urls.filter(
       (u) =>
         !u.expanded_url.includes("twitter.com/") &&
-        !u.expanded_url.includes("x.com/"),
+        !u.expanded_url.includes("x.com/")
     );
 
     if (nonMediaUrls.length > 0) {
@@ -192,7 +189,7 @@ export function cleanTweetText(tweet: XTweetResult): string {
 // =============================================================================
 
 /**
- * Convert an X tweet to a FREED FeedItem
+ * Convert an X tweet to a Freed FeedItem
  */
 export function tweetToFeedItem(tweet: XTweetResult): FeedItem {
   // Handle retweets - use the original tweet data
@@ -213,7 +210,7 @@ export function tweetToFeedItem(tweet: XTweetResult): FeedItem {
     avatarUrl:
       displayTweet.core.user_results.result.legacy.profile_image_url_https.replace(
         "_normal",
-        "_bigger",
+        "_bigger"
       ), // Get larger avatar
   };
 

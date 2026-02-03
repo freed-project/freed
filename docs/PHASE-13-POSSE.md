@@ -9,13 +9,13 @@
 
 POSSE = "Publish (on your) Own Site, Syndicate Everywhere"
 
-FREED handles consumption. [POSSE Party](https://posseparty.com/) handles publishing. Together, they complete the digital sovereignty loop—read AND write on your terms.
+Freed handles consumption. [POSSE Party](https://posseparty.com/) handles publishing. Together, they complete the digital sovereignty loop—read AND write on your terms.
 
 ---
 
 ## Why This Matters
 
-- **Complete sovereignty** — Control both consumption (FREED) and publishing (POSSE)
+- **Complete sovereignty** — Control both consumption (Freed) and publishing (POSSE)
 - **Your content, your domain** — Posts live on your site first, then syndicate to platforms
 - **Platform resilience** — If platforms die or ban you, your content survives
 - **IndieWeb alignment** — Participates in the open web ecosystem
@@ -26,15 +26,15 @@ FREED handles consumption. [POSSE Party](https://posseparty.com/) handles publis
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        FREED + POSSE                             │
+│                        Freed + POSSE                             │
 │                                                                 │
-│  1. Read unified feed in FREED                                  │
+│  1. Read unified feed in Freed                                  │
 │                    │                                            │
 │                    ▼                                            │
-│  2. Want to reply/post? Compose in FREED                        │
+│  2. Want to reply/post? Compose in Freed                        │
 │                    │                                            │
 │                    ▼                                            │
-│  3. FREED sends to your POSSE instance                          │
+│  3. Freed sends to your POSSE instance                          │
 │                    │                                            │
 │                    ▼                                            │
 │  4. POSSE publishes to your site + syndicates to platforms      │
@@ -50,7 +50,7 @@ FREED handles consumption. [POSSE Party](https://posseparty.com/) handles publis
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         FREED PWA                                │
+│                         Freed PWA                                │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │                    Compose Modal                         │   │
@@ -246,7 +246,7 @@ export function PosseSettings() {
 | 13.7  | POSSE API integration                   | Medium     |
 | 13.8  | Error handling and retry logic          | Medium     |
 | 13.9  | Inline reply action on feed items       | Low        |
-| 13.10 | Posted indicator (synced back to FREED) | Medium     |
+| 13.10 | Posted indicator (synced back to Freed) | Medium     |
 
 ---
 
@@ -257,7 +257,7 @@ export function PosseSettings() {
 - [ ] Posts publish to user's POSSE instance
 - [ ] Syndication targets selectable per post
 - [ ] Reply context passed correctly to POSSE
-- [ ] Posted content appears in user's FREED feed (via RSS)
+- [ ] Posted content appears in user's Freed feed (via RSS)
 - [ ] Error states handled gracefully
 
 ---
@@ -286,4 +286,4 @@ export function PosseSettings() {
 
 ## Deliverable
 
-Compose and publish feature in FREED PWA that routes through user's POSSE instance for true digital sovereignty.
+Compose and publish feature in Freed PWA that routes through user's POSSE instance for true digital sovereignty.

@@ -13,7 +13,7 @@ Supplement to the Desktop App—quick saves and Ulysses mode. Not a primary capt
 
 ## Features
 
-1. **One-click save** — Save any page to FREED library
+1. **One-click save** — Save any page to Freed library
 2. **Ulysses mode** — Block social media feeds, allow specific paths
 3. **DOM capture fallback** — When Desktop App not running
 4. **Multi-browser support** — Chrome, Firefox Desktop, Firefox Android, Safari iOS/macOS
@@ -97,7 +97,7 @@ export function Popup() {
 
   return (
     <div className="p-4 w-64">
-      <h1 className="text-lg font-bold mb-4">Save to FREED</h1>
+      <h1 className="text-lg font-bold mb-4">Save to Freed</h1>
 
       <button
         onClick={handleSave}
@@ -239,7 +239,7 @@ async function captureXFeed(): Promise<FeedItem[]> {
 // packages/extension/manifest.json
 {
   "manifest_version": 3,
-  "name": "FREED",
+  "name": "Freed",
   "version": "1.0.0",
   "description": "Escape the attention economy",
 
@@ -358,7 +358,7 @@ freed-safari/
 - [ ] Extension installs from Chrome Web Store
 - [ ] Extension installs from Firefox Add-ons
 - [ ] Extension installs from Safari App Store (macOS + iOS)
-- [ ] One-click save captures page to FREED
+- [ ] One-click save captures page to Freed
 - [ ] Ulysses mode blocks social feeds
 - [ ] Allowed paths (messages, settings) accessible
 - [ ] Bypass timer works

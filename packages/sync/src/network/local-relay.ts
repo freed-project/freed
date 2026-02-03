@@ -47,7 +47,7 @@ export class LocalRelay {
 
         this.wss.on("listening", () => {
           console.log(
-            `[Relay] FREED sync relay running on ws://localhost:${this.port}`,
+            `[Relay] Freed sync relay running on ws://localhost:${this.port}`
           );
           resolve();
         });

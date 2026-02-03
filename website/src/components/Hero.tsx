@@ -95,7 +95,7 @@ export default function Hero() {
               onClick={openModal}
               className="btn-primary text-base px-8 py-3 w-full sm:w-auto"
             >
-              Get FREED
+              Get Freed
             </motion.button>
 
             <Link href="/manifesto" className="w-full sm:w-auto">

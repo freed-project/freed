@@ -129,7 +129,7 @@ export default function Navigation() {
           </a>
 
           <button onClick={openModal} className="btn-primary text-sm">
-            Get FREED
+            Get Freed
           </button>
         </div>
 
@@ -208,7 +208,7 @@ export default function Navigation() {
                 }}
                 className="btn-primary text-lg px-12 py-4 mt-4"
               >
-                Get FREED
+                Get Freed
               </button>
             </div>
           </motion.div>

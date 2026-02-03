@@ -1,10 +1,11 @@
-# FREED Design System
+# Freed Design System
 
 ## Philosophy
 
-FREED's visual identity embodies **digital liberation**. The design language is dark, sophisticated, and subtly rebellious—premium enough to be taken seriously, edgy enough to signal we're building something different.
+Freed's visual identity embodies **digital liberation**. The design language is dark, sophisticated, and subtly rebellious—premium enough to be taken seriously, edgy enough to signal we're building something different.
 
 **Reference Sites:**
+
 - Linear.app (clean, professional, dark)
 - getmaestro.ai (data visualization, modern)
 - Arc Browser (color energy, playfulness)
@@ -17,49 +18,50 @@ FREED's visual identity embodies **digital liberation**. The design language is 
 
 ### Base Colors
 
-| Name | Hex | Usage |
-|------|-----|-------|
-| freed-black | `#0a0a0a` | Primary background |
-| freed-dark | `#0f0f0f` | Secondary background |
-| freed-surface | `#141414` | Cards, elevated surfaces |
-| freed-border | `rgba(255,255,255,0.08)` | Subtle borders |
+| Name          | Hex                      | Usage                    |
+| ------------- | ------------------------ | ------------------------ |
+| freed-black   | `#0a0a0a`                | Primary background       |
+| freed-dark    | `#0f0f0f`                | Secondary background     |
+| freed-surface | `#141414`                | Cards, elevated surfaces |
+| freed-border  | `rgba(255,255,255,0.08)` | Subtle borders           |
 
 ### Glow Colors
 
-| Name | Hex | Usage |
-|------|-----|-------|
-| glow-blue | `#3b82f6` | Primary accent |
+| Name        | Hex       | Usage            |
+| ----------- | --------- | ---------------- |
+| glow-blue   | `#3b82f6` | Primary accent   |
 | glow-purple | `#8b5cf6` | Secondary accent |
-| glow-cyan | `#06b6d4` | Tertiary accent |
+| glow-cyan   | `#06b6d4` | Tertiary accent  |
 
 ### Text Colors
 
-| Name | Hex | Usage |
-|------|-----|-------|
-| text-primary | `#fafafa` | Headlines, important text |
-| text-secondary | `#a1a1aa` | Body text, descriptions |
-| text-muted | `#71717a` | Captions, metadata |
+| Name           | Hex       | Usage                     |
+| -------------- | --------- | ------------------------- |
+| text-primary   | `#fafafa` | Headlines, important text |
+| text-secondary | `#a1a1aa` | Body text, descriptions   |
+| text-muted     | `#71717a` | Captions, metadata        |
 
 ---
 
 ## Typography
 
 ### Font Family
+
 **Inter** — Clean, modern, excellent readability
 
 ```css
-font-family: 'Inter', system-ui, -apple-system, sans-serif;
+font-family: "Inter", system-ui, -apple-system, sans-serif;
 ```
 
 ### Scale
 
-| Element | Size | Weight |
-|---------|------|--------|
-| H1 (Hero) | 4.5rem - 5rem | 700 |
-| H2 (Section) | 2.5rem - 3rem | 700 |
-| H3 (Card) | 1.25rem | 600 |
-| Body | 1rem - 1.125rem | 400 |
-| Caption | 0.875rem | 400-500 |
+| Element      | Size            | Weight  |
+| ------------ | --------------- | ------- |
+| H1 (Hero)    | 4.5rem - 5rem   | 700     |
+| H2 (Section) | 2.5rem - 3rem   | 700     |
+| H3 (Card)    | 1.25rem         | 600     |
+| Body         | 1rem - 1.125rem | 400     |
+| Caption      | 0.875rem        | 400-500 |
 
 ### Gradient Text
 
@@ -81,24 +83,18 @@ font-family: 'Inter', system-ui, -apple-system, sans-serif;
 ```css
 /* Small glow */
 .glow-sm {
-  box-shadow: 
-    0 0 10px rgba(139, 92, 246, 0.2),
-    0 0 20px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.2), 0 0 20px rgba(59, 130, 246, 0.1);
 }
 
 /* Medium glow */
 .glow-md {
-  box-shadow: 
-    0 0 20px rgba(139, 92, 246, 0.3),
-    0 0 40px rgba(59, 130, 246, 0.15),
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.3), 0 0 40px rgba(59, 130, 246, 0.15),
     0 0 60px rgba(139, 92, 246, 0.05);
 }
 
 /* Large glow */
 .glow-lg {
-  box-shadow: 
-    0 0 30px rgba(139, 92, 246, 0.4),
-    0 0 60px rgba(59, 130, 246, 0.2),
+  box-shadow: 0 0 30px rgba(139, 92, 246, 0.4), 0 0 60px rgba(59, 130, 246, 0.2),
     0 0 100px rgba(139, 92, 246, 0.1);
 }
 ```
@@ -130,7 +126,7 @@ font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
 .gradient-border::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: -1px;
   border-radius: 17px;
@@ -161,6 +157,7 @@ Subtle noise overlay adds tactile quality:
 ### Buttons
 
 #### Primary Button
+
 Gradient background with glow shadow.
 
 ```css
@@ -181,6 +178,7 @@ Gradient background with glow shadow.
 ```
 
 #### Secondary Button
+
 Transparent with border.
 
 ```css
@@ -210,9 +208,7 @@ Feature cards use glassmorphism with glow on hover:
   <h3 className="text-xl font-semibold text-text-primary mb-2">
     Local-First Privacy
   </h3>
-  <p className="text-text-secondary">
-    All your data stays on your device.
-  </p>
+  <p className="text-text-secondary">All your data stays on your device.</p>
 </div>
 ```
 
@@ -261,7 +257,7 @@ Using Framer Motion for all animations.
 
 ```jsx
 <motion.div
-  animate={{ 
+  animate={{
     boxShadow: [
       '0 0 30px rgba(139, 92, 246, 0.3)',
       '0 0 60px rgba(139, 92, 246, 0.5)',
@@ -286,14 +282,17 @@ Using Framer Motion for all animations.
 ## Layout
 
 ### Max Width
+
 Content constrained to `max-w-6xl` (72rem / 1152px)
 
 ### Spacing
+
 - Section padding: `py-24 px-6`
 - Card padding: `p-6`
 - Gap between cards: `gap-6`
 
 ### Grid
+
 - Features: 3 columns on desktop, 2 on tablet, 1 on mobile
 - How It Works: 4 columns on desktop
 
@@ -306,38 +305,43 @@ Content constrained to `max-w-6xl` (72rem / 1152px)
 ## Illustrations
 
 ### Style
+
 Abstract geometric shapes representing:
+
 - **Connection** — Lines, nodes, networks
 - **Liberation** — Breaking free, expanding outward
 - **Convergence** — Multiple sources flowing to one
 
 ### Hero Animation
-- Platform icons (X, Facebook, Instagram) orbit a central FREED node
+
+- Platform icons (X, Facebook, Instagram) orbit a central Freed node
 - Data particles flow inward
 - Pulse rings emanate from center
 - Gradient glow orbs in background
 
 ### Implementation
+
 SVG + CSS animations via Framer Motion. No external assets required.
 
 ---
 
 ## Responsive Breakpoints
 
-| Breakpoint | Width | Usage |
-|------------|-------|-------|
-| sm | 640px | Mobile landscape |
-| md | 768px | Tablet |
-| lg | 1024px | Desktop |
-| xl | 1280px | Large desktop |
+| Breakpoint | Width  | Usage            |
+| ---------- | ------ | ---------------- |
+| sm         | 640px  | Mobile landscape |
+| md         | 768px  | Tablet           |
+| lg         | 1024px | Desktop          |
+| xl         | 1280px | Large desktop    |
 
 ---
 
 ## Dark Mode
 
-FREED is dark-only. No light mode toggle.
+Freed is dark-only. No light mode toggle.
 
 The dark theme is integral to the brand—it represents:
+
 - Privacy (nothing to hide, but nothing exposed)
 - Focus (reduced visual noise)
 - Rebellion (against the bright, attention-grabbing platforms)

@@ -91,7 +91,7 @@ export async function geocode(query: string): Promise<GeoLocation | null> {
 
   const response = await fetch(
     `${NOMINATIM_URL}?q=${encodeURIComponent(query)}&format=json&limit=1`,
-    { headers: { "User-Agent": "FREED/1.0" } },
+    { headers: { "User-Agent": "Freed/1.0" } }
   );
 
   const results = await response.json();

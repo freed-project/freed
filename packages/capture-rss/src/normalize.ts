@@ -227,11 +227,11 @@ function extractHandle(feed: ParsedFeed, item: ParsedFeedItem): string {
 // =============================================================================
 
 /**
- * Convert an RSS/Atom item to a FREED FeedItem
+ * Convert an RSS/Atom item to a Freed FeedItem
  */
 export function rssItemToFeedItem(
   item: ParsedFeedItem,
-  feed: ParsedFeed,
+  feed: ParsedFeed
 ): FeedItem {
   const platform = getPlatform(feed.feedUrl);
   const contentType = getContentType(item, platform);
@@ -293,7 +293,7 @@ export function feedToFeedItems(feed: ParsedFeed): FeedItem[] {
  */
 export function feedToRssFeed(
   feed: ParsedFeed,
-  enabled: boolean = true,
+  enabled: boolean = true
 ): RssFeed {
   return {
     url: feed.feedUrl,

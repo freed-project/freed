@@ -1,27 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://freed.wtf</id>
-    <title>FREED Updates</title>
+    <title>Freed Updates</title>
     <updated>2026-02-03T04:58:41.176Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <author>
-        <name>The FREED Team</name>
+        <name>The Freed Team</name>
         <uri>https://freed.wtf</uri>
     </author>
     <link rel="alternate" href="https://freed.wtf"/>
     <link rel="self" href="https://freed.wtf/atom.xml"/>
-    <subtitle>Progress updates, technical deep-dives, and philosophical rants about the attention economy. From the team building FREED.</subtitle>
+    <subtitle>Progress updates, technical deep-dives, and philosophical rants about the attention economy. From the team building Freed.</subtitle>
     <logo>https://freed.wtf/favicon.svg</logo>
     <icon>https://freed.wtf/favicon.svg</icon>
-    <rights>All rights reserved 2026, FREED Project</rights>
+    <rights>All rights reserved 2026, Freed Project</rights>
     <entry>
-        <title type="html"><![CDATA[Introducing FREED: Take Back Your Feed]]></title>
+        <title type="html"><![CDATA[Introducing Freed: Take Back Your Feed]]></title>
         <id>https://freed.wtf/updates/introducing-freed</id>
         <link href="https://freed.wtf/updates/introducing-freed"/>
         <updated>2026-02-01T00:00:00.000Z</updated>
-        <summary type="html"><![CDATA[Our first newsletter. Why we built FREED, what we believe, and where we're headed.]]></summary>
+        <summary type="html"><![CDATA[Our first newsletter. Why we built Freed, what we believe, and where we're headed.]]></summary>
         <author>
-            <name>The FREED Team</name>
+            <name>The Freed Team</name>
         </author>
         <category label="announcement"/>
         <category label="philosophy"/>

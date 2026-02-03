@@ -7,17 +7,17 @@ const steps = [
     number: "01",
     title: "Install the Extension",
     description:
-      "Add FREED to Chrome, Safari, or Firefox. Works on desktop and mobile browsers.",
+      "Add Freed to Chrome, Safari, or Firefox. Works on desktop and mobile browsers.",
   },
   {
     number: "02",
     title: "Browse Normally",
     description:
-      "FREED captures posts and stories as you scroll through X, Facebook, and Instagram.",
+      "Freed captures posts and stories as you scroll through X, Facebook, and Instagram.",
   },
   {
     number: "03",
-    title: "Open Your FREED",
+    title: "Open Your Freed",
     description:
       "Access your unified feed—weighted by your preferences, not their algorithms.",
   },
