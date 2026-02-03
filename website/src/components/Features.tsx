@@ -11,21 +11,32 @@ const PrivacyIcon = () => (
         <stop offset="100%" stopColor="#8b5cf6" />
       </linearGradient>
     </defs>
+    {/* Shield base */}
     <path
-      d="M24 4L6 12v12c0 11.1 7.7 21.5 18 24 10.3-2.5 18-12.9 18-24V12L24 4z"
+      d="M24 6 L16 10 L16 24 C16 32 20 38 24 42 C28 38 32 32 32 24 L32 10 Z"
       fill="none"
       stroke="url(#privacyGrad)"
       strokeWidth="2.5"
       strokeLinecap="round"
       strokeLinejoin="round"
     />
-    <circle cx="24" cy="22" r="4" fill="url(#privacyGrad)" />
+    {/* Shield interior fill */}
     <path
-      d="M24 26v6"
+      d="M24 8 L18 11 L18 24 C18 30 21 34 24 37 C27 34 30 30 30 24 L30 11 Z"
+      fill="url(#privacyGrad)"
+      opacity="0.1"
+    />
+    {/* Lock mechanism */}
+    <rect x="21" y="18" width="6" height="4" rx="1" fill="none" stroke="url(#privacyGrad)" strokeWidth="1.5" />
+    <path
+      d="M22.5 18 L22.5 16 C22.5 14.9 23.4 14 24.5 14 C25.6 14 26.5 14.9 26.5 16 L26.5 18"
+      fill="none"
       stroke="url(#privacyGrad)"
-      strokeWidth="2.5"
+      strokeWidth="1.5"
       strokeLinecap="round"
     />
+    {/* Protection symbol */}
+    <circle cx="24" cy="21" r="1" fill="url(#privacyGrad)" />
   </svg>
 );
 
@@ -38,32 +49,60 @@ const UnifiedFeedIcon = () => (
         <stop offset="100%" stopColor="#a855f7" />
       </linearGradient>
     </defs>
-    {/* Great wave - Hokusai inspired */}
+    {/* Flowing wave hand - wave emoji inspired */}
     <path
-      d="M4 44 L4 34 Q8 32 12 28 Q18 22 24 14 Q28 8 34 6 Q40 4 44 8 Q46 12 44 18 L42 20 Q38 18 36 22 Q34 26 30 28 L26 30 Q22 32 18 36 Q12 42 8 44 Z"
-      fill="url(#feedGrad)"
-    />
-    {/* Curling crest */}
-    <path
-      d="M44 8 Q48 6 48 12 Q48 18 44 22 Q40 26 36 24"
+      d="M8 32 Q8 28 12 28 Q16 28 16 32 Q16 36 12 36 Q8 36 8 32"
       fill="none"
-      stroke="#a855f7"
-      strokeWidth="2.5"
+      stroke="url(#feedGrad)"
+      strokeWidth="3"
       strokeLinecap="round"
     />
-    {/* Inner curl detail */}
     <path
-      d="M44 12 Q46 14 44 18 Q42 20 40 20"
+      d="M16 32 Q16 28 20 28 Q24 28 24 32 Q24 36 20 36 Q16 36 16 32"
       fill="none"
-      stroke="#8b5cf6"
+      stroke="url(#feedGrad)"
+      strokeWidth="3"
+      strokeLinecap="round"
+    />
+    <path
+      d="M24 32 Q24 28 28 28 Q32 28 32 32 Q32 36 28 36 Q24 36 24 32"
+      fill="none"
+      stroke="url(#feedGrad)"
+      strokeWidth="3"
+      strokeLinecap="round"
+    />
+    <path
+      d="M32 32 Q32 28 36 28 Q40 28 40 32 Q40 36 36 36 Q32 36 32 32"
+      fill="none"
+      stroke="url(#feedGrad)"
+      strokeWidth="3"
+      strokeLinecap="round"
+    />
+    {/* Wave motion lines */}
+    <path
+      d="M6 32 Q10 26 14 32 Q18 38 22 32"
+      fill="none"
+      stroke="url(#feedGrad)"
       strokeWidth="1.5"
       strokeLinecap="round"
-      opacity="0.8"
+      opacity="0.6"
     />
-    {/* Foam/spray */}
-    <circle cx="46" cy="8" r="2" fill="#a855f7" />
-    <circle cx="42" cy="4" r="1.5" fill="#8b5cf6" opacity="0.8" />
-    <circle cx="48" cy="14" r="1.5" fill="#6366f1" opacity="0.6" />
+    <path
+      d="M22 32 Q26 26 30 32 Q34 38 38 32"
+      fill="none"
+      stroke="url(#feedGrad)"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      opacity="0.6"
+    />
+    <path
+      d="M38 32 Q42 26 46 32"
+      fill="none"
+      stroke="url(#feedGrad)"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      opacity="0.6"
+    />
   </svg>
 );
 
@@ -98,76 +137,75 @@ const UlyssesIcon = () => (
         <stop offset="100%" stopColor="#a855f7" />
       </linearGradient>
     </defs>
-    {/* Siren silhouette */}
-    {/* Flowing hair */}
+    {/* Beautiful woman's face */}
+    {/* Hair outline */}
     <path
-      d="M16 6 Q12 10 10 18 Q9 22 10 26"
+      d="M16 14 Q12 12 10 16 Q8 20 12 22 Q16 24 20 22"
       fill="none"
       stroke="url(#ulyssesGrad)"
       strokeWidth="2"
       strokeLinecap="round"
     />
     <path
-      d="M18 4 Q16 12 14 20"
-      fill="none"
-      stroke="url(#ulyssesGrad)"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      opacity="0.7"
-    />
-    <path
-      d="M32 6 Q36 10 38 18 Q39 22 38 26"
+      d="M32 14 Q36 12 38 16 Q40 20 36 22 Q32 24 28 22"
       fill="none"
       stroke="url(#ulyssesGrad)"
       strokeWidth="2"
       strokeLinecap="round"
     />
+    {/* Face silhouette */}
+    <ellipse cx="24" cy="18" rx="8" ry="10" fill="url(#ulyssesGrad)" opacity="0.1" />
     <path
-      d="M30 4 Q32 12 34 20"
-      fill="none"
-      stroke="url(#ulyssesGrad)"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      opacity="0.7"
-    />
-    {/* Head */}
-    <circle cx="24" cy="10" r="5" fill="url(#ulyssesGrad)" opacity="0.9" />
-    {/* Curved feminine torso */}
-    <path
-      d="M24 15 Q20 18 21 22 Q22 26 24 28"
-      fill="none"
-      stroke="url(#ulyssesGrad)"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-    />
-    <path
-      d="M24 15 Q28 18 27 22 Q26 26 24 28"
-      fill="none"
-      stroke="url(#ulyssesGrad)"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-    />
-    {/* Elegant S-curve tail */}
-    <path
-      d="M24 28 Q18 32 20 38 Q22 42 28 44 Q34 45 40 42"
-      fill="none"
-      stroke="url(#ulyssesGrad)"
-      strokeWidth="3"
-      strokeLinecap="round"
-    />
-    {/* Flowing tail fin */}
-    <path
-      d="M40 42 Q44 38 46 40"
+      d="M16 18 Q16 26 24 26 Q32 26 32 18"
       fill="none"
       stroke="url(#ulyssesGrad)"
       strokeWidth="2"
       strokeLinecap="round"
     />
+    {/* Eyes */}
+    <circle cx="20" cy="16" r="1.5" fill="url(#ulyssesGrad)" />
+    <circle cx="28" cy="16" r="1.5" fill="url(#ulyssesGrad)" />
+    {/* Nose */}
     <path
-      d="M40 42 Q44 46 46 44"
+      d="M24 16 L24 20"
+      stroke="url(#ulyssesGrad)"
+      strokeWidth="1"
+      strokeLinecap="round"
+    />
+    {/* Mouth - singing */}
+    <path
+      d="M22 22 Q24 24 26 22"
       fill="none"
       stroke="url(#ulyssesGrad)"
       strokeWidth="2"
+      strokeLinecap="round"
+    />
+    {/* Musical notes */}
+    <path
+      d="M34 12 Q34 10 36 10 Q36 12 34 12"
+      fill="url(#ulyssesGrad)"
+      stroke="url(#ulyssesGrad)"
+      strokeWidth="0.5"
+    />
+    <path
+      d="M36 8 L36 12"
+      stroke="url(#ulyssesGrad)"
+      strokeWidth="1"
+      strokeLinecap="round"
+    />
+    <circle cx="38" cy="6" r="1" fill="url(#ulyssesGrad)" />
+    <circle cx="42" cy="8" r="1" fill="url(#ulyssesGrad)" />
+    {/* Note stems */}
+    <path
+      d="M38 6 L38 10"
+      stroke="url(#ulyssesGrad)"
+      strokeWidth="1"
+      strokeLinecap="round"
+    />
+    <path
+      d="M42 8 L42 12"
+      stroke="url(#ulyssesGrad)"
+      strokeWidth="1"
       strokeLinecap="round"
     />
   </svg>
@@ -181,68 +219,58 @@ const SyncIcon = () => (
         <stop offset="100%" stopColor="#8b5cf6" />
       </linearGradient>
     </defs>
-    {/* Laptop */}
-    <rect
-      x="2"
-      y="14"
-      width="18"
-      height="12"
-      rx="1"
-      fill="none"
-      stroke="url(#syncGrad)"
-      strokeWidth="2"
-    />
-    <path
-      d="M0 26 L4 30 L18 30 L22 26"
-      fill="none"
-      stroke="url(#syncGrad)"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
+    {/* Modern devices sync */}
     {/* Phone */}
     <rect
-      x="34"
+      x="6"
       y="12"
-      width="10"
-      height="18"
+      width="12"
+      height="24"
       rx="2"
       fill="none"
       stroke="url(#syncGrad)"
       strokeWidth="2"
     />
-    <circle cx="39" cy="26" r="1.5" fill="url(#syncGrad)" />
-    {/* Sync arrows */}
+    <circle cx="12" cy="30" r="1" fill="url(#syncGrad)" />
+    {/* Tablet */}
+    <rect
+      x="30"
+      y="8"
+      width="12"
+      height="20"
+      rx="2"
+      fill="none"
+      stroke="url(#syncGrad)"
+      strokeWidth="2"
+    />
+    <circle cx="36" cy="22" r="1" fill="url(#syncGrad)" />
+    {/* Sync waves/arrows */}
     <path
-      d="M24 18 L32 18"
+      d="M18 16 Q22 12 26 16 Q22 20 18 16"
       fill="none"
       stroke="url(#syncGrad)"
       strokeWidth="2"
       strokeLinecap="round"
     />
     <path
-      d="M29 15 L32 18 L29 21"
-      fill="none"
-      stroke="url(#syncGrad)"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <path
-      d="M32 26 L24 26"
+      d="M18 20 Q22 24 26 20 Q22 16 18 20"
       fill="none"
       stroke="url(#syncGrad)"
       strokeWidth="2"
       strokeLinecap="round"
     />
     <path
-      d="M27 23 L24 26 L27 29"
+      d="M18 24 Q22 28 26 24 Q22 20 18 24"
       fill="none"
       stroke="url(#syncGrad)"
       strokeWidth="2"
       strokeLinecap="round"
-      strokeLinejoin="round"
     />
+    {/* Connection dots */}
+    <circle cx="18" cy="16" r="1.5" fill="url(#syncGrad)" opacity="0.7" />
+    <circle cx="26" cy="16" r="1.5" fill="url(#syncGrad)" opacity="0.7" />
+    <circle cx="18" cy="24" r="1.5" fill="url(#syncGrad)" opacity="0.7" />
+    <circle cx="26" cy="24" r="1.5" fill="url(#syncGrad)" opacity="0.7" />
   </svg>
 );
 
