@@ -30,6 +30,7 @@ packages/capture-linkedin/
 ```
 
 **Challenges:**
+
 - LinkedIn aggressively blocks automation
 - Session management more complex than other platforms
 - May require browser profile approach rather than cookies
@@ -53,6 +54,7 @@ packages/capture-tiktok/
 ```
 
 **Challenges:**
+
 - Heavy anti-bot measures
 - Video-first content doesn't fit text-based FeedItem as well
 - May need different capture strategy (API if available, or accept limitations)
@@ -76,6 +78,7 @@ packages/capture-threads/
 ```
 
 **Approach TBD:**
+
 - May have RSS support by then
 - Shares infrastructure with Instagram (same Meta ecosystem)
 - Could potentially reuse Instagram session
@@ -98,19 +101,21 @@ packages/capture-bluesky/
 ```
 
 **Advantages:**
+
 - Open AT Protocol with official API
 - No scraping required—legitimate API access
 - Federation-friendly architecture
 - App passwords for authentication
 
 **Implementation:**
+
 ```typescript
 // packages/capture-bluesky/src/client.ts
 import { BskyAgent } from "@atproto/api";
 
 export async function getTimeline(
   agent: BskyAgent,
-  cursor?: string,
+  cursor?: string
 ): Promise<TimelineResponse> {
   return agent.getTimeline({ cursor, limit: 50 });
 }
@@ -134,12 +139,14 @@ packages/capture-reddit/
 ```
 
 **Note:** `capture-rss` already handles Reddit via RSS feeds. This package adds:
+
 - Home feed (personalized, requires auth)
 - Saved posts
 - Comment threads
 - Upvote/downvote state
 
 **API Access:**
+
 - Reddit API requires OAuth app registration
 - Rate limits: 60 requests/minute with OAuth
 - Consider Reddit's API pricing changes
@@ -162,12 +169,14 @@ packages/capture-youtube/
 ```
 
 **Note:** `capture-rss` already handles YouTube channel feeds. This package adds:
+
 - Subscriptions feed (personalized)
 - Watch Later playlist
 - Watch history (if accessible)
 - Video metadata (duration, views, etc.)
 
 **API Access:**
+
 - YouTube Data API v3
 - OAuth 2.0 for user data
 - Quota limits: 10,000 units/day (free tier)
@@ -176,24 +185,24 @@ packages/capture-youtube/
 
 ## Tasks
 
-| Task  | Description                                 | Complexity |
-|-------|---------------------------------------------|------------|
-| 12.1  | `@freed/capture-linkedin` package scaffold  | Low        |
-| 12.2  | LinkedIn DOM selectors                      | High       |
-| 12.3  | LinkedIn session management                 | High       |
-| 12.4  | `@freed/capture-tiktok` package scaffold    | Low        |
-| 12.5  | TikTok capture strategy research            | High       |
-| 12.6  | `@freed/capture-threads` package scaffold   | Low        |
-| 12.7  | Threads capture (similar to Instagram)      | Medium     |
-| 12.8  | `@freed/capture-bluesky` package scaffold   | Low        |
-| 12.9  | Bluesky AT Protocol client                  | Medium     |
-| 12.10 | Bluesky authentication flow                 | Medium     |
-| 12.11 | `@freed/capture-reddit` package scaffold    | Low        |
-| 12.12 | Reddit OAuth setup                          | Medium     |
-| 12.13 | Reddit home feed capture                    | Medium     |
-| 12.14 | `@freed/capture-youtube` package scaffold   | Low        |
-| 12.15 | YouTube Data API integration                | Medium     |
-| 12.16 | YouTube subscriptions feed                  | Medium     |
+| Task  | Description                                | Complexity |
+| ----- | ------------------------------------------ | ---------- |
+| 12.1  | `@freed/capture-linkedin` package scaffold | Low        |
+| 12.2  | LinkedIn DOM selectors                     | High       |
+| 12.3  | LinkedIn session management                | High       |
+| 12.4  | `@freed/capture-tiktok` package scaffold   | Low        |
+| 12.5  | TikTok capture strategy research           | High       |
+| 12.6  | `@freed/capture-threads` package scaffold  | Low        |
+| 12.7  | Threads capture (similar to Instagram)     | Medium     |
+| 12.8  | `@freed/capture-bluesky` package scaffold  | Low        |
+| 12.9  | Bluesky AT Protocol client                 | Medium     |
+| 12.10 | Bluesky authentication flow                | Medium     |
+| 12.11 | `@freed/capture-reddit` package scaffold   | Low        |
+| 12.12 | Reddit OAuth setup                         | Medium     |
+| 12.13 | Reddit home feed capture                   | Medium     |
+| 12.14 | `@freed/capture-youtube` package scaffold  | Low        |
+| 12.15 | YouTube Data API integration               | Medium     |
+| 12.16 | YouTube subscriptions feed                 | Medium     |
 
 ---
 
@@ -212,14 +221,14 @@ packages/capture-youtube/
 
 ## Platform Comparison
 
-| Platform  | Method      | Auth Required | API Quality | Difficulty |
-|-----------|-------------|---------------|-------------|------------|
-| LinkedIn  | DOM scrape  | Cookies       | N/A         | Very High  |
-| TikTok    | TBD         | TBD           | Limited     | Very High  |
-| Threads   | DOM scrape  | Cookies       | N/A         | High       |
-| Bluesky   | AT Protocol | App password  | Excellent   | Low        |
-| Reddit    | OAuth API   | OAuth         | Good        | Medium     |
-| YouTube   | Data API    | OAuth         | Good        | Medium     |
+| Platform | Method      | Auth Required | API Quality | Difficulty |
+| -------- | ----------- | ------------- | ----------- | ---------- |
+| LinkedIn | DOM scrape  | Cookies       | N/A         | Very High  |
+| TikTok   | TBD         | TBD           | Limited     | Very High  |
+| Threads  | DOM scrape  | Cookies       | N/A         | High       |
+| Bluesky  | AT Protocol | App password  | Excellent   | Low        |
+| Reddit   | OAuth API   | OAuth         | Good        | Medium     |
+| YouTube  | Data API    | OAuth         | Good        | Medium     |
 
 ---
 

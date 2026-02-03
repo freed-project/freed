@@ -258,7 +258,7 @@ Generate summaries for long-form content.
 // packages/pwa/src/lib/ai/summarize.ts
 export async function summarizeContent(
   content: string,
-  maxLength: number = 200,
+  maxLength: number = 200
 ): Promise<string> {
   // Runs locally or via user-provided API
   const summarizer = await getSummarizer();
@@ -310,7 +310,7 @@ Allow community extensions to add custom capture layers, ranking rules, and UI c
 export interface FreedPlugin {
   name: string;
   version: string;
-  
+
   // Optional hooks
   onItemCaptured?(item: FeedItem): FeedItem | null;
   onRankingComputed?(item: FeedItem, score: number): number;
@@ -341,12 +341,12 @@ Central hub for community discussion, support, and development coordination.
 
 Reward security researchers for responsible disclosure.
 
-| Severity | Reward |
-|----------|--------|
-| Critical (data exposure, RCE) | $500–$2000 |
-| High (auth bypass, XSS) | $100–$500 |
-| Medium (info disclosure) | $50–$100 |
-| Low (minor issues) | Recognition |
+| Severity                      | Reward      |
+| ----------------------------- | ----------- |
+| Critical (data exposure, RCE) | $500–$2000  |
+| High (auth bypass, XSS)       | $100–$500   |
+| Medium (info disclosure)      | $50–$100    |
+| Low (minor issues)            | Recognition |
 
 ### Release Cadence
 
@@ -360,51 +360,52 @@ Reward security researchers for responsible disclosure.
 
 ### UX Polish
 
-| Task | Description | Complexity |
-|------|-------------|------------|
-| 10.1 | Onboarding wizard | Medium |
-| 10.2 | Statistics dashboard | Medium |
-| 10.3 | Export to JSON | Low |
-| 10.4 | Export to CSV | Low |
-| 10.5 | Keyboard shortcuts | Medium |
-| 10.6 | Screen reader support | Medium |
-| 10.7 | Reduced motion support | Low |
-| 10.8 | Color contrast audit | Low |
-| 10.9 | Native Liquid Glass buttons | High |
+| Task | Description                 | Complexity |
+| ---- | --------------------------- | ---------- |
+| 10.1 | Onboarding wizard           | Medium     |
+| 10.2 | Statistics dashboard        | Medium     |
+| 10.3 | Export to JSON              | Low        |
+| 10.4 | Export to CSV               | Low        |
+| 10.5 | Keyboard shortcuts          | Medium     |
+| 10.6 | Screen reader support       | Medium     |
+| 10.7 | Reduced motion support      | Low        |
+| 10.8 | Color contrast audit        | Low        |
+| 10.9 | Native Liquid Glass buttons | High       |
 
 ### AI Features
 
-| Task | Description | Complexity |
-|------|-------------|------------|
-| 10.10 | Topic extraction (local) | High |
-| 10.11 | Topic extraction (API) | Medium |
-| 10.12 | Content summarization | High |
-| 10.13 | Sentiment analysis | Medium |
-| 10.14 | Smart notifications | High |
-| 10.15 | AI settings UI | Medium |
+| Task  | Description              | Complexity |
+| ----- | ------------------------ | ---------- |
+| 10.10 | Topic extraction (local) | High       |
+| 10.11 | Topic extraction (API)   | Medium     |
+| 10.12 | Content summarization    | High       |
+| 10.13 | Sentiment analysis       | Medium     |
+| 10.14 | Smart notifications      | High       |
+| 10.15 | AI settings UI           | Medium     |
 
 ### Extensibility
 
-| Task | Description | Complexity |
-|------|-------------|------------|
-| 10.16 | Plugin API design | High |
-| 10.17 | Plugin loader | High |
-| 10.18 | Plugin documentation | Medium |
+| Task  | Description          | Complexity |
+| ----- | -------------------- | ---------- |
+| 10.16 | Plugin API design    | High       |
+| 10.17 | Plugin loader        | High       |
+| 10.18 | Plugin documentation | Medium     |
 
 ### Community
 
-| Task | Description | Complexity |
-|------|-------------|------------|
-| 10.19 | Discord server setup | Low |
-| 10.20 | Bug bounty program | Medium |
-| 10.21 | Release automation | Medium |
-| 10.22 | Documentation site | Medium |
+| Task  | Description          | Complexity |
+| ----- | -------------------- | ---------- |
+| 10.19 | Discord server setup | Low        |
+| 10.20 | Bug bounty program   | Medium     |
+| 10.21 | Release automation   | Medium     |
+| 10.22 | Documentation site   | Medium     |
 
 ---
 
 ## Success Criteria
 
 ### UX
+
 - [ ] New users can set up via wizard
 - [ ] Statistics show reading habits
 - [ ] Export works to JSON and CSV
@@ -413,11 +414,13 @@ Reward security researchers for responsible disclosure.
 - [ ] Reduced motion respected
 
 ### AI
+
 - [ ] Topic extraction works (at least one method)
 - [ ] Summarization available for long content
 - [ ] Smart notifications reduce noise
 
 ### Community
+
 - [ ] Discord server active
 - [ ] Bug bounty program published
 - [ ] Regular release schedule established

@@ -141,7 +141,7 @@ import { chromium } from "playwright-core";
 
 export async function captureDomFeed(
   platform: "facebook" | "instagram",
-  cookies: Cookie[],
+  cookies: Cookie[]
 ): Promise<FeedItem[]> {
   const browser = await chromium.launch({
     channel: "chrome", // Use system Chrome
@@ -182,17 +182,17 @@ export async function captureDomFeed(
 
 ### Mobile (Tauri 2.0)
 
-| Task | Description                        | Complexity |
-| ---- | ---------------------------------- | ---------- |
-| 5.13 | iOS build configuration            | High       |
-| 5.14 | Android build configuration        | High       |
-| 5.15 | Mobile-responsive UI adjustments   | Medium     |
-| 5.16 | iOS background refresh             | Medium     |
-| 5.17 | Android background service         | Medium     |
-| 5.18 | Push notification integration      | Medium     |
-| 5.19 | Apple Developer account setup      | Low        |
-| 5.20 | App Store submission               | High       |
-| 5.21 | Play Store submission              | Medium     |
+| Task | Description                      | Complexity |
+| ---- | -------------------------------- | ---------- |
+| 5.13 | iOS build configuration          | High       |
+| 5.14 | Android build configuration      | High       |
+| 5.15 | Mobile-responsive UI adjustments | Medium     |
+| 5.16 | iOS background refresh           | Medium     |
+| 5.17 | Android background service       | Medium     |
+| 5.18 | Push notification integration    | Medium     |
+| 5.19 | Apple Developer account setup    | Low        |
+| 5.20 | App Store submission             | High       |
+| 5.21 | Play Store submission            | Medium     |
 
 ---
 
@@ -214,31 +214,32 @@ packages/desktop/
 
 ### Mobile Considerations
 
-| Platform | Consideration                                              |
-| -------- | ---------------------------------------------------------- |
-| iOS      | Background App Refresh for periodic sync                   |
-| iOS      | No Playwright—relies on Desktop for DOM capture            |
-| Android  | Foreground service for background sync                     |
-| Android  | No Playwright—relies on Desktop for DOM capture            |
-| Both     | Simplified capture (RSS only, no X API without Desktop)    |
-| Both     | Primary use case: reading, not capturing                   |
+| Platform | Consideration                                           |
+| -------- | ------------------------------------------------------- |
+| iOS      | Background App Refresh for periodic sync                |
+| iOS      | No Playwright—relies on Desktop for DOM capture         |
+| Android  | Foreground service for background sync                  |
+| Android  | No Playwright—relies on Desktop for DOM capture         |
+| Both     | Simplified capture (RSS only, no X API without Desktop) |
+| Both     | Primary use case: reading, not capturing                |
 
 ### Mobile vs Desktop
 
-| Feature              | Desktop           | Mobile              |
-| -------------------- | ----------------- | ------------------- |
-| X capture            | ✓ (API)           | ✗ (sync from Desktop) |
-| RSS capture          | ✓                 | ✓ (limited)         |
-| DOM capture (FB/IG)  | ✓ (Playwright)    | ✗                   |
-| Local relay server   | ✓ (hosts)         | ✗ (connects)        |
-| Background sync      | ✓ (always)        | ✓ (periodic)        |
-| Offline reading      | ✓                 | ✓                   |
+| Feature             | Desktop        | Mobile                |
+| ------------------- | -------------- | --------------------- |
+| X capture           | ✓ (API)        | ✗ (sync from Desktop) |
+| RSS capture         | ✓              | ✓ (limited)           |
+| DOM capture (FB/IG) | ✓ (Playwright) | ✗                     |
+| Local relay server  | ✓ (hosts)      | ✗ (connects)          |
+| Background sync     | ✓ (always)     | ✓ (periodic)          |
+| Offline reading     | ✓              | ✓                     |
 
 ---
 
 ## Success Criteria
 
 ### Desktop
+
 - [ ] Desktop app launches with native vibrancy on macOS
 - [ ] Captures from X, RSS in background
 - [ ] Local WebSocket relay enables instant phone sync
@@ -250,6 +251,7 @@ packages/desktop/
 - [ ] Linux AppImage works
 
 ### Mobile
+
 - [ ] iOS app builds and runs
 - [ ] Android app builds and runs
 - [ ] Syncs with Desktop when on same network

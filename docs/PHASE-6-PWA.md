@@ -129,7 +129,7 @@ export interface FocusOptions {
 
 export function applyFocusMode(
   text: string,
-  options: FocusOptions,
+  options: FocusOptions
 ): TextSegment[] {
   if (!options.enabled) return [{ text, emphasis: false }];
 
@@ -169,7 +169,7 @@ export function sortFeedItems(items: FeedItem[]): FeedItem[] {
 // Optional: local filtering (doesn't recompute scores)
 export function filterByPlatform(
   items: FeedItem[],
-  platform: Platform | null,
+  platform: Platform | null
 ): FeedItem[] {
   if (!platform) return items;
   return items.filter((item) => item.platform === platform);
@@ -177,7 +177,7 @@ export function filterByPlatform(
 
 export function filterByAuthor(
   items: FeedItem[],
-  authorId: string | null,
+  authorId: string | null
 ): FeedItem[] {
   if (!authorId) return items;
   return items.filter((item) => item.author.id === authorId);

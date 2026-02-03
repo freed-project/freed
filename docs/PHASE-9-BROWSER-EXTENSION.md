@@ -119,7 +119,7 @@ export function Popup() {
 // packages/extension/src/shared/save.ts
 export async function saveCurrentPage(
   url: string,
-  title: string,
+  title: string
 ): Promise<void> {
   // Try Desktop App first
   const desktopConnected = await tryDesktopConnection();
@@ -167,7 +167,7 @@ export function checkUlyssesMode(): void {
   if (!blocked) return; // Not a social site
 
   const isBlockedPath = blocked.some(
-    (p) => pathname === p || pathname.startsWith(p + "/"),
+    (p) => pathname === p || pathname.startsWith(p + "/")
   );
   const isAllowedPath = allowed.some((p) => pathname.startsWith(p));
 
@@ -273,23 +273,23 @@ async function captureXFeed(): Promise<FeedItem[]> {
 
 ## Tasks
 
-| Task | Description                        | Complexity |
-| ---- | ---------------------------------- | ---------- |
-| 9.1  | Chrome MV3 extension scaffold      | Medium     |
-| 9.2  | Popup UI for one-click save        | Low        |
-| 9.3  | Integration with capture-save      | Medium     |
-| 9.4  | Ulysses mode content script        | Medium     |
-| 9.5  | Allowed paths configuration        | Low        |
-| 9.6  | DOM capture fallback               | High       |
-| 9.7  | Sync with Desktop/PWA              | Medium     |
-| 9.8  | Firefox Desktop compatibility      | Medium     |
-| 9.9  | Firefox Android extension          | Medium     |
-| 9.10 | Firefox Add-ons submission         | Low        |
-| 9.11 | Safari Web Extension packaging     | High       |
-| 9.12 | Safari iOS extension               | High       |
-| 9.13 | Apple Developer account setup      | Low        |
-| 9.14 | Safari App Store submission        | Medium     |
-| 9.15 | Mobile browser capture testing     | Medium     |
+| Task | Description                    | Complexity |
+| ---- | ------------------------------ | ---------- |
+| 9.1  | Chrome MV3 extension scaffold  | Medium     |
+| 9.2  | Popup UI for one-click save    | Low        |
+| 9.3  | Integration with capture-save  | Medium     |
+| 9.4  | Ulysses mode content script    | Medium     |
+| 9.5  | Allowed paths configuration    | Low        |
+| 9.6  | DOM capture fallback           | High       |
+| 9.7  | Sync with Desktop/PWA          | Medium     |
+| 9.8  | Firefox Desktop compatibility  | Medium     |
+| 9.9  | Firefox Android extension      | Medium     |
+| 9.10 | Firefox Add-ons submission     | Low        |
+| 9.11 | Safari Web Extension packaging | High       |
+| 9.12 | Safari iOS extension           | High       |
+| 9.13 | Apple Developer account setup  | Low        |
+| 9.14 | Safari App Store submission    | Medium     |
+| 9.15 | Mobile browser capture testing | Medium     |
 
 ---
 
@@ -300,16 +300,19 @@ async function captureXFeed(): Promise<FeedItem[]> {
 Firefox uses WebExtensions API (largely compatible with Chrome MV3).
 
 **Desktop:**
+
 - Manifest v3 with minor adjustments
 - `browser.*` namespace instead of `chrome.*` (use webextension-polyfill)
 - Background scripts instead of service workers (Firefox MV3 limitation)
 
 **Android:**
+
 - Firefox for Android supports extensions (unlike Chrome Android)
 - Same codebase as desktop with responsive popup UI
 - Critical for mobile users without Safari
 
 **Distribution:**
+
 - Firefox Add-ons (addons.mozilla.org)
 - Self-hosted XPI for sideloading
 
@@ -318,6 +321,7 @@ Firefox uses WebExtensions API (largely compatible with Chrome MV3).
 Safari requires a native app wrapper for the extension.
 
 **Architecture:**
+
 ```
 freed-safari/
 ├── Freed Extension/
@@ -335,12 +339,14 @@ freed-safari/
 ```
 
 **Requirements:**
+
 - Apple Developer Program ($99/year)
 - Xcode for building
 - Notarization for macOS distribution
 - App Store review for iOS
 
 **Safari-Specific Considerations:**
+
 - `browser.` namespace (Safari supports both)
 - Limited background script capabilities on iOS
 - Content blockers for Ulysses mode (more efficient than content scripts)

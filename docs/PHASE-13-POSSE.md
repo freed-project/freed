@@ -122,10 +122,7 @@ export function ComposeModal({ replyTo, onClose }: ComposeProps) {
         </div>
       )}
 
-      <SyndicationOptions
-        selected={syndicateTo}
-        onChange={setSyndicateTo}
-      />
+      <SyndicationOptions selected={syndicateTo} onChange={setSyndicateTo} />
 
       <button onClick={handlePublish} disabled={!isConnected}>
         Post to your site
@@ -140,8 +137,8 @@ export function ComposeModal({ replyTo, onClose }: ComposeProps) {
 ```typescript
 // packages/pwa/src/lib/posse.ts
 export interface PosseConfig {
-  endpoint: string;  // User's POSSE instance URL
-  apiKey: string;    // Authentication token
+  endpoint: string; // User's POSSE instance URL
+  apiKey: string; // Authentication token
 }
 
 export interface PublishRequest {
@@ -152,12 +149,12 @@ export interface PublishRequest {
 
 export async function publishToPosse(
   config: PosseConfig,
-  request: PublishRequest,
+  request: PublishRequest
 ): Promise<PublishResult> {
   const response = await fetch(`${config.endpoint}/api/publish`, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${config.apiKey}`,
+      Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(request),
@@ -178,7 +175,10 @@ export function buildReplyContext(item: FeedItem): ReplyContext {
       return {
         platform: "x",
         inReplyTo: item.globalId.replace("x:", ""),
-        originalUrl: `https://x.com/i/status/${item.globalId.replace("x:", "")}`,
+        originalUrl: `https://x.com/i/status/${item.globalId.replace(
+          "x:",
+          ""
+        )}`,
       };
     case "mastodon":
       return {
@@ -235,18 +235,18 @@ export function PosseSettings() {
 
 ## Tasks
 
-| Task  | Description                              | Complexity |
-| ----- | ---------------------------------------- | ---------- |
-| 13.1  | Research POSSE Party API/protocol        | Medium     |
-| 13.2  | POSSE connection settings UI             | Low        |
-| 13.3  | Compose modal component                  | Medium     |
-| 13.4  | Markdown support in compose              | Low        |
-| 13.5  | Syndication target selection             | Low        |
-| 13.6  | Reply-to-post context extraction         | Medium     |
-| 13.7  | POSSE API integration                    | Medium     |
-| 13.8  | Error handling and retry logic           | Medium     |
-| 13.9  | Inline reply action on feed items        | Low        |
-| 13.10 | Posted indicator (synced back to FREED)  | Medium     |
+| Task  | Description                             | Complexity |
+| ----- | --------------------------------------- | ---------- |
+| 13.1  | Research POSSE Party API/protocol       | Medium     |
+| 13.2  | POSSE connection settings UI            | Low        |
+| 13.3  | Compose modal component                 | Medium     |
+| 13.4  | Markdown support in compose             | Low        |
+| 13.5  | Syndication target selection            | Low        |
+| 13.6  | Reply-to-post context extraction        | Medium     |
+| 13.7  | POSSE API integration                   | Medium     |
+| 13.8  | Error handling and retry logic          | Medium     |
+| 13.9  | Inline reply action on feed items       | Low        |
+| 13.10 | Posted indicator (synced back to FREED) | Medium     |
 
 ---
 

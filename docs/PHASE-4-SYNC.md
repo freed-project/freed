@@ -99,7 +99,7 @@ import { BrowserWebSocketClientAdapter } from "@automerge/automerge-repo-network
 export async function connectToLocalRelay(
   repo: Repo,
   host: string,
-  port = 8765,
+  port = 8765
 ): Promise<boolean> {
   const url = `ws://${host}:${port}`;
 
@@ -134,7 +134,7 @@ interface CloudConfig {
 
 export async function syncToCloud(
   doc: A.Doc<unknown>,
-  config: CloudConfig,
+  config: CloudConfig
 ): Promise<void> {
   const binary = A.save(doc);
 
@@ -153,7 +153,7 @@ export async function syncToCloud(
 
 export async function syncFromCloud(
   localDoc: A.Doc<unknown>,
-  config: CloudConfig,
+  config: CloudConfig
 ): Promise<A.Doc<unknown>> {
   const remoteBinary = await fetchFromCloud(config);
   if (!remoteBinary) return localDoc;
@@ -321,7 +321,7 @@ interface EncryptionConfig {
 
 export async function deriveKey(
   passphrase: string,
-  salt: Uint8Array,
+  salt: Uint8Array
 ): Promise<Uint8Array> {
   return scrypt(passphrase, salt, { N: 2 ** 17, r: 8, p: 1, dkLen: 32 });
 }

@@ -46,19 +46,20 @@ export interface UrlMetadata {
 export async function extractMetadata(url: string): Promise<UrlMetadata> {
   const response = await fetch(url);
   const html = await response.text();
-  
+
   // Parse Open Graph and meta tags
-  const title = extractOgTag(html, 'og:title') 
-    || extractMetaTag(html, 'title')
-    || extractTitleTag(html);
-    
-  const description = extractOgTag(html, 'og:description')
-    || extractMetaTag(html, 'description');
-    
-  const imageUrl = extractOgTag(html, 'og:image');
-  const siteName = extractOgTag(html, 'og:site_name');
-  const author = extractMetaTag(html, 'author');
-  
+  const title =
+    extractOgTag(html, "og:title") ||
+    extractMetaTag(html, "title") ||
+    extractTitleTag(html);
+
+  const description =
+    extractOgTag(html, "og:description") || extractMetaTag(html, "description");
+
+  const imageUrl = extractOgTag(html, "og:image");
+  const siteName = extractOgTag(html, "og:site_name");
+  const author = extractMetaTag(html, "author");
+
   return { url, title, description, imageUrl, siteName, author };
 }
 ```
@@ -67,8 +68,8 @@ export async function extractMetadata(url: string): Promise<UrlMetadata> {
 
 ```typescript
 // packages/capture-save/src/readability.ts
-import { Readability } from '@mozilla/readability';
-import { JSDOM } from 'jsdom';
+import { Readability } from "@mozilla/readability";
+import { JSDOM } from "jsdom";
 
 export interface ExtractedContent {
   html: string;
@@ -80,18 +81,18 @@ export interface ExtractedContent {
 export async function extractContent(url: string): Promise<ExtractedContent> {
   const response = await fetch(url);
   const html = await response.text();
-  
+
   const dom = new JSDOM(html, { url });
   const reader = new Readability(dom.window.document);
   const article = reader.parse();
-  
+
   if (!article) {
-    throw new Error('Could not extract article content');
+    throw new Error("Could not extract article content");
   }
-  
+
   const wordCount = article.textContent.split(/\s+/).length;
   const readingTime = Math.ceil(wordCount / 200); // 200 WPM
-  
+
   return {
     html: article.content,
     text: article.textContent,
@@ -105,9 +106,9 @@ export async function extractContent(url: string): Promise<ExtractedContent> {
 
 ```typescript
 // packages/capture-save/src/normalize.ts
-import { FeedItem, PreservedContent } from '@freed/shared';
-import { UrlMetadata } from './extract';
-import { ExtractedContent } from './readability';
+import { FeedItem, PreservedContent } from "@freed/shared";
+import { UrlMetadata } from "./extract";
+import { ExtractedContent } from "./readability";
 
 export function urlToFeedItem(
   metadata: UrlMetadata,
@@ -124,8 +125,8 @@ export function urlToFeedItem(
 
   return {
     globalId: `saved:${metadata.url}`,
-    platform: 'saved',
-    contentType: 'article',
+    platform: "saved",
+    contentType: "article",
     capturedAt: Date.now(),
     publishedAt: metadata.publishedAt ?? Date.now(),
     author: {
@@ -136,7 +137,7 @@ export function urlToFeedItem(
     content: {
       text: metadata.description ?? content.text.slice(0, 300),
       mediaUrls: metadata.imageUrl ? [metadata.imageUrl] : [],
-      mediaTypes: metadata.imageUrl ? ['image'] : [],
+      mediaTypes: metadata.imageUrl ? ["image"] : [],
       linkPreview: {
         url: metadata.url,
         title: metadata.title,
@@ -200,14 +201,14 @@ Capture any URL to your FREED library with full article extraction.
 
 ## Tasks
 
-| Task | Description | Complexity |
-|------|-------------|------------|
-| 3.1 | Create `@freed/capture-save` package scaffold | Low |
-| 3.2 | Implement URL metadata extraction | Medium |
-| 3.3 | Implement Readability-style content parser | Medium |
-| 3.4 | Normalize to FeedItem with PreservedContent | Low |
-| 3.5 | Create OpenClaw skill wrapper | Low |
-| 3.6 | CLI commands (add, list, search) | Medium |
+| Task | Description                                   | Complexity |
+| ---- | --------------------------------------------- | ---------- |
+| 3.1  | Create `@freed/capture-save` package scaffold | Low        |
+| 3.2  | Implement URL metadata extraction             | Medium     |
+| 3.3  | Implement Readability-style content parser    | Medium     |
+| 3.4  | Normalize to FeedItem with PreservedContent   | Low        |
+| 3.5  | Create OpenClaw skill wrapper                 | Low        |
+| 3.6  | CLI commands (add, list, search)              | Medium     |
 
 ---
 
