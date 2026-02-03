@@ -110,7 +110,7 @@ export default function Footer() {
               href="https://AubreyFalconer.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="underline hover:no-underline transition-colors"
+              className="underline hover:no-underline hover:text-white transition-colors"
             >
               Aubrey Falconer
             </a>{" "}
