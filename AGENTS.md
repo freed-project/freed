@@ -1,70 +1,49 @@
 # Agent Instructions
 
-Guidelines for AI agents working on this codebase.
+## CRITICAL
 
----
+### Automerge Mutations
 
-## Auto-Update: Public Roadmap
-
-When modifying any of the following files, **you must also update the public roadmap** at `website/src/pages/Roadmap.tsx`:
-
-### Trigger Files
-
-- `README.md`
-- `docs/PHASE-*.md` (any phase implementation document)
-- `docs/ROADMAP.md`
-
-### What to Sync
-
-The `phases` array in `Roadmap.tsx` must reflect the current state of the phase docs:
-
-| Phase Doc Field               | Roadmap.tsx Field                               |
-| ----------------------------- | ----------------------------------------------- |
-| Status line (`> **Status:**`) | `status: "complete" \| "current" \| "upcoming"` |
-| Overview/description          | `description`                                   |
-| Title                         | `title`                                         |
-
-### Status Mapping
-
-| Doc Status                             | Roadmap Status |
-| -------------------------------------- | -------------- |
-| `✓ Complete`                           | `"complete"`   |
-| `🚧 In Progress`, `🚧 Nearly Complete` | `"current"`    |
-| Everything else                        | `"upcoming"`   |
-
-### Priority Flag
-
-If a phase is marked as highest priority or currently active, set `priority: true` on the phase object.
-
-### Example
-
-If `docs/PHASE-1-FOUNDATION.md` changes from:
-
-```markdown
-> **Status:** ✓ Complete
-```
-
-to:
-
-```markdown
-> **Status:** 🚧 Nearly Complete
-```
-
-Then update `Roadmap.tsx`:
+Mutations require `change()` wrapper—direct mutation silently fails to sync:
 
 ```typescript
-{
-  number: 1,
-  title: "Foundation",
-  description: "Marketing site, monorepo, Automerge schema, CI/CD.",
-  status: "current",  // Changed from "complete"
-  // ...
-}
+doc.change((d) => {
+  d.items.push(item);
+}); // ✅ syncs
+doc.items.push(item); // ❌ silent failure
 ```
 
----
+### Package Boundaries
 
-## Commit Guidelines
+```
+packages/
+├── shared/       → @freed/shared   │ Types + pure functions. Zero runtime dependencies.
+├── sync/         → @freed/sync     │ Storage-agnostic. Works in browser (IndexedDB) AND Node (filesystem).
+├── pwa/          → @freed/pwa      │ Primary UI. Must never import Tauri APIs.
+├── desktop/      → @freed/desktop  │ Tauri shell. Imports from @freed/pwa.
+├── capture-*/    →                 │ Isolated. Never import between capture packages.
+```
 
-- Keep phase doc updates and roadmap updates in the same commit
-- Use descriptive commit messages that reference both the doc and UI change
+## Automerge Schema
+
+Location: `packages/shared/src/schema.ts`
+
+**Schema changes must be backward-compatible.** Add optional fields with defaults. Never delete fields—mark `@deprecated`.
+
+## Conventions
+
+**ID fragments:** Display tail, not head—`...${id.slice(-8)}` (better entropy).
+
+## Triggered Updates
+
+When modifying `README.md`, `docs/PHASE-*.md`, or `docs/ROADMAP.md`:
+
+→ Update `website/src/pages/Roadmap.tsx` in the same commit.
+
+| Doc Status       | Roadmap `status` |
+| ---------------- | ---------------- |
+| `✓ Complete`     | `"complete"`     |
+| `🚧 In Progress` | `"current"`      |
+| Otherwise        | `"upcoming"`     |
+
+**After implementing ANY new features:** Ask if the user wants README and docs updated.
