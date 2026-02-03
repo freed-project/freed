@@ -1,7 +1,10 @@
-import { Link, useLocation } from "react-router-dom";
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
-import { useNewsletter } from "../context/NewsletterContext";
+import { useNewsletter } from "@/context/NewsletterContext";
 
 const WTF_CAPTIONS = [
   // Core brand
@@ -35,7 +38,7 @@ const WTF_CAPTIONS = [
 ];
 
 export default function Navigation() {
-  const location = useLocation();
+  const pathname = usePathname();
   const { openModal } = useNewsletter();
   const [captionIndex, setCaptionIndex] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
@@ -55,6 +58,7 @@ export default function Navigation() {
 
   return (
     <motion.nav
+      aria-label="Main navigation"
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5 }}
@@ -66,7 +70,7 @@ export default function Navigation() {
       <div className="max-w-6xl mx-auto flex items-center justify-between relative z-10">
         {/* Logo with rotating WTF caption */}
         <Link
-          to="/"
+          href="/"
           className="flex items-baseline gap-0.5 group relative"
           onMouseEnter={handleMouseEnter}
           onMouseLeave={() => setIsHovering(false)}
@@ -104,9 +108,9 @@ export default function Navigation() {
           {navItems.map((item) => (
             <Link
               key={item.path}
-              to={item.path}
+              href={item.path}
               className={`text-sm font-medium transition-colors ${
-                location.pathname === item.path
+                pathname === item.path
                   ? "text-text-primary"
                   : "text-text-secondary hover:text-text-primary"
               }`}
@@ -176,10 +180,10 @@ export default function Navigation() {
               {navItems.map((item) => (
                 <Link
                   key={item.path}
-                  to={item.path}
+                  href={item.path}
                   onClick={() => setMobileMenuOpen(false)}
                   className={`text-2xl font-medium transition-colors ${
-                    location.pathname === item.path
+                    pathname === item.path
                       ? "text-text-primary"
                       : "text-text-secondary"
                   }`}

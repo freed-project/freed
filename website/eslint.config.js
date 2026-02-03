@@ -1,23 +1,29 @@
-import js from '@eslint/js'
-import globals from 'globals'
-import reactHooks from 'eslint-plugin-react-hooks'
-import reactRefresh from 'eslint-plugin-react-refresh'
-import tseslint from 'typescript-eslint'
-import { defineConfig, globalIgnores } from 'eslint/config'
+import { dirname } from "path";
+import { fileURLToPath } from "url";
+import { FlatCompat } from "@eslint/eslintrc";
 
-export default defineConfig([
-  globalIgnores(['dist']),
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const compat = new FlatCompat({
+  baseDirectory: __dirname,
+});
+
+const eslintConfig = [
+  ...compat.extends("next/core-web-vitals"),
   {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      js.configs.recommended,
-      tseslint.configs.recommended,
-      reactHooks.configs.flat.recommended,
-      reactRefresh.configs.vite,
-    ],
-    languageOptions: {
-      ecmaVersion: 2020,
-      globals: globals.browser,
+    rules: {
+      // Allow metadata exports and other Next.js patterns in page files
+      "react-refresh/only-export-components": "off",
+      // Disable strict react-hooks purity rules for animation code
+      "react-hooks/purity": "off",
+      "react-hooks/immutability": "off",
+      // Allow unescaped entities in JSX content
+      "react/no-unescaped-entities": "off",
+      // Allow setState in effects for client-side mounting patterns
+      "react-hooks/set-state-in-effect": "off",
     },
   },
-])
+];
+
+export default eslintConfig;

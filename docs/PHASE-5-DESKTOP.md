@@ -1,6 +1,6 @@
-# Phase 5: Desktop App (Tauri)
+# Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** Not Started  
+> **Status:** 🚧 In Progress  
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -8,7 +8,7 @@
 
 ## Overview
 
-The universal liberation tool. Anyone can install this and escape algorithmic manipulation without technical setup. Packages all capture + sync + UI into a native desktop app.
+The universal liberation tool. Anyone can install this and escape algorithmic manipulation without technical setup. Packages all capture + sync + UI into native apps for **desktop (macOS, Windows, Linux)** and **mobile (iOS, Android)**.
 
 **Key architectural decisions:**
 
@@ -16,6 +16,7 @@ The universal liberation tool. Anyone can install this and escape algorithmic ma
 - **Shared React codebase** — `packages/pwa/` is embedded in WebView AND deployed standalone to freed.wtf/app
 - **X authentication via WebView** — User logs into X inside the app; cookies captured from WebView session
 - **Ranking runs here** — Desktop computes `priority` scores, syncs to PWA via Automerge
+- **Tauri 2.0 for mobile** — Same codebase targets iOS and Android via Tauri's mobile support
 
 ---
 
@@ -162,6 +163,8 @@ export async function captureDomFeed(
 
 ## Tasks
 
+### Desktop
+
 | Task | Description                        | Complexity |
 | ---- | ---------------------------------- | ---------- |
 | 5.1  | Tauri 2.0 project scaffold         | Medium     |
@@ -175,11 +178,67 @@ export async function captureDomFeed(
 | 5.9  | Auto-launch on login (optional)    | Low        |
 | 5.10 | macOS notarization + DMG packaging | High       |
 | 5.11 | Windows installer                  | Medium     |
+| 5.12 | Linux AppImage/Flatpak             | Medium     |
+
+### Mobile (Tauri 2.0)
+
+| Task | Description                        | Complexity |
+| ---- | ---------------------------------- | ---------- |
+| 5.13 | iOS build configuration            | High       |
+| 5.14 | Android build configuration        | High       |
+| 5.15 | Mobile-responsive UI adjustments   | Medium     |
+| 5.16 | iOS background refresh             | Medium     |
+| 5.17 | Android background service         | Medium     |
+| 5.18 | Push notification integration      | Medium     |
+| 5.19 | Apple Developer account setup      | Low        |
+| 5.20 | App Store submission               | High       |
+| 5.21 | Play Store submission              | Medium     |
+
+---
+
+## Mobile Architecture
+
+Tauri 2.0 supports iOS and Android with the same React codebase.
+
+```
+packages/desktop/
+├── src/                      # Shared React UI
+├── src-tauri/
+│   ├── src/
+│   │   └── mobile.rs        # Mobile-specific Rust code
+│   ├── gen/
+│   │   ├── apple/           # Xcode project (generated)
+│   │   └── android/         # Android Studio project (generated)
+│   └── tauri.conf.json      # Mobile targets configured here
+```
+
+### Mobile Considerations
+
+| Platform | Consideration                                              |
+| -------- | ---------------------------------------------------------- |
+| iOS      | Background App Refresh for periodic sync                   |
+| iOS      | No Playwright—relies on Desktop for DOM capture            |
+| Android  | Foreground service for background sync                     |
+| Android  | No Playwright—relies on Desktop for DOM capture            |
+| Both     | Simplified capture (RSS only, no X API without Desktop)    |
+| Both     | Primary use case: reading, not capturing                   |
+
+### Mobile vs Desktop
+
+| Feature              | Desktop           | Mobile              |
+| -------------------- | ----------------- | ------------------- |
+| X capture            | ✓ (API)           | ✗ (sync from Desktop) |
+| RSS capture          | ✓                 | ✓ (limited)         |
+| DOM capture (FB/IG)  | ✓ (Playwright)    | ✗                   |
+| Local relay server   | ✓ (hosts)         | ✗ (connects)        |
+| Background sync      | ✓ (always)        | ✓ (periodic)        |
+| Offline reading      | ✓                 | ✓                   |
 
 ---
 
 ## Success Criteria
 
+### Desktop
 - [ ] Desktop app launches with native vibrancy on macOS
 - [ ] Captures from X, RSS in background
 - [ ] Local WebSocket relay enables instant phone sync
@@ -188,12 +247,23 @@ export async function captureDomFeed(
 - [ ] App runs in background after window close
 - [ ] macOS DMG is notarized and installable
 - [ ] Windows installer works
+- [ ] Linux AppImage works
+
+### Mobile
+- [ ] iOS app builds and runs
+- [ ] Android app builds and runs
+- [ ] Syncs with Desktop when on same network
+- [ ] Falls back to cloud sync when away
+- [ ] Background refresh works (iOS)
+- [ ] Background service works (Android)
+- [ ] App Store approved
+- [ ] Play Store approved
 
 ---
 
 ## Deliverable
 
-Native desktop app with capture, sync, and reader UI. No CLI or technical setup required.
+Native apps for **macOS, Windows, Linux, iOS, and Android** with capture, sync, and reader UI. No CLI or technical setup required.
 
 ---
 

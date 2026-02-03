@@ -60,8 +60,15 @@ FREED is a privacy-first, local-first system for capturing social media content 
 ### Core
 - **Language:** TypeScript throughout
 - **Runtime:** Bun (package management, scripts)
-- **Build:** Vite (all projects)
+- **Build:** Vite (apps), Next.js (website)
 - **Monorepo:** Bun workspaces
+
+### Marketing Website (freed.wtf)
+- **Framework:** Next.js 15 (App Router)
+- **Rendering:** Static Site Generation (SSG)
+- **Styling:** Tailwind CSS v4
+- **Animations:** Framer Motion
+- **Hosting:** Vercel
 
 ### Browser Extensions
 - **Chrome:** Manifest V3

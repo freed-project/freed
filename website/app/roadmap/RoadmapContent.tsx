@@ -1,5 +1,7 @@
+"use client";
+
 import { motion } from "framer-motion";
-import { useNewsletter } from "../context/NewsletterContext";
+import { useNewsletter } from "@/context/NewsletterContext";
 
 interface Phase {
   number: number;
@@ -15,7 +17,7 @@ const phases: Phase[] = [
     number: 1,
     title: "Foundation",
     description: "Marketing site, monorepo, Automerge schema, CI/CD.",
-    status: "current",
+    status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-1-FOUNDATION.md",
   },
@@ -33,7 +35,7 @@ const phases: Phase[] = [
     title: "Save for Later",
     description:
       "URL capture with Readability extraction. Capture any article, thread, or page.",
-    status: "upcoming",
+    status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-3-SAVE-FOR-LATER.md",
   },
@@ -42,15 +44,15 @@ const phases: Phase[] = [
     title: "Sync Layer",
     description:
       "Local WebSocket relay + cloud backup. Automerge CRDT for conflict-free sync.",
-    status: "upcoming",
+    status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-4-SYNC.md",
   },
   {
     number: 5,
-    title: "Desktop App",
+    title: "Desktop & Mobile App",
     description:
-      "Native app bundling capture, sync, and reader UI. The hub that makes everything work.",
+      "Native apps (macOS, Windows, Linux, iOS, Android) bundling capture, sync, and reader UI.",
     status: "current",
     priority: true,
     planLink:
@@ -61,7 +63,7 @@ const phases: Phase[] = [
     title: "PWA Reader",
     description:
       "Mobile companion app. Read your feed anywhere, synced to your desktop.",
-    status: "upcoming",
+    status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-6-PWA.md",
   },
@@ -87,7 +89,7 @@ const phases: Phase[] = [
     number: 9,
     title: "Browser Extension",
     description:
-      "Quick saves and Ulysses mode. Block platform feeds, stay intentional.",
+      "Chrome, Firefox, and Safari extensions. Quick saves and Ulysses mode.",
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-9-BROWSER-EXTENSION.md",
@@ -96,7 +98,7 @@ const phases: Phase[] = [
     number: 10,
     title: "Polish",
     description:
-      "Onboarding flows, statistics dashboard, accessibility improvements.",
+      "Onboarding, statistics, AI features, plugin API, and community infrastructure.",
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-10-POLISH.md",
@@ -112,10 +114,19 @@ const phases: Phase[] = [
   {
     number: 12,
     title: "Additional Platforms",
-    description: "LinkedIn, TikTok, Threads, and beyond.",
+    description: "LinkedIn, TikTok, Threads, Bluesky, Reddit, YouTube.",
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-12-ADDITIONAL-PLATFORMS.md",
+  },
+  {
+    number: 13,
+    title: "POSSE Integration",
+    description:
+      "Compose and publish through your own site. Complete the sovereignty loop.",
+    status: "upcoming",
+    planLink:
+      "https://github.com/freed-project/freed/blob/main/docs/PHASE-13-POSSE.md",
   },
 ];
 
@@ -195,7 +206,7 @@ function PhaseCard({ phase, index }: { phase: Phase; index: number }) {
   );
 }
 
-export default function Roadmap() {
+export default function RoadmapContent() {
   const { openModal } = useNewsletter();
 
   const completedCount = phases.filter((p) => p.status === "complete").length;

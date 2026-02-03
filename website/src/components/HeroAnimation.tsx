@@ -1,3 +1,5 @@
+"use client";
+
 import { motion } from "framer-motion";
 import { useState, useEffect, useRef, useCallback } from "react";
 
@@ -109,8 +111,8 @@ function initParticles(): Particle[] {
   return LOGOS.flatMap((logo) =>
     Array.from(
       { length: PARTICLES_PER_LOGO },
-      (_, i) => createParticle(logo, i < 2), // First 2 particles per logo are red
-    ),
+      (_, i) => createParticle(logo, i < 2) // First 2 particles per logo are red
+    )
   );
 }
 
@@ -139,7 +141,7 @@ function useParticleSystem() {
             // Small delay before respawn
             const angleToCenter = Math.atan2(
               CENTER - p.startY,
-              CENTER - p.startX,
+              CENTER - p.startX
             );
             const spread = (Math.random() - 0.5) * 0.17; // ~±5 degrees
             const angle = angleToCenter + spread;
@@ -248,7 +250,7 @@ function useParticleSystem() {
           age,
           state: isDead ? "dead" : "active",
         };
-      }),
+      })
     );
 
     frameRef.current = requestAnimationFrame(tick);
@@ -403,7 +405,9 @@ export default function HeroAnimation() {
               style={{ transformOrigin: `${logo.cx}px ${logo.cy}px` }}
             >
               <g
-                transform={`translate(${logo.cx - 10}, ${logo.cy - 10}) scale(${20 / 24})`}
+                transform={`translate(${logo.cx - 10}, ${logo.cy - 10}) scale(${
+                  20 / 24
+                })`}
               >
                 <motion.path
                   d={logo.path}

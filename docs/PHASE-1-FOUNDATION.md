@@ -93,7 +93,7 @@ export function addFeedItem(doc: FreedDoc, item: FeedItem): void;
 export function updateFeedItem(
   doc: FreedDoc,
   globalId: string,
-  updates: Partial<FeedItem>,
+  updates: Partial<FeedItem>
 ): void;
 export function removeFeedItem(doc: FreedDoc, globalId: string): void;
 export function markAsRead(doc: FreedDoc, globalId: string): void;
@@ -107,7 +107,7 @@ export function getUnreadItems(doc: FreedDoc): FeedItem[];
 
 ### 3. Marketing Website
 
-Vite + React + TypeScript site deployed to GitHub Pages at freed.wtf.
+Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 
 **Pages:**
 
@@ -118,13 +118,19 @@ Vite + React + TypeScript site deployed to GitHub Pages at freed.wtf.
 
 **Features:**
 
-- Newsletter signup (Brevo via Vercel Edge Function)
-- RSS feed generation at build time
+- Static Site Generation (SSG) for SEO
+- Newsletter signup (Brevo via Next.js Route Handler)
+- Auto-generated sitemap.xml
+- RSS/Atom feed generation at build time
 - Mobile-responsive design
 - Glassmorphic dark theme
+- Full accessibility support (skip links, ARIA labels, focus states)
+- `prefers-reduced-motion` support
 
 **Remaining Work:**
 
+- [x] Transition from GitHub Pages to Vercel for Edge function utilities.
+- [x] Transition from Vite to Next.js for better SEO and accessibility.
 - [ ] Finish first updates blog post (001-introducing-freed)
 - [ ] Finish the manifesto
 - [ ] Complete newsletter subscription system:
@@ -149,11 +155,11 @@ The newsletter system uses Brevo for contact management and email delivery, prox
 
 **Files:**
 
-| File                                         | Purpose                      |
-| -------------------------------------------- | ---------------------------- |
-| `website/api/subscribe.ts`                   | Vercel Edge Function (Brevo) |
-| `website/src/components/NewsletterModal.tsx` | Modal component              |
-| `website/src/context/NewsletterContext.tsx`  | Modal state management       |
+| File                                           | Purpose                           |
+| ---------------------------------------------- | --------------------------------- |
+| `website/src/app/api/subscribe/route.ts`       | Next.js Route Handler (Brevo)     |
+| `website/src/components/NewsletterModal.tsx`   | Modal component                   |
+| `website/src/context/NewsletterContext.tsx`    | Modal state management            |
 
 **Cost:** Free tier for both Brevo (contact storage) and Vercel (Hobby plan). ~$10-25 per bulk email send.
 
@@ -215,13 +221,12 @@ GitHub Actions workflows for continuous integration and deployment.
   },
   "website": {
     "dependencies": {
+      "next": "^15.0.0",
       "react": "^19.0.0",
-      "react-router-dom": "^7.0.0",
       "framer-motion": "^12.0.0",
-      "feed": "^4.0.0"
+      "feed": "^5.0.0"
     },
     "devDependencies": {
-      "vite": "^7.0.0",
       "tailwindcss": "^4.0.0",
       "typescript": "^5.0.0"
     }

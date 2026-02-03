@@ -32,6 +32,8 @@ Location: `packages/shared/src/schema.ts`
 
 ## Conventions
 
+**Time estimates:** Express in machine time (how long the agent will take), not human hours. Examples: "one focused conversation," "~10 minutes of edits," "a quick refactor." Never quote hours/days as if a human were doing the work.
+
 **ID fragments:** Display tail, not head—`...${id.slice(-8)}` (better entropy).
 
 ## Triggered Updates

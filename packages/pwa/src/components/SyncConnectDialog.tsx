@@ -33,10 +33,10 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
     try {
       storeRelayUrl(url.trim());
       connect(url.trim());
-      
+
       // Wait a moment to see if connection succeeds
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to connect");
@@ -60,7 +60,8 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
 
         <h2 className="text-xl font-semibold mb-2">Connect to Desktop</h2>
         <p className="text-sm text-[#71717a] mb-6">
-          Enter the sync URL from your FREED desktop app to sync your feeds across devices.
+          Enter the sync URL from your FREED desktop app to sync your feeds
+          across devices.
         </p>
 
         <div className="mb-4">

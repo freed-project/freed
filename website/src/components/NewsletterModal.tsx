@@ -1,17 +1,13 @@
+"use client";
+
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-
-interface NewsletterModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-}
+import { useNewsletter } from "@/context/NewsletterContext";
 
 type SubmitState = "idle" | "loading" | "success" | "error";
 
-export default function NewsletterModal({
-  isOpen,
-  onClose,
-}: NewsletterModalProps) {
+export default function NewsletterModal() {
+  const { isOpen, closeModal } = useNewsletter();
   const [email, setEmail] = useState("");
   const [state, setState] = useState<SubmitState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
@@ -52,7 +48,7 @@ export default function NewsletterModal({
       setState("idle");
       setErrorMessage("");
     }
-    onClose();
+    closeModal();
   };
 
   return (
@@ -70,6 +66,9 @@ export default function NewsletterModal({
 
           {/* Modal */}
           <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="newsletter-title"
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -141,7 +140,10 @@ export default function NewsletterModal({
                   // Form state
                   <>
                     <div className="text-center mb-6">
-                      <h3 className="text-2xl font-bold text-text-primary mb-2">
+                      <h3
+                        id="newsletter-title"
+                        className="text-2xl font-bold text-text-primary mb-2"
+                      >
                         Get <span className="gradient-text">FREED</span>
                       </h3>
                       <p className="text-text-secondary">

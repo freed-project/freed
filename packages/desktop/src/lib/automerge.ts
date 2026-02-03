@@ -71,7 +71,7 @@ async function saveDoc(): Promise<void> {
  */
 async function applyChange(
   changeFn: (doc: FreedDoc) => void,
-  message?: string
+  message?: string,
 ): Promise<FreedDoc> {
   if (!currentDoc) {
     throw new Error("Document not initialized. Call initDoc() first.");
@@ -114,16 +114,19 @@ export async function docRemoveRssFeed(url: string): Promise<FreedDoc> {
 
 export async function docUpdateFeedItem(
   globalId: string,
-  updates: Partial<FeedItem>
+  updates: Partial<FeedItem>,
 ): Promise<FreedDoc> {
   return applyChange(
     (doc) => updateFeedItem(doc, globalId, updates),
-    "Update feed item"
+    "Update feed item",
   );
 }
 
 export async function docRemoveFeedItem(globalId: string): Promise<FreedDoc> {
-  return applyChange((doc) => removeFeedItem(doc, globalId), "Remove feed item");
+  return applyChange(
+    (doc) => removeFeedItem(doc, globalId),
+    "Remove feed item",
+  );
 }
 
 export async function docMarkAsRead(globalId: string): Promise<FreedDoc> {
@@ -135,11 +138,11 @@ export async function docToggleSaved(globalId: string): Promise<FreedDoc> {
 }
 
 export async function docUpdatePreferences(
-  updates: Partial<UserPreferences>
+  updates: Partial<UserPreferences>,
 ): Promise<FreedDoc> {
   return applyChange(
     (doc) => updatePreferences(doc, updates),
-    "Update preferences"
+    "Update preferences",
   );
 }
 

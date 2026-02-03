@@ -1,8 +1,10 @@
+"use client";
+
 import { motion, AnimatePresence } from "framer-motion";
-import { Link } from "react-router-dom";
+import Link from "next/link";
 import { useState, useEffect } from "react";
 import HeroAnimation from "./HeroAnimation";
-import { useNewsletter } from "../context/NewsletterContext";
+import { useNewsletter } from "@/context/NewsletterContext";
 
 const ROTATING_WORDS = ["Feed", "Life", "Mind"];
 
@@ -96,7 +98,7 @@ export default function Hero() {
               Get FREED
             </motion.button>
 
-            <Link to="/manifesto" className="w-full sm:w-auto">
+            <Link href="/manifesto" className="w-full sm:w-auto">
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}

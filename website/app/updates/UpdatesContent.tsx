@@ -1,7 +1,9 @@
+"use client";
+
 import { motion } from "framer-motion";
-import { Link } from "react-router-dom";
-import { posts } from "../content";
-import { useNewsletter } from "../context/NewsletterContext";
+import Link from "next/link";
+import { posts } from "@/content";
+import { useNewsletter } from "@/context/NewsletterContext";
 
 function formatDate(dateString: string): string {
   // Parse as local date to avoid timezone shift
@@ -14,7 +16,7 @@ function formatDate(dateString: string): string {
   });
 }
 
-export default function Updates() {
+export default function UpdatesContent() {
   const { openModal } = useNewsletter();
 
   return (
@@ -66,7 +68,7 @@ export default function Updates() {
               transition={{ duration: 0.4, delay: index * 0.1 }}
             >
               <Link
-                to={`/updates/${post.slug}`}
+                href={`/updates/${post.slug}`}
                 className="block glass-card p-6 sm:p-8 rounded-xl transition-all hover:scale-[1.01] group"
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">

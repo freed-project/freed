@@ -1,7 +1,7 @@
 # Phase 4: Sync Layer
 
-> **Status:** Not Started  
-> **Dependencies:** Phase 1-2 (Capture layers ✓), Phase 3 (Save for Later)
+> **Status:** 🚧 In Progress  
+> **Dependencies:** Phase 1-2 (Capture layers ✓), Phase 3 (Save for Later ✓)
 
 ---
 

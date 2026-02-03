@@ -1,13 +1,16 @@
-import { Link } from "react-router-dom";
+import Link from "next/link";
 
 export default function Footer() {
   return (
-    <footer className="relative z-10 border-t border-freed-border py-8 sm:py-12 px-4 sm:px-6 md:px-12 lg:px-8">
+    <footer
+      aria-label="Site footer"
+      className="relative z-10 border-t border-freed-border py-8 sm:py-12 px-4 sm:px-6 md:px-12 lg:px-8"
+    >
       <div className="max-w-6xl mx-auto">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
           {/* Brand */}
           <div className="col-span-2 md:col-span-2">
-            <Link to="/" className="inline-flex items-baseline gap-0.5 mb-4">
+            <Link href="/" className="inline-flex items-baseline gap-0.5 mb-4">
               <span className="relative text-xl font-bold text-text-primary">
                 FREED
                 <span
@@ -32,7 +35,7 @@ export default function Footer() {
             <ul className="space-y-2">
               <li>
                 <Link
-                  to="/"
+                  href="/"
                   className="text-text-secondary text-sm hover:text-text-primary transition-colors"
                 >
                   Home
@@ -40,7 +43,7 @@ export default function Footer() {
               </li>
               <li>
                 <Link
-                  to="/manifesto"
+                  href="/manifesto"
                   className="text-text-secondary text-sm hover:text-text-primary transition-colors"
                 >
                   Manifesto
@@ -48,7 +51,7 @@ export default function Footer() {
               </li>
               <li>
                 <Link
-                  to="/roadmap"
+                  href="/roadmap"
                   className="text-text-secondary text-sm hover:text-text-primary transition-colors"
                 >
                   Roadmap
@@ -56,7 +59,7 @@ export default function Footer() {
               </li>
               <li>
                 <Link
-                  to="/updates"
+                  href="/updates"
                   className="text-text-secondary text-sm hover:text-text-primary transition-colors"
                 >
                   Updates

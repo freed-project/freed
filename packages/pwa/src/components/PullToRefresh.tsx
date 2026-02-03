@@ -44,7 +44,7 @@ export function PullToRefresh({
         }
       }
     },
-    [isRefreshing, threshold]
+    [isRefreshing, threshold],
   );
 
   const handleTouchEnd = useCallback(async () => {

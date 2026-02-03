@@ -1,6 +1,6 @@
 # Phase 6: PWA Reader
 
-> **Status:** Not Started  
+> **Status:** 🚧 In Progress  
 > **Dependencies:** Phase 4 (Sync Layer), Phase 5 (Desktop App)
 
 ---

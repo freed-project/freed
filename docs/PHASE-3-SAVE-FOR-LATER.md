@@ -1,6 +1,6 @@
 # Phase 3: Save for Later (`capture-save`)
 
-> **Status:** Not Started  
+> **Status:** ✓ Complete  
 > **Dependencies:** Phase 1-2 (Capture layers ✓)
 
 ---

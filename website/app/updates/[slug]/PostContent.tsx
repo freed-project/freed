@@ -1,7 +1,9 @@
+"use client";
+
 import { motion } from "framer-motion";
-import { useParams, Link, Navigate } from "react-router-dom";
-import { getPostBySlug } from "../content";
-import { useNewsletter } from "../context/NewsletterContext";
+import Link from "next/link";
+import { useNewsletter } from "@/context/NewsletterContext";
+import type { Post } from "@/content";
 
 function formatDate(dateString: string): string {
   // Parse as local date to avoid timezone shift
@@ -14,14 +16,12 @@ function formatDate(dateString: string): string {
   });
 }
 
-export default function Post() {
-  const { slug } = useParams<{ slug: string }>();
-  const { openModal } = useNewsletter();
-  const post = slug ? getPostBySlug(slug) : undefined;
+interface PostContentProps {
+  post: Post;
+}
 
-  if (!post) {
-    return <Navigate to="/updates" replace />;
-  }
+export default function PostContent({ post }: PostContentProps) {
+  const { openModal } = useNewsletter();
 
   return (
     <section className="py-24 sm:py-32 px-4 sm:px-6 md:px-12 lg:px-8">
@@ -33,7 +33,7 @@ export default function Post() {
           className="mb-8"
         >
           <Link
-            to="/updates"
+            href="/updates"
             className="text-sm text-text-muted hover:text-glow-purple transition-colors"
           >
             ← Back to Updates
@@ -128,7 +128,9 @@ export default function Post() {
           <p className="text-text-muted text-sm">
             Share this post:{" "}
             <a
-              href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(`https://freed.wtf/updates/${post.slug}`)}&text=${encodeURIComponent(post.title)}`}
+              href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(
+                `https://freed.wtf/updates/${post.slug}`
+              )}&text=${encodeURIComponent(post.title)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-glow-purple hover:text-glow-blue transition-colors"
@@ -139,7 +141,7 @@ export default function Post() {
             <button
               onClick={() =>
                 navigator.clipboard.writeText(
-                  `https://freed.wtf/updates/${post.slug}`,
+                  `https://freed.wtf/updates/${post.slug}`
                 )
               }
               className="text-glow-purple hover:text-glow-blue transition-colors"
