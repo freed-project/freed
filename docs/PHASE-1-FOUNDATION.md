@@ -155,11 +155,11 @@ The newsletter system uses Brevo for contact management and email delivery, prox
 
 **Files:**
 
-| File                                           | Purpose                           |
-| ---------------------------------------------- | --------------------------------- |
-| `website/src/app/api/subscribe/route.ts`       | Next.js Route Handler (Brevo)     |
-| `website/src/components/NewsletterModal.tsx`   | Modal component                   |
-| `website/src/context/NewsletterContext.tsx`    | Modal state management            |
+| File                                         | Purpose                       |
+| -------------------------------------------- | ----------------------------- |
+| `website/src/app/api/subscribe/route.ts`     | Next.js Route Handler (Brevo) |
+| `website/src/components/NewsletterModal.tsx` | Modal component               |
+| `website/src/context/NewsletterContext.tsx`  | Modal state management        |
 
 **Cost:** Free tier for both Brevo (contact storage) and Vercel (Hobby plan). ~$10-25 per bulk email send.
 

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -11,8 +11,8 @@
 
 :root {
   /* Typography */
-  --font-body: 'Manrope', system-ui, -apple-system, sans-serif;
-  --font-logo: 'Space Grotesk', system-ui, sans-serif;
+  --font-body: "Manrope", system-ui, -apple-system, sans-serif;
+  --font-logo: "Space Grotesk", system-ui, sans-serif;
   /* Core colors - matches marketing site */
   --freed-black: #0a0a0a;
   --freed-dark: #0f0f0f;
@@ -90,16 +90,12 @@ body {
 
 /* Glow effects - matches marketing site */
 .glow-sm {
-  box-shadow:
-    0 0 10px rgba(139, 92, 246, 0.2),
-    0 0 20px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.2), 0 0 20px rgba(59, 130, 246, 0.1);
 }
 
 .glow-md {
-  box-shadow:
-    0 0 20px rgba(139, 92, 246, 0.3),
-    0 0 40px rgba(59, 130, 246, 0.15),
-    0 0 60px rgba(139, 92, 246, 0.05);
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.3),
+    0 0 40px rgba(59, 130, 246, 0.15), 0 0 60px rgba(139, 92, 246, 0.05);
 }
 
 /* Glassmorphic card - matches marketing site */
