@@ -1,16 +1,21 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Manrope, Space_Grotesk } from "next/font/google";
 import { NewsletterProvider } from "@/context/NewsletterContext";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import NewsletterModal from "@/components/NewsletterModal";
-// import FontSwitcher from "@/components/FontSwitcher";
 import "../index.css";
 
-const inter = Inter({
+const manrope = Manrope({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-inter",
+  variable: "--font-manrope",
+});
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-space-grotesk",
 });
 
 export const viewport: Viewport = {
@@ -85,29 +90,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.variable}>
-      <body className={inter.className}>
-        <div
-          style={{
-            position: "fixed",
-            bottom: "24px",
-            right: "24px",
-            zIndex: 99999,
-            width: "56px",
-            height: "56px",
-            borderRadius: "50%",
-            backgroundColor: "#8b5cf6",
-            color: "white",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "24px",
-            fontWeight: "bold",
-            boxShadow: "0 4px 20px rgba(139, 92, 246, 0.5)",
-          }}
-        >
-          F
-        </div>
+    <html lang="en" className={`${manrope.variable} ${spaceGrotesk.variable}`}>
+      <body className={manrope.className}>
         <NewsletterProvider>
           {/* Skip to main content link for accessibility */}
           <a

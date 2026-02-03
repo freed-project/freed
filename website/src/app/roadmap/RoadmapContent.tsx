@@ -497,7 +497,7 @@ const phases: Phase[] = [
   },
   {
     number: 13,
-    title: "POSSE Integration",
+    title: "POSSE Party 🎉 🦝",
     description:
       "Compose and publish through your own site. Complete the sovereignty loop.",
     status: "upcoming",
@@ -623,9 +623,9 @@ export default function RoadmapContent() {
           <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
             <span className="gradient-text">Roadmap</span>
           </h1>
-          <p className="text-text-secondary text-lg sm:text-xl mb-2">
-            We build in daylight.
-          </p>
+          {/*<p className="text-text-secondary text-lg sm:text-xl mb-2">*/}
+          {/*  We build in daylight.*/}
+          {/*</p>*/}
           <p className="text-text-muted text-sm sm:text-base">
             Every commit, every decision, every pivot — visible.
           </p>
@@ -696,7 +696,7 @@ export default function RoadmapContent() {
               rel="noopener noreferrer"
               className="btn-secondary"
             >
-              View on GitHub
+              GitHub
             </a>
             <motion.button
               whileHover={{ scale: 1.05 }}
