@@ -31,3 +31,6 @@ npm-debug.log*
 # Cache
 .cache/
 .parcel-cache/
+
+# Playwright MCP debug artifacts
+.playwright-mcp/
