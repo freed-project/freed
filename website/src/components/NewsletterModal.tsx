@@ -1,8 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNewsletter } from "@/context/NewsletterContext";
+import {
+  useFloating,
+  useClientPoint,
+  useInteractions,
+  useHover,
+  offset,
+  shift,
+  arrow,
+  FloatingArrow,
+} from "@floating-ui/react";
 
 type SubmitState = "idle" | "loading" | "success" | "error";
 
@@ -11,6 +21,26 @@ export default function NewsletterModal() {
   const [email, setEmail] = useState("");
   const [state, setState] = useState<SubmitState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const [isTooltipOpen, setIsTooltipOpen] = useState(false);
+  const arrowRef = useRef(null);
+
+  const { refs, floatingStyles, context } = useFloating({
+    open: isTooltipOpen,
+    onOpenChange: setIsTooltipOpen,
+    placement: "top",
+    middleware: [
+      offset(12),
+      shift({ padding: 8 }),
+      arrow({ element: arrowRef }),
+    ],
+  });
+
+  const clientPoint = useClientPoint(context);
+  const hover = useHover(context);
+  const { getReferenceProps, getFloatingProps } = useInteractions([
+    clientPoint,
+    hover,
+  ]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,7 +73,6 @@ export default function NewsletterModal() {
   };
 
   const handleClose = () => {
-    // Reset state when closing
     if (state !== "loading") {
       setState("idle");
       setErrorMessage("");
@@ -74,8 +103,37 @@ export default function NewsletterModal() {
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ type: "spring", duration: 0.5 }}
             className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md px-4"
+            ref={refs.setReference}
+            {...getReferenceProps()}
           >
-            <div className="relative glass-card p-8 overflow-hidden">
+            {/* Cursor-following tooltip with arrow */}
+            <AnimatePresence>
+              {isTooltipOpen && state !== "success" && (
+                <motion.div
+                  ref={refs.setFloating}
+                  style={floatingStyles}
+                  {...getFloatingProps()}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="z-[60] pointer-events-none px-3 py-1.5 rounded-lg text-xs font-medium bg-freed-black border border-freed-border text-text-primary shadow-lg whitespace-nowrap"
+                >
+                  <span>We just launched! 🚀</span>{" "}
+                  <span className="text-text-muted">
+                    Email updates coming soon ✨
+                  </span>
+                  <FloatingArrow
+                    ref={arrowRef}
+                    context={context}
+                    fill="#0a0a0a"
+                    strokeWidth={1}
+                    stroke="var(--freed-border, #1f1f1f)"
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="relative p-10 overflow-hidden rounded-2xl bg-freed-black/80 backdrop-blur-xl border border-freed-border shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
               {/* Decorative glow */}
               <div className="absolute top-0 left-1/4 w-32 h-32 bg-glow-purple/20 rounded-full blur-3xl" />
               <div className="absolute bottom-0 right-1/4 w-40 h-40 bg-glow-blue/20 rounded-full blur-3xl" />
@@ -102,7 +160,6 @@ export default function NewsletterModal() {
 
               <div className="relative z-10">
                 {state === "success" ? (
-                  // Success state
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -137,15 +194,8 @@ export default function NewsletterModal() {
                     </button>
                   </motion.div>
                 ) : (
-                  // Form state
                   <>
                     <div className="text-center mb-6">
-                      <div className="flex justify-center mb-3">
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-glow-purple/20 text-glow-purple border border-glow-purple/30">
-                          <span className="w-1.5 h-1.5 rounded-full bg-glow-purple animate-pulse" />
-                          Email updates coming soon
-                        </span>
-                      </div>
                       <h3
                         id="newsletter-title"
                         className="text-2xl font-bold text-text-primary mb-2"
@@ -166,8 +216,8 @@ export default function NewsletterModal() {
                           onChange={(e) => setEmail(e.target.value)}
                           placeholder="Enter your email"
                           required
-                          disabled={state === "loading"}
-                          className="w-full px-4 py-3 rounded-lg bg-freed-surface border border-freed-border text-text-primary placeholder:text-text-muted focus:outline-none focus:border-glow-purple/50 focus:ring-1 focus:ring-glow-purple/50 transition-colors disabled:opacity-50"
+                          disabled
+                          className="w-full px-4 py-3 rounded-lg bg-freed-surface border border-freed-border text-text-primary placeholder:text-text-muted focus:outline-none focus:border-glow-purple/50 focus:ring-1 focus:ring-glow-purple/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                       </div>
 
@@ -183,37 +233,10 @@ export default function NewsletterModal() {
 
                       <motion.button
                         type="submit"
-                        disabled={state === "loading" || !email}
-                        whileHover={{ scale: state === "loading" ? 1 : 1.02 }}
-                        whileTap={{ scale: state === "loading" ? 1 : 0.98 }}
+                        disabled
                         className="w-full btn-primary py-3 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {state === "loading" ? (
-                          <span className="flex items-center justify-center gap-2">
-                            <svg
-                              className="animate-spin h-5 w-5"
-                              viewBox="0 0 24 24"
-                            >
-                              <circle
-                                className="opacity-25"
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                strokeWidth="4"
-                                fill="none"
-                              />
-                              <path
-                                className="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                              />
-                            </svg>
-                            Joining...
-                          </span>
-                        ) : (
-                          "Join the Waitlist"
-                        )}
+                        Join the Waitlist
                       </motion.button>
                     </form>
 
