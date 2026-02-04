@@ -624,10 +624,7 @@ function PhaseCard({ phase, index }: { phase: Phase; index: number }) {
           </span>
           {phase.planLink && (
             <span className="text-xs text-text-muted group-hover:text-white transition-colors duration-200 flex items-center gap-1">
-              View Plan
-              <span className="inline-block transition-transform duration-200 group-hover:translate-x-1">
-                →
-              </span>
+              View Plan →
             </span>
           )}
         </div>
@@ -644,7 +641,7 @@ function PhaseCard({ phase, index }: { phase: Phase; index: number }) {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: index * 0.05 }}
-        className={`group relative block p-6 rounded-xl border ${style.border} ${style.bg} ${style.glow} transition-all duration-200 hover:translate-x-1 cursor-pointer`}
+        className={`group relative block p-6 rounded-xl border ${style.border} ${style.bg} ${style.glow} transition-all duration-200 hover:scale-[1.02] cursor-pointer`}
       >
         {cardContent}
       </motion.a>
