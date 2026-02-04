@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNewsletter } from "@/context/NewsletterContext";
 
 const WTF_CAPTIONS = [
@@ -43,6 +43,16 @@ export default function Navigation() {
   const [captionIndex, setCaptionIndex] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 20);
+    };
+    handleScroll(); // Check initial position
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   const handleMouseEnter = () => {
     setCaptionIndex((prev) => (prev + 1) % WTF_CAPTIONS.length);
@@ -64,8 +74,17 @@ export default function Navigation() {
       transition={{ duration: 0.5 }}
       className="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 py-4"
     >
-      {/* Frosted glass background - solid on mobile to match iOS Safari chrome */}
-      <div className="absolute inset-0 bg-freed-black md:bg-freed-black/70 backdrop-blur-xl border-b border-freed-border" />
+      {/* Frosted glass background - solid on mobile to match iOS Safari chrome, fades in on desktop scroll */}
+      <div
+        className={`absolute inset-0 transition-all duration-300 ease-out
+          bg-freed-black backdrop-blur-xl border-b border-freed-border
+          md:backdrop-blur-xl
+          ${
+            scrolled
+              ? "md:bg-freed-black/70 md:border-freed-border md:shadow-[0_4px_30px_rgba(0,0,0,0.5)]"
+              : "md:bg-transparent md:border-transparent md:shadow-none"
+          }`}
+      />
 
       <div className="max-w-6xl mx-auto flex items-center justify-between relative z-10">
         {/* Logo with rotating WTF caption */}
@@ -174,7 +193,7 @@ export default function Navigation() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
-            className="md:hidden fixed inset-0 top-[60px] bg-freed-black/70 backdrop-blur-xl z-40"
+            className="md:hidden fixed inset-0 top-[60px] bg-freed-black z-40"
           >
             <div className="h-full flex flex-col justify-center items-center gap-8 px-6">
               {navItems.map((item) => (
