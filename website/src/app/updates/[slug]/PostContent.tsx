@@ -94,6 +94,8 @@ export default function PostContent({ post }: PostContentProps) {
               <div className="flex flex-col sm:flex-row gap-3">
                 <a
                   href="/feed.xml"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="btn-secondary text-sm flex items-center gap-2"
                 >
                   <svg
@@ -128,7 +130,9 @@ export default function PostContent({ post }: PostContentProps) {
           <p className="text-text-muted text-sm">
             Share this post:{" "}
             <a
-              href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(`https://freed.wtf/updates/${post.slug}`)}&text=${encodeURIComponent(post.title)}`}
+              href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(
+                `https://freed.wtf/updates/${post.slug}`
+              )}&text=${encodeURIComponent(post.title)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-glow-purple hover:text-glow-blue transition-colors"

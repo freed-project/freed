@@ -40,6 +40,8 @@ export default function UpdatesContent() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <a
               href="/feed.xml"
+              target="_blank"
+              rel="noopener noreferrer"
               className="flex items-center gap-2 text-sm text-text-muted hover:text-glow-purple transition-colors"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">

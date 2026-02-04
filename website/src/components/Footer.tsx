@@ -88,6 +88,8 @@ export default function Footer() {
               <li>
                 <a
                   href="/feed.xml"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="text-text-secondary text-sm hover:text-text-primary transition-colors"
                 >
                   RSS Feed

@@ -21,8 +21,16 @@
 }
 
 /* Base styles */
+html,
+body {
+  /* Prevent overscroll revealing anything behind */
+  overscroll-behavior: none;
+}
+
 html {
   scroll-behavior: smooth;
+  /* Ensure background extends to all edges on iOS Safari */
+  background-color: var(--color-freed-black);
 }
 
 body {
@@ -36,6 +44,9 @@ body {
   /* Safe area insets for iOS viewport-fit=cover */
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
+  /* Fill the full viewport including safe areas */
+  min-height: 100vh;
+  min-height: 100dvh; /* Dynamic viewport height for iOS Safari */
 }
 
 /* Logo typography - Space Grotesk */
@@ -210,14 +221,61 @@ body {
   opacity: 0.5;
 }
 
-/* Noise texture overlay */
+/* Background gradient orbs with P3 wide-gamut support */
+.bg-gradient-orbs {
+  /* sRGB fallback for browsers without P3 support */
+  background: radial-gradient(
+      ellipse 900px 900px at -10% -15%,
+      rgba(139, 92, 246, 0.12) 0%,
+      rgba(139, 92, 246, 0.04) 35%,
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 800px 800px at 110% 110%,
+      rgba(59, 130, 246, 0.12) 0%,
+      rgba(59, 130, 246, 0.04) 35%,
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 500px 500px at 85% 40%,
+      rgba(6, 182, 212, 0.06) 0%,
+      rgba(6, 182, 212, 0.02) 35%,
+      transparent 65%
+    );
+}
+
+/* P3 wide-gamut colors for displays that support them (Safari, modern displays) */
+@supports (color: color(display-p3 1 1 1)) {
+  .bg-gradient-orbs {
+    background: radial-gradient(
+        ellipse 900px 900px at -10% -15%,
+        color(display-p3 0.6 0.35 1 / 0.15) 0%,
+        color(display-p3 0.6 0.35 1 / 0.05) 35%,
+        transparent 65%
+      ),
+      radial-gradient(
+        ellipse 800px 800px at 110% 110%,
+        color(display-p3 0.2 0.5 1 / 0.15) 0%,
+        color(display-p3 0.2 0.5 1 / 0.05) 35%,
+        transparent 65%
+      ),
+      radial-gradient(
+        ellipse 500px 500px at 85% 40%,
+        color(display-p3 0 0.75 0.9 / 0.08) 0%,
+        color(display-p3 0 0.75 0.9 / 0.02) 35%,
+        transparent 65%
+      );
+  }
+}
+
 .noise-overlay {
   position: fixed;
   inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 1024 1024' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch' result='noise'/%3E%3CfeGaussianBlur in='noise' stdDeviation='0.5' result='smoothNoise'/%3E%3CfeComponentTransfer in='smoothNoise'%3E%3CfeFuncA type='linear' slope='1.5'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  opacity: 0.25;
+  mix-blend-mode: color-burn;
   pointer-events: none;
-  z-index: 1000;
+  z-index: 1;
 }
 
 /* Selection color */

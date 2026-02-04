@@ -54,6 +54,18 @@ export default function Navigation() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  // Lock body scroll when mobile menu is open
+  useEffect(() => {
+    if (mobileMenuOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileMenuOpen]);
+
   const handleMouseEnter = () => {
     setCaptionIndex((prev) => (prev + 1) % WTF_CAPTIONS.length);
     setIsHovering(true);
@@ -75,10 +87,10 @@ export default function Navigation() {
       className="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 pb-4"
       style={{ paddingTop: "calc(1rem + env(safe-area-inset-top))" }}
     >
-      {/* Frosted glass background - solid on mobile to match iOS Safari chrome, fades in on desktop scroll */}
+      {/* Solid background on mobile to match iOS Safari chrome, frosted glass on desktop */}
       <div
         className={`absolute inset-0 transition-all duration-300 ease-out
-          bg-freed-black backdrop-blur-xl border-b border-freed-border
+          bg-freed-black border-b border-freed-border
           md:backdrop-blur-xl
           ${
             scrolled
@@ -193,36 +205,51 @@ export default function Navigation() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="md:hidden fixed inset-0 bg-freed-black z-40"
-            style={{ top: "calc(60px + env(safe-area-inset-top))" }}
+            transition={{ duration: 0.2 }}
+            className="md:hidden fixed left-0 right-0 bottom-0 bg-freed-black z-40"
+            style={{
+              top: "calc(60px + env(safe-area-inset-top))",
+              paddingBottom: "env(safe-area-inset-bottom)",
+            }}
           >
             <div className="h-full flex flex-col justify-center items-center gap-8 px-6">
-              {navItems.map((item) => (
-                <Link
+              {navItems.map((item, index) => (
+                <motion.div
                   key={item.path}
-                  href={item.path}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`text-2xl font-medium transition-colors ${
-                    pathname === item.path
-                      ? "text-text-primary"
-                      : "text-text-secondary"
-                  }`}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05, duration: 0.15 }}
                 >
-                  {item.label}
-                </Link>
+                  <Link
+                    href={item.path}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`text-2xl font-medium transition-colors ${
+                      pathname === item.path
+                        ? "text-text-primary"
+                        : "text-text-secondary"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                </motion.div>
               ))}
 
-              <a
+              <motion.a
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2, duration: 0.15 }}
                 href="https://github.com/freed-project/freed"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-2xl font-medium text-text-secondary"
               >
                 GitHub
-              </a>
+              </motion.a>
 
-              <button
+              <motion.button
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.25, duration: 0.15 }}
                 onClick={() => {
                   openModal();
                   setMobileMenuOpen(false);
@@ -230,7 +257,7 @@ export default function Navigation() {
                 className="btn-primary text-lg px-12 py-4 mt-4"
               >
                 Get Freed
-              </button>
+              </motion.button>
             </div>
           </motion.div>
         )}
