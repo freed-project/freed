@@ -9,7 +9,8 @@ target/
 out/
 
 # IDE
-.idea/
+.idea/*
+!.idea/runConfigurations/
 *.iml
 .vscode/
 *.swp
