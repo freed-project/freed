@@ -64,8 +64,8 @@ export default function Navigation() {
       transition={{ duration: 0.5 }}
       className="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 py-4"
     >
-      {/* Frosted glass background */}
-      <div className="absolute inset-0 bg-freed-black/70 backdrop-blur-xl border-b border-freed-border" />
+      {/* Frosted glass background - solid on mobile to match iOS Safari chrome */}
+      <div className="absolute inset-0 bg-freed-black md:bg-freed-black/70 backdrop-blur-xl border-b border-freed-border" />
 
       <div className="max-w-6xl mx-auto flex items-center justify-between relative z-10">
         {/* Logo with rotating WTF caption */}
