@@ -4,7 +4,7 @@ export default function Footer() {
   return (
     <footer
       aria-label="Site footer"
-      className="relative z-10 border-t border-freed-border py-8 sm:py-12 px-4 sm:px-6 md:px-12 lg:px-8"
+      className="relative z-10 border-t border-freed-border py-8 sm:py-12 px-8 sm:px-8 md:px-12 lg:px-8"
     >
       <div className="max-w-6xl mx-auto">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
@@ -97,7 +97,7 @@ export default function Footer() {
         </div>
 
         {/* Bottom */}
-        <div className="mt-12 pt-8 border-t border-freed-border flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="mt-12 pt-8 border-t border-freed-border flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
           <p className="text-text-muted text-sm">
             &copy; {new Date().getFullYear()} Freed. Open source under MIT
             License.
