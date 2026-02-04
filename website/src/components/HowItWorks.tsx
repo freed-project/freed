@@ -5,27 +5,26 @@ import { motion } from "framer-motion";
 const steps = [
   {
     number: "01",
-    title: "Install the Extension",
+    title: "Download the App",
     description:
-      "Add Freed to Chrome, Safari, or Firefox. Works on desktop and mobile browsers.",
+      "Native app for Mac, Windows, and Linux. Your escape pod from algorithmic purgatory.",
   },
   {
     number: "02",
-    title: "Browse Normally",
-    description:
-      "Freed captures posts and stories as you scroll through X, Facebook, and Instagram.",
+    title: "Connect Your Accounts",
+    description: "Sign into X, Facebook, Insta, and more. All sources unified.",
   },
   {
     number: "03",
-    title: "Open Your Freed",
+    title: "Let It Rip",
     description:
-      "Access your unified feed—weighted by your preferences, not their algorithms.",
+      "Lives in your menu bar and captures all feeds to a secure vault on your machine.",
   },
   {
     number: "04",
-    title: "Find Your People",
+    title: "Read Anywhere",
     description:
-      "Check the Friend Map to see where your friends are and when they were last there.",
+      "Phone syncs to desktop like magic. Your feed follows you. Their servers don't.",
   },
 ];
 

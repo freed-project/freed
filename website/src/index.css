@@ -105,15 +105,15 @@ body {
 
 /* Glassmorphic card */
 .glass-card {
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(12, 12, 16, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--color-freed-border);
   border-radius: 16px;
 }
 
 .glass-card:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(18, 18, 24, 0.85);
   border-color: rgba(139, 92, 246, 0.3);
 }
 
