@@ -85,7 +85,7 @@ export default function HowItWorks() {
 
                 {/* Connector dot */}
                 {index < steps.length - 1 && (
-                  <div className="hidden lg:block absolute top-1/2 -right-4 w-2 h-2 rounded-full bg-glow-purple glow-sm -translate-y-1/2 z-20" />
+                  <div className="hidden lg:block absolute top-1/2 -right-5 w-2 h-2 rounded-full bg-glow-purple glow-sm -translate-y-1/2 z-20" />
                 )}
               </motion.div>
             ))}
