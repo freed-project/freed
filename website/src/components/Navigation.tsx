@@ -72,7 +72,8 @@ export default function Navigation() {
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5 }}
-      className="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 py-4"
+      className="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 pb-4"
+      style={{ paddingTop: "calc(1rem + env(safe-area-inset-top))" }}
     >
       {/* Frosted glass background - solid on mobile to match iOS Safari chrome, fades in on desktop scroll */}
       <div
@@ -193,7 +194,8 @@ export default function Navigation() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
-            className="md:hidden fixed inset-0 top-[60px] bg-freed-black z-40"
+            className="md:hidden fixed inset-0 bg-freed-black z-40"
+            style={{ top: "calc(60px + env(safe-area-inset-top))" }}
           >
             <div className="h-full flex flex-col justify-center items-center gap-8 px-6">
               {navItems.map((item) => (

@@ -4,7 +4,8 @@ export default function Footer() {
   return (
     <footer
       aria-label="Site footer"
-      className="relative z-10 border-t border-freed-border py-8 sm:py-12 px-8 sm:px-8 md:px-12 lg:px-8"
+      className="relative z-10 border-t border-freed-border pt-8 sm:pt-12 px-8 sm:px-8 md:px-12 lg:px-8 bg-freed-black"
+      style={{ paddingBottom: "calc(2rem + env(safe-area-inset-bottom))" }}
     >
       <div className="max-w-6xl mx-auto">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
