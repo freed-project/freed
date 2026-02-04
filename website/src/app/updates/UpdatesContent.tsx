@@ -33,8 +33,7 @@ export default function UpdatesContent() {
             <span className="gradient-text">Updates</span>
           </h1>
           <p className="text-text-secondary text-lg sm:text-xl mb-6">
-            Progress updates, technical deep-dives, and the occasional
-            philosophical rant.
+            Latest transmissions from the Feed Liberation Front.
           </p>
 
           {/* RSS + Subscribe */}
@@ -88,11 +87,11 @@ export default function UpdatesContent() {
                     </div>
                   )}
                 </div>
-                <h2 className="text-xl sm:text-2xl font-bold text-text-primary mb-2 group-hover:text-glow-purple transition-colors">
+                <h2 className="text-xl sm:text-2xl font-bold text-text-primary mb-2">
                   {post.title}
                 </h2>
                 <p className="text-text-secondary">{post.description}</p>
-                <span className="inline-block mt-4 text-sm text-glow-purple group-hover:translate-x-1 transition-transform">
+                <span className="inline-block mt-4 text-sm text-glow-purple group-hover:text-white transition-colors">
                   Read more →
                 </span>
               </Link>
@@ -118,7 +117,7 @@ export default function UpdatesContent() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="mt-16 text-center border-t border-freed-border pt-12"
+          className="mt-16 text-center pt-12"
         >
           <p className="text-text-secondary mb-4">
             Get updates delivered to your inbox.
