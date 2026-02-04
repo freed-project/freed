@@ -2,7 +2,41 @@
 
 import { motion } from "framer-motion";
 import { useNewsletter } from "@/context/NewsletterContext";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+
+// Responsive layout hook
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 640);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  return isMobile;
+}
+
+// Layout configurations for responsive diagram
+const LAYOUT = {
+  desktop: {
+    viewBox: "0 0 600 250",
+    syncHub: { x: 250, y: 75 },
+    clients: { x: 530, labelX: 555 },
+    capturePath: { targetX: 250 },
+    clientPath: { startX: 350, controlX: 440, endX: 530 },
+    particles: { syncTargetX: 250, clientStartX: 350, clientTargetX: 540 },
+  },
+  mobile: {
+    viewBox: "0 0 400 250",
+    syncHub: { x: 140, y: 75 },
+    clients: { x: 310, labelX: 335 },
+    capturePath: { targetX: 140 },
+    clientPath: { startX: 240, controlX: 275, endX: 310 },
+    particles: { syncTargetX: 140, clientStartX: 240, clientTargetX: 320 },
+  },
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Architecture Diagram Components
@@ -64,14 +98,17 @@ interface DataParticle {
   targetIndex: number;
 }
 
-function useDataFlow() {
+function useDataFlow(layout: (typeof LAYOUT)["desktop"]) {
   const [particles, setParticles] = useState<DataParticle[]>([]);
   const nextId = useRef(0);
   const frameRef = useRef<number>(0);
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
 
   const spawnParticle = useCallback(() => {
     const isCapture = Math.random() > 0.3;
     const colors = ["#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#06b6d4"];
+    const l = layoutRef.current;
 
     if (isCapture) {
       const sourceIndex = Math.floor(Math.random() * 4);
@@ -79,7 +116,7 @@ function useDataFlow() {
         id: nextId.current++,
         x: 60,
         y: 50 + sourceIndex * 50,
-        targetX: 250,
+        targetX: l.particles.syncTargetX,
         targetY: 125,
         progress: 0,
         speed: 0.008 + Math.random() * 0.004,
@@ -94,9 +131,9 @@ function useDataFlow() {
       const targetIndex = Math.floor(Math.random() * 3);
       const particle: DataParticle = {
         id: nextId.current++,
-        x: 350,
+        x: l.particles.clientStartX,
         y: 125,
-        targetX: 540,
+        targetX: l.particles.clientTargetX,
         targetY: 60 + targetIndex * 65,
         progress: 0,
         speed: 0.008 + Math.random() * 0.004,
@@ -137,12 +174,23 @@ function useDataFlow() {
 }
 
 function ArchitectureDiagram() {
-  const particles = useDataFlow();
+  const isMobile = useIsMobile();
+  const layout = isMobile ? LAYOUT.mobile : LAYOUT.desktop;
+  const particles = useDataFlow(layout);
+
+  // Memoize path calculations
+  const { capturePathTarget, clientPathConfig } = useMemo(
+    () => ({
+      capturePathTarget: layout.capturePath.targetX,
+      clientPathConfig: layout.clientPath,
+    }),
+    [layout]
+  );
 
   return (
     <div className="relative w-full overflow-hidden rounded-xl">
       <svg
-        viewBox="0 0 600 250"
+        viewBox={layout.viewBox}
         className="w-full h-auto"
         preserveAspectRatio="xMidYMid meet"
       >
@@ -180,26 +228,36 @@ function ArchitectureDiagram() {
 
         {/* Connection paths */}
         <g opacity="0.3">
-          {CAPTURE_ICONS.map((_, i) => (
-            <path
-              key={`capture-path-${i}`}
-              d={`M 70 ${50 + i * 50} Q 160 ${50 + i * 50} 250 125`}
-              fill="none"
-              stroke="url(#archGradient)"
-              strokeWidth="1"
-              strokeDasharray="4 4"
-            />
-          ))}
-          {CLIENT_ICONS.map((_, i) => (
-            <path
-              key={`client-path-${i}`}
-              d={`M 350 125 Q 440 ${60 + i * 65} 530 ${60 + i * 65}`}
-              fill="none"
-              stroke="url(#archGradient)"
-              strokeWidth="1"
-              strokeDasharray="4 4"
-            />
-          ))}
+          {CAPTURE_ICONS.map((_, i) => {
+            const midX = (70 + capturePathTarget) / 2;
+            return (
+              <path
+                key={`capture-path-${i}`}
+                d={`M 70 ${50 + i * 50} Q ${midX} ${
+                  50 + i * 50
+                } ${capturePathTarget} 125`}
+                fill="none"
+                stroke="url(#archGradient)"
+                strokeWidth="1"
+                strokeDasharray="4 4"
+              />
+            );
+          })}
+          {CLIENT_ICONS.map((_, i) => {
+            const endY = 60 + i * 65;
+            // PWA (i=1) needs a curve since start and end Y are both 125
+            const controlY = i === 1 ? 95 : endY;
+            return (
+              <path
+                key={`client-path-${i}`}
+                d={`M ${clientPathConfig.startX} 125 Q ${clientPathConfig.controlX} ${controlY} ${clientPathConfig.endX} ${endY}`}
+                fill="none"
+                stroke="url(#archGradient)"
+                strokeWidth="1"
+                strokeDasharray="4 4"
+              />
+            );
+          })}
         </g>
 
         {/* Capture Layer */}
@@ -237,7 +295,7 @@ function ArchitectureDiagram() {
         </g>
 
         {/* Sync Hub (Central) */}
-        <g transform="translate(250, 75)">
+        <g transform={`translate(${layout.syncHub.x}, ${layout.syncHub.y})`}>
           <text
             x="50"
             y="-10"
@@ -303,7 +361,7 @@ function ArchitectureDiagram() {
         {/* Clients */}
         <g>
           <text
-            x="555"
+            x={layout.clients.labelX}
             y="20"
             fill="#71717a"
             fontSize="10"
@@ -313,7 +371,10 @@ function ArchitectureDiagram() {
             CLIENTS
           </text>
           {CLIENT_ICONS.map((icon, i) => (
-            <g key={icon.id} transform={`translate(530, ${40 + i * 65})`}>
+            <g
+              key={icon.id}
+              transform={`translate(${layout.clients.x}, ${40 + i * 65})`}
+            >
               <motion.rect
                 x="0"
                 y="0"
