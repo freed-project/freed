@@ -424,7 +424,7 @@ function ArchitectureDiagram() {
           />
         ))}
 
-        {/* Hub label */}
+        {/* Hub label - hidden on mobile */}
         <text
           x="300"
           y="240"
@@ -432,6 +432,7 @@ function ArchitectureDiagram() {
           fontSize="9"
           textAnchor="middle"
           fontStyle="italic"
+          className="hidden sm:inline"
         >
           Desktop is the hub — runs capture, hosts sync, powers everything
         </text>
