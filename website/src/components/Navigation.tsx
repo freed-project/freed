@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { useNewsletter } from "@/context/NewsletterContext";
 
 const WTF_CAPTIONS = [
@@ -37,6 +37,13 @@ const WTF_CAPTIONS = [
   "Without Their Footprint",
 ];
 
+const NAV_ITEMS = [
+  { path: "/", label: "Home" },
+  { path: "/manifesto", label: "Manifesto" },
+  { path: "/roadmap", label: "Roadmap" },
+  { path: "/updates", label: "Updates" },
+];
+
 export default function Navigation() {
   const pathname = usePathname();
   const { openModal } = useNewsletter();
@@ -44,6 +51,8 @@ export default function Navigation() {
   const [isHovering, setIsHovering] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const navRefs = useRef<(HTMLAnchorElement | null)[]>([]);
+  const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 });
 
   useEffect(() => {
     const handleScroll = () => {
@@ -53,6 +62,23 @@ export default function Navigation() {
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  // Update underline position when pathname changes
+  useLayoutEffect(() => {
+    const activeIndex = NAV_ITEMS.findIndex((item) => item.path === pathname);
+    const activeRef = navRefs.current[activeIndex];
+    if (activeRef) {
+      const parent = activeRef.parentElement;
+      if (parent) {
+        const parentRect = parent.getBoundingClientRect();
+        const activeRect = activeRef.getBoundingClientRect();
+        setUnderlineStyle({
+          left: activeRect.left - parentRect.left,
+          width: activeRect.width,
+        });
+      }
+    }
+  }, [pathname]);
 
   // Lock body scroll when mobile menu is open
   useEffect(() => {
@@ -70,13 +96,6 @@ export default function Navigation() {
     setCaptionIndex((prev) => (prev + 1) % WTF_CAPTIONS.length);
     setIsHovering(true);
   };
-
-  const navItems = [
-    { path: "/", label: "Home" },
-    { path: "/manifesto", label: "Manifesto" },
-    { path: "/roadmap", label: "Roadmap" },
-    { path: "/updates", label: "Updates" },
-  ];
 
   const logoElement = (
     <Link
@@ -117,27 +136,32 @@ export default function Navigation() {
   );
 
   const desktopLinks = (
-    <div className="hidden md:flex items-center gap-8">
-      {navItems.map((item) => (
+    <div className="hidden md:flex items-center gap-8 relative">
+      {NAV_ITEMS.map((item, index) => (
         <Link
           key={item.path}
           href={item.path}
-          className={`relative text-sm font-medium transition-colors ${
+          ref={(el) => {
+            navRefs.current[index] = el;
+          }}
+          className={`text-sm font-medium transition-colors ${
             pathname === item.path
               ? "text-text-primary"
               : "text-text-secondary hover:text-text-primary"
           }`}
         >
           {item.label}
-          {pathname === item.path && (
-            <motion.span
-              layoutId="nav-underline"
-              className="absolute left-0 right-0 -bottom-2 h-px bg-text-primary"
-              transition={{ type: "spring", stiffness: 500, damping: 30 }}
-            />
-          )}
         </Link>
       ))}
+      {/* Sliding underline - only animates horizontally */}
+      {underlineStyle.width > 0 && (
+        <motion.span
+          className="absolute -bottom-0.5 h-px bg-text-primary pointer-events-none"
+          initial={false}
+          animate={{ left: underlineStyle.left, width: underlineStyle.width }}
+          transition={{ type: "spring", stiffness: 500, damping: 30 }}
+        />
+      )}
 
       <a
         href="https://github.com/freed-project/freed"
@@ -252,7 +276,7 @@ export default function Navigation() {
               }}
             >
               <div className="h-full flex flex-col justify-center items-center gap-8 px-6">
-                {navItems.map((item, index) => (
+                {NAV_ITEMS.map((item, index) => (
                   <motion.div
                     key={item.path}
                     initial={{ opacity: 0, y: 10 }}
