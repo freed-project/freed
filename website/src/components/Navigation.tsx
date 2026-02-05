@@ -238,7 +238,11 @@ export default function Navigation() {
         style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
         {/* Mobile: solid full-width bar */}
-        <div className="md:hidden bg-freed-black border-b border-freed-border px-4 py-4">
+        <div
+          className={`md:hidden bg-freed-black px-4 py-4 ${
+            mobileMenuOpen ? "" : "border-b border-freed-border"
+          }`}
+        >
           <div className="flex items-center justify-between">
             {logoElement}
             {mobileHamburger}
