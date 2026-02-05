@@ -245,8 +245,8 @@ function ArchitectureDiagram() {
           })}
           {CLIENT_ICONS.map((_, i) => {
             const endY = 60 + i * 65;
-            // PWA (i=1) needs a curve since start and end Y are both 125
-            const controlY = i === 1 ? 95 : endY;
+            // PWA (i=1) needs a slight curve since start and end Y are both 125
+            const controlY = i === 1 ? 110 : endY;
             return (
               <path
                 key={`client-path-${i}`}
