@@ -55,7 +55,6 @@ const heroGradients = [gradients[0], gradients[1]]; // Purple and blue only
 const VERTICAL_SPACING = 600; // Pixels between orb rows
 const ORBS_PER_ROW = 2;
 const HERO_ZONE_HEIGHT = 800; // Pixels - above the fold area
-const BOTTOM_ZONE_OFFSET = 220; // Pixels from bottom to anchor color
 
 function generateOrbs(documentHeight: number): OrbConfig[] {
   const orbs: OrbConfig[] = [];
@@ -91,21 +90,6 @@ function generateOrbs(documentHeight: number): OrbConfig[] {
       });
     }
   }
-
-  // Ensure visible color near the bottom toolbar area on iOS Safari
-  const bottomY = Math.max(200, documentHeight - BOTTOM_ZONE_OFFSET);
-  orbs.push({
-    x: 18 + Math.random() * 28, // Left-lower quadrant
-    y: bottomY,
-    size: 900 + Math.random() * 500,
-    gradient: heroGradients[0],
-  });
-  orbs.push({
-    x: 58 + Math.random() * 28, // Right-lower quadrant
-    y: bottomY - 120,
-    size: 900 + Math.random() * 500,
-    gradient: heroGradients[1],
-  });
 
   return orbs;
 }
@@ -151,19 +135,6 @@ export default function BackgroundGradients() {
       aria-hidden="true"
       style={{ zIndex: 0, height: docHeight }}
     >
-      {/* Bottom glow to tint Safari toolbar blur */}
-      <div
-        className="absolute"
-        style={{
-          left: "50%",
-          bottom: 0,
-          width: "120vw",
-          height: "60vh",
-          transform: "translateX(-50%)",
-          background:
-            "radial-gradient(ellipse 70% 60% at 50% 100%, rgba(139, 92, 246, 0.25) 0%, rgba(59, 130, 246, 0.18) 35%, rgba(6, 182, 212, 0.08) 55%, transparent 75%)",
-        }}
-      />
       {orbs.map((orb, i) => (
         <div
           key={i}
