@@ -29,15 +29,14 @@ body {
 
 html {
   scroll-behavior: smooth;
-  /* Transparent so iOS Safari bottom bar floats over page content */
-  background-color: transparent;
+  background-color: var(--color-freed-black);
 }
 
 
 body {
   font-family: var(--font-manrope), "Manrope", system-ui, -apple-system,
     sans-serif;
-  /* Background handled by BackgroundGradients component for proper safe area coverage */
+  background-color: var(--color-freed-black);
   color: var(--color-text-primary);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;

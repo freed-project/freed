@@ -275,7 +275,8 @@ export default function Navigation() {
               transition={{ duration: 0.2 }}
               className="md:hidden fixed left-0 right-0 bottom-0 bg-freed-black z-40"
               style={{
-                top: "calc(65px + env(safe-area-inset-top))",
+                // Overlap navbar by 1px to eliminate sub-pixel rendering gaps
+                top: "calc(64px + env(safe-area-inset-top))",
                 paddingBottom: "env(safe-area-inset-bottom)",
               }}
             >

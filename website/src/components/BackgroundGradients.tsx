@@ -149,9 +149,9 @@ export default function BackgroundGradients() {
 
   return (
     // Fixed viewport-sized wrapper that clips overflow
-    // Background color here (not on body) ensures it extends into iOS safe areas
+    // Note: iOS Safari clips fixed elements at browser controls, so html/body provide the base background
     <div
-      className="fixed inset-0 pointer-events-none overflow-hidden bg-freed-black"
+      className="fixed inset-0 pointer-events-none overflow-hidden"
       aria-hidden="true"
       style={{ zIndex: 0 }}
     >
