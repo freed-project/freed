@@ -29,8 +29,22 @@ body {
 
 html {
   scroll-behavior: smooth;
-  /* Ensure background extends to all edges on iOS Safari */
+  /* Transparent so iOS Safari bottom bar floats over page content */
+  background-color: transparent;
+}
+
+/* Dark background layer that stops above the bottom safe area.
+   This allows Safari's bottom UI to float over page gradients. */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: env(safe-area-inset-bottom);
   background-color: var(--color-freed-black);
+  z-index: -1;
+  pointer-events: none;
 }
 
 body {
