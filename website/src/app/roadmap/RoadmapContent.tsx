@@ -156,7 +156,7 @@ function useDataFlow(layout: (typeof LAYOUT)["desktop"]) {
           x: p.x + (p.targetX - p.x) * p.speed * 3,
           y: p.y + (p.targetY - p.y) * p.speed * 3,
         }))
-        .filter((p) => p.progress < 1)
+        .filter((p) => p.progress < 1),
     );
     frameRef.current = requestAnimationFrame(tick);
   }, []);
@@ -184,7 +184,7 @@ function ArchitectureDiagram() {
       capturePathTarget: layout.capturePath.targetX,
       clientPathConfig: layout.clientPath,
     }),
-    [layout]
+    [layout],
   );
 
   return (
