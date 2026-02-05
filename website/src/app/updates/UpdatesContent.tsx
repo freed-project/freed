@@ -27,7 +27,7 @@ export default function UpdatesContent() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="text-center mb-12 sm:mb-16"
+          className="text-center mb-16 sm:mb-24"
         >
           <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
             <span className="gradient-text">Updates</span>
@@ -119,7 +119,7 @@ export default function UpdatesContent() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="mt-16 text-center pt-12"
+          className="mt-16 sm:mt-24 text-center"
         >
           <p className="text-text-secondary mb-4">
             Get updates delivered to your inbox.
