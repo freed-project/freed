@@ -111,7 +111,7 @@ Compose and publish through your own site.
 2. **Zero external infrastructure** — Local relay + user's cloud storage (GDrive, Dropbox, iCloud)
 3. **Automerge CRDT** — Conflict-free multi-device sync
 4. **Shared React codebase** — `packages/pwa/` embedded in Desktop AND deployed standalone
-5. **TypeScript capture via subprocess** — Existing TS packages run via Node/Bun, not rewritten in Rust
+5. **TypeScript capture via subprocess** — Capture packages run as TypeScript, not compiled into Tauri's Rust core. Easier to extend, easier to debug.
 6. **Ranking on core, display on edge** — Desktop/OpenClaw computes `priority`, PWA just displays
 7. **Capture layer pattern** — Each source normalizes to unified `FeedItem`
 8. **Next.js for marketing site** — SSG for SEO, React for consistency with app codebase
