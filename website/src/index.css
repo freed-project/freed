@@ -21,6 +21,11 @@
 }
 
 /* Base styles */
+html {
+  /* Overlay scrollbar - content extends under it */
+  scrollbar-gutter: auto;
+}
+
 html,
 body {
   /* Prevent overscroll revealing anything behind */
@@ -40,9 +45,12 @@ html {
   background-color: var(--color-freed-black);
 }
 
-
 body {
-  font-family: var(--font-manrope), "Manrope", system-ui, -apple-system,
+  font-family:
+    var(--font-manrope),
+    "Manrope",
+    system-ui,
+    -apple-system,
     sans-serif;
   background-color: var(--color-freed-black);
   color: var(--color-text-primary);
@@ -57,7 +65,8 @@ body {
 
 /* Logo typography - Space Grotesk */
 .font-logo {
-  font-family: var(--font-space-grotesk), "Space Grotesk", system-ui, sans-serif;
+  font-family:
+    var(--font-space-grotesk), "Space Grotesk", system-ui, sans-serif;
   letter-spacing: -0.02em;
 }
 
@@ -107,16 +116,22 @@ body {
 
 /* Glow effects */
 .glow-sm {
-  box-shadow: 0 0 10px rgba(139, 92, 246, 0.2), 0 0 20px rgba(59, 130, 246, 0.1);
+  box-shadow:
+    0 0 10px rgba(139, 92, 246, 0.2),
+    0 0 20px rgba(59, 130, 246, 0.1);
 }
 
 .glow-md {
-  box-shadow: 0 0 20px rgba(139, 92, 246, 0.3),
-    0 0 40px rgba(59, 130, 246, 0.15), 0 0 60px rgba(139, 92, 246, 0.05);
+  box-shadow:
+    0 0 20px rgba(139, 92, 246, 0.3),
+    0 0 40px rgba(59, 130, 246, 0.15),
+    0 0 60px rgba(139, 92, 246, 0.05);
 }
 
 .glow-lg {
-  box-shadow: 0 0 30px rgba(139, 92, 246, 0.4), 0 0 60px rgba(59, 130, 246, 0.2),
+  box-shadow:
+    0 0 30px rgba(139, 92, 246, 0.4),
+    0 0 60px rgba(59, 130, 246, 0.2),
     0 0 100px rgba(139, 92, 246, 0.1);
 }
 
@@ -231,7 +246,8 @@ body {
 /* Background gradient orbs with P3 wide-gamut support */
 .bg-gradient-orbs {
   /* sRGB fallback for browsers without P3 support */
-  background: radial-gradient(
+  background:
+    radial-gradient(
       ellipse 900px 900px at -10% -15%,
       rgba(139, 92, 246, 0.12) 0%,
       rgba(139, 92, 246, 0.04) 35%,
@@ -254,7 +270,8 @@ body {
 /* P3 wide-gamut colors for displays that support them (Safari, modern displays) */
 @supports (color: color(display-p3 1 1 1)) {
   .bg-gradient-orbs {
-    background: radial-gradient(
+    background:
+      radial-gradient(
         ellipse 900px 900px at -10% -15%,
         color(display-p3 0.6 0.35 1 / 0.15) 0%,
         color(display-p3 0.6 0.35 1 / 0.05) 35%,
@@ -274,38 +291,14 @@ body {
       );
   }
 }
-
-.noise-overlay {
-  position: absolute;
-  inset: 0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch' result='noise'/%3E%3CfeGaussianBlur in='noise' stdDeviation='0.5' result='smoothNoise'/%3E%3CfeComponentTransfer in='smoothNoise'%3E%3CfeFuncA type='linear' slope='1.5'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-  background-size: 256px 256px; /* Tile at consistent physical size across DPR */
-  opacity: 0.25;
-  mix-blend-mode: color-burn;
-  pointer-events: none;
-  z-index: 1;
-}
-
 /* Selection color */
 ::selection {
   background: rgba(139, 92, 246, 0.4);
   color: white;
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--color-freed-black);
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+/* Scrollbar - thin and unobtrusive */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }

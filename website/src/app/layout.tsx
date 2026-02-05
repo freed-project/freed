@@ -103,11 +103,8 @@ export default function RootLayout({
             Skip to main content
           </a>
 
-          <div className="flex flex-col overflow-x-hidden relative">
-            {/* Noise texture overlay */}
-            <div className="noise-overlay" aria-hidden="true" />
-
-            {/* Animated background gradient orbs */}
+          <div className="flex flex-col overflow-hidden relative">
+            {/* Background gradients + noise texture (single composited element) */}
             <BackgroundGradients />
 
             <Navigation />
