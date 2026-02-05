@@ -221,7 +221,7 @@ export default function Features() {
               viewport={{ once: true }}
               transition={{ duration: 0.5, delay: index * 0.1 }}
             >
-              <div className="glass-card p-6 h-full transition-all duration-300 hover:glow-sm">
+              <div className="glass-card p-6 h-full">
                 <div className="mb-4">{feature.icon}</div>
                 <h3 className="text-xl font-semibold text-text-primary mb-2">
                   {feature.title}

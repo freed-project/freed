@@ -70,7 +70,7 @@ export default function UpdatesContent() {
             >
               <Link
                 href={`/updates/${post.slug}`}
-                className="block glass-card p-6 sm:p-8 rounded-xl transition-all hover:scale-[1.01] group"
+                className="block glass-card glass-card-interactive p-6 sm:p-8 rounded-xl transition-all hover:scale-[1.01] group"
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
                   <time className="text-sm text-text-muted">

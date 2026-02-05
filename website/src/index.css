@@ -33,24 +33,11 @@ html {
   background-color: transparent;
 }
 
-/* Dark background layer that stops above the bottom safe area.
-   This allows Safari's bottom UI to float over page gradients. */
-body::before {
-  content: "";
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: env(safe-area-inset-bottom);
-  background-color: var(--color-freed-black);
-  z-index: -1;
-  pointer-events: none;
-}
 
 body {
   font-family: var(--font-manrope), "Manrope", system-ui, -apple-system,
     sans-serif;
-  background-color: var(--color-freed-black);
+  /* Background handled by BackgroundGradients component for proper safe area coverage */
   color: var(--color-text-primary);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
@@ -137,7 +124,8 @@ body {
   border-radius: 16px;
 }
 
-.glass-card:hover {
+/* Interactive variant - only for clickable cards */
+.glass-card-interactive:hover {
   background: rgba(18, 18, 24, 0.85);
   border-color: rgba(139, 92, 246, 0.3);
 }

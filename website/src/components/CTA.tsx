@@ -41,8 +41,7 @@ export default function CTA() {
               transition={{ delay: 0.3 }}
               className="text-text-secondary text-base sm:text-lg max-w-xl mx-auto mb-6 sm:mb-8 relative z-10"
             >
-              Join thousands who've taken back control of their digital lives.
-              Open source, free forever, built for humans.
+              Their algorithms optimize for profit. Optimize yours for life.
             </motion.p>
 
             <motion.div
