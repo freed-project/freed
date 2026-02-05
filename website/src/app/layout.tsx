@@ -103,7 +103,10 @@ export default function RootLayout({
             Skip to main content
           </a>
 
-          <div className="min-h-screen flex flex-col overflow-x-hidden relative">
+          <div
+            className="flex flex-col overflow-x-hidden relative"
+            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          >
             {/* Noise texture overlay */}
             <div className="noise-overlay" aria-hidden="true" />
 
