@@ -104,9 +104,11 @@ export default function Navigation() {
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="hidden sm:block absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-1.5 rounded-lg bg-freed-surface border border-freed-border whitespace-nowrap"
+          className="hidden sm:block absolute top-full left-1/2 -translate-x-1/2 mt-3 px-3 py-1.5 rounded-lg bg-freed-surface border border-freed-border whitespace-nowrap"
         >
-          <span className="text-sm text-text-secondary">
+          {/* Tooltip tail */}
+          <div className="absolute -top-[7px] left-1/2 -translate-x-1/2 w-3 h-3 bg-freed-surface border-l border-t border-freed-border rotate-45" />
+          <span className="relative text-sm text-text-secondary">
             {WTF_CAPTIONS[captionIndex]}
           </span>
         </motion.div>
@@ -120,13 +122,20 @@ export default function Navigation() {
         <Link
           key={item.path}
           href={item.path}
-          className={`text-sm font-medium transition-colors ${
+          className={`relative text-sm font-medium transition-colors ${
             pathname === item.path
               ? "text-text-primary"
               : "text-text-secondary hover:text-text-primary"
           }`}
         >
           {item.label}
+          {pathname === item.path && (
+            <motion.span
+              layoutId="nav-underline"
+              className="absolute left-0 right-0 -bottom-2 h-px bg-text-primary"
+              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+            />
+          )}
         </Link>
       ))}
 
@@ -180,14 +189,18 @@ export default function Navigation() {
 
   return (
     <>
-      {/* Desktop: Top blur overlay - blurs content as it approaches the top of viewport */}
+      {/* Desktop: Top blur overlay - blurs and darkens content as it approaches the top of viewport */}
       <div
         className="hidden md:block fixed top-0 left-0 right-0 h-32 pointer-events-none z-40"
         style={{
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
-          maskImage: "linear-gradient(to bottom, black 0%, black 50%, transparent 100%)",
-          WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 50%, transparent 100%)",
+          maskImage:
+            "linear-gradient(to bottom, black 0%, black 50%, transparent 100%)",
+          WebkitMaskImage:
+            "linear-gradient(to bottom, black 0%, black 50%, transparent 100%)",
+          background:
+            "linear-gradient(to bottom, rgba(10, 10, 10, 0.8) 0%, rgba(10, 10, 10, 0.4) 50%, transparent 100%)",
         }}
         aria-hidden="true"
       />
@@ -201,7 +214,7 @@ export default function Navigation() {
         style={{ paddingTop: "env(safe-area-inset-top)" }}
       >
         {/* Mobile: solid full-width bar */}
-        <div className="md:hidden bg-freed-black px-4 py-4">
+        <div className="md:hidden bg-freed-black border-b border-freed-border px-4 py-4">
           <div className="flex items-center justify-between">
             {logoElement}
             {mobileHamburger}
@@ -224,70 +237,70 @@ export default function Navigation() {
           </div>
         </div>
 
-      {/* Mobile Menu - Full Screen */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="md:hidden fixed left-0 right-0 bottom-0 bg-freed-black z-40"
-            style={{
-              top: "calc(60px + env(safe-area-inset-top))",
-              paddingBottom: "env(safe-area-inset-bottom)",
-            }}
-          >
-            <div className="h-full flex flex-col justify-center items-center gap-8 px-6">
-              {navItems.map((item, index) => (
-                <motion.div
-                  key={item.path}
+        {/* Mobile Menu - Full Screen */}
+        <AnimatePresence>
+          {mobileMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="md:hidden fixed left-0 right-0 bottom-0 bg-freed-black z-40"
+              style={{
+                top: "calc(65px + env(safe-area-inset-top))",
+                paddingBottom: "env(safe-area-inset-bottom)",
+              }}
+            >
+              <div className="h-full flex flex-col justify-center items-center gap-8 px-6">
+                {navItems.map((item, index) => (
+                  <motion.div
+                    key={item.path}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05, duration: 0.15 }}
+                  >
+                    <Link
+                      href={item.path}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={`text-2xl font-medium transition-colors ${
+                        pathname === item.path
+                          ? "text-text-primary underline underline-offset-8 decoration-2"
+                          : "text-text-secondary"
+                      }`}
+                    >
+                      {item.label}
+                    </Link>
+                  </motion.div>
+                ))}
+
+                <motion.a
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05, duration: 0.15 }}
+                  transition={{ delay: 0.2, duration: 0.15 }}
+                  href="https://github.com/freed-project/freed"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-2xl font-medium text-text-secondary"
                 >
-                  <Link
-                    href={item.path}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`text-2xl font-medium transition-colors ${
-                      pathname === item.path
-                        ? "text-text-primary"
-                        : "text-text-secondary"
-                    }`}
-                  >
-                    {item.label}
-                  </Link>
-                </motion.div>
-              ))}
+                  GitHub
+                </motion.a>
 
-              <motion.a
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2, duration: 0.15 }}
-                href="https://github.com/freed-project/freed"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-2xl font-medium text-text-secondary"
-              >
-                GitHub
-              </motion.a>
-
-              <motion.button
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.25, duration: 0.15 }}
-                onClick={() => {
-                  openModal();
-                  setMobileMenuOpen(false);
-                }}
-                className="btn-primary text-lg px-12 py-4 mt-4"
-              >
-                Get Freed
-              </motion.button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                <motion.button
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.25, duration: 0.15 }}
+                  onClick={() => {
+                    openModal();
+                    setMobileMenuOpen(false);
+                  }}
+                  className="btn-primary text-lg px-12 py-4 mt-4"
+                >
+                  Get Freed
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.nav>
     </>
   );
