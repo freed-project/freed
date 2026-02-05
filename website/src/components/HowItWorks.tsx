@@ -18,13 +18,13 @@ const steps = [
     number: "03",
     title: "Let It Rip",
     description:
-      "Lives in your menu bar and captures all feeds to a secure vault on your machine.",
+      "Lives in your menu bar and captures all posts & updates to a secure vault on your machine.",
   },
   {
     number: "04",
     title: "Read Anywhere",
     description:
-      "Phone syncs to desktop like magic. Your feed follows you. Their servers don't.",
+      "Phone syncs with desktop like magic. Your feed follows you. Their servers don't.",
   },
 ];
 
