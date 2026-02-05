@@ -44,9 +44,7 @@ body {
   /* Safe area insets for iOS viewport-fit=cover */
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
-  /* Fill the full viewport including safe areas */
-  min-height: 100vh;
-  min-height: 100dvh; /* Dynamic viewport height for iOS Safari */
+  /* No min-height constraints - let content flow naturally into safe areas */
 }
 
 /* Logo typography - Space Grotesk */

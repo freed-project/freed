@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 
 interface OrbConfig {
   x: number;
-  y: number; // Now in pixels, not percentage
+  y: number;
   size: number;
   gradient: string;
 }
@@ -97,7 +97,6 @@ function generateOrbs(documentHeight: number): OrbConfig[] {
 export default function BackgroundGradients() {
   const [orbs, setOrbs] = useState<OrbConfig[] | null>(null);
   const [docHeight, setDocHeight] = useState(0);
-  const innerRef = useRef<HTMLDivElement>(null);
   const lastHeightRef = useRef<number>(0);
 
   useEffect(() => {
@@ -121,26 +120,7 @@ export default function BackgroundGradients() {
     const resizeObserver = new ResizeObserver(updateOrbs);
     resizeObserver.observe(document.body);
 
-    let ticking = false;
-
-    // Throttled scroll update using rAF + GPU-accelerated transform
-    const handleScroll = () => {
-      if (!ticking) {
-        requestAnimationFrame(() => {
-          if (innerRef.current) {
-            innerRef.current.style.transform = `translateY(${-window.scrollY}px)`;
-          }
-          ticking = false;
-        });
-        ticking = true;
-      }
-    };
-
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    handleScroll();
-
     return () => {
-      window.removeEventListener("scroll", handleScroll);
       resizeObserver.disconnect();
     };
   }, []);
@@ -148,37 +128,27 @@ export default function BackgroundGradients() {
   if (!orbs) return null;
 
   return (
-    // Fixed viewport-sized wrapper that clips overflow
-    // Note: iOS Safari clips fixed elements at browser controls, so html/body provide the base background
+    // Absolute positioned container - scrolls naturally with page content
+    // No fixed positioning = works in iOS Safari safe areas
     <div
-      className="fixed inset-0 pointer-events-none overflow-hidden"
+      className="absolute inset-x-0 top-0 pointer-events-none overflow-hidden"
       aria-hidden="true"
-      style={{ zIndex: 0 }}
+      style={{ zIndex: 0, height: docHeight }}
     >
-      {/* Inner container sized to document height, translated on scroll */}
-      <div
-        ref={innerRef}
-        className="absolute inset-x-0 top-0"
-        style={{
-          height: docHeight,
-          willChange: "transform",
-        }}
-      >
-        {orbs.map((orb, i) => (
-          <div
-            key={i}
-            className="absolute"
-            style={{
-              width: orb.size,
-              height: orb.size,
-              left: `${orb.x}%`,
-              top: orb.y,
-              background: orb.gradient,
-              transform: "translate(-50%, -50%)",
-            }}
-          />
-        ))}
-      </div>
+      {orbs.map((orb, i) => (
+        <div
+          key={i}
+          className="absolute"
+          style={{
+            width: orb.size,
+            height: orb.size,
+            left: `${orb.x}%`,
+            top: orb.y,
+            background: orb.gradient,
+            transform: "translate(-50%, -50%)",
+          }}
+        />
+      ))}
     </div>
   );
 }
