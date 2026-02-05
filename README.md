@@ -1,4 +1,4 @@
-# FREED
+# FREEDme
 
 > **Their algorithms optimize for profit. Optimize yours for life.**
 
