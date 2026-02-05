@@ -25,6 +25,14 @@ html,
 body {
   /* Prevent overscroll revealing anything behind */
   overscroll-behavior: none;
+  /* Ensure full height coverage for iOS Safari */
+  height: 100%;
+}
+
+/* iOS Safari viewport fix: svh fallback with dvh override */
+.min-h-viewport-safe {
+  min-height: 100svh;
+  min-height: 100dvh;
 }
 
 html {

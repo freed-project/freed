@@ -20,7 +20,7 @@ export default function Hero() {
   }, []);
 
   return (
-    <section className="relative min-h-screen flex items-center justify-center px-4 sm:px-6 pt-24 pb-16 md:pt-20">
+    <section className="relative min-h-viewport-safe flex items-center justify-center px-4 sm:px-6 pt-24 pb-16 md:pt-20">
       {/* Open Source badge - aligned with nav container right edge, hidden on mobile */}
       <div className="hidden lg:block absolute top-20 left-0 right-0 mt-4 px-4 sm:px-6">
         <div className="max-w-6xl mx-auto flex justify-end">
