@@ -78,125 +78,151 @@ export default function Navigation() {
     { path: "/updates", label: "Updates" },
   ];
 
-  return (
-    <motion.nav
-      aria-label="Main navigation"
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.5 }}
-      className="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 pb-4"
-      style={{ paddingTop: "calc(1rem + env(safe-area-inset-top))" }}
+  const logoElement = (
+    <Link
+      href="/"
+      className="flex items-baseline gap-0.5 group relative"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={() => setIsHovering(false)}
     >
-      {/* Solid background on mobile to match iOS Safari chrome, frosted glass on desktop */}
-      <div
-        className={`absolute inset-0 transition-all duration-300 ease-out
-          bg-freed-black border-b border-freed-border
-          md:backdrop-blur-xl
-          ${
-            scrolled
-              ? "md:bg-freed-black/70 md:border-freed-border md:shadow-[0_4px_30px_rgba(0,0,0,0.5)]"
-              : "md:bg-transparent md:border-transparent md:shadow-none"
+      <span className="relative text-xl sm:text-2xl font-bold text-text-primary font-logo">
+        FREED
+        <span
+          className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
+          style={{
+            background:
+              "linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #8b5cf6, #ec4899)",
+          }}
+        />
+      </span>
+      <span className="text-sm sm:text-base font-bold gradient-text relative font-logo">
+        .WTF
+      </span>
+
+      {/* WTF caption tooltip - changes on each hover, hidden on mobile */}
+      {isHovering && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="hidden sm:block absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-1.5 rounded-lg bg-freed-surface border border-freed-border whitespace-nowrap"
+        >
+          <span className="text-sm text-text-secondary">
+            {WTF_CAPTIONS[captionIndex]}
+          </span>
+        </motion.div>
+      )}
+    </Link>
+  );
+
+  const desktopLinks = (
+    <div className="hidden md:flex items-center gap-8">
+      {navItems.map((item) => (
+        <Link
+          key={item.path}
+          href={item.path}
+          className={`text-sm font-medium transition-colors ${
+            pathname === item.path
+              ? "text-text-primary"
+              : "text-text-secondary hover:text-text-primary"
           }`}
+        >
+          {item.label}
+        </Link>
+      ))}
+
+      <a
+        href="https://github.com/freed-project/freed"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
+      >
+        GitHub
+      </a>
+
+      <button onClick={openModal} className="btn-primary text-sm !py-2">
+        Get Freed
+      </button>
+    </div>
+  );
+
+  const mobileHamburger = (
+    <button
+      onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+      className="md:hidden relative w-8 h-8 flex items-center justify-center"
+      aria-label="Toggle menu"
+    >
+      <motion.span
+        animate={{
+          rotate: mobileMenuOpen ? 45 : 0,
+          y: mobileMenuOpen ? 0 : -6,
+        }}
+        transition={{ duration: 0.2 }}
+        className="absolute w-6 h-0.5 bg-text-primary rounded-full origin-center"
+      />
+      <motion.span
+        animate={{
+          opacity: mobileMenuOpen ? 0 : 1,
+          scaleX: mobileMenuOpen ? 0 : 1,
+        }}
+        transition={{ duration: 0.2 }}
+        className="absolute w-6 h-0.5 bg-text-primary rounded-full"
+      />
+      <motion.span
+        animate={{
+          rotate: mobileMenuOpen ? -45 : 0,
+          y: mobileMenuOpen ? 0 : 6,
+        }}
+        transition={{ duration: 0.2 }}
+        className="absolute w-6 h-0.5 bg-text-primary rounded-full origin-center"
+      />
+    </button>
+  );
+
+  return (
+    <>
+      {/* Desktop: Top blur overlay - blurs content as it approaches the top of viewport */}
+      <div
+        className="hidden md:block fixed top-0 left-0 right-0 h-32 pointer-events-none z-40"
+        style={{
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          maskImage: "linear-gradient(to bottom, black 0%, black 50%, transparent 100%)",
+          WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 50%, transparent 100%)",
+        }}
+        aria-hidden="true"
       />
 
-      <div className="max-w-6xl mx-auto flex items-center justify-between relative z-10">
-        {/* Logo with rotating WTF caption */}
-        <Link
-          href="/"
-          className="flex items-baseline gap-0.5 group relative"
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={() => setIsHovering(false)}
-        >
-          <span className="relative text-xl sm:text-2xl font-bold text-text-primary font-logo">
-            FREED
-            <span
-              className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
-              style={{
-                background:
-                  "linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #8b5cf6, #ec4899)",
-              }}
-            />
-          </span>
-          <span className="text-sm sm:text-base font-bold gradient-text relative font-logo">
-            .WTF
-          </span>
-
-          {/* WTF caption tooltip - changes on each hover, hidden on mobile */}
-          {isHovering && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="hidden sm:block absolute top-full left-1/2 -translate-x-1/2 mt-2 px-3 py-1.5 rounded-lg bg-freed-surface border border-freed-border whitespace-nowrap"
-            >
-              <span className="text-sm text-text-secondary">
-                {WTF_CAPTIONS[captionIndex]}
-              </span>
-            </motion.div>
-          )}
-        </Link>
-
-        {/* Desktop Nav Links */}
-        <div className="hidden md:flex items-center gap-8">
-          {navItems.map((item) => (
-            <Link
-              key={item.path}
-              href={item.path}
-              className={`text-sm font-medium transition-colors ${
-                pathname === item.path
-                  ? "text-text-primary"
-                  : "text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              {item.label}
-            </Link>
-          ))}
-
-          <a
-            href="https://github.com/freed-project/freed"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
-          >
-            GitHub
-          </a>
-
-          <button onClick={openModal} className="btn-primary text-sm">
-            Get Freed
-          </button>
+      <motion.nav
+        aria-label="Main navigation"
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.5 }}
+        className="fixed top-0 left-0 right-0 z-50"
+        style={{ paddingTop: "env(safe-area-inset-top)" }}
+      >
+        {/* Mobile: solid full-width bar */}
+        <div className="md:hidden bg-freed-black px-4 py-4">
+          <div className="flex items-center justify-between">
+            {logoElement}
+            {mobileHamburger}
+          </div>
         </div>
 
-        {/* Mobile Hamburger Button */}
-        <button
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="md:hidden relative w-8 h-8 flex items-center justify-center"
-          aria-label="Toggle menu"
-        >
-          <motion.span
-            animate={{
-              rotate: mobileMenuOpen ? 45 : 0,
-              y: mobileMenuOpen ? 0 : -6,
-            }}
-            transition={{ duration: 0.2 }}
-            className="absolute w-6 h-0.5 bg-text-primary rounded-full origin-center"
-          />
-          <motion.span
-            animate={{
-              opacity: mobileMenuOpen ? 0 : 1,
-              scaleX: mobileMenuOpen ? 0 : 1,
-            }}
-            transition={{ duration: 0.2 }}
-            className="absolute w-6 h-0.5 bg-text-primary rounded-full"
-          />
-          <motion.span
-            animate={{
-              rotate: mobileMenuOpen ? -45 : 0,
-              y: mobileMenuOpen ? 0 : 6,
-            }}
-            transition={{ duration: 0.2 }}
-            className="absolute w-6 h-0.5 bg-text-primary rounded-full origin-center"
-          />
-        </button>
-      </div>
+        {/* Desktop: floating pill navbar */}
+        <div className="hidden md:block px-4 py-4">
+          <div
+            className={`max-w-[calc(72rem+2rem)] mx-auto px-4 py-[13px] rounded-2xl border transition-all duration-300 ${
+              scrolled
+                ? "bg-freed-black/70 border-freed-border shadow-[0_4px_30px_rgba(0,0,0,0.5)]"
+                : "bg-transparent border-transparent"
+            }`}
+          >
+            <div className="max-w-6xl mx-auto flex items-center justify-between">
+              {logoElement}
+              {desktopLinks}
+            </div>
+          </div>
+        </div>
 
       {/* Mobile Menu - Full Screen */}
       <AnimatePresence>
@@ -262,6 +288,7 @@ export default function Navigation() {
           </motion.div>
         )}
       </AnimatePresence>
-    </motion.nav>
+      </motion.nav>
+    </>
   );
 }
