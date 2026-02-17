@@ -10,7 +10,7 @@ Marketing website for Freed - Take Back Your Feed.
 - **Styling:** Tailwind CSS v4
 - **Animations:** Framer Motion
 - **Routing:** React Router DOM
-- **Deployment:** GitHub Pages
+- **Deployment:** Vercel
 
 ## Development
 
@@ -30,13 +30,7 @@ npm run preview
 
 ## Deployment
 
-The site auto-deploys to GitHub Pages on push to `main` via GitHub Actions.
-
-To set up:
-
-1. Go to repository Settings → Pages
-2. Set Source to "GitHub Actions"
-3. Push to main branch
+The site auto-deploys to Vercel on push to `main` via GitHub integration.
 
 ## Design System
 

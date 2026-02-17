@@ -129,7 +129,7 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 
 **Remaining Work:**
 
-- [x] Transition from GitHub Pages to Vercel for Edge function utilities.
+- [x] Transition to Vercel for Edge function utilities.
 - [x] Transition from Vite to Next.js for better SEO and accessibility.
 - [ ] Finish first updates blog post (001-introducing-freed)
 - [ ] Finish the manifesto
@@ -174,11 +174,10 @@ GitHub Actions workflows for continuous integration and deployment.
 - Build verification
 - Runs on all PRs and pushes to main
 
-**Deploy (`deploy.yml`):**
+**Deploy:**
 
-- Builds website
-- Deploys to GitHub Pages
-- Triggered on push to main
+- Vercel GitHub integration auto-deploys on push to main
+- Preview deployments on pull requests
 
 ---
 
