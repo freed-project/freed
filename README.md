@@ -73,7 +73,7 @@ Local WebSocket relay + cloud backup.
 
 ### [Phase 6: PWA Reader](docs/PHASE-6-PWA.md) 🚧
 
-Mobile companion at freed.wtf/app.
+Mobile companion at [app.freed.wtf](https://app.freed.wtf). Deployed via Vercel.
 
 ### [Phase 7: Facebook + Instagram](docs/PHASE-7-SOCIAL-CAPTURE.md)
 

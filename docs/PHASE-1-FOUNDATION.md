@@ -174,10 +174,14 @@ GitHub Actions workflows for continuous integration and deployment.
 - Build verification
 - Runs on all PRs and pushes to main
 
-**Deploy:**
+**Deploy (Vercel):**
 
-- Vercel GitHub integration auto-deploys on push to main
-- Preview deployments on pull requests
+Two Vercel projects, both auto-deploy on push to `main` with preview deploys on PRs:
+
+| Project      | Root Directory   | Domain                                          |
+| ------------ | ---------------- | ------------------------------------------------ |
+| `freed`      | `website/`       | [freed.wtf](https://freed.wtf)                   |
+| `freed-pwa`  | `packages/pwa/`  | [app.freed.wtf](https://app.freed.wtf)           |
 
 ---
 
