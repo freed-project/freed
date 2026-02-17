@@ -13,8 +13,8 @@
 import type { RssFeed } from "@freed/shared";
 import { useAppStore } from "./store";
 import { toast } from "../components/Toast";
-import type { OPMLFeedEntry } from "./opml";
-import { generateOPML, downloadFile } from "./opml";
+import type { OPMLFeedEntry } from "@freed/shared";
+import { generateOPML, downloadFile } from "@freed/shared";
 
 // =============================================================================
 // Feed Subscription Management

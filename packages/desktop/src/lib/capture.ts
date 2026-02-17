@@ -7,8 +7,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { FeedItem, RssFeed } from "@freed/shared";
 import { useAppStore } from "./store";
-import type { OPMLFeedEntry } from "./opml";
-import { generateOPML, downloadFile } from "./opml";
+import type { OPMLFeedEntry } from "@freed/shared";
+import { generateOPML, downloadFile } from "@freed/shared";
 
 // Simple RSS XML parser
 interface RssChannel {

@@ -1,8 +1,8 @@
 import { useCallback, useRef, useState } from "react";
 import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } from "../lib/capture";
 import type { ImportProgress } from "../lib/capture";
-import { parseOPML, readFileAsText } from "../lib/opml";
-import type { OPMLFeedEntry } from "../lib/opml";
+import { parseOPML, readFileAsText } from "@freed/shared";
+import type { OPMLFeedEntry } from "@freed/shared";
 import { useAppStore } from "../lib/store";
 
 // =============================================================================

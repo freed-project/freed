@@ -5,7 +5,7 @@
  * subscriptions, and clean XML generation with folder grouping.
  */
 
-import type { RssFeed } from "@freed/shared";
+import type { RssFeed } from "./types.js";
 
 // =============================================================================
 // Types

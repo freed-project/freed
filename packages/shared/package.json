@@ -12,6 +12,10 @@
     "./schema": {
       "types": "./dist/schema.d.ts",
       "import": "./dist/schema.js"
+    },
+    "./opml": {
+      "types": "./dist/opml.d.ts",
+      "import": "./dist/opml.js"
     }
   },
   "scripts": {
