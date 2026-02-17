@@ -5,6 +5,11 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
 
+  optimizeDeps: {
+    // Force re-scan after patching @automerge/automerge package.json
+    force: true,
+  },
+
   // Tauri development server
   clearScreen: false,
   server: {

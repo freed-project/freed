@@ -255,9 +255,9 @@ pub fn run() {
             )
             .expect("Failed to apply vibrancy");
 
-            // Start sync relay in background
+            // Start sync relay in background (use Tauri's async runtime, not bare tokio)
             let state = relay_state_clone.clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 start_sync_relay(state).await;
             });
 

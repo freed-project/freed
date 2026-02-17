@@ -14,9 +14,9 @@ export function FeedList({ items, onItemClick }: FeedListProps) {
           <span className="text-2xl">📡</span>
         </div>
         <p className="text-lg font-medium mb-2">No items yet</p>
-        <p className="text-sm text-[#71717a] max-w-xs">
+        {/* <p className="text-sm text-[#71717a] max-w-xs">
           Add an RSS feed or connect your X account to start capturing content
-        </p>
+        </p> */}
       </div>
     );
   }

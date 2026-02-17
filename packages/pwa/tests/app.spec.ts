@@ -23,14 +23,19 @@ test.describe("FREED PWA", () => {
     await expect(page.locator("text=Start capturing content")).toBeVisible();
   });
 
-  test("opens Add Feed dialog", async ({ page }) => {
+  test("opens Add Feed dialog with tabs", async ({ page }) => {
     await page.goto("/");
 
     // Click Add Feed button
     await page.click('button:has-text("Add Feed")');
 
-    // Dialog should appear
-    await expect(page.locator("text=Add RSS Feed")).toBeVisible();
+    // Dialog should appear with title and tabs
+    await expect(page.locator("text=RSS Feeds")).toBeVisible();
+    await expect(page.locator('button:has-text("Add URL")')).toBeVisible();
+    await expect(page.locator('button:has-text("Import")')).toBeVisible();
+    await expect(page.locator('button:has-text("Export")')).toBeVisible();
+
+    // Add URL tab should be active by default
     await expect(page.locator('input[type="url"]')).toBeVisible();
     await expect(page.locator("text=Feed URL")).toBeVisible();
 
@@ -43,13 +48,13 @@ test.describe("FREED PWA", () => {
 
     // Open dialog
     await page.click('button:has-text("Add Feed")');
-    await expect(page.locator("text=Add RSS Feed")).toBeVisible();
+    await expect(page.locator("text=RSS Feeds")).toBeVisible();
 
     // Click Cancel
     await page.click('button:has-text("Cancel")');
 
     // Dialog should close
-    await expect(page.locator("text=Add RSS Feed")).not.toBeVisible();
+    await expect(page.locator("text=RSS Feeds")).not.toBeVisible();
   });
 
   test("sidebar filter buttons work", async ({ page }) => {
@@ -75,7 +80,7 @@ test.describe("FREED PWA", () => {
     await page.click('button:has-text("Add Feed")');
 
     // Wait for dialog to appear
-    await expect(page.locator("text=Add RSS Feed")).toBeVisible();
+    await expect(page.locator("text=RSS Feeds")).toBeVisible();
 
     // Enter a feed URL
     await page.fill('input[type="url"]', "https://hnrss.org/frontpage");
@@ -107,7 +112,7 @@ test.describe("FREED PWA", () => {
       .isVisible()
       .catch(() => false);
     const dialogClosed = !(await page
-      .locator("text=Add RSS Feed")
+      .locator("text=RSS Feeds")
       .isVisible()
       .catch(() => false));
     const stillLoading = await page

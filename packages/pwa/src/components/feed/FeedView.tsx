@@ -3,7 +3,7 @@ import { FeedList } from "./FeedList";
 import { ReaderView } from "./ReaderView";
 import { PullToRefresh } from "../PullToRefresh";
 import { useAppStore } from "../../lib/store";
-import { refreshAllFeeds } from "../../lib/capture";
+import { toast } from "../Toast";
 import { sortByPriority, filterFeedItems } from "@freed/shared";
 import type { FeedItem } from "@freed/shared";
 
@@ -28,8 +28,8 @@ export function FeedView() {
     setSelectedItem(null);
   };
 
-  const handleRefresh = useCallback(async () => {
-    await refreshAllFeeds();
+  const handleRefresh = useCallback(() => {
+    toast.info("Open the desktop app to refresh feeds");
   }, []);
 
   return (

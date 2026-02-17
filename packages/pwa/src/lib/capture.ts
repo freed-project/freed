@@ -1,187 +1,30 @@
 /**
- * Capture service for fetching RSS feeds in the browser
+ * Feed management for the PWA
+ *
+ * The PWA is a reader — it manages feed subscriptions and displays items
+ * synced from the desktop app via Automerge. It does NOT fetch RSS feeds
+ * directly (no CORS proxy needed).
+ *
+ * Feed subscription management (add/remove/import/export) happens locally
+ * in the Automerge document. The desktop app reads those subscriptions and
+ * performs the actual fetching, pushing items back through Automerge sync.
  */
 
-import type { FeedItem, RssFeed } from "@freed/shared";
-import { rankFeedItems } from "@freed/shared";
+import type { RssFeed } from "@freed/shared";
 import { useAppStore } from "./store";
 import { toast } from "../components/Toast";
+import type { OPMLFeedEntry } from "./opml";
+import { generateOPML, downloadFile } from "./opml";
 
-// Simple RSS XML parser for browser
-interface RssChannel {
-  title: string;
-  link: string;
-  description: string;
-  items: RssItem[];
-}
-
-interface RssItem {
-  title: string;
-  link: string;
-  description?: string;
-  pubDate?: string;
-  content?: string;
-  author?: string;
-}
+// =============================================================================
+// Feed Subscription Management
+// =============================================================================
 
 /**
- * Parse RSS/Atom XML into structured data
- */
-function parseRssFeed(xml: string, feedUrl: string): RssChannel {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xml, "application/xml");
-
-  // Check for Atom format
-  const atomFeed = doc.querySelector("feed");
-  if (atomFeed) {
-    return parseAtom(atomFeed, feedUrl);
-  }
-
-  // RSS format
-  const channel = doc.querySelector("channel");
-  if (!channel) {
-    throw new Error("Invalid RSS feed: no channel element");
-  }
-
-  const title = channel.querySelector("title")?.textContent || feedUrl;
-  const link = channel.querySelector("link")?.textContent || feedUrl;
-  const description = channel.querySelector("description")?.textContent || "";
-
-  const items: RssItem[] = [];
-  channel.querySelectorAll("item").forEach((item) => {
-    items.push({
-      title: item.querySelector("title")?.textContent || "Untitled",
-      link: item.querySelector("link")?.textContent || "",
-      description: item.querySelector("description")?.textContent || undefined,
-      pubDate: item.querySelector("pubDate")?.textContent || undefined,
-      content:
-        item.querySelector("content\\:encoded")?.textContent || undefined,
-      author: item.querySelector("author")?.textContent || undefined,
-    });
-  });
-
-  return { title, link, description, items };
-}
-
-/**
- * Parse Atom format
- */
-function parseAtom(feed: Element, feedUrl: string): RssChannel {
-  const title = feed.querySelector("title")?.textContent || feedUrl;
-  const linkEl =
-    feed.querySelector('link[rel="alternate"]') || feed.querySelector("link");
-  const link = linkEl?.getAttribute("href") || feedUrl;
-
-  const items: RssItem[] = [];
-  feed.querySelectorAll("entry").forEach((entry) => {
-    const entryLinkEl =
-      entry.querySelector('link[rel="alternate"]') ||
-      entry.querySelector("link");
-    items.push({
-      title: entry.querySelector("title")?.textContent || "Untitled",
-      link: entryLinkEl?.getAttribute("href") || "",
-      description: entry.querySelector("summary")?.textContent || undefined,
-      pubDate:
-        entry.querySelector("published")?.textContent ||
-        entry.querySelector("updated")?.textContent ||
-        undefined,
-      content: entry.querySelector("content")?.textContent || undefined,
-      author: entry.querySelector("author > name")?.textContent || undefined,
-    });
-  });
-
-  return { title, link, description: "", items };
-}
-
-/**
- * Convert parsed RSS items to FeedItems
- */
-function rssToFeedItems(channel: RssChannel, feedUrl: string): FeedItem[] {
-  const now = Date.now();
-  const siteHost = new URL(channel.link).hostname;
-
-  return channel.items.map((item, index) => {
-    const publishedAt = item.pubDate
-      ? new Date(item.pubDate).getTime()
-      : now - index * 3600000; // Fallback: 1 hour apart
-
-    return {
-      globalId: `rss:${item.link || feedUrl + "#" + index}`,
-      platform: "rss" as const,
-      contentType: "article" as const,
-      capturedAt: now,
-      publishedAt,
-      author: {
-        id: siteHost,
-        handle: siteHost,
-        displayName: channel.title,
-      },
-      content: {
-        text: stripHtml(item.description || item.content || ""),
-        mediaUrls: [],
-        mediaTypes: [],
-        linkPreview: item.link
-          ? {
-              url: item.link,
-              title: item.title,
-              description: item.description,
-            }
-          : undefined,
-      },
-      preservedContent: item.content
-        ? {
-            html: item.content,
-            text: stripHtml(item.content),
-            wordCount: stripHtml(item.content).split(/\s+/).length,
-            readingTime: Math.ceil(
-              stripHtml(item.content).split(/\s+/).length / 200,
-            ),
-            preservedAt: now,
-          }
-        : undefined,
-      rssSource: {
-        feedUrl,
-        feedTitle: channel.title,
-        siteUrl: channel.link,
-      },
-      userState: {
-        hidden: false,
-        saved: false,
-        archived: false,
-        tags: [],
-      },
-      topics: [],
-    };
-  });
-}
-
-/**
- * Strip HTML tags from text
- */
-function stripHtml(html: string): string {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  return doc.body.textContent || "";
-}
-
-/**
- * Fetch and parse an RSS feed
- */
-export async function fetchRssFeed(feedUrl: string): Promise<FeedItem[]> {
-  // Use a CORS proxy for browser requests
-  const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(feedUrl)}`;
-
-  const response = await fetch(proxyUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch feed: ${response.status}`);
-  }
-
-  const xml = await response.text();
-  const channel = parseRssFeed(xml, feedUrl);
-  return rssToFeedItems(channel, feedUrl);
-}
-
-/**
- * Add a new RSS feed and fetch its items
+ * Subscribe to an RSS feed by URL.
+ *
+ * This only registers the subscription in the Automerge document —
+ * the desktop app handles actual feed fetching and item population.
  */
 export async function addRssFeed(feedUrl: string): Promise<void> {
   const store = useAppStore.getState();
@@ -190,31 +33,18 @@ export async function addRssFeed(feedUrl: string): Promise<void> {
   store.setError(null);
 
   try {
-    // Fetch items
-    const newItems = await fetchRssFeed(feedUrl);
-
-    if (newItems.length === 0) {
-      throw new Error("No items found in feed");
-    }
-
-    // Add feed to store (persisted via Automerge)
     const feed: RssFeed = {
       url: feedUrl,
-      title: newItems[0]?.rssSource?.feedTitle || feedUrl,
-      siteUrl: newItems[0]?.rssSource?.siteUrl,
-      lastFetched: Date.now(),
+      title: new URL(feedUrl).hostname,
       enabled: true,
       trackUnread: false,
     };
 
     await store.addFeed(feed);
-
-    // Add items (persisted via Automerge, deduplication handled there)
-    await store.addItems(newItems);
-    
-    toast.success(`Added ${feed.title} with ${newItems.length} items`);
+    toast.success(`Subscribed to ${feed.title}`);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to add feed";
+    const message =
+      error instanceof Error ? error.message : "Failed to add feed";
     store.setError(message);
     toast.error(message);
     throw error;
@@ -223,47 +53,104 @@ export async function addRssFeed(feedUrl: string): Promise<void> {
   }
 }
 
+// =============================================================================
+// OPML Batch Import / Export
+// =============================================================================
+
+/** Progress state during OPML batch import */
+export interface ImportProgress {
+  total: number;
+  completed: number;
+  current: string;
+  added: number;
+  skipped: number;
+  failed: Array<{ url: string; error: string }>;
+}
+
 /**
- * Refresh all subscribed RSS feeds
+ * Import feeds from parsed OPML entries.
+ *
+ * Subscribes to each feed in the Automerge document (skipping duplicates).
+ * The desktop app will pick up the new subscriptions and fetch their items.
+ *
+ * @param feeds - Parsed OPML feed entries to import
+ * @param onProgress - Optional callback invoked after each feed is processed
+ * @returns Final import progress with counts and error details
  */
-export async function refreshAllFeeds(): Promise<void> {
+export async function importOPMLFeeds(
+  feeds: OPMLFeedEntry[],
+  onProgress?: (progress: ImportProgress) => void,
+): Promise<ImportProgress> {
+  const store = useAppStore.getState();
+  const existingUrls = new Set(Object.values(store.feeds).map((f) => f.url));
+
+  const progress: ImportProgress = {
+    total: feeds.length,
+    completed: 0,
+    current: "",
+    added: 0,
+    skipped: 0,
+    failed: [],
+  };
+
+  for (const feed of feeds) {
+    // Skip feeds already subscribed
+    if (existingUrls.has(feed.url)) {
+      progress.skipped++;
+      progress.completed++;
+      onProgress?.({ ...progress });
+      continue;
+    }
+
+    progress.current = feed.title;
+    onProgress?.({ ...progress });
+
+    try {
+      const rssFeed: RssFeed = {
+        url: feed.url,
+        title: feed.title,
+        siteUrl: feed.siteUrl,
+        enabled: true,
+        trackUnread: false,
+        folder: feed.folder,
+      };
+      await store.addFeed(rssFeed);
+      existingUrls.add(feed.url);
+      progress.added++;
+    } catch (err) {
+      progress.failed.push({
+        url: feed.url,
+        error: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+
+    progress.completed++;
+    onProgress?.({ ...progress });
+  }
+
+  if (progress.added > 0) {
+    toast.success(
+      `Subscribed to ${progress.added} feed${progress.added !== 1 ? "s" : ""}`,
+    );
+  }
+
+  return progress;
+}
+
+/**
+ * Export all current feed subscriptions as an OPML file download.
+ */
+export function exportFeedsAsOPML(): void {
   const store = useAppStore.getState();
   const feeds = Object.values(store.feeds);
 
-  if (feeds.length === 0) return;
-
-  store.setSyncing(true);
-  store.setError(null);
-
-  try {
-    const allNewItems: FeedItem[] = [];
-
-    for (const feed of feeds) {
-      if (!feed.enabled) continue;
-
-      try {
-        const items = await fetchRssFeed(feed.url);
-        allNewItems.push(...items);
-
-        // Update feed's lastFetched (persisted via Automerge)
-        await store.addFeed({ ...feed, lastFetched: Date.now() });
-      } catch (error) {
-        console.error(`Failed to fetch ${feed.url}:`, error);
-      }
-    }
-
-    // Add all new items (deduplication handled by Automerge layer)
-    if (allNewItems.length > 0) {
-      await store.addItems(allNewItems);
-      toast.success(`Refreshed ${feeds.length} feeds`);
-    } else {
-      toast.info("No new items");
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to refresh feeds";
-    store.setError(message);
-    toast.error(message);
-  } finally {
-    store.setSyncing(false);
+  if (feeds.length === 0) {
+    toast.info("No feeds to export");
+    return;
   }
+
+  const xml = generateOPML(feeds);
+  const filename = `freed-feeds-${new Date().toISOString().slice(0, 10)}.opml`;
+  downloadFile(xml, filename);
+  toast.success(`Exported ${feeds.length} feeds`);
 }

@@ -7,6 +7,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { FeedItem, RssFeed } from "@freed/shared";
 import { useAppStore } from "./store";
+import type { OPMLFeedEntry } from "./opml";
+import { generateOPML, downloadFile } from "./opml";
 
 // Simple RSS XML parser
 interface RssChannel {
@@ -269,4 +271,102 @@ export async function refreshAllFeeds(): Promise<void> {
   } finally {
     store.setSyncing(false);
   }
+}
+
+// =============================================================================
+// OPML Batch Import / Export
+// =============================================================================
+
+/** Progress state during OPML batch import */
+export interface ImportProgress {
+  total: number;
+  completed: number;
+  current: string;
+  added: number;
+  skipped: number;
+  failed: Array<{ url: string; error: string }>;
+}
+
+/**
+ * Import feeds from parsed OPML entries.
+ *
+ * Subscribes to each feed (skipping duplicates), then triggers a full
+ * refresh cycle to fetch initial items for the newly added feeds.
+ *
+ * @param feeds - Parsed OPML feed entries to import
+ * @param onProgress - Optional callback invoked after each feed is processed
+ * @returns Final import progress with counts and error details
+ */
+export async function importOPMLFeeds(
+  feeds: OPMLFeedEntry[],
+  onProgress?: (progress: ImportProgress) => void,
+): Promise<ImportProgress> {
+  const store = useAppStore.getState();
+  const existingUrls = new Set(Object.values(store.feeds).map((f) => f.url));
+
+  const progress: ImportProgress = {
+    total: feeds.length,
+    completed: 0,
+    current: "",
+    added: 0,
+    skipped: 0,
+    failed: [],
+  };
+
+  for (const feed of feeds) {
+    // Skip feeds already subscribed
+    if (existingUrls.has(feed.url)) {
+      progress.skipped++;
+      progress.completed++;
+      onProgress?.({ ...progress });
+      continue;
+    }
+
+    progress.current = feed.title;
+    onProgress?.({ ...progress });
+
+    try {
+      const rssFeed: RssFeed = {
+        url: feed.url,
+        title: feed.title,
+        siteUrl: feed.siteUrl,
+        enabled: true,
+        trackUnread: false,
+        folder: feed.folder,
+      };
+      await store.addFeed(rssFeed);
+      existingUrls.add(feed.url);
+      progress.added++;
+    } catch (err) {
+      progress.failed.push({
+        url: feed.url,
+        error: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+
+    progress.completed++;
+    onProgress?.({ ...progress });
+  }
+
+  // Trigger refresh to fetch items for newly subscribed feeds
+  if (progress.added > 0) {
+    // Fire-and-forget — the UI shows sync spinner via store state
+    refreshAllFeeds();
+  }
+
+  return progress;
+}
+
+/**
+ * Export all current feed subscriptions as an OPML file download.
+ */
+export function exportFeedsAsOPML(): void {
+  const store = useAppStore.getState();
+  const feeds = Object.values(store.feeds);
+
+  if (feeds.length === 0) return;
+
+  const xml = generateOPML(feeds);
+  const filename = `freed-feeds-${new Date().toISOString().slice(0, 10)}.opml`;
+  downloadFile(xml, filename);
 }
