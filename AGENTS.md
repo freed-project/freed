@@ -2,7 +2,7 @@
 
 ## Rules
 
-- **Docs:** Update `docs/PHASE-*.md` in the same commit as feature work. No exceptions, no prompting.
+- **After implementing ANY new features:** Update `docs/PHASE-*.md` immediately — do not wait to be asked. Check every phase whose success criteria or task table is affected and update checkboxes + status lines in the same commit as the feature work.
 - **Roadmap sync:** When `docs/PHASE-*.md` changes, update `website/src/pages/Roadmap.tsx` to match (`✓ Complete` → `"complete"`, `🚧 In Progress` → `"current"`, else `"upcoming"`).
 - **Time estimates:** Machine time only ("one conversation", "~10 min"). Never quote human hours/days.
 - **IDs:** Display tail — `...${id.slice(-8)}`.
