@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAppStore } from "../../lib/store";
-import { openXLogin, loadStoredCookies, disconnectX } from "../../lib/x-auth";
+import { connectX, loadStoredCookies, disconnectX } from "../../lib/x-auth";
 import { captureXTimeline } from "../../lib/x-capture";
 
 interface SidebarProps {
@@ -9,7 +9,7 @@ interface SidebarProps {
   onOpenSettings: () => void;
 }
 
-const sources = [
+const topSources = [
   { id: undefined, label: "All", icon: "🌊" },
   { id: "x", label: "X", icon: "𝕏" },
   { id: "rss", label: "RSS", icon: "📡" },
@@ -22,9 +22,29 @@ export function Sidebar({ open, onClose, onOpenSettings }: SidebarProps) {
   const xAuth = useAppStore((s) => s.xAuth);
   const setXAuth = useAppStore((s) => s.setXAuth);
   const isLoading = useAppStore((s) => s.isLoading);
+  const feeds = useAppStore((s) => s.feeds);
+  const items = useAppStore((s) => s.items);
   const [xSyncing, setXSyncing] = useState(false);
+  const [showXForm, setShowXForm] = useState(false);
+  const [xCt0, setXCt0] = useState("");
+  const [xAuthToken, setXAuthToken] = useState("");
+  const [xFormError, setXFormError] = useState("");
 
-  const handleSourceClick = (source: (typeof sources)[0]) => {
+  // Per-feed unread counts
+  const feedUnreadCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const item of items) {
+      if (!item.rssSource) continue;
+      if (item.userState.readAt || item.userState.hidden || item.userState.archived) continue;
+      const url = item.rssSource.feedUrl;
+      counts[url] = (counts[url] ?? 0) + 1;
+    }
+    return counts;
+  }, [items]);
+
+  const feedList = Object.values(feeds).filter((f) => f.enabled);
+
+  const handleSourceClick = (source: (typeof topSources)[0]) => {
     if (source.savedOnly) {
       setFilter({ savedOnly: true });
     } else {
@@ -33,26 +53,36 @@ export function Sidebar({ open, onClose, onOpenSettings }: SidebarProps) {
     onClose();
   };
 
-  const isActive = (source: (typeof sources)[0]) => {
-    if (source.savedOnly) {
-      return activeFilter.savedOnly === true;
-    }
+  const handleFeedClick = (feedUrl: string) => {
+    setFilter({ platform: "rss", feedUrl });
+    onClose();
+  };
+
+  const isTopSourceActive = (source: (typeof topSources)[0]) => {
+    if (activeFilter.feedUrl) return false;
+    if (source.savedOnly) return activeFilter.savedOnly === true;
     return activeFilter.platform === source.id && !activeFilter.savedOnly;
   };
 
   const handleConnectX = async () => {
-    const cookies = await openXLogin();
-    if (cookies) {
-      setXAuth({ isAuthenticated: true, cookies });
-      // Immediately capture timeline after connecting
-      setXSyncing(true);
-      try {
-        await captureXTimeline(cookies);
-      } catch (error) {
-        console.error("Failed to capture X timeline:", error);
-      } finally {
-        setXSyncing(false);
-      }
+    setXFormError("");
+    const cookies = connectX(xCt0, xAuthToken);
+    if (!cookies) {
+      setXFormError("Both ct0 and auth_token are required.");
+      return;
+    }
+    setXAuth({ isAuthenticated: true, cookies });
+    setShowXForm(false);
+    setXCt0("");
+    setXAuthToken("");
+    // Immediately capture timeline after connecting
+    setXSyncing(true);
+    try {
+      await captureXTimeline(cookies);
+    } catch (error) {
+      console.error("Failed to capture X timeline:", error);
+    } finally {
+      setXSyncing(false);
     }
   };
 
@@ -94,15 +124,17 @@ export function Sidebar({ open, onClose, onOpenSettings }: SidebarProps) {
           border-r border-glass-border
           transform transition-transform duration-200 ease-in-out
           ${open ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
+          overflow-y-auto
         `}
       >
         <nav className="p-4 pt-2">
+          {/* Sources */}
           <div className="mb-6">
             <h2 className="text-xs font-semibold text-white/35 uppercase tracking-wider mb-2">
               Sources
             </h2>
             <ul className="space-y-1">
-              {sources.map((source) => (
+              {topSources.map((source) => (
                 <li key={source.id ?? "all"}>
                   <button
                     onClick={() => handleSourceClick(source)}
@@ -110,7 +142,7 @@ export function Sidebar({ open, onClose, onOpenSettings }: SidebarProps) {
                       w-full flex items-center gap-3 px-3 py-2 rounded-lg
                       text-left text-sm transition-all
                       ${
-                        isActive(source)
+                        isTopSourceActive(source)
                           ? "bg-[#8b5cf6]/20 text-white border border-[#8b5cf6]/30"
                           : "text-[#a1a1aa] hover:bg-white/5 hover:text-white"
                       }
@@ -119,15 +151,64 @@ export function Sidebar({ open, onClose, onOpenSettings }: SidebarProps) {
                     <span className="w-5 text-center shrink-0">
                       {source.icon}
                     </span>
-                    <span>{source.label}</span>
+                    <span className="flex-1">{source.label}</span>
                     {source.id === "x" && xAuth.isAuthenticated && (
-                      <span className="ml-auto w-2 h-2 rounded-full bg-green-500" />
+                      <span className="ml-auto w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
                     )}
                   </button>
                 </li>
               ))}
             </ul>
           </div>
+
+          {/* Individual RSS feeds */}
+          {feedList.length > 0 && (
+            <div className="mb-6">
+              <h2 className="text-xs font-semibold text-white/35 uppercase tracking-wider mb-2">
+                Feeds
+              </h2>
+              <ul className="space-y-0.5">
+                {feedList.map((feed) => {
+                  const unread = feedUnreadCounts[feed.url] ?? 0;
+                  const isActive = activeFilter.feedUrl === feed.url;
+                  return (
+                    <li key={feed.url}>
+                      <button
+                        onClick={() => handleFeedClick(feed.url)}
+                        className={`
+                          w-full flex items-center gap-2 px-3 py-1.5 rounded-lg
+                          text-left text-sm transition-all
+                          ${
+                            isActive
+                              ? "bg-[#8b5cf6]/20 text-white border border-[#8b5cf6]/30"
+                              : "text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                          }
+                        `}
+                      >
+                        {feed.imageUrl ? (
+                          <img
+                            src={feed.imageUrl}
+                            alt=""
+                            className="w-3.5 h-3.5 rounded-sm flex-shrink-0 object-cover"
+                          />
+                        ) : (
+                          <span className="w-3.5 h-3.5 flex-shrink-0 text-[10px] text-[#52525b] flex items-center justify-center">
+                            📡
+                          </span>
+                        )}
+                        <span className="flex-1 truncate text-xs">{feed.title}</span>
+                        {unread > 0 && (
+                          <span className="flex-shrink-0 text-[10px] tabular-nums bg-[#8b5cf6]/20 text-[#8b5cf6] px-1.5 py-0.5 rounded-full">
+                            {unread > 99 ? "99+" : unread}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
 
           {/* X Connection */}
           <div className="mb-6 p-3 rounded-xl bg-white/5 border border-[rgba(255,255,255,0.08)]">
@@ -155,9 +236,46 @@ export function Sidebar({ open, onClose, onOpenSettings }: SidebarProps) {
                   Disconnect
                 </button>
               </div>
+            ) : showXForm ? (
+              <div className="space-y-2">
+                <p className="text-[10px] text-[#71717a] leading-relaxed">
+                  Open x.com → DevTools → Application → Cookies → x.com
+                </p>
+                <input
+                  type="text"
+                  placeholder="ct0 cookie value"
+                  value={xCt0}
+                  onChange={(e) => setXCt0(e.target.value)}
+                  className="w-full text-xs px-2 py-1.5 bg-white/5 border border-[rgba(255,255,255,0.1)] rounded-lg text-white placeholder-[#52525b] focus:outline-none focus:border-[#8b5cf6]/50"
+                />
+                <input
+                  type="text"
+                  placeholder="auth_token cookie value"
+                  value={xAuthToken}
+                  onChange={(e) => setXAuthToken(e.target.value)}
+                  className="w-full text-xs px-2 py-1.5 bg-white/5 border border-[rgba(255,255,255,0.1)] rounded-lg text-white placeholder-[#52525b] focus:outline-none focus:border-[#8b5cf6]/50"
+                />
+                {xFormError && (
+                  <p className="text-[10px] text-red-400">{xFormError}</p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleConnectX}
+                    className="flex-1 text-xs px-2 py-1.5 bg-[#8b5cf6]/20 text-[#8b5cf6] rounded-lg hover:bg-[#8b5cf6]/30 transition-colors"
+                  >
+                    Connect
+                  </button>
+                  <button
+                    onClick={() => { setShowXForm(false); setXFormError(""); }}
+                    className="text-xs px-2 py-1.5 bg-white/5 text-[#71717a] rounded-lg hover:bg-white/10 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
             ) : (
               <button
-                onClick={handleConnectX}
+                onClick={() => setShowXForm(true)}
                 className="w-full text-xs px-2 py-1.5 bg-[#8b5cf6]/20 text-[#8b5cf6] rounded-lg hover:bg-[#8b5cf6]/30 transition-colors"
               >
                 Connect X Account
@@ -165,27 +283,8 @@ export function Sidebar({ open, onClose, onOpenSettings }: SidebarProps) {
             )}
           </div>
 
+          {/* Library */}
           <div>
-            <h2 className="text-xs font-semibold text-white/35 uppercase tracking-wider mb-2">
-              Folders
-            </h2>
-            <ul className="space-y-1">
-              <li>
-                <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm text-white/70 hover:bg-white/5 hover:text-white transition-colors">
-                  <span className="w-5 text-center shrink-0">📁</span>
-                  <span>Tech</span>
-                </button>
-              </li>
-              <li>
-                <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm text-white/70 hover:bg-white/5 hover:text-white transition-colors">
-                  <span className="w-5 text-center shrink-0">📁</span>
-                  <span>Friends</span>
-                </button>
-              </li>
-            </ul>
-          </div>
-
-          <div className="mt-6 pt-6 border-t border-[rgba(255,255,255,0.08)]">
             <h2 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2">
               Library
             </h2>

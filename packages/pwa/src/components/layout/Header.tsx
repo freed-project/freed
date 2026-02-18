@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { AddFeedDialog } from "../AddFeedDialog";
 import { toast } from "../Toast";
 import { useAppStore } from "../../lib/store";
@@ -13,9 +13,25 @@ export function Header({ onMenuClick }: HeaderProps) {
   const isSyncing = useAppStore((s) => s.isSyncing);
   const syncConnected = useAppStore((s) => s.syncConnected);
   const feeds = useAppStore((s) => s.feeds);
+  const items = useAppStore((s) => s.items);
+  const markAllAsRead = useAppStore((s) => s.markAllAsRead);
+  const activeFilter = useAppStore((s) => s.activeFilter);
   const feedList = Object.values(feeds);
   const feedCount = feedList.length;
   const syncPanelRef = useRef<HTMLDivElement>(null);
+
+  const unreadCount = useMemo(
+    () =>
+      items.filter(
+        (item) =>
+          !item.userState.readAt &&
+          !item.userState.hidden &&
+          !item.userState.archived &&
+          (!activeFilter.platform || item.platform === activeFilter.platform) &&
+          (!activeFilter.savedOnly || item.userState.saved),
+      ).length,
+    [items, activeFilter],
+  );
 
   // Close sync panel on outside click
   useEffect(() => {
@@ -87,6 +103,15 @@ export function Header({ onMenuClick }: HeaderProps) {
 
         {/* Spacer — push actions to the right on desktop */}
         <div className="hidden md:block flex-1" />
+
+        {/* Unread count + mark all read */}
+        {unreadCount > 0 && (
+          <div className="md:hidden flex items-center gap-1">
+            <span className="text-xs text-[#71717a] tabular-nums">
+              {unreadCount}
+            </span>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex items-center gap-1 sm:gap-2">
@@ -219,6 +244,20 @@ export function Header({ onMenuClick }: HeaderProps) {
               </div>
             )}
           </div>
+
+          {/* Mark all read button — only shown when there are unread items */}
+          {unreadCount > 0 && (
+            <button
+              onClick={() => markAllAsRead(activeFilter.platform)}
+              title={`Mark all ${unreadCount} items as read`}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-[#71717a] hover:bg-white/5 hover:text-white transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>{unreadCount} unread</span>
+            </button>
+          )}
 
           {/* Add feed button */}
           <button

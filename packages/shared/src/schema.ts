@@ -136,7 +136,12 @@ export function toggleSaved(doc: FreedDoc, globalId: string): void {
   const item = doc.feedItems[globalId];
   if (item) {
     item.userState.saved = !item.userState.saved;
-    item.userState.savedAt = item.userState.saved ? Date.now() : undefined;
+    if (item.userState.saved) {
+      item.userState.savedAt = Date.now();
+    } else {
+      // Automerge forbids assigning `undefined` — use delete instead
+      delete (item.userState as unknown as Record<string, unknown>).savedAt;
+    }
   }
 }
 
@@ -213,7 +218,43 @@ export function toggleFeedEnabled(doc: FreedDoc, url: string): void {
 // =============================================================================
 
 /**
+ * Deep-merge scalar values from `source` into the Automerge map `target`.
+ *
+ * Automerge forbids replacing an existing nested Map with a new object.
+ * This helper recurses into nested objects and assigns only scalar leaf values,
+ * which allows callers to pass spread objects that may contain Automerge
+ * proxy references in their nested sub-objects.
+ */
+function deepMergeInto(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>
+): void {
+  for (const key of Object.keys(source)) {
+    const srcVal = source[key];
+    const dstVal = target[key];
+    if (
+      srcVal !== null &&
+      typeof srcVal === "object" &&
+      !Array.isArray(srcVal) &&
+      typeof dstVal === "object" &&
+      dstVal !== null
+    ) {
+      // Recurse into nested objects instead of replacing the Automerge Map
+      deepMergeInto(
+        dstVal as Record<string, unknown>,
+        srcVal as Record<string, unknown>
+      );
+    } else {
+      target[key] = srcVal;
+    }
+  }
+}
+
+/**
  * Update user preferences
+ *
+ * Uses deep merging to avoid replacing Automerge Map objects, which is
+ * forbidden. Only scalar leaf values are assigned directly.
  *
  * @param doc - The Automerge document (mutable within A.change)
  * @param updates - Partial preference updates
@@ -222,7 +263,10 @@ export function updatePreferences(
   doc: FreedDoc,
   updates: Partial<UserPreferences>
 ): void {
-  Object.assign(doc.preferences, updates);
+  deepMergeInto(
+    doc.preferences as unknown as Record<string, unknown>,
+    updates as unknown as Record<string, unknown>
+  );
 }
 
 /**

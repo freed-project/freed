@@ -9,7 +9,7 @@ import { useAppStore } from "../lib/store";
 // Types
 // =============================================================================
 
-type DialogTab = "url" | "import" | "export";
+type DialogTab = "url" | "manage" | "import" | "export";
 type ImportPhase = "idle" | "preview" | "importing" | "complete";
 
 interface AddFeedDialogProps {
@@ -51,6 +51,7 @@ export function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
             {(
               [
                 { id: "url", label: "Add URL" },
+                { id: "manage", label: "Manage" },
                 { id: "import", label: "Import" },
                 { id: "export", label: "Export" },
               ] as const
@@ -76,6 +77,7 @@ export function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
         {/* Tab Content — scrollable */}
         <div className="p-6 overflow-y-auto flex-1 min-h-0">
           {activeTab === "url" && <AddUrlTab onClose={handleClose} />}
+          {activeTab === "manage" && <ManageTab />}
           {activeTab === "import" && <ImportTab onClose={handleClose} />}
           {activeTab === "export" && <ExportTab />}
         </div>
@@ -180,7 +182,75 @@ function AddUrlTab({ onClose }: { onClose: () => void }) {
 }
 
 // =============================================================================
-// Tab 2: Import OPML
+// Tab 2: Manage Feeds
+// =============================================================================
+
+function ManageTab() {
+  const feeds = useAppStore((s) => s.feeds);
+  const removeFeed = useAppStore((s) => s.removeFeed);
+  const feedList = Object.values(feeds);
+  const [removing, setRemoving] = useState<string | null>(null);
+
+  const handleRemove = async (url: string) => {
+    setRemoving(url);
+    try {
+      await removeFeed(url);
+    } finally {
+      setRemoving(null);
+    }
+  };
+
+  if (feedList.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-sm text-[#71717a]">No feeds subscribed yet.</p>
+        <p className="text-xs text-[#52525b] mt-1">Add a feed URL to get started.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {feedList.map((feed) => (
+        <div
+          key={feed.url}
+          className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)]"
+        >
+          {feed.imageUrl ? (
+            <img src={feed.imageUrl} alt="" className="w-8 h-8 rounded-md flex-shrink-0 object-cover" />
+          ) : (
+            <div className="w-8 h-8 rounded-md bg-[#8b5cf6]/10 flex items-center justify-center flex-shrink-0">
+              <span className="text-sm">📡</span>
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-white truncate">{feed.title}</p>
+            <p className="text-xs text-[#52525b] truncate">{feed.url}</p>
+          </div>
+          <button
+            onClick={() => handleRemove(feed.url)}
+            disabled={removing === feed.url}
+            className="flex-shrink-0 p-1.5 rounded-lg hover:bg-red-500/20 text-[#71717a] hover:text-red-400 transition-colors disabled:opacity-50"
+            aria-label={`Remove ${feed.title}`}
+          >
+            {removing === feed.url ? (
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            )}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// =============================================================================
+// Tab 3: Import OPML
 // =============================================================================
 
 function ImportTab({ onClose }: { onClose: () => void }) {

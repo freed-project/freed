@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { AddFeedDialog } from "../AddFeedDialog";
 import { refreshAllFeeds } from "../../lib/capture";
 import { useAppStore } from "../../lib/store";
@@ -11,7 +11,23 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [addFeedOpen, setAddFeedOpen] = useState(false);
   const isSyncing = useAppStore((s) => s.isSyncing);
   const feeds = useAppStore((s) => s.feeds);
+  const items = useAppStore((s) => s.items);
+  const markAllAsRead = useAppStore((s) => s.markAllAsRead);
+  const activeFilter = useAppStore((s) => s.activeFilter);
   const feedCount = Object.keys(feeds).length;
+
+  const unreadCount = useMemo(
+    () =>
+      items.filter(
+        (item) =>
+          !item.userState.readAt &&
+          !item.userState.hidden &&
+          !item.userState.archived &&
+          (!activeFilter.platform || item.platform === activeFilter.platform) &&
+          (!activeFilter.savedOnly || item.userState.saved),
+      ).length,
+    [items, activeFilter],
+  );
 
   const handleRefresh = async () => {
     await refreshAllFeeds();
@@ -46,7 +62,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           </svg>
         </button>
 
-        {/* Spacer - fills area where sidebar's top section would be */}
+        {/* Spacer */}
         <div className="flex-1" />
 
         {/* Actions */}
@@ -54,6 +70,20 @@ export function Header({ onMenuClick }: HeaderProps) {
           className="flex items-center gap-2"
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >
+          {/* Mark all read — only shown when there are unread items */}
+          {unreadCount > 0 && (
+            <button
+              onClick={() => markAllAsRead(activeFilter.platform)}
+              title={`Mark all ${unreadCount} items as read`}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-[#71717a] hover:bg-white/5 hover:text-white transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>{unreadCount} unread</span>
+            </button>
+          )}
+
           {/* Refresh button */}
           {feedCount > 0 && (
             <button

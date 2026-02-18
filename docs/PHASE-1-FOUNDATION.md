@@ -203,7 +203,7 @@ Two Vercel projects, both auto-deploy on push to `main` with preview deploys on 
 | ---- | -------------------------------------------- | ------ |
 | 1.1  | Initialize monorepo with npm workspaces      | ✓      |
 | 1.2  | Create `@freed/shared` with core types       | ✓      |
-| 1.3  | Implement Automerge document schema          | ✓      |
+| 1.3  | Implement Automerge document schema          | ✓ (bugfixes: toggleSaved delete, updatePreferences deepMerge) |
 | 1.4  | Build marketing site (landing, manifesto)    | ✓      |
 | 1.5  | Set up GitHub Actions CI/CD                  | ✓      |
 | 1.6  | Configure custom domain (freed.wtf)          | ✓      |
