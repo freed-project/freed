@@ -76,7 +76,7 @@ interface XTweetResult {
     entities: {
       urls?: { expanded_url: string }[];
       hashtags?: { text: string }[];
-      media?: { media_url_https: string; type: string }[];
+      media?: { media_url_https: string; type: string; video_info?: { variants: { url: string; bitrate?: number }[] } }[];
     };
     extended_entities?: {
       media?: { media_url_https: string; type: string; video_info?: { variants: { url: string; bitrate?: number }[] } }[];

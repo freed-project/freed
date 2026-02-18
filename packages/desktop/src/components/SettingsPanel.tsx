@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import {
   getSyncUrl,
-  getClientCount,
   onStatusChange,
   type SyncStatus,
 } from "../lib/sync";

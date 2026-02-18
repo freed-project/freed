@@ -19,7 +19,7 @@ import {
   docUpdatePreferences,
 } from "./automerge";
 import type { FreedDoc } from "@freed/shared/schema";
-import { loadStoredCookies } from "./x-auth";
+import { loadStoredCookies, type XAuthState } from "./x-auth";
 
 // Filter options for the feed view
 interface FilterOptions {
@@ -27,12 +27,6 @@ interface FilterOptions {
   tags?: string[];
   savedOnly?: boolean;
   showArchived?: boolean;
-}
-
-// X authentication state
-interface XAuthState {
-  isAuthenticated: boolean;
-  username?: string;
 }
 
 // App state interface
