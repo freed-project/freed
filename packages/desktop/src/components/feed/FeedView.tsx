@@ -6,11 +6,9 @@ import { sortByPriority, filterFeedItems } from "@freed/shared";
 import type { FeedItem } from "@freed/shared";
 
 export function FeedView() {
-  // Select raw state (stable references)
   const items = useAppStore((s) => s.items);
   const activeFilter = useAppStore((s) => s.activeFilter);
-  
-  // Memoize filtering/sorting to avoid infinite loops
+
   const filteredItems = useMemo(() => {
     const filtered = filterFeedItems(items, activeFilter);
     return sortByPriority(filtered);
@@ -18,22 +16,15 @@ export function FeedView() {
 
   const [selectedItem, setSelectedItem] = useState<FeedItem | null>(null);
 
-  const handleItemClick = (item: FeedItem) => {
-    setSelectedItem(item);
-  };
-
-  const handleCloseReader = () => {
-    setSelectedItem(null);
-  };
-
   return (
     <>
-      <div className="h-full overflow-auto p-4">
-        <FeedList items={filteredItems} onItemClick={handleItemClick} />
-      </div>
+      <FeedList
+        items={filteredItems}
+        onItemClick={(item) => setSelectedItem(item)}
+      />
 
       {selectedItem && (
-        <ReaderView item={selectedItem} onClose={handleCloseReader} />
+        <ReaderView item={selectedItem} onClose={() => setSelectedItem(null)} />
       )}
     </>
   );

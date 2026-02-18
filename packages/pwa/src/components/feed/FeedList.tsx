@@ -1,3 +1,5 @@
+import { useRef } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { FeedItem } from "./FeedItem";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 
@@ -7,6 +9,16 @@ interface FeedListProps {
 }
 
 export function FeedList({ items, onItemClick }: FeedListProps) {
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 220,
+    overscan: 5,
+    measureElement: (el) => el.getBoundingClientRect().height,
+  });
+
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-center px-4">
@@ -14,22 +26,37 @@ export function FeedList({ items, onItemClick }: FeedListProps) {
           <span className="text-2xl">📡</span>
         </div>
         <p className="text-lg font-medium mb-2">No items yet</p>
-        {/* <p className="text-sm text-[#71717a] max-w-xs">
-          Add an RSS feed or connect your X account to start capturing content
-        </p> */}
       </div>
     );
   }
 
   return (
-    <div className="space-y-3 sm:space-y-4 max-w-2xl mx-auto">
-      {items.map((item) => (
-        <FeedItem
-          key={item.globalId}
-          item={item}
-          onClick={() => onItemClick?.(item)}
-        />
-      ))}
+    <div ref={parentRef} className="h-full overflow-auto overscroll-none">
+      <div
+        style={{ height: virtualizer.getTotalSize() }}
+        className="relative w-full"
+      >
+        {virtualizer.getVirtualItems().map((virtualItem) => (
+          <div
+            key={virtualItem.key}
+            data-index={virtualItem.index}
+            ref={virtualizer.measureElement}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              transform: `translateY(${virtualItem.start}px)`,
+            }}
+            className="px-3 sm:px-4 pb-3 sm:pb-4 max-w-2xl mx-auto"
+          >
+            <FeedItem
+              item={items[virtualItem.index]}
+              onClick={() => onItemClick?.(items[virtualItem.index])}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -3,10 +3,11 @@
 //! Native desktop app that bundles capture, sync relay, and reader UI.
 
 use futures_util::{SinkExt, StreamExt};
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Manager, Emitter};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, RwLock};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
@@ -121,17 +122,26 @@ async fn get_sync_client_count(state: tauri::State<'_, RelayState>) -> Result<us
 async fn broadcast_doc(state: tauri::State<'_, RelayState>, doc_bytes: Vec<u8>) -> Result<(), String> {
     // Store the latest document
     *state.current_doc.write().await = Some(doc_bytes.clone());
-    
+
     // Broadcast to all connected clients (ignore send errors - clients may disconnect)
     let _ = state.broadcast_tx.send(doc_bytes);
-    
+
     Ok(())
 }
 
+/// Show the main window (called from tray)
+#[tauri::command]
+fn show_window(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 /// Handle a single WebSocket connection
-async fn handle_connection(stream: TcpStream, addr: SocketAddr, state: RelayState) {
+async fn handle_connection(stream: TcpStream, addr: SocketAddr, state: RelayState, app: tauri::AppHandle) {
     println!("[Sync] New connection from: {}", addr);
-    
+
     let ws_stream = match accept_async(stream).await {
         Ok(ws) => ws,
         Err(e) => {
@@ -139,26 +149,28 @@ async fn handle_connection(stream: TcpStream, addr: SocketAddr, state: RelayStat
             return;
         }
     };
-    
+
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
-    
-    // Increment client count
+
+    // Increment client count and notify frontend
     {
         let mut count = state.client_count.write().await;
         *count += 1;
-        println!("[Sync] Client connected. Total: {}", *count);
+        let new_count = *count;
+        println!("[Sync] Client connected. Total: {}", new_count);
+        let _ = app.emit("sync-client-count", new_count);
     }
-    
+
     // Send current document state to new client
     if let Some(doc) = state.current_doc.read().await.clone() {
         if let Err(e) = ws_sender.send(Message::Binary(doc.into())).await {
             eprintln!("[Sync] Failed to send initial doc: {}", e);
         }
     }
-    
+
     // Subscribe to broadcast channel
     let mut broadcast_rx = state.broadcast_tx.subscribe();
-    
+
     loop {
         tokio::select! {
             // Receive from client
@@ -195,19 +207,21 @@ async fn handle_connection(stream: TcpStream, addr: SocketAddr, state: RelayStat
             }
         }
     }
-    
-    // Decrement client count
+
+    // Decrement client count and notify frontend
     {
         let mut count = state.client_count.write().await;
         *count = count.saturating_sub(1);
-        println!("[Sync] Client disconnected. Total: {}", *count);
+        let new_count = *count;
+        println!("[Sync] Client disconnected. Total: {}", new_count);
+        let _ = app.emit("sync-client-count", new_count);
     }
 }
 
 /// Start the sync relay server
-async fn start_sync_relay(state: RelayState) {
+async fn start_sync_relay(state: RelayState, app: tauri::AppHandle) {
     let addr = format!("0.0.0.0:{}", state.port);
-    
+
     let listener = match TcpListener::bind(&addr).await {
         Ok(l) => l,
         Err(e) => {
@@ -215,12 +229,13 @@ async fn start_sync_relay(state: RelayState) {
             return;
         }
     };
-    
+
     println!("[Sync] Relay server listening on {}", addr);
-    
+
     while let Ok((stream, addr)) = listener.accept().await {
         let state = state.clone();
-        tokio::spawn(handle_connection(stream, addr, state));
+        let app = app.clone();
+        tokio::spawn(handle_connection(stream, addr, state, app));
     }
 }
 
@@ -228,7 +243,7 @@ async fn start_sync_relay(state: RelayState) {
 pub fn run() {
     // Create broadcast channel for sync
     let (broadcast_tx, _) = broadcast::channel::<Vec<u8>>(16);
-    
+
     // Create sync relay state
     let relay_state = Arc::new(SyncRelayState {
         port: 8765,
@@ -236,9 +251,9 @@ pub fn run() {
         current_doc: RwLock::new(None),
         client_count: RwLock::new(0),
     });
-    
+
     let relay_state_clone = relay_state.clone();
-    
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(relay_state)
@@ -255,13 +270,60 @@ pub fn run() {
             )
             .expect("Failed to apply vibrancy");
 
+            // Build tray menu
+            let show_item = MenuItem::with_id(app, "show", "Show Freed", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit Freed", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+            // Build system tray icon
+            let _tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().cloned().unwrap())
+                .menu(&menu)
+                .tooltip("Freed — Sync running")
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    // Single click on macOS shows the window
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
             // Start sync relay in background (use Tauri's async runtime, not bare tokio)
             let state = relay_state_clone.clone();
+            let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                start_sync_relay(state).await;
+                start_sync_relay(state, app_handle).await;
             });
 
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Keep app running in background when window is closed
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                window.hide().unwrap();
+                api.prevent_close();
+            }
         })
         .invoke_handler(tauri::generate_handler![
             get_version,
@@ -271,7 +333,8 @@ pub fn run() {
             get_local_ip,
             get_sync_url,
             get_sync_client_count,
-            broadcast_doc
+            broadcast_doc,
+            show_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running Freed");

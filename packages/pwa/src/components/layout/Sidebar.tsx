@@ -1,12 +1,10 @@
 import { useState } from "react";
 import { useAppStore } from "../../lib/store";
 import {
-  connect,
   disconnect,
-  isRelayConnected,
-  storeRelayUrl,
   clearStoredRelayUrl,
 } from "../../lib/sync";
+import { SyncConnectDialog } from "../SyncConnectDialog";
 
 interface SidebarProps {
   open: boolean;
@@ -43,15 +41,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   };
 
   const handleConnectSync = () => {
-    const url = window.prompt(
-      "Enter your desktop's sync URL:\n\n" +
-        "Find this in the desktop app under Settings > Sync.\n" +
-        "It looks like: ws://192.168.1.x:8765",
-    );
-    if (url) {
-      storeRelayUrl(url);
-      connect(url);
-    }
+    setShowSyncDialog(true);
   };
 
   const handleDisconnectSync = () => {
@@ -193,6 +183,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </div>
         </nav>
       </aside>
+
+      <SyncConnectDialog
+        open={showSyncDialog}
+        onClose={() => setShowSyncDialog(false)}
+      />
     </>
   );
 }
