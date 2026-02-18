@@ -48,4 +48,4 @@ When modifying `README.md`, `docs/PHASE-*.md`, or `docs/ROADMAP.md`:
 | `🚧 In Progress` | `"current"`      |
 | Otherwise        | `"upcoming"`     |
 
-**After implementing ANY new features:** Ask if the user wants README and docs updated.
+**After implementing ANY new features:** Update `docs/PHASE-*.md` immediately — do not wait to be asked. Check every phase whose success criteria or task table is affected and update checkboxes + status lines in the same commit as the feature work.
