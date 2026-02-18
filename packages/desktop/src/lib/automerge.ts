@@ -5,6 +5,7 @@
  */
 
 import * as A from "@automerge/automerge";
+import { invoke } from "@tauri-apps/api/core";
 import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
@@ -67,6 +68,19 @@ async function saveDoc(): Promise<void> {
 }
 
 /**
+ * Broadcast the current document to all connected PWA clients via Tauri relay
+ */
+async function broadcastToRelay(): Promise<void> {
+  if (!currentDoc) return;
+  try {
+    const bytes = A.save(currentDoc);
+    await invoke("broadcast_doc", { docBytes: Array.from(bytes) });
+  } catch {
+    // Relay may not be running yet or no clients connected — safe to ignore
+  }
+}
+
+/**
  * Apply a change to the document and persist
  */
 async function applyChange(
@@ -84,6 +98,9 @@ async function applyChange(
   for (const subscriber of subscribers) {
     subscriber(currentDoc);
   }
+
+  // Push updated doc to connected PWA clients
+  broadcastToRelay();
 
   return currentDoc;
 }

@@ -8,6 +8,7 @@ interface FeedItemProps {
   showEngagement?: boolean;
   focused?: boolean;
   onMouseEnter?: () => void;
+  onSave?: (e: React.MouseEvent) => void;
 }
 
 const platformIcons: Record<string, string> = {
@@ -22,14 +23,14 @@ const platformIcons: Record<string, string> = {
   saved: "📌",
 };
 
-export function FeedItem({ item, onClick, compact = false, showEngagement = false, focused = false, onMouseEnter }: FeedItemProps) {
+export function FeedItem({ item, onClick, compact = false, showEngagement = false, focused = false, onMouseEnter, onSave }: FeedItemProps) {
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
   const platformIcon = platformIcons[item.platform] || "📄";
   const avatarSize = compact ? "w-8 h-8" : "w-10 h-10";
 
   return (
     <article
-      className={`feed-card cursor-pointer active:scale-[0.99] transition-transform ${compact ? "py-2.5 px-3.5" : ""} ${focused ? "ring-2 ring-[#8b5cf6]/60 ring-inset" : ""}`}
+      className={`feed-card group cursor-pointer active:scale-[0.99] transition-transform ${compact ? "py-2.5 px-3.5" : ""} ${focused ? "ring-2 ring-[#8b5cf6]/60 ring-inset" : ""}`}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       role="button"
@@ -70,11 +71,21 @@ export function FeedItem({ item, onClick, compact = false, showEngagement = fals
           </div>
         </div>
 
-        {/* Save indicator */}
-        {item.userState.saved && (
-          <span className="text-[#8b5cf6]" title="Saved">
-            📌
-          </span>
+        {/* Save button */}
+        {onSave && (
+          <button
+            onClick={onSave}
+            title={item.userState.saved ? "Remove bookmark" : "Bookmark"}
+            className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${
+              item.userState.saved
+                ? "text-[#8b5cf6]"
+                : "text-[#52525b] hover:text-[#8b5cf6] opacity-0 group-hover:opacity-100"
+            }`}
+          >
+            <svg className="w-4 h-4" fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+            </svg>
+          </button>
         )}
       </div>
 

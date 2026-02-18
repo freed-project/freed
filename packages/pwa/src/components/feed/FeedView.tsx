@@ -11,6 +11,7 @@ export function FeedView() {
   const feeds = useAppStore((s) => s.feeds);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const markAsRead = useAppStore((s) => s.markAsRead);
+  const toggleSaved = useAppStore((s) => s.toggleSaved);
   const [addFeedOpen, setAddFeedOpen] = useState(false);
 
   const filteredItems = useMemo(() => {
@@ -84,6 +85,7 @@ export function FeedView() {
         onFocusChange={setFocusedIndex}
         onAddFeed={() => setAddFeedOpen(true)}
         hasFeedsSubscribed={Object.keys(feeds).length > 0}
+        onItemSave={(item) => toggleSaved(item.globalId)}
       />
 
       {selectedItem && (

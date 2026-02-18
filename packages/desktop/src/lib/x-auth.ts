@@ -89,41 +89,16 @@ export async function validateCookies(_cookies: XCookies): Promise<boolean> {
 }
 
 /**
- * Open X login window
- *
- * This creates a new WebView window pointing to X's login page.
- * After login, we'll extract the cookies.
+ * Connect X account by storing the provided cookies directly.
+ * The UI (Sidebar) collects ct0 and auth_token from the user via an inline form.
  */
-export async function openXLogin(): Promise<XCookies | null> {
-  return new Promise((resolve) => {
-    // Create a modal dialog for entering cookies manually
-    // In a full implementation, we'd open a WebView window
-
-    const cookieString = window.prompt(
-      "Freed needs your X/Twitter cookies to capture your timeline.\n\n" +
-        "To get them:\n" +
-        "1. Open x.com in your browser\n" +
-        "2. Log in if needed\n" +
-        "3. Open DevTools (F12)\n" +
-        "4. Go to Application > Cookies > x.com\n" +
-        "5. Copy the values of 'ct0' and 'auth_token'\n\n" +
-        "Paste your cookies in format: ct0=xxx; auth_token=xxx"
-    );
-
-    if (!cookieString) {
-      resolve(null);
-      return;
-    }
-
-    const cookies = parseCookieString(cookieString);
-    if (cookies) {
-      storeCookies(cookies);
-      resolve(cookies);
-    } else {
-      alert("Invalid cookie format. Please include both ct0 and auth_token.");
-      resolve(null);
-    }
-  });
+export function connectX(ct0: string, authToken: string): XCookies | null {
+  const ct0Trimmed = ct0.trim();
+  const tokenTrimmed = authToken.trim();
+  if (!ct0Trimmed || !tokenTrimmed) return null;
+  const cookies: XCookies = { ct0: ct0Trimmed, authToken: tokenTrimmed };
+  storeCookies(cookies);
+  return cookies;
 }
 
 /**

@@ -9,6 +9,7 @@ import type { FeedItem, RssFeed } from "@freed/shared";
 import { useAppStore } from "./store";
 import type { OPMLFeedEntry } from "@freed/shared";
 import { generateOPML, downloadFile } from "@freed/shared";
+import { captureXTimeline } from "./x-capture";
 
 // Simple RSS XML parser
 interface RssChannel {
@@ -246,6 +247,7 @@ export async function refreshAllFeeds(): Promise<void> {
   try {
     const allNewItems: FeedItem[] = [];
 
+    // Fetch RSS feeds
     for (const feed of feeds) {
       if (!feed.enabled) continue;
 
@@ -260,9 +262,19 @@ export async function refreshAllFeeds(): Promise<void> {
       }
     }
 
-    // Add all new items (deduplication handled by Automerge layer)
+    // Add all new RSS items (deduplication handled by Automerge layer)
     if (allNewItems.length > 0) {
       await store.addItems(allNewItems);
+    }
+
+    // Fetch X timeline if authenticated
+    const { xAuth } = store;
+    if (xAuth.isAuthenticated && xAuth.cookies) {
+      try {
+        await captureXTimeline(xAuth.cookies);
+      } catch (error) {
+        console.error("Failed to capture X timeline:", error);
+      }
     }
   } catch (error) {
     store.setError(
