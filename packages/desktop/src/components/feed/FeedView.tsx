@@ -1,14 +1,17 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { FeedList } from "./FeedList";
 import { ReaderView } from "./ReaderView";
+import { AddFeedDialog } from "../AddFeedDialog";
 import { useAppStore } from "../../lib/store";
 import { sortByPriority, filterFeedItems } from "@freed/shared";
 import type { FeedItem } from "@freed/shared";
 
 export function FeedView() {
   const items = useAppStore((s) => s.items);
+  const feeds = useAppStore((s) => s.feeds);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const markAsRead = useAppStore((s) => s.markAsRead);
+  const [addFeedOpen, setAddFeedOpen] = useState(false);
 
   const filteredItems = useMemo(() => {
     const filtered = filterFeedItems(items, activeFilter);
@@ -73,11 +76,15 @@ export function FeedView() {
         onItemClick={openItem}
         focusedIndex={focusedIndex}
         onFocusChange={setFocusedIndex}
+        onAddFeed={() => setAddFeedOpen(true)}
+        hasFeedsSubscribed={Object.keys(feeds).length > 0}
       />
 
       {selectedItem && (
         <ReaderView item={selectedItem} onClose={closeItem} />
       )}
+
+      <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
     </>
   );
 }
