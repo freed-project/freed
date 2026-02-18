@@ -15,6 +15,7 @@ import {
   docRemoveRssFeed,
   docUpdateFeedItem,
   docMarkAsRead,
+  docMarkAllAsRead,
   docToggleSaved,
   docUpdatePreferences,
 } from "./automerge";
@@ -53,6 +54,7 @@ interface AppState {
   addItems: (items: FeedItem[]) => Promise<void>;
   updateItem: (id: string, update: Partial<FeedItem>) => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
+  markAllAsRead: (platform?: string) => Promise<void>;
   toggleSaved: (id: string) => Promise<void>;
 
   // Feed actions (persisted to Automerge)
@@ -153,6 +155,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       await docMarkAsRead(id);
     } catch (error) {
       set({ error: error instanceof Error ? error.message : "Failed to mark as read" });
+    }
+  },
+
+  markAllAsRead: async (platform) => {
+    try {
+      await docMarkAllAsRead(platform);
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : "Failed to mark all as read" });
     }
   },
 
