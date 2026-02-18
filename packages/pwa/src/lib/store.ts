@@ -24,6 +24,7 @@ import type { FreedDoc } from "@freed/shared/schema";
 // Filter options for the feed view
 interface FilterOptions {
   platform?: string;
+  feedUrl?: string;
   tags?: string[];
   savedOnly?: boolean;
   showArchived?: boolean;

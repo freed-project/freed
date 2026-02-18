@@ -12,7 +12,11 @@ export function FeedView() {
 
   const filteredItems = useMemo(() => {
     const filtered = filterFeedItems(items, activeFilter);
-    return sortByPriority(filtered);
+    // Apply feedUrl filter (not handled by shared filterFeedItems)
+    const byFeed = activeFilter.feedUrl
+      ? filtered.filter((item) => item.rssSource?.feedUrl === activeFilter.feedUrl)
+      : filtered;
+    return sortByPriority(byFeed);
   }, [items, activeFilter]);
 
   const [selectedItem, setSelectedItem] = useState<FeedItem | null>(null);
