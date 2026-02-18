@@ -24,6 +24,7 @@ import { loadStoredCookies, type XAuthState } from "./x-auth";
 // Filter options for the feed view
 interface FilterOptions {
   platform?: string;
+  feedUrl?: string;
   tags?: string[];
   savedOnly?: boolean;
   showArchived?: boolean;
