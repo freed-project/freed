@@ -7,9 +7,16 @@ import { useAppStore } from "../../lib/store";
 interface FeedListProps {
   items: FeedItemType[];
   onItemClick?: (item: FeedItemType) => void;
+  focusedIndex?: number;
+  onFocusChange?: (index: number) => void;
 }
 
-export function FeedList({ items, onItemClick }: FeedListProps) {
+export function FeedList({
+  items,
+  onItemClick,
+  focusedIndex = -1,
+  onFocusChange,
+}: FeedListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const compactMode = useAppStore((s) => s.preferences.display.compactMode);
   const showEngagementCounts = useAppStore(
@@ -60,6 +67,8 @@ export function FeedList({ items, onItemClick }: FeedListProps) {
               onClick={() => onItemClick?.(items[virtualItem.index])}
               compact={compactMode}
               showEngagement={showEngagementCounts}
+              focused={virtualItem.index === focusedIndex}
+              onMouseEnter={() => onFocusChange?.(virtualItem.index)}
             />
           </div>
         ))}

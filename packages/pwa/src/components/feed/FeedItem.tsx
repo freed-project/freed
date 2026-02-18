@@ -6,6 +6,8 @@ interface FeedItemProps {
   onClick?: () => void;
   compact?: boolean;
   showEngagement?: boolean;
+  focused?: boolean;
+  onMouseEnter?: () => void;
 }
 
 const platformIcons: Record<string, string> = {
@@ -20,15 +22,16 @@ const platformIcons: Record<string, string> = {
   saved: "📌",
 };
 
-export function FeedItem({ item, onClick, compact = false, showEngagement = false }: FeedItemProps) {
+export function FeedItem({ item, onClick, compact = false, showEngagement = false, focused = false, onMouseEnter }: FeedItemProps) {
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
   const platformIcon = platformIcons[item.platform] || "📄";
   const avatarSize = compact ? "w-8 h-8" : "w-10 h-10";
 
   return (
     <article
-      className={`feed-card cursor-pointer active:scale-[0.99] transition-transform ${compact ? "py-2.5 px-3.5" : ""}`}
+      className={`feed-card cursor-pointer active:scale-[0.99] transition-transform ${compact ? "py-2.5 px-3.5" : ""} ${focused ? "ring-2 ring-[#8b5cf6]/60 ring-inset" : ""}`}
       onClick={onClick}
+      onMouseEnter={onMouseEnter}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => e.key === "Enter" && onClick?.()}
