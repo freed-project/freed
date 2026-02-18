@@ -1,8 +1,9 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { FeedItem } from "./FeedItem";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore } from "../../lib/store";
+import { AddFeedDialog } from "../AddFeedDialog";
 
 interface FeedListProps {
   items: FeedItemType[];
@@ -22,6 +23,9 @@ export function FeedList({
   const showEngagementCounts = useAppStore(
     (s) => s.preferences.display.showEngagementCounts,
   );
+  const feeds = useAppStore((s) => s.feeds);
+  const hasFeedsSubscribed = Object.keys(feeds).length > 0;
+  const [addFeedOpen, setAddFeedOpen] = useState(false);
 
   const virtualizer = useVirtualizer({
     count: items.length,
@@ -33,12 +37,36 @@ export function FeedList({
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 text-center px-4">
-        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#3b82f6]/20 to-[#8b5cf6]/20 flex items-center justify-center mb-4">
-          <span className="text-2xl">📡</span>
+      <>
+        <div className="flex flex-col items-center justify-center h-full min-h-64 text-center px-6 py-12">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#3b82f6]/20 to-[#8b5cf6]/20 flex items-center justify-center mb-4">
+            <span className="text-2xl">📡</span>
+          </div>
+          {hasFeedsSubscribed ? (
+            <>
+              <p className="text-lg font-medium mb-2">All caught up!</p>
+              <p className="text-sm text-[#71717a]">No new items to show.</p>
+            </>
+          ) : (
+            <>
+              <p className="text-lg font-medium mb-2">Welcome to Freed</p>
+              <p className="text-sm text-[#71717a] mb-6 max-w-xs">
+                Add RSS feeds or connect the desktop app to start reading.
+              </p>
+              <button
+                onClick={() => setAddFeedOpen(true)}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors font-medium text-sm"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add your first feed
+              </button>
+            </>
+          )}
         </div>
-        <p className="text-lg font-medium mb-2">No items yet</p>
-      </div>
+        <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
+      </>
     );
   }
 
