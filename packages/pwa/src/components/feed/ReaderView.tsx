@@ -18,9 +18,11 @@ function htmlToText(html: string): string {
 
 export function ReaderView({ item, onClose }: ReaderViewProps) {
   const updateItem = useAppStore((s) => s.updateItem);
+  const updatePreferences = useAppStore((s) => s.updatePreferences);
+  const storedDisplay = useAppStore((s) => s.preferences.display);
   const [focusOptions, setFocusOptions] = useState<FocusOptions>({
-    enabled: false,
-    intensity: "normal",
+    enabled: storedDisplay.reading.focusMode,
+    intensity: storedDisplay.reading.focusIntensity,
   });
 
   const toggleSaved = () => {
@@ -43,7 +45,17 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
   };
 
   const toggleFocus = () => {
-    setFocusOptions((prev) => ({ ...prev, enabled: !prev.enabled }));
+    setFocusOptions((prev) => {
+      const next = { ...prev, enabled: !prev.enabled };
+      // Persist the toggle back to preferences
+      updatePreferences({
+        display: {
+          ...storedDisplay,
+          reading: { focusMode: next.enabled, focusIntensity: next.intensity },
+        },
+      });
+      return next;
+    });
   };
 
   const hasContent = item.preservedContent?.html;

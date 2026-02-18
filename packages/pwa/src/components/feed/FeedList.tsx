@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { FeedItem } from "./FeedItem";
 import type { FeedItem as FeedItemType } from "@freed/shared";
+import { useAppStore } from "../../lib/store";
 
 interface FeedListProps {
   items: FeedItemType[];
@@ -10,6 +11,10 @@ interface FeedListProps {
 
 export function FeedList({ items, onItemClick }: FeedListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
+  const compactMode = useAppStore((s) => s.preferences.display.compactMode);
+  const showEngagementCounts = useAppStore(
+    (s) => s.preferences.display.showEngagementCounts,
+  );
 
   const virtualizer = useVirtualizer({
     count: items.length,
@@ -53,6 +58,8 @@ export function FeedList({ items, onItemClick }: FeedListProps) {
             <FeedItem
               item={items[virtualItem.index]}
               onClick={() => onItemClick?.(items[virtualItem.index])}
+              compact={compactMode}
+              showEngagement={showEngagementCounts}
             />
           </div>
         ))}
