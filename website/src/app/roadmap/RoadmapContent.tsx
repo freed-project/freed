@@ -510,7 +510,7 @@ const phases: Phase[] = [
     title: "Facebook + Instagram",
     description:
       "DOM scraping via headless browser. Capture the walled gardens.",
-    status: "upcoming",
+    status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-7-SOCIAL-CAPTURE.md",
   },

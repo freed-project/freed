@@ -224,7 +224,7 @@ export function createMarkerElement(item: FeedItem): HTMLElement {
 
 ## Success Criteria
 
-- [ ] Location extracted from Instagram geo-tags
+- [x] Location extracted from Instagram geo-tags (and Facebook check-ins via Phase 7 capture packages)
 - [ ] Text patterns extract locations ("in Paris", 📍)
 - [ ] Nominatim geocodes location names to coordinates
 - [ ] Geocoding results cached for performance

@@ -131,8 +131,8 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 
 - [x] Transition to Vercel for Edge function utilities.
 - [x] Transition from Vite to Next.js for better SEO and accessibility.
-- [ ] Finish first updates blog post (001-introducing-freed)
-- [ ] Finish the manifesto
+- [x] Finish first updates blog post (001-introducing-freed)
+- [x] Finish the manifesto
 - [ ] Complete newsletter subscription system:
   - [ ] Create Brevo account and contact list
   - [ ] Import existing 90k subscribers
@@ -145,7 +145,7 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 
 #### Newsletter Infrastructure
 
-The newsletter system uses Brevo for contact management and email delivery, proxied through a Vercel Edge Function to keep API keys server-side.
+The newsletter system uses Brevo for contact management and email delivery, proxied through a Next.js Edge Route Handler to keep API keys server-side.
 
 **Setup:**
 
@@ -207,7 +207,7 @@ Two Vercel projects, both auto-deploy on push to `main` with preview deploys on 
 | 1.4  | Build marketing site (landing, manifesto)    | ✓      |
 | 1.5  | Set up GitHub Actions CI/CD                  | ✓      |
 | 1.6  | Configure custom domain (freed.wtf)          | ✓      |
-| 1.7  | Add newsletter signup with Cloudflare Worker | ✓      |
+| 1.7  | Add newsletter signup with Next.js Edge Route Handler (Brevo) | ✓      |
 | 1.8  | Add Roadmap and Updates pages                | ✓      |
 | 1.9  | Generate RSS feed at build time              | ✓      |
 

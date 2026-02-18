@@ -1,6 +1,6 @@
 # Phase 6: PWA Reader
 
-> **Status:** 🚧 In Progress  
+> **Status:** ✅ Core Complete (homescreen install testing pending)
 > **Dependencies:** Phase 4 (Sync Layer), Phase 5 (Desktop App)
 
 ---
@@ -222,6 +222,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 ## Success Criteria
 
 - [x] PWA deploys to app.freed.wtf via Vercel
+<<<<<<< Updated upstream
 - [ ] Feed displays items from Automerge document
 - [ ] Per-source unread tracking works for opted-in feeds
 - [ ] Virtual scrolling handles 1000+ items smoothly
@@ -231,6 +232,17 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [ ] RSS subscription management functional
 - [ ] PWA installable on mobile (add to homescreen)
 - [ ] Offline access works (service worker + image cache)
+=======
+- [x] Feed displays items from Automerge document
+- [x] Per-source unread tracking works for opted-in feeds
+- [x] Virtual scrolling handles 1000+ items smoothly
+- [x] Reading enhancements work correctly (focus mode, font, reader view)
+- [x] Ranking weights affect item order
+- [x] Platform/author filters work (sidebar filter by platform/feed)
+- [x] RSS subscription management functional (add/remove/OPML import-export)
+- [ ] PWA installable on mobile (add to homescreen) — manifest exists, needs testing
+- [x] Offline access works (service worker + image cache via `vite-plugin-pwa` runtime caching)
+>>>>>>> Stashed changes
 
 ---
 
