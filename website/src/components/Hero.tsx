@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { FaXTwitter, FaInstagram, FaFacebook, FaRss } from "react-icons/fa6";
 import HeroAnimation from "./HeroAnimation";
 import { useNewsletter } from "@/context/NewsletterContext";
 
@@ -58,7 +59,7 @@ export default function Hero() {
           transition={{ duration: 0.8, delay: 0.3 }}
           className="order-2 lg:order-1 text-center lg:text-left"
         >
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-tight mb-4 sm:mb-6">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.05] mb-10 sm:mb-12">
             <span className="text-text-primary">Take Back</span>
             <br />
             <span className="text-text-primary">Your </span>
@@ -78,8 +79,12 @@ export default function Hero() {
             </span>
           </h1>
 
-          <p className="text-lg sm:text-xl md:text-2xl text-text-primary font-medium mb-3 sm:mb-4">
-            They built empires on your attention. Today, the walls come down.
+          <p className="inline-flex items-center gap-3 text-xl sm:text-2xl text-text-primary font-medium mb-2 sm:mb-3">
+            <FaFacebook className="text-white/90 shrink-0" />
+            <FaInstagram className="text-white/90 shrink-0" />
+            <FaXTwitter className="text-white/90 shrink-0" />
+            <FaRss className="text-white/90 shrink-0" />
+            <span>in one local app.</span>
           </p>
 
           <p className="text-base sm:text-lg text-text-secondary max-w-xl mx-auto lg:mx-0 mb-6 sm:mb-8">
