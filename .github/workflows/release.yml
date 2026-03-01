@@ -70,8 +70,8 @@ jobs:
       - name: Build workspace dependencies
         shell: bash
         run: |
-          cd packages/shared && npx tsc && cd ../..
-          cd packages/sync && npx tsc && cd ../..
+          cd packages/shared && npx -p typescript tsc && cd ../..
+          cd packages/sync && npx -p typescript tsc && cd ../..
 
       # macOS code signing (only runs if secrets are configured)
       - name: Import Apple signing certificate
