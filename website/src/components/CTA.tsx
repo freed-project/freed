@@ -2,10 +2,9 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { useNewsletter } from "@/context/NewsletterContext";
+import DownloadButton from "./DownloadButton";
 
 export default function CTA() {
-  const { openModal } = useNewsletter();
   return (
     <section className="py-16 sm:py-24 px-4 sm:px-6 md:px-12 lg:px-8">
       <div className="max-w-4xl mx-auto">
@@ -51,14 +50,7 @@ export default function CTA() {
               transition={{ delay: 0.4 }}
               className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center relative z-10"
             >
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={openModal}
-                className="btn-primary text-base px-8 py-3 w-full sm:w-auto"
-              >
-                Free Yourself
-              </motion.button>
+              <DownloadButton className="w-full sm:w-auto" />
 
               <Link href="/manifesto" className="w-full sm:w-auto">
                 <motion.button

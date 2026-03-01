@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
-import { useNewsletter } from "@/context/NewsletterContext";
+import DownloadButton from "./DownloadButton";
 
 const WTF_CAPTIONS = [
   // Core brand
@@ -46,7 +46,6 @@ const NAV_ITEMS = [
 
 export default function Navigation() {
   const pathname = usePathname();
-  const { openModal } = useNewsletter();
   const [captionIndex, setCaptionIndex] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -172,9 +171,7 @@ export default function Navigation() {
         GitHub
       </a>
 
-      <button onClick={openModal} className="btn-primary text-sm !py-2">
-        Get Freed
-      </button>
+      <DownloadButton className="" />
     </div>
   );
 
@@ -323,18 +320,14 @@ export default function Navigation() {
                   GitHub
                 </motion.a>
 
-                <motion.button
+                <motion.div
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.25, duration: 0.15 }}
-                  onClick={() => {
-                    openModal();
-                    setMobileMenuOpen(false);
-                  }}
-                  className="btn-primary text-lg px-12 py-4 mt-4"
+                  className="mt-4"
                 >
-                  Get Freed
-                </motion.button>
+                  <DownloadButton size="large" />
+                </motion.div>
               </div>
             </motion.div>
           )}

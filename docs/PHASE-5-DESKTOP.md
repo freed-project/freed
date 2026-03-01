@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** ✅ Core Complete (packaging/distribution pending)
+> **Status:** 🚧 In Progress (desktop distribution ready, code signing deferred)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -179,6 +179,10 @@ export async function captureDomFeed(
 | 5.10 | macOS notarization + DMG packaging | High       |
 | 5.11 | Windows installer                  | Medium     |
 | 5.12 | Linux AppImage/Flatpak             | Medium     |
+| 5.22 | Auto-updater (tauri-plugin-updater)| Medium     |
+| 5.23 | CI/CD release pipeline (GH Actions)| Medium     |
+| 5.24 | macOS code signing + notarization  | High       |
+| 5.25 | Windows code signing               | Medium     |
 
 ### Mobile (Tauri 2.0)
 
@@ -246,9 +250,22 @@ packages/desktop/
 - [x] QR code pairing works
 - [x] System tray shows sync status
 - [x] App runs in background after window close
+- [x] Auto-updater checks GitHub Releases and installs updates in-app
+- [x] CI/CD release pipeline builds for macOS (ARM + Intel), Windows, Linux on tag push
+- [x] App icons generated for all platforms
 - [ ] macOS DMG is notarized and installable
 - [ ] Windows installer works
 - [ ] Linux AppImage works
+
+> **Deferred — Code Signing:**
+> macOS notarization and Windows code signing require secrets to be
+> configured in GitHub Actions. An Apple Developer certificate has been
+> obtained but needs to be exported and added to GitHub secrets before
+> Gatekeeper will allow unsigned-download installs. Until then, macOS
+> users must bypass Gatekeeper via `xattr -cr Freed.app`.
+> Windows SmartScreen warnings will appear until an EV certificate is
+> obtained or enough installs build reputation. See `RELEASE-SECRETS.md`
+> for the full setup checklist.
 
 ### Mobile
 

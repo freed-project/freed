@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { AppShell } from "./components/layout/AppShell";
 import { FeedView } from "./components/feed/FeedView";
+import { UpdateNotification } from "./components/UpdateNotification";
 import { useAppStore } from "./lib/store";
 import { startRssPoller, stopRssPoller } from "./lib/rss-poller";
 
@@ -55,6 +56,7 @@ function App() {
       <AppShell>
         <FeedView />
       </AppShell>
+      <UpdateNotification />
     </div>
   );
 }

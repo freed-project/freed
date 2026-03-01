@@ -482,7 +482,7 @@ const phases: Phase[] = [
     title: "Sync Layer",
     description:
       "Local WebSocket relay + cloud backup. Automerge CRDT for conflict-free sync.",
-    status: "current",
+    status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-4-SYNC.md",
   },
@@ -490,7 +490,7 @@ const phases: Phase[] = [
     number: 5,
     title: "Desktop & Mobile App",
     description:
-      "Native apps (macOS, Windows, Linux, iOS, Android) bundling capture, sync, and reader UI.",
+      "Native apps (macOS, Windows, Linux) with auto-updates via GitHub Releases. Code signing in progress.",
     status: "current",
     priority: true,
     planLink:

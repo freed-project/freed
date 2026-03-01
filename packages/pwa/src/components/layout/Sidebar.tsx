@@ -1,9 +1,6 @@
 import { useState, useMemo } from "react";
 import { useAppStore } from "../../lib/store";
-import {
-  disconnect,
-  clearStoredRelayUrl,
-} from "../../lib/sync";
+import { disconnect, clearStoredRelayUrl } from "../../lib/sync";
 import { SyncConnectDialog } from "../SyncConnectDialog";
 import { SettingsPanel } from "../SettingsPanel";
 
@@ -33,7 +30,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     const counts: Record<string, number> = {};
     for (const item of items) {
       if (!item.rssSource) continue;
-      if (item.userState.readAt || item.userState.hidden || item.userState.archived) continue;
+      if (
+        item.userState.readAt ||
+        item.userState.hidden ||
+        item.userState.archived
+      )
+        continue;
       const url = item.rssSource.feedUrl;
       counts[url] = (counts[url] ?? 0) + 1;
     }
@@ -90,7 +92,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           border-r border-[rgba(255,255,255,0.08)]
           transform transition-transform duration-200 ease-in-out
           ${open ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-          overflow-hidden flex flex-col
+          overflow-y-auto flex flex-col
         `}
       >
         {/* Mobile header with close button */}
@@ -116,84 +118,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </button>
         </div>
 
-        <nav className="flex-1 min-h-0 flex flex-col p-4">
-          {/* Sources */}
-          <div className="flex-shrink-0 mb-6">
-            <h2 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-3">
-              Sources
-            </h2>
-            <ul className="space-y-1">
-              {topSources.map((source) => (
-                <li key={source.id ?? "all"}>
-                  <button
-                    onClick={() => handleSourceClick(source)}
-                    className={`
-                      w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
-                      text-left text-sm transition-all
-                      ${
-                        isTopSourceActive(source)
-                          ? "bg-[#8b5cf6]/20 text-white border border-[#8b5cf6]/30"
-                          : "text-[#a1a1aa] hover:bg-white/5 hover:text-white"
-                      }
-                    `}
-                  >
-                    <span className="w-5 text-center">{source.icon}</span>
-                    <span className="flex-1">{source.label}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Individual RSS feeds — scrollable region */}
-          {feedList.length > 0 && (
-            <div className="flex-1 min-h-0 flex flex-col mb-6">
-              <h2 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-3 flex-shrink-0">
-                Feeds
-              </h2>
-              <ul className="space-y-0.5 overflow-y-auto min-h-0 flex-1">
-                {feedList.map((feed) => {
-                  const unread = feedUnreadCounts[feed.url] ?? 0;
-                  const isActive = activeFilter.feedUrl === feed.url;
-                  return (
-                    <li key={feed.url}>
-                      <button
-                        onClick={() => handleFeedClick(feed.url)}
-                        className={`
-                          w-full flex items-center gap-2 px-3 py-2 rounded-lg
-                          text-left text-sm transition-all
-                          ${
-                            isActive
-                              ? "bg-[#8b5cf6]/20 text-white border border-[#8b5cf6]/30"
-                              : "text-[#a1a1aa] hover:bg-white/5 hover:text-white"
-                          }
-                        `}
-                      >
-                        {feed.imageUrl ? (
-                          <img
-                            src={feed.imageUrl}
-                            alt=""
-                            className="w-4 h-4 rounded-sm flex-shrink-0 object-cover"
-                          />
-                        ) : (
-                          <span className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-[10px] text-[#52525b]">
-                            📡
-                          </span>
-                        )}
-                        <span className="flex-1 truncate text-xs">{feed.title}</span>
-                        {unread > 0 && (
-                          <span className="flex-shrink-0 text-[10px] tabular-nums bg-[#8b5cf6]/20 text-[#8b5cf6] px-1.5 py-0.5 rounded-full">
-                            {unread > 99 ? "99+" : unread}
-                          </span>
-                        )}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-
+        <nav className="min-h-full flex flex-col p-4 pb-12">
           {/* Sync Status */}
           <div className="flex-shrink-0 mb-6 p-3 rounded-xl bg-white/5 border border-[rgba(255,255,255,0.08)]">
             <div className="flex items-center justify-between mb-2">
@@ -224,8 +149,87 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             )}
           </div>
 
-          {/* Actions */}
-          <div className="flex-shrink-0 pt-4 border-t border-[rgba(255,255,255,0.08)]">
+          {/* Sources */}
+          <div className="flex-shrink-0 mb-6">
+            <h2 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-3">
+              Sources
+            </h2>
+            <ul className="space-y-1">
+              {topSources.map((source) => (
+                <li key={source.id ?? "all"}>
+                  <button
+                    onClick={() => handleSourceClick(source)}
+                    className={`
+                      w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+                      text-left text-sm transition-all border
+                      ${
+                        isTopSourceActive(source)
+                          ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
+                          : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                      }
+                    `}
+                  >
+                    <span className="w-5 text-center">{source.icon}</span>
+                    <span className="flex-1">{source.label}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Individual RSS feeds — scrollable region */}
+          {feedList.length > 0 && (
+            <div className="flex-1 min-h-0 flex flex-col mb-6">
+              <h2 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-3 flex-shrink-0">
+                Feeds
+              </h2>
+              <ul className="space-y-0.5 overflow-y-auto min-h-0 flex-1">
+                {feedList.map((feed) => {
+                  const unread = feedUnreadCounts[feed.url] ?? 0;
+                  const isActive = activeFilter.feedUrl === feed.url;
+                  return (
+                    <li key={feed.url}>
+                      <button
+                        onClick={() => handleFeedClick(feed.url)}
+                        className={`
+                          w-full flex items-center gap-2 px-3 py-2 rounded-lg
+                          text-left text-sm transition-all border
+                          ${
+                            isActive
+                              ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
+                              : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                          }
+                        `}
+                      >
+                        {feed.imageUrl ? (
+                          <img
+                            src={feed.imageUrl}
+                            alt=""
+                            className="w-4 h-4 rounded-sm flex-shrink-0 object-cover"
+                          />
+                        ) : (
+                          <span className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-[10px] text-[#52525b]">
+                            📡
+                          </span>
+                        )}
+                        <span className="flex-1 truncate text-xs">
+                          {feed.title}
+                        </span>
+                        {unread > 0 && (
+                          <span className="flex-shrink-0 text-[10px] tabular-nums bg-[#8b5cf6]/20 text-[#8b5cf6] px-1.5 py-0.5 rounded-full">
+                            {unread > 99 ? "99+" : unread}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          {/* Library */}
+          <div className="flex-shrink-0 mb-6">
             <h2 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-3">
               Library
             </h2>
@@ -238,11 +242,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   }}
                   className={`
                     w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
-                    text-left text-sm transition-all
+                    text-left text-sm transition-all border
                     ${
                       activeFilter.showArchived
-                        ? "bg-[#8b5cf6]/20 text-white border border-[#8b5cf6]/30"
-                        : "text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                        ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
+                        : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
                     }
                   `}
                 >
@@ -254,15 +258,30 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </div>
 
           {/* Settings */}
-          <div className="flex-shrink-0 pt-4 border-t border-[rgba(255,255,255,0.08)]">
+          <div className="mt-auto">
             <button
               onClick={() => setShowSettings(true)}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-all"
             >
               <span className="w-5 text-center">
-                <svg className="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <svg
+                  className="w-4 h-4 inline"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
                 </svg>
               </span>
               <span>Settings</span>

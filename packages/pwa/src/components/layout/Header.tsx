@@ -69,7 +69,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   return (
     <>
-      <header className="h-14 flex items-center px-4 border-b border-[rgba(255,255,255,0.08)] bg-[#0a0a0a]/90 backdrop-blur-xl sticky top-0 z-30">
+      <header className="flex-shrink-0 h-14 flex items-center px-4 border-b border-[rgba(255,255,255,0.08)] bg-[#0a0a0a]/90 backdrop-blur-xl z-30 pt-[env(safe-area-inset-top)]">
         {/* Mobile menu button */}
         <button
           onClick={onMenuClick}

@@ -19,8 +19,8 @@ export function AppShell({ children }: AppShellProps) {
         {/* Sidebar - desktop always visible, mobile slide-out */}
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-        {/* Main content - scrollable */}
-        <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
+        {/* Main content */}
+        <main className="flex-1 h-full overflow-hidden">{children}</main>
       </div>
     </div>
   );

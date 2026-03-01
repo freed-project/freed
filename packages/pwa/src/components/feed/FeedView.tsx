@@ -77,7 +77,7 @@ export function FeedView() {
   }, [activeFilter]);
 
   return (
-    <>
+    <div className="h-full flex flex-col">
       <FeedList
         items={filteredItems}
         onItemClick={openItem}
@@ -93,6 +93,6 @@ export function FeedView() {
       )}
 
       <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
-    </>
+    </div>
   );
 }

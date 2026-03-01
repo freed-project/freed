@@ -42,7 +42,7 @@ export function FeedList({
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full min-h-64 text-center px-6 py-12">
+      <div className="flex flex-col items-center justify-center flex-1 min-h-0 overflow-auto text-center px-6 py-12">
         <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#3b82f6]/20 to-[#8b5cf6]/20 flex items-center justify-center mb-4">
           <span className="text-2xl">📡</span>
         </div>
@@ -75,7 +75,7 @@ export function FeedList({
   }
 
   return (
-    <div ref={parentRef} className="h-full overflow-auto overscroll-none">
+    <div ref={parentRef} className="flex-1 min-h-0 overflow-auto overscroll-none">
       <div
         style={{ height: virtualizer.getTotalSize() }}
         className="relative w-full"
