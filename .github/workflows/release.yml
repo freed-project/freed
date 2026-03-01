@@ -68,6 +68,26 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci --ignore-scripts
 
+      - name: Force Automerge base64 WASM entry
+        shell: bash
+        run: |
+          node -e "
+            const fs = require('fs');
+            const p = 'node_modules/@automerge/automerge/package.json';
+            const pkg = JSON.parse(fs.readFileSync(p, 'utf-8'));
+            let n = 0;
+            for (const [, e] of Object.entries(pkg.exports || {})) {
+              if (typeof e !== 'object' || !e.browser) continue;
+              const b = e.browser;
+              if (typeof b === 'object' && typeof b.import === 'string' && b.import.includes('bundler')) {
+                b.import = b.import.replace(/fullfat_bundler/g, 'fullfat_base64');
+                n++;
+              }
+            }
+            fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
+            console.log('Forced ' + n + ' Automerge export(s) to fullfat_base64');
+          "
+
       - name: Build workspace dependencies
         shell: bash
         run: |
@@ -100,7 +120,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: packages/desktop
           tauriScript: npx tauri
