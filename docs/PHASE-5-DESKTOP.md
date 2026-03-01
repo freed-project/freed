@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (desktop distribution ready, code signing deferred)
+> **Status:** 🚧 In Progress (v0.2.0 binaries shipping for all platforms, code signing deferred)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -253,9 +253,12 @@ packages/desktop/
 - [x] Auto-updater checks GitHub Releases and installs updates in-app
 - [x] CI/CD release pipeline builds for macOS (ARM + Intel), Windows, Linux on tag push
 - [x] App icons generated for all platforms
-- [ ] macOS DMG is notarized and installable
-- [ ] Windows installer works
-- [ ] Linux AppImage works
+- [x] macOS DMG builds (notarization deferred)
+- [x] Windows NSIS + MSI installers build
+- [x] Linux AppImage, .deb, .rpm all build
+- [x] All updater artifacts signed and uploaded to GitHub Releases
+- [ ] macOS DMG is notarized (requires APPLE_CERTIFICATE secret)
+- [ ] Windows installer is code-signed (requires EV certificate)
 
 > **Deferred — Code Signing:**
 > macOS notarization and Windows code signing require secrets to be

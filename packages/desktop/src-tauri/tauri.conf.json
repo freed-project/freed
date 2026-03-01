@@ -51,7 +51,7 @@
       "open": true
     },
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDRDNEVCNTU5QThGOUYzREEKUldUYTgvbW9XYlZPVExDK1BTSk9YVmFMYWl4MlA1dnRDakE4TmtSUkQwNWZqWUNxbjg5OTMxczMK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZCNjc0QTYyMDg3MzMyRUUKUldUdU1uTUlZa3BuKzAzK3orZzBQUkdnZ0l5NnB5YUZjTWd5L2tiYmxOY2tRRkxJRHZNVThEaG8K",
       "endpoints": [
         "https://github.com/freed-project/freed/releases/latest/download/latest.json"
       ],
