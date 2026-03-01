@@ -1,41 +1,78 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNewsletter } from "@/context/NewsletterContext";
 
 type SubmitState = "idle" | "loading" | "success" | "error";
-type Platform = "mac" | "windows" | "linux" | "unknown";
 
-const GITHUB_RELEASE =
-  "https://github.com/freed-project/freed/releases/latest";
+const VERSION = "0.2.0";
+const RELEASE_BASE = `https://github.com/freed-project/freed/releases/download/v${VERSION}`;
 
-function detectPlatform(): Platform {
-  if (typeof navigator === "undefined") return "unknown";
+type DownloadKey = "mac-arm" | "mac-intel" | "windows" | "linux";
+
+const DOWNLOADS: Record<DownloadKey, { label: string; file: string }> = {
+  "mac-arm": {
+    label: "macOS (Apple Silicon)",
+    file: `Freed_${VERSION}_aarch64.dmg`,
+  },
+  "mac-intel": {
+    label: "macOS (Intel)",
+    file: `Freed_${VERSION}_x64.dmg`,
+  },
+  windows: {
+    label: "Windows",
+    file: `Freed_${VERSION}_x64-setup.exe`,
+  },
+  linux: {
+    label: "Linux",
+    file: `Freed_${VERSION}_amd64.AppImage`,
+  },
+};
+
+function detectDownloadKey(): DownloadKey {
+  if (typeof navigator === "undefined") return "mac-arm";
   const ua = navigator.userAgent.toLowerCase();
-  if (ua.includes("mac")) return "mac";
+
   if (ua.includes("win")) return "windows";
   if (ua.includes("linux")) return "linux";
-  return "unknown";
-}
 
-const PLATFORM_LABELS: Record<Platform, string> = {
-  mac: "macOS",
-  windows: "Windows",
-  linux: "Linux",
-  unknown: "your platform",
-};
+  if (ua.includes("mac")) {
+    // Post-2020 Macs are overwhelmingly ARM. WebGL renderer can confirm:
+    // Apple GPU = Apple Silicon, Intel HD/Iris = Intel.
+    try {
+      const canvas = document.createElement("canvas");
+      const gl =
+        canvas.getContext("webgl2") || canvas.getContext("webgl");
+      if (gl) {
+        const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+        if (dbg) {
+          const renderer = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL);
+          if (/intel/i.test(renderer)) return "mac-intel";
+        }
+      }
+    } catch {
+      // WebGL unavailable — fall through to ARM default
+    }
+    return "mac-arm";
+  }
+
+  return "mac-arm";
+}
 
 export default function NewsletterModal() {
   const { isOpen, closeModal } = useNewsletter();
   const [email, setEmail] = useState("");
   const [state, setState] = useState<SubmitState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
-  const [platform, setPlatform] = useState<Platform>("unknown");
+  const [selectedPlatform, setSelectedPlatform] =
+    useState<DownloadKey>("mac-arm");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    setPlatform(detectPlatform());
+    setSelectedPlatform(detectDownloadKey());
   }, []);
 
   useEffect(() => {
@@ -45,42 +82,64 @@ export default function NewsletterModal() {
     }
   }, [isOpen, state]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || state === "loading") return;
-
-    setState("loading");
-    setErrorMessage("");
-
-    try {
-      const response = await fetch("/api/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-
-      const data = await response.json();
-
-      if (response.ok && data.success) {
-        setState("success");
-        setEmail("");
-      } else {
-        setState("error");
-        setErrorMessage(data.error || "Something went wrong");
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
+        setDropdownOpen(false);
       }
-    } catch {
-      setState("error");
-      setErrorMessage("Network error. Please try again.");
-    }
-  };
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [dropdownOpen]);
+
+  const handleSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!email || state === "loading") return;
+
+      setState("loading");
+      setErrorMessage("");
+
+      try {
+        const response = await fetch("/api/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+          setState("success");
+          setEmail("");
+        } else {
+          setState("error");
+          setErrorMessage(data.error || "Something went wrong");
+        }
+      } catch {
+        setState("error");
+        setErrorMessage("Network error. Please try again.");
+      }
+    },
+    [email, state],
+  );
 
   const handleClose = () => {
     if (state !== "loading") {
       setState("idle");
       setErrorMessage("");
+      setDropdownOpen(false);
     }
     closeModal();
   };
+
+  const currentDownload = DOWNLOADS[selectedPlatform];
+  const downloadUrl = `${RELEASE_BASE}/${currentDownload.file}`;
 
   return (
     <AnimatePresence>
@@ -104,14 +163,14 @@ export default function NewsletterModal() {
             transition={{ type: "spring", duration: 0.5 }}
             className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-lg px-4"
           >
-            <div className="relative p-8 sm:p-10 overflow-hidden rounded-2xl bg-freed-black/80 backdrop-blur-xl border border-freed-border shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+            <div className="relative p-10 sm:p-12 overflow-hidden rounded-2xl bg-freed-black/80 backdrop-blur-xl border border-freed-border shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
               {/* Decorative glows */}
               <div className="absolute top-0 left-1/4 w-32 h-32 bg-glow-purple/20 rounded-full blur-3xl" />
               <div className="absolute bottom-0 right-1/4 w-40 h-40 bg-glow-blue/20 rounded-full blur-3xl" />
 
               <button
                 onClick={handleClose}
-                className="absolute top-4 right-4 text-text-muted hover:text-text-primary transition-colors"
+                className="absolute top-5 right-5 text-text-muted hover:text-text-primary transition-colors"
               >
                 <svg
                   className="w-6 h-6"
@@ -133,7 +192,7 @@ export default function NewsletterModal() {
                   <SuccessView onClose={handleClose} />
                 ) : (
                   <>
-                    <div className="text-center mb-8">
+                    <div className="text-center mb-10">
                       <h3
                         id="get-freed-title"
                         className="text-2xl font-bold text-text-primary mb-2"
@@ -191,54 +250,112 @@ export default function NewsletterModal() {
                       </svg>
                     </a>
 
-                    {/* --- Desktop Download --- */}
-                    <a
-                      href={GITHUB_RELEASE}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group flex items-center gap-4 p-4 rounded-xl border border-freed-border hover:border-glow-purple/40 bg-freed-surface/40 hover:bg-freed-surface/70 transition-all mb-6"
-                    >
-                      <div className="shrink-0 w-10 h-10 rounded-lg bg-freed-surface border border-freed-border flex items-center justify-center">
-                        <svg
-                          className="w-5 h-5 text-text-secondary"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={2}
+                    {/* --- Desktop Download with platform dropdown --- */}
+                    <div className="relative mb-8" ref={dropdownRef}>
+                      <div className="flex items-center rounded-xl border border-freed-border hover:border-glow-purple/40 bg-freed-surface/40 hover:bg-freed-surface/70 transition-all">
+                        <a
+                          href={downloadUrl}
+                          className="group flex items-center gap-4 p-4 flex-1 min-w-0"
                         >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-                          />
-                        </svg>
+                          <div className="shrink-0 w-10 h-10 rounded-lg bg-freed-surface border border-freed-border flex items-center justify-center">
+                            <svg
+                              className="w-5 h-5 text-text-secondary"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                              />
+                            </svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-text-primary group-hover:text-white transition-colors">
+                              Download for {currentDownload.label}
+                            </p>
+                            <p className="text-xs text-text-muted">
+                              {currentDownload.file}
+                            </p>
+                          </div>
+                        </a>
+                        <button
+                          onClick={() => setDropdownOpen((o) => !o)}
+                          aria-label="Choose a different platform"
+                          className="shrink-0 px-3 self-stretch border-l border-freed-border text-text-muted hover:text-text-primary transition-colors"
+                        >
+                          <svg
+                            className={`w-4 h-4 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M19.5 8.25l-7.5 7.5-7.5-7.5"
+                            />
+                          </svg>
+                        </button>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-text-primary group-hover:text-white transition-colors">
-                          Download for {PLATFORM_LABELS[platform]}
-                        </p>
-                        <p className="text-xs text-text-muted">
-                          Native desktop app with capture, sync, and
-                          auto-updates
-                        </p>
-                      </div>
-                      <svg
-                        className="w-4 h-4 text-text-muted group-hover:text-text-secondary transition-colors shrink-0"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"
-                        />
-                      </svg>
-                    </a>
+
+                      {/* Platform dropdown */}
+                      <AnimatePresence>
+                        {dropdownOpen && (
+                          <motion.ul
+                            initial={{ opacity: 0, y: -4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -4 }}
+                            transition={{ duration: 0.15 }}
+                            className="absolute left-0 right-0 mt-1.5 rounded-xl border border-freed-border bg-freed-black/95 backdrop-blur-xl shadow-lg overflow-hidden z-20"
+                          >
+                            {(
+                              Object.entries(DOWNLOADS) as [
+                                DownloadKey,
+                                (typeof DOWNLOADS)[DownloadKey],
+                              ][]
+                            ).map(([key, dl]) => (
+                              <li key={key}>
+                                <button
+                                  onClick={() => {
+                                    setSelectedPlatform(key);
+                                    setDropdownOpen(false);
+                                  }}
+                                  className={`w-full text-left px-4 py-3 text-sm transition-colors flex items-center justify-between ${
+                                    key === selectedPlatform
+                                      ? "text-white bg-freed-surface/60"
+                                      : "text-text-secondary hover:text-white hover:bg-freed-surface/40"
+                                  }`}
+                                >
+                                  <span>{dl.label}</span>
+                                  {key === selectedPlatform && (
+                                    <svg
+                                      className="w-4 h-4 text-glow-purple"
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                      strokeWidth={2}
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        d="M4.5 12.75l6 6 9-13.5"
+                                      />
+                                    </svg>
+                                  )}
+                                </button>
+                              </li>
+                            ))}
+                          </motion.ul>
+                        )}
+                      </AnimatePresence>
+                    </div>
 
                     {/* --- Divider --- */}
-                    <div className="flex items-center gap-3 mb-5">
+                    <div className="flex items-center gap-3 mb-6">
                       <div className="flex-1 h-px bg-freed-border" />
                       <span className="text-xs text-text-muted uppercase tracking-wider">
                         Stay in the loop
@@ -299,7 +416,7 @@ function SuccessView({ onClose }: { onClose: () => void }) {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="text-center py-4"
+      className="text-center py-6"
     >
       <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/20 flex items-center justify-center">
         <svg

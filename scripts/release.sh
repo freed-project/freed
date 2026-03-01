@@ -15,6 +15,7 @@ DESKTOP_DIR="packages/desktop"
 TAURI_CONF="${DESKTOP_DIR}/src-tauri/tauri.conf.json"
 CARGO_TOML="${DESKTOP_DIR}/src-tauri/Cargo.toml"
 PKG_JSON="${DESKTOP_DIR}/package.json"
+MODAL_TSX="website/src/components/NewsletterModal.tsx"
 
 echo "==> Bumping to ${VERSION} (tag: ${TAG})"
 
@@ -49,13 +50,17 @@ node -e "
   fs.writeFileSync('${PKG_JSON}', JSON.stringify(pkg, null, 2) + '\n');
 "
 
+# Update download VERSION in the marketing site modal
+sed -i '' "s/^const VERSION = \".*\"/const VERSION = \"${VERSION}\"/" "${MODAL_TSX}"
+
 echo "==> Updated:"
 echo "    ${TAURI_CONF}"
 echo "    ${CARGO_TOML}"
 echo "    ${PKG_JSON}"
+echo "    ${MODAL_TSX}"
 
 # Commit and tag
-git add "${TAURI_CONF}" "${CARGO_TOML}" "${PKG_JSON}"
+git add "${TAURI_CONF}" "${CARGO_TOML}" "${PKG_JSON}" "${MODAL_TSX}"
 git commit -m "release: ${TAG}"
 git tag -a "${TAG}" -m "Release ${TAG}"
 
