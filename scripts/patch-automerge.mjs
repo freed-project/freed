@@ -2,13 +2,14 @@
 /**
  * Patch @automerge/automerge package.json exports
  *
- * Vite 7 resolves the `browser` export condition to `fullfat_bundler.js`,
- * which imports raw `.wasm` files via ESM — an unsupported pattern that
- * triggers Vite's "ESM integration proposal for Wasm" rejection.
+ * Ensures the `browser` export condition uses `fullfat_bundler.js` (which
+ * imports .wasm files via ESM) rather than `fullfat_base64.js` (which inlines
+ * the WASM binary as a base64 string).
  *
- * The `fullfat_base64.js` entry inlines the WASM binary as base64, avoiding
- * the problem entirely. This script patches the exports map so the `browser`
- * condition points there instead.
+ * With vite-plugin-wasm handling ESM WASM imports, the bundler entry gives us:
+ *   - Separate .wasm asset (streamed via WebAssembly.instantiateStreaming)
+ *   - ~65% smaller JS bundle (no base64 bloat)
+ *   - Independent caching of WASM vs app code
  *
  * Run automatically via the root `postinstall` script.
  */
@@ -31,9 +32,9 @@ try {
     if (typeof entry !== "object" || !entry.browser) continue;
     const browser = entry.browser;
     if (typeof browser === "object" && typeof browser.import === "string") {
-      if (browser.import.includes("fullfat_bundler")) {
+      if (browser.import.includes("fullfat_base64")) {
         const before = browser.import;
-        browser.import = before.replace("fullfat_bundler", "fullfat_base64");
+        browser.import = before.replace("fullfat_base64", "fullfat_bundler");
         patched++;
         console.log(
           `[patch-automerge] ${key}.browser.import: ${before} → ${browser.import}`,
@@ -49,7 +50,6 @@ try {
     console.log("[patch-automerge] No patching needed (already correct)");
   }
 } catch (err) {
-  // Non-fatal — the package might not be installed yet
   if (err.code === "ENOENT") {
     console.log("[patch-automerge] @automerge/automerge not found, skipping");
   } else {

@@ -1,24 +1,21 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import wasm from 'vite-plugin-wasm'
+import topLevelAwait from 'vite-plugin-top-level-await'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// https://vite.dev/config/
-//
-// Note: @automerge/automerge's browser export condition is patched by
-// scripts/patch-automerge.mjs (run via postinstall) to use fullfat_base64.js
-// instead of fullfat_bundler.js, avoiding Vite 7's ESM WASM rejection.
 export default defineConfig({
   plugins: [
+    wasm(),
+    topLevelAwait(),
     react(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'icons/*.png'],
-      manifest: false, // use our own manifest.json in /public
+      manifest: false,
       workbox: {
-        // Cache strategies for different resource types
         runtimeCaching: [
           {
-            // Feed images: cache-first, 30 day max age
             urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|avif)$/i,
             handler: 'CacheFirst',
             options: {
@@ -30,7 +27,20 @@ export default defineConfig({
             },
           },
           {
-            // API/fetch calls: network-first with cache fallback
+            // Automerge WASM: cache-first, loaded once at startup.
+            // Not precached because automerge emits a duplicate web/ WASM
+            // via low_level.js that's never actually fetched at runtime.
+            urlPattern: /\.wasm$/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'freed-wasm',
+              expiration: {
+                maxEntries: 5,
+                maxAgeSeconds: 60 * 60 * 24 * 365,
+              },
+            },
+          },
+          {
             urlPattern: /^https?:\/\//,
             handler: 'NetworkFirst',
             options: {
@@ -43,14 +53,11 @@ export default defineConfig({
             },
           },
         ],
-        // App shell: precache all built assets
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,wasm}'],
-        // Skip waiting to activate new SW immediately
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         skipWaiting: true,
         clientsClaim: true,
       },
       devOptions: {
-        // Enable PWA in dev for testing
         enabled: false,
       },
     }),
