@@ -118,7 +118,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </button>
         </div>
 
-        <nav className="min-h-full flex flex-col p-4 pb-12">
+        <nav className="min-h-full flex flex-col p-4">
           {/* Sync Status */}
           <div className="flex-shrink-0 mb-6 p-3 rounded-xl bg-white/5 border border-[rgba(255,255,255,0.08)]">
             <div className="flex items-center justify-between mb-2">
