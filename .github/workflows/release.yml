@@ -37,10 +37,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          bun-version: latest
+          node-version: "lts/*"
+          cache: "npm"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -65,13 +66,13 @@ jobs:
             libgtk-3-dev
 
       - name: Install frontend dependencies
-        run: bun install
+        run: npm ci
 
       - name: Build workspace dependencies
         shell: bash
         run: |
-          cd packages/shared && npx -p typescript tsc && cd ../..
-          cd packages/sync && npx -p typescript tsc && cd ../..
+          npm run build -w @freed/shared
+          npm run build -w @freed/sync
 
       # macOS code signing (only runs if secrets are configured)
       - name: Import Apple signing certificate
@@ -98,9 +99,7 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Updater signing (required)
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # macOS signing + notarization (optional until configured)
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
