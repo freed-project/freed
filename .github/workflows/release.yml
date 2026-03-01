@@ -58,21 +58,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
+            libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf \
             libssl-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev
+            libgtk-3-dev
 
       - name: Install frontend dependencies
         run: bun install
 
       - name: Build workspace dependencies
+        shell: bash
         run: |
-          bun run build -w @freed/shared
-          bun run build -w @freed/sync
-          bun run build -w @freed/pwa
+          cd packages/shared && npx tsc && cd ../..
+          cd packages/sync && npx tsc && cd ../..
 
       # macOS code signing (only runs if secrets are configured)
       - name: Import Apple signing certificate
