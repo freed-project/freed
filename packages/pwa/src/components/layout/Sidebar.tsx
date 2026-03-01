@@ -90,7 +90,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           border-r border-[rgba(255,255,255,0.08)]
           transform transition-transform duration-200 ease-in-out
           ${open ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-          overflow-y-auto
+          overflow-hidden flex flex-col
         `}
       >
         {/* Mobile header with close button */}
@@ -116,9 +116,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </button>
         </div>
 
-        <nav className="p-4">
+        <nav className="flex-1 min-h-0 flex flex-col p-4">
           {/* Sources */}
-          <div className="mb-6">
+          <div className="flex-shrink-0 mb-6">
             <h2 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-3">
               Sources
             </h2>
@@ -145,13 +145,13 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </ul>
           </div>
 
-          {/* Individual RSS feeds */}
+          {/* Individual RSS feeds — scrollable region */}
           {feedList.length > 0 && (
-            <div className="mb-6">
-              <h2 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-3">
+            <div className="flex-1 min-h-0 flex flex-col mb-6">
+              <h2 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-3 flex-shrink-0">
                 Feeds
               </h2>
-              <ul className="space-y-0.5">
+              <ul className="space-y-0.5 overflow-y-auto min-h-0 flex-1">
                 {feedList.map((feed) => {
                   const unread = feedUnreadCounts[feed.url] ?? 0;
                   const isActive = activeFilter.feedUrl === feed.url;
@@ -195,7 +195,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           )}
 
           {/* Sync Status */}
-          <div className="mb-6 p-3 rounded-xl bg-white/5 border border-[rgba(255,255,255,0.08)]">
+          <div className="flex-shrink-0 mb-6 p-3 rounded-xl bg-white/5 border border-[rgba(255,255,255,0.08)]">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium">Desktop Sync</span>
               <div className="flex items-center gap-2">
@@ -225,7 +225,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </div>
 
           {/* Actions */}
-          <div className="pt-4 border-t border-[rgba(255,255,255,0.08)]">
+          <div className="flex-shrink-0 pt-4 border-t border-[rgba(255,255,255,0.08)]">
             <h2 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-3">
               Library
             </h2>
@@ -254,7 +254,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </div>
 
           {/* Settings */}
-          <div className="pt-4 border-t border-[rgba(255,255,255,0.08)]">
+          <div className="flex-shrink-0 pt-4 border-t border-[rgba(255,255,255,0.08)]">
             <button
               onClick={() => setShowSettings(true)}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-all"
