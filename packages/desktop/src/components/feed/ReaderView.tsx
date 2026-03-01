@@ -1,14 +1,29 @@
+import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore } from "../../lib/store";
+import { applyFocusMode, type FocusOptions } from "../../lib/focus-text";
 
 interface ReaderViewProps {
   item: FeedItemType;
   onClose: () => void;
 }
 
+/** Strip HTML tags, returning plain text for focus mode rendering */
+function htmlToText(html: string): string {
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  return div.textContent ?? div.innerText ?? "";
+}
+
 export function ReaderView({ item, onClose }: ReaderViewProps) {
   const updateItem = useAppStore((s) => s.updateItem);
+  const updatePreferences = useAppStore((s) => s.updatePreferences);
+  const storedDisplay = useAppStore((s) => s.preferences.display);
+  const [focusOptions, setFocusOptions] = useState<FocusOptions>({
+    enabled: storedDisplay.reading.focusMode,
+    intensity: storedDisplay.reading.focusIntensity,
+  });
 
   const toggleSaved = () => {
     updateItem(item.globalId, {
@@ -29,8 +44,26 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
     });
   };
 
+  const toggleFocus = () => {
+    setFocusOptions((prev) => {
+      const next = { ...prev, enabled: !prev.enabled };
+      updatePreferences({
+        display: {
+          ...storedDisplay,
+          reading: { focusMode: next.enabled, focusIntensity: next.intensity },
+        },
+      });
+      return next;
+    });
+  };
+
   const hasContent = item.preservedContent?.html;
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
+
+  // For focus mode on HTML content: render as plain text with emphasis
+  const plainText = hasContent
+    ? htmlToText(item.preservedContent!.html)
+    : item.content.text;
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0a0a0a] overflow-auto">
@@ -60,6 +93,24 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
           <span className="text-sm text-[#71717a] truncate flex-1">
             {item.author.displayName}
           </span>
+
+          {/* Focus mode toggle */}
+          <button
+            onClick={toggleFocus}
+            title={focusOptions.enabled ? "Disable focus mode" : "Enable focus mode"}
+            className={`p-2 rounded-lg transition-colors text-sm font-bold ${
+              focusOptions.enabled
+                ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
+                : "hover:bg-white/10 text-[#71717a]"
+            }`}
+            aria-pressed={focusOptions.enabled}
+            aria-label="Toggle focus reading mode"
+          >
+            <span aria-hidden="true">
+              <span className="font-black">F</span>
+              <span className="font-light text-xs">ocus</span>
+            </span>
+          </button>
 
           <button
             onClick={toggleSaved}
@@ -158,7 +209,13 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
         )}
 
         {/* Content */}
-        {hasContent ? (
+        {focusOptions.enabled ? (
+          // Focus mode: render as plain text with emphasis segments
+          <div className="text-[#a1a1aa] text-lg leading-relaxed">
+            <FocusText text={plainText ?? ""} options={focusOptions} />
+          </div>
+        ) : hasContent ? (
+          // Rich HTML content
           <div
             className="prose prose-invert prose-lg max-w-none
               prose-headings:text-[#fafafa] prose-headings:font-semibold
@@ -173,6 +230,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
             dangerouslySetInnerHTML={{ __html: item.preservedContent!.html }}
           />
         ) : (
+          // Plain text
           <div className="text-[#a1a1aa] text-lg leading-relaxed">
             {item.content.text}
           </div>
@@ -196,5 +254,23 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
         )}
       </article>
     </div>
+  );
+}
+
+/** Renders text with focus mode bolding applied to word beginnings */
+function FocusText({ text, options }: { text: string; options: FocusOptions }) {
+  const segments = applyFocusMode(text, options);
+  return (
+    <>
+      {segments.map((seg, i) =>
+        seg.emphasis ? (
+          <strong key={i} className="text-[#fafafa] font-bold">
+            {seg.text}
+          </strong>
+        ) : (
+          <span key={i}>{seg.text}</span>
+        ),
+      )}
+    </>
   );
 }

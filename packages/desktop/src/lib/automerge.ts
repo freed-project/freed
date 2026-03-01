@@ -5,6 +5,7 @@
  */
 
 import * as A from "@automerge/automerge";
+import { invoke } from "@tauri-apps/api/core";
 import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
@@ -67,6 +68,19 @@ async function saveDoc(): Promise<void> {
 }
 
 /**
+ * Broadcast the current document to all connected PWA clients via Tauri relay
+ */
+async function broadcastToRelay(): Promise<void> {
+  if (!currentDoc) return;
+  try {
+    const bytes = A.save(currentDoc);
+    await invoke("broadcast_doc", { docBytes: Array.from(bytes) });
+  } catch {
+    // Relay may not be running yet or no clients connected — safe to ignore
+  }
+}
+
+/**
  * Apply a change to the document and persist
  */
 async function applyChange(
@@ -84,6 +98,9 @@ async function applyChange(
   for (const subscriber of subscribers) {
     subscriber(currentDoc);
   }
+
+  // Push updated doc to connected PWA clients
+  broadcastToRelay();
 
   return currentDoc;
 }
@@ -148,6 +165,22 @@ export async function docUpdatePreferences(
 
 export async function docUpdateLastSync(): Promise<FreedDoc> {
   return applyChange((doc) => updateLastSync(doc), "Update last sync");
+}
+
+/**
+ * Mark all unread items as read in a single Automerge change.
+ * Optionally filter by platform.
+ */
+export async function docMarkAllAsRead(platform?: string): Promise<FreedDoc> {
+  return applyChange((doc) => {
+    const now = Date.now();
+    for (const item of Object.values(doc.feedItems)) {
+      if (item.userState.readAt) continue;
+      if (item.userState.hidden || item.userState.archived) continue;
+      if (platform && item.platform !== platform) continue;
+      item.userState.readAt = now;
+    }
+  }, "Mark all as read");
 }
 
 /**

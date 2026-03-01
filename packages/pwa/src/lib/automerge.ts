@@ -151,6 +151,22 @@ export async function docUpdateLastSync(): Promise<FreedDoc> {
 }
 
 /**
+ * Mark all unread items as read in a single Automerge change.
+ * Optionally filter by platform.
+ */
+export async function docMarkAllAsRead(platform?: string): Promise<FreedDoc> {
+  return applyChange((doc) => {
+    const now = Date.now();
+    for (const item of Object.values(doc.feedItems)) {
+      if (item.userState.readAt) continue;
+      if (item.userState.hidden || item.userState.archived) continue;
+      if (platform && item.platform !== platform) continue;
+      item.userState.readAt = now;
+    }
+  }, "Mark all as read");
+}
+
+/**
  * Bulk add feed items (more efficient for initial feed fetch)
  */
 export async function docAddFeedItems(items: FeedItem[]): Promise<FreedDoc> {

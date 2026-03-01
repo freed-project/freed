@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress  
+> **Status:** ✅ Core Complete (packaging/distribution pending)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -240,12 +240,12 @@ packages/desktop/
 
 ### Desktop
 
-- [ ] Desktop app launches with native vibrancy on macOS
-- [ ] Captures from X, RSS in background
-- [ ] Local WebSocket relay enables instant phone sync
-- [ ] QR code pairing works
-- [ ] System tray shows sync status
-- [ ] App runs in background after window close
+- [x] Desktop app launches with native vibrancy on macOS
+- [x] Captures from X, RSS in background (refreshAllFeeds covers both)
+- [x] Local WebSocket relay enables instant phone sync (binary protocol)
+- [x] QR code pairing works
+- [x] System tray shows sync status
+- [x] App runs in background after window close
 - [ ] macOS DMG is notarized and installable
 - [ ] Windows installer works
 - [ ] Linux AppImage works

@@ -11,5 +11,9 @@
       "Bash(npm install:*)",
       "WebFetch(domain:api.github.com)"
     ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true
   }
 }

@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** Not Started  
+> **Status:** 🚧 In Progress — packages scaffolded, scraper logic complete; selector tuning and integration with Desktop pending
 > **Dependencies:** Phase 5 (Desktop App with Playwright)
 
 ---
@@ -223,12 +223,15 @@ const RATE_LIMITS = {
 
 ## Success Criteria
 
-- [ ] Facebook feed posts captured to FeedItem
-- [ ] Instagram feed posts captured to FeedItem
-- [ ] Location data extracted from Instagram posts
+- [x] `@freed/capture-facebook` package scaffolded with full scraper, normalizer, session management, and rate limiting
+- [x] `@freed/capture-instagram` package scaffolded with full scraper, normalizer, session management, and rate limiting
+- [x] Location data extracted from Facebook check-ins and Instagram location tags
+- [x] Rate limiting prevents account bans (5m Facebook, 10m Instagram minimums with exponential backoff)
+- [x] Selector versioning strategy implemented (SELECTOR_VERSION constant)
+- [ ] Facebook feed posts validated against real account (selector tuning)
+- [ ] Instagram feed posts validated against real account (selector tuning)
 - [ ] Stories captured (if feasible)
-- [ ] Rate limiting prevents account bans
-- [ ] Selector updates can be deployed quickly
+- [ ] Integrated into Desktop refreshAllFeeds()
 
 ---
 

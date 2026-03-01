@@ -213,6 +213,15 @@ export default function Navigation() {
 
   return (
     <>
+      {/* iOS/macOS overscroll shield: extends nav background above viewport so rubber-band
+          bounce doesn't reveal a gap above the mobile nav bar. Height of 200px covers any
+          realistic overscroll. Desktop nav is a floating pill so doesn't need this. */}
+      <div
+        className="md:hidden fixed left-0 right-0 bg-freed-black z-40 pointer-events-none"
+        style={{ top: "-200px", height: "200px" }}
+        aria-hidden="true"
+      />
+
       {/* Desktop: Top blur overlay - blurs and darkens content as it approaches the top of viewport */}
       <div
         className="hidden md:block fixed top-0 left-0 right-0 h-32 pointer-events-none z-40"

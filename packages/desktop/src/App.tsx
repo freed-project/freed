@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { AppShell } from "./components/layout/AppShell";
 import { FeedView } from "./components/feed/FeedView";
 import { useAppStore } from "./lib/store";
+import { startRssPoller, stopRssPoller } from "./lib/rss-poller";
 
 function App() {
   const initialize = useAppStore((state) => state.initialize);
@@ -12,6 +13,13 @@ function App() {
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  // Start background RSS polling once the store is initialized
+  useEffect(() => {
+    if (!isInitialized) return;
+    startRssPoller();
+    return () => stopRssPoller();
+  }, [isInitialized]);
 
   // Loading state
   if (!isInitialized && isLoading) {
