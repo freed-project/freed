@@ -5,11 +5,12 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { FaXTwitter, FaInstagram, FaFacebook, FaRss } from "react-icons/fa6";
 import HeroAnimation from "./HeroAnimation";
-import DownloadButton from "./DownloadButton";
+import { useNewsletter } from "@/context/NewsletterContext";
 
 const ROTATING_WORDS = ["Feed", "Life", "Mind"];
 
 export default function Hero() {
+  const { openModal } = useNewsletter();
   const [wordIndex, setWordIndex] = useState(0);
 
   useEffect(() => {
@@ -93,7 +94,14 @@ export default function Hero() {
           </p>
 
           <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center lg:justify-start">
-            <DownloadButton className="w-full sm:w-auto" />
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={openModal}
+              className="btn-primary text-base px-8 py-3 w-full sm:w-auto"
+            >
+              Get Freed
+            </motion.button>
 
             <Link href="/manifesto" className="w-full sm:w-auto">
               <motion.button
