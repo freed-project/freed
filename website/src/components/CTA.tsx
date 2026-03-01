@@ -57,7 +57,7 @@ export default function CTA() {
                 onClick={openModal}
                 className="btn-primary text-base px-8 py-3 w-full sm:w-auto"
               >
-                Download for Chrome
+                Free Yourself
               </motion.button>
 
               <Link href="/manifesto" className="w-full sm:w-auto">
@@ -71,7 +71,7 @@ export default function CTA() {
               </Link>
             </motion.div>
 
-            <motion.p
+            {/* <motion.p
               initial={{ opacity: 0 }}
               whileInView={{ opacity: 1 }}
               viewport={{ once: true }}
@@ -79,7 +79,7 @@ export default function CTA() {
               className="text-text-muted text-xs sm:text-sm mt-6 sm:mt-8 relative z-10"
             >
               Also available for Safari and Firefox • MIT License
-            </motion.p>
+            </motion.p> */}
           </div>
         </motion.div>
       </div>
