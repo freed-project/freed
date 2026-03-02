@@ -2,10 +2,11 @@
 set -euo pipefail
 
 # Bumps version across PWA + Desktop package files, commits, tags, and pushes.
-# Uses CalVer: YYYY.M.D (e.g. 2026.3.1)
-# Usage: ./scripts/release.sh 2026.3.1
+# Uses CalVer: YY.M.D (e.g. 26.3.1)
+# Note: major version must be <=255 for Windows MSI compatibility.
+# Usage: ./scripts/release.sh 26.3.1
 
-VERSION="${1:?Usage: $0 <version> (e.g. 2026.3.1)}"
+VERSION="${1:?Usage: $0 <version> (e.g. 26.3.1)}"
 
 # Strip leading 'v' if provided
 VERSION="${VERSION#v}"
@@ -23,7 +24,7 @@ echo "==> Bumping to ${VERSION} (tag: ${TAG})"
 
 # Validate version format (CalVer YYYY.M.D is valid as digits.digits.digits)
 if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-  echo "Error: '${VERSION}' is not a valid version (expected YYYY.M.D)" >&2
+  echo "Error: '${VERSION}' is not a valid version (expected YY.M.D)" >&2
   exit 1
 fi
 
