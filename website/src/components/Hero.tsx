@@ -21,7 +21,7 @@ export default function Hero() {
   }, []);
 
   return (
-    <section className="relative min-h-viewport-safe flex items-center justify-center px-4 sm:px-6 pt-24 pb-16 md:pt-20">
+    <section className="relative min-h-viewport-safe flex items-start justify-center px-4 sm:px-6 pb-16 pt-24 md:pt-[clamp(7rem,_25vh,_50rem)]">
       {/* Open Source badge - aligned with nav container right edge, hidden on mobile */}
       <div className="hidden lg:block absolute top-20 left-0 right-0 mt-4 px-4 sm:px-6">
         <div className="max-w-6xl mx-auto flex justify-end">
@@ -57,9 +57,9 @@ export default function Hero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.3 }}
-          className="order-2 lg:order-1 text-center lg:text-left"
+          className="order-2 lg:order-1 text-center lg:text-left lg:pl-10"
         >
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.05] mb-10 sm:mb-12">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.05] mb-10 sm:mb-12 lg:-ml-2">
             <span className="text-text-primary">Take Back</span>
             <br />
             <span className="text-text-primary">Your </span>
