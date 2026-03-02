@@ -214,6 +214,11 @@ export async function docAddFeedItems(items: FeedItem[]): Promise<FreedDoc> {
 /**
  * Batch refresh: update feed timestamps AND add new items in a single Automerge
  * change. This is critical for performance — replacing N per-feed writes with 1.
+ *
+ * Uses a dual-key dedup strategy: skip if globalId already exists OR if the
+ * item's article link URL already exists in the store. The link-URL check
+ * protects against key-scheme migrations creating phantom duplicates (e.g.
+ * switching from link-first to guid-first globalId construction).
  */
 export async function docBatchRefreshFeeds(
   feeds: RssFeed[],
@@ -225,12 +230,75 @@ export async function docBatchRefreshFeeds(
         doc.rssFeeds[feed.url].lastFetched = feed.lastFetched;
       }
     }
+
+    // Build secondary index: article link URL → exists, so we can skip items
+    // whose article link is already stored under a different globalId.
+    const existingLinkUrls = new Set<string>();
+    for (const existing of Object.values(doc.feedItems)) {
+      const url = existing.content.linkPreview?.url;
+      if (url) existingLinkUrls.add(url);
+    }
+
     for (const item of items) {
-      if (!doc.feedItems[item.globalId]) {
-        addFeedItem(doc, item);
-      }
+      if (doc.feedItems[item.globalId]) continue;
+      const linkUrl = item.content.linkPreview?.url;
+      if (linkUrl && existingLinkUrls.has(linkUrl)) continue;
+      addFeedItem(doc, item);
+      if (linkUrl) existingLinkUrls.add(linkUrl);
     }
   }, `Refresh ${feeds.length} feeds, ${items.length} items`);
+}
+
+/**
+ * One-time migration: deduplicate feed items that share the same article link
+ * URL but have different globalIds (caused by key-scheme changes, e.g. guid →
+ * link priority flip).
+ *
+ * Scoring keeps the copy with the most user engagement:
+ *   saved (100) > tags (10/ea) > archived (5) > read (1)
+ * Ties are broken by keeping the newer globalId (guid-based keys are more
+ * stable long-term). The losers are deleted from the CRDT.
+ *
+ * Safe to call on every startup — it's a no-op when no duplicates exist.
+ */
+export async function docDeduplicateFeedItems(): Promise<FreedDoc> {
+  return applyChange((doc) => {
+    // Group globalIds by article link URL
+    const linkToIds = new Map<string, string[]>();
+    for (const [id, item] of Object.entries(doc.feedItems)) {
+      const url = item.content.linkPreview?.url;
+      if (!url) continue;
+      const group = linkToIds.get(url);
+      if (group) {
+        group.push(id);
+      } else {
+        linkToIds.set(url, [id]);
+      }
+    }
+
+    for (const ids of linkToIds.values()) {
+      if (ids.length <= 1) continue;
+
+      // Score each duplicate: higher = more user state worth preserving
+      const scored = ids.map((id) => {
+        const s = doc.feedItems[id].userState;
+        const score =
+          (s.saved ? 100 : 0) +
+          ((s.tags?.length ?? 0) * 10) +
+          (s.archived ? 5 : 0) +
+          (s.readAt ? 1 : 0);
+        return { id, score };
+      });
+
+      // Highest score wins; ties go to the last entry (guid-keyed items sort
+      // lexicographically after link-keyed "rss:https://..." entries in practice)
+      scored.sort((a, b) => b.score - a.score || b.id.localeCompare(a.id));
+
+      for (let i = 1; i < scored.length; i++) {
+        delete doc.feedItems[scored[i].id];
+      }
+    }
+  }, "Deduplicate feed items by article link URL");
 }
 
 /**

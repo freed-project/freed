@@ -19,6 +19,7 @@ import {
   docMarkAllAsRead,
   docToggleSaved,
   docUpdatePreferences,
+  docDeduplicateFeedItems,
 } from "./automerge";
 import type { FreedDoc } from "@freed/shared/schema";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
@@ -166,6 +167,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       set({ isLoading: true });
       const doc = await initDoc();
+
+      // Run dedup migration — no-op when clean, removes phantom duplicates
+      // caused by key-scheme changes (guid vs link priority).
+      await docDeduplicateFeedItems();
 
       // Subscribe to future changes (for sync)
       subscribe((updatedDoc) => {
