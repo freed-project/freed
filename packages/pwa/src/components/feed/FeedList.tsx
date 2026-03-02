@@ -86,22 +86,26 @@ export function FeedList({
   });
 
   if (items.length === 0) {
+    // When a platform provides a custom empty state, render it without the
+    // generic icon so the component has full visual control.
+    if (FeedEmptyState) {
+      return (
+        <div className="flex flex-col items-center justify-center flex-1 min-h-0 overflow-auto text-center px-6 py-12">
+          <FeedEmptyState />
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col items-center justify-center flex-1 min-h-0 overflow-auto text-center px-6 py-12">
         <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#3b82f6]/20 to-[#8b5cf6]/20 flex items-center justify-center mb-4">
           <span className="text-2xl">📡</span>
         </div>
         {hasFeedsSubscribed ? (
-          FeedEmptyState ? (
-            <FeedEmptyState />
-          ) : (
-            <>
-              <p className="text-lg font-medium mb-2">All caught up!</p>
-              <p className="text-sm text-[#71717a]">No new items to show.</p>
-            </>
-          )
-        ) : FeedEmptyState ? (
-          <FeedEmptyState />
+          <>
+            <p className="text-lg font-medium mb-2">All caught up!</p>
+            <p className="text-sm text-[#71717a]">No new items to show.</p>
+          </>
         ) : (
           <>
             <p className="text-lg font-medium mb-2">Welcome to Freed</p>

@@ -6,7 +6,7 @@ import { UpdateNotification } from "./components/UpdateNotification";
 import { useAppStore } from "./lib/store";
 import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } from "./lib/capture";
 import { startRssPoller, stopRssPoller } from "./lib/rss-poller";
-import { XAuthSection } from "./components/XAuthSection";
+import { XFeedEmptyState } from "./components/XFeedEmptyState";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
@@ -52,11 +52,11 @@ function App() {
       importOPMLFeeds,
       exportFeedsAsOPML,
       headerDragRegion: true,
-      SidebarConnectionSection: XAuthSection,
+      SidebarConnectionSection: null,
       SourceIndicator: XSourceIndicator,
       HeaderSyncIndicator: DesktopSyncIndicator,
       SettingsExtraSections: MobileSyncTab,
-      FeedEmptyState: null,
+      FeedEmptyState: XFeedEmptyState,
       checkForUpdates,
       applyUpdate,
     }),
