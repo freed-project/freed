@@ -43,10 +43,10 @@ const FeedItemRow = memo(function FeedItemRow({
 }: FeedItemRowProps) {
   const handleClick = useCallback(() => onItemClick?.(item), [item, onItemClick]);
   const handleMouseEnter = useCallback(() => onFocusChange?.(index), [index, onFocusChange]);
+  // useCallback always receives a function; we conditionally pass it to FeedItem
+  // so the prop is undefined when there's no onItemSave, preserving FeedItem's memo.
   const handleSave = useCallback(
-    onItemSave
-      ? (e: React.MouseEvent) => { e.stopPropagation(); onItemSave(item); }
-      : undefined,
+    (e: React.MouseEvent) => { e.stopPropagation(); onItemSave?.(item); },
     [item, onItemSave],
   );
 
@@ -57,7 +57,7 @@ const FeedItemRow = memo(function FeedItemRow({
       focused={focused}
       showEngagement={showEngagement}
       onMouseEnter={handleMouseEnter}
-      onSave={handleSave}
+      onSave={onItemSave ? handleSave : undefined}
     />
   );
 });
@@ -143,7 +143,7 @@ export function FeedList({
               width: "100%",
               transform: `translateY(${virtualItem.start}px)`,
             }}
-            className="px-3 sm:px-4 pb-3 sm:pb-4 max-w-2xl mx-auto"
+            className={`px-3 sm:px-4 pb-3 sm:pb-4 max-w-2xl mx-auto${virtualItem.index === 0 ? " pt-3 sm:pt-4" : ""}`}
           >
             <FeedItemRow
               item={items[virtualItem.index]}
