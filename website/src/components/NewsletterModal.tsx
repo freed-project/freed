@@ -184,7 +184,7 @@ export default function NewsletterModal() {
             transition={{ type: "spring", duration: 0.5 }}
             className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-lg px-4"
           >
-            <div className="relative p-10 sm:p-12 overflow-hidden rounded-2xl bg-freed-black/80 backdrop-blur-xl border border-freed-border shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
+            <div className="relative p-6 sm:p-10 md:p-12 overflow-hidden rounded-2xl bg-freed-black/80 backdrop-blur-xl border border-freed-border shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
               {/* Decorative glows */}
               <div className="absolute top-0 left-1/4 w-32 h-32 bg-glow-purple/20 rounded-full blur-3xl" />
               <div className="absolute bottom-0 right-1/4 w-40 h-40 bg-glow-blue/20 rounded-full blur-3xl" />
@@ -434,12 +434,12 @@ export default function NewsletterModal() {
                             onChange={(e) => setEmail(e.target.value)}
                             placeholder="your@email.com"
                             disabled
-                            className="flex-1 px-4 py-2.5 rounded-lg bg-freed-surface border border-freed-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-glow-purple/50 focus:ring-1 focus:ring-glow-purple/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="min-w-0 flex-1 px-3 sm:px-4 py-2.5 rounded-lg bg-freed-surface border border-freed-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-glow-purple/50 focus:ring-1 focus:ring-glow-purple/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           />
                           <motion.button
                             type="submit"
                             disabled
-                            className="btn-primary px-5 py-2.5 text-sm whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="btn-primary shrink-0 px-5 py-2.5 text-sm whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             Subscribe
                           </motion.button>
