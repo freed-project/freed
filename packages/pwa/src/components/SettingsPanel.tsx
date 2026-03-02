@@ -91,11 +91,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
         <div className="sm:hidden w-12 h-1 bg-white/20 rounded-full mx-auto mt-4 mb-1 shrink-0" />
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[rgba(255,255,255,0.08)] shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 shrink-0">
           <h2 className="text-lg font-semibold">Settings</h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+            className="hidden sm:block p-1.5 rounded-lg hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
             aria-label="Close settings"
           >
             <svg
@@ -122,12 +122,6 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
               Display
             </h3>
             <div className="space-y-5">
-              <Toggle
-                label="Compact mode"
-                checked={display.compactMode}
-                onChange={(v) => handleDisplayChange({ compactMode: v })}
-                description="Smaller cards with less whitespace"
-              />
               <Toggle
                 label="Show engagement counts"
                 checked={display.showEngagementCounts}
@@ -179,16 +173,20 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           {/* Platform-specific sections (e.g. Mobile Sync on desktop) */}
           {SettingsExtraSections && <SettingsExtraSections />}
 
-          {/* About */}
-          <section className="pb-2">
-            <h3 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-3">
-              About
-            </h3>
-            <p className="text-xs text-[#52525b] leading-relaxed">
-              Freed is a local-first feed reader. Your data lives on your device
-              and syncs between your own devices. We never see your content.
-            </p>
-          </section>
+          {/* Footer */}
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-[10px] text-[#3f3f46] tabular-nums">
+              v{__APP_VERSION__}
+            </span>
+            <a
+              href="https://freed.wtf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] text-[#8b5cf6] hover:text-[#a78bfa] transition-colors"
+            >
+              freed.wtf
+            </a>
+          </div>
         </div>
       </div>
     </div>

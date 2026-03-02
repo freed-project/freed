@@ -28,7 +28,6 @@ export function FeedList({
 }: FeedListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const { FeedEmptyState } = usePlatform();
-  const compactMode = useAppStore((s) => s.preferences.display.compactMode);
   const showEngagementCounts = useAppStore(
     (s) => s.preferences.display.showEngagementCounts,
   );
@@ -102,7 +101,6 @@ export function FeedList({
             <FeedItem
               item={items[virtualItem.index]}
               onClick={() => onItemClick?.(items[virtualItem.index])}
-              compact={compactMode}
               showEngagement={showEngagementCounts}
               focused={virtualItem.index === focusedIndex}
               onMouseEnter={() => onFocusChange?.(virtualItem.index)}

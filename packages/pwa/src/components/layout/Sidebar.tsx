@@ -1,10 +1,48 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, type ReactNode } from "react";
 import { useAppStore, usePlatform } from "../../context/PlatformContext";
 import { SettingsPanel } from "../SettingsPanel";
 
 interface SidebarProps {
   open: boolean;
   onClose: () => void;
+}
+
+function SidebarSection({
+  title,
+  defaultOpen = true,
+  count,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  count?: number;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="shrink-0 mb-2">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center px-3 py-1.5 group"
+      >
+        <span className="text-xs font-semibold text-[#71717a] uppercase tracking-wider flex-1 text-left">
+          {title}
+        </span>
+        {!open && count !== undefined && count > 0 && (
+          <span className="text-[10px] tabular-nums text-[#52525b] mr-1.5">{count}</span>
+        )}
+        <svg
+          className={`w-3 h-3 text-[#52525b] transition-transform shrink-0 ${open ? "rotate-90" : ""}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+      {open && <div className="mt-1">{children}</div>}
+    </div>
+  );
 }
 
 const MIN_WIDTH = 180;
@@ -15,7 +53,6 @@ const topSources = [
   { id: undefined, label: "All", icon: "🌊" },
   { id: "x", label: "X", icon: "𝕏" },
   { id: "rss", label: "RSS", icon: "📡" },
-  { id: "saved", label: "Saved", icon: "📌", savedOnly: true },
 ];
 
 const comingSoonSources = [
@@ -83,11 +120,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const feedList = Object.values(feeds).filter((f) => f.enabled);
 
   const handleSourceClick = (source: (typeof topSources)[0]) => {
-    if (source.savedOnly) {
-      setFilter({ savedOnly: true });
-    } else {
-      setFilter({ platform: source.id });
-    }
+    setFilter({ platform: source.id });
     onClose();
   };
 
@@ -99,8 +132,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const isTopSourceActive = (source: (typeof topSources)[0]) => {
     if (activeFilter.feedUrl) return false;
     if (activeFilter.showArchived) return false;
-    if (source.savedOnly) return activeFilter.savedOnly === true;
-    return activeFilter.platform === source.id && !activeFilter.savedOnly;
+    if (activeFilter.savedOnly) return false;
+    return activeFilter.platform === source.id;
   };
 
   return (
@@ -149,14 +182,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </button>
         </div>
 
-        <nav className="flex-1 min-h-0 flex flex-col p-4 overflow-y-auto">
+        <nav className="flex-1 min-h-0 flex flex-col p-4 overflow-y-auto" style={{ scrollbarGutter: "stable" }}>
           {SidebarConnectionSection && <SidebarConnectionSection />}
 
           {/* Sources */}
-          <div className="shrink-0 mb-4">
-            <h2 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-3">
-              Sources
-            </h2>
+          <SidebarSection title="Sources">
             <ul className="space-y-1">
               {topSources.map((source) => (
                 <li key={source.id ?? "all"}>
@@ -192,14 +222,57 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 </li>
               ))}
             </ul>
-          </div>
+          </SidebarSection>
+
+          {/* Library */}
+          <SidebarSection title="Library">
+            <ul className="space-y-1">
+              <li>
+                <button
+                  onClick={() => {
+                    setFilter({ savedOnly: true });
+                    onClose();
+                  }}
+                  className={`
+                    w-full flex items-center gap-3 px-3 py-2 rounded-lg
+                    text-left text-sm transition-all border
+                    ${
+                      activeFilter.savedOnly
+                        ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
+                        : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                    }
+                  `}
+                >
+                  <span className="w-5 text-center">📌</span>
+                  <span>Saved</span>
+                </button>
+              </li>
+              <li>
+                <button
+                  onClick={() => {
+                    setFilter({ showArchived: true });
+                    onClose();
+                  }}
+                  className={`
+                    w-full flex items-center gap-3 px-3 py-2 rounded-lg
+                    text-left text-sm transition-all border
+                    ${
+                      activeFilter.showArchived
+                        ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
+                        : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                    }
+                  `}
+                >
+                  <span className="w-5 text-center">📦</span>
+                  <span>Archived</span>
+                </button>
+              </li>
+            </ul>
+          </SidebarSection>
 
           {/* Feeds */}
           {feedList.length > 0 && (
-            <div className="shrink-0 mb-4">
-              <h2 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-3">
-                Feeds
-              </h2>
+            <SidebarSection title="Feeds" defaultOpen={false} count={feedList.length}>
               <ul className="space-y-0.5 overflow-y-auto max-h-[40vh]">
                 {feedList.map((feed) => {
                   const unread = feedUnreadCounts[feed.url] ?? 0;
@@ -242,37 +315,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   );
                 })}
               </ul>
-            </div>
+            </SidebarSection>
           )}
-
-          {/* Library */}
-          <div className="shrink-0 mb-4">
-            <h2 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-3">
-              Library
-            </h2>
-            <ul className="space-y-1">
-              <li>
-                <button
-                  onClick={() => {
-                    setFilter({ showArchived: true });
-                    onClose();
-                  }}
-                  className={`
-                    w-full flex items-center gap-3 px-3 py-2 rounded-lg
-                    text-left text-sm transition-all border
-                    ${
-                      activeFilter.showArchived
-                        ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
-                        : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
-                    }
-                  `}
-                >
-                  <span className="w-5 text-center">📦</span>
-                  <span>Archived</span>
-                </button>
-              </li>
-            </ul>
-          </div>
 
           {/* Settings — pushed to bottom */}
           <div className="mt-auto shrink-0">

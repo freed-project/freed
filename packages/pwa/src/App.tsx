@@ -11,7 +11,7 @@ import {
   onStatusChange,
   getStoredRelayUrl,
 } from "./lib/sync";
-import { PwaSyncIndicator } from "./components/layout/PwaSyncIndicator";
+import { SyncIndicator } from "./components/layout/SyncIndicator";
 import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
 
 function App() {
@@ -49,7 +49,7 @@ function App() {
       exportFeedsAsOPML,
       SidebarConnectionSection: null,
       SourceIndicator: null,
-      HeaderSyncIndicator: PwaSyncIndicator,
+      HeaderSyncIndicator: SyncIndicator,
       SettingsExtraSections: null,
       FeedEmptyState: PwaFeedEmptyState,
     }),

@@ -43,11 +43,11 @@ export function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
         <div className="sm:hidden w-12 h-1 bg-white/20 rounded-full mx-auto mt-4 mb-1 shrink-0" />
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[rgba(255,255,255,0.08)] shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 shrink-0">
           <h2 className="text-lg font-semibold">RSS Feeds</h2>
           <button
             onClick={handleClose}
-            className="p-1.5 rounded-lg hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+            className="hidden sm:block p-1.5 rounded-lg hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
             aria-label="Close dialog"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

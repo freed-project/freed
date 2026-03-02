@@ -21,7 +21,7 @@ function formatRelativeTime(timestamp: number): string {
   return `${days}d ago`;
 }
 
-export function PwaSyncIndicator() {
+export function SyncIndicator() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [showConnectDialog, setShowConnectDialog] = useState(false);
   const isSyncing = useAppStore((s) => s.isSyncing);
