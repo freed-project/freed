@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, memo, useCallback } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { FeedItem } from "./FeedItem";
 import type { FeedItem as FeedItemType } from "@freed/shared";
@@ -16,6 +16,51 @@ interface FeedListProps {
   /** Called when user bookmarks/unbookmarks an item */
   onItemSave?: (item: FeedItemType) => void;
 }
+
+/**
+ * Memoized per-row adapter. Keeps handler references stable so FeedItem's
+ * React.memo can bail out when focusedIndex changes on unrelated rows —
+ * otherwise every mousemove re-renders the entire visible window.
+ */
+interface FeedItemRowProps {
+  item: FeedItemType;
+  index: number;
+  focused: boolean;
+  showEngagement: boolean;
+  onItemClick?: (item: FeedItemType) => void;
+  onFocusChange?: (index: number) => void;
+  onItemSave?: (item: FeedItemType) => void;
+}
+
+const FeedItemRow = memo(function FeedItemRow({
+  item,
+  index,
+  focused,
+  showEngagement,
+  onItemClick,
+  onFocusChange,
+  onItemSave,
+}: FeedItemRowProps) {
+  const handleClick = useCallback(() => onItemClick?.(item), [item, onItemClick]);
+  const handleMouseEnter = useCallback(() => onFocusChange?.(index), [index, onFocusChange]);
+  const handleSave = useCallback(
+    onItemSave
+      ? (e: React.MouseEvent) => { e.stopPropagation(); onItemSave(item); }
+      : undefined,
+    [item, onItemSave],
+  );
+
+  return (
+    <FeedItem
+      item={item}
+      onClick={handleClick}
+      focused={focused}
+      showEngagement={showEngagement}
+      onMouseEnter={handleMouseEnter}
+      onSave={handleSave}
+    />
+  );
+});
 
 export function FeedList({
   items,
@@ -100,13 +145,14 @@ export function FeedList({
             }}
             className="px-3 sm:px-4 pb-3 sm:pb-4 max-w-2xl mx-auto"
           >
-            <FeedItem
+            <FeedItemRow
               item={items[virtualItem.index]}
-              onClick={() => onItemClick?.(items[virtualItem.index])}
-              showEngagement={showEngagementCounts}
+              index={virtualItem.index}
               focused={virtualItem.index === focusedIndex}
-              onMouseEnter={() => onFocusChange?.(virtualItem.index)}
-              onSave={onItemSave ? (e) => { e.stopPropagation(); onItemSave(items[virtualItem.index]); } : undefined}
+              showEngagement={showEngagementCounts}
+              onItemClick={onItemClick}
+              onFocusChange={onFocusChange}
+              onItemSave={onItemSave}
             />
           </div>
         ))}

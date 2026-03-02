@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 
@@ -22,7 +23,7 @@ const platformIcons: Record<string, string> = {
   saved: "📌",
 };
 
-export function FeedItem({ item, onClick, showEngagement = false, focused = false, onMouseEnter, onSave }: FeedItemProps) {
+export const FeedItem = memo(function FeedItem({ item, onClick, showEngagement = false, focused = false, onMouseEnter, onSave }: FeedItemProps) {
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
   const platformIcon = platformIcons[item.platform] || "📄";
 
@@ -134,4 +135,4 @@ export function FeedItem({ item, onClick, showEngagement = false, focused = fals
       )}
     </article>
   );
-}
+});
