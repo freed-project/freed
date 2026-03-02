@@ -199,7 +199,7 @@ body {
   border-color: rgba(139, 92, 246, 0.2);
 }
 
-/* Mobile-specific: larger touch targets */
+/* Mobile-specific: larger touch targets + prevent iOS zoom on focus */
 @media (max-width: 640px) {
   .feed-card {
     padding: 12px;
@@ -211,6 +211,12 @@ body {
   .btn-secondary {
     min-height: 44px; /* iOS recommended touch target */
     padding: 12px 16px;
+  }
+
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
   }
 }
 
