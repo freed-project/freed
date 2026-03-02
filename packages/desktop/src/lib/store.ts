@@ -142,71 +142,39 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  // Item actions
+  // Item actions — errors propagate to callers so UI can surface them
   addItems: async (items) => {
-    try {
-      await docAddFeedItems(items);
-    } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to add items" });
-    }
+    await docAddFeedItems(items);
   },
 
   updateItem: async (id, update) => {
-    try {
-      await docUpdateFeedItem(id, update);
-    } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to update item" });
-    }
+    await docUpdateFeedItem(id, update);
   },
 
   markAsRead: async (id) => {
-    try {
-      await docMarkAsRead(id);
-    } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to mark as read" });
-    }
+    await docMarkAsRead(id);
   },
 
   markAllAsRead: async (platform) => {
-    try {
-      await docMarkAllAsRead(platform);
-    } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to mark all as read" });
-    }
+    await docMarkAllAsRead(platform);
   },
 
   toggleSaved: async (id) => {
-    try {
-      await docToggleSaved(id);
-    } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to toggle saved" });
-    }
+    await docToggleSaved(id);
   },
 
   // Feed actions
   addFeed: async (feed) => {
-    try {
-      await docAddRssFeed(feed);
-    } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to add feed" });
-    }
+    await docAddRssFeed(feed);
   },
 
   removeFeed: async (url) => {
-    try {
-      await docRemoveRssFeed(url);
-    } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to remove feed" });
-    }
+    await docRemoveRssFeed(url);
   },
 
   // Preference actions
   updatePreferences: async (update) => {
-    try {
-      await docUpdatePreferences(update);
-    } catch (error) {
-      set({ error: error instanceof Error ? error.message : "Failed to update preferences" });
-    }
+    await docUpdatePreferences(update);
   },
 
   // X auth actions

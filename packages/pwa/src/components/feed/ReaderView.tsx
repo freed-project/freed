@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { FeedItem as FeedItemType } from "@freed/shared";
-import { useAppStore } from "../../context/PlatformContext";
+import { useAppStore, usePlatform } from "../../context/PlatformContext";
 import { applyFocusMode, type FocusOptions } from "@freed/shared";
 
 interface ReaderViewProps {
@@ -16,7 +16,10 @@ function htmlToText(html: string): string {
   return div.textContent ?? div.innerText ?? "";
 }
 
+const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
+
 export function ReaderView({ item, onClose }: ReaderViewProps) {
+  const { headerDragRegion } = usePlatform();
   const updateItem = useAppStore((s) => s.updateItem);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const storedDisplay = useAppStore((s) => s.preferences.display);
@@ -69,11 +72,24 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
   return (
     <div className="fixed inset-0 z-50 bg-[#0a0a0a] overflow-auto">
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-[#0a0a0a]/90 backdrop-blur-xl border-b border-[rgba(255,255,255,0.08)]">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-2">
+      <header
+        className="sticky top-0 z-10 bg-[#0a0a0a]/90 backdrop-blur-xl border-b border-[rgba(255,255,255,0.08)]"
+        {...(headerDragRegion
+          ? {
+              "data-tauri-drag-region": true,
+              style: { WebkitAppRegion: "drag" } as React.CSSProperties,
+            }
+          : {})}
+      >
+        <div
+          className={`h-14 max-w-3xl mx-auto px-4 flex items-center gap-2 ${
+            headerDragRegion ? "pl-[88px]" : ""
+          }`}
+        >
           <button
             onClick={onClose}
             className="p-2 -ml-2 rounded-lg hover:bg-white/10 transition-colors"
+            style={headerDragRegion ? noDrag : undefined}
             aria-label="Close"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -94,6 +110,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
                 ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
                 : "hover:bg-white/10 text-[#71717a]"
             }`}
+            style={headerDragRegion ? noDrag : undefined}
             aria-pressed={focusOptions.enabled}
             aria-label="Toggle focus reading mode"
           >
@@ -110,6 +127,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
                 ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
                 : "hover:bg-white/10 text-[#a1a1aa]"
             }`}
+            style={headerDragRegion ? noDrag : undefined}
             aria-label={item.userState.saved ? "Unsave" : "Save"}
           >
             <svg className="w-5 h-5" fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
@@ -124,6 +142,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
                 ? "bg-green-500/20 text-green-400"
                 : "hover:bg-white/10 text-[#a1a1aa]"
             }`}
+            style={headerDragRegion ? noDrag : undefined}
             aria-label={item.userState.archived ? "Unarchive" : "Archive"}
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

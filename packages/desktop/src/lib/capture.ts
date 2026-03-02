@@ -120,11 +120,27 @@ function rssToFeedItems(channel: RssChannel, feedUrl: string): FeedItem[] {
   }
 
   return channel.items.map((item, index) => {
-    const publishedAt = item.pubDate
-      ? new Date(item.pubDate).getTime()
+    const parsedDate = item.pubDate ? new Date(item.pubDate).getTime() : NaN;
+    const publishedAt = Number.isFinite(parsedDate)
+      ? parsedDate
       : now - index * 3600000; // Fallback: 1 hour apart
 
-    return {
+    // Build content — Automerge forbids `undefined` values, so optional
+    // sub-objects use conditional spread to omit keys entirely.
+    const content: FeedItem["content"] = {
+      text: stripHtml(item.description || item.content || ""),
+      mediaUrls: [],
+      mediaTypes: [],
+    };
+    if (item.link) {
+      content.linkPreview = {
+        url: item.link,
+        title: item.title,
+        ...(item.description != null ? { description: item.description } : {}),
+      };
+    }
+
+    const feedItem: FeedItem = {
       globalId: `rss:${item.link || feedUrl + "#" + index}`,
       platform: "rss" as const,
       contentType: "article" as const,
@@ -135,29 +151,7 @@ function rssToFeedItems(channel: RssChannel, feedUrl: string): FeedItem[] {
         handle: siteHost,
         displayName: channel.title,
       },
-      content: {
-        text: stripHtml(item.description || item.content || ""),
-        mediaUrls: [],
-        mediaTypes: [],
-        linkPreview: item.link
-          ? {
-              url: item.link,
-              title: item.title,
-              description: item.description,
-            }
-          : undefined,
-      },
-      preservedContent: item.content
-        ? {
-            html: item.content,
-            text: stripHtml(item.content),
-            wordCount: stripHtml(item.content).split(/\s+/).length,
-            readingTime: Math.ceil(
-              stripHtml(item.content).split(/\s+/).length / 200
-            ),
-            preservedAt: now,
-          }
-        : undefined,
+      content,
       rssSource: {
         feedUrl,
         feedTitle: channel.title,
@@ -171,6 +165,19 @@ function rssToFeedItems(channel: RssChannel, feedUrl: string): FeedItem[] {
       },
       topics: [],
     };
+
+    if (item.content) {
+      const plainText = stripHtml(item.content);
+      feedItem.preservedContent = {
+        html: item.content,
+        text: plainText,
+        wordCount: plainText.split(/\s+/).length,
+        readingTime: Math.ceil(plainText.split(/\s+/).length / 200),
+        preservedAt: now,
+      };
+    }
+
+    return feedItem;
   });
 }
 
@@ -208,11 +215,13 @@ export async function addRssFeed(feedUrl: string): Promise<void> {
       throw new Error("No items found in feed");
     }
 
-    // Add feed to store (persisted via Automerge)
+    // Add feed to store (persisted via Automerge).
+    // Only include siteUrl if defined — Automerge rejects `undefined` values.
+    const siteUrl = newItems[0]?.rssSource?.siteUrl;
     const feed: RssFeed = {
       url: feedUrl,
       title: newItems[0]?.rssSource?.feedTitle || feedUrl,
-      siteUrl: newItems[0]?.rssSource?.siteUrl,
+      ...(siteUrl ? { siteUrl } : {}),
       lastFetched: Date.now(),
       enabled: true,
       trackUnread: false,
@@ -341,10 +350,10 @@ export async function importOPMLFeeds(
       const rssFeed: RssFeed = {
         url: feed.url,
         title: feed.title,
-        siteUrl: feed.siteUrl,
+        ...(feed.siteUrl ? { siteUrl: feed.siteUrl } : {}),
         enabled: true,
         trackUnread: false,
-        folder: feed.folder,
+        ...(feed.folder ? { folder: feed.folder } : {}),
       };
       await store.addFeed(rssFeed);
       existingUrls.add(feed.url);

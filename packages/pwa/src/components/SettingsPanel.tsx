@@ -52,7 +52,7 @@ type UpdateCheckState =
   | { status: "error" };
 
 export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
-  const { SettingsExtraSections, checkForUpdates, applyUpdate } = usePlatform();
+  const { SettingsExtraSections, checkForUpdates, applyUpdate, headerDragRegion } = usePlatform();
   const preferences = useAppStore((s) => s.preferences);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
 
@@ -214,7 +214,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                         onClick={applyUpdate}
                         className="text-xs font-semibold px-2.5 py-1 rounded-md bg-[#8b5cf6] text-white hover:bg-[#7c3aed] transition-colors"
                       >
-                        Reload
+                        {headerDragRegion ? "Install & Restart" : "Reload"}
                       </button>
                     )}
                   </span>

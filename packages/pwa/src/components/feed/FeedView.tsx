@@ -2,11 +2,13 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { FeedList } from "./FeedList";
 import { ReaderView } from "./ReaderView";
 import { AddFeedDialog } from "../AddFeedDialog";
-import { useAppStore } from "../../context/PlatformContext";
+import { useAppStore, usePlatform } from "../../context/PlatformContext";
 import { sortByPriority, filterFeedItems } from "@freed/shared";
 import type { FeedItem } from "@freed/shared";
 
 export function FeedView() {
+  const { addRssFeed } = usePlatform();
+  const canAddFeeds = !!addRssFeed;
   const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
   const activeFilter = useAppStore((s) => s.activeFilter);
@@ -83,7 +85,7 @@ export function FeedView() {
         onItemClick={openItem}
         focusedIndex={focusedIndex}
         onFocusChange={setFocusedIndex}
-        onAddFeed={() => setAddFeedOpen(true)}
+        onAddFeed={canAddFeeds ? () => setAddFeedOpen(true) : undefined}
         hasFeedsSubscribed={Object.keys(feeds).length > 0}
         onItemSave={(item) => toggleSaved(item.globalId)}
       />

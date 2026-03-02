@@ -31,17 +31,25 @@ export interface PlatformConfig {
   /** Zustand store hook — both PWA and Desktop stores extend BaseAppState */
   store: AppStoreHook;
 
-  /** Register + fetch a feed by URL */
-  addRssFeed: (url: string) => Promise<void>;
+  /**
+   * Register + fetch a feed by URL.
+   * Only available on platforms that can fetch RSS (desktop).
+   * When absent, feed-add UI is hidden.
+   */
+  addRssFeed?: (url: string) => Promise<void>;
 
-  /** Import feeds from parsed OPML entries */
-  importOPMLFeeds: (
+  /**
+   * Import feeds from parsed OPML entries.
+   * Only available on platforms that can fetch RSS (desktop).
+   * When absent, import UI is hidden.
+   */
+  importOPMLFeeds?: (
     feeds: OPMLFeedEntry[],
     onProgress?: (p: ImportProgress) => void,
   ) => Promise<ImportProgress>;
 
   /** Download subscriptions as OPML */
-  exportFeedsAsOPML: () => void;
+  exportFeedsAsOPML?: () => void;
 
   // -- Platform behavior flags --
 

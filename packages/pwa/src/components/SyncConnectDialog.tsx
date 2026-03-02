@@ -1,7 +1,30 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import jsQR from "jsqr";
-import { connect, storeRelayUrl } from "../lib/sync";
+import { connect, storeRelayUrl, onStatusChange } from "../lib/sync";
 import { BottomSheet } from "./BottomSheet";
+
+const CONNECT_TIMEOUT_MS = 5000;
+
+/**
+ * Returns a promise that resolves when the sync WebSocket connects,
+ * or rejects after a timeout.
+ */
+function waitForConnection(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      unsubscribe();
+      reject(new Error("Connection timed out. Check that the desktop app is running and on the same network."));
+    }, CONNECT_TIMEOUT_MS);
+
+    const unsubscribe = onStatusChange((connected) => {
+      if (connected) {
+        clearTimeout(timer);
+        unsubscribe();
+        resolve();
+      }
+    });
+  });
+}
 
 interface SyncConnectDialogProps {
   open: boolean;
@@ -84,13 +107,19 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
 
         const detected = detectQrCode(videoRef.current);
         if (detected && (detected.startsWith("ws://") || detected.startsWith("wss://"))) {
-          setScanStatus("found");
           stopCamera();
-
-          // Auto-connect with the detected URL
           storeRelayUrl(detected);
           connect(detected);
-          setTimeout(() => handleClose(), 800);
+
+          waitForConnection()
+            .then(() => {
+              setScanStatus("found");
+              setTimeout(() => handleClose(), 800);
+            })
+            .catch((err) => {
+              setError(err instanceof Error ? err.message : "Connection failed");
+              setMode("manual");
+            });
         }
       }, 250);
     } catch (e) {
@@ -139,7 +168,7 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
     try {
       storeRelayUrl(url.trim());
       connect(url.trim());
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await waitForConnection();
       handleClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to connect");

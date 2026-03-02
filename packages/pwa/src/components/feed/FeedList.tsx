@@ -55,11 +55,13 @@ export function FeedList({
               <p className="text-sm text-[#71717a]">No new items to show.</p>
             </>
           )
+        ) : FeedEmptyState ? (
+          <FeedEmptyState />
         ) : (
           <>
             <p className="text-lg font-medium mb-2">Welcome to Freed</p>
             <p className="text-sm text-[#71717a] mb-6 max-w-xs">
-              Add RSS feeds or connect the desktop app to start reading.
+              Add RSS feeds to start reading.
             </p>
             {onAddFeed && (
               <button

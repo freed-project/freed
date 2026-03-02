@@ -9,7 +9,8 @@ interface HeaderProps {
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
 export function Header({ onMenuClick }: HeaderProps) {
-  const { HeaderSyncIndicator, headerDragRegion } = usePlatform();
+  const { HeaderSyncIndicator, headerDragRegion, addRssFeed } = usePlatform();
+  const canAddFeeds = !!addRssFeed;
   const [addFeedOpen, setAddFeedOpen] = useState(false);
   const items = useAppStore((s) => s.items);
   const markAllAsRead = useAppStore((s) => s.markAllAsRead);
@@ -42,8 +43,8 @@ export function Header({ onMenuClick }: HeaderProps) {
           : {})}
       >
         <div
-          className={`h-12 flex items-center pl-4 pr-2 ${
-            headerDragRegion ? "pl-[72px]" : ""
+          className={`h-14 flex items-center pl-4 pr-2 ${
+            headerDragRegion ? "pl-24" : ""
           }`}
         >
           {/* Mobile menu button */}
@@ -109,27 +110,29 @@ export function Header({ onMenuClick }: HeaderProps) {
               </button>
             )}
 
-            <button
-              onClick={() => setAddFeedOpen(true)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+            {canAddFeeds && (
+              <button
+                onClick={() => setAddFeedOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              <span className="text-sm font-medium hidden sm:inline">
-                Add Feed
-              </span>
-            </button>
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                <span className="text-sm font-medium hidden sm:inline">
+                  Add Feed
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </header>
