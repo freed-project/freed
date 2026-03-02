@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { AddFeedDialog } from "../AddFeedDialog";
-import { useAppStore, usePlatform } from "../../context/PlatformContext";
+import { useAppStore, usePlatform, MACOS_TRAFFIC_LIGHT_INSET } from "../../context/PlatformContext";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -12,22 +12,18 @@ export function Header({ onMenuClick }: HeaderProps) {
   const { HeaderSyncIndicator, headerDragRegion, addRssFeed } = usePlatform();
   const canAddFeeds = !!addRssFeed;
   const [addFeedOpen, setAddFeedOpen] = useState(false);
-  const items = useAppStore((s) => s.items);
   const markAllAsRead = useAppStore((s) => s.markAllAsRead);
   const activeFilter = useAppStore((s) => s.activeFilter);
+  const totalUnreadCount = useAppStore((s) => s.totalUnreadCount);
+  const unreadCountByPlatform = useAppStore((s) => s.unreadCountByPlatform);
 
-  const unreadCount = useMemo(
-    () =>
-      items.filter(
-        (item) =>
-          !item.userState.readAt &&
-          !item.userState.hidden &&
-          !item.userState.archived &&
-          (!activeFilter.platform || item.platform === activeFilter.platform) &&
-          (!activeFilter.savedOnly || item.userState.saved),
-      ).length,
-    [items, activeFilter],
-  );
+  // Derive display count from pre-computed store values — no items iteration.
+  // savedOnly views don't show a "mark all read" count (no useful total there).
+  const unreadCount = activeFilter.savedOnly
+    ? 0
+    : activeFilter.platform
+      ? (unreadCountByPlatform[activeFilter.platform] ?? 0)
+      : totalUnreadCount;
 
   return (
     <>
@@ -43,9 +39,8 @@ export function Header({ onMenuClick }: HeaderProps) {
           : {})}
       >
         <div
-          className={`h-14 flex items-center pl-4 pr-2 ${
-            headerDragRegion ? "pl-24" : ""
-          }`}
+          className="h-14 flex items-center pl-4 pr-2"
+          style={headerDragRegion ? { paddingLeft: MACOS_TRAFFIC_LIGHT_INSET } : undefined}
         >
           {/* Mobile menu button */}
           <button

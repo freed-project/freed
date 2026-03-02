@@ -20,6 +20,12 @@ import type {
 import type { OPMLFeedEntry } from "@freed/shared";
 
 /**
+ * Pixel offset reserved for macOS traffic-light window controls when
+ * `headerDragRegion` is true. Apply as `paddingLeft` on the first toolbar row.
+ */
+export const MACOS_TRAFFIC_LIGHT_INSET = 100;
+
+/**
  * A zustand store hook that can be called with a selector.
  * Both `create<PwaState>()` and `create<DesktopState>()` satisfy this
  * as long as their state types extend BaseAppState.
