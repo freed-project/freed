@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { FeedItem as FeedItemType } from "@freed/shared";
-import { useAppStore } from "../../lib/store";
-import { applyFocusMode, type FocusOptions } from "../../lib/focus-text";
+import { useAppStore } from "../../context/PlatformContext";
+import { applyFocusMode, type FocusOptions } from "@freed/shared";
 
 interface ReaderViewProps {
   item: FeedItemType;

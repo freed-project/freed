@@ -1,9 +1,7 @@
 import { useCallback, useRef, useState } from "react";
-import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } from "../lib/capture";
-import type { ImportProgress } from "../lib/capture";
 import { parseOPML, readFileAsText } from "@freed/shared";
-import type { OPMLFeedEntry } from "@freed/shared";
-import { useAppStore } from "../lib/store";
+import type { OPMLFeedEntry, ImportProgress } from "@freed/shared";
+import { useAppStore, usePlatform } from "../context/PlatformContext";
 
 // =============================================================================
 // Types
@@ -91,6 +89,7 @@ export function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
 // =============================================================================
 
 function AddUrlTab({ onClose }: { onClose: () => void }) {
+  const { addRssFeed } = usePlatform();
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -254,6 +253,7 @@ function ManageTab() {
 // =============================================================================
 
 function ImportTab({ onClose }: { onClose: () => void }) {
+  const { importOPMLFeeds } = usePlatform();
   const [phase, setPhase] = useState<ImportPhase>("idle");
   const [parsedFeeds, setParsedFeeds] = useState<OPMLFeedEntry[]>([]);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -653,6 +653,7 @@ function ImportTab({ onClose }: { onClose: () => void }) {
 // =============================================================================
 
 function ExportTab() {
+  const { exportFeedsAsOPML } = usePlatform();
   const feeds = useAppStore((s) => s.feeds);
   const feedList = Object.values(feeds);
   const folders = [

@@ -10,7 +10,7 @@
  * performs the actual fetching, pushing items back through Automerge sync.
  */
 
-import type { RssFeed } from "@freed/shared";
+import type { RssFeed, ImportProgress } from "@freed/shared";
 import { useAppStore } from "./store";
 import { toast } from "../components/Toast";
 import type { OPMLFeedEntry } from "@freed/shared";
@@ -58,14 +58,7 @@ export async function addRssFeed(feedUrl: string): Promise<void> {
 // =============================================================================
 
 /** Progress state during OPML batch import */
-export interface ImportProgress {
-  total: number;
-  completed: number;
-  current: string;
-  added: number;
-  skipped: number;
-  failed: Array<{ url: string; error: string }>;
-}
+export type { ImportProgress } from "@freed/shared";
 
 /**
  * Import feeds from parsed OPML entries.

@@ -1,9 +1,16 @@
-import { useEffect } from "react";
-import { AppShell } from "./components/layout/AppShell";
-import { FeedView } from "./components/feed/FeedView";
+import { useEffect, useMemo } from "react";
+import { AppShell } from "@freed/pwa/components/layout";
+import { FeedView } from "@freed/pwa/components/feed";
+import { PlatformProvider, type PlatformConfig } from "@freed/pwa/context";
 import { UpdateNotification } from "./components/UpdateNotification";
 import { useAppStore } from "./lib/store";
+import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } from "./lib/capture";
 import { startRssPoller, stopRssPoller } from "./lib/rss-poller";
+import { TauriTitleBar } from "./components/TauriTitleBar";
+import { XAuthSection } from "./components/XAuthSection";
+import { XSourceIndicator } from "./components/XSourceIndicator";
+import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
+import { MobileSyncTab } from "./components/MobileSyncTab";
 
 function App() {
   const initialize = useAppStore((state) => state.initialize);
@@ -15,14 +22,27 @@ function App() {
     initialize();
   }, [initialize]);
 
-  // Start background RSS polling once the store is initialized
   useEffect(() => {
     if (!isInitialized) return;
     startRssPoller();
     return () => stopRssPoller();
   }, [isInitialized]);
 
-  // Loading state
+  const platform: PlatformConfig = useMemo(
+    () => ({
+      store: useAppStore,
+      addRssFeed,
+      importOPMLFeeds,
+      exportFeedsAsOPML,
+      TitleBar: TauriTitleBar,
+      SidebarConnectionSection: XAuthSection,
+      SourceIndicator: XSourceIndicator,
+      HeaderSyncIndicator: DesktopSyncIndicator,
+      SettingsExtraSections: MobileSyncTab,
+    }),
+    [],
+  );
+
   if (!isInitialized && isLoading) {
     return (
       <div className="h-screen flex items-center justify-center bg-transparent">
@@ -34,7 +54,6 @@ function App() {
     );
   }
 
-  // Error state
   if (error && !isInitialized) {
     return (
       <div className="h-screen flex items-center justify-center bg-transparent">
@@ -52,18 +71,19 @@ function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-transparent">
-      <AppShell>
-        <FeedView />
-      </AppShell>
-      <UpdateNotification />
-    </div>
+    <PlatformProvider value={platform}>
+      <div className="h-screen flex flex-col bg-transparent">
+        <AppShell>
+          <FeedView />
+        </AppShell>
+        <UpdateNotification />
+      </div>
+    </PlatformProvider>
   );
 }
 
 export default App;
 
-// Extend Window interface for Tauri
 declare global {
   interface Window {
     __TAURI__?: {
