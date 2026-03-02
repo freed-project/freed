@@ -4,7 +4,7 @@ import { FeedView } from "./components/feed/FeedView";
 import { ToastContainer } from "./components/Toast";
 import { PlatformProvider, type PlatformConfig } from "./context/PlatformContext";
 import { useAppStore } from "./lib/store";
-import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } from "./lib/capture";
+import { exportFeedsAsOPML } from "./lib/capture";
 import {
   connect,
   disconnect,
@@ -52,8 +52,6 @@ function App() {
   const platform: PlatformConfig = useMemo(
     () => ({
       store: useAppStore,
-      addRssFeed,
-      importOPMLFeeds,
       exportFeedsAsOPML,
       SidebarConnectionSection: null,
       SourceIndicator: null,
