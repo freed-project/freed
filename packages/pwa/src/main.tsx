@@ -5,6 +5,19 @@ import { notifyUpdateAvailable } from './lib/pwa-updater'
 import './index.css'
 import App from './App.tsx'
 
+// Keep --visual-viewport-height in sync with the portion of the screen
+// above the software keyboard. Falls back gracefully when visualViewport
+// is unavailable (non-iOS or server-side render).
+function syncVisualViewport() {
+  const h = window.visualViewport?.height ?? window.innerHeight
+  document.documentElement.style.setProperty('--visual-viewport-height', `${h}px`)
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncVisualViewport)
+  window.visualViewport.addEventListener('scroll', syncVisualViewport)
+}
+syncVisualViewport()
+
 registerSW({
   onNeedRefresh() {
     notifyUpdateAvailable()

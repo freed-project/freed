@@ -43,6 +43,11 @@
   /* Mobile safe areas */
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* Visual viewport height — updated by JS in main.tsx to track the area
+     above the software keyboard. Used by BottomSheet and any other overlay
+     that must stay fully visible when the keyboard is open. */
+  --visual-viewport-height: 100dvh;
 }
 
 /* Base styles */

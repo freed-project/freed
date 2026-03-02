@@ -96,7 +96,12 @@ export function BottomSheet({
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+    // Use --visual-viewport-height (kept in sync with window.visualViewport)
+    // so the backdrop stays above the software keyboard on iOS PWA.
+    <div
+      className="fixed inset-x-0 top-0 z-50 flex items-end sm:items-center justify-center"
+      style={{ height: 'var(--visual-viewport-height, 100dvh)' }}
+    >
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
