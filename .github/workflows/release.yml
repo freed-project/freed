@@ -140,8 +140,8 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
-      # Upload stable-named copies for /releases/latest/download/ links
-      - name: Upload stable download aliases
+      # Upload a stable-named copy for /releases/latest/download/ links
+      - name: Upload stable download alias
         if: success()
         shell: bash
         env:
@@ -149,20 +149,31 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           VERSION="${TAG#v}"
-
-          declare -A RENAMES
-          RENAMES["Freed_${VERSION}_aarch64.dmg"]="Freed-macOS-arm64.dmg"
-          RENAMES["Freed_${VERSION}_x64.dmg"]="Freed-macOS-x64.dmg"
-          RENAMES["Freed_${VERSION}_x64-setup.exe"]="Freed-Windows-x64-setup.exe"
-          RENAMES["Freed_${VERSION}_amd64.AppImage"]="Freed-Linux-x64.AppImage"
-
+          TARGET="${{ matrix.rust_target }}"
           ARTIFACTS_DIR="packages/desktop/src-tauri/target"
-          for versioned in "${!RENAMES[@]}"; do
-            stable="${RENAMES[$versioned]}"
-            found=$(find "$ARTIFACTS_DIR" -name "$versioned" -type f 2>/dev/null | head -1)
-            if [ -n "$found" ]; then
-              cp "$found" "/tmp/$stable"
-              gh release upload "$TAG" "/tmp/$stable" --clobber || true
-              echo "Uploaded $stable"
-            fi
-          done
+
+          case "$TARGET" in
+            aarch64-apple-darwin)
+              SRC="Freed_${VERSION}_aarch64.dmg"
+              DST="Freed-macOS-arm64.dmg" ;;
+            x86_64-apple-darwin)
+              SRC="Freed_${VERSION}_x64.dmg"
+              DST="Freed-macOS-x64.dmg" ;;
+            x86_64-pc-windows-msvc)
+              SRC="Freed_${VERSION}_x64-setup.exe"
+              DST="Freed-Windows-x64-setup.exe" ;;
+            x86_64-unknown-linux-gnu)
+              SRC="Freed_${VERSION}_amd64.AppImage"
+              DST="Freed-Linux-x64.AppImage" ;;
+            *)
+              echo "Unknown target: $TARGET"; exit 0 ;;
+          esac
+
+          found=$(find "$ARTIFACTS_DIR" -name "$SRC" -type f 2>/dev/null | head -1)
+          if [ -n "$found" ]; then
+            cp "$found" "/tmp/$DST"
+            gh release upload "$TAG" "/tmp/$DST" --clobber || true
+            echo "Uploaded $DST"
+          else
+            echo "Artifact $SRC not found — skipping alias"
+          fi
