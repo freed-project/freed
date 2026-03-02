@@ -42,7 +42,7 @@ export function MobileSyncTab() {
   )}&bgcolor=0a0a0a&color=fafafa`;
 
   return (
-    <section>
+    <section id="mobile-sync-section">
       <h3 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-4">
         Mobile Sync
       </h3>

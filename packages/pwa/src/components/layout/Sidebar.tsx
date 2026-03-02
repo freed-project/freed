@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, type ReactNode } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef, type ReactNode } from "react";
 import { useAppStore, usePlatform } from "../../context/PlatformContext";
 import { SettingsPanel } from "../SettingsPanel";
 
@@ -70,8 +70,33 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const sidebarWidth = useAppStore((s) => s.preferences.display.sidebarWidth) ?? DEFAULT_WIDTH;
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsScrollTarget, setSettingsScrollTarget] = useState<string | null>(null);
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const dragging = useRef(false);
+
+  // Listen for programmatic "open settings" requests (e.g. desktop sync indicator)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { scrollTo?: string } | undefined;
+      setShowSettings(true);
+      if (detail?.scrollTo) {
+        setSettingsScrollTarget(detail.scrollTo);
+      }
+    };
+    window.addEventListener("freed:open-settings", handler);
+    return () => window.removeEventListener("freed:open-settings", handler);
+  }, []);
+
+  // Scroll to target section after settings panel opens
+  useEffect(() => {
+    if (!showSettings || !settingsScrollTarget) return;
+    const timer = setTimeout(() => {
+      const el = document.getElementById(`${settingsScrollTarget}-section`);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setSettingsScrollTarget(null);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [showSettings, settingsScrollTarget]);
 
   const width = dragWidth ?? sidebarWidth;
 
@@ -159,8 +184,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         `}
         style={{ width: `${width}px` }}
       >
-        {/* Mobile header with close button */}
-        <div className="md:hidden flex items-center justify-between p-4 border-b border-[rgba(255,255,255,0.08)] shrink-0">
+        {/* Mobile header with close button — pushed below status bar */}
+        <div className="md:hidden flex items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+1rem)] border-b border-[rgba(255,255,255,0.08)] shrink-0">
           <span className="text-lg font-bold gradient-text font-logo">FREED</span>
           <button
             onClick={onClose}

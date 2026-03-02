@@ -10,7 +10,7 @@ export function AppShell({ children }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-[#121212]">
+    <div className="flex-1 min-h-0 flex flex-col bg-[#121212] pb-[env(safe-area-inset-bottom)]">
       <Header onMenuClick={() => setSidebarOpen(true)} />
 
       <div className="flex-1 min-h-0 flex overflow-hidden">

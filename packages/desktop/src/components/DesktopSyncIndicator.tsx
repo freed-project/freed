@@ -44,9 +44,16 @@ export function DesktopSyncIndicator() {
         </button>
       )}
 
-      {/* Sync status dot + label */}
-      <div
-        className="flex items-center gap-2 text-sm text-[#71717a] ml-2"
+      {/* Sync status dot + label — opens Settings → Mobile Sync */}
+      <button
+        onClick={() =>
+          window.dispatchEvent(
+            new CustomEvent("freed:open-settings", {
+              detail: { scrollTo: "mobile-sync" },
+            }),
+          )
+        }
+        className="flex items-center gap-2 text-sm text-[#71717a] ml-2 px-2 py-1 rounded-lg hover:bg-white/5 transition-colors"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
         <span
@@ -57,7 +64,7 @@ export function DesktopSyncIndicator() {
         <span className="hidden sm:inline">
           {isSyncing ? "Syncing..." : feedCount > 0 ? "Synced" : "Ready"}
         </span>
-      </div>
+      </button>
     </>
   );
 }

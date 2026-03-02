@@ -42,7 +42,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           : {})}
       >
         <div
-          className={`h-12 flex items-center px-4 ${
+          className={`h-12 flex items-center pl-4 pr-2 ${
             headerDragRegion ? "pl-[72px]" : ""
           }`}
         >
