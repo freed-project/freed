@@ -64,6 +64,12 @@ export interface PlatformConfig {
 
   /** Replaces default "All caught up" empty state when feeds exist but no items */
   FeedEmptyState: ComponentType | null;
+
+  /** Manual update check. Returns version string if available, null if up-to-date. */
+  checkForUpdates?: () => Promise<string | null>;
+
+  /** Apply a detected update (PWA: reload, Desktop: handled by UpdateNotification). */
+  applyUpdate?: () => void;
 }
 
 const PlatformCtx = createContext<PlatformConfig | null>(null);

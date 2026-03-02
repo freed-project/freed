@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useCallback } from "react";
 import { AppShell } from "@freed/pwa/components/layout";
 import { FeedView } from "@freed/pwa/components/feed";
 import { PlatformProvider, type PlatformConfig } from "@freed/pwa/context";
@@ -10,6 +10,7 @@ import { XAuthSection } from "./components/XAuthSection";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
+import { check } from "@tauri-apps/plugin-updater";
 
 function App() {
   const initialize = useAppStore((state) => state.initialize);
@@ -27,6 +28,11 @@ function App() {
     return () => stopRssPoller();
   }, [isInitialized]);
 
+  const checkForUpdates = useCallback(async (): Promise<string | null> => {
+    const update = await check();
+    return update?.version ?? null;
+  }, []);
+
   const platform: PlatformConfig = useMemo(
     () => ({
       store: useAppStore,
@@ -39,8 +45,9 @@ function App() {
       HeaderSyncIndicator: DesktopSyncIndicator,
       SettingsExtraSections: MobileSyncTab,
       FeedEmptyState: null,
+      checkForUpdates,
     }),
-    [],
+    [checkForUpdates],
   );
 
   if (!isInitialized && isLoading) {
