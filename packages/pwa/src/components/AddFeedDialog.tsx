@@ -21,37 +21,41 @@ interface AddFeedDialogProps {
 // =============================================================================
 
 export function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
-  const [activeTab, setActiveTab] = useState<DialogTab>("url");
+  const { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } = usePlatform();
+
+  const canAdd = !!addRssFeed;
+  const canImport = !!importOPMLFeeds;
+  const canExport = !!exportFeedsAsOPML;
+
+  const availableTabs = [
+    ...(canAdd ? [{ id: "url" as const, label: "Add URL" }] : []),
+    { id: "manage" as const, label: "Manage" },
+    ...(canImport ? [{ id: "import" as const, label: "Import" }] : []),
+    ...(canExport ? [{ id: "export" as const, label: "Export" }] : []),
+  ];
+
+  const defaultTab = canAdd ? "url" : "manage";
+  const [activeTab, setActiveTab] = useState<DialogTab>(defaultTab);
 
   const handleClose = () => {
-    setActiveTab("url");
+    setActiveTab(defaultTab);
     onClose();
   };
 
   return (
     <BottomSheet open={open} onClose={handleClose} title="RSS Feeds" maxWidth="sm:max-w-lg">
       {/* Tabs */}
-      <div className="pb-4 flex-shrink-0 -mt-1">
-        <div className="flex gap-1 bg-white/5 rounded-xl p-1">
-          {(
-            [
-              { id: "url", label: "Add URL" },
-              { id: "manage", label: "Manage" },
-              { id: "import", label: "Import" },
-              { id: "export", label: "Export" },
-            ] as const
-          ).map((tab) => (
+      <div className="pb-4 flex-shrink-0">
+        <div className="flex gap-0.5 bg-white/[0.04] rounded-xl p-1">
+          {availableTabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`
-                flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-all
-                ${
-                  activeTab === tab.id
-                    ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
-                    : "text-[#a1a1aa] hover:text-white"
-                }
-              `}
+              className={`flex-1 py-2 px-3 text-sm font-medium rounded-lg transition-all whitespace-nowrap ${
+                activeTab === tab.id
+                  ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
+                  : "text-[#a1a1aa] hover:text-white"
+              }`}
             >
               {tab.label}
             </button>
@@ -60,10 +64,10 @@ export function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
       </div>
 
       {/* Tab Content */}
-      {activeTab === "url" && <AddUrlTab onClose={handleClose} />}
+      {activeTab === "url" && canAdd && <AddUrlTab onClose={handleClose} />}
       {activeTab === "manage" && <ManageTab />}
-      {activeTab === "import" && <ImportTab onClose={handleClose} />}
-      {activeTab === "export" && <ExportTab />}
+      {activeTab === "import" && canImport && <ImportTab onClose={handleClose} />}
+      {activeTab === "export" && canExport && <ExportTab />}
     </BottomSheet>
   );
 }
@@ -80,7 +84,7 @@ function AddUrlTab({ onClose }: { onClose: () => void }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!url.trim()) return;
+    if (!url.trim() || !addRssFeed) return;
 
     setLoading(true);
     setError(null);
@@ -310,7 +314,7 @@ function ImportTab({ onClose }: { onClose: () => void }) {
 
   const handleImport = async () => {
     const feedsToImport = parsedFeeds.filter((_, i) => selected.has(i));
-    if (feedsToImport.length === 0) return;
+    if (feedsToImport.length === 0 || !importOPMLFeeds) return;
 
     setPhase("importing");
     const result = await importOPMLFeeds(feedsToImport, (p) =>
@@ -701,7 +705,7 @@ function ExportTab() {
 
           {/* Download button */}
           <button
-            onClick={exportFeedsAsOPML}
+            onClick={() => exportFeedsAsOPML?.()}
             className="btn-primary w-full py-3 text-sm font-medium"
           >
             Download OPML
