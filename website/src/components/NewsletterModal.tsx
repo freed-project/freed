@@ -226,6 +226,17 @@ export default function NewsletterModal() {
                       </p>
                     </div>
 
+                    {/* Early-build disclaimer */}
+                    <div className="mb-6 px-4 py-3 rounded-xl border border-amber-500/30 bg-amber-500/5">
+                      <p className="text-center text-xs sm:text-sm font-bold text-amber-400/90">
+                        ⚠️ Very early build — nothing works yet!
+                      </p>
+                      <p className="text-center text-xs text-amber-400/60 mt-1">
+                        Active development in progress. Expect a functional
+                        release within the next month or two.
+                      </p>
+                    </div>
+
                     {/* --- Web App --- */}
                     <a
                       href="https://app.freed.wtf"
@@ -253,8 +264,7 @@ export default function NewsletterModal() {
                           Open Web App
                         </p>
                         <p className="text-xs text-text-muted">
-                          Use Freed instantly in your browser — no install
-                          needed
+                          Read your feeds anywhere — great on mobile
                         </p>
                       </div>
                       <svg
@@ -299,7 +309,7 @@ export default function NewsletterModal() {
                               Download for {currentDownload.label}
                             </p>
                             <p className="text-xs text-text-muted">
-                              {currentDownload.file}
+                              Runs in background to subscribe &amp; monitor
                             </p>
                           </div>
                         </a>
