@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { FeedList } from "./FeedList";
 import { ReaderView } from "./ReaderView";
 import { AddFeedDialog } from "../AddFeedDialog";
-import { useAppStore } from "../../lib/store";
+import { useAppStore } from "../../context/PlatformContext";
 import { sortByPriority, filterFeedItems } from "@freed/shared";
 import type { FeedItem } from "@freed/shared";
 

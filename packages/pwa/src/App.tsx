@@ -1,14 +1,18 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { AppShell } from "./components/layout/AppShell";
 import { FeedView } from "./components/feed/FeedView";
 import { ToastContainer } from "./components/Toast";
+import { PlatformProvider, type PlatformConfig } from "./context/PlatformContext";
 import { useAppStore } from "./lib/store";
+import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } from "./lib/capture";
 import {
   connect,
   disconnect,
   onStatusChange,
   getStoredRelayUrl,
 } from "./lib/sync";
+import { DesktopSyncSection } from "./components/layout/DesktopSyncSection";
+import { PwaSyncIndicator } from "./components/layout/PwaSyncIndicator";
 
 function App() {
   const initialize = useAppStore((state) => state.initialize);
@@ -21,13 +25,11 @@ function App() {
     initialize();
   }, [initialize]);
 
-  // Setup sync connection status listener
   useEffect(() => {
     const unsubscribe = onStatusChange((connected) => {
       setSyncConnected(connected);
     });
 
-    // Auto-connect to stored relay URL
     const storedUrl = getStoredRelayUrl();
     if (storedUrl) {
       connect(storedUrl);
@@ -39,7 +41,21 @@ function App() {
     };
   }, [setSyncConnected]);
 
-  // Loading state
+  const platform: PlatformConfig = useMemo(
+    () => ({
+      store: useAppStore,
+      addRssFeed,
+      importOPMLFeeds,
+      exportFeedsAsOPML,
+      TitleBar: null,
+      SidebarConnectionSection: DesktopSyncSection,
+      SourceIndicator: null,
+      HeaderSyncIndicator: PwaSyncIndicator,
+      SettingsExtraSections: null,
+    }),
+    [],
+  );
+
   if (!isInitialized && isLoading) {
     return (
       <div className="h-screen flex items-center justify-center bg-freed-black">
@@ -51,7 +67,6 @@ function App() {
     );
   }
 
-  // Error state
   if (error && !isInitialized) {
     return (
       <div className="h-screen flex items-center justify-center bg-freed-black">
@@ -69,12 +84,12 @@ function App() {
   }
 
   return (
-    <>
+    <PlatformProvider value={platform}>
       <AppShell>
         <FeedView />
       </AppShell>
       <ToastContainer />
-    </>
+    </PlatformProvider>
   );
 }
 

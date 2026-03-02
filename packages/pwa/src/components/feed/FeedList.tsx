@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { FeedItem } from "./FeedItem";
 import type { FeedItem as FeedItemType } from "@freed/shared";
-import { useAppStore } from "../../lib/store";
+import { useAppStore } from "../../context/PlatformContext";
 
 interface FeedListProps {
   items: FeedItemType[];

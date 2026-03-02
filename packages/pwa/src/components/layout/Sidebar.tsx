@@ -1,7 +1,5 @@
 import { useState, useMemo } from "react";
-import { useAppStore } from "../../lib/store";
-import { disconnect, clearStoredRelayUrl } from "../../lib/sync";
-import { SyncConnectDialog } from "../SyncConnectDialog";
+import { useAppStore, usePlatform } from "../../context/PlatformContext";
 import { SettingsPanel } from "../SettingsPanel";
 
 interface SidebarProps {
@@ -17,15 +15,13 @@ const topSources = [
 ];
 
 export function Sidebar({ open, onClose }: SidebarProps) {
+  const { SidebarConnectionSection, SourceIndicator } = usePlatform();
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
-  const syncConnected = useAppStore((s) => s.syncConnected);
   const feeds = useAppStore((s) => s.feeds);
   const items = useAppStore((s) => s.items);
-  const [showSyncDialog, setShowSyncDialog] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  // Per-feed unread counts
   const feedUnreadCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const item of items) {
@@ -59,18 +55,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   };
 
   const isTopSourceActive = (source: (typeof topSources)[0]) => {
-    if (activeFilter.feedUrl) return false; // A specific feed is active
+    if (activeFilter.feedUrl) return false;
     if (source.savedOnly) return activeFilter.savedOnly === true;
     return activeFilter.platform === source.id && !activeFilter.savedOnly;
-  };
-
-  const handleConnectSync = () => {
-    setShowSyncDialog(true);
-  };
-
-  const handleDisconnectSync = () => {
-    clearStoredRelayUrl();
-    disconnect();
   };
 
   return (
@@ -92,11 +79,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           border-r border-[rgba(255,255,255,0.08)]
           transform transition-transform duration-200 ease-in-out
           ${open ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-          overflow-y-auto flex flex-col
+          flex flex-col min-h-0
         `}
       >
         {/* Mobile header with close button */}
-        <div className="md:hidden flex items-center justify-between p-4 border-b border-[rgba(255,255,255,0.08)]">
+        <div className="md:hidden flex items-center justify-between p-4 border-b border-[rgba(255,255,255,0.08)] shrink-0">
           <span className="text-lg font-bold gradient-text">FREED</span>
           <button
             onClick={onClose}
@@ -118,39 +105,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </button>
         </div>
 
-        <nav className="min-h-full flex flex-col p-4">
-          {/* Sync Status */}
-          <div className="flex-shrink-0 mb-6 p-3 rounded-xl bg-white/5 border border-[rgba(255,255,255,0.08)]">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium">Desktop Sync</span>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`sync-dot ${syncConnected ? "connected" : "disconnected"}`}
-                />
-                <span className="text-xs text-[#71717a]">
-                  {syncConnected ? "Connected" : "Offline"}
-                </span>
-              </div>
-            </div>
-            {syncConnected ? (
-              <button
-                onClick={handleDisconnectSync}
-                className="w-full text-xs px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors"
-              >
-                Disconnect
-              </button>
-            ) : (
-              <button
-                onClick={handleConnectSync}
-                className="w-full text-xs px-3 py-2 bg-[#8b5cf6]/20 text-[#8b5cf6] rounded-lg hover:bg-[#8b5cf6]/30 transition-colors"
-              >
-                Connect to Desktop
-              </button>
-            )}
-          </div>
+        <nav className="flex-1 min-h-0 flex flex-col p-4 overflow-y-auto">
+          {/* Platform-specific connection section (Desktop Sync, X Auth, etc.) */}
+          {SidebarConnectionSection && <SidebarConnectionSection />}
 
           {/* Sources */}
-          <div className="flex-shrink-0 mb-6">
+          <div className="shrink-0 mb-6">
             <h2 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-3">
               Sources
             </h2>
@@ -171,16 +131,19 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   >
                     <span className="w-5 text-center">{source.icon}</span>
                     <span className="flex-1">{source.label}</span>
+                    {SourceIndicator && (
+                      <SourceIndicator sourceId={source.id ?? "all"} />
+                    )}
                   </button>
                 </li>
               ))}
             </ul>
           </div>
 
-          {/* Individual RSS feeds — scrollable region */}
+          {/* Individual RSS feeds — scrollable with min-height to prevent collapse */}
           {feedList.length > 0 && (
-            <div className="flex-1 min-h-0 flex flex-col mb-6">
-              <h2 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-3 flex-shrink-0">
+            <div className="flex-1 min-h-[120px] flex flex-col mb-6">
+              <h2 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-3 shrink-0">
                 Feeds
               </h2>
               <ul className="space-y-0.5 overflow-y-auto min-h-0 flex-1">
@@ -205,10 +168,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                           <img
                             src={feed.imageUrl}
                             alt=""
-                            className="w-4 h-4 rounded-sm flex-shrink-0 object-cover"
+                            className="w-4 h-4 rounded-sm shrink-0 object-cover"
                           />
                         ) : (
-                          <span className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-[10px] text-[#52525b]">
+                          <span className="w-4 h-4 shrink-0 flex items-center justify-center text-[10px] text-[#52525b]">
                             📡
                           </span>
                         )}
@@ -216,7 +179,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                           {feed.title}
                         </span>
                         {unread > 0 && (
-                          <span className="flex-shrink-0 text-[10px] tabular-nums bg-[#8b5cf6]/20 text-[#8b5cf6] px-1.5 py-0.5 rounded-full">
+                          <span className="shrink-0 text-[10px] tabular-nums bg-[#8b5cf6]/20 text-[#8b5cf6] px-1.5 py-0.5 rounded-full">
                             {unread > 99 ? "99+" : unread}
                           </span>
                         )}
@@ -229,7 +192,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           )}
 
           {/* Library */}
-          <div className="flex-shrink-0 mb-6">
+          <div className="shrink-0 mb-6">
             <h2 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-2 px-3">
               Library
             </h2>
@@ -257,8 +220,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             </ul>
           </div>
 
-          {/* Settings */}
-          <div className="mt-auto">
+          {/* Settings — pushed to bottom */}
+          <div className="mt-auto shrink-0">
             <button
               onClick={() => setShowSettings(true)}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-all"
@@ -289,11 +252,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </div>
         </nav>
       </aside>
-
-      <SyncConnectDialog
-        open={showSyncDialog}
-        onClose={() => setShowSyncDialog(false)}
-      />
 
       <SettingsPanel
         open={showSettings}

@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
-import { useAppStore } from "../lib/store";
-import type { UserPreferences, WeightPreferences } from "@freed/shared";
+import { useAppStore, usePlatform } from "../context/PlatformContext";
+import type { WeightPreferences } from "@freed/shared";
 
 interface SettingsPanelProps {
   open: boolean;
@@ -79,6 +79,7 @@ function Toggle({
 }
 
 export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
+  const { SettingsExtraSections } = usePlatform();
   const preferences = useAppStore((s) => s.preferences);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
 
@@ -258,6 +259,9 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
               )}
             </div>
           </section>
+
+          {/* Platform-specific sections (e.g. Mobile Sync on desktop) */}
+          {SettingsExtraSections && <SettingsExtraSections />}
 
           {/* About */}
           <section className="pb-2">
