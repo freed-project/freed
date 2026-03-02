@@ -7,7 +7,7 @@ interface HeaderProps {
 }
 
 export function Header({ onMenuClick }: HeaderProps) {
-  const { HeaderSyncIndicator } = usePlatform();
+  const { HeaderSyncIndicator, TitleBar } = usePlatform();
   const [addFeedOpen, setAddFeedOpen] = useState(false);
   const items = useAppStore((s) => s.items);
   const markAllAsRead = useAppStore((s) => s.markAllAsRead);
@@ -50,10 +50,12 @@ export function Header({ onMenuClick }: HeaderProps) {
           </svg>
         </button>
 
-        {/* Logo — hidden on mobile (shown in sidebar) */}
-        <div className="hidden md:flex items-center gap-2">
-          <span className="text-xl font-bold gradient-text">FREED</span>
-        </div>
+        {/* Logo — hidden on mobile (sidebar shows it), hidden on desktop when TitleBar provides branding */}
+        {!TitleBar && (
+          <div className="hidden md:flex items-center gap-2">
+            <span className="text-xl font-bold gradient-text">FREED</span>
+          </div>
+        )}
 
         {/* Mobile title */}
         <div className="md:hidden flex-1 text-center">
