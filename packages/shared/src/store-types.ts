@@ -30,6 +30,19 @@ export interface BaseAppState {
   items: FeedItem[];
   feeds: Record<string, RssFeed>;
   preferences: UserPreferences;
+  /** Unread item count per RSS feed URL. Derived in hydrateFromDoc so shared
+   *  UI components (Sidebar) don't need to subscribe to the full items array. */
+  feedUnreadCounts: Record<string, number>;
+  /** Total visible item count per RSS feed URL. */
+  feedTotalCounts: Record<string, number>;
+  /** Total unread count across all non-hidden, non-archived items. */
+  totalUnreadCount: number;
+  /** Unread count bucketed by platform (e.g. "rss", "x"). */
+  unreadCountByPlatform: Record<string, number>;
+  /** Total visible (non-hidden) item count. */
+  totalItemCount: number;
+  /** Total visible item count bucketed by platform. */
+  itemCountByPlatform: Record<string, number>;
 
   // UI state
   isLoading: boolean;
@@ -52,6 +65,7 @@ export interface BaseAppState {
   // Feed actions
   addFeed: (feed: RssFeed) => Promise<void>;
   removeFeed: (url: string) => Promise<void>;
+  renameFeed: (url: string, title: string) => Promise<void>;
 
   // Preference actions
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;

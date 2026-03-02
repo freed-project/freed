@@ -12,6 +12,7 @@ import {
   addFeedItem,
   addRssFeed,
   removeRssFeed,
+  updateRssFeed,
   updateFeedItem,
   removeFeedItem,
   markAsRead,
@@ -110,6 +111,13 @@ export async function docAddRssFeed(feed: RssFeed): Promise<FreedDoc> {
 
 export async function docRemoveRssFeed(url: string): Promise<FreedDoc> {
   return applyChange((doc) => removeRssFeed(doc, url), "Remove RSS feed");
+}
+
+export async function docUpdateRssFeed(
+  url: string,
+  updates: Parameters<typeof updateRssFeed>[2]
+): Promise<FreedDoc> {
+  return applyChange((doc) => updateRssFeed(doc, url, updates), "Update RSS feed");
 }
 
 export async function docUpdateFeedItem(

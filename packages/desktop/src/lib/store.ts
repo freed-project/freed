@@ -13,6 +13,7 @@ import {
   docAddFeedItems,
   docAddRssFeed,
   docRemoveRssFeed,
+  docUpdateRssFeed,
   docUpdateFeedItem,
   docMarkAsRead,
   docMarkAllAsRead,
@@ -37,6 +38,18 @@ interface AppState {
   items: FeedItem[];
   feeds: Record<string, RssFeed>;
   preferences: UserPreferences;
+  /** Unread count per feed URL — derived in hydrateFromDoc */
+  feedUnreadCounts: Record<string, number>;
+  /** Total visible item count per feed URL. */
+  feedTotalCounts: Record<string, number>;
+  /** Total unread count across all non-hidden, non-archived items. */
+  totalUnreadCount: number;
+  /** Unread count bucketed by platform. */
+  unreadCountByPlatform: Record<string, number>;
+  /** Total visible (non-hidden) item count. */
+  totalItemCount: number;
+  /** Total visible item count bucketed by platform. */
+  itemCountByPlatform: Record<string, number>;
 
   // X auth state
   xAuth: XAuthState;
@@ -62,6 +75,7 @@ interface AppState {
   // Feed actions (persisted to Automerge)
   addFeed: (feed: RssFeed) => Promise<void>;
   removeFeed: (url: string) => Promise<void>;
+  renameFeed: (url: string, title: string) => Promise<void>;
 
   // Preference actions (persisted to Automerge)
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;
@@ -81,17 +95,48 @@ interface AppState {
  * Hydrate store state from Automerge document
  */
 function hydrateFromDoc(doc: FreedDoc): Partial<AppState> {
-  const items = Object.values(doc.feedItems)
-    .filter((item) => !item.userState.hidden)
-    .sort((a, b) => b.publishedAt - a.publishedAt);
+  const allItems = Object.values(doc.feedItems);
 
-  // Apply ranking
-  const rankedItems = rankFeedItems(items, doc.preferences.weights);
+  const visibleItems = allItems.filter((item) => !item.userState.hidden);
+  const rankedItems = rankFeedItems(
+    visibleItems.sort((a, b) => b.publishedAt - a.publishedAt),
+    doc.preferences.weights,
+  );
+
+  const feedUnreadCounts: Record<string, number> = {};
+  const feedTotalCounts: Record<string, number> = {};
+  const unreadCountByPlatform: Record<string, number> = {};
+  const itemCountByPlatform: Record<string, number> = {};
+  let totalUnreadCount = 0;
+  let totalItemCount = 0;
+  for (const item of allItems) {
+    if (item.userState.hidden || item.userState.archived) continue;
+    totalItemCount++;
+    itemCountByPlatform[item.platform] = (itemCountByPlatform[item.platform] ?? 0) + 1;
+    if (item.rssSource) {
+      const url = item.rssSource.feedUrl;
+      feedTotalCounts[url] = (feedTotalCounts[url] ?? 0) + 1;
+    }
+    if (!item.userState.readAt) {
+      totalUnreadCount++;
+      unreadCountByPlatform[item.platform] = (unreadCountByPlatform[item.platform] ?? 0) + 1;
+      if (item.rssSource) {
+        const url = item.rssSource.feedUrl;
+        feedUnreadCounts[url] = (feedUnreadCounts[url] ?? 0) + 1;
+      }
+    }
+  }
 
   return {
     items: rankedItems,
     feeds: doc.rssFeeds,
     preferences: doc.preferences,
+    feedUnreadCounts,
+    feedTotalCounts,
+    totalUnreadCount,
+    unreadCountByPlatform,
+    totalItemCount,
+    itemCountByPlatform,
   };
 }
 
@@ -100,6 +145,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   items: [],
   feeds: {},
   preferences: createDefaultPreferences(),
+  feedUnreadCounts: {},
+  feedTotalCounts: {},
+  totalUnreadCount: 0,
+  unreadCountByPlatform: {},
+  totalItemCount: 0,
+  itemCountByPlatform: {},
   xAuth: { isAuthenticated: false },
   isLoading: false,
   isSyncing: false,
@@ -170,6 +221,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   removeFeed: async (url) => {
     await docRemoveRssFeed(url);
+  },
+
+  renameFeed: async (url, title) => {
+    await docUpdateRssFeed(url, { title });
   },
 
   // Preference actions

@@ -1,6 +1,14 @@
-import { useState, useMemo, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
+import type { RssFeed } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext";
 import { SettingsPanel } from "../SettingsPanel";
+
+/** Compact number: 1234 → "1.2k", 1_200_000 → "1.2m". Trims trailing ".0". */
+function fmt(n: number): string {
+  if (n >= 1_000_000) return `${+(n / 1_000_000).toFixed(1)}m`;
+  if (n >= 1_000) return `${+(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
 
 interface SidebarProps {
   open: boolean;
@@ -45,6 +53,153 @@ function SidebarSection({
   );
 }
 
+// =============================================================================
+// Feed context menu helpers
+// =============================================================================
+
+function formatLastSync(lastFetched?: number): string {
+  if (!lastFetched) return "Never synced";
+  const diff = Date.now() - lastFetched;
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function syncDotClass(lastFetched?: number): string {
+  if (!lastFetched) return "bg-[#52525b]";
+  const diff = Date.now() - lastFetched;
+  if (diff < 60 * 60_000) return "bg-emerald-500";
+  if (diff < 24 * 60 * 60_000) return "bg-amber-500";
+  return "bg-red-500";
+}
+
+function syncStatusLabel(lastFetched?: number): string {
+  if (!lastFetched) return "Never";
+  const diff = Date.now() - lastFetched;
+  if (diff < 60 * 60_000) return "Up to date";
+  if (diff < 24 * 60 * 60_000) return "Stale";
+  return "Out of date";
+}
+
+interface FeedContextMenuProps {
+  feed: RssFeed;
+  anchorRect: DOMRect;
+  onClose: () => void;
+  onRename: (title: string) => void;
+  onUnsubscribe: () => void;
+  sidebarWidth: number;
+}
+
+function FeedContextMenu({
+  feed,
+  anchorRect,
+  onClose,
+  onRename,
+  onUnsubscribe,
+  sidebarWidth,
+}: FeedContextMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(feed.title);
+
+  useEffect(() => {
+    if (renaming) inputRef.current?.focus();
+  }, [renaming]);
+
+  useEffect(() => {
+    const handleDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", handleDown);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleDown);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [onClose]);
+
+  const handleRenameSubmit = () => {
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== feed.title) {
+      onRename(trimmed); // onRename calls onClose
+    } else {
+      onClose();
+    }
+  };
+
+  // Position menu below the trigger, anchored to sidebar left edge
+  const top = anchorRect.bottom + 4;
+  const left = 8; // slight inset from sidebar edge
+  const menuWidth = Math.min(sidebarWidth - 16, 224);
+
+  return (
+    <div
+      ref={menuRef}
+      style={{ top, left, width: menuWidth }}
+      className="fixed z-[300] bg-[#161616] border border-[rgba(255,255,255,0.1)] rounded-xl shadow-2xl shadow-black/70 overflow-hidden"
+    >
+      {/* Sync status header */}
+      <div className="px-3 py-2.5 border-b border-[rgba(255,255,255,0.07)]">
+        <div className="flex items-center gap-2">
+          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${syncDotClass(feed.lastFetched)}`} />
+          <span className="text-[11px] text-[#71717a]">{syncStatusLabel(feed.lastFetched)}</span>
+          <span className="text-[11px] text-[#52525b] ml-auto">{formatLastSync(feed.lastFetched)}</span>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="py-1">
+        {renaming ? (
+          <div className="px-2 py-1.5">
+            <input
+              ref={inputRef}
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleRenameSubmit();
+                if (e.key === "Escape") {
+                  setRenaming(false);
+                  setRenameValue(feed.title);
+                }
+              }}
+              onBlur={handleRenameSubmit}
+              className="w-full bg-[#222] border border-[#8b5cf6]/50 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-[#8b5cf6] placeholder-[#52525b]"
+            />
+          </div>
+        ) : (
+          <button
+            onClick={() => setRenaming(true)}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-colors text-left"
+          >
+            <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            Rename
+          </button>
+        )}
+        <button
+          onClick={onUnsubscribe}
+          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors text-left"
+        >
+          <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 4.411m0 0L21 21" />
+          </svg>
+          Unsubscribe
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
 const DEFAULT_WIDTH = 256;
@@ -66,12 +221,21 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
   const feeds = useAppStore((s) => s.feeds);
-  const items = useAppStore((s) => s.items);
+  const feedUnreadCounts = useAppStore((s) => s.feedUnreadCounts);
+  const feedTotalCounts = useAppStore((s) => s.feedTotalCounts);
+  const renameFeed = useAppStore((s) => s.renameFeed);
+  const removeFeed = useAppStore((s) => s.removeFeed);
+  const totalUnreadCount = useAppStore((s) => s.totalUnreadCount);
+  const unreadCountByPlatform = useAppStore((s) => s.unreadCountByPlatform);
+  const totalItemCount = useAppStore((s) => s.totalItemCount);
+  const itemCountByPlatform = useAppStore((s) => s.itemCountByPlatform);
   const sidebarWidth = useAppStore((s) => s.preferences.display.sidebarWidth) ?? DEFAULT_WIDTH;
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsScrollTarget, setSettingsScrollTarget] = useState<string | null>(null);
   const [dragWidth, setDragWidth] = useState<number | null>(null);
+  const [openMenuFeedUrl, setOpenMenuFeedUrl] = useState<string | null>(null);
+  const [menuAnchorRect, setMenuAnchorRect] = useState<DOMRect | null>(null);
   const dragging = useRef(false);
 
   // Listen for programmatic "open settings" requests (e.g. desktop sync indicator)
@@ -126,22 +290,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     [width, updatePreferences],
   );
 
-  const feedUnreadCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const item of items) {
-      if (!item.rssSource) continue;
-      if (
-        item.userState.readAt ||
-        item.userState.hidden ||
-        item.userState.archived
-      )
-        continue;
-      const url = item.rssSource.feedUrl;
-      counts[url] = (counts[url] ?? 0) + 1;
-    }
-    return counts;
-  }, [items]);
-
   const feedList = Object.values(feeds).filter((f) => f.enabled);
 
   const handleSourceClick = (source: (typeof topSources)[0]) => {
@@ -160,6 +308,16 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     if (activeFilter.savedOnly) return false;
     return activeFilter.platform === source.id;
   };
+
+  const sourceUnreadCount = (source: (typeof topSources)[0]) =>
+    source.id === undefined
+      ? totalUnreadCount
+      : (unreadCountByPlatform[source.id] ?? 0);
+
+  const sourceTotalCount = (source: (typeof topSources)[0]) =>
+    source.id === undefined
+      ? totalItemCount
+      : (itemCountByPlatform[source.id] ?? 0);
 
   return (
     <>
@@ -229,6 +387,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   >
                     <span className="w-5 text-center">{source.icon}</span>
                     <span className="flex-1">{source.label}</span>
+                    {sourceTotalCount(source) > 0 && (
+                      <span className="shrink-0 flex items-center gap-0.5 text-[10px] tabular-nums">
+                        <span className={sourceUnreadCount(source) > 0 ? "text-[#8b5cf6] font-medium" : "text-[#52525b]"}>
+                          {fmt(sourceUnreadCount(source))}
+                        </span>
+                        <span className="text-[#3f3f46]">/</span>
+                        <span className="text-[#52525b]">{fmt(sourceTotalCount(source))}</span>
+                      </span>
+                    )}
                     {SourceIndicator && (
                       <SourceIndicator sourceId={source.id ?? "all"} />
                     )}
@@ -298,16 +465,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           {/* Feeds */}
           {feedList.length > 0 && (
             <SidebarSection title="Feeds" defaultOpen={false} count={feedList.length}>
-              <ul className="space-y-0.5 overflow-y-auto max-h-[40vh]">
+              <ul className="space-y-0.5 overflow-y-auto max-h-[40vh] -mr-4 pr-4">
                 {feedList.map((feed) => {
                   const unread = feedUnreadCounts[feed.url] ?? 0;
+                  const total = feedTotalCounts[feed.url] ?? 0;
                   const isActive = activeFilter.feedUrl === feed.url;
+                  const menuOpen = openMenuFeedUrl === feed.url;
                   return (
-                    <li key={feed.url}>
+                    <li key={feed.url} className="relative group/feed">
                       <button
                         onClick={() => handleFeedClick(feed.url)}
                         className={`
-                          w-full flex items-center gap-2 px-3 py-2 rounded-lg
+                          w-full flex items-center gap-2 px-3 py-2 pr-8 rounded-lg
                           text-left text-sm transition-all border
                           ${
                             isActive
@@ -330,11 +499,40 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                         <span className="flex-1 truncate text-xs">
                           {feed.title}
                         </span>
-                        {unread > 0 && (
-                          <span className="shrink-0 text-[10px] tabular-nums bg-[#8b5cf6]/20 text-[#8b5cf6] px-1.5 py-0.5 rounded-full">
-                            {unread > 99 ? "99+" : unread}
+                        {total > 0 && (
+                          <span className="shrink-0 flex items-center gap-0.5 text-[10px] tabular-nums">
+                            <span className={unread > 0 ? "text-[#8b5cf6] font-medium" : "text-[#52525b]"}>
+                              {fmt(unread)}
+                            </span>
+                            <span className="text-[#3f3f46]">/</span>
+                            <span className="text-[#52525b]">{fmt(total)}</span>
                           </span>
                         )}
+                      </button>
+
+                      {/* Triple-dot trigger — visible on row hover or when menu is open */}
+                      <button
+                        aria-label={`Options for ${feed.title}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (menuOpen) {
+                            setOpenMenuFeedUrl(null);
+                            setMenuAnchorRect(null);
+                          } else {
+                            setOpenMenuFeedUrl(feed.url);
+                            setMenuAnchorRect(e.currentTarget.getBoundingClientRect());
+                          }
+                        }}
+                        className={`
+                          absolute right-1 top-1/2 -translate-y-1/2
+                          p-1 rounded-md transition-all
+                          text-[#71717a] hover:text-white hover:bg-white/10
+                          ${menuOpen ? "opacity-100 bg-white/10 text-white" : "opacity-0 group-hover/feed:opacity-100"}
+                        `}
+                      >
+                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                          <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
+                        </svg>
                       </button>
                     </li>
                   );
@@ -386,6 +584,32 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         open={showSettings}
         onClose={() => setShowSettings(false)}
       />
+
+      {/* Feed context menu — rendered outside scroll container to avoid clipping */}
+      {openMenuFeedUrl && menuAnchorRect && feeds[openMenuFeedUrl] && (
+        <FeedContextMenu
+          feed={feeds[openMenuFeedUrl]}
+          anchorRect={menuAnchorRect}
+          sidebarWidth={width}
+          onClose={() => {
+            setOpenMenuFeedUrl(null);
+            setMenuAnchorRect(null);
+          }}
+          onRename={async (title) => {
+            await renameFeed(openMenuFeedUrl, title);
+            setOpenMenuFeedUrl(null);
+            setMenuAnchorRect(null);
+          }}
+          onUnsubscribe={async () => {
+            await removeFeed(openMenuFeedUrl);
+            if (activeFilter.feedUrl === openMenuFeedUrl) {
+              setFilter({ platform: "rss" });
+            }
+            setOpenMenuFeedUrl(null);
+            setMenuAnchorRect(null);
+          }}
+        />
+      )}
     </>
   );
 }

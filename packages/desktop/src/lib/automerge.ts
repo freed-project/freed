@@ -13,6 +13,7 @@ import {
   addFeedItem,
   addRssFeed,
   removeRssFeed,
+  updateRssFeed,
   updateFeedItem,
   removeFeedItem,
   markAsRead,
@@ -129,6 +130,13 @@ export async function docRemoveRssFeed(url: string): Promise<FreedDoc> {
   return applyChange((doc) => removeRssFeed(doc, url), "Remove RSS feed");
 }
 
+export async function docUpdateRssFeed(
+  url: string,
+  updates: Parameters<typeof updateRssFeed>[2]
+): Promise<FreedDoc> {
+  return applyChange((doc) => updateRssFeed(doc, url, updates), "Update RSS feed");
+}
+
 export async function docUpdateFeedItem(
   globalId: string,
   updates: Partial<FeedItem>
@@ -195,6 +203,28 @@ export async function docAddFeedItems(items: FeedItem[]): Promise<FreedDoc> {
       }
     }
   }, `Add ${items.length} feed items`);
+}
+
+/**
+ * Batch refresh: update feed timestamps AND add new items in a single Automerge
+ * change. This is critical for performance — replacing N per-feed writes with 1.
+ */
+export async function docBatchRefreshFeeds(
+  feeds: RssFeed[],
+  items: FeedItem[],
+): Promise<FreedDoc> {
+  return applyChange((doc) => {
+    for (const feed of feeds) {
+      if (doc.rssFeeds[feed.url] && feed.lastFetched !== undefined) {
+        doc.rssFeeds[feed.url].lastFetched = feed.lastFetched;
+      }
+    }
+    for (const item of items) {
+      if (!doc.feedItems[item.globalId]) {
+        addFeedItem(doc, item);
+      }
+    }
+  }, `Refresh ${feeds.length} feeds, ${items.length} items`);
 }
 
 /**
