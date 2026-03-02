@@ -1,14 +1,14 @@
 /**
- * PwaSyncIndicator — PWA-specific header widget
+ * PwaSyncIndicator — unified PWA sync widget (header dropdown)
  *
- * Shows sync status with a floating panel listing all feeds,
- * their last-fetched times, and a "refresh via desktop" action.
- * Only rendered in the PWA deployment target.
+ * Single source of truth for all sync concerns: connection status,
+ * time since last sync, per-feed breakdown, and connect/disconnect actions.
  */
 
-import { useEffect, useRef, useState } from "react";
-import { toast } from "../Toast";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../../lib/store";
+import { disconnect, clearStoredRelayUrl } from "../../lib/sync";
+import { SyncConnectDialog } from "../SyncConnectDialog";
 
 function formatRelativeTime(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -22,41 +22,51 @@ function formatRelativeTime(timestamp: number): string {
 }
 
 export function PwaSyncIndicator() {
-  const [syncPanelOpen, setSyncPanelOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [showConnectDialog, setShowConnectDialog] = useState(false);
   const isSyncing = useAppStore((s) => s.isSyncing);
   const syncConnected = useAppStore((s) => s.syncConnected);
   const feeds = useAppStore((s) => s.feeds);
-  const syncPanelRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const feedList = Object.values(feeds);
   const feedCount = feedList.length;
 
+  const lastSyncTime = useMemo(() => {
+    const times = feedList
+      .map((f) => f.lastFetched)
+      .filter((t): t is number => !!t);
+    return times.length > 0 ? Math.max(...times) : null;
+  }, [feedList]);
+
   useEffect(() => {
-    if (!syncPanelOpen) return;
+    if (!panelOpen) return;
     const handler = (e: MouseEvent) => {
-      if (
-        syncPanelRef.current &&
-        !syncPanelRef.current.contains(e.target as Node)
-      ) {
-        setSyncPanelOpen(false);
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        setPanelOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [syncPanelOpen]);
+  }, [panelOpen]);
 
-  const handleRefresh = () => {
-    setSyncPanelOpen(false);
-    toast.info("Open the desktop app to refresh feeds");
+  const handleDisconnect = () => {
+    clearStoredRelayUrl();
+    disconnect();
+    setPanelOpen(false);
   };
 
   const statusLabel = isSyncing
     ? "Syncing"
     : syncConnected
-      ? "Synced"
-      : feedCount > 0
-        ? "Local"
-        : "Ready";
+      ? "Connected"
+      : "Offline";
+
+  const dotColor = isSyncing
+    ? "bg-[#8b5cf6]"
+    : syncConnected
+      ? "bg-green-400"
+      : "bg-[#71717a]";
 
   const statusColor = isSyncing
     ? "text-[#8b5cf6]"
@@ -65,58 +75,36 @@ export function PwaSyncIndicator() {
       : "text-[#71717a]";
 
   return (
-    <div className="relative" ref={syncPanelRef}>
+    <div className="relative" ref={panelRef}>
+      {/* Desktop button */}
       <button
-        onClick={() => setSyncPanelOpen((prev) => !prev)}
-        className={`
-          hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors
-          hover:bg-white/5 ${statusColor}
-        `}
+        onClick={() => setPanelOpen((prev) => !prev)}
+        className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-white/5 ${statusColor}`}
       >
+        <span className={`w-1.5 h-1.5 rounded-full ${dotColor} ${isSyncing ? "animate-pulse" : ""}`} />
         <span>{statusLabel}</span>
-        <svg
-          className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-          />
-        </svg>
+        {lastSyncTime && !isSyncing && (
+          <span className="text-[10px] text-[#52525b] tabular-nums">
+            · {formatRelativeTime(lastSyncTime)}
+          </span>
+        )}
       </button>
 
-      {/* Mobile-only: just the spinner icon */}
+      {/* Mobile button */}
       <button
-        onClick={() => setSyncPanelOpen((prev) => !prev)}
+        onClick={() => setPanelOpen((prev) => !prev)}
         className={`sm:hidden p-2 rounded-lg transition-colors hover:bg-white/5 ${statusColor}`}
       >
-        <svg
-          className={`w-5 h-5 ${isSyncing ? "animate-spin" : ""}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-          />
-        </svg>
+        <span className={`block w-2 h-2 rounded-full ${dotColor} ${isSyncing ? "animate-pulse" : ""}`} />
       </button>
 
-      {/* Floating sync panel */}
-      {syncPanelOpen && (
+      {/* Dropdown panel */}
+      {panelOpen && (
         <div className="absolute right-0 top-full mt-2 w-72 bg-[#1a1a1a] border border-[rgba(255,255,255,0.08)] rounded-xl shadow-2xl z-50 overflow-hidden">
+          {/* Header */}
           <div className="px-4 py-3 border-b border-[rgba(255,255,255,0.06)]">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-white">
-                Sync Status
-              </span>
+              <span className="text-sm font-medium text-white">Desktop Sync</span>
               <span
                 className={`text-xs px-2 py-0.5 rounded-full ${
                   isSyncing
@@ -129,8 +117,14 @@ export function PwaSyncIndicator() {
                 {statusLabel}
               </span>
             </div>
+            {lastSyncTime && (
+              <p className="text-[10px] text-[#52525b] mt-1 tabular-nums">
+                Last synced {formatRelativeTime(lastSyncTime)}
+              </p>
+            )}
           </div>
 
+          {/* Per-feed breakdown */}
           {feedCount > 0 ? (
             <div className="max-h-48 overflow-y-auto">
               {feedList.map((feed) => (
@@ -139,19 +133,7 @@ export function PwaSyncIndicator() {
                   className="flex items-center gap-2 px-4 py-2 border-b border-[rgba(255,255,255,0.04)] last:border-0"
                 >
                   {isSyncing ? (
-                    <svg
-                      className="w-3.5 h-3.5 text-[#8b5cf6] animate-spin flex-shrink-0"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                      />
-                    </svg>
+                    <span className={`w-1.5 h-1.5 rounded-full bg-[#8b5cf6] animate-pulse flex-shrink-0`} />
                   ) : (
                     <span className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" />
                   )}
@@ -174,21 +156,34 @@ export function PwaSyncIndicator() {
             </div>
           )}
 
-          {feedCount > 0 && (
-            <div className="px-4 py-2.5 border-t border-[rgba(255,255,255,0.06)]">
+          {/* Actions */}
+          <div className="px-4 py-2.5 border-t border-[rgba(255,255,255,0.06)]">
+            {syncConnected ? (
               <button
-                onClick={handleRefresh}
-                disabled={isSyncing}
-                className="w-full text-xs text-[#8b5cf6] hover:text-[#a78bfa] disabled:text-[#52525b] disabled:cursor-not-allowed transition-colors text-center py-1"
+                onClick={handleDisconnect}
+                className="w-full text-xs text-red-400 hover:text-red-300 transition-colors text-center py-1"
               >
-                {isSyncing
-                  ? "Syncing with desktop..."
-                  : "Refresh via desktop app"}
+                Disconnect
               </button>
-            </div>
-          )}
+            ) : (
+              <button
+                onClick={() => {
+                  setPanelOpen(false);
+                  setShowConnectDialog(true);
+                }}
+                className="w-full text-xs text-[#8b5cf6] hover:text-[#a78bfa] transition-colors text-center py-1"
+              >
+                Connect to Desktop
+              </button>
+            )}
+          </div>
         </div>
       )}
+
+      <SyncConnectDialog
+        open={showConnectDialog}
+        onClose={() => setShowConnectDialog(false)}
+      />
     </div>
   );
 }

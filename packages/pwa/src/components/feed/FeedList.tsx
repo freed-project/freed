@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { FeedItem } from "./FeedItem";
 import type { FeedItem as FeedItemType } from "@freed/shared";
-import { useAppStore } from "../../context/PlatformContext";
+import { useAppStore, usePlatform } from "../../context/PlatformContext";
 
 interface FeedListProps {
   items: FeedItemType[];
@@ -27,6 +27,7 @@ export function FeedList({
   onItemSave,
 }: FeedListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
+  const { FeedEmptyState } = usePlatform();
   const compactMode = useAppStore((s) => s.preferences.display.compactMode);
   const showEngagementCounts = useAppStore(
     (s) => s.preferences.display.showEngagementCounts,
@@ -47,10 +48,14 @@ export function FeedList({
           <span className="text-2xl">📡</span>
         </div>
         {hasFeedsSubscribed ? (
-          <>
-            <p className="text-lg font-medium mb-2">All caught up!</p>
-            <p className="text-sm text-[#71717a]">No new items to show.</p>
-          </>
+          FeedEmptyState ? (
+            <FeedEmptyState />
+          ) : (
+            <>
+              <p className="text-lg font-medium mb-2">All caught up!</p>
+              <p className="text-sm text-[#71717a]">No new items to show.</p>
+            </>
+          )
         ) : (
           <>
             <p className="text-lg font-medium mb-2">Welcome to Freed</p>

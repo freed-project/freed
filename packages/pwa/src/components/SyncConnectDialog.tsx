@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { connect, storeRelayUrl } from "../lib/sync";
 
 interface SyncConnectDialogProps {
@@ -156,9 +157,7 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
 
   if (!open) return null;
 
-  const canScan = isBarcodeDetectorSupported();
-
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       {/* Backdrop */}
       <div
@@ -167,42 +166,61 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
       />
 
       {/* Dialog */}
-      <div className="relative w-full sm:max-w-md sm:mx-4 bg-[#141414] border border-[rgba(255,255,255,0.08)] rounded-t-2xl sm:rounded-2xl p-6 shadow-2xl">
-        {/* Mobile drag indicator */}
-        <div className="sm:hidden w-12 h-1 bg-white/20 rounded-full mx-auto mb-4" />
+      <div className="relative w-full sm:max-w-md sm:mx-4 bg-[#141414] border border-[rgba(255,255,255,0.08)] rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col">
+        {/* Mobile drag handle */}
+        <div className="sm:hidden w-12 h-1 bg-white/20 rounded-full mx-auto mt-4 mb-1 shrink-0" />
 
-        <h2 className="text-xl font-semibold mb-2">Connect to Desktop</h2>
-        <p className="text-sm text-[#71717a] mb-6">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[rgba(255,255,255,0.08)] shrink-0">
+          <h2 className="text-lg font-semibold">Connect to Desktop</h2>
+          <button
+            onClick={handleClose}
+            className="p-1.5 rounded-lg hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+            aria-label="Close dialog"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-6 py-5">
+        <p className="text-sm text-[#71717a] mb-5">
           {mode === "scanning"
             ? "Point your camera at the QR code shown in the Freed desktop app."
             : "Enter the sync URL from your Freed desktop app, or scan the QR code."}
         </p>
 
         {/* Mode tabs */}
-        {canScan && (
-          <div className="flex gap-2 mb-5">
-            <button
-              onClick={() => { setMode("manual"); stopCamera(); setError(null); }}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                mode === "manual"
-                  ? "bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30"
-                  : "bg-white/5 text-[#71717a] hover:text-white"
-              }`}
-            >
-              Manual
-            </button>
-            <button
-              onClick={() => { setMode("scanning"); setError(null); }}
-              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-                mode === "scanning"
-                  ? "bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30"
-                  : "bg-white/5 text-[#71717a] hover:text-white"
-              }`}
-            >
-              Scan QR
-            </button>
-          </div>
-        )}
+        <div className="flex gap-2 mb-5">
+          <button
+            onClick={() => { setMode("manual"); stopCamera(); setError(null); }}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+              mode === "manual"
+                ? "bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30"
+                : "bg-white/5 text-[#71717a] hover:text-white"
+            }`}
+          >
+            Manual
+          </button>
+          <button
+            onClick={() => {
+              if (!isBarcodeDetectorSupported()) {
+                setError("QR scanning is not supported in this browser. Please use the manual URL entry instead.");
+                return;
+              }
+              setMode("scanning");
+              setError(null);
+            }}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+              mode === "scanning"
+                ? "bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30"
+                : "bg-white/5 text-[#71717a] hover:text-white"
+            }`}
+          >
+            Scan QR
+          </button>
+        </div>
 
         {mode === "scanning" ? (
           /* QR Scanner view */
@@ -281,15 +299,7 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
         )}
 
         {mode === "manual" && (
-          <div className="flex gap-3 justify-end">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="px-4 py-2.5 text-[#a1a1aa] hover:text-white transition-colors"
-              disabled={connecting}
-            >
-              Cancel
-            </button>
+          <div className="flex justify-end">
             <button
               onClick={handleConnect}
               className="btn-primary px-6 py-2.5 disabled:opacity-50"
@@ -299,19 +309,9 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
             </button>
           </div>
         )}
-
-        {mode === "scanning" && (
-          <div className="flex justify-center">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="px-4 py-2.5 text-[#a1a1aa] hover:text-white transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        )}
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

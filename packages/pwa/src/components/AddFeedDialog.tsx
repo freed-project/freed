@@ -37,14 +37,27 @@ export function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
         onClick={handleClose}
       />
 
-      {/* Dialog — slides up from bottom on mobile */}
+      {/* Dialog */}
       <div className="relative w-full sm:max-w-lg sm:mx-4 bg-[#141414] border border-[rgba(255,255,255,0.08)] rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col">
-        {/* Mobile drag indicator */}
-        <div className="sm:hidden w-12 h-1 bg-white/20 rounded-full mx-auto mt-3" />
+        {/* Mobile drag handle */}
+        <div className="sm:hidden w-12 h-1 bg-white/20 rounded-full mx-auto mt-4 mb-1 shrink-0" />
 
-        {/* Header + Tabs */}
-        <div className="px-6 pt-5 pb-0 flex-shrink-0">
-          <h2 className="text-xl font-semibold mb-4">RSS Feeds</h2>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[rgba(255,255,255,0.08)] shrink-0">
+          <h2 className="text-lg font-semibold">RSS Feeds</h2>
+          <button
+            onClick={handleClose}
+            className="p-1.5 rounded-lg hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+            aria-label="Close dialog"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="px-6 pt-4 pb-0 flex-shrink-0">
           <div className="flex gap-1 bg-white/5 rounded-xl p-1">
             {(
               [
@@ -137,15 +150,7 @@ function AddUrlTab({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        <div className="flex gap-3 justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2.5 text-[#a1a1aa] hover:text-white transition-colors"
-            disabled={loading}
-          >
-            Cancel
-          </button>
+        <div className="flex justify-end">
           <button
             type="submit"
             className="btn-primary px-6 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -514,9 +519,9 @@ function ImportTab({ onClose }: { onClose: () => void }) {
         <div className="flex gap-3 justify-end mt-4 pt-4 border-t border-[rgba(255,255,255,0.08)]">
           <button
             onClick={handleReset}
-            className="px-4 py-2.5 text-[#a1a1aa] hover:text-white transition-colors"
+            className="px-4 py-2.5 text-[#a1a1aa] hover:text-white transition-colors text-sm"
           >
-            Cancel
+            Change file
           </button>
           <button
             onClick={handleImport}

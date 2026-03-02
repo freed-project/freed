@@ -400,6 +400,9 @@ export interface DisplayPreferences {
 
   /** Reading enhancements */
   reading: ReadingEnhancements;
+
+  /** Sidebar width in pixels (default: 256, min: 180, max: 480) */
+  sidebarWidth?: number;
 }
 
 /**

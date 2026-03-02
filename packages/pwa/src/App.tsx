@@ -11,8 +11,8 @@ import {
   onStatusChange,
   getStoredRelayUrl,
 } from "./lib/sync";
-import { DesktopSyncSection } from "./components/layout/DesktopSyncSection";
 import { PwaSyncIndicator } from "./components/layout/PwaSyncIndicator";
+import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
 
 function App() {
   const initialize = useAppStore((state) => state.initialize);
@@ -47,11 +47,11 @@ function App() {
       addRssFeed,
       importOPMLFeeds,
       exportFeedsAsOPML,
-      TitleBar: null,
-      SidebarConnectionSection: DesktopSyncSection,
+      SidebarConnectionSection: null,
       SourceIndicator: null,
       HeaderSyncIndicator: PwaSyncIndicator,
       SettingsExtraSections: null,
+      FeedEmptyState: PwaFeedEmptyState,
     }),
     [],
   );

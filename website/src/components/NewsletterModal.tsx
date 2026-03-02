@@ -16,27 +16,26 @@ import { useNewsletter } from "@/context/NewsletterContext";
 
 type SubmitState = "idle" | "loading" | "success" | "error";
 
-const VERSION = "26.3.2";
-const RELEASE_BASE = `https://github.com/freed-project/freed/releases/download/v${VERSION}`;
+const RELEASE_BASE = "https://github.com/freed-project/freed/releases/latest/download";
 
 type DownloadKey = "mac-arm" | "mac-intel" | "windows" | "linux";
 
 const DOWNLOADS: Record<DownloadKey, { label: string; file: string }> = {
   "mac-arm": {
     label: "macOS (Apple Silicon)",
-    file: `Freed_${VERSION}_aarch64.dmg`,
+    file: "Freed-macOS-arm64.dmg",
   },
   "mac-intel": {
     label: "macOS (Intel)",
-    file: `Freed_${VERSION}_x64.dmg`,
+    file: "Freed-macOS-x64.dmg",
   },
   windows: {
     label: "Windows",
-    file: `Freed_${VERSION}_x64-setup.exe`,
+    file: "Freed-Windows-x64-setup.exe",
   },
   linux: {
     label: "Linux",
-    file: `Freed_${VERSION}_amd64.AppImage`,
+    file: "Freed-Linux-x64.AppImage",
   },
 };
 

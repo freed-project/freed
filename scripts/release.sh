@@ -18,11 +18,10 @@ TAURI_CONF="${DESKTOP_DIR}/src-tauri/tauri.conf.json"
 CARGO_TOML="${DESKTOP_DIR}/src-tauri/Cargo.toml"
 DESKTOP_PKG="${DESKTOP_DIR}/package.json"
 PWA_PKG="packages/pwa/package.json"
-MODAL_TSX="website/src/components/NewsletterModal.tsx"
 
 echo "==> Bumping to ${VERSION} (tag: ${TAG})"
 
-# Validate version format (CalVer YYYY.M.D is valid as digits.digits.digits)
+# Validate version format (CalVer YY.M.D is valid as digits.digits.digits)
 if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
   echo "Error: '${VERSION}' is not a valid version (expected YY.M.D)" >&2
   exit 1
@@ -61,18 +60,14 @@ node -e "
   fs.writeFileSync('${PWA_PKG}', JSON.stringify(pkg, null, 2) + '\n');
 "
 
-# Update download VERSION in the marketing site modal
-sed -i '' "s/^const VERSION = \".*\"/const VERSION = \"${VERSION}\"/" "${MODAL_TSX}"
-
 echo "==> Updated:"
 echo "    ${TAURI_CONF}"
 echo "    ${CARGO_TOML}"
 echo "    ${DESKTOP_PKG}"
 echo "    ${PWA_PKG}"
-echo "    ${MODAL_TSX}"
 
 # Commit and tag
-git add "${TAURI_CONF}" "${CARGO_TOML}" "${DESKTOP_PKG}" "${PWA_PKG}" "${MODAL_TSX}"
+git add "${TAURI_CONF}" "${CARGO_TOML}" "${DESKTOP_PKG}" "${PWA_PKG}"
 git commit -m "release: ${TAG}"
 git tag -a "${TAG}" -m "Release ${TAG}"
 

@@ -43,10 +43,12 @@ export interface PlatformConfig {
   /** Download subscriptions as OPML */
   exportFeedsAsOPML: () => void;
 
-  // -- Layout slot components (null = not rendered) --
+  // -- Platform behavior flags --
 
-  /** Rendered above content in AppShell (e.g. Tauri title bar) */
-  TitleBar: ComponentType | null;
+  /** When true, Header becomes a native draggable title bar with traffic light padding */
+  headerDragRegion?: boolean;
+
+  // -- Layout slot components (null = not rendered) --
 
   /** Rendered at top of Sidebar nav (e.g. Desktop Sync card, X Auth card) */
   SidebarConnectionSection: ComponentType | null;
@@ -59,6 +61,9 @@ export interface PlatformConfig {
 
   /** Rendered after built-in settings sections (e.g. Mobile Sync tab) */
   SettingsExtraSections: ComponentType | null;
+
+  /** Replaces default "All caught up" empty state when feeds exist but no items */
+  FeedEmptyState: ComponentType | null;
 }
 
 const PlatformCtx = createContext<PlatformConfig | null>(null);

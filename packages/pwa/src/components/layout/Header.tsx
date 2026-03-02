@@ -6,8 +6,10 @@ interface HeaderProps {
   onMenuClick: () => void;
 }
 
+const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
+
 export function Header({ onMenuClick }: HeaderProps) {
-  const { HeaderSyncIndicator, TitleBar } = usePlatform();
+  const { HeaderSyncIndicator, headerDragRegion } = usePlatform();
   const [addFeedOpen, setAddFeedOpen] = useState(false);
   const items = useAppStore((s) => s.items);
   const markAllAsRead = useAppStore((s) => s.markAllAsRead);
@@ -28,15 +30,23 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   return (
     <>
-      <header className="flex-shrink-0 h-14 flex items-center px-4 border-b border-[rgba(255,255,255,0.08)] bg-[#0a0a0a]/90 backdrop-blur-xl z-30 pt-[env(safe-area-inset-top)]">
+      <header
+        className={`flex-shrink-0 h-12 flex items-center px-4 border-b border-[rgba(255,255,255,0.08)] bg-[#0a0a0a]/90 backdrop-blur-xl z-30 ${
+          headerDragRegion ? "pl-[72px]" : "pt-[env(safe-area-inset-top)]"
+        }`}
+        {...(headerDragRegion
+          ? { "data-tauri-drag-region": true, style: { WebkitAppRegion: "drag" } as React.CSSProperties }
+          : {})}
+      >
         {/* Mobile menu button */}
         <button
           onClick={onMenuClick}
           className="md:hidden p-2 -ml-2 rounded-lg hover:bg-white/10 transition-colors"
           aria-label="Open menu"
+          style={headerDragRegion ? noDrag : undefined}
         >
           <svg
-            className="w-6 h-6"
+            className="w-5 h-5"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -50,36 +60,18 @@ export function Header({ onMenuClick }: HeaderProps) {
           </svg>
         </button>
 
-        {/* Logo — hidden on mobile (sidebar shows it), hidden on desktop when TitleBar provides branding */}
-        {!TitleBar && (
-          <div className="hidden md:flex items-center gap-2">
-            <span className="text-xl font-bold gradient-text">FREED</span>
-          </div>
-        )}
-
-        {/* Mobile title */}
-        <div className="md:hidden flex-1 text-center">
-          <span className="text-lg font-semibold">Feed</span>
+        {/* FREED logo — visible on desktop (sidebar shows it on mobile) */}
+        <div className="hidden md:flex items-center gap-2" style={headerDragRegion ? noDrag : undefined}>
+          <span className="text-lg font-bold gradient-text">FREED</span>
         </div>
 
-        {/* Spacer — push actions to the right on desktop */}
-        <div className="hidden md:block flex-1" />
-
-        {/* Unread count (mobile) */}
-        {unreadCount > 0 && (
-          <div className="md:hidden flex items-center gap-1">
-            <span className="text-xs text-[#71717a] tabular-nums">
-              {unreadCount}
-            </span>
-          </div>
-        )}
+        {/* Spacer */}
+        <div className="flex-1" />
 
         {/* Actions */}
-        <div className="flex items-center gap-1 sm:gap-2">
-          {/* Platform-specific sync indicator (PWA: sync panel, Desktop: refresh + dot) */}
+        <div className="flex items-center gap-1 sm:gap-2" style={headerDragRegion ? noDrag : undefined}>
           {HeaderSyncIndicator && <HeaderSyncIndicator />}
 
-          {/* Mark all read — only shown when there are unread items */}
           {unreadCount > 0 && (
             <button
               onClick={() => markAllAsRead(activeFilter.platform)}
@@ -93,7 +85,6 @@ export function Header({ onMenuClick }: HeaderProps) {
             </button>
           )}
 
-          {/* Add feed button */}
           <button
             onClick={() => setAddFeedOpen(true)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors"

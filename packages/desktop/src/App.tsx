@@ -6,7 +6,6 @@ import { UpdateNotification } from "./components/UpdateNotification";
 import { useAppStore } from "./lib/store";
 import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } from "./lib/capture";
 import { startRssPoller, stopRssPoller } from "./lib/rss-poller";
-import { TauriTitleBar } from "./components/TauriTitleBar";
 import { XAuthSection } from "./components/XAuthSection";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
@@ -34,11 +33,12 @@ function App() {
       addRssFeed,
       importOPMLFeeds,
       exportFeedsAsOPML,
-      TitleBar: TauriTitleBar,
+      headerDragRegion: true,
       SidebarConnectionSection: XAuthSection,
       SourceIndicator: XSourceIndicator,
       HeaderSyncIndicator: DesktopSyncIndicator,
       SettingsExtraSections: MobileSyncTab,
+      FeedEmptyState: null,
     }),
     [],
   );
