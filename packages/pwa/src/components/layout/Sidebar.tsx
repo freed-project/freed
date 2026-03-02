@@ -90,7 +90,6 @@ interface FeedContextMenuProps {
   onClose: () => void;
   onRename: (title: string) => void;
   onUnsubscribe: () => void;
-  sidebarWidth: number;
 }
 
 function FeedContextMenu({
@@ -99,7 +98,6 @@ function FeedContextMenu({
   onClose,
   onRename,
   onUnsubscribe,
-  sidebarWidth,
 }: FeedContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -136,10 +134,14 @@ function FeedContextMenu({
     }
   };
 
-  // Position menu below the trigger, anchored to sidebar left edge
-  const top = anchorRect.bottom + 4;
-  const left = 8; // slight inset from sidebar edge
-  const menuWidth = Math.min(sidebarWidth - 16, 224);
+  // Position menu to the right of the trigger button.
+  // If it would overflow the viewport, flip left instead.
+  const menuWidth = 224;
+  const gap = 6;
+  const fitsRight = anchorRect.right + gap + menuWidth <= window.innerWidth;
+  const left = fitsRight ? anchorRect.right + gap : anchorRect.left - gap - menuWidth;
+  // Align menu top with trigger top; clamp so it never clips the bottom of the viewport.
+  const top = Math.min(anchorRect.top, window.innerHeight - 180);
 
   return (
     <div
@@ -217,7 +219,7 @@ const comingSoonSources = [
 ];
 
 export function Sidebar({ open, onClose }: SidebarProps) {
-  const { SidebarConnectionSection, SourceIndicator } = usePlatform();
+  const { SidebarConnectionSection, SourceIndicator, headerDragRegion } = usePlatform();
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
   const feeds = useAppStore((s) => s.feeds);
@@ -342,12 +344,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         `}
         style={{ width: `${width}px` }}
       >
-        {/* Mobile header with close button — pushed below status bar */}
+        {/* Mobile header with close button — pushed below status bar.
+            Logo is suppressed in the desktop app to avoid overlapping macOS traffic lights. */}
         <div className="md:hidden flex items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+1rem)] border-b border-[rgba(255,255,255,0.08)] shrink-0">
-          <span className="text-lg font-bold gradient-text font-logo">FREED</span>
+          {!headerDragRegion && (
+            <span className="text-lg font-bold gradient-text font-logo">FREED</span>
+          )}
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-white/10"
+            className="p-2 rounded-lg hover:bg-white/10 ml-auto"
           >
             <svg
               className="w-5 h-5"
@@ -465,30 +470,32 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           {/* Feeds */}
           {feedList.length > 0 && (
             <SidebarSection title="Feeds" defaultOpen={false} count={feedList.length}>
-              <ul className="space-y-0.5 overflow-y-auto max-h-[40vh] -mr-4 pr-4">
+              <ul className="space-y-0.5 overflow-y-auto max-h-[40vh] -mr-4 pr-1">
                 {feedList.map((feed) => {
                   const unread = feedUnreadCounts[feed.url] ?? 0;
                   const total = feedTotalCounts[feed.url] ?? 0;
                   const isActive = activeFilter.feedUrl === feed.url;
                   const menuOpen = openMenuFeedUrl === feed.url;
                   return (
-                    <li key={feed.url} className="relative group/feed">
+                    <li
+                      key={feed.url}
+                      className={`group/feed flex items-stretch gap-2 rounded-lg border transition-all ${
+                        isActive
+                          ? "bg-[#8b5cf6]/20 border-[#8b5cf6]/30 text-white"
+                          : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                      }`}
+                    >
+                      {/* Main clickable area */}
                       <button
                         onClick={() => handleFeedClick(feed.url)}
-                        className={`
-                          w-full flex items-center gap-2 px-3 py-2 pr-8 rounded-lg
-                          text-left text-sm transition-all border
-                          ${
-                            isActive
-                              ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
-                              : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
-                          }
-                        `}
+                        className="flex-1 flex items-center gap-2 pl-3 py-2 min-w-0 text-left"
                       >
                         {feed.imageUrl ? (
                           <img
                             src={feed.imageUrl}
                             alt=""
+                            loading="lazy"
+                            decoding="async"
                             className="w-4 h-4 rounded-sm shrink-0 object-cover"
                           />
                         ) : (
@@ -496,11 +503,13 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                             📡
                           </span>
                         )}
-                        <span className="flex-1 truncate text-xs">
-                          {feed.title}
-                        </span>
+                        <span className="flex-1 truncate text-xs">{feed.title}</span>
+                      </button>
+
+                      {/* Right slot: counts by default, kebab on hover */}
+                      <div className="shrink-0 flex items-center pr-2">
                         {total > 0 && (
-                          <span className="shrink-0 flex items-center gap-0.5 text-[10px] tabular-nums">
+                          <span className={`${menuOpen ? "hidden" : "flex group-hover/feed:hidden"} items-center gap-0.5 text-[10px] tabular-nums`}>
                             <span className={unread > 0 ? "text-[#8b5cf6] font-medium" : "text-[#52525b]"}>
                               {fmt(unread)}
                             </span>
@@ -508,32 +517,25 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                             <span className="text-[#52525b]">{fmt(total)}</span>
                           </span>
                         )}
-                      </button>
-
-                      {/* Triple-dot trigger — visible on row hover or when menu is open */}
-                      <button
-                        aria-label={`Options for ${feed.title}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (menuOpen) {
-                            setOpenMenuFeedUrl(null);
-                            setMenuAnchorRect(null);
-                          } else {
-                            setOpenMenuFeedUrl(feed.url);
-                            setMenuAnchorRect(e.currentTarget.getBoundingClientRect());
-                          }
-                        }}
-                        className={`
-                          absolute right-1 top-1/2 -translate-y-1/2
-                          p-1 rounded-md transition-all
-                          text-[#71717a] hover:text-white hover:bg-white/10
-                          ${menuOpen ? "opacity-100 bg-white/10 text-white" : "opacity-0 group-hover/feed:opacity-100"}
-                        `}
-                      >
-                        <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
-                        </svg>
-                      </button>
+                        <button
+                          aria-label={`Options for ${feed.title}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (menuOpen) {
+                              setOpenMenuFeedUrl(null);
+                              setMenuAnchorRect(null);
+                            } else {
+                              setOpenMenuFeedUrl(feed.url);
+                              setMenuAnchorRect(e.currentTarget.getBoundingClientRect());
+                            }
+                          }}
+                          className={`${menuOpen ? "flex bg-white/10 text-white" : "hidden group-hover/feed:flex text-[#71717a]"} items-center p-1 rounded-md hover:text-white hover:bg-white/10 transition-colors`}
+                        >
+                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
+                          </svg>
+                        </button>
+                      </div>
                     </li>
                   );
                 })}
@@ -590,7 +592,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         <FeedContextMenu
           feed={feeds[openMenuFeedUrl]}
           anchorRect={menuAnchorRect}
-          sidebarWidth={width}
           onClose={() => {
             setOpenMenuFeedUrl(null);
             setMenuAnchorRect(null);
