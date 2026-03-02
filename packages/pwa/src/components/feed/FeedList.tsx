@@ -130,7 +130,7 @@ export function FeedList({
   }
 
   return (
-    <div ref={parentRef} className="flex-1 min-h-0 overflow-auto overscroll-none">
+    <div ref={parentRef} className="flex-1 min-h-0 overflow-auto overscroll-none sidebar-scroll">
       <div
         style={{ height: virtualizer.getTotalSize() }}
         className="relative w-full"

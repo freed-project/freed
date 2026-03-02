@@ -42,6 +42,8 @@ export const FeedItem = memo(function FeedItem({ item, onClick, showEngagement =
           <img
             src={item.author.avatarUrl}
             alt=""
+            loading="lazy"
+            decoding="async"
             className="w-10 h-10 rounded-full bg-white/5 ring-1 ring-white/10 shrink-0"
           />
         ) : (
@@ -102,6 +104,8 @@ export const FeedItem = memo(function FeedItem({ item, onClick, showEngagement =
           <img
             src={item.content.mediaUrls[0]}
             alt=""
+            loading="lazy"
+            decoding="async"
             className="w-full h-48 sm:h-56 object-cover bg-white/5"
           />
         </div>

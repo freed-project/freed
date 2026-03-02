@@ -197,19 +197,19 @@ body {
   transform: scale(0.98);
 }
 
-/* Feed card component */
+/* Feed card component
+   No backdrop-filter here — blur compositing on 10-15 cards simultaneously
+   destroys scroll frame rate. The dark solid surface reads the same visually. */
 .feed-card {
-  background: var(--bg-card);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: var(--freed-surface);
   border: 1px solid var(--freed-border);
   border-radius: var(--card-radius);
   padding: 16px;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .feed-card:hover {
-  background: var(--bg-card-hover);
+  background: #1a1a1a;
   border-color: rgba(139, 92, 246, 0.2);
 }
 
@@ -367,10 +367,16 @@ body {
   animation: slide-out 0.2s ease-in;
 }
 
-/* Thin overlay scrollbar for sidebar */
-.sidebar-scroll {
+/* Thin auto-hiding scrollbar — hidden until hover or active scroll.
+   Used by both sidebar and primary feed content area. */
+.minimal-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.2s ease;
+}
+.minimal-scroll:hover,
+.minimal-scroll:active {
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
 .sidebar-scroll::-webkit-scrollbar {
   width: 5px;
@@ -379,9 +385,13 @@ body {
   background: transparent;
 }
 .sidebar-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: transparent;
   border-radius: 3px;
+  transition: background 0.2s ease;
+}
+.sidebar-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
 }
 .sidebar-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.25);
 }

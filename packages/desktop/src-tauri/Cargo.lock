@@ -905,7 +905,7 @@ dependencies = [
 
 [[package]]
 name = "freed-desktop"
-version = "26.3.102"
+version = "26.3.103"
 dependencies = [
  "futures-util",
  "local-ip-address",
