@@ -2,6 +2,16 @@
 
 import { useRef, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import {
+  useFloating,
+  useClientPoint,
+  useInteractions,
+  useHover,
+  offset,
+  shift,
+  arrow,
+  FloatingArrow,
+} from "@floating-ui/react";
 import { useNewsletter } from "@/context/NewsletterContext";
 
 type SubmitState = "idle" | "loading" | "success" | "error";
@@ -68,19 +78,31 @@ export default function NewsletterModal() {
   const [selectedPlatform, setSelectedPlatform] =
     useState<DownloadKey>("mac-arm");
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [isTooltipOpen, setIsTooltipOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const arrowRef = useRef(null);
+
+  const { refs, floatingStyles, context: floatingCtx } = useFloating({
+    open: isTooltipOpen,
+    onOpenChange: setIsTooltipOpen,
+    placement: "top",
+    middleware: [
+      offset(12),
+      shift({ padding: 8 }),
+      arrow({ element: arrowRef }),
+    ],
+  });
+
+  const clientPoint = useClientPoint(floatingCtx);
+  const hover = useHover(floatingCtx);
+  const { getReferenceProps, getFloatingProps } = useInteractions([
+    clientPoint,
+    hover,
+  ]);
 
   useEffect(() => {
     setSelectedPlatform(detectDownloadKey());
   }, []);
-
-  useEffect(() => {
-    if (isOpen && state !== "success") {
-      const t = setTimeout(() => inputRef.current?.focus(), 400);
-      return () => clearTimeout(t);
-    }
-  }, [isOpen, state]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -200,7 +222,7 @@ export default function NewsletterModal() {
                         Get <span className="gradient-text">Freed</span>
                       </h3>
                       <p className="text-text-secondary text-sm">
-                        Choose how you want to take back your feed.
+                        Open-source. Free forever. Take back your feed.
                       </p>
                     </div>
 
@@ -363,43 +385,62 @@ export default function NewsletterModal() {
                       <div className="flex-1 h-px bg-freed-border" />
                     </div>
 
-                    {/* --- Newsletter --- */}
-                    <form onSubmit={handleSubmit} className="space-y-3">
-                      <div className="flex gap-2">
-                        <input
-                          ref={inputRef}
-                          type="email"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          placeholder="your@email.com"
-                          required
-                          className="flex-1 px-4 py-2.5 rounded-lg bg-freed-surface border border-freed-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-glow-purple/50 focus:ring-1 focus:ring-glow-purple/50 transition-colors"
-                        />
-                        <motion.button
-                          type="submit"
-                          disabled={state === "loading"}
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
-                          className="btn-primary px-5 py-2.5 text-sm whitespace-nowrap disabled:opacity-50"
-                        >
-                          {state === "loading" ? "..." : "Subscribe"}
-                        </motion.button>
-                      </div>
+                    {/* --- Newsletter (disabled — tooltip on hover) --- */}
+                    <div
+                      className="relative"
+                      ref={refs.setReference}
+                      {...getReferenceProps()}
+                    >
+                      <AnimatePresence>
+                        {isTooltipOpen && (
+                          <motion.div
+                            ref={refs.setFloating}
+                            style={floatingStyles}
+                            {...getFloatingProps()}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="z-[60] pointer-events-none px-3 py-1.5 rounded-lg text-xs font-medium bg-freed-black border border-freed-border text-text-primary shadow-lg whitespace-nowrap"
+                          >
+                            <span>We just launched! 🚀</span>{" "}
+                            <span className="text-text-muted">
+                              Email updates coming soon ✨
+                            </span>
+                            <FloatingArrow
+                              ref={arrowRef}
+                              context={floatingCtx}
+                              fill="#0a0a0a"
+                              strokeWidth={1}
+                              stroke="var(--freed-border, #1f1f1f)"
+                            />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
 
-                      {state === "error" && (
-                        <motion.p
-                          initial={{ opacity: 0, y: -5 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="text-red-400 text-xs text-center"
-                        >
-                          {errorMessage}
-                        </motion.p>
-                      )}
+                      <form onSubmit={handleSubmit} className="space-y-3">
+                        <div className="flex gap-2">
+                          <input
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="your@email.com"
+                            disabled
+                            className="flex-1 px-4 py-2.5 rounded-lg bg-freed-surface border border-freed-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-glow-purple/50 focus:ring-1 focus:ring-glow-purple/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          />
+                          <motion.button
+                            type="submit"
+                            disabled
+                            className="btn-primary px-5 py-2.5 text-sm whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Subscribe
+                          </motion.button>
+                        </div>
 
-                      <p className="text-text-muted text-[11px] text-center">
-                        Release notes and project updates. No spam, ever.
-                      </p>
-                    </form>
+                        <p className="text-text-muted text-xs text-center">
+                          No spam. Unsubscribe anytime. We respect your privacy.
+                        </p>
+                      </form>
+                    </div>
                   </>
                 )}
               </div>
