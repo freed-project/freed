@@ -149,7 +149,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       {/* Sidebar */}
       <aside
         className={`
-          fixed md:relative z-50 md:z-auto
+          fixed inset-y-0 left-0 md:relative z-50 md:z-auto
           h-full
           bg-[#0a0a0a]/95 md:bg-[#0f0f0f]/80 backdrop-blur-xl
           border-r border-[rgba(255,255,255,0.08)]
@@ -161,7 +161,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       >
         {/* Mobile header with close button */}
         <div className="md:hidden flex items-center justify-between p-4 border-b border-[rgba(255,255,255,0.08)] shrink-0">
-          <span className="text-lg font-bold gradient-text">FREED</span>
+          <span className="text-lg font-bold gradient-text font-logo">FREED</span>
           <button
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-white/10"
@@ -182,7 +182,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </button>
         </div>
 
-        <nav className="flex-1 min-h-0 flex flex-col p-4 overflow-y-auto" style={{ scrollbarGutter: "stable" }}>
+        <nav className="flex-1 min-h-0 flex flex-col p-4 overflow-y-auto sidebar-scroll">
           {SidebarConnectionSection && <SidebarConnectionSection />}
 
           {/* Sources */}

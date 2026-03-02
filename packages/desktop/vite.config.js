@@ -1,8 +1,13 @@
+var _a;
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-// https://vitejs.dev/config/
+import wasm from "vite-plugin-wasm";
+import topLevelAwait from "vite-plugin-top-level-await";
 export default defineConfig({
-    plugins: [react()],
+    define: {
+        __APP_VERSION__: JSON.stringify((_a = process.env.npm_package_version) !== null && _a !== void 0 ? _a : 'dev'),
+    },
+    plugins: [wasm(), topLevelAwait(), react()],
     // Tauri development server
     clearScreen: false,
     server: {

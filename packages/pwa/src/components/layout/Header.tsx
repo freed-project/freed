@@ -35,7 +35,10 @@ export function Header({ onMenuClick }: HeaderProps) {
           headerDragRegion ? "pl-[72px]" : "pt-[env(safe-area-inset-top)]"
         }`}
         {...(headerDragRegion
-          ? { "data-tauri-drag-region": true, style: { WebkitAppRegion: "drag" } as React.CSSProperties }
+          ? {
+              "data-tauri-drag-region": true,
+              style: { WebkitAppRegion: "drag" } as React.CSSProperties,
+            }
           : {})}
       >
         {/* Mobile menu button */}
@@ -60,16 +63,22 @@ export function Header({ onMenuClick }: HeaderProps) {
           </svg>
         </button>
 
-        {/* FREED logo — visible on desktop (sidebar shows it on mobile) */}
-        <div className="hidden md:flex items-center gap-2" style={headerDragRegion ? noDrag : undefined}>
-          <span className="text-lg font-bold gradient-text">FREED</span>
+        {/* FREED logo */}
+        <div
+          className="flex items-center gap-1 ml-1 md:ml-0"
+          style={headerDragRegion ? noDrag : undefined}
+        >
+          <span className="text-lg font-bold gradient-text font-logo">FREED</span>
         </div>
 
         {/* Spacer */}
         <div className="flex-1" />
 
         {/* Actions */}
-        <div className="flex items-center gap-1 sm:gap-2" style={headerDragRegion ? noDrag : undefined}>
+        <div
+          className="flex items-center gap-1 sm:gap-2"
+          style={headerDragRegion ? noDrag : undefined}
+        >
           {HeaderSyncIndicator && <HeaderSyncIndicator />}
 
           {unreadCount > 0 && (
@@ -78,8 +87,18 @@ export function Header({ onMenuClick }: HeaderProps) {
               title={`Mark all ${unreadCount} items as read`}
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-[#71717a] hover:bg-white/5 hover:text-white transition-colors"
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
               <span>{unreadCount} unread</span>
             </button>

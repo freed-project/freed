@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useAppStore, usePlatform } from "../context/PlatformContext";
 
 interface SettingsPanelProps {
@@ -43,12 +43,41 @@ function Toggle({
   );
 }
 
+type UpdateCheckState =
+  | { status: "idle" }
+  | { status: "checking" }
+  | { status: "up-to-date" }
+  | { status: "available"; version: string }
+  | { status: "error" };
+
 export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
-  const { SettingsExtraSections } = usePlatform();
+  const { SettingsExtraSections, checkForUpdates, applyUpdate } = usePlatform();
   const preferences = useAppStore((s) => s.preferences);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
 
   const [display, setDisplay] = useState(() => preferences.display);
+  const [updateState, setUpdateState] = useState<UpdateCheckState>({ status: "idle" });
+  const fadeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const handleCheckForUpdates = useCallback(async () => {
+    if (!checkForUpdates) return;
+    setUpdateState({ status: "checking" });
+    try {
+      const version = await checkForUpdates();
+      const next: UpdateCheckState = version
+        ? { status: "available", version }
+        : { status: "up-to-date" };
+      setUpdateState(next);
+      if (next.status === "up-to-date") {
+        clearTimeout(fadeTimer.current);
+        fadeTimer.current = setTimeout(() => setUpdateState({ status: "idle" }), 4000);
+      }
+    } catch {
+      setUpdateState({ status: "error" });
+      clearTimeout(fadeTimer.current);
+      fadeTimer.current = setTimeout(() => setUpdateState({ status: "idle" }), 4000);
+    }
+  }, [checkForUpdates]);
 
   const handleDisplayChange = useCallback(
     (update: Partial<typeof display>) => {
@@ -155,10 +184,10 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                         onClick={() =>
                           handleReadingChange({ focusIntensity: level })
                         }
-                        className={`flex-1 py-1.5 rounded-lg text-sm capitalize transition-colors ${
+                        className={`flex-1 py-1.5 rounded-lg text-sm capitalize transition-colors border ${
                           display.reading.focusIntensity === level
-                            ? "bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30"
-                            : "bg-white/5 text-[#71717a] hover:text-white"
+                            ? "bg-[#8b5cf6]/20 text-[#8b5cf6] border-[#8b5cf6]/30"
+                            : "bg-white/5 text-[#71717a] hover:text-white border-transparent"
                         }`}
                       >
                         {level}
@@ -173,16 +202,64 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           {/* Platform-specific sections (e.g. Mobile Sync on desktop) */}
           {SettingsExtraSections && <SettingsExtraSections />}
 
+          {/* Updates */}
+          <section>
+            <h3 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-4">
+              Updates
+            </h3>
+            <div className="space-y-3">
+              <p className="text-xs text-[#52525b] tabular-nums">
+                Current version: v{__APP_VERSION__}
+              </p>
+              {checkForUpdates && (
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleCheckForUpdates}
+                    disabled={updateState.status === "checking"}
+                    className="text-sm px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#a1a1aa] hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {updateState.status === "checking" ? (
+                      <span className="flex items-center gap-2">
+                        <span className="w-3 h-3 border-2 border-[#8b5cf6] border-t-transparent rounded-full animate-spin" />
+                        Checking…
+                      </span>
+                    ) : (
+                      "Check for updates"
+                    )}
+                  </button>
+                  {updateState.status === "up-to-date" && (
+                    <span className="text-xs text-green-400">You're up to date</span>
+                  )}
+                  {updateState.status === "available" && (
+                    <span className="flex items-center gap-2">
+                      <span className="text-xs text-[#8b5cf6]">
+                        Update available
+                      </span>
+                      {applyUpdate && (
+                        <button
+                          onClick={applyUpdate}
+                          className="text-xs font-semibold px-2.5 py-1 rounded-md bg-[#8b5cf6] text-white hover:bg-[#7c3aed] transition-colors"
+                        >
+                          Reload
+                        </button>
+                      )}
+                    </span>
+                  )}
+                  {updateState.status === "error" && (
+                    <span className="text-xs text-red-400">Check failed</span>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
+
           {/* Footer */}
-          <div className="flex items-center justify-between pb-2">
-            <span className="text-[10px] text-[#3f3f46] tabular-nums">
-              v{__APP_VERSION__}
-            </span>
+          <div className="pb-2 text-center">
             <a
               href="https://freed.wtf"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[10px] text-[#8b5cf6] hover:text-[#a78bfa] transition-colors"
+              className="text-sm font-medium text-[#8b5cf6] hover:text-[#a78bfa] transition-colors"
             >
               freed.wtf
             </a>

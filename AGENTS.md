@@ -7,6 +7,15 @@
 - **Time estimates:** Machine time only ("one conversation", "~10 min"). Never quote human hours/days.
 - **IDs:** Display tail — `...${id.slice(-8)}`.
 
+## Versioning
+
+CalVer `YY.M.DDBUILD` — patch segment encodes the day and build number:
+- `patch = (day_of_month × 100) + build_number`
+- March 1, first build → `26.3.100`; fifth build → `26.3.104`
+- March 15, first build → `26.3.1500`
+
+Run `./scripts/release.sh` with no args to auto-compute the next version.
+
 ## Package Boundaries
 
 | Package | Rule |
