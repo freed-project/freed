@@ -370,7 +370,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </button>
         </div>
 
-        <nav className="flex-1 min-h-0 flex flex-col p-4 overflow-y-auto sidebar-scroll">
+        <nav className="flex-1 min-h-0 flex flex-col p-4 overflow-y-auto minimal-scroll">
           {SidebarConnectionSection && <SidebarConnectionSection />}
 
           {/* Sources */}

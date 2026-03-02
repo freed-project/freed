@@ -378,20 +378,20 @@ body {
 .minimal-scroll:active {
   scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
-.sidebar-scroll::-webkit-scrollbar {
+.minimal-scroll::-webkit-scrollbar {
   width: 5px;
 }
-.sidebar-scroll::-webkit-scrollbar-track {
+.minimal-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
-.sidebar-scroll::-webkit-scrollbar-thumb {
+.minimal-scroll::-webkit-scrollbar-thumb {
   background: transparent;
   border-radius: 3px;
   transition: background 0.2s ease;
 }
-.sidebar-scroll:hover::-webkit-scrollbar-thumb {
+.minimal-scroll:hover::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.15);
 }
-.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+.minimal-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.25);
 }
