@@ -1,7 +1,7 @@
 {
   "name": "@freed/pwa",
   "private": true,
-  "version": "26.3.2",
+  "version": "26.3.3",
   "type": "module",
   "exports": {
     "./components/feed": "./src/components/feed/index.ts",
