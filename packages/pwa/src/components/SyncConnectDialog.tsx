@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { createPortal } from "react-dom";
+import jsQR from "jsqr";
 import { connect, storeRelayUrl } from "../lib/sync";
+import { BottomSheet } from "./BottomSheet";
 
 interface SyncConnectDialogProps {
   open: boolean;
@@ -9,32 +10,25 @@ interface SyncConnectDialogProps {
 
 type Mode = "manual" | "scanning";
 
-/** Check if the native BarcodeDetector API is available (Chrome 88+, Safari 17+) */
-function isBarcodeDetectorSupported(): boolean {
-  return typeof window !== "undefined" && "BarcodeDetector" in window;
-}
-
 /**
- * Detect QR codes in a video frame using the native BarcodeDetector API.
- * Returns the first decoded string, or null if none found.
+ * Decode a QR code from a video frame via an offscreen canvas + jsQR.
+ * Works on all browsers with camera access (including iOS Safari).
  */
-async function detectQrCode(video: HTMLVideoElement): Promise<string | null> {
-  // BarcodeDetector is experimental — type it loosely
-  const BarcodeDetector = (
-    window as unknown as {
-      BarcodeDetector: new (opts: { formats: string[] }) => {
-        detect: (source: HTMLVideoElement) => Promise<{ rawValue: string }[]>;
-      };
-    }
-  ).BarcodeDetector;
+function detectQrCode(video: HTMLVideoElement): string | null {
+  const { videoWidth, videoHeight } = video;
+  if (!videoWidth || !videoHeight) return null;
 
-  const detector = new BarcodeDetector({ formats: ["qr_code"] });
-  try {
-    const barcodes = await detector.detect(video);
-    return barcodes[0]?.rawValue ?? null;
-  } catch {
-    return null;
-  }
+  const canvas = document.createElement("canvas");
+  canvas.width = videoWidth;
+  canvas.height = videoHeight;
+
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+
+  ctx.drawImage(video, 0, 0, videoWidth, videoHeight);
+  const imageData = ctx.getImageData(0, 0, videoWidth, videoHeight);
+  const result = jsQR(imageData.data, videoWidth, videoHeight);
+  return result?.data ?? null;
 }
 
 export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
@@ -85,11 +79,10 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
         await videoRef.current.play();
       }
 
-      // Poll for QR codes every 250ms
-      scanIntervalRef.current = setInterval(async () => {
+      scanIntervalRef.current = setInterval(() => {
         if (!videoRef.current || videoRef.current.readyState < 2) return;
 
-        const detected = await detectQrCode(videoRef.current);
+        const detected = detectQrCode(videoRef.current);
         if (detected && (detected.startsWith("ws://") || detected.startsWith("wss://"))) {
           setScanStatus("found");
           stopCamera();
@@ -155,176 +148,140 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
     }
   };
 
-  if (!open) return null;
+  return (
+    <BottomSheet open={open} onClose={handleClose} title="Connect to Desktop">
+      <p className="text-sm text-[#71717a] mb-5">
+        {mode === "scanning"
+          ? "Point your camera at the QR code shown in the Freed desktop app."
+          : "Enter the sync URL from your Freed desktop app, or scan the QR code."}
+      </p>
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={handleClose}
-      />
+      {/* Mode tabs */}
+      <div className="flex gap-2 mb-5">
+        <button
+          onClick={() => { setMode("manual"); stopCamera(); setError(null); }}
+          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+            mode === "manual"
+              ? "bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30"
+              : "bg-white/5 text-[#71717a] hover:text-white"
+          }`}
+        >
+          Manual
+        </button>
+        <button
+          onClick={() => {
+            setMode("scanning");
+            setError(null);
+          }}
+          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+            mode === "scanning"
+              ? "bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30"
+              : "bg-white/5 text-[#71717a] hover:text-white"
+          }`}
+        >
+          Scan QR
+        </button>
+      </div>
 
-      {/* Dialog */}
-      <div className="relative w-full sm:max-w-md sm:mx-4 bg-[#141414] border border-[rgba(255,255,255,0.08)] rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col">
-        {/* Mobile drag handle */}
-        <div className="sm:hidden w-12 h-1 bg-white/20 rounded-full mx-auto mt-4 mb-1 shrink-0" />
+      {mode === "scanning" ? (
+        /* QR Scanner view */
+        <div className="mb-4">
+          <div className="relative rounded-xl overflow-hidden bg-black aspect-square">
+            <video
+              ref={videoRef}
+              className="w-full h-full object-cover"
+              playsInline
+              muted
+              aria-label="Camera viewfinder for QR code scanning"
+            />
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 shrink-0">
-          <h2 className="text-lg font-semibold">Connect to Desktop</h2>
-          <button
-            onClick={handleClose}
-            className="hidden sm:block p-1.5 rounded-lg hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
-            aria-label="Close dialog"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="overflow-y-auto flex-1 px-6 py-5">
-        <p className="text-sm text-[#71717a] mb-5">
-          {mode === "scanning"
-            ? "Point your camera at the QR code shown in the Freed desktop app."
-            : "Enter the sync URL from your Freed desktop app, or scan the QR code."}
-        </p>
-
-        {/* Mode tabs */}
-        <div className="flex gap-2 mb-5">
-          <button
-            onClick={() => { setMode("manual"); stopCamera(); setError(null); }}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-              mode === "manual"
-                ? "bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30"
-                : "bg-white/5 text-[#71717a] hover:text-white"
-            }`}
-          >
-            Manual
-          </button>
-          <button
-            onClick={() => {
-              if (!isBarcodeDetectorSupported()) {
-                setError("QR scanning is not supported in this browser. Please use the manual URL entry instead.");
-                return;
-              }
-              setMode("scanning");
-              setError(null);
-            }}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-              mode === "scanning"
-                ? "bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30"
-                : "bg-white/5 text-[#71717a] hover:text-white"
-            }`}
-          >
-            Scan QR
-          </button>
-        </div>
-
-        {mode === "scanning" ? (
-          /* QR Scanner view */
-          <div className="mb-4">
-            <div className="relative rounded-xl overflow-hidden bg-black aspect-square">
-              <video
-                ref={videoRef}
-                className="w-full h-full object-cover"
-                playsInline
-                muted
-                aria-label="Camera viewfinder for QR code scanning"
-              />
-
-              {/* Scan overlay */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div
-                  className={`w-48 h-48 border-2 rounded-2xl transition-colors ${
-                    scanStatus === "found"
-                      ? "border-green-400"
-                      : "border-white/40"
-                  }`}
-                >
-                  {/* Corner brackets */}
-                  <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-[#8b5cf6] rounded-tl-lg" />
-                  <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-[#8b5cf6] rounded-tr-lg" />
-                  <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-[#8b5cf6] rounded-bl-lg" />
-                  <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-[#8b5cf6] rounded-br-lg" />
-                </div>
+            {/* Scan overlay */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div
+                className={`w-48 h-48 border-2 rounded-2xl transition-colors ${
+                  scanStatus === "found"
+                    ? "border-green-400"
+                    : "border-white/40"
+                }`}
+              >
+                <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-[#8b5cf6] rounded-tl-lg" />
+                <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-[#8b5cf6] rounded-tr-lg" />
+                <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-[#8b5cf6] rounded-bl-lg" />
+                <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-[#8b5cf6] rounded-br-lg" />
               </div>
-
-              {scanStatus === "found" && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="w-12 h-12 rounded-full bg-green-500/20 border-2 border-green-400 flex items-center justify-center">
-                      <svg className="w-6 h-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                    <p className="text-green-400 text-sm font-medium">Connecting...</p>
-                  </div>
-                </div>
-              )}
             </div>
 
-            <p className="text-xs text-[#71717a] text-center mt-3">
-              Open the desktop app → Settings → Mobile Sync to see the QR code
-            </p>
+            {scanStatus === "found" && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-12 h-12 rounded-full bg-green-500/20 border-2 border-green-400 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <p className="text-green-400 text-sm font-medium">Connecting...</p>
+                </div>
+              </div>
+            )}
           </div>
-        ) : (
-          /* Manual URL entry */
-          <div className="mb-4">
-            <label htmlFor="sync-url" className="block text-sm text-[#a1a1aa] mb-2">
-              Sync URL
-            </label>
-            <input
-              id="sync-url"
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="ws://192.168.1.x:8765"
-              className="w-full px-4 py-3 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-xl focus:outline-none focus:border-[#8b5cf6] text-white placeholder-[#71717a] font-mono text-sm transition-colors"
-              disabled={connecting}
-              autoFocus
-              onKeyDown={(e) => e.key === "Enter" && handleConnect()}
-            />
-            <p className="mt-2 text-xs text-[#71717a]">
-              Find this in your desktop app: Settings → Mobile Sync
-            </p>
-          </div>
-        )}
 
-        {error && (
-          <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-xl text-red-400 text-sm">
-            {error}
-          </div>
-        )}
+          <p className="text-xs text-[#71717a] text-center mt-3">
+            Open the desktop app &rarr; Settings &rarr; Mobile Sync to see the QR code
+          </p>
+        </div>
+      ) : (
+        /* Manual URL entry */
+        <div className="mb-4">
+          <label htmlFor="sync-url" className="block text-sm text-[#a1a1aa] mb-2">
+            Sync URL
+          </label>
+          <input
+            id="sync-url"
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="ws://192.168.1.x:8765"
+            className="w-full px-4 py-3 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-xl focus:outline-none focus:border-[#8b5cf6] text-white placeholder-[#71717a] font-mono text-sm transition-colors"
+            disabled={connecting}
+            autoFocus
+            onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+          />
+          <p className="mt-2 text-xs text-[#71717a]">
+            Find this in your desktop app: Settings &rarr; Mobile Sync
+          </p>
+        </div>
+      )}
 
-        {mode === "manual" && (
-          <div className="flex justify-end">
-            <button
-              onClick={handleConnect}
-              className="btn-primary px-6 py-2.5 disabled:opacity-50"
-              disabled={connecting || !url.trim()}
-            >
-              {connecting ? "Connecting..." : "Connect"}
-            </button>
-          </div>
-        )}
+      {error && (
+        <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-xl text-red-400 text-sm">
+          {error}
+        </div>
+      )}
 
-        {/* Download CTA */}
-        <div className="mt-6 pt-5 border-t border-[rgba(255,255,255,0.08)] flex items-center justify-between">
-          <span className="text-xs text-[#71717a]">Don't have the desktop app?</span>
-          <a
-            href="https://freed.wtf/get"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs px-3 py-1.5 bg-white/5 hover:bg-[#8b5cf6]/20 hover:text-[#8b5cf6] rounded-lg text-[#a1a1aa] transition-colors"
+      {mode === "manual" && (
+        <div className="flex justify-end">
+          <button
+            onClick={handleConnect}
+            className="btn-primary px-6 py-2.5 disabled:opacity-50"
+            disabled={connecting || !url.trim()}
           >
-            Download
-          </a>
+            {connecting ? "Connecting..." : "Connect"}
+          </button>
         </div>
-        </div>
+      )}
+
+      {/* Download CTA */}
+      <div className="mt-6 pt-5 border-t border-[rgba(255,255,255,0.08)] flex items-center justify-between">
+        <span className="text-xs text-[#71717a]">Don't have the desktop app?</span>
+        <a
+          href="https://freed.wtf/get"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs px-3 py-1.5 bg-white/5 hover:bg-[#8b5cf6]/20 hover:text-[#8b5cf6] rounded-lg text-[#a1a1aa] transition-colors"
+        >
+          Download
+        </a>
       </div>
-    </div>,
-    document.body,
+    </BottomSheet>
   );
 }

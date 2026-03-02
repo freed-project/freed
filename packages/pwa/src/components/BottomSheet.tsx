@@ -1,0 +1,152 @@
+import { useRef, useCallback, useEffect, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+
+interface BottomSheetProps {
+  open: boolean;
+  onClose: () => void;
+  children: ReactNode;
+  /** Dialog title rendered in the header bar */
+  title: string;
+  /** Tailwind max-width override for the panel (default: "sm:max-w-md") */
+  maxWidth?: string;
+}
+
+const DISMISS_THRESHOLD = 100;
+const RESISTANCE = 0.45;
+
+/**
+ * Mobile-first bottom sheet with swipe-to-dismiss.
+ * Renders as a bottom sheet on mobile (items-end) and a centered dialog on
+ * desktop (sm:items-center). The drag handle is functional on touch devices.
+ */
+export function BottomSheet({
+  open,
+  onClose,
+  children,
+  title,
+  maxWidth = "sm:max-w-md",
+}: BottomSheetProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const dragState = useRef<{ startY: number; currentY: number } | null>(null);
+
+  // Lock body scroll while open
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [open]);
+
+  const applyTransform = useCallback((dy: number) => {
+    if (!panelRef.current) return;
+    panelRef.current.style.transform = dy > 0 ? `translateY(${dy}px)` : "";
+    panelRef.current.style.transition = dy === 0 ? "transform 0.25s ease" : "none";
+  }, []);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    // Only initiate drag when the scrollable content is at the top
+    const scrollable = panel.querySelector("[data-bottom-sheet-scroll]");
+    if (scrollable && scrollable.scrollTop > 0) return;
+
+    dragState.current = {
+      startY: e.touches[0].clientY,
+      currentY: e.touches[0].clientY,
+    };
+  }, []);
+
+  const handleTouchMove = useCallback(
+    (e: React.TouchEvent) => {
+      if (!dragState.current) return;
+
+      const clientY = e.touches[0].clientY;
+      const rawDy = clientY - dragState.current.startY;
+
+      // Only allow downward drag
+      if (rawDy <= 0) {
+        applyTransform(0);
+        return;
+      }
+
+      dragState.current.currentY = clientY;
+      applyTransform(rawDy * RESISTANCE);
+    },
+    [applyTransform],
+  );
+
+  const handleTouchEnd = useCallback(() => {
+    if (!dragState.current) return;
+
+    const rawDy = dragState.current.currentY - dragState.current.startY;
+    dragState.current = null;
+
+    if (rawDy > DISMISS_THRESHOLD) {
+      // Slide out, then close
+      applyTransform(window.innerHeight);
+      setTimeout(onClose, 250);
+    } else {
+      applyTransform(0);
+    }
+  }, [applyTransform, onClose]);
+
+  if (!open) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Panel */}
+      <div
+        ref={panelRef}
+        className={`relative w-full ${maxWidth} sm:mx-4 bg-[#141414] border border-[rgba(255,255,255,0.08)] rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col`}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        {/* Drag handle — mobile only, now functional */}
+        <div className="sm:hidden w-12 h-1 bg-white/20 rounded-full mx-auto mt-4 mb-1 shrink-0 cursor-grab active:cursor-grabbing" />
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 shrink-0">
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <button
+            onClick={onClose}
+            className="hidden sm:block p-1.5 rounded-lg hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+            aria-label="Close dialog"
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
+
+        {/* Scrollable content */}
+        <div
+          data-bottom-sheet-scroll
+          className="overflow-y-auto flex-1 px-6 pb-6"
+        >
+          {children}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}

@@ -76,26 +76,17 @@ export function SyncIndicator() {
 
   return (
     <div className="relative" ref={panelRef}>
-      {/* Desktop button */}
       <button
         onClick={() => setPanelOpen((prev) => !prev)}
-        className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-white/5 ${statusColor}`}
+        className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm transition-colors hover:bg-white/5 ${statusColor}`}
       >
-        <span className={`w-1.5 h-1.5 rounded-full ${dotColor} ${isSyncing ? "animate-pulse" : ""}`} />
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} ${isSyncing ? "animate-pulse" : ""}`} />
         <span>{statusLabel}</span>
         {lastSyncTime && !isSyncing && (
-          <span className="text-[10px] text-[#52525b] tabular-nums">
+          <span className="hidden sm:inline text-[10px] text-[#52525b] tabular-nums">
             · {formatRelativeTime(lastSyncTime)}
           </span>
         )}
-      </button>
-
-      {/* Mobile button */}
-      <button
-        onClick={() => setPanelOpen((prev) => !prev)}
-        className={`sm:hidden p-2 rounded-lg transition-colors hover:bg-white/5 ${statusColor}`}
-      >
-        <span className={`block w-2 h-2 rounded-full ${dotColor} ${isSyncing ? "animate-pulse" : ""}`} />
       </button>
 
       {/* Dropdown panel */}

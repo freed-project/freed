@@ -63,6 +63,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.6;
   overscroll-behavior: none;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 /* Logo typography */
@@ -72,9 +74,16 @@ body {
 }
 
 #root {
-  height: 100%;
+  height: 100svh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+}
+
+/* iOS Safari viewport fix: svh fallback with dvh override */
+.min-h-viewport-safe {
+  min-height: 100svh;
+  min-height: 100dvh;
 }
 
 /* Logo typography - Space Grotesk */
@@ -199,18 +208,26 @@ body {
   border-color: rgba(139, 92, 246, 0.2);
 }
 
-/* Mobile-specific: larger touch targets + prevent iOS zoom on focus */
+/* Mobile-specific: Apple HIG text sizing + touch targets */
 @media (max-width: 640px) {
+  /* Apple HIG mobile text scale:
+     caption 13px · secondary 15px · body 17px · subhead 20px */
+  .text-xs { font-size: 13px !important; }
+  .text-sm { font-size: 15px !important; }
+  .text-base { font-size: 17px !important; }
+  .text-lg { font-size: 20px !important; }
+
   .feed-card {
-    padding: 12px;
+    padding: 14px;
     border-radius: 12px;
   }
 
   .glass-button,
   .btn-primary,
   .btn-secondary {
-    min-height: 44px; /* iOS recommended touch target */
-    padding: 12px 16px;
+    min-height: 50px;
+    font-size: 17px !important;
+    padding: 14px 20px;
   }
 
   input,

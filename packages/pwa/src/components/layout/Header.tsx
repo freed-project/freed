@@ -31,8 +31,8 @@ export function Header({ onMenuClick }: HeaderProps) {
   return (
     <>
       <header
-        className={`flex-shrink-0 h-12 flex items-center px-4 border-b border-[rgba(255,255,255,0.08)] bg-[#0a0a0a]/90 backdrop-blur-xl z-30 ${
-          headerDragRegion ? "pl-[72px]" : "pt-[env(safe-area-inset-top)]"
+        className={`flex-shrink-0 bg-[#0a0a0a]/90 backdrop-blur-xl z-30 border-b border-[rgba(255,255,255,0.08)] ${
+          headerDragRegion ? "" : "pt-[env(safe-area-inset-top)]"
         }`}
         {...(headerDragRegion
           ? {
@@ -41,51 +41,77 @@ export function Header({ onMenuClick }: HeaderProps) {
             }
           : {})}
       >
-        {/* Mobile menu button */}
-        <button
-          onClick={onMenuClick}
-          className="md:hidden p-2 -ml-2 rounded-lg hover:bg-white/10 transition-colors"
-          aria-label="Open menu"
-          style={headerDragRegion ? noDrag : undefined}
+        <div
+          className={`h-12 flex items-center px-4 ${
+            headerDragRegion ? "pl-[72px]" : ""
+          }`}
         >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+          {/* Mobile menu button */}
+          <button
+            onClick={onMenuClick}
+            className="md:hidden p-2 -ml-2 rounded-lg hover:bg-white/10 transition-colors"
+            aria-label="Open menu"
+            style={headerDragRegion ? noDrag : undefined}
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 6h16M4 12h16M4 18h16"
-            />
-          </svg>
-        </button>
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 6h16M4 12h16M4 18h16"
+              />
+            </svg>
+          </button>
 
-        {/* FREED logo */}
-        <div
-          className="flex items-center gap-1 ml-1 md:ml-0"
-          style={headerDragRegion ? noDrag : undefined}
-        >
-          <span className="text-lg font-bold gradient-text font-logo">FREED</span>
-        </div>
+          {/* FREED logo */}
+          <div
+            className="flex items-center gap-1 ml-1 md:ml-0"
+            style={headerDragRegion ? noDrag : undefined}
+          >
+            <span className="text-lg font-bold gradient-text font-logo">FREED</span>
+          </div>
 
-        {/* Spacer */}
-        <div className="flex-1" />
+          {/* Spacer */}
+          <div className="flex-1" />
 
-        {/* Actions */}
-        <div
-          className="flex items-center gap-1 sm:gap-2"
-          style={headerDragRegion ? noDrag : undefined}
-        >
-          {HeaderSyncIndicator && <HeaderSyncIndicator />}
+          {/* Actions */}
+          <div
+            className="flex items-center gap-1 sm:gap-2"
+            style={headerDragRegion ? noDrag : undefined}
+          >
+            {HeaderSyncIndicator && <HeaderSyncIndicator />}
 
-          {unreadCount > 0 && (
+            {unreadCount > 0 && (
+              <button
+                onClick={() => markAllAsRead(activeFilter.platform)}
+                title={`Mark all ${unreadCount} items as read`}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-[#71717a] hover:bg-white/5 hover:text-white transition-colors"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span>{unreadCount} unread</span>
+              </button>
+            )}
+
             <button
-              onClick={() => markAllAsRead(activeFilter.platform)}
-              title={`Mark all ${unreadCount} items as read`}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-[#71717a] hover:bg-white/5 hover:text-white transition-colors"
+              onClick={() => setAddFeedOpen(true)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors"
             >
               <svg
                 className="w-4 h-4"
@@ -97,34 +123,14 @@ export function Header({ onMenuClick }: HeaderProps) {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  d="M12 4v16m8-8H4"
                 />
               </svg>
-              <span>{unreadCount} unread</span>
+              <span className="text-sm font-medium hidden sm:inline">
+                Add Feed
+              </span>
             </button>
-          )}
-
-          <button
-            onClick={() => setAddFeedOpen(true)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            <span className="text-sm font-medium hidden sm:inline">
-              Add Feed
-            </span>
-          </button>
+          </div>
         </div>
       </header>
 

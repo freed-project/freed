@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { parseOPML, readFileAsText } from "@freed/shared";
 import type { OPMLFeedEntry, ImportProgress } from "@freed/shared";
 import { useAppStore, usePlatform } from "../context/PlatformContext";
+import { BottomSheet } from "./BottomSheet";
 
 // =============================================================================
 // Types
@@ -22,78 +23,48 @@ interface AddFeedDialogProps {
 export function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
   const [activeTab, setActiveTab] = useState<DialogTab>("url");
 
-  if (!open) return null;
-
   const handleClose = () => {
     setActiveTab("url");
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={handleClose}
-      />
-
-      {/* Dialog */}
-      <div className="relative w-full sm:max-w-lg sm:mx-4 bg-[#141414] border border-[rgba(255,255,255,0.08)] rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col">
-        {/* Mobile drag handle */}
-        <div className="sm:hidden w-12 h-1 bg-white/20 rounded-full mx-auto mt-4 mb-1 shrink-0" />
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 shrink-0">
-          <h2 className="text-lg font-semibold">RSS Feeds</h2>
-          <button
-            onClick={handleClose}
-            className="hidden sm:block p-1.5 rounded-lg hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
-            aria-label="Close dialog"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="px-6 pt-4 pb-0 flex-shrink-0">
-          <div className="flex gap-1 bg-white/5 rounded-xl p-1">
-            {(
-              [
-                { id: "url", label: "Add URL" },
-                { id: "manage", label: "Manage" },
-                { id: "import", label: "Import" },
-                { id: "export", label: "Export" },
-              ] as const
-            ).map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`
-                  flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-all
-                  ${
-                    activeTab === tab.id
-                      ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
-                      : "text-[#a1a1aa] hover:text-white"
-                  }
-                `}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Tab Content — scrollable */}
-        <div className="p-6 overflow-y-auto flex-1 min-h-0">
-          {activeTab === "url" && <AddUrlTab onClose={handleClose} />}
-          {activeTab === "manage" && <ManageTab />}
-          {activeTab === "import" && <ImportTab onClose={handleClose} />}
-          {activeTab === "export" && <ExportTab />}
+    <BottomSheet open={open} onClose={handleClose} title="RSS Feeds" maxWidth="sm:max-w-lg">
+      {/* Tabs */}
+      <div className="pb-4 flex-shrink-0 -mt-1">
+        <div className="flex gap-1 bg-white/5 rounded-xl p-1">
+          {(
+            [
+              { id: "url", label: "Add URL" },
+              { id: "manage", label: "Manage" },
+              { id: "import", label: "Import" },
+              { id: "export", label: "Export" },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`
+                flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-all
+                ${
+                  activeTab === tab.id
+                    ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
+                    : "text-[#a1a1aa] hover:text-white"
+                }
+              `}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
-    </div>
+
+      {/* Tab Content */}
+      {activeTab === "url" && <AddUrlTab onClose={handleClose} />}
+      {activeTab === "manage" && <ManageTab />}
+      {activeTab === "import" && <ImportTab onClose={handleClose} />}
+      {activeTab === "export" && <ExportTab />}
+    </BottomSheet>
   );
 }
 
