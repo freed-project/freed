@@ -10,6 +10,7 @@ import { useAppStore } from "./store";
 import type { OPMLFeedEntry } from "@freed/shared";
 import { generateOPML, downloadFile } from "@freed/shared";
 import { captureXTimeline } from "./x-capture";
+import { docBatchRefreshFeeds } from "./automerge";
 
 // Simple RSS XML parser
 interface RssChannel {
@@ -22,6 +23,8 @@ interface RssChannel {
 interface RssItem {
   title: string;
   link: string;
+  /** RSS <guid> or Atom <id> — preferred stable key over link URL */
+  guid?: string;
   description?: string;
   pubDate?: string;
   content?: string;
@@ -69,6 +72,7 @@ function parseRssFeed(xml: string, feedUrl: string): RssChannel {
     items.push({
       title: item.querySelector("title")?.textContent || "Untitled",
       link: item.querySelector("link")?.textContent || "",
+      guid: item.querySelector("guid")?.textContent || undefined,
       description: item.querySelector("description")?.textContent || undefined,
       pubDate: item.querySelector("pubDate")?.textContent || undefined,
       content:
@@ -94,6 +98,8 @@ function parseAtom(feed: Element, feedUrl: string): RssChannel {
     items.push({
       title: entry.querySelector("title")?.textContent || "Untitled",
       link: entryLinkEl?.getAttribute("href") || "",
+      // Atom uses <id> as the stable unique identifier
+      guid: entry.querySelector("id")?.textContent || undefined,
       description: entry.querySelector("summary")?.textContent || undefined,
       pubDate:
         entry.querySelector("published")?.textContent ||
@@ -141,7 +147,11 @@ function rssToFeedItems(channel: RssChannel, feedUrl: string): FeedItem[] {
     }
 
     const feedItem: FeedItem = {
-      globalId: `rss:${item.link || feedUrl + "#" + index}`,
+      // Key priority: <guid>/<id> → article link → positional fallback.
+      // <guid> is the RSS 2.0 spec's stable identifier; <id> is Atom's.
+      // The positional fallback is unstable (shifts when publishers reorder
+      // items), so it's a last resort only.
+      globalId: `rss:${item.guid || item.link || feedUrl + "#" + index}`,
       platform: "rss" as const,
       contentType: "article" as const,
       capturedAt: now,
@@ -241,12 +251,20 @@ export async function addRssFeed(feedUrl: string): Promise<void> {
   }
 }
 
+/** Max concurrent feed fetches — avoids saturating Tauri's HTTP layer. */
+const FETCH_CONCURRENCY = 5;
+
 /**
- * Refresh all subscribed RSS feeds
+ * Refresh all subscribed RSS feeds.
+ *
+ * Key performance contract: ALL feed fetches run in parallel batches, and the
+ * entire result (feed timestamps + new items) is committed as ONE Automerge
+ * change. Previously this was N sequential changes → N full-doc IndexedDB
+ * writes → N React re-renders → N rankFeedItems passes. Now it's 1.
  */
 export async function refreshAllFeeds(): Promise<void> {
   const store = useAppStore.getState();
-  const feeds = Object.values(store.feeds);
+  const feeds = Object.values(store.feeds).filter((f) => f.enabled);
 
   if (feeds.length === 0) return;
 
@@ -255,28 +273,33 @@ export async function refreshAllFeeds(): Promise<void> {
 
   try {
     const allNewItems: FeedItem[] = [];
+    const fetchedFeeds: RssFeed[] = [];
 
-    // Fetch RSS feeds
-    for (const feed of feeds) {
-      if (!feed.enabled) continue;
-
-      try {
-        const items = await fetchRssFeed(feed.url);
-        allNewItems.push(...items);
-
-        // Update feed's lastFetched (persisted via Automerge)
-        await store.addFeed({ ...feed, lastFetched: Date.now() });
-      } catch (error) {
-        console.error(`Failed to fetch ${feed.url}:`, error);
+    // Parallel fetch with concurrency cap
+    for (let i = 0; i < feeds.length; i += FETCH_CONCURRENCY) {
+      const batch = feeds.slice(i, i + FETCH_CONCURRENCY);
+      const results = await Promise.allSettled(
+        batch.map(async (feed) => {
+          const items = await fetchRssFeed(feed.url);
+          return { feed: { ...feed, lastFetched: Date.now() }, items };
+        }),
+      );
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          fetchedFeeds.push(result.value.feed);
+          allNewItems.push(...result.value.items);
+        } else {
+          console.error("[Refresh] Feed fetch failed:", result.reason);
+        }
       }
     }
 
-    // Add all new RSS items (deduplication handled by Automerge layer)
-    if (allNewItems.length > 0) {
-      await store.addItems(allNewItems);
+    // Single Automerge change for ALL feed + item updates
+    if (fetchedFeeds.length > 0 || allNewItems.length > 0) {
+      await docBatchRefreshFeeds(fetchedFeeds, allNewItems);
     }
 
-    // Fetch X timeline if authenticated
+    // X timeline — separate change since it has its own auth path
     const { xAuth } = store;
     if (xAuth.isAuthenticated && xAuth.cookies) {
       try {
@@ -287,7 +310,7 @@ export async function refreshAllFeeds(): Promise<void> {
     }
   } catch (error) {
     store.setError(
-      error instanceof Error ? error.message : "Failed to refresh feeds"
+      error instanceof Error ? error.message : "Failed to refresh feeds",
     );
   } finally {
     store.setSyncing(false);

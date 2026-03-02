@@ -102,7 +102,13 @@ export function subscribe(callback: Subscriber): () => void {
 // =============================================================================
 
 export async function docAddFeedItem(item: FeedItem): Promise<FreedDoc> {
-  return applyChange((doc) => addFeedItem(doc, item), "Add feed item");
+  // Guard: never overwrite an existing item — that would clobber the user's
+  // read/saved/tags state. Consistent with the bulk docAddFeedItems path.
+  return applyChange((doc) => {
+    if (!doc.feedItems[item.globalId]) {
+      addFeedItem(doc, item);
+    }
+  }, "Add feed item");
 }
 
 export async function docAddRssFeed(feed: RssFeed): Promise<FreedDoc> {
