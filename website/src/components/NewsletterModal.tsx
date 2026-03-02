@@ -16,7 +16,7 @@ import { useNewsletter } from "@/context/NewsletterContext";
 
 type SubmitState = "idle" | "loading" | "success" | "error";
 
-const VERSION = "0.2.0";
+const VERSION = "26.3.1";
 const RELEASE_BASE = `https://github.com/freed-project/freed/releases/download/v${VERSION}`;
 
 type DownloadKey = "mac-arm" | "mac-intel" | "windows" | "linux";
