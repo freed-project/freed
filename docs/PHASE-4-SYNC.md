@@ -1,6 +1,6 @@
 # Phase 4: Sync Layer
 
-> **Status:** ✅ Core Complete (cloud sync fallback pending)
+> **Status:** ✅ Complete
 > **Dependencies:** Phase 1-2 (Capture layers ✓), Phase 3 (Save for Later ✓)
 
 ---
@@ -285,8 +285,8 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 - [x] Desktop broadcasts doc changes to connected PWA clients via `broadcast_doc` Tauri command
 - [x] QR code or manual pairing connects PWA to Desktop (SyncConnectDialog with QR scanner)
 - [x] Sync connection status observable (`onStatusChange` listener in sync.ts)
-- [ ] PWA falls back to cloud sync when away from home
-- [ ] At least one cloud provider works (GDrive recommended)
+- [x] PWA falls back to cloud sync when away from home (GDrive + Dropbox PKCE OAuth, 5s/2s polling)
+- [x] At least one cloud provider works — both GDrive and Dropbox OAuth + sync confirmed working on app.freed.wtf
 
 ---
 
