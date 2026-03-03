@@ -242,9 +242,10 @@ export type { CloudProvider };
 const CLOUD_TOKEN_KEY = (p: CloudProvider) => `freed_cloud_token_${p}`;
 const UPLOAD_DEBOUNCE_MS = 2_000;
 
-/** Per-provider abort controllers and upload timers. */
+/** Per-provider abort controllers, upload timers, and doc-change unsubscribers. */
 const cloudAborts = new Map<CloudProvider, AbortController>();
 const uploadTimers = new Map<CloudProvider, ReturnType<typeof setTimeout>>();
+const cloudChangeUnsubscribes = new Map<CloudProvider, () => void>();
 
 // Desktop OAuth client IDs (not secret — embedded in the app bundle).
 const GDRIVE_CLIENT_ID = import.meta.env.VITE_GDRIVE_DESKTOP_CLIENT_ID ?? "";
@@ -407,7 +408,8 @@ async function exchangeCode(
 /**
  * Start the cloud sync loop for a single provider.
  * Downloads the latest remote state immediately, then runs the appropriate
- * poll/longpoll loop in the background.
+ * poll/longpoll loop in the background. Also subscribes to local doc changes
+ * so every mutation is uploaded back to the cloud (debounced).
  */
 export async function startCloudSync(provider: CloudProvider, token: string): Promise<void> {
   stopCloudSync(provider);
@@ -446,6 +448,13 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
     });
   }
 
+  // Subscribe to local doc changes so every mutation is uploaded back.
+  // Debounced by scheduleCloudUpload — rapid edits coalesce into one upload.
+  const unsubscribe = subscribe(() => {
+    scheduleCloudUpload(provider, token);
+  });
+  cloudChangeUnsubscribes.set(provider, unsubscribe);
+
   console.log("[CloudSync] Started (%s)", provider);
 }
 
@@ -459,6 +468,9 @@ export function stopCloudSync(provider: CloudProvider): void {
     clearTimeout(timer);
     uploadTimers.delete(provider);
   }
+
+  cloudChangeUnsubscribes.get(provider)?.();
+  cloudChangeUnsubscribes.delete(provider);
 }
 
 /** Stop all active cloud sync loops. */

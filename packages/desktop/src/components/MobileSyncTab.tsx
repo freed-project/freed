@@ -18,15 +18,12 @@ import {
   getAllLocalIPs,
   resetPairingToken,
   onStatusChange,
-  getCloudToken,
-  clearCloudProvider,
-  initiateDesktopOAuth,
-  storeCloudToken,
-  startCloudSync,
   type SyncStatus,
   type NetworkInterface,
   type CloudProvider,
 } from "../lib/sync";
+import { useCloudProviders } from "../hooks/useCloudProviders";
+import { CloudProviderCard } from "./CloudProviderCard";
 
 /** Parse the LAN IP from a ws://ip:port?t=token URL. */
 function parseIp(url: string): string {
@@ -67,28 +64,7 @@ export function MobileSyncTab() {
   const [resetting, setResetting] = useState(false);
   const [mdnsActive, setMdnsActive] = useState<boolean | null>(null);
 
-  // Cloud sync provider state
-  const [cloudStatus, setCloudStatus] = useState<Record<CloudProvider, "idle" | "connecting" | "connected" | "error">>({
-    gdrive: getCloudToken("gdrive") ? "connected" : "idle",
-    dropbox: getCloudToken("dropbox") ? "connected" : "idle",
-  });
-
-  const handleCloudConnect = useCallback(async (provider: CloudProvider) => {
-    setCloudStatus((prev) => ({ ...prev, [provider]: "connecting" }));
-    try {
-      const token = await initiateDesktopOAuth(provider);
-      storeCloudToken(provider, token);
-      startCloudSync(provider, token).catch(console.error);
-      setCloudStatus((prev) => ({ ...prev, [provider]: "connected" }));
-    } catch {
-      setCloudStatus((prev) => ({ ...prev, [provider]: "error" }));
-    }
-  }, []);
-
-  const handleCloudDisconnect = useCallback((provider: CloudProvider) => {
-    clearCloudProvider(provider);
-    setCloudStatus((prev) => ({ ...prev, [provider]: "idle" }));
-  }, []);
+  const { providers, connect, disconnect } = useCloudProviders();
   const [allIPs, setAllIPs] = useState<NetworkInterface[]>([]);
   const [showIPPicker, setShowIPPicker] = useState(false);
 
@@ -180,54 +156,15 @@ export function MobileSyncTab() {
       {/* Cloud Sync tab */}
       {activeTab === "cloud" && (
         <div className="space-y-3 mb-4">
-          {(["gdrive", "dropbox"] as CloudProvider[]).map((provider) => {
-            const status = cloudStatus[provider];
-            const isConnected = status === "connected";
-            const isConnecting = status === "connecting";
-            const label = provider === "gdrive" ? "Google Drive" : "Dropbox";
-            const detail =
-              provider === "gdrive"
-                ? "~5 s sync · app data folder"
-                : "~1–4 s sync · /Apps/Freed/";
-
-            return (
-              <div
-                key={provider}
-                className={`flex items-center gap-3 p-3 rounded-xl border ${
-                  isConnected
-                    ? "bg-green-500/5 border-green-500/20"
-                    : "bg-white/5 border-[rgba(255,255,255,0.08)]"
-                }`}
-              >
-                <span
-                  className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                    isConnected ? "bg-green-400" : "bg-[#52525b]"
-                  }`}
-                />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-white">{label}</p>
-                  <p className="text-xs text-[#71717a]">{detail}</p>
-                </div>
-                {isConnected ? (
-                  <button
-                    onClick={() => handleCloudDisconnect(provider)}
-                    className="text-xs px-2.5 py-1 rounded-lg bg-white/5 text-[#71717a] hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                  >
-                    Disconnect
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => handleCloudConnect(provider)}
-                    disabled={isConnecting}
-                    className="text-xs px-2.5 py-1 rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isConnecting ? "Opening…" : "Connect"}
-                  </button>
-                )}
-              </div>
-            );
-          })}
-
+          {(["dropbox", "gdrive"] as const).map((provider) => (
+            <CloudProviderCard
+              key={provider}
+              provider={provider}
+              state={providers[provider]}
+              onConnect={connect}
+              onDisconnect={disconnect}
+            />
+          ))}
           <p className="text-xs text-[#71717a] text-center pt-1">
             Connecting both providers lets the desktop bridge mobile clients
             using different cloud accounts.

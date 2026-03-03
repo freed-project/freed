@@ -3,12 +3,15 @@ import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
 import { PlatformProvider, type PlatformConfig } from "@freed/ui/context";
 import { UpdateNotification } from "./components/UpdateNotification";
-import { CloudSyncSetupDialog, isCloudSetupDone } from "./components/CloudSyncSetupDialog";
+import { CloudSyncSetupDialog } from "./components/CloudSyncSetupDialog";
+import { CloudSyncNudge } from "./components/CloudSyncNudge";
 import { useAppStore } from "./lib/store";
 import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } from "./lib/capture";
 import { startRssPoller, stopRssPoller } from "./lib/rss-poller";
-import { startAllCloudSyncs } from "./lib/sync";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { startSync, stopSync, startAllCloudSyncs } from "./lib/sync";
 import { XFeedEmptyState } from "./components/XFeedEmptyState";
+import { XAuthSection } from "./components/XAuthSection";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
@@ -20,8 +23,8 @@ function App() {
   const isLoading = useAppStore((state) => state.isLoading);
   const error = useAppStore((state) => state.error);
 
-  // Show the first-launch cloud sync setup dialog until the user dismisses it.
-  const [showCloudSetup, setShowCloudSetup] = useState(!isCloudSetupDone());
+  // Full setup dialog — opened from the nudge toast or first-launch when no provider connected.
+  const [showCloudSetup, setShowCloudSetup] = useState(false);
 
   useEffect(() => {
     initialize();
@@ -30,9 +33,14 @@ function App() {
   useEffect(() => {
     if (!isInitialized) return;
     startRssPoller();
+    // Wire the LAN relay change subscription + client-count polling.
+    startSync();
     // Resume cloud sync loops for any previously authenticated providers.
     startAllCloudSyncs();
-    return () => stopRssPoller();
+    return () => {
+      stopRssPoller();
+      stopSync();
+    };
   }, [isInitialized]);
 
   const pendingUpdate = useRef<Update | null>(null);
@@ -50,6 +58,7 @@ function App() {
     const update = pendingUpdate.current;
     if (!update) return;
     await update.downloadAndInstall();
+    await relaunch();
   }, []);
 
   const platform: PlatformConfig = useMemo(
@@ -59,7 +68,7 @@ function App() {
       importOPMLFeeds,
       exportFeedsAsOPML,
       headerDragRegion: true,
-      SidebarConnectionSection: null,
+      SidebarConnectionSection: XAuthSection,
       SourceIndicator: XSourceIndicator,
       HeaderSyncIndicator: DesktopSyncIndicator,
       SettingsExtraSections: MobileSyncTab,
@@ -105,6 +114,9 @@ function App() {
         </AppShell>
         <UpdateNotification />
       </div>
+      {/* Toast nudge — shown every launch while no cloud provider is connected */}
+      <CloudSyncNudge onSetUp={() => setShowCloudSetup(true)} />
+
       {showCloudSetup && (
         <CloudSyncSetupDialog onDismiss={() => setShowCloudSetup(false)} />
       )}

@@ -21,14 +21,30 @@ async function fetchUrl(url: string): Promise<string> {
   return invoke<string>("fetch_url", { url });
 }
 
+/** Result of fetching and parsing a single RSS feed */
+interface FetchedFeed {
+  items: FeedItem[];
+  /** Feed-level title from the live XML — undefined if the parser found none */
+  liveTitle: string | undefined;
+  /** Feed-level site URL from the live XML */
+  liveSiteUrl: string | undefined;
+}
+
 /**
  * Fetch and parse an RSS feed via Tauri backend.
  * Transport is Tauri IPC; parsing/normalization is @freed/capture-rss.
+ *
+ * Returns feed-level metadata alongside items so the refresh pipeline can heal
+ * "Untitled Feed" sentinels even when the feed currently has zero items.
  */
-async function fetchRssFeed(feedUrl: string): Promise<FeedItem[]> {
+async function fetchRssFeed(feedUrl: string): Promise<FetchedFeed> {
   const xml = await fetchUrl(feedUrl);
   const parsed = await parseFeedXml(xml, feedUrl);
-  return feedToFeedItems(parsed);
+  return {
+    items: feedToFeedItems(parsed),
+    liveTitle: parsed.title !== "Untitled Feed" ? parsed.title : undefined,
+    liveSiteUrl: parsed.link || undefined,
+  };
 }
 
 /**
@@ -93,16 +109,30 @@ export async function refreshAllFeeds(): Promise<void> {
       const batch = feeds.slice(i, i + FETCH_CONCURRENCY);
       const results = await Promise.allSettled(
         batch.map(async (feed) => {
-          const items = await fetchRssFeed(feed.url);
-          const liveFeedTitle = items[0]?.rssSource?.feedTitle;
-          const liveSiteUrl = items[0]?.rssSource?.siteUrl;
-          // Sentinel check: OPML fallback or raw URL as title both indicate a broken import
+          const { items, liveTitle, liveSiteUrl } = await fetchRssFeed(feed.url);
+
+          // Sentinel check: OPML fallback or raw URL as title both indicate a broken import.
           const isUntitled = feed.title === "Untitled Feed" || feed.title === feed.url;
+
+          // Resolve the best available title:
+          //   1. Live XML title (if the parser found one)
+          //   2. Hostname of the feed URL (e.g. "news.ycombinator.com") as a
+          //      last resort so the feed doesn't stay labelled "Untitled Feed"
+          //      forever when the XML genuinely omits a <title> element.
+          let healedTitle: string | undefined;
+          if (isUntitled) {
+            try {
+              healedTitle = liveTitle ?? new URL(feed.url).hostname.replace(/^(?:www|feeds?)\./, "");
+            } catch {
+              healedTitle = liveTitle;
+            }
+          }
+
           return {
             feed: {
               ...feed,
               lastFetched: Date.now(),
-              ...(isUntitled && liveFeedTitle ? { title: liveFeedTitle } : {}),
+              ...(healedTitle ? { title: healedTitle } : {}),
               ...(!feed.siteUrl && liveSiteUrl ? { siteUrl: liveSiteUrl } : {}),
             },
             items,
