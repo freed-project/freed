@@ -52,10 +52,10 @@ interface GDriveDownloadResult {
 }
 
 /** Return the fileId of `freed.automerge` in appDataFolder, creating it if absent. */
-async function gdriveEnsureFile(token: string): Promise<string> {
+async function gdriveEnsureFile(token: string, signal?: AbortSignal): Promise<string> {
   const listRes = await fetch(
     `${GDRIVE_FILES}?spaces=appDataFolder&q=name%3D'${FILE_NAME}'&fields=files(id)`,
-    { headers: { Authorization: `Bearer ${token}` } },
+    { headers: { Authorization: `Bearer ${token}` }, signal },
   );
   if (!listRes.ok) throw new Error(`GDrive list failed: ${listRes.status}`);
 
@@ -69,6 +69,7 @@ async function gdriveEnsureFile(token: string): Promise<string> {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ name: FILE_NAME, parents: ["appDataFolder"] }),
+    signal,
   });
   if (!createRes.ok) throw new Error(`GDrive create failed: ${createRes.status}`);
 
@@ -80,11 +81,15 @@ async function gdriveEnsureFile(token: string): Promise<string> {
  * Download `freed.automerge` and return the binary plus the ETag (MD5 checksum)
  * used for optimistic locking. If the file is empty, binary is null.
  */
-async function gdriveDownload(token: string, fileId: string): Promise<GDriveDownloadResult> {
+async function gdriveDownload(
+  token: string,
+  fileId: string,
+  signal?: AbortSignal,
+): Promise<GDriveDownloadResult> {
   // Fetch metadata for the ETag before downloading content.
   const metaRes = await fetch(
     `${GDRIVE_FILES}/${fileId}?fields=md5Checksum,size`,
-    { headers: { Authorization: `Bearer ${token}` } },
+    { headers: { Authorization: `Bearer ${token}` }, signal },
   );
   if (!metaRes.ok) throw new Error(`GDrive meta failed: ${metaRes.status}`);
   const { md5Checksum, size } = await metaRes.json();
@@ -95,6 +100,7 @@ async function gdriveDownload(token: string, fileId: string): Promise<GDriveDown
 
   const contentRes = await fetch(`${GDRIVE_FILES}/${fileId}?alt=media`, {
     headers: { Authorization: `Bearer ${token}` },
+    signal,
   });
   if (!contentRes.ok) throw new Error(`GDrive download failed: ${contentRes.status}`);
 
@@ -144,9 +150,12 @@ export async function gdriveUploadSafe(token: string, localBinary: Uint8Array): 
   throw new Error("GDrive upload failed after max retries (concurrent write conflict)");
 }
 
-export async function gdriveDownloadLatest(token: string): Promise<Uint8Array | null> {
-  const fileId = await gdriveEnsureFile(token);
-  const { binary } = await gdriveDownload(token, fileId);
+export async function gdriveDownloadLatest(
+  token: string,
+  signal?: AbortSignal,
+): Promise<Uint8Array | null> {
+  const fileId = await gdriveEnsureFile(token, signal);
+  const { binary } = await gdriveDownload(token, fileId, signal);
   return binary;
 }
 
@@ -212,13 +221,17 @@ interface DropboxDownloadResult {
   rev: string;
 }
 
-async function dropboxDownload(token: string): Promise<DropboxDownloadResult> {
+async function dropboxDownload(
+  token: string,
+  signal?: AbortSignal,
+): Promise<DropboxDownloadResult> {
   const res = await fetch(DBX_DOWNLOAD, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Dropbox-API-Arg": JSON.stringify({ path: DBX_PATH }),
     },
+    signal,
   });
 
   if (res.status === 409) {
@@ -280,8 +293,11 @@ export async function dropboxUploadSafe(token: string, localBinary: Uint8Array):
   throw new Error("Dropbox upload failed after max retries (concurrent write conflict)");
 }
 
-export async function dropboxDownloadLatest(token: string): Promise<Uint8Array | null> {
-  const { binary } = await dropboxDownload(token);
+export async function dropboxDownloadLatest(
+  token: string,
+  signal?: AbortSignal,
+): Promise<Uint8Array | null> {
+  const { binary } = await dropboxDownload(token, signal);
   return binary;
 }
 
