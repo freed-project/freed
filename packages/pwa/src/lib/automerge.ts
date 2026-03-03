@@ -21,6 +21,7 @@ import {
   updateLastSync,
 } from "@freed/shared/schema";
 import type { FeedItem, RssFeed, UserPreferences } from "@freed/shared";
+import { addDebugEvent, setDocSnapshot, registerDocAccessors } from "@freed/ui/lib/debug-store";
 
 // Singleton storage instance
 const storage = new IndexedDBStorage();
@@ -31,6 +32,19 @@ let currentDoc: FreedDoc | null = null;
 // Subscribers for document changes
 type Subscriber = (doc: FreedDoc) => void;
 const subscribers = new Set<Subscriber>();
+
+/** Snapshot current doc stats into the debug store */
+function snapshotDoc(): void {
+  if (!currentDoc) return;
+  const binary = A.save(currentDoc);
+  setDocSnapshot({
+    deviceId: (currentDoc.meta?.deviceId as string | undefined) ?? "unknown",
+    itemCount: Object.keys(currentDoc.feedItems ?? {}).length,
+    feedCount: Object.keys(currentDoc.rssFeeds ?? {}).length,
+    binarySize: binary.byteLength,
+    savedAt: Date.now(),
+  });
+}
 
 /**
  * Initialize or load the Automerge document
@@ -44,6 +58,17 @@ export async function initDoc(): Promise<FreedDoc> {
     currentDoc = createEmptyDoc();
     await saveDoc();
   }
+
+  const deviceId = (currentDoc.meta?.deviceId as string | undefined) ?? "unknown";
+  addDebugEvent("init", `device ...${deviceId.slice(-8)}`);
+  snapshotDoc();
+
+  // Register window escape hatch so the console can inspect the live doc.
+  registerDocAccessors(
+    () => currentDoc,
+    () => JSON.stringify(A.toJS(currentDoc!), null, 2),
+    () => A.save(currentDoc!),
+  );
 
   return currentDoc;
 }
@@ -80,6 +105,8 @@ async function applyChange(
 
   currentDoc = A.change(currentDoc, message || "update", changeFn);
   await saveDoc();
+  addDebugEvent("change", message);
+  snapshotDoc();
 
   // Notify subscribers
   for (const subscriber of subscribers) {
@@ -212,9 +239,20 @@ export async function mergeDoc(incoming: Uint8Array): Promise<FreedDoc> {
     throw new Error("Document not initialized");
   }
 
-  const incomingDoc = A.load<FreedDoc>(incoming);
-  currentDoc = A.merge(currentDoc, incomingDoc);
-  await saveDoc();
+  try {
+    const beforeCount = Object.keys(currentDoc.feedItems ?? {}).length;
+    const incomingDoc = A.load<FreedDoc>(incoming);
+    currentDoc = A.merge(currentDoc, incomingDoc);
+    await saveDoc();
+
+    const afterCount = Object.keys(currentDoc.feedItems ?? {}).length;
+    const delta = afterCount - beforeCount;
+    addDebugEvent("merge_ok", delta !== 0 ? `${delta > 0 ? "+" : ""}${delta} items` : "no new items", incoming.byteLength);
+    snapshotDoc();
+  } catch (err) {
+    addDebugEvent("merge_err", err instanceof Error ? err.message : String(err));
+    throw err;
+  }
 
   // Notify subscribers
   for (const subscriber of subscribers) {

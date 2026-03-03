@@ -6,12 +6,14 @@
  */
 
 import { getDocBinary, mergeDoc } from "./automerge";
+import { addDebugEvent } from "@freed/ui/lib/debug-store";
 
 // Connection state
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let isConnected = false;
 let currentUrl: string | null = null;
+let reconnectCount = 0;
 
 // Status listeners
 type StatusListener = (connected: boolean) => void;
@@ -35,8 +37,10 @@ export function broadcastDoc(): void {
     const doc = getDocBinary();
     ws.send(doc);
     console.log("[Sync] Broadcast document (%d bytes)", doc.byteLength);
+    addDebugEvent("sent", undefined, doc.byteLength);
   } catch (error) {
     console.error("[Sync] Failed to broadcast:", error);
+    addDebugEvent("error", error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -50,6 +54,7 @@ export function connect(url: string): void {
 
   currentUrl = url;
   console.log(`[Sync] Connecting to ${url}...`);
+  addDebugEvent("connect_attempt", url);
 
   try {
     ws = new WebSocket(url);
@@ -58,7 +63,9 @@ export function connect(url: string): void {
     ws.onopen = () => {
       console.log("[Sync] Connected to relay");
       isConnected = true;
+      reconnectCount = 0;
       notifyStatus();
+      addDebugEvent("connected", url);
 
       // Send our current doc so the relay stores it and can serve new clients
       setTimeout(() => broadcastDoc(), 100);
@@ -68,6 +75,8 @@ export function connect(url: string): void {
       if (!(event.data instanceof ArrayBuffer)) return;
       const bytes = new Uint8Array(event.data);
       if (bytes.length === 0) return;
+
+      addDebugEvent("received", undefined, bytes.length);
 
       try {
         await mergeDoc(bytes);
@@ -82,9 +91,12 @@ export function connect(url: string): void {
       isConnected = false;
       ws = null;
       notifyStatus();
+      addDebugEvent("disconnected", currentUrl ?? undefined);
 
       // Auto-reconnect after delay
       if (currentUrl && reconnectTimer === null) {
+        reconnectCount += 1;
+        addDebugEvent("reconnecting", `attempt ${reconnectCount} in 5s`);
         reconnectTimer = setTimeout(() => {
           reconnectTimer = null;
           if (currentUrl && !isConnected) {
@@ -96,9 +108,11 @@ export function connect(url: string): void {
 
     ws.onerror = (error) => {
       console.error("[Sync] WebSocket error:", error);
+      addDebugEvent("error", "WebSocket error — check browser console for details");
     };
   } catch (error) {
     console.error("[Sync] Failed to connect:", error);
+    addDebugEvent("error", error instanceof Error ? error.message : String(error));
   }
 }
 

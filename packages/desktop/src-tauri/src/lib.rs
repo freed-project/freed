@@ -158,6 +158,31 @@ fn get_local_ip() -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Get all non-loopback IPv4 addresses with their interface names.
+/// Useful for diagnosing cases where the primary IP is a VPN tunnel
+/// rather than the Wi-Fi interface the phone is connected to.
+#[tauri::command]
+fn get_all_local_ips() -> Vec<serde_json::Value> {
+    let port = 8765u16;
+    match local_ip_address::list_afinet_netifas() {
+        Ok(ifaces) => ifaces
+            .into_iter()
+            .filter(|(_, ip)| {
+                // IPv4 only, skip loopback
+                matches!(ip, std::net::IpAddr::V4(v4) if !v4.is_loopback())
+            })
+            .map(|(name, ip)| {
+                serde_json::json!({
+                    "interface": name,
+                    "ip": ip.to_string(),
+                    "url": format!("ws://{}:{}", ip, port),
+                })
+            })
+            .collect(),
+        Err(_) => vec![],
+    }
+}
+
 /// Returns the full WebSocket pairing URL including the auth token.
 ///
 /// Format: `ws://<lan-ip>:<port>?t=<base64url-token>`
@@ -478,6 +503,7 @@ pub fn run() {
             fetch_url,
             x_api_request,
             get_local_ip,
+            get_all_local_ips,
             get_sync_url,
             get_sync_client_count,
             broadcast_doc,

@@ -8,15 +8,20 @@
  * For situations where QR scanning is impractical, the IP address and
  * 43-character pairing token are shown as separate copyable fields so
  * the user can transcribe them manually.
+ *
+ * If a VPN or multiple network interfaces are detected, an interface
+ * picker lets the user regenerate the QR with the correct IP.
  */
 
 import { useState, useEffect, useCallback } from "react";
 import QRCode from "react-qr-code";
 import {
   getSyncUrl,
+  getAllLocalIPs,
   resetPairingToken,
   onStatusChange,
   type SyncStatus,
+  type NetworkInterface,
 } from "../lib/sync";
 
 /** Parse the LAN IP from a ws://ip:port?t=token URL. */
@@ -37,10 +42,24 @@ function parseToken(url: string): string {
   }
 }
 
+/** Heuristic: does this interface look like a VPN tunnel? */
+function looksLikeVpn(iface: NetworkInterface): boolean {
+  const name = iface.interface.toLowerCase();
+  return (
+    name.startsWith("utun") ||
+    name.startsWith("tun") ||
+    name.startsWith("tap") ||
+    name.startsWith("wg") || // WireGuard
+    name.startsWith("ppp")
+  );
+}
+
 export function MobileSyncTab() {
   const [syncUrl, setSyncUrl] = useState<string>("");
   const [clientCount, setClientCount] = useState(0);
   const [resetting, setResetting] = useState(false);
+  const [allIPs, setAllIPs] = useState<NetworkInterface[]>([]);
+  const [showIPPicker, setShowIPPicker] = useState(false);
 
   // Independent copy-flash state for each copyable field
   const [copiedIp, setCopiedIp] = useState(false);
@@ -49,6 +68,7 @@ export function MobileSyncTab() {
 
   useEffect(() => {
     getSyncUrl().then(setSyncUrl);
+    getAllLocalIPs().then(setAllIPs);
 
     const unsubscribe = onStatusChange((status: SyncStatus) => {
       setClientCount(status.clientCount);
@@ -56,6 +76,9 @@ export function MobileSyncTab() {
 
     return unsubscribe;
   }, []);
+
+  const hasVpn = allIPs.some(looksLikeVpn);
+  const multipleIPs = allIPs.length > 1;
 
   const makeCopyHandler = (text: string, setFlash: (v: boolean) => void) =>
     async () => {
@@ -79,6 +102,20 @@ export function MobileSyncTab() {
       setResetting(false);
     }
   }, []);
+
+  /** Switch to a different interface IP while preserving the port and token. */
+  const handleSelectInterface = (iface: NetworkInterface) => {
+    if (!syncUrl) return;
+    try {
+      const current = new URL(syncUrl);
+      current.hostname = iface.ip;
+      setSyncUrl(current.toString());
+    } catch {
+      // Fallback: use the raw url from the interface (no token)
+      setSyncUrl(iface.url);
+    }
+    setShowIPPicker(false);
+  };
 
   const ip = parseIp(syncUrl);
   const token = parseToken(syncUrl);
@@ -105,12 +142,54 @@ export function MobileSyncTab() {
           </div>
         )}
         <p className="text-xs text-[#71717a] mt-3 text-center">
-          Open <span className="text-[#8b5cf6]">freed.wtf/app</span> on your
+          Open <span className="text-[#8b5cf6]">app.freed.wtf</span> on your
           phone,
           <br />
           then scan this QR code
         </p>
       </div>
+
+      {/* VPN / multi-interface warning with IP picker */}
+      {(hasVpn || multipleIPs) && (
+        <div className="mb-4 p-3 bg-orange-500/10 border border-orange-500/30 rounded-xl">
+          <p className="text-xs font-semibold text-orange-400 mb-1">
+            {hasVpn ? "VPN detected" : "Multiple network interfaces"}
+          </p>
+          <p className="text-xs text-orange-300/80 mb-2">
+            {hasVpn
+              ? "A VPN may encode the wrong IP in the QR code. If your phone can't connect, pick the correct interface below."
+              : "Multiple network adapters found. If the QR code doesn't work, try a different IP."}
+          </p>
+          <button
+            onClick={() => setShowIPPicker((v) => !v)}
+            className="text-xs text-orange-400 hover:text-orange-300 transition-colors"
+          >
+            {showIPPicker ? "Hide interfaces ↑" : "Show all interfaces ↓"}
+          </button>
+
+          {showIPPicker && (
+            <div className="mt-2 space-y-1.5">
+              {allIPs.map((iface) => (
+                <button
+                  key={iface.url}
+                  onClick={() => handleSelectInterface(iface)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors border ${
+                    ip === iface.ip
+                      ? "bg-[#8b5cf6]/20 border-[#8b5cf6]/30 text-[#8b5cf6]"
+                      : "bg-white/5 border-transparent text-[#a1a1aa] hover:bg-white/10"
+                  }`}
+                >
+                  <span className="font-mono">{iface.ip}</span>
+                  <span className="text-[#52525b] ml-2">
+                    {iface.interface}
+                    {looksLikeVpn(iface) && " (VPN)"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Manual entry fields — IP and token shown separately for transcription */}
       <div className="mb-4 p-3 bg-white/5 rounded-xl border border-[rgba(255,255,255,0.08)]">

@@ -1,0 +1,381 @@
+/**
+ * DebugPanel — in-app sync diagnostics overlay
+ *
+ * Three tabs: Connection, Events, Document.
+ * Opened via Cmd/Ctrl+Shift+D, 5-tap on the sync indicator, or Settings → Developer.
+ */
+
+import { useEffect, useRef, useState } from "react";
+import { useDebugStore, type SyncEvent, type SyncEventKind } from "../lib/debug-store";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function formatTs(ts: number): string {
+  const d = new Date(ts);
+  return d.toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function formatRelative(ts: number): string {
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 5) return "just now";
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  return `${Math.floor(s / 3600)}h ago`;
+}
+
+// Colour coding by event kind
+const KIND_STYLES: Record<SyncEventKind, { badge: string; dot: string; label: string }> = {
+  connected:          { badge: "bg-green-500/20 text-green-400 border-green-500/30",    dot: "bg-green-400",    label: "connected" },
+  disconnected:       { badge: "bg-red-500/20 text-red-400 border-red-500/30",          dot: "bg-red-400",      label: "disconnected" },
+  reconnecting:       { badge: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30", dot: "bg-yellow-400",   label: "reconnecting" },
+  sent:               { badge: "bg-blue-500/20 text-blue-400 border-blue-500/30",        dot: "bg-blue-400",     label: "sent" },
+  received:           { badge: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",        dot: "bg-cyan-400",     label: "received" },
+  merge_ok:           { badge: "bg-green-500/20 text-green-400 border-green-500/30",    dot: "bg-green-400",    label: "merge ok" },
+  merge_err:          { badge: "bg-red-500/20 text-red-400 border-red-500/30",          dot: "bg-red-400",      label: "merge err" },
+  init:               { badge: "bg-purple-500/20 text-purple-400 border-purple-500/30", dot: "bg-purple-400",   label: "init" },
+  change:             { badge: "bg-[#52525b]/40 text-[#a1a1aa] border-[#52525b]/30",    dot: "bg-[#71717a]",    label: "change" },
+  error:              { badge: "bg-red-500/20 text-red-400 border-red-500/30",          dot: "bg-red-400",      label: "error" },
+  mixed_content_warn: { badge: "bg-orange-500/20 text-orange-400 border-orange-500/30", dot: "bg-orange-400",   label: "mixed content" },
+  camera_started:     { badge: "bg-[#52525b]/40 text-[#a1a1aa] border-[#52525b]/30",   dot: "bg-[#71717a]",    label: "camera" },
+  camera_denied:      { badge: "bg-red-500/20 text-red-400 border-red-500/30",          dot: "bg-red-400",      label: "cam denied" },
+  qr_decoded:         { badge: "bg-purple-500/20 text-purple-400 border-purple-500/30", dot: "bg-purple-400",   label: "qr decoded" },
+  connect_attempt:    { badge: "bg-blue-500/20 text-blue-400 border-blue-500/30",        dot: "bg-blue-400",     label: "connecting" },
+  connect_timeout:    { badge: "bg-red-500/20 text-red-400 border-red-500/30",          dot: "bg-red-400",      label: "timeout" },
+};
+
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+function EventRow({ event }: { event: SyncEvent }) {
+  const style = KIND_STYLES[event.kind];
+  return (
+    <div className="flex items-start gap-2.5 py-2 border-b border-white/5 last:border-0">
+      <span className="text-[10px] text-[#52525b] tabular-nums shrink-0 mt-0.5 font-mono">
+        {formatTs(event.ts)}
+      </span>
+      <span className={`shrink-0 mt-0.5 text-[10px] px-1.5 py-0.5 rounded border font-mono ${style.badge}`}>
+        {style.label}
+      </span>
+      <div className="flex-1 min-w-0">
+        {event.detail && (
+          <p className="text-xs text-[#a1a1aa] truncate font-mono">{event.detail}</p>
+        )}
+        {event.bytes !== undefined && (
+          <p className="text-[10px] text-[#52525b] font-mono">{formatBytes(event.bytes)}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ConnectionTab() {
+  const events = useDebugStore((s) => s.events);
+  const docSnapshot = useDebugStore((s) => s.docSnapshot);
+  const [, setTick] = useState(0);
+
+  // Re-render every second so relative timestamps stay fresh
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const lastConnected = events.find((e) => e.kind === "connected");
+  const lastDisconnected = events.find((e) => e.kind === "disconnected");
+  const lastSent = events.find((e) => e.kind === "sent");
+  const lastReceived = events.find((e) => e.kind === "received");
+  const reconnects = events.filter((e) => e.kind === "reconnecting").length;
+  const connectAttempt = events.find((e) => e.kind === "connect_attempt");
+  const isConnected = lastConnected && (!lastDisconnected || lastConnected.ts > lastDisconnected.ts);
+
+  const proto = typeof window !== "undefined" ? window.location.protocol : "";
+  const relayUrl = connectAttempt?.detail ?? "—";
+  const isWsPlain = relayUrl.startsWith("ws://");
+  const mixedContentRisk = proto === "https:" && isWsPlain;
+
+  return (
+    <div className="space-y-4">
+      {/* Mixed content warning */}
+      {mixedContentRisk && (
+        <div className="p-3 bg-orange-500/15 border border-orange-500/40 rounded-xl">
+          <p className="text-xs font-semibold text-orange-400 mb-1">HTTPS → ws:// Mixed Content</p>
+          <p className="text-xs text-orange-300/80">
+            This page is served over HTTPS. Safari and Chrome block plain <code className="font-mono">ws://</code> connections from HTTPS pages — this is almost certainly why sync fails on iPhone. The desktop relay works, but the browser kills the socket silently.
+          </p>
+        </div>
+      )}
+
+      {/* Status */}
+      <div className="grid grid-cols-2 gap-2">
+        <div className="bg-white/5 rounded-xl p-3">
+          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Status</p>
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${isConnected ? "bg-green-400" : "bg-[#52525b]"}`} />
+            <span className={`text-sm font-medium ${isConnected ? "text-green-400" : "text-[#71717a]"}`}>
+              {isConnected ? "Connected" : "Offline"}
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-white/5 rounded-xl p-3">
+          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Reconnects</p>
+          <p className="text-sm font-medium text-[#a1a1aa] font-mono">{reconnects}</p>
+        </div>
+
+        <div className="bg-white/5 rounded-xl p-3">
+          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Page Protocol</p>
+          <p className={`text-sm font-medium font-mono ${proto === "https:" ? "text-orange-400" : "text-green-400"}`}>
+            {proto || "—"}
+          </p>
+        </div>
+
+        <div className="bg-white/5 rounded-xl p-3">
+          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Doc Size</p>
+          <p className="text-sm font-medium text-[#a1a1aa] font-mono">
+            {docSnapshot ? formatBytes(docSnapshot.binarySize) : "—"}
+          </p>
+        </div>
+      </div>
+
+      {/* Relay URL */}
+      <div className="bg-white/5 rounded-xl p-3">
+        <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Relay URL</p>
+        <p className="text-xs text-[#a1a1aa] font-mono break-all">{relayUrl}</p>
+      </div>
+
+      {/* Transfer stats */}
+      <div className="grid grid-cols-2 gap-2">
+        <div className="bg-white/5 rounded-xl p-3">
+          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Last Sent</p>
+          <p className="text-xs text-blue-400 font-mono">{lastSent ? formatBytes(lastSent.bytes ?? 0) : "—"}</p>
+          {lastSent && <p className="text-[10px] text-[#52525b] font-mono mt-0.5">{formatRelative(lastSent.ts)}</p>}
+        </div>
+        <div className="bg-white/5 rounded-xl p-3">
+          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Last Received</p>
+          <p className="text-xs text-cyan-400 font-mono">{lastReceived ? formatBytes(lastReceived.bytes ?? 0) : "—"}</p>
+          {lastReceived && <p className="text-[10px] text-[#52525b] font-mono mt-0.5">{formatRelative(lastReceived.ts)}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EventsTab() {
+  const events = useDebugStore((s) => s.events);
+  const clearEvents = useDebugStore((s) => s.clearEvents);
+
+  const copyAll = async () => {
+    const text = events
+      .map((e) => `[${formatTs(e.ts)}] ${e.kind}${e.detail ? ` — ${e.detail}` : ""}${e.bytes !== undefined ? ` (${formatBytes(e.bytes)})` : ""}`)
+      .join("\n");
+    await navigator.clipboard.writeText(text);
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between mb-3 shrink-0">
+        <p className="text-xs text-[#52525b]">{events.length} events (last 200)</p>
+        <div className="flex gap-2">
+          <button
+            onClick={copyAll}
+            className="text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+          >
+            Copy All
+          </button>
+          <button
+            onClick={clearEvents}
+            className="text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-red-500/20 text-[#71717a] hover:text-red-400 transition-colors"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {events.length === 0 ? (
+          <p className="text-xs text-[#52525b] text-center py-8">No events yet. Try connecting.</p>
+        ) : (
+          events.map((e) => <EventRow key={e.id} event={e} />)
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DocumentTab() {
+  const docSnapshot = useDebugStore((s) => s.docSnapshot);
+  const [copied, setCopied] = useState(false);
+
+  const copyJson = async () => {
+    const json = window.__freed?.getDocJson?.();
+    if (!json) return;
+    await navigator.clipboard.writeText(json);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const downloadBinary = () => {
+    const binary = window.__freed?.getDocBinary?.();
+    if (!binary) return;
+    // Ensure we have a plain ArrayBuffer to satisfy Blob's type constraint
+    const blob = new Blob([binary.buffer instanceof ArrayBuffer ? binary.buffer : new Uint8Array(binary).buffer], { type: "application/octet-stream" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `freed-doc-${Date.now()}.automerge`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (!docSnapshot) {
+    return (
+      <p className="text-xs text-[#52525b] text-center py-8">
+        Document not yet initialized.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Summary grid */}
+      <div className="grid grid-cols-2 gap-2">
+        <div className="bg-white/5 rounded-xl p-3">
+          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Device ID</p>
+          <p className="text-xs text-[#a1a1aa] font-mono">...{docSnapshot.deviceId.slice(-8)}</p>
+        </div>
+        <div className="bg-white/5 rounded-xl p-3">
+          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Doc Size</p>
+          <p className="text-xs text-[#a1a1aa] font-mono">{formatBytes(docSnapshot.binarySize)}</p>
+        </div>
+        <div className="bg-white/5 rounded-xl p-3">
+          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Feed Items</p>
+          <p className="text-sm font-semibold text-white font-mono">{docSnapshot.itemCount.toLocaleString()}</p>
+        </div>
+        <div className="bg-white/5 rounded-xl p-3">
+          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">RSS Feeds</p>
+          <p className="text-sm font-semibold text-white font-mono">{docSnapshot.feedCount}</p>
+        </div>
+      </div>
+
+      <div className="bg-white/5 rounded-xl p-3">
+        <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Snapshot Taken</p>
+        <p className="text-xs text-[#a1a1aa] font-mono">{new Date(docSnapshot.savedAt).toLocaleTimeString()}</p>
+      </div>
+
+      {/* Actions */}
+      <div className="space-y-2">
+        <button
+          onClick={copyJson}
+          className="w-full py-2.5 rounded-xl bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 text-sm font-medium transition-colors border border-[#8b5cf6]/20"
+        >
+          {copied ? "Copied!" : "Copy Doc as JSON"}
+        </button>
+        <button
+          onClick={downloadBinary}
+          className="w-full py-2.5 rounded-xl bg-white/5 text-[#a1a1aa] hover:bg-white/10 hover:text-white text-sm font-medium transition-colors"
+        >
+          Download .automerge Binary
+        </button>
+      </div>
+
+      <p className="text-[10px] text-[#52525b] text-center">
+        Or run <code className="font-mono">window.__freed.getDocJson()</code> in DevTools
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main panel
+// ---------------------------------------------------------------------------
+
+type Tab = "connection" | "events" | "document";
+
+export function DebugPanel() {
+  const toggle = useDebugStore((s) => s.toggle);
+  const [tab, setTab] = useState<Tab>("connection");
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Escape key closes
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") toggle();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [toggle]);
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "connection", label: "Connection" },
+    { id: "events", label: "Events" },
+    { id: "document", label: "Document" },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div
+        ref={panelRef}
+        className="w-full sm:max-w-lg bg-[#111111] border border-[rgba(255,255,255,0.1)] rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col"
+        style={{ maxHeight: "85vh" }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <span className="text-xs font-mono px-2 py-0.5 rounded bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30">
+              DEBUG
+            </span>
+            <h2 className="text-sm font-semibold text-white">Sync Diagnostics</h2>
+          </div>
+          <button
+            onClick={toggle}
+            className="p-1.5 rounded-lg hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+            aria-label="Close debug panel"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-white/8 shrink-0">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex-1 py-2.5 text-xs font-medium transition-colors ${
+                tab === t.id
+                  ? "text-[#8b5cf6] border-b-2 border-[#8b5cf6]"
+                  : "text-[#71717a] hover:text-white"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto min-h-0 p-5">
+          {tab === "connection" && <ConnectionTab />}
+          {tab === "events" && <EventsTab />}
+          {tab === "document" && <DocumentTab />}
+        </div>
+
+        {/* Footer hint */}
+        <div className="px-5 py-3 border-t border-white/8 shrink-0">
+          <p className="text-[10px] text-[#52525b] text-center font-mono">
+            Esc to close · Cmd+Shift+D to toggle · window.__freed in DevTools
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
