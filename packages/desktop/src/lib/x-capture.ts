@@ -18,8 +18,8 @@ import {
   tweetsToFeedItems,
   deduplicateFeedItems,
   getHomeLatestTimelineVariables,
-} from "@freed/capture-x";
-import type { XTweetResult, TimelineResponse } from "@freed/capture-x";
+} from "@freed/capture-x/browser";
+import type { XTweetResult, TimelineResponse } from "@freed/capture-x/browser";
 import type { XCookies } from "./x-auth";
 import { useAppStore } from "./store";
 
