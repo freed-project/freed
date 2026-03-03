@@ -225,12 +225,17 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
   cloudAbort = new AbortController();
   const { signal } = cloudAbort;
 
-  // Pull latest remote state immediately on connect.
+  // Pull latest remote state immediately on connect, with a 10s deadline so a
+  // slow or offline cloud provider never blocks the sync loop from starting.
   try {
-    const remote =
-      provider === "gdrive"
-        ? await gdriveDownloadLatest(token)
-        : await dropboxDownloadLatest(token);
+    const downloadFn =
+      provider === "gdrive" ? gdriveDownloadLatest : dropboxDownloadLatest;
+    const remote = await Promise.race([
+      downloadFn(token),
+      new Promise<null>((_, reject) =>
+        setTimeout(() => reject(new Error("initial download timed out")), 10_000),
+      ),
+    ]);
     if (remote) {
       await mergeDoc(remote);
       console.log("[CloudSync] Initial merge on connect (%d bytes)", remote.length);

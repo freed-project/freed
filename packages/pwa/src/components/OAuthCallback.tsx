@@ -121,12 +121,12 @@ export function OAuthCallback() {
 
       storeCloudToken(provider, result.accessToken);
 
-      try {
-        await startCloudSync(provider, result.accessToken);
-      } catch (err) {
-        // Non-fatal: sync will retry. Still mark success and navigate away.
+      // Fire-and-forget — token exchange is the success condition.
+      // The initial download/merge happens in the background; if it fails
+      // the poll loop will retry. Don't block the callback page on it.
+      startCloudSync(provider, result.accessToken).catch((err) => {
         console.error("[OAuthCallback] startCloudSync failed:", err);
-      }
+      });
 
       setStatus("success");
 
