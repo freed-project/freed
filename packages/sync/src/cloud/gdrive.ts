@@ -1,0 +1,167 @@
+/**
+ * Google Drive cloud sync for Freed.
+ *
+ * Stores a single `freed.automerge` binary in the Drive AppData folder.
+ * Every write uses a download → CRDT-merge → upload cycle guarded by an
+ * If-Match ETag so concurrent writes from multiple devices produce a merged
+ * result rather than data loss.
+ *
+ * Poll interval: 5 s via the Changes API cursor (no long-poll on GDrive).
+ */
+
+import { mergeBinaries, delay } from "./merge.js";
+
+const FILE_NAME = "freed.automerge";
+const GDRIVE_FILES = "https://www.googleapis.com/drive/v3/files";
+const GDRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
+const GDRIVE_CHANGES = "https://www.googleapis.com/drive/v3/changes";
+const POLL_MS = 5_000;
+const MAX_RETRIES = 3;
+
+interface DownloadResult {
+  binary: Uint8Array | null;
+  etag: string;
+  fileId: string;
+}
+
+/** Return the fileId of `freed.automerge` in appDataFolder, creating it if absent. */
+async function ensureFile(token: string, signal?: AbortSignal): Promise<string> {
+  const listRes = await fetch(
+    `${GDRIVE_FILES}?spaces=appDataFolder&q=name%3D'${FILE_NAME}'&fields=files(id)`,
+    { headers: { Authorization: `Bearer ${token}` }, signal },
+  );
+  if (!listRes.ok) throw new Error(`GDrive list failed: ${listRes.status}`);
+
+  const { files } = await listRes.json();
+  if (files.length > 0) return files[0].id as string;
+
+  const createRes = await fetch(GDRIVE_FILES, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name: FILE_NAME, parents: ["appDataFolder"] }),
+    signal,
+  });
+  if (!createRes.ok) throw new Error(`GDrive create failed: ${createRes.status}`);
+
+  const { id } = await createRes.json();
+  return id as string;
+}
+
+async function download(
+  token: string,
+  fileId: string,
+  signal?: AbortSignal,
+): Promise<DownloadResult> {
+  const metaRes = await fetch(
+    `${GDRIVE_FILES}/${fileId}?fields=md5Checksum,size`,
+    { headers: { Authorization: `Bearer ${token}` }, signal },
+  );
+  if (!metaRes.ok) throw new Error(`GDrive meta failed: ${metaRes.status}`);
+  const { md5Checksum, size } = await metaRes.json();
+
+  if (!size || size === "0") {
+    return { binary: null, etag: md5Checksum ?? "*", fileId };
+  }
+
+  const contentRes = await fetch(`${GDRIVE_FILES}/${fileId}?alt=media`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal,
+  });
+  if (!contentRes.ok) throw new Error(`GDrive download failed: ${contentRes.status}`);
+
+  return {
+    binary: new Uint8Array(await contentRes.arrayBuffer()),
+    etag: md5Checksum ?? "*",
+    fileId,
+  };
+}
+
+/**
+ * Safe upload: always download remote first, CRDT-merge, then upload with
+ * If-Match so a concurrent desktop write returns 412 → retry with back-off.
+ */
+export async function gdriveUploadSafe(token: string, localBinary: Uint8Array): Promise<void> {
+  const fileId = await ensureFile(token);
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const { binary: remoteBinary, etag } = await download(token, fileId);
+    const merged = remoteBinary ? mergeBinaries(localBinary, remoteBinary) : localBinary;
+
+    const res = await fetch(`${GDRIVE_UPLOAD}/${fileId}?uploadType=media`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/octet-stream",
+        "If-Match": etag,
+      },
+      body: merged as BodyInit,
+    });
+
+    if (res.ok) return;
+    if (res.status === 412) {
+      await delay(200 * 2 ** attempt);
+      continue;
+    }
+    throw new Error(`GDrive upload failed: ${res.status}`);
+  }
+
+  throw new Error("GDrive upload failed after max retries (concurrent write conflict)");
+}
+
+export async function gdriveDownloadLatest(
+  token: string,
+  signal?: AbortSignal,
+): Promise<Uint8Array | null> {
+  const fileId = await ensureFile(token, signal);
+  const { binary } = await download(token, fileId, signal);
+  return binary;
+}
+
+/**
+ * Poll the GDrive Changes API every 5 s.
+ * Uses a server-side page-token cursor so only genuine changes trigger a
+ * download. Runs until `signal` is aborted.
+ */
+export async function gdriveStartPollLoop(
+  token: string,
+  onRemoteChange: (binary: Uint8Array) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const startRes = await fetch(`${GDRIVE_CHANGES}/startPageToken`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!startRes.ok) throw new Error(`GDrive startPageToken failed: ${startRes.status}`);
+  let { startPageToken: cursor } = await startRes.json();
+
+  const fileId = await ensureFile(token);
+
+  while (!signal.aborted) {
+    await delay(POLL_MS);
+    if (signal.aborted) break;
+
+    try {
+      const changesRes = await fetch(
+        `${GDRIVE_CHANGES}?pageToken=${cursor}&spaces=drive&fields=nextPageToken,newStartPageToken,changes(fileId)`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!changesRes.ok) continue;
+
+      const data = await changesRes.json();
+      cursor = data.newStartPageToken ?? data.nextPageToken ?? cursor;
+
+      const changed = (data.changes as Array<{ fileId: string }>).some(
+        (c) => c.fileId === fileId,
+      );
+
+      if (changed) {
+        const binary = await gdriveDownloadLatest(token);
+        if (binary) onRemoteChange(binary);
+      }
+    } catch (err) {
+      console.error("[CloudSync/GDrive] Poll error:", err);
+    }
+  }
+}

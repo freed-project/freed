@@ -3,5 +3,5 @@
   "framework": "vite",
   "buildCommand": "cd ../.. && npm run build -w @freed/shared && npm run build -w @freed/sync && cd packages/pwa && vite build",
   "outputDirectory": "dist",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }

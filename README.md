@@ -91,9 +91,9 @@ Quick saves and Ulysses mode.
 
 Onboarding, statistics, accessibility.
 
-### [Phase 11: OpenClaw Integration](docs/PHASE-11-OPENCLAW.md)
+### [Phase 11: Power User Integrations](docs/PHASE-11-OPENCLAW.md)
 
-Headless capture for power users.
+Headless capture via OpenClaw CLI (no Desktop App required) + [Omi](https://www.omi.me/) wearable integration to surface voice memories and meeting summaries as feed items.
 
 ### [Phase 12: Additional Platforms](docs/PHASE-12-ADDITIONAL-PLATFORMS.md)
 

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { AppShell } from "./components/layout/AppShell";
-import { FeedView } from "./components/feed/FeedView";
-import { ToastContainer } from "./components/Toast";
-import { PlatformProvider, type PlatformConfig } from "./context/PlatformContext";
+import { AppShell } from "@freed/ui/components/layout";
+import { FeedView } from "@freed/ui/components/feed";
+import { ToastContainer } from "@freed/ui/components/Toast";
+import { OAuthCallback } from "./components/OAuthCallback";
+import { PlatformProvider, type PlatformConfig } from "@freed/ui/context";
 import { useAppStore } from "./lib/store";
 import { exportFeedsAsOPML } from "./lib/capture";
 import {
@@ -10,12 +11,19 @@ import {
   disconnect,
   onStatusChange,
   getStoredRelayUrl,
+  startCloudSync,
+  getCloudProvider,
+  getCloudToken,
 } from "./lib/sync";
 import { checkForPwaUpdate, applyPwaUpdate, onUpdateAvailable } from "./lib/pwa-updater";
 import { SyncIndicator } from "./components/layout/SyncIndicator";
 import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
 
 function App() {
+  // Intercept OAuth callback before rendering the main app.
+  if (window.location.pathname === "/oauth-callback") {
+    return <OAuthCallback />;
+  }
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
   const isLoading = useAppStore((state) => state.isLoading);
@@ -32,9 +40,21 @@ function App() {
       setSyncConnected(connected);
     });
 
+    // Resume LAN relay connection if previously paired.
     const storedUrl = getStoredRelayUrl();
     if (storedUrl) {
       connect(storedUrl);
+    }
+
+    // Resume cloud sync if previously authenticated.
+    const provider = getCloudProvider();
+    if (provider) {
+      const token = getCloudToken(provider);
+      if (token) {
+        startCloudSync(provider, token).catch((err) => {
+          console.error("[App] Failed to resume cloud sync:", err);
+        });
+      }
     }
 
     return () => {

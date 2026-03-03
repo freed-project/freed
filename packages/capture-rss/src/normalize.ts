@@ -275,7 +275,9 @@ export function rssItemToFeedItem(
     },
     userState: {
       hidden: false,
-      bookmarked: false,
+      saved: false,
+      archived: false,
+      tags: [],
     },
     topics: item.categories || [],
   };
@@ -301,6 +303,7 @@ export function feedToRssFeed(
     siteUrl: feed.link,
     imageUrl: feed.image?.url,
     enabled,
+    trackUnread: false,
     lastFetched: Date.now(),
   };
 }

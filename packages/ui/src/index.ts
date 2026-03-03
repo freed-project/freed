@@ -1,0 +1,23 @@
+/**
+ * @freed/ui — Platform-agnostic UI layer for Freed
+ *
+ * Ships raw TypeScript source; consumers (pwa, desktop) compile and
+ * tree-shake via their own Vite pipelines. Tailwind classes are processed
+ * by each consumer's PostCSS pass — add `../ui/src/**` to your
+ * tailwind.config.js `content` array.
+ *
+ * Package boundaries:
+ *  - May import from @freed/shared
+ *  - No PWA-specific libs (no service worker, no jsQR, no @freed/sync)
+ *  - No platform store imports — consume state via PlatformContext only
+ */
+
+export * from "./context/index.js";
+export * from "./components/feed/index.js";
+export { AppShell } from "./components/layout/index.js";
+export { BottomSheet } from "./components/BottomSheet.js";
+export { PullToRefresh } from "./components/PullToRefresh.js";
+export { ToastContainer, useToastStore, toast } from "./components/Toast.js";
+export type { ToastType } from "./components/Toast.js";
+export { AddFeedDialog } from "./components/AddFeedDialog.js";
+export { SettingsPanel } from "./components/SettingsPanel.js";

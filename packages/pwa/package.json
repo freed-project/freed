@@ -1,15 +1,8 @@
 {
   "name": "@freed/pwa",
   "private": true,
-  "version": "26.3.104",
+  "version": "26.3.200",
   "type": "module",
-  "exports": {
-    "./components/feed": "./src/components/feed/index.ts",
-    "./components/layout": "./src/components/layout/index.ts",
-    "./components/AddFeedDialog": "./src/components/AddFeedDialog.tsx",
-    "./components/SettingsPanel": "./src/components/SettingsPanel.tsx",
-    "./context": "./src/context/index.ts"
-  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -26,6 +19,7 @@
     "@automerge/automerge": "^2.2.8",
     "@freed/shared": "*",
     "@freed/sync": "*",
+    "@freed/ui": "*",
     "@tanstack/react-virtual": "^3.13.6",
     "date-fns": "^4.1.0",
     "jsqr": "^1.4.0",

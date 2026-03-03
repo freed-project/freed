@@ -20,6 +20,13 @@ export default defineConfig({
       workbox: {
         runtimeCaching: [
           {
+            // API routes must bypass the service worker entirely — Workbox's
+            // NetworkFirst strategy doesn't handle POST requests correctly and
+            // will silently hang the fetch (no network request, no error).
+            urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
+            handler: 'NetworkOnly',
+          },
+          {
             urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|avif)$/i,
             handler: 'CacheFirst',
             options: {
@@ -45,7 +52,9 @@ export default defineConfig({
             },
           },
           {
-            urlPattern: /^https?:\/\//,
+            // Catch-all for external resources (CDN, external APIs).
+            // Same-origin fetches not matched above bypass the SW natively.
+            urlPattern: /^https?:\/\/(?!freed-pwa)/,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'freed-network',
