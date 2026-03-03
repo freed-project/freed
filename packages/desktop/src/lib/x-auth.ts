@@ -12,9 +12,32 @@
  * confirmed lazily on the first real API request via x-capture.ts.
  */
 
-export type { XCookies } from "@freed/capture-x";
-export { parseCookieString } from "@freed/capture-x";
-import type { XCookies } from "@freed/capture-x";
+export type { XCookies } from "@freed/capture-x/browser";
+import type { XCookies } from "@freed/capture-x/browser";
+
+/**
+ * Parse a raw cookie string (e.g. from document.cookie or a browser export)
+ * into a typed XCookies object.
+ *
+ * Inlined from @freed/capture-x/auth — that module uses Node built-ins
+ * (os, fs) and cannot be bundled into the Tauri renderer.
+ */
+export function parseCookieString(cookieString: string): XCookies | null {
+  const cookies: Record<string, string> = {};
+
+  for (const cookie of cookieString.split(";")) {
+    const [name, ...valueParts] = cookie.trim().split("=");
+    if (name && valueParts.length > 0) {
+      cookies[name.trim()] = valueParts.join("=").trim();
+    }
+  }
+
+  if (cookies.ct0 && cookies.auth_token) {
+    return { ct0: cookies.ct0, authToken: cookies.auth_token };
+  }
+
+  return null;
+}
 
 export interface XAuthState {
   isAuthenticated: boolean;
