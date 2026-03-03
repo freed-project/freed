@@ -193,7 +193,7 @@ export async function parseFeedXml(
   } else if (doc["rdf:RDF"]) {
     // RSS 1.0 / RDF — channel metadata lives at rdf:RDF.channel
     const rdf = doc["rdf:RDF"] as Rec;
-    result = parseRss({ channel: { ...rdf.channel, item: rdf.item } });
+    result = parseRss({ channel: { ...(rdf.channel as Rec), item: rdf.item } });
   } else {
     throw new Error("Unrecognized feed format");
   }
