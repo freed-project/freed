@@ -10,7 +10,9 @@
  * protection against authorization code interception attacks.
  */
 
-export const runtime = "edge";
+// Do NOT set runtime = "edge": Cloudflare Workers (Edge Runtime) silently
+// hangs outbound fetch to oauth2.googleapis.com in Vercel's infrastructure.
+// Running as a Node.js Lambda has no such restriction.
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== "POST") {
@@ -48,6 +50,7 @@ export default async function handler(req: Request): Promise<Response> {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params,
+    signal: AbortSignal.timeout(8000),
   });
 
   const data = await upstream.json();
