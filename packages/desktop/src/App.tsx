@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useCallback, useRef } from "react";
+import { useEffect, useMemo, useCallback, useRef, useState } from "react";
 import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
 import { PlatformProvider, type PlatformConfig } from "@freed/ui/context";
 import { UpdateNotification } from "./components/UpdateNotification";
+import { CloudSyncSetupDialog, isCloudSetupDone } from "./components/CloudSyncSetupDialog";
 import { useAppStore } from "./lib/store";
 import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } from "./lib/capture";
 import { startRssPoller, stopRssPoller } from "./lib/rss-poller";
+import { startAllCloudSyncs } from "./lib/sync";
 import { XFeedEmptyState } from "./components/XFeedEmptyState";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
@@ -18,6 +20,9 @@ function App() {
   const isLoading = useAppStore((state) => state.isLoading);
   const error = useAppStore((state) => state.error);
 
+  // Show the first-launch cloud sync setup dialog until the user dismisses it.
+  const [showCloudSetup, setShowCloudSetup] = useState(!isCloudSetupDone());
+
   useEffect(() => {
     initialize();
   }, [initialize]);
@@ -25,6 +30,8 @@ function App() {
   useEffect(() => {
     if (!isInitialized) return;
     startRssPoller();
+    // Resume cloud sync loops for any previously authenticated providers.
+    startAllCloudSyncs();
     return () => stopRssPoller();
   }, [isInitialized]);
 
@@ -98,6 +105,9 @@ function App() {
         </AppShell>
         <UpdateNotification />
       </div>
+      {showCloudSetup && (
+        <CloudSyncSetupDialog onDismiss={() => setShowCloudSetup(false)} />
+      )}
     </PlatformProvider>
   );
 }

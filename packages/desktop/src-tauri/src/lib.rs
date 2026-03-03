@@ -5,6 +5,7 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use futures_util::{SinkExt, StreamExt};
 use rand::RngCore;
+use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock as StdRwLock};
 use tauri::{Emitter, Manager};
@@ -56,6 +57,150 @@ fn load_or_create_token(data_dir: &std::path::Path) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// mDNS advertisement
+// ---------------------------------------------------------------------------
+
+/// Keeps the mDNS daemon alive for the application lifetime.
+/// The `Drop` impl shuts the daemon down cleanly on exit.
+struct MdnsState(Option<mdns_sd::ServiceDaemon>);
+
+impl Drop for MdnsState {
+    fn drop(&mut self) {
+        if let Some(daemon) = self.0.take() {
+            let _ = daemon.shutdown();
+        }
+    }
+}
+
+/// Register `_freed-sync._tcp.local` so future native clients can discover
+/// the relay without a QR scan.  The pairing token is intentionally absent
+/// from TXT records — discovery reveals the host/port, not the secret.
+fn advertise_mdns(port: u16) -> Option<mdns_sd::ServiceDaemon> {
+    use mdns_sd::{ServiceDaemon, ServiceInfo};
+
+    let daemon = ServiceDaemon::new()
+        .map_err(|e| eprintln!("[mDNS] Failed to create daemon: {}", e))
+        .ok()?;
+
+    let hostname = hostname::get()
+        .ok()
+        .and_then(|h| h.into_string().ok())
+        .unwrap_or_else(|| "freed-desktop".to_string());
+
+    let fqdn = format!("{}.local.", hostname);
+
+    let mut properties = std::collections::HashMap::new();
+    properties.insert("v".to_string(), "1".to_string());
+    properties.insert("app".to_string(), "freed".to_string());
+
+    // Pass `()` so mdns-sd auto-discovers all local interfaces — avoids
+    // hard-coding the LAN IP and handles multi-homed machines gracefully.
+    let service = ServiceInfo::new(
+        "_freed-sync._tcp.local.",
+        "Freed Desktop",
+        &fqdn,
+        (),
+        port,
+        Some(properties),
+    )
+    .map_err(|e| eprintln!("[mDNS] Failed to build ServiceInfo: {}", e))
+    .ok()?;
+
+    daemon
+        .register(service)
+        .map_err(|e| eprintln!("[mDNS] Failed to register service: {}", e))
+        .ok()?;
+
+    println!("[mDNS] Advertising _freed-sync._tcp.local on port {}", port);
+    Some(daemon)
+}
+
+// ---------------------------------------------------------------------------
+// Local snapshot rotation (grandfather-father-son)
+// ---------------------------------------------------------------------------
+
+/// Write a timestamped Automerge snapshot to `{app_data}/snapshots/` and
+/// prune old files using a GFS scheme:
+///   - last 60 minutely  (≤ 1 hour old)
+///   - last 24 hourly    (1–24 hours old)
+///   - last 30 daily     (> 24 hours old)
+fn write_snapshot(snapshot_dir: &std::path::Path, doc_bytes: &[u8]) {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    if let Err(e) = std::fs::create_dir_all(snapshot_dir) {
+        eprintln!("[Snapshot] Failed to create dir: {}", e);
+        return;
+    }
+
+    let path = snapshot_dir.join(format!("freed-{}.automerge", ts));
+    if let Err(e) = std::fs::write(&path, doc_bytes) {
+        eprintln!("[Snapshot] Failed to write: {}", e);
+        return;
+    }
+
+    prune_snapshots(snapshot_dir, ts);
+}
+
+fn prune_snapshots(snapshot_dir: &std::path::Path, now_secs: u64) {
+    use std::cmp::Reverse;
+
+    let mut entries: Vec<(u64, std::path::PathBuf)> = std::fs::read_dir(snapshot_dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().into_string().ok()?;
+            let ts: u64 = name
+                .strip_prefix("freed-")?
+                .strip_suffix(".automerge")?
+                .parse()
+                .ok()?;
+            Some((ts, e.path()))
+        })
+        .collect();
+
+    entries.sort_by_key(|(ts, _)| Reverse(*ts));
+
+    let mut kept: HashSet<std::path::PathBuf> = Default::default();
+    let (mut minutely, mut hourly, mut daily) = (0usize, 0usize, 0usize);
+    let mut last_hour_bucket = u64::MAX;
+    let mut last_day_bucket = u64::MAX;
+
+    for (ts, path) in &entries {
+        let age = now_secs.saturating_sub(*ts);
+        if age < 3_600 && minutely < 60 {
+            kept.insert(path.clone());
+            minutely += 1;
+        } else if age < 86_400 {
+            let bucket = age / 3_600;
+            if bucket != last_hour_bucket && hourly < 24 {
+                kept.insert(path.clone());
+                last_hour_bucket = bucket;
+                hourly += 1;
+            }
+        } else {
+            let bucket = age / 86_400;
+            if bucket != last_day_bucket && daily < 30 {
+                kept.insert(path.clone());
+                last_day_bucket = bucket;
+                daily += 1;
+            }
+        }
+    }
+
+    for (_, path) in &entries {
+        if !kept.contains(path) {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
 // Relay state
 // ---------------------------------------------------------------------------
 
@@ -230,11 +375,132 @@ async fn get_sync_client_count(state: tauri::State<'_, RelayState>) -> Result<us
 #[tauri::command]
 async fn broadcast_doc(
     state: tauri::State<'_, RelayState>,
+    app: tauri::AppHandle,
     doc_bytes: Vec<u8>,
 ) -> Result<(), String> {
+    // Write a GFS snapshot before touching broadcast state — recovery is
+    // always possible even if the broadcast itself fails.
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        let snapshot_dir = data_dir.join("snapshots");
+        let bytes = doc_bytes.clone();
+        tokio::task::spawn_blocking(move || write_snapshot(&snapshot_dir, &bytes))
+            .await
+            .ok();
+    }
+
     *state.current_doc.write().await = Some(doc_bytes.clone());
     let _ = state.broadcast_tx.send(doc_bytes);
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Tauri commands — mDNS + snapshots
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+fn get_mdns_active(mdns: tauri::State<'_, MdnsState>) -> bool {
+    mdns.0.is_some()
+}
+
+#[tauri::command]
+fn list_snapshots(app: tauri::AppHandle) -> Vec<String> {
+    let Ok(data_dir) = app.path().app_data_dir() else {
+        return vec![];
+    };
+    let dir = data_dir.join("snapshots");
+
+    let mut entries: Vec<String> = std::fs::read_dir(&dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().into_string().ok()?;
+            if name.starts_with("freed-") && name.ends_with(".automerge") {
+                Some(name)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    entries.sort_unstable_by(|a, b| b.cmp(a)); // newest first
+    entries
+}
+
+// ---------------------------------------------------------------------------
+// Tauri commands — OAuth localhost server
+// ---------------------------------------------------------------------------
+
+/// Spin up a one-shot HTTP server on a random localhost port to capture the
+/// OAuth redirect from the system browser.
+///
+/// Returns the port immediately so the caller can construct the redirect URI
+/// *before* launching the browser. Emits `cloud-oauth-code` with
+/// `{ code: String, state: String }` when the callback arrives, then shuts
+/// the server down. Times out after 5 minutes of waiting.
+#[tauri::command]
+async fn start_oauth_server(app: tauri::AppHandle) -> Result<u16, String> {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::time::{timeout, Duration};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .map_err(|e| e.to_string())?;
+    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+
+    tokio::spawn(async move {
+        let accept = timeout(Duration::from_secs(300), listener.accept()).await;
+
+        let Ok(Ok((stream, _))) = accept else {
+            eprintln!("[OAuth] Server timed out or failed to accept connection");
+            return;
+        };
+
+        let (reader_half, mut writer_half) = stream.into_split();
+        let mut buf_reader = BufReader::new(reader_half);
+        let mut request_line = String::new();
+        if buf_reader.read_line(&mut request_line).await.is_err() {
+            return;
+        }
+
+        // Parse `GET /callback?code=...&state=... HTTP/1.1`
+        let path = request_line
+            .split_whitespace()
+            .nth(1)
+            .unwrap_or("")
+            .to_string();
+
+        let query = path.splitn(2, '?').nth(1).unwrap_or("");
+        let mut code = String::new();
+        let mut state = String::new();
+
+        for pair in query.split('&') {
+            if let Some(v) = pair.strip_prefix("code=") {
+                code = v.to_string();
+            } else if let Some(v) = pair.strip_prefix("state=") {
+                state = v.to_string();
+            }
+        }
+
+        // Emit OAuth code to the frontend, then send the browser a success page.
+        let _ = app.emit("cloud-oauth-code", serde_json::json!({ "code": code, "state": state }));
+
+        let body = "<html><body style='font-family:sans-serif;text-align:center;padding:4rem'>\
+            <h2>Connected to Freed</h2>\
+            <p>You can close this tab and return to the app.</p>\
+            </body></html>";
+
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body,
+        );
+
+        let _ = writer_half.write_all(response.as_bytes()).await;
+        let _ = writer_half.flush().await;
+    });
+
+    Ok(port)
 }
 
 // ---------------------------------------------------------------------------
@@ -481,6 +747,10 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // Start mDNS advertisement and keep the daemon alive.
+            let mdns_daemon = advertise_mdns(8765);
+            app.manage(MdnsState(mdns_daemon));
+
             // Start the relay — token is already set, so new connections are
             // immediately subject to authentication.
             let state = relay_state_clone.clone();
@@ -509,6 +779,9 @@ pub fn run() {
             broadcast_doc,
             reset_pairing_token,
             show_window,
+            get_mdns_active,
+            list_snapshots,
+            start_oauth_server,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Freed");

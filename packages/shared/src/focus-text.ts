@@ -5,7 +5,10 @@
  * allowing faster reading by guiding eye movement through text.
  */
 
-export type FocusIntensity = "light" | "normal" | "strong";
+import type { ReadingIntensity } from "./types.js";
+
+/** Alias for ReadingIntensity — both describe the same spectrum. */
+export type FocusIntensity = ReadingIntensity;
 
 export interface FocusOptions {
   enabled: boolean;

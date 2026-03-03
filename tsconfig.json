@@ -1,0 +1,20 @@
+{
+  /**
+   * Root TypeScript project references.
+   *
+   * Run `tsc --build` at the repo root to type-check all packages in
+   * dependency order. This catches cross-package schema violations (wrong
+   * field names, missing required fields, etc.) that per-package checks miss.
+   *
+   * Add every workspace package here so CI can enforce the full graph.
+   */
+  "files": [],
+  "references": [
+    { "path": "packages/shared" },
+    { "path": "packages/sync" },
+    { "path": "packages/capture-rss" },
+    { "path": "packages/capture-x" },
+    { "path": "packages/pwa" },
+    { "path": "packages/desktop" }
+  ]
+}

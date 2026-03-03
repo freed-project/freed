@@ -285,8 +285,8 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 - [x] Desktop broadcasts doc changes to connected PWA clients via `broadcast_doc` Tauri command
 - [x] QR code or manual pairing connects PWA to Desktop (SyncConnectDialog with QR scanner)
 - [x] Sync connection status observable (`onStatusChange` listener in sync.ts)
-- [x] PWA falls back to cloud sync when away from home (GDrive + Dropbox PKCE OAuth, 5s/2s polling)
-- [x] At least one cloud provider works — both GDrive and Dropbox OAuth + sync confirmed working on app.freed.wtf
+- [x] PWA falls back to cloud sync when away from home (GDrive + Dropbox PKCE OAuth, Automerge merge-upload)
+- [x] At least one cloud provider works — GDrive and Dropbox both confirmed working on app.freed.wtf
 
 ---
 
