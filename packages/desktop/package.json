@@ -12,8 +12,8 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
-    "@freed/pwa": "*",
     "@freed/shared": "*",
+    "@freed/ui": "*",
     "@freed/sync": "*",
     "@tanstack/react-virtual": "^3.13.6",
     "@tauri-apps/api": "^2.2.0",

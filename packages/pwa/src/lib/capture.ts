@@ -8,7 +8,7 @@
  */
 
 import { useAppStore } from "./store";
-import { toast } from "../components/Toast";
+import { toast } from "@freed/ui/components/Toast";
 import { generateOPML, downloadFile } from "@freed/shared";
 
 /**

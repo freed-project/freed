@@ -1,8 +1,8 @@
 import { useRef, memo, useCallback } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { FeedItem } from "./FeedItem";
+import { FeedItem } from "./FeedItem.js";
 import type { FeedItem as FeedItemType } from "@freed/shared";
-import { useAppStore, usePlatform } from "../../context/PlatformContext";
+import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 
 interface FeedListProps {
   items: FeedItemType[];
@@ -43,8 +43,6 @@ const FeedItemRow = memo(function FeedItemRow({
 }: FeedItemRowProps) {
   const handleClick = useCallback(() => onItemClick?.(item), [item, onItemClick]);
   const handleMouseEnter = useCallback(() => onFocusChange?.(index), [index, onFocusChange]);
-  // useCallback always receives a function; we conditionally pass it to FeedItem
-  // so the prop is undefined when there's no onItemSave, preserving FeedItem's memo.
   const handleSave = useCallback(
     (e: React.MouseEvent) => { e.stopPropagation(); onItemSave?.(item); },
     [item, onItemSave],
@@ -86,8 +84,6 @@ export function FeedList({
   });
 
   if (items.length === 0) {
-    // When a platform provides a custom empty state, render it without the
-    // generic icon so the component has full visual control.
     if (FeedEmptyState) {
       return (
         <div className="flex flex-col items-center justify-center flex-1 min-h-0 overflow-auto text-center px-6 py-12">
