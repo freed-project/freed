@@ -112,29 +112,37 @@ export function OAuthCallback() {
 
     const exchange = provider === "gdrive" ? exchangeGDrive : exchangeDropbox;
 
-    exchange(code, verifier).then(async (result) => {
-      if (!result.ok) {
+    exchange(code, verifier)
+      .then(async (result) => {
+        if (!result.ok) {
+          setStatus("error");
+          setErrorMessage(result.error);
+          return;
+        }
+
+        storeCloudToken(provider, result.accessToken);
+
+        // Fire-and-forget — token exchange is the success condition.
+        // The initial download/merge happens in the background; if it fails
+        // the poll loop will retry. Don't block the callback page on it.
+        startCloudSync(provider, result.accessToken).catch((err) => {
+          console.error("[OAuthCallback] startCloudSync failed:", err);
+        });
+
+        setStatus("success");
+
+        // Give the user a moment to see the success state before navigating.
+        setTimeout(() => {
+          window.location.replace("/");
+        }, 1200);
+      })
+      .catch((err: unknown) => {
+        console.error("[OAuthCallback] token exchange threw:", err);
         setStatus("error");
-        setErrorMessage(result.error);
-        return;
-      }
-
-      storeCloudToken(provider, result.accessToken);
-
-      // Fire-and-forget — token exchange is the success condition.
-      // The initial download/merge happens in the background; if it fails
-      // the poll loop will retry. Don't block the callback page on it.
-      startCloudSync(provider, result.accessToken).catch((err) => {
-        console.error("[OAuthCallback] startCloudSync failed:", err);
+        setErrorMessage(
+          err instanceof Error ? err.message : "Unexpected error during token exchange.",
+        );
       });
-
-      setStatus("success");
-
-      // Give the user a moment to see the success state before navigating.
-      setTimeout(() => {
-        window.location.replace("/");
-      }, 1200);
-    });
   }, []);
 
   return (
