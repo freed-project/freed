@@ -1,6 +1,6 @@
 # Phase 4: Sync Layer
 
-> **Status:** ✅ Core Complete (cloud sync fallback pending)
+> **Status:** 🚧 In Progress (restore-from-backup UI remaining)
 > **Dependencies:** Phase 1-2 (Capture layers ✓), Phase 3 (Save for Later ✓)
 
 ---
@@ -289,10 +289,14 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 - [x] Desktop broadcasts doc changes to connected PWA clients via `broadcast_doc` Tauri command
 - [x] QR code or manual pairing connects PWA to Desktop (SyncConnectDialog with QR scanner)
 - [x] Sync connection status observable (`onStatusChange` listener in sync.ts)
-- [ ] PWA falls back to cloud sync when away from home (GDrive or Dropbox via cloud file sync)
-- [ ] Cloud sync uses download-merge-upload with optimistic locking (no silent overwrites)
-- [ ] At least one cloud provider works (GDrive recommended)
-- [ ] Local snapshots written before each cloud upload with GFS rotation
+- [x] PWA falls back to cloud sync when away from home (GDrive or Dropbox via cloud file sync)
+- [x] Cloud sync uses download-merge-upload with optimistic locking (no silent overwrites)
+- [x] At least one cloud provider works (GDrive and Dropbox both implemented)
+- [x] Local snapshots written before each cloud upload with GFS rotation
+- [x] Desktop prompts user to connect cloud providers on first launch (CloudSyncSetupDialog)
+- [x] Desktop acts as cloud bridge — syncs to both GDrive and Dropbox simultaneously
+- [x] Cloud sync primitives extracted to @freed/sync/cloud (browser + Node compatible)
+- [x] mDNS advertisement on `_freed-sync._tcp.local` for future native client discovery
 - [ ] "Restore from backup" UI surfaces local snapshots for manual recovery
 
 ---

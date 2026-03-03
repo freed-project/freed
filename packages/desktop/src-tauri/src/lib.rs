@@ -428,6 +428,82 @@ fn list_snapshots(app: tauri::AppHandle) -> Vec<String> {
 }
 
 // ---------------------------------------------------------------------------
+// Tauri commands — OAuth localhost server
+// ---------------------------------------------------------------------------
+
+/// Spin up a one-shot HTTP server on a random localhost port to capture the
+/// OAuth redirect from the system browser.
+///
+/// Returns the port immediately so the caller can construct the redirect URI
+/// *before* launching the browser. Emits `cloud-oauth-code` with
+/// `{ code: String, state: String }` when the callback arrives, then shuts
+/// the server down. Times out after 5 minutes of waiting.
+#[tauri::command]
+async fn start_oauth_server(app: tauri::AppHandle) -> Result<u16, String> {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::time::{timeout, Duration};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .map_err(|e| e.to_string())?;
+    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+
+    tokio::spawn(async move {
+        let accept = timeout(Duration::from_secs(300), listener.accept()).await;
+
+        let Ok(Ok((stream, _))) = accept else {
+            eprintln!("[OAuth] Server timed out or failed to accept connection");
+            return;
+        };
+
+        let (reader_half, mut writer_half) = stream.into_split();
+        let mut buf_reader = BufReader::new(reader_half);
+        let mut request_line = String::new();
+        if buf_reader.read_line(&mut request_line).await.is_err() {
+            return;
+        }
+
+        // Parse `GET /callback?code=...&state=... HTTP/1.1`
+        let path = request_line
+            .split_whitespace()
+            .nth(1)
+            .unwrap_or("")
+            .to_string();
+
+        let query = path.splitn(2, '?').nth(1).unwrap_or("");
+        let mut code = String::new();
+        let mut state = String::new();
+
+        for pair in query.split('&') {
+            if let Some(v) = pair.strip_prefix("code=") {
+                code = v.to_string();
+            } else if let Some(v) = pair.strip_prefix("state=") {
+                state = v.to_string();
+            }
+        }
+
+        // Emit OAuth code to the frontend, then send the browser a success page.
+        let _ = app.emit("cloud-oauth-code", serde_json::json!({ "code": code, "state": state }));
+
+        let body = "<html><body style='font-family:sans-serif;text-align:center;padding:4rem'>\
+            <h2>Connected to Freed</h2>\
+            <p>You can close this tab and return to the app.</p>\
+            </body></html>";
+
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body,
+        );
+
+        let _ = writer_half.write_all(response.as_bytes()).await;
+        let _ = writer_half.flush().await;
+    });
+
+    Ok(port)
+}
+
+// ---------------------------------------------------------------------------
 // Tauri commands — window
 // ---------------------------------------------------------------------------
 
@@ -705,6 +781,7 @@ pub fn run() {
             show_window,
             get_mdns_active,
             list_snapshots,
+            start_oauth_server,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Freed");

@@ -9,7 +9,7 @@
  * any divergence; no conflict logic is needed at this layer.
  *
  * Cloud uploads are debounced and always use a download→merge→upload cycle
- * protected by optimistic locking — see cloudSync.ts for details.
+ * protected by optimistic locking — see @freed/sync/cloud for details.
  */
 
 import { getDocBinary, mergeDoc } from "./automerge";
@@ -22,7 +22,7 @@ import {
   dropboxStartLongpollLoop,
   dropboxDownloadLatest,
   type CloudProvider,
-} from "./cloudSync";
+} from "@freed/sync/cloud";
 
 // Connection state
 let ws: WebSocket | null = null;

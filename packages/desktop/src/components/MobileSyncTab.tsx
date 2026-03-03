@@ -1,13 +1,10 @@
 /**
  * MobileSyncTab — desktop-only settings section
  *
- * Displays a QR code containing the sync WebSocket URL + pairing token.
- * The QR is rendered locally (no external service) so the user's LAN IP
- * and token are never sent to a third party.
- *
- * For situations where QR scanning is impractical, the IP address and
- * 43-character pairing token are shown as separate copyable fields so
- * the user can transcribe them manually.
+ * Three tabs:
+ *   1. Cloud Sync — manage Google Drive / Dropbox connections
+ *   2. Scan QR — QR code for LAN pairing (rendered locally)
+ *   3. Manual — copyable IP + pairing token for manual entry
  *
  * If a VPN or multiple network interfaces are detected, an interface
  * picker lets the user regenerate the QR with the correct IP.
@@ -21,8 +18,14 @@ import {
   getAllLocalIPs,
   resetPairingToken,
   onStatusChange,
+  getCloudToken,
+  clearCloudProvider,
+  initiateDesktopOAuth,
+  storeCloudToken,
+  startCloudSync,
   type SyncStatus,
   type NetworkInterface,
+  type CloudProvider,
 } from "../lib/sync";
 
 /** Parse the LAN IP from a ws://ip:port?t=token URL. */
@@ -55,11 +58,37 @@ function looksLikeVpn(iface: NetworkInterface): boolean {
   );
 }
 
+type Tab = "cloud" | "qr" | "manual";
+
 export function MobileSyncTab() {
+  const [activeTab, setActiveTab] = useState<Tab>("cloud");
   const [syncUrl, setSyncUrl] = useState<string>("");
   const [clientCount, setClientCount] = useState(0);
   const [resetting, setResetting] = useState(false);
   const [mdnsActive, setMdnsActive] = useState<boolean | null>(null);
+
+  // Cloud sync provider state
+  const [cloudStatus, setCloudStatus] = useState<Record<CloudProvider, "idle" | "connecting" | "connected" | "error">>({
+    gdrive: getCloudToken("gdrive") ? "connected" : "idle",
+    dropbox: getCloudToken("dropbox") ? "connected" : "idle",
+  });
+
+  const handleCloudConnect = useCallback(async (provider: CloudProvider) => {
+    setCloudStatus((prev) => ({ ...prev, [provider]: "connecting" }));
+    try {
+      const token = await initiateDesktopOAuth(provider);
+      storeCloudToken(provider, token);
+      startCloudSync(provider, token).catch(console.error);
+      setCloudStatus((prev) => ({ ...prev, [provider]: "connected" }));
+    } catch {
+      setCloudStatus((prev) => ({ ...prev, [provider]: "error" }));
+    }
+  }, []);
+
+  const handleCloudDisconnect = useCallback((provider: CloudProvider) => {
+    clearCloudProvider(provider);
+    setCloudStatus((prev) => ({ ...prev, [provider]: "idle" }));
+  }, []);
   const [allIPs, setAllIPs] = useState<NetworkInterface[]>([]);
   const [showIPPicker, setShowIPPicker] = useState(false);
 
@@ -131,8 +160,85 @@ export function MobileSyncTab() {
         Mobile Sync
       </h3>
 
-      {/* QR Code — rendered locally, never sent to a third party */}
-      <div className="flex flex-col items-center p-4 bg-white/5 rounded-xl border border-[rgba(255,255,255,0.08)] mb-4">
+      {/* Tab selector — Cloud first, then QR, then Manual */}
+      <div className="flex gap-1.5 mb-5 p-1 bg-white/5 rounded-xl">
+        {(["cloud", "qr", "manual"] as Tab[]).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              activeTab === tab
+                ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
+                : "text-[#71717a] hover:text-white"
+            }`}
+          >
+            {tab === "cloud" ? "Cloud Sync" : tab === "qr" ? "Scan QR" : "Manual"}
+          </button>
+        ))}
+      </div>
+
+      {/* Cloud Sync tab */}
+      {activeTab === "cloud" && (
+        <div className="space-y-3 mb-4">
+          {(["gdrive", "dropbox"] as CloudProvider[]).map((provider) => {
+            const status = cloudStatus[provider];
+            const isConnected = status === "connected";
+            const isConnecting = status === "connecting";
+            const label = provider === "gdrive" ? "Google Drive" : "Dropbox";
+            const detail =
+              provider === "gdrive"
+                ? "~5 s sync · app data folder"
+                : "~1–4 s sync · /Apps/Freed/";
+
+            return (
+              <div
+                key={provider}
+                className={`flex items-center gap-3 p-3 rounded-xl border ${
+                  isConnected
+                    ? "bg-green-500/5 border-green-500/20"
+                    : "bg-white/5 border-[rgba(255,255,255,0.08)]"
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                    isConnected ? "bg-green-400" : "bg-[#52525b]"
+                  }`}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white">{label}</p>
+                  <p className="text-xs text-[#71717a]">{detail}</p>
+                </div>
+                {isConnected ? (
+                  <button
+                    onClick={() => handleCloudDisconnect(provider)}
+                    className="text-xs px-2.5 py-1 rounded-lg bg-white/5 text-[#71717a] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                  >
+                    Disconnect
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleCloudConnect(provider)}
+                    disabled={isConnecting}
+                    className="text-xs px-2.5 py-1 rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isConnecting ? "Opening…" : "Connect"}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+
+          <p className="text-xs text-[#71717a] text-center pt-1">
+            Connecting both providers lets the desktop bridge mobile clients
+            using different cloud accounts.
+          </p>
+        </div>
+      )}
+
+      {/* QR Code tab — rendered locally, never sent to a third party */}
+      {activeTab === "qr" && (
+        <>
+        <div className="flex flex-col items-center p-4 bg-white/5 rounded-xl border border-[rgba(255,255,255,0.08)] mb-4">
         <p className="text-xs text-[#71717a] mb-3">
           Scan with your phone to connect Freed PWA
         </p>
@@ -195,8 +301,11 @@ export function MobileSyncTab() {
           )}
         </div>
       )}
+        </>
+      )}
 
-      {/* Manual entry fields — IP and token shown separately for transcription */}
+      {/* Manual entry tab */}
+      {activeTab === "manual" && (
       <div className="mb-4 p-3 bg-white/5 rounded-xl border border-[rgba(255,255,255,0.08)]">
         <p className="text-xs font-medium text-[#71717a] uppercase tracking-wider mb-3">
           Manual Entry
@@ -270,8 +379,9 @@ export function MobileSyncTab() {
           </div>
         </div>
       </div>
+      )}
 
-      {/* Connected Devices */}
+      {/* Connected Devices — always visible */}
       <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl mb-4">
         <div className="flex items-center gap-2">
           <span
