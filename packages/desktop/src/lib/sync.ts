@@ -224,36 +224,3 @@ export function stopSync(): void {
   notifyStatus();
 }
 
-// Legacy exports for compatibility with existing code
-export function connect(): void {
-  startSync();
-}
-
-export function disconnect(): void {
-  stopSync();
-}
-
-// For backwards compatibility with old API
-export function getLocalIPs(): string[] {
-  return ["localhost"]; // Real IP fetched async via getLocalIP()
-}
-
-export function getConnectionUrl(): string {
-  return "ws://localhost:8765"; // Real URL fetched async via getSyncUrl()
-}
-
-export function getSyncStatusSync(): {
-  connected: boolean;
-  serverRunning: boolean;
-  port: number;
-} {
-  return {
-    connected: isServerRunning,
-    serverRunning: isServerRunning,
-    port: 8765,
-  };
-}
-
-export function setServerStarted(started: boolean): void {
-  isServerRunning = started;
-}

@@ -28,6 +28,16 @@ Run `./scripts/release.sh` with no args to auto-compute the next version.
 | `desktop/` | Tauri shell. Imports `@freed/ui` and `@freed/shared`. Never import from `@freed/pwa`. |
 | `capture-*/` | Isolated. Never import between capture packages. |
 
+## URLs
+
+| Property | URL |
+|---|---|
+| Marketing site | `https://freed.wtf` |
+| PWA (mobile reader) | `https://app.freed.wtf` |
+| Download page | `https://freed.wtf/get` |
+
+**Never write `freed.wtf/app`** — the PWA lives at the subdomain `app.freed.wtf`.
+
 ## Git Workflow
 
 **Never work directly on `main`.** Always create a git worktree for feature work:

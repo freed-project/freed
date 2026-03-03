@@ -12,6 +12,8 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
+    "@freed/capture-rss": "*",
+    "@freed/capture-x": "*",
     "@freed/shared": "*",
     "@freed/ui": "*",
     "@freed/sync": "*",
