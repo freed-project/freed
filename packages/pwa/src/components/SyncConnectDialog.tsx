@@ -152,7 +152,7 @@ function isValidToken(t: string): boolean {
   return t.length === 43 && /^[A-Za-z0-9_-]+$/.test(t);
 }
 
-export function SyncConnectDialog({ open, onClose, initialMode = "manual" }: SyncConnectDialogProps) {
+export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: SyncConnectDialogProps) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [ip, setIp] = useState("");
   const [token, setToken] = useState("");
@@ -202,8 +202,10 @@ export function SyncConnectDialog({ open, onClose, initialMode = "manual" }: Syn
     setLastQrContent(null);
 
     try {
+      // Use ideal (soft) constraint so desktop Chrome doesn't hard-fail when
+      // there's no "environment" camera — falls back to default camera instead.
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
+        video: { facingMode: { ideal: "environment" } },
       });
       streamRef.current = stream;
 
@@ -270,11 +272,15 @@ export function SyncConnectDialog({ open, onClose, initialMode = "manual" }: Syn
         }
       }, 250);
     } catch (e) {
-      const msg =
-        e instanceof Error
-          ? e.message.includes("NotAllowed")
-            ? "Camera permission denied. Please allow camera access and try again."
-            : e.message
+      // Check DOMException.name — more reliable than message strings across browsers.
+      // Chrome uses "NotAllowedError"; Firefox aliases it as "PermissionDeniedError".
+      const isDenied =
+        e instanceof DOMException &&
+        (e.name === "NotAllowedError" || e.name === "PermissionDeniedError");
+      const msg = isDenied
+        ? "Camera permission denied. Please allow camera access in your browser settings and try again."
+        : e instanceof Error
+          ? e.message
           : "Could not access camera.";
       addDebugEvent("camera_denied", msg);
       setError(msg);
@@ -355,7 +361,7 @@ export function SyncConnectDialog({ open, onClose, initialMode = "manual" }: Syn
 
   const tabs: Array<{ id: Mode; label: string }> = [
     { id: "cloud", label: "Cloud Sync" },
-    { id: "scanning", label: "Scan QR" },
+    { id: "scanning", label: "Local QR" },
     { id: "manual", label: "Manual" },
   ];
 
@@ -546,6 +552,21 @@ export function SyncConnectDialog({ open, onClose, initialMode = "manual" }: Syn
       {mode === "cloud" && (
         <div className="mb-4 flex flex-col gap-3">
           <button
+            onClick={() => handleCloudConnect("dropbox")}
+            disabled={cloudConnecting}
+            className="flex items-center gap-3 w-full px-4 py-3.5 bg-white/5 hover:bg-white/10 border border-[rgba(255,255,255,0.08)] hover:border-[#8b5cf6]/40 rounded-xl transition-colors disabled:opacity-50"
+          >
+            {/* Dropbox icon */}
+            <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="#0061FF">
+              <path d="M6 2L0 6l6 4-6 4 6 4 6-4-6-4 6-4L6 2zM18 2l-6 4 6 4-6 4 6 4 6-4-6-4 6-4-6-4zM12 14l-6 4 6 4 6-4-6-4z"/>
+            </svg>
+            <div className="text-left">
+              <div className="text-sm font-medium text-white">Connect Dropbox</div>
+              <div className="text-xs text-[#71717a]">~2s sync latency · stored in /Apps/Freed/</div>
+            </div>
+          </button>
+
+          <button
             onClick={() => handleCloudConnect("gdrive")}
             disabled={cloudConnecting}
             className="flex items-center gap-3 w-full px-4 py-3.5 bg-white/5 hover:bg-white/10 border border-[rgba(255,255,255,0.08)] hover:border-[#8b5cf6]/40 rounded-xl transition-colors disabled:opacity-50"
@@ -562,21 +583,6 @@ export function SyncConnectDialog({ open, onClose, initialMode = "manual" }: Syn
             <div className="text-left">
               <div className="text-sm font-medium text-white">Connect Google Drive</div>
               <div className="text-xs text-[#71717a]">~4s sync latency · stored in app data folder</div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => handleCloudConnect("dropbox")}
-            disabled={cloudConnecting}
-            className="flex items-center gap-3 w-full px-4 py-3.5 bg-white/5 hover:bg-white/10 border border-[rgba(255,255,255,0.08)] hover:border-[#8b5cf6]/40 rounded-xl transition-colors disabled:opacity-50"
-          >
-            {/* Dropbox icon */}
-            <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="#0061FF">
-              <path d="M6 2L0 6l6 4-6 4 6 4 6-4-6-4 6-4L6 2zM18 2l-6 4 6 4-6 4 6 4 6-4-6-4 6-4-6-4zM12 14l-6 4 6 4 6-4-6-4z"/>
-            </svg>
-            <div className="text-left">
-              <div className="text-sm font-medium text-white">Connect Dropbox</div>
-              <div className="text-xs text-[#71717a]">~2s sync latency · stored in /Apps/Freed/</div>
             </div>
           </button>
 
