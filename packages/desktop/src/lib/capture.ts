@@ -9,7 +9,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { FeedItem, RssFeed, OPMLFeedEntry } from "@freed/shared";
 import { generateOPML, downloadFile } from "@freed/shared";
-import { parseFeedXml, feedToFeedItems, feedToRssFeed } from "@freed/capture-rss";
+import { parseFeedXml, feedToFeedItems, feedToRssFeed } from "@freed/capture-rss/browser";
 import { captureXTimeline } from "./x-capture";
 import { docBatchRefreshFeeds } from "./automerge";
 import { useAppStore } from "./store";
