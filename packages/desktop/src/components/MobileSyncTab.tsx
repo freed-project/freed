@@ -1,13 +1,16 @@
 /**
  * MobileSyncTab — desktop-only settings section
  *
- * Provides QR code and URL for PWA mobile sync connection.
- * Rendered as an extra section in the shared SettingsPanel.
+ * Displays a QR code containing the sync WebSocket URL + pairing token.
+ * The QR is rendered locally (no external service) so the user's LAN IP
+ * and token are never sent to a third party.
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import QRCode from "react-qr-code";
 import {
   getSyncUrl,
+  resetPairingToken,
   onStatusChange,
   type SyncStatus,
 } from "../lib/sync";
@@ -16,6 +19,7 @@ export function MobileSyncTab() {
   const [syncUrl, setSyncUrl] = useState<string>("");
   const [clientCount, setClientCount] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     getSyncUrl().then(setSyncUrl);
@@ -37,9 +41,17 @@ export function MobileSyncTab() {
     }
   };
 
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
-    syncUrl,
-  )}&bgcolor=0a0a0a&color=fafafa`;
+  const handleResetPairing = useCallback(async () => {
+    setResetting(true);
+    try {
+      const newUrl = await resetPairingToken();
+      setSyncUrl(newUrl);
+    } catch (err) {
+      console.error("Failed to reset pairing token:", err);
+    } finally {
+      setResetting(false);
+    }
+  }, []);
 
   return (
     <section id="mobile-sync-section">
@@ -47,21 +59,24 @@ export function MobileSyncTab() {
         Mobile Sync
       </h3>
 
-      {/* QR Code */}
+      {/* QR Code — rendered locally, never sent to a third party */}
       <div className="flex flex-col items-center p-4 bg-white/5 rounded-xl border border-[rgba(255,255,255,0.08)] mb-4">
         <p className="text-xs text-[#71717a] mb-3">
           Scan with your phone to connect Freed PWA
         </p>
         {syncUrl && (
-          <img
-            src={qrCodeUrl}
-            alt="Sync QR Code"
-            className="w-40 h-40 rounded-lg"
-          />
+          <div className="p-3 bg-white rounded-lg">
+            <QRCode
+              value={syncUrl}
+              size={160}
+              bgColor="#ffffff"
+              fgColor="#0a0a0a"
+            />
+          </div>
         )}
         <p className="text-xs text-[#71717a] mt-3 text-center">
-          Open <span className="text-[#8b5cf6]">freed.wtf/app</span> on
-          your phone,
+          Open <span className="text-[#8b5cf6]">freed.wtf/app</span> on your
+          phone,
           <br />
           then scan this QR code
         </p>
@@ -89,7 +104,7 @@ export function MobileSyncTab() {
       </div>
 
       {/* Connected Devices */}
-      <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+      <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl mb-4">
         <div className="flex items-center gap-2">
           <span
             className={`sync-dot ${
@@ -98,9 +113,22 @@ export function MobileSyncTab() {
           />
           <span className="text-sm">Connected devices</span>
         </div>
-        <span className="text-sm font-medium text-[#a1a1aa]">
-          {clientCount}
-        </span>
+        <span className="text-sm font-medium text-[#a1a1aa]">{clientCount}</span>
+      </div>
+
+      {/* Reset Pairing */}
+      <div className="p-3 bg-white/5 rounded-xl border border-[rgba(255,255,255,0.08)]">
+        <p className="text-xs text-[#71717a] mb-2">
+          Rotate the pairing token if you suspect an unauthorized device has
+          connected. Paired phones will need to rescan the QR code.
+        </p>
+        <button
+          onClick={handleResetPairing}
+          disabled={resetting}
+          className="w-full px-3 py-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {resetting ? "Rotating…" : "Reset Pairing Token"}
+        </button>
       </div>
     </section>
   );

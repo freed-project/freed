@@ -907,8 +907,10 @@ dependencies = [
 name = "freed-desktop"
 version = "26.3.104"
 dependencies = [
+ "base64 0.22.1",
  "futures-util",
  "local-ip-address",
+ "rand 0.8.5",
  "reqwest",
  "serde",
  "serde_json",

@@ -6,6 +6,18 @@ import { BottomSheet } from "./BottomSheet";
 const CONNECT_TIMEOUT_MS = 5000;
 
 /**
+ * Returns true if the given WebSocket URL includes a `?t=` pairing token.
+ * URLs without a token will be rejected by the relay with HTTP 401.
+ */
+function hasTokenParam(url: string): boolean {
+  try {
+    return new URL(url).searchParams.has("t");
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Returns a promise that resolves when the sync WebSocket connects,
  * or rejects after a timeout.
  */
@@ -107,6 +119,16 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
 
         const detected = detectQrCode(videoRef.current);
         if (detected && (detected.startsWith("ws://") || detected.startsWith("wss://"))) {
+          // Reject QR codes from older desktop versions that lack a pairing token.
+          if (!hasTokenParam(detected)) {
+            stopCamera();
+            setError(
+              "This QR code has no pairing token. Please update your desktop app and rescan.",
+            );
+            setMode("manual");
+            return;
+          }
+
           stopCamera();
           storeRelayUrl(detected);
           connect(detected);
@@ -156,6 +178,11 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
       const parsed = new URL(url.trim());
       if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") {
         throw new Error("URL must start with ws:// or wss://");
+      }
+      if (!parsed.searchParams.has("t")) {
+        throw new Error(
+          "URL is missing the pairing token (?t=…). Copy the full URL from the desktop app.",
+        );
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Invalid URL format");
@@ -269,7 +296,7 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
             type="url"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="ws://192.168.1.x:8765"
+            placeholder="ws://192.168.1.x:8765?t=…"
             className="w-full px-4 py-3 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-xl focus:outline-none focus:border-[#8b5cf6] text-white placeholder-[#71717a] font-mono text-sm transition-colors"
             disabled={connecting}
             autoFocus
