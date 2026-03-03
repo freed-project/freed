@@ -66,6 +66,8 @@ export interface BaseAppState {
   addFeed: (feed: RssFeed) => Promise<void>;
   removeFeed: (url: string) => Promise<void>;
   renameFeed: (url: string, title: string) => Promise<void>;
+  /** Remove all feed subscriptions. Pass `includeItems: true` to also wipe all articles. */
+  removeAllFeeds: (includeItems: boolean) => Promise<void>;
 
   // Preference actions
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;

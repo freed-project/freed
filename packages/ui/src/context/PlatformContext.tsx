@@ -84,6 +84,21 @@ export interface PlatformConfig {
 
   /** Apply a detected update (PWA: reload, Desktop: handled by UpdateNotification). */
   applyUpdate?: () => void;
+
+  /**
+   * Perform a factory reset on this device.
+   * Wipes IndexedDB + localStorage. When `deleteFromCloud` is true, also
+   * deletes the sync file from the active cloud provider before clearing.
+   * Always ends with `location.reload()`.
+   */
+  factoryReset?: (deleteFromCloud: boolean) => Promise<void>;
+
+  /**
+   * Return a human-readable label for the currently active cloud provider
+   * (e.g. "Google Drive", "Dropbox"), or null when no cloud sync is connected.
+   * Called lazily in the Danger Zone UI so it reflects live state.
+   */
+  activeCloudProviderLabel?: () => string | null;
 }
 
 const PlatformCtx = createContext<PlatformConfig | null>(null);

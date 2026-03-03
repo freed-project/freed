@@ -9,7 +9,18 @@ import { useAppStore } from "./lib/store";
 import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } from "./lib/capture";
 import { startRssPoller, stopRssPoller } from "./lib/rss-poller";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { startSync, stopSync, startAllCloudSyncs } from "./lib/sync";
+import {
+  startSync,
+  stopSync,
+  startAllCloudSyncs,
+  stopAllCloudSyncs,
+  getActiveProviders,
+  getCloudToken,
+  clearCloudProvider,
+  deleteCloudFile,
+} from "./lib/sync";
+import { clearLocalDoc } from "./lib/automerge";
+import { clearStoredCookies } from "./lib/x-auth";
 import { XFeedEmptyState } from "./components/XFeedEmptyState";
 import { XAuthSection } from "./components/XAuthSection";
 import { XSourceIndicator } from "./components/XSourceIndicator";
@@ -61,6 +72,22 @@ function App() {
     await relaunch();
   }, []);
 
+  const handleFactoryReset = useCallback(async (deleteFromCloud: boolean) => {
+    const providers = getActiveProviders();
+    if (deleteFromCloud) {
+      for (const provider of providers) {
+        const token = getCloudToken(provider);
+        if (token) await deleteCloudFile(provider, token);
+      }
+    } else {
+      stopAllCloudSyncs();
+    }
+    clearStoredCookies();
+    for (const provider of providers) clearCloudProvider(provider);
+    await clearLocalDoc();
+    location.reload();
+  }, []);
+
   const platform: PlatformConfig = useMemo(
     () => ({
       store: useAppStore,
@@ -75,8 +102,16 @@ function App() {
       FeedEmptyState: XFeedEmptyState,
       checkForUpdates,
       applyUpdate,
+      factoryReset: handleFactoryReset,
+      activeCloudProviderLabel: () => {
+        const providers = getActiveProviders();
+        if (providers.length === 0) return null;
+        return providers
+          .map((p) => (p === "gdrive" ? "Google Drive" : "Dropbox"))
+          .join(" & ");
+      },
     }),
-    [checkForUpdates, applyUpdate],
+    [checkForUpdates, applyUpdate, handleFactoryReset],
   );
 
   if (!isInitialized && isLoading) {

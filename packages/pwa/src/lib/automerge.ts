@@ -12,6 +12,7 @@ import {
   addFeedItem,
   addRssFeed,
   removeRssFeed,
+  removeAllFeeds,
   updateRssFeed,
   updateFeedItem,
   removeFeedItem,
@@ -189,6 +190,27 @@ export async function docUpdatePreferences(
 
 export async function docUpdateLastSync(): Promise<FreedDoc> {
   return applyChange((doc) => updateLastSync(doc), "Update last sync");
+}
+
+/**
+ * Remove all feed subscriptions in a single CRDT change.
+ * When includeItems is true, all articles are also deleted.
+ * This change propagates to all synced devices.
+ */
+export async function docRemoveAllFeeds(includeItems: boolean): Promise<FreedDoc> {
+  return applyChange(
+    (doc) => removeAllFeeds(doc, includeItems),
+    includeItems ? "Remove all feeds and articles" : "Remove all feeds",
+  );
+}
+
+/**
+ * Wipe the IndexedDB document store for this device.
+ * Local-only — does NOT propagate to other devices.
+ * After calling this, reload the page to start fresh.
+ */
+export async function clearLocalDoc(): Promise<void> {
+  await storage.clear();
 }
 
 /**

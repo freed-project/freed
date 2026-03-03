@@ -13,6 +13,7 @@ import {
   docAddFeedItems,
   docAddRssFeed,
   docRemoveRssFeed,
+  docRemoveAllFeeds,
   docUpdateRssFeed,
   docUpdateFeedItem,
   docMarkAsRead,
@@ -77,6 +78,7 @@ interface AppState {
   addFeed: (feed: RssFeed) => Promise<void>;
   removeFeed: (url: string) => Promise<void>;
   renameFeed: (url: string, title: string) => Promise<void>;
+  removeAllFeeds: (includeItems: boolean) => Promise<void>;
 
   // Preference actions (persisted to Automerge)
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;
@@ -226,6 +228,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   removeFeed: async (url) => {
     await docRemoveRssFeed(url);
+  },
+
+  removeAllFeeds: async (includeItems) => {
+    await docRemoveAllFeeds(includeItems);
   },
 
   renameFeed: async (url, title) => {

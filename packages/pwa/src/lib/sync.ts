@@ -18,9 +18,11 @@ import {
   gdriveUploadSafe,
   gdriveStartPollLoop,
   gdriveDownloadLatest,
+  gdriveDeleteFile,
   dropboxUploadSafe,
   dropboxStartLongpollLoop,
   dropboxDownloadLatest,
+  dropboxDeleteFile,
   type CloudProvider,
 } from "@freed/sync/cloud";
 
@@ -272,6 +274,20 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
   }
 
   console.log("[CloudSync] Started (%s)", provider);
+}
+
+/**
+ * Delete the cloud sync file for the given provider.
+ * Stops the sync loop first to prevent a race with any in-flight upload.
+ * Used during factory reset when the user opts to also wipe cloud storage.
+ */
+export async function deleteCloudFile(provider: CloudProvider, token: string): Promise<void> {
+  stopCloudSync();
+  if (provider === "gdrive") {
+    await gdriveDeleteFile(token);
+  } else {
+    await dropboxDeleteFile(token);
+  }
 }
 
 /** Stop the active cloud sync loop and cancel any pending upload. */
