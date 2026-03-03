@@ -390,6 +390,7 @@ export function SyncConnectDialog({ open, onClose, initialMode = "manual" }: Syn
 
       <p className="text-sm text-[#71717a] mb-5">
         {mode === "scanning"
+          ? "Point your camera at the QR code shown in your desktop app."
           : mode === "cloud"
             ? "Sync your reading list across any network via Google Drive or Dropbox."
             : "Enter your desktop's IP address and pairing token, or scan the QR code."}
