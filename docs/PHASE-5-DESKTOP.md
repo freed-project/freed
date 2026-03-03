@@ -247,7 +247,7 @@ packages/desktop/
 - [x] Desktop app launches with native vibrancy on macOS
 - [x] Captures from X, RSS in background (refreshAllFeeds covers both)
 - [x] Local WebSocket relay enables instant phone sync (binary protocol)
-- [x] QR code pairing works
+- [x] QR code pairing works (token-authenticated; local SVG render, no third-party QR API)
 - [x] System tray shows sync status
 - [x] App runs in background after window close
 - [x] Auto-updater checks GitHub Releases and installs updates in-app

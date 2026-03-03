@@ -37,15 +37,32 @@ export async function getLocalIP(): Promise<string> {
 }
 
 /**
- * Get the sync relay URL for PWA to connect to
+ * Get the sync relay URL for PWA to connect to.
+ * The returned URL includes the pairing token as `?t=<token>`.
  */
 export async function getSyncUrl(): Promise<string> {
   try {
     return await invoke<string>("get_sync_url");
   } catch {
     const ip = await getLocalIP();
+    // Fallback lacks a token — any connection using this URL will be
+    // rejected by the relay, which is correct (pairing requires a QR scan).
     return `ws://${ip}:8765`;
   }
+}
+
+/**
+ * Rotate the pairing token.
+ *
+ * The new token is persisted to disk and takes effect immediately for new
+ * connections. Devices that are currently connected remain unaffected until
+ * they disconnect. Paired phones must rescan the QR code after a reset.
+ *
+ * Returns the new sync URL (including the rotated token).
+ */
+export async function resetPairingToken(): Promise<string> {
+  await invoke("reset_pairing_token");
+  return getSyncUrl();
 }
 
 /**
