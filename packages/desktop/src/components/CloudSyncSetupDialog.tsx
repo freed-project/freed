@@ -19,14 +19,13 @@ import {
   type CloudProvider,
 } from "../lib/sync";
 
-const SETUP_DONE_KEY = "freed_cloud_setup_done";
-
-export function markCloudSetupDone(): void {
-  localStorage.setItem(SETUP_DONE_KEY, "1");
-}
-
+/**
+ * Cloud setup is considered done when at least one provider is actively
+ * connected. We no longer use a localStorage flag — the dialog is shown on
+ * every launch until a token is stored.
+ */
 export function isCloudSetupDone(): boolean {
-  return !!localStorage.getItem(SETUP_DONE_KEY);
+  return !!(getCloudToken("gdrive") || getCloudToken("dropbox"));
 }
 
 interface ProviderState {
@@ -73,7 +72,6 @@ export function CloudSyncSetupDialog({ onDismiss }: CloudSyncSetupDialogProps) {
   );
 
   const handleDismiss = useCallback(() => {
-    markCloudSetupDone();
     onDismiss();
   }, [onDismiss]);
 
