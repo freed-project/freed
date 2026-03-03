@@ -15,14 +15,12 @@ import {
   getCloudToken,
   type CloudProvider,
 } from "../lib/sync";
+import type {
+  ProviderState,
+  CloudProviderStatus,
+} from "@freed/ui/components/CloudProviderCard";
 
-export type ProviderState =
-  | { status: "idle" }
-  | { status: "connecting" }
-  | { status: "connected" }
-  | { status: "error"; error: string };
-
-export type CloudProviderStatus = Record<CloudProvider, ProviderState>;
+export type { ProviderState, CloudProviderStatus };
 
 function initialStatus(): CloudProviderStatus {
   return {
