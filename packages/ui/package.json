@@ -12,6 +12,7 @@
     "./components/AddFeedDialog": "./src/components/AddFeedDialog.tsx",
     "./components/SettingsPanel": "./src/components/SettingsPanel.tsx",
     "./components/DebugPanel": "./src/components/DebugPanel.tsx",
+    "./components/CloudProviderCard": "./src/components/CloudProviderCard.tsx",
     "./lib/debug-store": "./src/lib/debug-store.ts",
     "./context": "./src/context/index.ts"
   },
