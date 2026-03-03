@@ -252,8 +252,25 @@ export async function docBatchRefreshFeeds(
 ): Promise<FreedDoc> {
   return applyChange((doc) => {
     for (const feed of feeds) {
-      if (doc.rssFeeds[feed.url] && feed.lastFetched !== undefined) {
-        doc.rssFeeds[feed.url].lastFetched = feed.lastFetched;
+      const stored = doc.rssFeeds[feed.url];
+      if (!stored) continue;
+
+      if (feed.lastFetched !== undefined) {
+        stored.lastFetched = feed.lastFetched;
+      }
+
+      // Heal sentinel titles from live feed XML — never clobbers user-set names.
+      // Both "Untitled Feed" (OPML fallback) and the raw feed URL (addRssFeed fallback)
+      // are treated as sentinels indicating a title was never properly resolved.
+      if (feed.title && feed.title !== "Untitled Feed" && feed.title !== feed.url) {
+        if (stored.title === "Untitled Feed" || stored.title === stored.url) {
+          stored.title = feed.title;
+        }
+      }
+
+      // Backfill missing siteUrl from live feed data
+      if (feed.siteUrl && !stored.siteUrl) {
+        stored.siteUrl = feed.siteUrl;
       }
     }
 
