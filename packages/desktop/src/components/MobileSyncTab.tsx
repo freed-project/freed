@@ -20,7 +20,6 @@ import {
   onStatusChange,
   type SyncStatus,
   type NetworkInterface,
-  type CloudProvider,
 } from "../lib/sync";
 import { useCloudProviders } from "../hooks/useCloudProviders";
 import { CloudProviderCard } from "./CloudProviderCard";
