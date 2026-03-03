@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
-import { notifyUpdateAvailable } from './lib/pwa-updater'
+import { notifyUpdateAvailable, setUpdateSwCallback } from './lib/pwa-updater'
 import './index.css'
 import App from './App.tsx'
 
@@ -18,7 +18,7 @@ if (window.visualViewport) {
 }
 syncVisualViewport()
 
-registerSW({
+const updateSW = registerSW({
   onNeedRefresh() {
     notifyUpdateAvailable()
   },
@@ -26,6 +26,7 @@ registerSW({
     console.log('[PWA] App ready for offline use')
   },
 })
+setUpdateSwCallback(updateSW)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

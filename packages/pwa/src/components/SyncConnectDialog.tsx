@@ -382,33 +382,20 @@ export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: Sync
     { id: "manual", label: "Manual" },
   ];
 
-  // Derive the constructed URL for display and HTTPS warning
+  // Derive the constructed URL for display purposes
   const constructedUrl = ip.trim()
     ? `ws://${ip.trim()}:8765${token.trim() ? `?t=${token.trim()}` : ""}`
     : "";
+
+  // Show the warning as soon as the user picks a local mode on an HTTPS page —
+  // don't make them waste time typing an IP or scanning before they discover it.
   const mixedContentRisk =
     typeof window !== "undefined" &&
     window.location.protocol === "https:" &&
-    (constructedUrl.startsWith("ws://") ||
-      (mode === "scanning" && lastQrContent?.startsWith("ws://")));
+    (mode === "scanning" || mode === "manual");
 
   return (
     <BottomSheet open={open} onClose={handleClose} title="Connect to Desktop">
-      {/* HTTPS mixed-content warning — the #1 reason sync fails on iPhone */}
-      {mixedContentRisk && (
-        <div className="mb-4 p-3 bg-orange-500/15 border border-orange-500/40 rounded-xl">
-          <p className="text-xs font-semibold text-orange-400 mb-1">
-            HTTPS → ws:// Connection Blocked
-          </p>
-          <p className="text-xs text-orange-300/80">
-            Safari and Chrome block plain{" "}
-            <code className="font-mono">ws://</code> connections from HTTPS
-            pages. This is why sync likely fails on iPhone even when the desktop
-            is running. Use the desktop app directly, or open the app over HTTP.
-          </p>
-        </div>
-      )}
-
       <p className="text-sm text-[#71717a] mb-5">
         {mode === "scanning"
           ? "Point your camera at the QR code shown in your desktop app."
@@ -418,7 +405,7 @@ export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: Sync
       </p>
 
       {/* Mode tabs */}
-      <div className="flex gap-2 mb-5">
+      <div className="flex gap-2 mb-4">
         {tabs.map(({ id, label }) => (
           <button
             key={id}
@@ -437,6 +424,22 @@ export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: Sync
           </button>
         ))}
       </div>
+
+      {/* HTTPS mixed-content warning — shown immediately when a local mode is
+          selected on an HTTPS page, before the user wastes time trying to connect */}
+      {mixedContentRisk && (
+        <div className="mb-4 p-3 bg-orange-500/15 border border-orange-500/40 rounded-xl">
+          <p className="text-xs font-semibold text-orange-400 mb-1">
+            Local sync blocked on HTTPS
+          </p>
+          <p className="text-xs text-orange-300/80">
+            Safari and Chrome block plain{" "}
+            <code className="font-mono">ws://</code> connections from HTTPS
+            pages. Local QR and Manual modes will not connect on iPhone. Use
+            Cloud Sync instead, or open the app over HTTP.
+          </p>
+        </div>
+      )}
 
       {mode === "scanning" ? (
         <div className="mb-4">

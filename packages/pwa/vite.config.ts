@@ -14,7 +14,7 @@ export default defineConfig({
     topLevelAwait(),
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['favicon.ico', 'icons/*.png'],
       manifest: false,
       workbox: {
@@ -67,7 +67,6 @@ export default defineConfig({
           },
         ],
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        skipWaiting: true,
         clientsClaim: true,
       },
       devOptions: {
