@@ -17,6 +17,10 @@
     "./storage/indexeddb": {
       "import": "./dist/storage/indexeddb.js",
       "types": "./dist/storage/indexeddb.d.ts"
+    },
+    "./cloud": {
+      "import": "./dist/cloud/index.js",
+      "types": "./dist/cloud/index.d.ts"
     }
   },
   "scripts": {
