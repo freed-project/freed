@@ -7,7 +7,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../../lib/store";
-import { disconnect, clearStoredRelayUrl } from "../../lib/sync";
+import {
+  disconnect,
+  clearStoredRelayUrl,
+  getCloudProvider,
+  clearCloudSync,
+  stopCloudSync,
+} from "../../lib/sync";
 import { SyncConnectDialog } from "../SyncConnectDialog";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
 
@@ -60,8 +66,14 @@ export function SyncIndicator() {
   }, [panelOpen]);
 
   const handleDisconnect = () => {
+    // Disconnect both channels — whichever is active.
     clearStoredRelayUrl();
     disconnect();
+    const cloudProvider = getCloudProvider();
+    if (cloudProvider) {
+      clearCloudSync(cloudProvider);
+      stopCloudSync();
+    }
     setPanelOpen(false);
   };
 
@@ -119,7 +131,7 @@ export function SyncIndicator() {
           {/* Header */}
           <div className="px-4 py-3 border-b border-[rgba(255,255,255,0.06)]">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-white">Desktop Sync</span>
+              <span className="text-sm font-medium text-white">Sync</span>
               <span
                 className={`text-xs px-2 py-0.5 rounded-full ${
                   isSyncing

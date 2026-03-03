@@ -49,15 +49,32 @@ export interface DocSnapshot {
   savedAt: number;
 }
 
+// Cloud sync provider state surfaced in the diagnostics panel.
+// Kept intentionally minimal — the panel only needs status + optional error.
+export type CloudSyncStatus = "idle" | "connecting" | "connected" | "error";
+
+export interface CloudProviderDebugState {
+  status: CloudSyncStatus;
+  error?: string;
+  lastSyncAt?: number;
+}
+
+export interface CloudProvidersDebugState {
+  gdrive: CloudProviderDebugState;
+  dropbox: CloudProviderDebugState;
+}
+
 interface DebugState {
   visible: boolean;
   events: SyncEvent[];
   docSnapshot: DocSnapshot | null;
+  cloudProviders: CloudProvidersDebugState | null;
 
   toggle: () => void;
   addEvent: (kind: SyncEventKind, detail?: string, bytes?: number) => void;
   clearEvents: () => void;
   setDocSnapshot: (snap: DocSnapshot) => void;
+  setCloudProviders: (state: CloudProvidersDebugState) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -70,6 +87,7 @@ export const useDebugStore = create<DebugState>()((set) => ({
   visible: false,
   events: [],
   docSnapshot: null,
+  cloudProviders: null,
 
   toggle: () => set((s) => ({ visible: !s.visible })),
 
@@ -88,6 +106,8 @@ export const useDebugStore = create<DebugState>()((set) => ({
   clearEvents: () => set({ events: [] }),
 
   setDocSnapshot: (docSnapshot) => set({ docSnapshot }),
+
+  setCloudProviders: (cloudProviders) => set({ cloudProviders }),
 }));
 
 // ---------------------------------------------------------------------------
@@ -104,6 +124,10 @@ export function addDebugEvent(
 
 export function setDocSnapshot(snap: DocSnapshot): void {
   useDebugStore.getState().setDocSnapshot(snap);
+}
+
+export function setCloudProviders(state: CloudProvidersDebugState): void {
+  useDebugStore.getState().setCloudProviders(state);
 }
 
 // ---------------------------------------------------------------------------

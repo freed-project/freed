@@ -9,8 +9,8 @@
  *   Desktop (sm+):  right-edge push drawer — AppShell renders this always (width-animates open/closed)
  */
 
-import { useEffect, useState } from "react";
-import { useDebugStore, type SyncEvent, type SyncEventKind } from "../lib/debug-store";
+import { useEffect, useState, type ReactNode } from "react";
+import { useDebugStore, type SyncEvent, type SyncEventKind, type CloudSyncStatus } from "../lib/debug-store";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -81,9 +81,67 @@ function EventRow({ event }: { event: SyncEvent }) {
   );
 }
 
+// ─── Cloud sync status helpers ────────────────────────────────────────────────
+
+const CLOUD_STATUS_STYLES: Record<
+  CloudSyncStatus,
+  { dot: string; label: string; labelColor: string }
+> = {
+  idle:       { dot: "bg-[#52525b]",  label: "Not connected", labelColor: "text-[#71717a]" },
+  connecting: { dot: "bg-yellow-400 animate-pulse", label: "Connecting…",    labelColor: "text-yellow-400" },
+  connected:  { dot: "bg-green-400",  label: "Connected",     labelColor: "text-green-400" },
+  error:      { dot: "bg-red-400",    label: "Error",         labelColor: "text-red-400" },
+};
+
+function CloudProviderRow({
+  name,
+  icon,
+  status,
+  error,
+}: {
+  name: string;
+  icon: ReactNode;
+  status: CloudSyncStatus;
+  error?: string;
+}) {
+  const s = CLOUD_STATUS_STYLES[status];
+  return (
+    <div className="bg-white/5 rounded-xl p-3">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="shrink-0 opacity-70">{icon}</span>
+        <p className="text-[10px] text-[#52525b] uppercase tracking-wider">{name}</p>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
+        <span className={`text-xs font-medium ${s.labelColor}`}>{s.label}</span>
+      </div>
+      {error && (
+        <p className="text-[10px] text-red-400 font-mono mt-1 break-all leading-snug">{error}</p>
+      )}
+    </div>
+  );
+}
+
+// Minimal inline SVG icons for Dropbox and Google Drive
+const DropboxIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="text-[#0061FF]">
+    <path d="M6 2L0 6l6 4 6-4zm12 0l-6 4 6 4 6-4zM0 14l6 4 6-4-6-4zm18-4l-6 4 6 4 6-4zM6 19.5L12 23l6-3.5-6-4z"/>
+  </svg>
+);
+
+const GDriveIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+    <path d="M4.5 20L9 12 0 12z" fill="#4285F4"/>
+    <path d="M19.5 20L15 12l9 0z" fill="#FBBC04"/>
+    <path d="M9 12L4.5 20h15L15 12z" fill="#34A853"/>
+    <path d="M12 2L9 12h6z" fill="#EA4335"/>
+  </svg>
+);
+
 function ConnectionTab() {
   const events = useDebugStore((s) => s.events);
   const docSnapshot = useDebugStore((s) => s.docSnapshot);
+  const cloudProviders = useDebugStore((s) => s.cloudProviders);
   const [, setTick] = useState(0);
 
   // Re-render every second so relative timestamps stay fresh
@@ -106,68 +164,103 @@ function ConnectionTab() {
   const mixedContentRisk = proto === "https:" && isWsPlain;
 
   return (
-    <div className="space-y-4">
-      {/* Mixed content warning */}
-      {mixedContentRisk && (
-        <div className="p-3 bg-orange-500/15 border border-orange-500/40 rounded-xl">
-          <p className="text-xs font-semibold text-orange-400 mb-1">HTTPS → ws:// Mixed Content</p>
-          <p className="text-xs text-orange-300/80">
-            This page is served over HTTPS. Safari and Chrome block plain <code className="font-mono">ws://</code> connections from HTTPS pages — this is almost certainly why sync fails on iPhone. The desktop relay works, but the browser kills the socket silently.
-          </p>
-        </div>
-      )}
+    <div className="space-y-5">
 
-      {/* Status */}
-      <div className="grid grid-cols-2 gap-2">
-        <div className="bg-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Status</p>
-          <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full shrink-0 ${isConnected ? "bg-green-400" : "bg-[#52525b]"}`} />
-            <span className={`text-sm font-medium ${isConnected ? "text-green-400" : "text-[#71717a]"}`}>
-              {isConnected ? "Connected" : "Offline"}
-            </span>
+      {/* ── Cloud Sync ─────────────────────────────────────────────────────── */}
+      <div>
+        <p className="text-[10px] text-[#52525b] uppercase tracking-widest mb-2 px-0.5">
+          Cloud Sync
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <CloudProviderRow
+            name="Dropbox"
+            icon={<DropboxIcon />}
+            status={cloudProviders?.dropbox.status ?? "idle"}
+            error={cloudProviders?.dropbox.error}
+          />
+          <CloudProviderRow
+            name="Google Drive"
+            icon={<GDriveIcon />}
+            status={cloudProviders?.gdrive.status ?? "idle"}
+            error={cloudProviders?.gdrive.error}
+          />
+        </div>
+      </div>
+
+      {/* ── Local Sync ─────────────────────────────────────────────────────── */}
+      <div>
+        <p className="text-[10px] text-[#52525b] uppercase tracking-widest mb-2 px-0.5">
+          Local Sync
+        </p>
+
+        <div className="space-y-2">
+          {/* Mixed content warning */}
+          {mixedContentRisk && (
+            <div className="p-3 bg-orange-500/15 border border-orange-500/40 rounded-xl">
+              <p className="text-xs font-semibold text-orange-400 mb-1">HTTPS → ws:// Mixed Content</p>
+              <p className="text-xs text-orange-300/80">
+                This page is served over HTTPS. Safari and Chrome block plain{" "}
+                <code className="font-mono">ws://</code> connections from HTTPS pages — this is
+                almost certainly why sync fails on iPhone. The desktop relay works, but the
+                browser kills the socket silently.
+              </p>
+            </div>
+          )}
+
+          {/* Status grid */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-white/5 rounded-xl p-3">
+              <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Status</p>
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full shrink-0 ${isConnected ? "bg-green-400" : "bg-[#52525b]"}`} />
+                <span className={`text-sm font-medium ${isConnected ? "text-green-400" : "text-[#71717a]"}`}>
+                  {isConnected ? "Connected" : "Offline"}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-white/5 rounded-xl p-3">
+              <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Reconnects</p>
+              <p className="text-sm font-medium text-[#a1a1aa] font-mono">{reconnects}</p>
+            </div>
+
+            <div className="bg-white/5 rounded-xl p-3">
+              <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Page Protocol</p>
+              <p className={`text-sm font-medium font-mono ${proto === "https:" ? "text-orange-400" : "text-green-400"}`}>
+                {proto || "—"}
+              </p>
+            </div>
+
+            <div className="bg-white/5 rounded-xl p-3">
+              <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Doc Size</p>
+              <p className="text-sm font-medium text-[#a1a1aa] font-mono">
+                {docSnapshot ? formatBytes(docSnapshot.binarySize) : "—"}
+              </p>
+            </div>
+          </div>
+
+          {/* Relay URL */}
+          <div className="bg-white/5 rounded-xl p-3">
+            <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Relay URL</p>
+            <p className="text-xs text-[#a1a1aa] font-mono break-all">{relayUrl}</p>
+          </div>
+
+          {/* Transfer stats */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-white/5 rounded-xl p-3">
+              <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Last Sent</p>
+              <p className="text-xs text-blue-400 font-mono">{lastSent ? formatBytes(lastSent.bytes ?? 0) : "—"}</p>
+              {lastSent && <p className="text-[10px] text-[#52525b] font-mono mt-0.5">{formatRelative(lastSent.ts)}</p>}
+            </div>
+            <div className="bg-white/5 rounded-xl p-3">
+              <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Last Received</p>
+              <p className="text-xs text-cyan-400 font-mono">{lastReceived ? formatBytes(lastReceived.bytes ?? 0) : "—"}</p>
+              {lastReceived && <p className="text-[10px] text-[#52525b] font-mono mt-0.5">{formatRelative(lastReceived.ts)}</p>}
+            </div>
           </div>
         </div>
-
-        <div className="bg-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Reconnects</p>
-          <p className="text-sm font-medium text-[#a1a1aa] font-mono">{reconnects}</p>
-        </div>
-
-        <div className="bg-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Page Protocol</p>
-          <p className={`text-sm font-medium font-mono ${proto === "https:" ? "text-orange-400" : "text-green-400"}`}>
-            {proto || "—"}
-          </p>
-        </div>
-
-        <div className="bg-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Doc Size</p>
-          <p className="text-sm font-medium text-[#a1a1aa] font-mono">
-            {docSnapshot ? formatBytes(docSnapshot.binarySize) : "—"}
-          </p>
-        </div>
       </div>
 
-      {/* Relay URL */}
-      <div className="bg-white/5 rounded-xl p-3">
-        <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Relay URL</p>
-        <p className="text-xs text-[#a1a1aa] font-mono break-all">{relayUrl}</p>
-      </div>
-
-      {/* Transfer stats */}
-      <div className="grid grid-cols-2 gap-2">
-        <div className="bg-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Last Sent</p>
-          <p className="text-xs text-blue-400 font-mono">{lastSent ? formatBytes(lastSent.bytes ?? 0) : "—"}</p>
-          {lastSent && <p className="text-[10px] text-[#52525b] font-mono mt-0.5">{formatRelative(lastSent.ts)}</p>}
-        </div>
-        <div className="bg-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Last Received</p>
-          <p className="text-xs text-cyan-400 font-mono">{lastReceived ? formatBytes(lastReceived.bytes ?? 0) : "—"}</p>
-          {lastReceived && <p className="text-[10px] text-[#52525b] font-mono mt-0.5">{formatRelative(lastReceived.ts)}</p>}
-        </div>
-      </div>
     </div>
   );
 }

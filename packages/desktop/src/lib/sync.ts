@@ -251,6 +251,10 @@ const cloudChangeUnsubscribes = new Map<CloudProvider, () => void>();
 
 // Desktop OAuth client IDs (not secret — embedded in the app bundle).
 const GDRIVE_CLIENT_ID = import.meta.env.VITE_GDRIVE_DESKTOP_CLIENT_ID ?? "";
+// Only needed when using a "Web application" OAuth client type for GDrive instead
+// of the correct "Desktop app" type. Desktop app clients support PKCE without a
+// client_secret; web app clients require it.
+const GDRIVE_CLIENT_SECRET = import.meta.env.VITE_GDRIVE_CLIENT_SECRET ?? "";
 const DROPBOX_CLIENT_ID = import.meta.env.VITE_DROPBOX_CLIENT_ID ?? "";
 
 /** Persist an OAuth access token for a cloud provider. */
@@ -311,7 +315,10 @@ export async function initiateDesktopOAuth(provider: CloudProvider): Promise<str
   // Start the localhost server first so the port is known before we build the
   // OAuth URL. The Rust command returns the port and then waits for the callback.
   const port = await invoke<number>("start_oauth_server");
-  const redirectUri = `http://127.0.0.1:${port}/callback`;
+  // Use localhost (not 127.0.0.1) — Dropbox and Google only accept the
+  // registered redirect URI prefix, and "http://localhost" is the standard
+  // registration for desktop/native PKCE apps on both platforms.
+  const redirectUri = `http://localhost:${port}/callback`;
   const state = crypto.randomUUID();
 
   let authUrl: string;
@@ -384,6 +391,12 @@ async function exchangeCode(
   let tokenUrl: string;
   if (provider === "gdrive") {
     params.set("client_id", GDRIVE_CLIENT_ID);
+    // Desktop app OAuth clients use PKCE without a secret. If the console client
+    // is a "Web application" type, VITE_GDRIVE_CLIENT_SECRET must be set or
+    // Google returns 400 "client_secret is missing".
+    if (GDRIVE_CLIENT_SECRET) {
+      params.set("client_secret", GDRIVE_CLIENT_SECRET);
+    }
     tokenUrl = "https://oauth2.googleapis.com/token";
   } else {
     params.set("client_id", DROPBOX_CLIENT_ID);

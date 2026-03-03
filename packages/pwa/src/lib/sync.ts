@@ -26,23 +26,29 @@ import {
   type CloudProvider,
 } from "@freed/sync/cloud";
 
-// Connection state
+// Connection state — WebSocket relay
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let isConnected = false;
+let isRelayConnectedState = false;
 let currentUrl: string | null = null;
 let reconnectCount = 0;
+
+// Cloud sync connection state — set by startCloudSync/stopCloudSync so the
+// toolbar reflects "Connected" as soon as either channel is active.
+let isCloudConnectedState = false;
 
 // Status listeners
 type StatusListener = (connected: boolean) => void;
 const statusListeners = new Set<StatusListener>();
 
 /**
- * Notify status listeners
+ * Notify status listeners with the combined connection state.
+ * Either the WebSocket relay or the cloud sync loop counts as "connected".
  */
 function notifyStatus(): void {
+  const connected = isRelayConnectedState || isCloudConnectedState;
   for (const listener of statusListeners) {
-    listener(isConnected);
+    listener(connected);
   }
 }
 
@@ -89,7 +95,7 @@ export function connect(url: string): void {
 
     ws.onopen = () => {
       console.log("[Sync] Connected to relay");
-      isConnected = true;
+      isRelayConnectedState = true;
       reconnectCount = 0;
       notifyStatus();
       addDebugEvent("connected", url);
@@ -115,7 +121,7 @@ export function connect(url: string): void {
 
     ws.onclose = () => {
       console.log("[Sync] Disconnected from relay");
-      isConnected = false;
+      isRelayConnectedState = false;
       ws = null;
       notifyStatus();
       addDebugEvent("disconnected", currentUrl ?? undefined);
@@ -126,7 +132,7 @@ export function connect(url: string): void {
         addDebugEvent("reconnecting", `attempt ${reconnectCount} in 5s`);
         reconnectTimer = setTimeout(() => {
           reconnectTimer = null;
-          if (currentUrl && !isConnected) {
+          if (currentUrl && !isRelayConnectedState) {
             connect(currentUrl);
           }
         }, 5000);
@@ -156,15 +162,15 @@ export function disconnect(): void {
     ws.close();
     ws = null;
   }
-  isConnected = false;
+  isRelayConnectedState = false;
   notifyStatus();
 }
 
 /**
- * Check if connected to relay
+ * Check if the WebSocket relay is connected
  */
 export function isRelayConnected(): boolean {
-  return isConnected;
+  return isRelayConnectedState;
 }
 
 /**
@@ -240,6 +246,11 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
   cloudAbort = new AbortController();
   const { signal } = cloudAbort;
 
+  // Mark cloud as connected immediately so the toolbar updates before the
+  // initial download completes (download can take several seconds).
+  isCloudConnectedState = true;
+  notifyStatus();
+
   // Pull latest remote state immediately on connect. The AbortSignal is passed
   // through so stopCloudSync() cancels any in-flight fetch rather than orphaning it.
   try {
@@ -298,6 +309,8 @@ export function stopCloudSync(): void {
     clearTimeout(uploadTimer);
     uploadTimer = null;
   }
+  isCloudConnectedState = false;
+  notifyStatus();
 }
 
 /**
