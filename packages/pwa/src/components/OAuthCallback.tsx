@@ -6,10 +6,11 @@
  * exchanges it for an access token, stores the token, starts cloud sync,
  * and redirects back to the app root.
  *
- * Token exchange is client-side PKCE (no client_secret):
- *   - GDrive: requires an OAuth client of type "Desktop" or "SPA" in
- *     Google Cloud Console. "Web Application" type requires a backend.
- *   - Dropbox: PKCE public-client exchange is always supported.
+ * Token exchange:
+ *   - GDrive: proxied through /api/oauth/google (server holds client_secret;
+ *     Google's "Web application" client type requires it even for PKCE flows).
+ *   - Dropbox: direct client-side PKCE exchange (public-client support is
+ *     enabled on the Dropbox app via "Allow public clients (PKCE)").
  *
  * Token refresh (access tokens expire ~1hr for GDrive, ~4hr for Dropbox) is
  * deferred — the user will be prompted to reconnect when the token expires.
@@ -18,10 +19,11 @@
 import { useEffect, useState } from "react";
 import { startCloudSync, storeCloudToken, type CloudProvider } from "../lib/sync";
 
-const GDRIVE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
 const DROPBOX_TOKEN_ENDPOINT = "https://api.dropboxapi.com/oauth2/token";
 
-const GDRIVE_CLIENT_ID = import.meta.env.VITE_GDRIVE_CLIENT_ID ?? "";
+// GDrive client ID is only needed on the client for initiating the auth flow
+// (in SyncConnectDialog). The token exchange uses the server proxy at
+// /api/oauth/google, which holds the client_secret.
 const DROPBOX_CLIENT_ID = import.meta.env.VITE_DROPBOX_CLIENT_ID ?? "";
 const OAUTH_REDIRECT_URI = `${window.location.origin}/oauth-callback`;
 
@@ -30,27 +32,22 @@ type ExchangeResult =
   | { ok: false; error: string };
 
 async function exchangeGDrive(code: string, verifier: string): Promise<ExchangeResult> {
-  const body = new URLSearchParams({
-    code,
-    client_id: GDRIVE_CLIENT_ID,
-    redirect_uri: OAUTH_REDIRECT_URI,
-    code_verifier: verifier,
-    grant_type: "authorization_code",
+  // Token exchange is proxied server-side: Google requires a client_secret
+  // even for PKCE, so we never expose it to the browser.
+  const res = await fetch("/api/oauth/google", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code, verifier, redirectUri: OAUTH_REDIRECT_URI }),
   });
 
-  const res = await fetch(GDRIVE_TOKEN_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
+  const data = await res.json().catch(() => ({ error: "invalid JSON from proxy" }));
 
   if (!res.ok) {
-    const text = await res.text();
-    return { ok: false, error: `GDrive token exchange failed (${res.status}): ${text}` };
+    return { ok: false, error: `GDrive token exchange failed: ${data.error ?? res.status}` };
   }
 
-  const { access_token } = await res.json();
-  if (!access_token) return { ok: false, error: "GDrive returned no access_token" };
+  const { access_token } = data;
+  if (!access_token) return { ok: false, error: "GDrive proxy returned no access_token" };
 
   return { ok: true, accessToken: access_token as string };
 }
