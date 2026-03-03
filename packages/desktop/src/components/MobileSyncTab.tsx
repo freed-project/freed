@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   getSyncUrl,
   onStatusChange,
@@ -16,9 +17,15 @@ export function MobileSyncTab() {
   const [syncUrl, setSyncUrl] = useState<string>("");
   const [clientCount, setClientCount] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [mdnsActive, setMdnsActive] = useState<boolean | null>(null);
 
   useEffect(() => {
     getSyncUrl().then(setSyncUrl);
+
+    // Check whether mDNS advertisement started successfully.
+    invoke<boolean>("get_mdns_active")
+      .then(setMdnsActive)
+      .catch(() => setMdnsActive(false));
 
     const unsubscribe = onStatusChange((status: SyncStatus) => {
       setClientCount(status.clientCount);
@@ -89,7 +96,7 @@ export function MobileSyncTab() {
       </div>
 
       {/* Connected Devices */}
-      <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+      <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl mb-3">
         <div className="flex items-center gap-2">
           <span
             className={`sync-dot ${
@@ -102,6 +109,25 @@ export function MobileSyncTab() {
           {clientCount}
         </span>
       </div>
+
+      {/* mDNS status — visible to future native clients */}
+      {mdnsActive !== null && (
+        <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl">
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-block w-2 h-2 rounded-full ${
+                mdnsActive ? "bg-green-400" : "bg-[#71717a]"
+              }`}
+            />
+            <span className="text-sm text-[#a1a1aa]">
+              mDNS discovery
+            </span>
+          </div>
+          <span className="text-xs text-[#71717a]">
+            {mdnsActive ? "_freed-sync._tcp.local" : "unavailable"}
+          </span>
+        </div>
+      )}
     </section>
   );
 }

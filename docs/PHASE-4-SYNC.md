@@ -251,20 +251,22 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 
 ## Tasks
 
-| Task | Description                           | Complexity |
-| ---- | ------------------------------------- | ---------- |
-| 4.1  | Create `@freed/sync` package scaffold | Low        |
-| 4.2  | Implement IndexedDB storage adapter   | Medium     |
-| 4.3  | Implement Filesystem storage adapter  | Medium     |
-| 4.4  | WebSocket relay server                | Medium     |
-| 4.5  | PWA WebSocket client + auto-connect   | Medium     |
-| 4.6  | QR code pairing flow                  | Low        |
-| 4.7  | Google Drive sync integration         | Medium     |
-| 4.8  | Dropbox sync integration              | Low        |
-| 4.9  | iCloud sync integration               | High       |
-| 4.10 | Sync status observable                | Low        |
-| 4.11 | "Last synced" UI indicator            | Low        |
-| 4.12 | Manual "Sync now" button              | Low        |
+| Task | Description                                            | Complexity |
+| ---- | ------------------------------------------------------ | ---------- |
+| 4.1  | Create `@freed/sync` package scaffold                  | Low        |
+| 4.2  | Implement IndexedDB storage adapter                    | Medium     |
+| 4.3  | Implement Filesystem storage adapter                   | Medium     |
+| 4.4  | WebSocket relay server                                 | Medium     |
+| 4.5  | PWA WebSocket client + auto-connect                    | Medium     |
+| 4.6  | QR code pairing flow                                   | Low        |
+| 4.7  | Google Drive sync integration (with optimistic locking)| Medium     |
+| 4.8  | Dropbox sync integration (longpoll + optimistic lock)  | Medium     |
+| 4.9  | iCloud sync integration                                | High       |
+| 4.10 | Sync status observable                                 | Low        |
+| 4.11 | "Last synced" UI indicator                             | Low        |
+| 4.12 | Manual "Sync now" button                               | Low        |
+| 4.13 | Local snapshot rotation (GFS — minutely/hourly/daily)  | Medium     |
+| 4.14 | "Restore from backup" UI (list + restore snapshot)     | Medium     |
 
 ---
 
@@ -276,8 +278,11 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 - [x] Desktop broadcasts doc changes to connected PWA clients via `broadcast_doc` Tauri command
 - [x] QR code or manual pairing connects PWA to Desktop (SyncConnectDialog with QR scanner)
 - [x] Sync connection status observable (`onStatusChange` listener in sync.ts)
-- [ ] PWA falls back to cloud sync when away from home
+- [ ] PWA falls back to cloud sync when away from home (GDrive or Dropbox via cloud file sync)
+- [ ] Cloud sync uses download-merge-upload with optimistic locking (no silent overwrites)
 - [ ] At least one cloud provider works (GDrive recommended)
+- [ ] Local snapshots written before each cloud upload with GFS rotation
+- [ ] "Restore from backup" UI surfaces local snapshots for manual recovery
 
 ---
 

@@ -3,44 +3,192 @@
 //! Native desktop app that bundles capture, sync relay, and reader UI.
 
 use futures_util::{SinkExt, StreamExt};
+use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tauri::{Manager, Emitter};
+use tauri::{Emitter, Manager};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, RwLock};
-use tokio_tungstenite::{accept_async, tungstenite::Message};
+use tokio_tungstenite::{
+    accept_hdr_async,
+    tungstenite::{
+        handshake::server::{Request, Response},
+        Message,
+    },
+};
 
 #[cfg(target_os = "macos")]
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
-// Sync relay state
+// ─── Sync relay state ────────────────────────────────────────────────────────
+
 struct SyncRelayState {
     port: u16,
-    // Channel for broadcasting document updates to all connected clients
     broadcast_tx: broadcast::Sender<Vec<u8>>,
-    // Latest document state (for new clients)
     current_doc: RwLock<Option<Vec<u8>>>,
-    // Connected client count
     client_count: RwLock<usize>,
 }
 
 type RelayState = Arc<SyncRelayState>;
 
-/// Tauri command to get app version
+// ─── mDNS state (kept alive for the app lifetime) ────────────────────────────
+
+struct MdnsState(Option<mdns_sd::ServiceDaemon>);
+
+impl Drop for MdnsState {
+    fn drop(&mut self) {
+        if let Some(daemon) = self.0.take() {
+            let _ = daemon.shutdown();
+        }
+    }
+}
+
+// ─── mDNS advertisement ──────────────────────────────────────────────────────
+
+/// Register `_freed-sync._tcp.local` via mDNS so native clients can discover
+/// the relay without a QR scan. TXT records contain only version + app name —
+/// the pairing token is never advertised.
+fn advertise_mdns(port: u16) -> Option<mdns_sd::ServiceDaemon> {
+    use mdns_sd::{ServiceDaemon, ServiceInfo};
+
+    let daemon = ServiceDaemon::new()
+        .map_err(|e| eprintln!("[mDNS] Failed to create daemon: {}", e))
+        .ok()?;
+
+    let hostname = hostname::get()
+        .ok()
+        .and_then(|h| h.into_string().ok())
+        .unwrap_or_else(|| "freed-desktop".to_string());
+
+    let fqdn = format!("{}.local.", hostname);
+
+    let mut properties = std::collections::HashMap::new();
+    properties.insert("v".to_string(), "1".to_string());
+    properties.insert("app".to_string(), "freed".to_string());
+
+    // Pass `()` as the IP address so mdns-sd auto-discovers all local network
+    // interfaces — more robust than hard-coding the LAN IP, and avoids IPv4/v6
+    // type juggling. The daemon will advertise on all active interfaces.
+    let service = ServiceInfo::new(
+        "_freed-sync._tcp.local.",
+        "Freed Desktop",
+        &fqdn,
+        (),
+        port,
+        Some(properties),
+    )
+    .map_err(|e| eprintln!("[mDNS] Failed to build ServiceInfo: {}", e))
+    .ok()?;
+
+    daemon
+        .register(service)
+        .map_err(|e| eprintln!("[mDNS] Failed to register service: {}", e))
+        .ok()?;
+
+    println!("[mDNS] Advertising _freed-sync._tcp.local on port {}", port);
+    Some(daemon)
+}
+
+// ─── Local snapshot rotation ─────────────────────────────────────────────────
+
+/// Write a timestamped snapshot of the Automerge binary to
+/// `{app_data}/snapshots/freed-{unix_secs}.automerge`, then prune old snapshots
+/// using a grandfather-father-son rotation:
+///   - last 60 minutely  (≤ 1 hour ago)
+///   - last 24 hourly    (1–24 hours ago)
+///   - last 30 daily     (> 24 hours ago)
+fn write_snapshot(snapshot_dir: &std::path::Path, doc_bytes: &[u8]) {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    if let Err(e) = std::fs::create_dir_all(snapshot_dir) {
+        eprintln!("[Snapshot] Failed to create dir: {}", e);
+        return;
+    }
+
+    let path = snapshot_dir.join(format!("freed-{}.automerge", ts));
+    if let Err(e) = std::fs::write(&path, doc_bytes) {
+        eprintln!("[Snapshot] Failed to write: {}", e);
+        return;
+    }
+
+    prune_snapshots(snapshot_dir, ts);
+}
+
+fn prune_snapshots(snapshot_dir: &std::path::Path, now_secs: u64) {
+    use std::cmp::Reverse;
+
+    let mut entries: Vec<(u64, std::path::PathBuf)> = std::fs::read_dir(snapshot_dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().into_string().ok()?;
+            let ts: u64 = name
+                .strip_prefix("freed-")?
+                .strip_suffix(".automerge")?
+                .parse()
+                .ok()?;
+            Some((ts, e.path()))
+        })
+        .collect();
+
+    // Sort newest first.
+    entries.sort_by_key(|(ts, _)| Reverse(*ts));
+
+    let mut kept: HashSet<std::path::PathBuf> = Default::default();
+    let (mut minutely, mut hourly, mut daily) = (0usize, 0usize, 0usize);
+    let mut last_hour_bucket = u64::MAX;
+    let mut last_day_bucket = u64::MAX;
+
+    for (ts, path) in &entries {
+        let age = now_secs.saturating_sub(*ts);
+
+        if age < 3_600 && minutely < 60 {
+            kept.insert(path.clone());
+            minutely += 1;
+        } else if age < 86_400 {
+            let bucket = age / 3_600;
+            if bucket != last_hour_bucket && hourly < 24 {
+                kept.insert(path.clone());
+                last_hour_bucket = bucket;
+                hourly += 1;
+            }
+        } else {
+            let bucket = age / 86_400;
+            if bucket != last_day_bucket && daily < 30 {
+                kept.insert(path.clone());
+                last_day_bucket = bucket;
+                daily += 1;
+            }
+        }
+    }
+
+    for (_, path) in &entries {
+        if !kept.contains(path) {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+// ─── Tauri commands ──────────────────────────────────────────────────────────
+
 #[tauri::command]
 fn get_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
-/// Tauri command to get platform info
 #[tauri::command]
 fn get_platform() -> String {
     std::env::consts::OS.to_string()
 }
 
-/// Fetch any URL and return its body as text (bypasses CORS)
 #[tauri::command]
 async fn fetch_url(url: String) -> Result<String, String> {
     let client = reqwest::Client::builder()
@@ -61,7 +209,6 @@ async fn fetch_url(url: String) -> Result<String, String> {
     response.text().await.map_err(|e| e.to_string())
 }
 
-/// Make authenticated request to X API
 #[tauri::command]
 async fn x_api_request(
     url: String,
@@ -74,7 +221,6 @@ async fn x_api_request(
         .map_err(|e| e.to_string())?;
 
     let mut request = client.post(&url).body(body);
-
     for (key, value) in headers {
         request = request.header(&key, &value);
     }
@@ -93,7 +239,6 @@ async fn x_api_request(
     response.text().await.map_err(|e| e.to_string())
 }
 
-/// Get the local IP address for sync
 #[tauri::command]
 fn get_local_ip() -> Result<String, String> {
     local_ip_address::local_ip()
@@ -101,7 +246,6 @@ fn get_local_ip() -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
-/// Get the sync relay URL
 #[tauri::command]
 fn get_sync_url(state: tauri::State<'_, RelayState>) -> String {
     let port = state.port;
@@ -111,25 +255,36 @@ fn get_sync_url(state: tauri::State<'_, RelayState>) -> String {
     }
 }
 
-/// Get connected client count
 #[tauri::command]
 async fn get_sync_client_count(state: tauri::State<'_, RelayState>) -> Result<usize, String> {
     Ok(*state.client_count.read().await)
 }
 
-/// Broadcast document to all connected clients
+/// Broadcast document to all connected LAN clients and write a local snapshot.
+/// The snapshot is written before broadcast so recovery is always possible even
+/// if the broadcast fails.
 #[tauri::command]
-async fn broadcast_doc(state: tauri::State<'_, RelayState>, doc_bytes: Vec<u8>) -> Result<(), String> {
-    // Store the latest document
-    *state.current_doc.write().await = Some(doc_bytes.clone());
+async fn broadcast_doc(
+    state: tauri::State<'_, RelayState>,
+    app: tauri::AppHandle,
+    doc_bytes: Vec<u8>,
+) -> Result<(), String> {
+    // Write snapshot before touching broadcast state.
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        let snapshot_dir = data_dir.join("snapshots");
+        // Run snapshot I/O on a blocking thread to avoid stalling the async executor.
+        let bytes = doc_bytes.clone();
+        tokio::task::spawn_blocking(move || write_snapshot(&snapshot_dir, &bytes))
+            .await
+            .ok();
+    }
 
-    // Broadcast to all connected clients (ignore send errors - clients may disconnect)
+    *state.current_doc.write().await = Some(doc_bytes.clone());
     let _ = state.broadcast_tx.send(doc_bytes);
 
     Ok(())
 }
 
-/// Show the main window (called from tray)
 #[tauri::command]
 fn show_window(app: tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -138,11 +293,57 @@ fn show_window(app: tauri::AppHandle) {
     }
 }
 
-/// Handle a single WebSocket connection
+/// Returns true if the mDNS service daemon started successfully.
+#[tauri::command]
+fn get_mdns_active(mdns: tauri::State<'_, MdnsState>) -> bool {
+    mdns.0.is_some()
+}
+
+/// List available local snapshots, newest first.
+/// Each entry is a filename like `freed-1740000001.automerge`.
+#[tauri::command]
+fn list_snapshots(app: tauri::AppHandle) -> Vec<String> {
+    let Ok(data_dir) = app.path().app_data_dir() else {
+        return vec![];
+    };
+    let dir = data_dir.join("snapshots");
+
+    let mut entries: Vec<String> = std::fs::read_dir(&dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().into_string().ok()?;
+            if name.starts_with("freed-") && name.ends_with(".automerge") {
+                Some(name)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    entries.sort_unstable_by(|a, b| b.cmp(a)); // newest first
+    entries
+}
+
+// ─── WebSocket connection handler ────────────────────────────────────────────
+
 async fn handle_connection(stream: TcpStream, addr: SocketAddr, state: RelayState, app: tauri::AppHandle) {
     println!("[Sync] New connection from: {}", addr);
 
-    let ws_stream = match accept_async(stream).await {
+    // Inject Private Network Access (PNA) and CORS headers so Chrome allows
+    // connections from a public origin (freed.wtf) to a private LAN address.
+    let ws_stream = match accept_hdr_async(stream, |_req: &Request, mut resp: Response| {
+        let h = resp.headers_mut();
+        h.insert(
+            "access-control-allow-private-network",
+            "true".parse().unwrap(),
+        );
+        h.insert("access-control-allow-origin", "*".parse().unwrap());
+        Ok(resp)
+    })
+    .await
+    {
         Ok(ws) => ws,
         Err(e) => {
             eprintln!("[Sync] WebSocket handshake failed: {}", e);
@@ -152,7 +353,6 @@ async fn handle_connection(stream: TcpStream, addr: SocketAddr, state: RelayStat
 
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
-    // Increment client count and notify frontend
     {
         let mut count = state.client_count.write().await;
         *count += 1;
@@ -161,23 +361,20 @@ async fn handle_connection(stream: TcpStream, addr: SocketAddr, state: RelayStat
         let _ = app.emit("sync-client-count", new_count);
     }
 
-    // Send current document state to new client
+    // Send current document state to new client.
     if let Some(doc) = state.current_doc.read().await.clone() {
         if let Err(e) = ws_sender.send(Message::Binary(doc.into())).await {
             eprintln!("[Sync] Failed to send initial doc: {}", e);
         }
     }
 
-    // Subscribe to broadcast channel
     let mut broadcast_rx = state.broadcast_tx.subscribe();
 
     loop {
         tokio::select! {
-            // Receive from client
             msg = ws_receiver.next() => {
                 match msg {
                     Some(Ok(Message::Binary(data))) => {
-                        // Client sent a document update - store and broadcast
                         let bytes = data.to_vec();
                         *state.current_doc.write().await = Some(bytes.clone());
                         let _ = state.broadcast_tx.send(bytes);
@@ -196,7 +393,6 @@ async fn handle_connection(stream: TcpStream, addr: SocketAddr, state: RelayStat
                     _ => {}
                 }
             }
-            // Receive broadcasts to send to this client
             broadcast = broadcast_rx.recv() => {
                 if let Ok(doc) = broadcast {
                     if let Err(e) = ws_sender.send(Message::Binary(doc.into())).await {
@@ -208,7 +404,6 @@ async fn handle_connection(stream: TcpStream, addr: SocketAddr, state: RelayStat
         }
     }
 
-    // Decrement client count and notify frontend
     {
         let mut count = state.client_count.write().await;
         *count = count.saturating_sub(1);
@@ -218,7 +413,6 @@ async fn handle_connection(stream: TcpStream, addr: SocketAddr, state: RelayStat
     }
 }
 
-/// Start the sync relay server
 async fn start_sync_relay(state: RelayState, app: tauri::AppHandle) {
     let addr = format!("0.0.0.0:{}", state.port);
 
@@ -239,12 +433,12 @@ async fn start_sync_relay(state: RelayState, app: tauri::AppHandle) {
     }
 }
 
+// ─── App entry point ─────────────────────────────────────────────────────────
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Create broadcast channel for sync
     let (broadcast_tx, _) = broadcast::channel::<Vec<u8>>(16);
 
-    // Create sync relay state
     let relay_state = Arc::new(SyncRelayState {
         port: 8765,
         broadcast_tx,
@@ -262,7 +456,6 @@ pub fn run() {
         .setup(move |app| {
             let window = app.get_webview_window("main").unwrap();
 
-            // Apply vibrancy on macOS
             #[cfg(target_os = "macos")]
             apply_vibrancy(
                 &window,
@@ -272,12 +465,14 @@ pub fn run() {
             )
             .expect("Failed to apply vibrancy");
 
-            // Build tray menu
+            // Start mDNS advertisement and keep the daemon alive in managed state.
+            let mdns_daemon = advertise_mdns(8765);
+            app.manage(MdnsState(mdns_daemon));
+
             let show_item = MenuItem::with_id(app, "show", "Show Freed", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit Freed", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
-            // Build system tray icon
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().cloned().unwrap())
                 .menu(&menu)
@@ -295,7 +490,6 @@ pub fn run() {
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
-                    // Single click on macOS shows the window
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
@@ -311,7 +505,6 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // Start sync relay in background (use Tauri's async runtime, not bare tokio)
             let state = relay_state_clone.clone();
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -321,7 +514,6 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Keep app running in background when window is closed
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 window.hide().unwrap();
                 api.prevent_close();
@@ -336,7 +528,9 @@ pub fn run() {
             get_sync_url,
             get_sync_client_count,
             broadcast_doc,
-            show_window
+            show_window,
+            get_mdns_active,
+            list_snapshots,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Freed");
