@@ -4,6 +4,10 @@
  * Displays a QR code containing the sync WebSocket URL + pairing token.
  * The QR is rendered locally (no external service) so the user's LAN IP
  * and token are never sent to a third party.
+ *
+ * For situations where QR scanning is impractical, the IP address and
+ * 43-character pairing token are shown as separate copyable fields so
+ * the user can transcribe them manually.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -15,11 +19,33 @@ import {
   type SyncStatus,
 } from "../lib/sync";
 
+/** Parse the LAN IP from a ws://ip:port?t=token URL. */
+function parseIp(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
+}
+
+/** Parse the 43-character pairing token from the ?t= query param. */
+function parseToken(url: string): string {
+  try {
+    return new URL(url).searchParams.get("t") ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export function MobileSyncTab() {
   const [syncUrl, setSyncUrl] = useState<string>("");
   const [clientCount, setClientCount] = useState(0);
-  const [copied, setCopied] = useState(false);
   const [resetting, setResetting] = useState(false);
+
+  // Independent copy-flash state for each copyable field
+  const [copiedIp, setCopiedIp] = useState(false);
+  const [copiedToken, setCopiedToken] = useState(false);
+  const [copiedUrl, setCopiedUrl] = useState(false);
 
   useEffect(() => {
     getSyncUrl().then(setSyncUrl);
@@ -31,15 +57,16 @@ export function MobileSyncTab() {
     return unsubscribe;
   }, []);
 
-  const handleCopyUrl = async () => {
-    try {
-      await navigator.clipboard.writeText(syncUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error("Failed to copy:", err);
-    }
-  };
+  const makeCopyHandler = (text: string, setFlash: (v: boolean) => void) =>
+    async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        setFlash(true);
+        setTimeout(() => setFlash(false), 2000);
+      } catch (err) {
+        console.error("Failed to copy:", err);
+      }
+    };
 
   const handleResetPairing = useCallback(async () => {
     setResetting(true);
@@ -52,6 +79,9 @@ export function MobileSyncTab() {
       setResetting(false);
     }
   }, []);
+
+  const ip = parseIp(syncUrl);
+  const token = parseToken(syncUrl);
 
   return (
     <section id="mobile-sync-section">
@@ -82,24 +112,78 @@ export function MobileSyncTab() {
         </p>
       </div>
 
-      {/* Sync URL */}
-      <div className="mb-4">
-        <label className="block text-xs text-[#71717a] mb-2">
-          Or enter this URL manually:
-        </label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={syncUrl}
-            readOnly
-            className="flex-1 px-3 py-2 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-lg text-sm text-[#a1a1aa] font-mono"
-          />
-          <button
-            onClick={handleCopyUrl}
-            className="px-3 py-2 bg-[#8b5cf6]/20 text-[#8b5cf6] rounded-lg hover:bg-[#8b5cf6]/30 transition-colors text-sm font-medium"
-          >
-            {copied ? "Copied!" : "Copy"}
-          </button>
+      {/* Manual entry fields — IP and token shown separately for transcription */}
+      <div className="mb-4 p-3 bg-white/5 rounded-xl border border-[rgba(255,255,255,0.08)]">
+        <p className="text-xs font-medium text-[#71717a] uppercase tracking-wider mb-3">
+          Manual Entry
+        </p>
+
+        {/* IP address */}
+        <div className="mb-3">
+          <label className="block text-xs text-[#71717a] mb-1.5">
+            Desktop IP address
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={ip}
+              readOnly
+              aria-label="Desktop IP address"
+              className="flex-1 px-3 py-2 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-lg text-sm text-[#a1a1aa] font-mono tracking-wide"
+            />
+            <button
+              onClick={makeCopyHandler(ip, setCopiedIp)}
+              className="px-3 py-2 bg-[#8b5cf6]/20 text-[#8b5cf6] rounded-lg hover:bg-[#8b5cf6]/30 transition-colors text-sm font-medium min-w-[68px]"
+            >
+              {copiedIp ? "Copied!" : "Copy"}
+            </button>
+          </div>
+        </div>
+
+        {/* Pairing token */}
+        <div className="mb-3">
+          <label className="block text-xs text-[#71717a] mb-1.5">
+            Pairing token{" "}
+            <span className="text-[#52525b]">(43 characters)</span>
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={token}
+              readOnly
+              aria-label="Pairing token"
+              className="flex-1 px-3 py-2 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-lg text-sm text-[#a1a1aa] font-mono tracking-wide min-w-0"
+            />
+            <button
+              onClick={makeCopyHandler(token, setCopiedToken)}
+              className="px-3 py-2 bg-[#8b5cf6]/20 text-[#8b5cf6] rounded-lg hover:bg-[#8b5cf6]/30 transition-colors text-sm font-medium min-w-[68px]"
+            >
+              {copiedToken ? "Copied!" : "Copy"}
+            </button>
+          </div>
+        </div>
+
+        {/* Full URL — for power users or browser-based paste */}
+        <div>
+          <label className="block text-xs text-[#71717a] mb-1.5">
+            Full URL{" "}
+            <span className="text-[#52525b]">(IP + port + token combined)</span>
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={syncUrl}
+              readOnly
+              aria-label="Full sync URL"
+              className="flex-1 px-3 py-2 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-lg text-xs text-[#52525b] font-mono min-w-0"
+            />
+            <button
+              onClick={makeCopyHandler(syncUrl, setCopiedUrl)}
+              className="px-3 py-2 bg-[#8b5cf6]/20 text-[#8b5cf6] rounded-lg hover:bg-[#8b5cf6]/30 transition-colors text-sm font-medium min-w-[68px]"
+            >
+              {copiedUrl ? "Copied!" : "Copy"}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -120,7 +204,8 @@ export function MobileSyncTab() {
       <div className="p-3 bg-white/5 rounded-xl border border-[rgba(255,255,255,0.08)]">
         <p className="text-xs text-[#71717a] mb-2">
           Rotate the pairing token if you suspect an unauthorized device has
-          connected. Paired phones will need to rescan the QR code.
+          connected. Paired phones will need to rescan the QR code or re-enter
+          the new token.
         </p>
         <button
           onClick={handleResetPairing}
