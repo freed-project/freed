@@ -69,7 +69,7 @@ export async function fetchXTimeline(cookies: XCookies): Promise<ReturnType<type
 
   const tweets: XTweetResult[] = [];
   const instructions =
-    response.data?.home?.home_timeline_urt?.instructions || [];
+    response.home?.home_timeline_urt?.instructions || [];
 
   for (const instruction of instructions) {
     if (instruction.type === "TimelineAddEntries" && instruction.entries) {
