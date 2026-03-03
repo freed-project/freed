@@ -400,6 +400,12 @@ Reward security researchers for responsible disclosure.
 | 10.21 | Release automation   | Medium     |
 | 10.22 | Documentation site   | Medium     |
 
+### Resilience
+
+| Task  | Description                     | Complexity |
+| ----- | ------------------------------- | ---------- |
+| 10.23 | Crash / stale-bundle recovery dialog | Medium |
+
 ---
 
 ## Success Criteria
@@ -425,6 +431,10 @@ Reward security researchers for responsible disclosure.
 - [ ] Bug bounty program published
 - [ ] Regular release schedule established
 - [ ] Documentation site live
+
+### Resilience
+
+- [ ] On hard crash or unreachable JSON update bundle, a friendly recovery dialog is shown directing the user to [freed.wtf](https://freed.wtf) to download the latest version — rendered outside the React tree (plain HTML fallback in the Tauri shell or PWA service worker) so it survives total renderer failure
 
 ---
 
