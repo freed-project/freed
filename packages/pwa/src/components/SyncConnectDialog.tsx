@@ -69,7 +69,9 @@ async function initiateDropboxOAuth(): Promise<void> {
     response_type: "code",
     code_challenge: challenge,
     code_challenge_method: "S256",
-    token_access_type: "offline",
+    // token_access_type: "offline" requires explicit offline-access approval in
+    // the Dropbox App Console — omitting for dev testing. Add back when applying
+    // for production status (task 4.15).
   });
 
   window.location.href = `https://www.dropbox.com/oauth2/authorize?${params}`;
