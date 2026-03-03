@@ -13,17 +13,19 @@ export function AppShell({ children }: AppShellProps) {
   const debugVisible = useDebugStore((s) => s.visible);
   const toggleDebug = useDebugStore((s) => s.toggle);
 
-  // Cmd/Ctrl+Shift+D keyboard shortcut
+  // Keyboard shortcuts: Cmd/Ctrl+Shift+D to toggle, Escape to close
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "D" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         toggleDebug();
+      } else if (e.key === "Escape" && debugVisible) {
+        toggleDebug();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [toggleDebug]);
+  }, [toggleDebug, debugVisible]);
 
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-[#121212] pb-[env(safe-area-inset-bottom)]">
@@ -32,9 +34,23 @@ export function AppShell({ children }: AppShellProps) {
       <div className="flex-1 min-h-0 flex overflow-hidden">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
+
+        {/* Desktop push drawer — always mounted so width can animate smoothly.
+            The DebugPanel's own border-l is clipped by overflow-hidden when width is 0. */}
+        <div
+          className="hidden sm:block flex-none overflow-hidden transition-[width] duration-300 ease-in-out"
+          style={{ width: debugVisible ? "20rem" : "0" }}
+        >
+          <DebugPanel variant="drawer" />
+        </div>
       </div>
 
-      {debugVisible && <DebugPanel />}
+      {/* Mobile overlay — only on small screens, conditionally rendered */}
+      {debugVisible && (
+        <div className="sm:hidden">
+          <DebugPanel variant="overlay" />
+        </div>
+      )}
     </div>
   );
 }
