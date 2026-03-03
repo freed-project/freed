@@ -1,6 +1,7 @@
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { FeedItem as FeedItemType } from "@freed/shared";
+import { RssIcon, FacebookIcon, InstagramIcon, YoutubeIcon, RedditIcon, GithubIcon, MastodonIcon, BookmarkIcon } from "../icons.js";
 
 interface FeedItemProps {
   item: FeedItemType;
@@ -11,16 +12,18 @@ interface FeedItemProps {
   onSave?: (e: React.MouseEvent) => void;
 }
 
-const platformIcons: Record<string, string> = {
-  x: "𝕏",
-  rss: "📡",
-  youtube: "▶️",
-  reddit: "🔴",
-  mastodon: "🐘",
-  github: "🐙",
-  facebook: "📘",
-  instagram: "📸",
-  saved: "📌",
+const cls = "w-3.5 h-3.5";
+
+const platformIcons: Record<string, ReactNode> = {
+  x: <span className="text-xs font-bold leading-none">𝕏</span>,
+  rss: <RssIcon className={cls} />,
+  youtube: <YoutubeIcon className={cls} />,
+  reddit: <RedditIcon className={cls} />,
+  mastodon: <MastodonIcon className={cls} />,
+  github: <GithubIcon className={cls} />,
+  facebook: <FacebookIcon className={cls} />,
+  instagram: <InstagramIcon className={cls} />,
+  saved: <BookmarkIcon className={cls} />,
 };
 
 export const FeedItem = memo(function FeedItem({
@@ -32,7 +35,7 @@ export const FeedItem = memo(function FeedItem({
   onSave,
 }: FeedItemProps) {
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
-  const platformIcon = platformIcons[item.platform] || "📄";
+  const platformIcon = platformIcons[item.platform] ?? <span className="text-xs">📄</span>;
 
   return (
     <article
