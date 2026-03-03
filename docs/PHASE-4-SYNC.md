@@ -276,6 +276,8 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 | 4.12 | Manual "Sync now" button                               | Low        |
 | 4.13 | Local snapshot rotation (GFS — minutely/hourly/daily)  | Medium     |
 | 4.14 | "Restore from backup" UI (list + restore snapshot)     | Medium     |
+| 4.15 | Apply for Dropbox production status (remove 500-user dev cap) | Low   |
+| 4.16 | Submit Google OAuth app for verification (remove test-user restriction) | Low |
 
 ---
 
@@ -307,6 +309,23 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
   }
 }
 ```
+
+---
+
+## Pre-Launch: OAuth Provider Production Approval
+
+Both cloud providers require a separate production approval step before arbitrary users can connect. During development, both are gated:
+
+| Provider | Dev Restriction | Production Requirement |
+|---|---|---|
+| **Dropbox** | Max 500 users; requires opt-in at [App Console](https://www.dropbox.com/developers/apps) → "Enable additional users" | Apply for production status via the App Console. Dropbox reviews the app description, privacy policy, and required permissions. |
+| **Google Drive** | Only approved test users can authorize; added per-account in Google Cloud Console → Audience → Test users | Submit OAuth consent screen for Google verification. Requires a privacy policy URL, app homepage, and a demo video showing the OAuth scopes in use. [Verification guide](https://support.google.com/cloud/answer/13463073) |
+
+**What to prepare before applying:**
+- Privacy policy URL (can be a page on freed.wtf)
+- Homepage URL (freed.wtf)
+- Clear description of why the app needs each OAuth scope
+- For Google: a screen recording demonstrating the Drive App Data scope being used
 
 ---
 
