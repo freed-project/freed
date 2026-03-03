@@ -212,7 +212,7 @@ const comingSoonSources = [
 ];
 
 export function Sidebar({ open, onClose }: SidebarProps) {
-  const { SidebarConnectionSection, SourceIndicator, headerDragRegion } = usePlatform();
+  const { SourceIndicator, headerDragRegion } = usePlatform();
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
   const feeds = useAppStore((s) => s.feeds);
@@ -350,8 +350,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         </div>
 
         <nav className="flex-1 min-h-0 flex flex-col p-4 overflow-y-auto minimal-scroll">
-          {SidebarConnectionSection && <SidebarConnectionSection />}
-
           {/* Sources */}
           <SidebarSection title="Sources">
             <ul className="space-y-1">
