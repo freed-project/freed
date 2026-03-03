@@ -88,13 +88,15 @@ freed/
 ### Pull Requests
 
 1. Fork the repo
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+2. Create a feature branch (`git checkout -b feat/amazing-feature`)
 3. Make your changes
 4. Write/update tests if applicable
 5. Ensure linting passes
-6. Commit with clear messages
+6. Commit with clear messages following [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `perf:`, `style:`)
 7. Push to your fork
 8. Open a PR against `main`
+
+**Merge policy:** All PRs are merged via **squash merge**. Your entire branch becomes a single commit on `main` — write your PR title and description accordingly, as the squash commit message is derived from them. Branches are deleted automatically after merge. Merge commits and rebase merges are disabled at the repository level.
 
 ### Commit Messages
 
