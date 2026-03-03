@@ -6,6 +6,7 @@
 - **Roadmap sync:** When `docs/PHASE-*.md` changes, update `website/src/pages/Roadmap.tsx` to match (`✓ Complete` → `"complete"`, `🚧 In Progress` → `"current"`, else `"upcoming"`).
 - **Time estimates:** Machine time only ("one conversation", "~10 min"). Never quote human hours/days.
 - **IDs:** Display tail — `...${id.slice(-8)}`.
+- **Number formatting:** All user-facing numbers must use `Number.toLocaleString()` (or `Intl.NumberFormat`) — never raw `.toString()` or string interpolation. This ensures locale-appropriate grouping separators (e.g. commas in `en-US`) for counts, totals, and stats.
 
 ## Versioning
 
