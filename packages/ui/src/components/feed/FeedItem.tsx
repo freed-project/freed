@@ -23,7 +23,14 @@ const platformIcons: Record<string, string> = {
   saved: "📌",
 };
 
-export const FeedItem = memo(function FeedItem({ item, onClick, showEngagement = false, focused = false, onMouseEnter, onSave }: FeedItemProps) {
+export const FeedItem = memo(function FeedItem({
+  item,
+  onClick,
+  showEngagement = false,
+  focused = false,
+  onMouseEnter,
+  onSave,
+}: FeedItemProps) {
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
   const platformIcon = platformIcons[item.platform] || "📄";
 
@@ -53,9 +60,7 @@ export const FeedItem = memo(function FeedItem({ item, onClick, showEngagement =
         )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium truncate">
-              {item.author.displayName}
-            </span>
+            <span className="font-medium truncate">{item.author.displayName}</span>
             <span className="text-[#71717a] text-sm">@{item.author.handle}</span>
           </div>
           <div className="flex items-center gap-2 text-xs text-[#71717a]">

@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
 import type { RssFeed } from "@freed/shared";
-import { useAppStore, usePlatform } from "../../context/PlatformContext";
-import { SettingsPanel } from "../SettingsPanel";
+import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
+import { SettingsPanel } from "../SettingsPanel.js";
 
 /** Compact number: 1234 → "1.2k", 1_200_000 → "1.2m". Trims trailing ".0". */
 function fmt(n: number): string {
@@ -52,10 +52,6 @@ function SidebarSection({
     </div>
   );
 }
-
-// =============================================================================
-// Feed context menu helpers
-// =============================================================================
 
 function formatLastSync(lastFetched?: number): string {
   if (!lastFetched) return "Never synced";
@@ -128,19 +124,16 @@ function FeedContextMenu({
   const handleRenameSubmit = () => {
     const trimmed = renameValue.trim();
     if (trimmed && trimmed !== feed.title) {
-      onRename(trimmed); // onRename calls onClose
+      onRename(trimmed);
     } else {
       onClose();
     }
   };
 
-  // Position menu to the right of the trigger button.
-  // If it would overflow the viewport, flip left instead.
   const menuWidth = 224;
   const gap = 6;
   const fitsRight = anchorRect.right + gap + menuWidth <= window.innerWidth;
   const left = fitsRight ? anchorRect.right + gap : anchorRect.left - gap - menuWidth;
-  // Align menu top with trigger top; clamp so it never clips the bottom of the viewport.
   const top = Math.min(anchorRect.top, window.innerHeight - 180);
 
   return (
@@ -344,28 +337,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         `}
         style={{ width: `${width}px` }}
       >
-        {/* Mobile header with close button — pushed below status bar.
-            Logo is suppressed in the desktop app to avoid overlapping macOS traffic lights. */}
+        {/* Mobile header with close button */}
         <div className="md:hidden flex items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+1rem)] border-b border-[rgba(255,255,255,0.08)] shrink-0">
           {!headerDragRegion && (
             <span className="text-lg font-bold gradient-text font-logo">FREED</span>
           )}
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-white/10 ml-auto"
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/10 ml-auto">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
@@ -412,9 +391,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   <div className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[#52525b] cursor-default">
                     <span className="w-5 text-center opacity-50">{source.icon}</span>
                     <span className="flex-1">{source.label}</span>
-                    <span className="text-[10px] uppercase tracking-wider bg-white/5 px-1.5 py-0.5 rounded">
-                      soon
-                    </span>
+                    <span className="text-[10px] uppercase tracking-wider bg-white/5 px-1.5 py-0.5 rounded">soon</span>
                   </div>
                 </li>
               ))}
@@ -426,10 +403,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             <ul className="space-y-1">
               <li>
                 <button
-                  onClick={() => {
-                    setFilter({ savedOnly: true });
-                    onClose();
-                  }}
+                  onClick={() => { setFilter({ savedOnly: true }); onClose(); }}
                   className={`
                     w-full flex items-center gap-3 px-3 py-2 rounded-lg
                     text-left text-sm transition-all border
@@ -446,10 +420,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               </li>
               <li>
                 <button
-                  onClick={() => {
-                    setFilter({ showArchived: true });
-                    onClose();
-                  }}
+                  onClick={() => { setFilter({ showArchived: true }); onClose(); }}
                   className={`
                     w-full flex items-center gap-3 px-3 py-2 rounded-lg
                     text-left text-sm transition-all border
@@ -485,7 +456,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                           : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
                       }`}
                     >
-                      {/* Main clickable area */}
                       <button
                         onClick={() => handleFeedClick(feed.url)}
                         className="flex-1 flex items-center gap-2 pl-3 py-2 min-w-0 text-left"
@@ -506,7 +476,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                         <span className="flex-1 truncate text-xs">{feed.title}</span>
                       </button>
 
-                      {/* Right slot: counts by default, kebab on hover */}
                       <div className="shrink-0 flex items-center pr-2">
                         {total > 0 && (
                           <span className={`${menuOpen ? "hidden" : "flex group-hover/feed:hidden"} items-center gap-0.5 text-[10px] tabular-nums`}>
@@ -550,24 +519,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-all"
             >
               <span className="w-5 text-center">
-                <svg
-                  className="w-4 h-4 inline"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                  />
+                <svg className="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
               </span>
               <span>Settings</span>
@@ -582,10 +536,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         />
       </aside>
 
-      <SettingsPanel
-        open={showSettings}
-        onClose={() => setShowSettings(false)}
-      />
+      <SettingsPanel open={showSettings} onClose={() => setShowSettings(false)} />
 
       {/* Feed context menu — rendered outside scroll container to avoid clipping */}
       {openMenuFeedUrl && menuAnchorRect && feeds[openMenuFeedUrl] && (

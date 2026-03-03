@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import jsQR from "jsqr";
 import { connect, storeRelayUrl, onStatusChange } from "../lib/sync";
-import { BottomSheet } from "./BottomSheet";
+import { BottomSheet } from "@freed/ui/components/BottomSheet";
 
 const CONNECT_TIMEOUT_MS = 5000;
 

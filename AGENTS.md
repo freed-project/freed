@@ -20,10 +20,11 @@ Run `./scripts/release.sh` with no args to auto-compute the next version.
 
 | Package | Rule |
 |---|---|
-| `shared/` | Pure functions + types. Zero runtime deps. |
+| `shared/` | Pure functions + types. Zero runtime deps. No React. |
+| `ui/` | Platform-agnostic React UI layer. May import `@freed/shared`. No platform stores, no Tauri APIs, no service-worker logic, no `@freed/sync` imports. Ships raw `.tsx` source — no build step. |
 | `sync/` | Storage-agnostic. Works in browser (IndexedDB) and Node (filesystem). |
-| `pwa/` | Primary UI. Never import Tauri APIs. |
-| `desktop/` | Tauri shell. May import from `@freed/pwa`. |
+| `pwa/` | PWA app shell only. Imports `@freed/ui` and `@freed/shared`. Never import Tauri APIs. |
+| `desktop/` | Tauri shell. Imports `@freed/ui` and `@freed/shared`. Never import from `@freed/pwa`. |
 | `capture-*/` | Isolated. Never import between capture packages. |
 
 ## Automerge

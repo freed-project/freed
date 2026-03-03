@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { Sidebar } from "./Sidebar";
-import { Header } from "./Header";
+import { Sidebar } from "./Sidebar.js";
+import { Header } from "./Header.js";
 
 interface AppShellProps {
   children: ReactNode;

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useCallback, useRef } from "react";
-import { AppShell } from "@freed/pwa/components/layout";
-import { FeedView } from "@freed/pwa/components/feed";
-import { PlatformProvider, type PlatformConfig } from "@freed/pwa/context";
+import { AppShell } from "@freed/ui/components/layout";
+import { FeedView } from "@freed/ui/components/feed";
+import { PlatformProvider, type PlatformConfig } from "@freed/ui/context";
 import { UpdateNotification } from "./components/UpdateNotification";
 import { useAppStore } from "./lib/store";
 import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } from "./lib/capture";

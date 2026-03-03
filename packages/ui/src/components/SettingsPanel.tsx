@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
-import { useAppStore, usePlatform } from "../context/PlatformContext";
-import { BottomSheet } from "./BottomSheet";
+import { useAppStore, usePlatform } from "../context/PlatformContext.js";
+import { BottomSheet } from "./BottomSheet.js";
 
 interface SettingsPanelProps {
   open: boolean;
@@ -57,9 +57,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const updatePreferences = useAppStore((s) => s.updatePreferences);
 
   const [display, setDisplay] = useState(() => preferences.display);
-  const [updateState, setUpdateState] = useState<UpdateCheckState>({
-    status: "idle",
-  });
+  const [updateState, setUpdateState] = useState<UpdateCheckState>({ status: "idle" });
   const fadeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const handleCheckForUpdates = useCallback(async () => {
@@ -73,18 +71,12 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
       setUpdateState(next);
       if (next.status === "up-to-date") {
         clearTimeout(fadeTimer.current);
-        fadeTimer.current = setTimeout(
-          () => setUpdateState({ status: "idle" }),
-          4000,
-        );
+        fadeTimer.current = setTimeout(() => setUpdateState({ status: "idle" }), 4000);
       }
     } catch {
       setUpdateState({ status: "error" });
       clearTimeout(fadeTimer.current);
-      fadeTimer.current = setTimeout(
-        () => setUpdateState({ status: "idle" }),
-        4000,
-      );
+      fadeTimer.current = setTimeout(() => setUpdateState({ status: "idle" }), 4000);
     }
   }, [checkForUpdates]);
 
@@ -150,9 +142,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                   {(["light", "normal", "strong"] as const).map((level) => (
                     <button
                       key={level}
-                      onClick={() =>
-                        handleReadingChange({ focusIntensity: level })
-                      }
+                      onClick={() => handleReadingChange({ focusIntensity: level })}
                       className={`flex-1 py-1.5 rounded-lg text-sm capitalize transition-colors border ${
                         display.reading.focusIntensity === level
                           ? "bg-[#8b5cf6]/20 text-[#8b5cf6] border-[#8b5cf6]/30"
@@ -179,9 +169,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           <div className="space-y-3">
             <p className="text-xs text-[#52525b]">
               Current version:{" "}
-              <span className="text-sm font-bold font-mono">
-                v{__APP_VERSION__}
-              </span>
+              <span className="text-sm font-bold font-mono">v{__APP_VERSION__}</span>
             </p>
             {checkForUpdates && (
               <div className="flex items-center gap-3">
@@ -200,15 +188,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                   )}
                 </button>
                 {updateState.status === "up-to-date" && (
-                  <span className="text-xs text-green-400">
-                    You're up to date
-                  </span>
+                  <span className="text-xs text-green-400">You're up to date</span>
                 )}
                 {updateState.status === "available" && (
                   <span className="flex items-center gap-2">
-                    <span className="text-xs text-[#8b5cf6]">
-                      Update available
-                    </span>
+                    <span className="text-xs text-[#8b5cf6]">Update available</span>
                     {applyUpdate && (
                       <button
                         onClick={applyUpdate}
