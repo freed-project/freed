@@ -5,7 +5,11 @@ import {
   storeRelayUrl,
   onStatusChange,
   startCloudSync,
+  stopCloudSync,
   storeCloudToken,
+  getCloudProvider,
+  getCloudToken,
+  clearCloudSync,
   type CloudProvider,
 } from "../lib/sync";
 import { BottomSheet } from "@freed/ui/components/BottomSheet";
@@ -163,7 +167,12 @@ export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: Sync
   const [scanFrameCount, setScanFrameCount] = useState(0);
   const [videoResolution, setVideoResolution] = useState<string | null>(null);
   const [lastQrContent, setLastQrContent] = useState<string | null>(null);
-  const [cloudConnecting, setCloudConnecting] = useState(false);
+  const [cloudConnecting, setCloudConnecting] = useState<CloudProvider | null>(null);
+  // Read the real connected provider from localStorage so the cards reflect
+  // actual state — especially important after returning from the OAuth redirect.
+  const [connectedProvider, setConnectedProvider] = useState<CloudProvider | null>(
+    () => getCloudProvider(),
+  );
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -192,6 +201,7 @@ export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: Sync
     setScanFrameCount(0);
     setVideoResolution(null);
     setLastQrContent(null);
+    setCloudConnecting(null);
     onClose();
   }, [stopCamera, onClose, initialMode]);
 
@@ -346,7 +356,7 @@ export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: Sync
   };
 
   const handleCloudConnect = async (provider: CloudProvider) => {
-    setCloudConnecting(true);
+    setCloudConnecting(provider);
     setError(null);
     try {
       if (provider === "gdrive") {
@@ -356,8 +366,14 @@ export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: Sync
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start OAuth flow");
-      setCloudConnecting(false);
+      setCloudConnecting(null);
     }
+  };
+
+  const handleCloudDisconnect = (provider: CloudProvider) => {
+    clearCloudSync(provider);
+    stopCloudSync();
+    setConnectedProvider(null);
   };
 
   const tabs: Array<{ id: Mode; label: string }> = [
@@ -552,14 +568,27 @@ export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: Sync
 
       {mode === "cloud" && (
         <div className="mb-4 flex flex-col gap-3">
-          {(["dropbox", "gdrive"] as const).map((provider) => (
-            <CloudProviderCard
-              key={provider}
-              provider={provider}
-              state={{ status: cloudConnecting ? "connecting" : "idle" }}
-              onConnect={handleCloudConnect}
-            />
-          ))}
+          {(["dropbox", "gdrive"] as const).map((provider) => {
+            // Derive per-provider state from actual localStorage data so the
+            // card reflects reality after returning from the OAuth redirect.
+            const isThisConnected = connectedProvider === provider;
+            const isThisConnecting = cloudConnecting === provider;
+            const state = isThisConnected
+              ? { status: "connected" as const }
+              : isThisConnecting
+                ? { status: "connecting" as const }
+                : { status: "idle" as const };
+
+            return (
+              <CloudProviderCard
+                key={provider}
+                provider={provider}
+                state={state}
+                onConnect={handleCloudConnect}
+                onDisconnect={handleCloudDisconnect}
+              />
+            );
+          })}
           <p className="text-xs text-[#71717a] text-center pt-1">
             Your reading list is stored in your own cloud account.
             <br />

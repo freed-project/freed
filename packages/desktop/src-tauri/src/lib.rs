@@ -11,8 +11,10 @@ use std::sync::{Arc, RwLock as StdRwLock};
 use tauri::{Emitter, Manager};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, RwLock};
+use tokio::time::{timeout, Duration};
 use tokio_tungstenite::{
     accept_hdr_async,
     tungstenite::{
@@ -431,6 +433,55 @@ fn list_snapshots(app: tauri::AppHandle) -> Vec<String> {
 // Tauri commands — OAuth localhost server
 // ---------------------------------------------------------------------------
 
+/// Parse the OAuth callback request from the browser stream, emit the code to
+/// the frontend, and respond with a success page so the user knows to close
+/// the tab.
+async fn handle_oauth_stream(stream: TcpStream, app: tauri::AppHandle) {
+    let (reader_half, mut writer_half) = stream.into_split();
+    let mut buf_reader = BufReader::new(reader_half);
+    let mut request_line = String::new();
+    if buf_reader.read_line(&mut request_line).await.is_err() {
+        return;
+    }
+
+    // Parse `GET /callback?code=...&state=... HTTP/1.1`
+    let path = request_line
+        .split_whitespace()
+        .nth(1)
+        .unwrap_or("")
+        .to_string();
+
+    let query = path.splitn(2, '?').nth(1).unwrap_or("");
+    let mut code = String::new();
+    let mut state = String::new();
+
+    // OAuth code and state values are URL-safe by spec (base64url / UUID), so
+    // raw string splitting is sufficient — no percent-decoding needed.
+    for pair in query.split('&') {
+        if let Some(v) = pair.strip_prefix("code=") {
+            code = v.to_string();
+        } else if let Some(v) = pair.strip_prefix("state=") {
+            state = v.to_string();
+        }
+    }
+
+    let _ = app.emit("cloud-oauth-code", serde_json::json!({ "code": code, "state": state }));
+
+    let body = "<html><body style='font-family:sans-serif;text-align:center;padding:4rem'>\
+        <h2>Connected to Freed</h2>\
+        <p>You can close this tab and return to the app.</p>\
+        </body></html>";
+
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body,
+    );
+
+    let _ = writer_half.write_all(response.as_bytes()).await;
+    let _ = writer_half.flush().await;
+}
+
 /// Spin up a one-shot HTTP server on a random localhost port to capture the
 /// OAuth redirect from the system browser.
 ///
@@ -440,65 +491,62 @@ fn list_snapshots(app: tauri::AppHandle) -> Vec<String> {
 /// the server down. Times out after 5 minutes of waiting.
 #[tauri::command]
 async fn start_oauth_server(app: tauri::AppHandle) -> Result<u16, String> {
-    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-    use tokio::time::{timeout, Duration};
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+    // Bind to IPv4 loopback first to get a port, then also bind IPv6 loopback
+    // on the same port so that browsers which resolve localhost → ::1 (common
+    // on macOS) can still reach the callback server.
+    let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .map_err(|e| e.to_string())?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
 
-    tokio::spawn(async move {
+    // Attempt IPv6 loopback on the same port — best-effort, not fatal if ::1 is
+    // unavailable (e.g. IPv6 disabled system-wide).
+    let listener6 = TcpListener::bind(format!("[::1]:{}", port)).await.ok();
+
+    // Race both listeners — whichever receives the browser callback first wins.
+    // The success response and the Tauri event are emitted from the winning task;
+    // the other task is dropped once the oneshot fires.
+    let (tx, rx) = tokio::sync::oneshot::channel::<TcpStream>();
+
+    async fn accept_one(
+        listener: TcpListener,
+        tx: tokio::sync::oneshot::Sender<TcpStream>,
+    ) {
         let accept = timeout(Duration::from_secs(300), listener.accept()).await;
-
-        let Ok(Ok((stream, _))) = accept else {
-            eprintln!("[OAuth] Server timed out or failed to accept connection");
-            return;
-        };
-
-        let (reader_half, mut writer_half) = stream.into_split();
-        let mut buf_reader = BufReader::new(reader_half);
-        let mut request_line = String::new();
-        if buf_reader.read_line(&mut request_line).await.is_err() {
-            return;
+        if let Ok(Ok((stream, _))) = accept {
+            let _ = tx.send(stream);
         }
+    }
 
-        // Parse `GET /callback?code=...&state=... HTTP/1.1`
-        let path = request_line
-            .split_whitespace()
-            .nth(1)
-            .unwrap_or("")
-            .to_string();
+    tokio::spawn(accept_one(listener, tx));
+    if let Some(l6) = listener6 {
+        // Spawn IPv6 acceptor with its own sender clone isn't possible for
+        // oneshot, so we use a second oneshot and pick whichever fires.
+        // Re-implement the race with a select instead.
+        let (tx6, rx6) = tokio::sync::oneshot::channel::<TcpStream>();
+        tokio::spawn(accept_one(l6, tx6));
 
-        let query = path.splitn(2, '?').nth(1).unwrap_or("");
-        let mut code = String::new();
-        let mut state = String::new();
-
-        for pair in query.split('&') {
-            if let Some(v) = pair.strip_prefix("code=") {
-                code = v.to_string();
-            } else if let Some(v) = pair.strip_prefix("state=") {
-                state = v.to_string();
-            }
-        }
-
-        // Emit OAuth code to the frontend, then send the browser a success page.
-        let _ = app.emit("cloud-oauth-code", serde_json::json!({ "code": code, "state": state }));
-
-        let body = "<html><body style='font-family:sans-serif;text-align:center;padding:4rem'>\
-            <h2>Connected to Freed</h2>\
-            <p>You can close this tab and return to the app.</p>\
-            </body></html>";
-
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            body.len(),
-            body,
-        );
-
-        let _ = writer_half.write_all(response.as_bytes()).await;
-        let _ = writer_half.flush().await;
-    });
+        tokio::spawn(async move {
+            let stream = tokio::select! {
+                Ok(s) = rx  => s,
+                Ok(s) = rx6 => s,
+                else => {
+                    eprintln!("[OAuth] Both listeners timed out or errored");
+                    return;
+                }
+            };
+            handle_oauth_stream(stream, app).await;
+        });
+    } else {
+        tokio::spawn(async move {
+            let Ok(stream) = rx.await else {
+                eprintln!("[OAuth] Server timed out or failed to accept connection");
+                return;
+            };
+            handle_oauth_stream(stream, app).await;
+        });
+    }
 
     Ok(port)
 }

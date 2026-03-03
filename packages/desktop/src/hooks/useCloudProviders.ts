@@ -6,7 +6,7 @@
  * If you find yourself re-implementing this inline, import from here instead.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   initiateDesktopOAuth,
   storeCloudToken,
@@ -19,6 +19,7 @@ import type {
   ProviderState,
   CloudProviderStatus,
 } from "@freed/ui/components/CloudProviderCard";
+import { setCloudProviders } from "@freed/ui/lib/debug-store";
 
 export type { ProviderState, CloudProviderStatus };
 
@@ -64,6 +65,20 @@ export function useCloudProviders() {
     },
     [setProvider],
   );
+
+  // Keep the debug panel's cloud sync section in sync with live provider state.
+  useEffect(() => {
+    setCloudProviders({
+      gdrive: {
+        status: providers.gdrive.status,
+        error: providers.gdrive.status === "error" ? providers.gdrive.error : undefined,
+      },
+      dropbox: {
+        status: providers.dropbox.status,
+        error: providers.dropbox.status === "error" ? providers.dropbox.error : undefined,
+      },
+    });
+  }, [providers]);
 
   const anyConnected =
     providers.gdrive.status === "connected" ||
