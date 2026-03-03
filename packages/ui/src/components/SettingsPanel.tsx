@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
 import { BottomSheet } from "./BottomSheet.js";
+import { useDebugStore } from "../lib/debug-store.js";
 
 interface SettingsPanelProps {
   open: boolean;
@@ -54,6 +55,7 @@ type UpdateCheckState =
 export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const { SettingsExtraSections, checkForUpdates, applyUpdate, headerDragRegion } = usePlatform();
   const preferences = useAppStore((s) => s.preferences);
+  const toggleDebug = useDebugStore((s) => s.toggle);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
 
   const [display, setDisplay] = useState(() => preferences.display);
@@ -209,6 +211,23 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
               </div>
             )}
           </div>
+        </section>
+
+        {/* Developer */}
+        <section>
+          <h3 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-4">
+            Developer
+          </h3>
+          <button
+            onClick={() => { onClose(); setTimeout(toggleDebug, 150); }}
+            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-left"
+          >
+            <div>
+              <p className="text-sm text-[#a1a1aa]">Open Debug Panel</p>
+              <p className="text-xs text-[#52525b] mt-0.5">Sync diagnostics, event log, document inspector</p>
+            </div>
+            <span className="text-[10px] font-mono text-[#52525b] shrink-0 ml-3">⌘⇧D</span>
+          </button>
         </section>
 
         {/* Footer */}

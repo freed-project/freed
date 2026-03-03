@@ -11,6 +11,8 @@
     "./components/Toast": "./src/components/Toast.tsx",
     "./components/AddFeedDialog": "./src/components/AddFeedDialog.tsx",
     "./components/SettingsPanel": "./src/components/SettingsPanel.tsx",
+    "./components/DebugPanel": "./src/components/DebugPanel.tsx",
+    "./lib/debug-store": "./src/lib/debug-store.ts",
     "./context": "./src/context/index.ts"
   },
   "peerDependencies": {

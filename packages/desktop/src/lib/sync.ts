@@ -36,6 +36,24 @@ export async function getLocalIP(): Promise<string> {
   }
 }
 
+export interface NetworkInterface {
+  interface: string;
+  ip: string;
+  url: string;
+}
+
+/**
+ * Get all non-loopback IPv4 network interfaces with sync URLs.
+ * Use this to let the user pick the right IP when a VPN is active.
+ */
+export async function getAllLocalIPs(): Promise<NetworkInterface[]> {
+  try {
+    return await invoke<NetworkInterface[]>("get_all_local_ips");
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Get the sync relay URL for PWA to connect to.
  * The returned URL includes the pairing token as `?t=<token>`.
