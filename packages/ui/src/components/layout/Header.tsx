@@ -41,6 +41,7 @@ export function Header({ onMenuClick }: HeaderProps) {
         <div
           className="h-14 flex items-center pl-4 pr-2"
           style={headerDragRegion ? { paddingLeft: MACOS_TRAFFIC_LIGHT_INSET } : undefined}
+          {...(headerDragRegion ? { "data-tauri-drag-region": true } : {})}
         >
           {/* Mobile menu button */}
           <button
@@ -62,8 +63,13 @@ export function Header({ onMenuClick }: HeaderProps) {
             <span className="text-lg font-bold gradient-text font-logo">FREED</span>
           </div>
 
-          {/* Spacer */}
-          <div className="flex-1" />
+          {/* Spacer — explicitly draggable so the empty middle area registers drag events */}
+          <div
+            className="flex-1 self-stretch"
+            {...(headerDragRegion
+              ? { "data-tauri-drag-region": true, style: { WebkitAppRegion: "drag" } as React.CSSProperties }
+              : {})}
+          />
 
           {/* Actions */}
           <div
