@@ -9,6 +9,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../../lib/store";
 import { disconnect, clearStoredRelayUrl } from "../../lib/sync";
 import { SyncConnectDialog } from "../SyncConnectDialog";
+import { useDebugStore } from "@freed/ui/lib/debug-store";
+
+const DEBUG_TAP_COUNT = 5;
+const DEBUG_TAP_WINDOW_MS = 2000;
 
 function formatRelativeTime(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -28,6 +32,11 @@ export function SyncIndicator() {
   const syncConnected = useAppStore((s) => s.syncConnected);
   const feeds = useAppStore((s) => s.feeds);
   const panelRef = useRef<HTMLDivElement>(null);
+  const toggleDebug = useDebugStore((s) => s.toggle);
+
+  // 5-tap secret trigger for debug panel (resets after 2s idle)
+  const tapCountRef = useRef(0);
+  const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const feedList = Object.values(feeds);
   const feedCount = feedList.length;
@@ -77,7 +86,22 @@ export function SyncIndicator() {
   return (
     <div className="relative" ref={panelRef}>
       <button
-        onClick={() => setPanelOpen((prev) => !prev)}
+        onClick={() => {
+          // Count tap for secret debug trigger; normal dropdown toggle on every tap
+          tapCountRef.current += 1;
+          if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+
+          if (tapCountRef.current >= DEBUG_TAP_COUNT) {
+            tapCountRef.current = 0;
+            setPanelOpen(false);
+            toggleDebug();
+          } else {
+            tapTimerRef.current = setTimeout(() => {
+              tapCountRef.current = 0;
+            }, DEBUG_TAP_WINDOW_MS);
+            setPanelOpen((prev) => !prev);
+          }
+        }}
         className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm transition-colors hover:bg-white/5 ${statusColor}`}
       >
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} ${isSyncing ? "animate-pulse" : ""}`} />

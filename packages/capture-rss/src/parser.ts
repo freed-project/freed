@@ -155,6 +155,37 @@ function normalizeItem(item: any): ParsedFeedItem {
 }
 
 // =============================================================================
+// Pure XML Parsing (transport-agnostic)
+// =============================================================================
+
+/**
+ * Parse RSS/Atom XML into a ParsedFeed without making any network requests.
+ *
+ * Use this when the calling environment handles HTTP itself (e.g. Tauri's
+ * fetch_url IPC) and only needs the parsing step.
+ *
+ * @param xml - Raw RSS/Atom XML string
+ * @param url - The feed URL (used to populate feedUrl)
+ * @returns Parsed feed
+ */
+export async function parseFeedXml(
+  xml: string,
+  url: string
+): Promise<ParsedFeed> {
+  const parsed = await parser.parseString(xml);
+  return {
+    title: parsed.title || "Untitled Feed",
+    description: parsed.description,
+    link: parsed.link,
+    feedUrl: url,
+    language: (parsed as any).language,
+    lastBuildDate: parsed.lastBuildDate,
+    image: (parsed as any).image,
+    items: (parsed.items || []).map(normalizeItem),
+  };
+}
+
+// =============================================================================
 // Feed Validation
 // =============================================================================
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { FeedItem as FeedItemType } from "@freed/shared";
-import { useAppStore, usePlatform, MACOS_TRAFFIC_LIGHT_INSET } from "../../context/PlatformContext";
+import { useAppStore, usePlatform, MACOS_TRAFFIC_LIGHT_INSET } from "../../context/PlatformContext.js";
 import { applyFocusMode, type FocusOptions } from "@freed/shared";
 
 interface ReaderViewProps {
@@ -50,7 +50,6 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
   const toggleFocus = () => {
     setFocusOptions((prev) => {
       const next = { ...prev, enabled: !prev.enabled };
-      // Persist the toggle back to preferences
       updatePreferences({
         display: {
           ...storedDisplay,
@@ -64,7 +63,6 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
   const hasContent = item.preservedContent?.html;
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
 
-  // For focus mode on HTML content: render as plain text with emphasis
   const plainText = hasContent
     ? htmlToText(item.preservedContent!.html)
     : item.content.text;
@@ -97,12 +95,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
               viewBox="0 0 24 24"
               stroke="currentColor"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             <span className="text-sm text-[#71717a] group-hover:text-[#a1a1aa] truncate transition-colors">
               {item.author.displayName}
@@ -114,9 +107,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
           {/* Focus mode toggle */}
           <button
             onClick={toggleFocus}
-            title={
-              focusOptions.enabled ? "Disable focus mode" : "Enable focus mode"
-            }
+            title={focusOptions.enabled ? "Disable focus mode" : "Enable focus mode"}
             className={`p-2 rounded-lg transition-colors text-sm font-bold ${
               focusOptions.enabled
                 ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
@@ -148,12 +139,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
               viewBox="0 0 24 24"
               stroke="currentColor"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
-              />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
             </svg>
           </button>
 
@@ -167,18 +153,8 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
             style={headerDragRegion ? noDrag : undefined}
             aria-label={item.userState.archived ? "Unarchive" : "Archive"}
           >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 13l4 4L19 7"
-              />
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </button>
         </div>
@@ -189,9 +165,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
         {/* Meta */}
         <div className="mb-6">
           <div className="flex items-center gap-3 text-sm text-[#71717a] mb-4 flex-wrap">
-            <span className="font-medium text-[#a1a1aa]">
-              {item.author.displayName}
-            </span>
+            <span className="font-medium text-[#a1a1aa]">{item.author.displayName}</span>
             <span>•</span>
             <span>{timeAgo}</span>
             {item.preservedContent?.readingTime && (
@@ -203,8 +177,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-bold mb-4 leading-tight">
-            {item.content.linkPreview?.title ||
-              item.content.text?.slice(0, 100)}
+            {item.content.linkPreview?.title || item.content.text?.slice(0, 100)}
           </h1>
 
           {item.content.linkPreview?.url && (
@@ -215,18 +188,8 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
               className="inline-flex items-center gap-1 text-[#8b5cf6] hover:text-[#a78bfa] text-sm font-medium transition-colors"
             >
               View original
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                />
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
             </a>
           )}
@@ -243,12 +206,10 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
 
         {/* Content */}
         {focusOptions.enabled ? (
-          // Focus mode: render as plain text with emphasis segments
           <div className="text-[#a1a1aa] text-lg leading-relaxed">
             <FocusText text={plainText ?? ""} options={focusOptions} />
           </div>
         ) : hasContent ? (
-          // Rich HTML content
           <div
             className="prose prose-invert prose-lg max-w-none
               prose-headings:text-[#fafafa] prose-headings:font-semibold
@@ -263,7 +224,6 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
             dangerouslySetInnerHTML={{ __html: item.preservedContent!.html }}
           />
         ) : (
-          // Plain text
           <div className="text-[#a1a1aa] text-lg leading-relaxed">
             {item.content.text}
           </div>

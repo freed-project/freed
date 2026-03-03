@@ -2,10 +2,12 @@
 //!
 //! Native desktop app that bundles capture, sync relay, and reader UI.
 
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use futures_util::{SinkExt, StreamExt};
+use rand::RngCore;
 use std::collections::HashSet;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock as StdRwLock};
 use tauri::{Emitter, Manager};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -14,7 +16,7 @@ use tokio::sync::{broadcast, RwLock};
 use tokio_tungstenite::{
     accept_hdr_async,
     tungstenite::{
-        handshake::server::{Request, Response},
+        handshake::server::{ErrorResponse, Request as WsRequest, Response as WsResponse},
         Message,
     },
 };
@@ -22,19 +24,45 @@ use tokio_tungstenite::{
 #[cfg(target_os = "macos")]
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
-// ─── Sync relay state ────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Token management
+// ---------------------------------------------------------------------------
 
-struct SyncRelayState {
-    port: u16,
-    broadcast_tx: broadcast::Sender<Vec<u8>>,
-    current_doc: RwLock<Option<Vec<u8>>>,
-    client_count: RwLock<usize>,
+/// Generates a cryptographically random 256-bit pairing token encoded as
+/// base64url without padding (43 ASCII characters).
+fn generate_token() -> String {
+    let mut bytes = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    URL_SAFE_NO_PAD.encode(bytes)
 }
 
-type RelayState = Arc<SyncRelayState>;
+/// Loads the pairing token from `data_dir/pairing-token`, or creates and
+/// persists a fresh one if the file is missing or malformed.
+fn load_or_create_token(data_dir: &std::path::Path) -> String {
+    let path = data_dir.join("pairing-token");
+    if let Ok(raw) = std::fs::read_to_string(&path) {
+        let token = raw.trim().to_string();
+        // 32 bytes base64url-no-pad → exactly 43 chars, all URL-safe
+        let looks_valid = token.len() == 43
+            && token
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+        if looks_valid {
+            return token;
+        }
+    }
+    let token = generate_token();
+    let _ = std::fs::write(&path, &token);
+    token
+}
 
-// ─── mDNS state (kept alive for the app lifetime) ────────────────────────────
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// mDNS advertisement
+// ---------------------------------------------------------------------------
 
+/// Keeps the mDNS daemon alive for the application lifetime.
+/// The `Drop` impl shuts the daemon down cleanly on exit.
 struct MdnsState(Option<mdns_sd::ServiceDaemon>);
 
 impl Drop for MdnsState {
@@ -45,11 +73,9 @@ impl Drop for MdnsState {
     }
 }
 
-// ─── mDNS advertisement ──────────────────────────────────────────────────────
-
-/// Register `_freed-sync._tcp.local` via mDNS so native clients can discover
-/// the relay without a QR scan. TXT records contain only version + app name —
-/// the pairing token is never advertised.
+/// Register `_freed-sync._tcp.local` so future native clients can discover
+/// the relay without a QR scan.  The pairing token is intentionally absent
+/// from TXT records — discovery reveals the host/port, not the secret.
 fn advertise_mdns(port: u16) -> Option<mdns_sd::ServiceDaemon> {
     use mdns_sd::{ServiceDaemon, ServiceInfo};
 
@@ -68,9 +94,8 @@ fn advertise_mdns(port: u16) -> Option<mdns_sd::ServiceDaemon> {
     properties.insert("v".to_string(), "1".to_string());
     properties.insert("app".to_string(), "freed".to_string());
 
-    // Pass `()` as the IP address so mdns-sd auto-discovers all local network
-    // interfaces — more robust than hard-coding the LAN IP, and avoids IPv4/v6
-    // type juggling. The daemon will advertise on all active interfaces.
+    // Pass `()` so mdns-sd auto-discovers all local interfaces — avoids
+    // hard-coding the LAN IP and handles multi-homed machines gracefully.
     let service = ServiceInfo::new(
         "_freed-sync._tcp.local.",
         "Freed Desktop",
@@ -91,14 +116,15 @@ fn advertise_mdns(port: u16) -> Option<mdns_sd::ServiceDaemon> {
     Some(daemon)
 }
 
-// ─── Local snapshot rotation ─────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Local snapshot rotation (grandfather-father-son)
+// ---------------------------------------------------------------------------
 
-/// Write a timestamped snapshot of the Automerge binary to
-/// `{app_data}/snapshots/freed-{unix_secs}.automerge`, then prune old snapshots
-/// using a grandfather-father-son rotation:
-///   - last 60 minutely  (≤ 1 hour ago)
-///   - last 24 hourly    (1–24 hours ago)
-///   - last 30 daily     (> 24 hours ago)
+/// Write a timestamped Automerge snapshot to `{app_data}/snapshots/` and
+/// prune old files using a GFS scheme:
+///   - last 60 minutely  (≤ 1 hour old)
+///   - last 24 hourly    (1–24 hours old)
+///   - last 30 daily     (> 24 hours old)
 fn write_snapshot(snapshot_dir: &std::path::Path, doc_bytes: &[u8]) {
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -139,7 +165,6 @@ fn prune_snapshots(snapshot_dir: &std::path::Path, now_secs: u64) {
         })
         .collect();
 
-    // Sort newest first.
     entries.sort_by_key(|(ts, _)| Reverse(*ts));
 
     let mut kept: HashSet<std::path::PathBuf> = Default::default();
@@ -149,7 +174,6 @@ fn prune_snapshots(snapshot_dir: &std::path::Path, now_secs: u64) {
 
     for (ts, path) in &entries {
         let age = now_secs.saturating_sub(*ts);
-
         if age < 3_600 && minutely < 60 {
             kept.insert(path.clone());
             minutely += 1;
@@ -177,7 +201,30 @@ fn prune_snapshots(snapshot_dir: &std::path::Path, now_secs: u64) {
     }
 }
 
-// ─── Tauri commands ──────────────────────────────────────────────────────────
+// Relay state
+// ---------------------------------------------------------------------------
+
+struct SyncRelayState {
+    port: u16,
+    /// Broadcast channel — sends doc bytes to all connected clients.
+    broadcast_tx: broadcast::Sender<Vec<u8>>,
+    /// Latest doc binary, served to new joiners immediately on connect.
+    current_doc: RwLock<Option<Vec<u8>>>,
+    /// Live connection count (displayed in tray / sync indicator).
+    client_count: RwLock<usize>,
+    /// Pairing token — must appear as `?t=<token>` in the WS upgrade URI.
+    ///
+    /// Uses `std::sync::RwLock` (not Tokio's) because it is never held
+    /// across an `.await` point; it is read/written synchronously and the
+    /// guard is dropped before any async work begins.
+    pairing_token: StdRwLock<String>,
+}
+
+type RelayState = Arc<SyncRelayState>;
+
+// ---------------------------------------------------------------------------
+// Tauri commands — meta
+// ---------------------------------------------------------------------------
 
 #[tauri::command]
 fn get_version() -> String {
@@ -189,6 +236,11 @@ fn get_platform() -> String {
     std::env::consts::OS.to_string()
 }
 
+// ---------------------------------------------------------------------------
+// Tauri commands — network / proxy
+// ---------------------------------------------------------------------------
+
+/// Fetch any URL and return its body as text (bypasses browser CORS).
 #[tauri::command]
 async fn fetch_url(url: String) -> Result<String, String> {
     let client = reqwest::Client::builder()
@@ -209,6 +261,7 @@ async fn fetch_url(url: String) -> Result<String, String> {
     response.text().await.map_err(|e| e.to_string())
 }
 
+/// Make an authenticated POST to the X (Twitter) API.
 #[tauri::command]
 async fn x_api_request(
     url: String,
@@ -239,6 +292,10 @@ async fn x_api_request(
     response.text().await.map_err(|e| e.to_string())
 }
 
+// ---------------------------------------------------------------------------
+// Tauri commands — sync
+// ---------------------------------------------------------------------------
+
 #[tauri::command]
 fn get_local_ip() -> Result<String, String> {
     local_ip_address::local_ip()
@@ -246,13 +303,67 @@ fn get_local_ip() -> Result<String, String> {
         .map_err(|e| e.to_string())
 }
 
+/// Get all non-loopback IPv4 addresses with their interface names.
+/// Useful for diagnosing cases where the primary IP is a VPN tunnel
+/// rather than the Wi-Fi interface the phone is connected to.
+#[tauri::command]
+fn get_all_local_ips() -> Vec<serde_json::Value> {
+    let port = 8765u16;
+    match local_ip_address::list_afinet_netifas() {
+        Ok(ifaces) => ifaces
+            .into_iter()
+            .filter(|(_, ip)| {
+                // IPv4 only, skip loopback
+                matches!(ip, std::net::IpAddr::V4(v4) if !v4.is_loopback())
+            })
+            .map(|(name, ip)| {
+                serde_json::json!({
+                    "interface": name,
+                    "ip": ip.to_string(),
+                    "url": format!("ws://{}:{}", ip, port),
+                })
+            })
+            .collect(),
+        Err(_) => vec![],
+    }
+}
+
+/// Returns the full WebSocket pairing URL including the auth token.
+///
+/// Format: `ws://<lan-ip>:<port>?t=<base64url-token>`
+///
+/// This URL is encoded into the QR code shown in the Mobile Sync tab.
+/// Only devices that scan the QR code (i.e. know the token) can connect.
 #[tauri::command]
 fn get_sync_url(state: tauri::State<'_, RelayState>) -> String {
     let port = state.port;
-    match local_ip_address::local_ip() {
-        Ok(ip) => format!("ws://{}:{}", ip, port),
-        Err(_) => format!("ws://localhost:{}", port),
-    }
+    // StdRwLock guard is held briefly and dropped before any await — safe.
+    let token = state.pairing_token.read().unwrap().clone();
+    let ip = local_ip_address::local_ip()
+        .map(|ip| ip.to_string())
+        .unwrap_or_else(|_| "localhost".to_string());
+    format!("ws://{}:{}?t={}", ip, port, token)
+}
+
+/// Rotates the pairing token and persists the new value to disk.
+///
+/// In-flight connections are unaffected (they already authenticated).
+/// New connection attempts with the old token will be rejected — devices
+/// must rescan the QR code to reconnect.
+#[tauri::command]
+async fn reset_pairing_token(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, RelayState>,
+) -> Result<String, String> {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?;
+    let new_token = generate_token();
+    std::fs::write(data_dir.join("pairing-token"), &new_token).map_err(|e| e.to_string())?;
+    *state.pairing_token.write().unwrap() = new_token.clone();
+    println!("[Sync] Pairing token rotated");
+    Ok(new_token)
 }
 
 #[tauri::command]
@@ -260,19 +371,17 @@ async fn get_sync_client_count(state: tauri::State<'_, RelayState>) -> Result<us
     Ok(*state.client_count.read().await)
 }
 
-/// Broadcast document to all connected LAN clients and write a local snapshot.
-/// The snapshot is written before broadcast so recovery is always possible even
-/// if the broadcast fails.
+/// Push a document update to all connected clients.
 #[tauri::command]
 async fn broadcast_doc(
     state: tauri::State<'_, RelayState>,
     app: tauri::AppHandle,
     doc_bytes: Vec<u8>,
 ) -> Result<(), String> {
-    // Write snapshot before touching broadcast state.
+    // Write a GFS snapshot before touching broadcast state — recovery is
+    // always possible even if the broadcast itself fails.
     if let Ok(data_dir) = app.path().app_data_dir() {
         let snapshot_dir = data_dir.join("snapshots");
-        // Run snapshot I/O on a blocking thread to avoid stalling the async executor.
         let bytes = doc_bytes.clone();
         tokio::task::spawn_blocking(move || write_snapshot(&snapshot_dir, &bytes))
             .await
@@ -281,26 +390,18 @@ async fn broadcast_doc(
 
     *state.current_doc.write().await = Some(doc_bytes.clone());
     let _ = state.broadcast_tx.send(doc_bytes);
-
     Ok(())
 }
 
-#[tauri::command]
-fn show_window(app: tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
-}
+// ---------------------------------------------------------------------------
+// Tauri commands — mDNS + snapshots
+// ---------------------------------------------------------------------------
 
-/// Returns true if the mDNS service daemon started successfully.
 #[tauri::command]
 fn get_mdns_active(mdns: tauri::State<'_, MdnsState>) -> bool {
     mdns.0.is_some()
 }
 
-/// List available local snapshots, newest first.
-/// Each entry is a filename like `freed-1740000001.automerge`.
 #[tauri::command]
 fn list_snapshots(app: tauri::AppHandle) -> Vec<String> {
     let Ok(data_dir) = app.path().app_data_dir() else {
@@ -326,33 +427,85 @@ fn list_snapshots(app: tauri::AppHandle) -> Vec<String> {
     entries
 }
 
-// ─── WebSocket connection handler ────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Tauri commands — window
+// ---------------------------------------------------------------------------
 
-async fn handle_connection(stream: TcpStream, addr: SocketAddr, state: RelayState, app: tauri::AppHandle) {
+#[tauri::command]
+fn show_window(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// WebSocket relay
+// ---------------------------------------------------------------------------
+
+/// Authenticate and handle a single WebSocket connection.
+///
+/// The client must include `?t=<token>` in the upgrade URI.  Any connection
+/// that omits the token or presents an incorrect value is rejected with HTTP
+/// 401 before the WebSocket handshake completes — no data is exchanged.
+async fn handle_connection(
+    stream: TcpStream,
+    addr: SocketAddr,
+    state: RelayState,
+    app: tauri::AppHandle,
+) {
     println!("[Sync] New connection from: {}", addr);
 
-    // Inject Private Network Access (PNA) and CORS headers so Chrome allows
-    // connections from a public origin (freed.wtf) to a private LAN address.
-    let ws_stream = match accept_hdr_async(stream, |_req: &Request, mut resp: Response| {
-        let h = resp.headers_mut();
-        h.insert(
-            "access-control-allow-private-network",
-            "true".parse().unwrap(),
-        );
-        h.insert("access-control-allow-origin", "*".parse().unwrap());
-        Ok(resp)
-    })
+    // Snapshot the token now — the StdRwLock guard is dropped here, so it is
+    // never held across an .await point.
+    let expected_token = state.pairing_token.read().unwrap().clone();
+
+    let ws_stream = match accept_hdr_async(
+        stream,
+        move |req: &WsRequest, resp: WsResponse| -> Result<WsResponse, ErrorResponse> {
+            let token_ok = req
+                .uri()
+                .query()
+                .and_then(|q| {
+                    // Parse ?t=<value> from the query string
+                    q.split('&').find_map(|pair| {
+                        let mut kv = pair.splitn(2, '=');
+                        (kv.next() == Some("t")).then(|| kv.next()).flatten()
+                    })
+                })
+                .map(|t| t == expected_token.as_str())
+                .unwrap_or(false);
+
+            if token_ok {
+                Ok(resp)
+            } else {
+                eprintln!("[Sync] Rejected unauthorized connection from {}", addr);
+                Err(
+                    tokio_tungstenite::tungstenite::http::Response::builder()
+                        .status(401)
+                        .body(Some(
+                            "Unauthorized: rescan the QR code to pair".to_owned(),
+                        ))
+                        .unwrap(),
+                )
+            }
+        },
+    )
     .await
     {
         Ok(ws) => ws,
         Err(e) => {
-            eprintln!("[Sync] WebSocket handshake failed: {}", e);
+            // 401 rejections are normal; log everything else
+            if !e.to_string().contains("HTTP error") {
+                eprintln!("[Sync] WebSocket handshake failed: {}", e);
+            }
             return;
         }
     };
 
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
+    // Increment client count and notify frontend
     {
         let mut count = state.client_count.write().await;
         *count += 1;
@@ -361,7 +514,7 @@ async fn handle_connection(stream: TcpStream, addr: SocketAddr, state: RelayStat
         let _ = app.emit("sync-client-count", new_count);
     }
 
-    // Send current document state to new client.
+    // Push current doc to the new client immediately
     if let Some(doc) = state.current_doc.read().await.clone() {
         if let Err(e) = ws_sender.send(Message::Binary(doc.into())).await {
             eprintln!("[Sync] Failed to send initial doc: {}", e);
@@ -375,6 +528,7 @@ async fn handle_connection(stream: TcpStream, addr: SocketAddr, state: RelayStat
             msg = ws_receiver.next() => {
                 match msg {
                     Some(Ok(Message::Binary(data))) => {
+                        // Client pushed a doc update — store and rebroadcast
                         let bytes = data.to_vec();
                         *state.current_doc.write().await = Some(bytes.clone());
                         let _ = state.broadcast_tx.send(bytes);
@@ -404,6 +558,7 @@ async fn handle_connection(stream: TcpStream, addr: SocketAddr, state: RelayStat
         }
     }
 
+    // Decrement client count and notify frontend
     {
         let mut count = state.client_count.write().await;
         *count = count.saturating_sub(1);
@@ -433,7 +588,9 @@ async fn start_sync_relay(state: RelayState, app: tauri::AppHandle) {
     }
 }
 
-// ─── App entry point ─────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// App entry point
+// ---------------------------------------------------------------------------
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -444,6 +601,8 @@ pub fn run() {
         broadcast_tx,
         current_doc: RwLock::new(None),
         client_count: RwLock::new(0),
+        // Populated from disk in .setup() before the relay starts accepting connections.
+        pairing_token: StdRwLock::new(String::new()),
     });
 
     let relay_state_clone = relay_state.clone();
@@ -465,10 +624,17 @@ pub fn run() {
             )
             .expect("Failed to apply vibrancy");
 
-            // Start mDNS advertisement and keep the daemon alive in managed state.
-            let mdns_daemon = advertise_mdns(8765);
-            app.manage(MdnsState(mdns_daemon));
+            // Load (or generate) the persistent pairing token before the relay
+            // starts accepting connections.
+            let data_dir = app
+                .path()
+                .app_data_dir()
+                .expect("Failed to resolve app data directory");
+            std::fs::create_dir_all(&data_dir).ok();
+            let token = load_or_create_token(&data_dir);
+            *relay_state_clone.pairing_token.write().unwrap() = token;
 
+            // Build system tray
             let show_item = MenuItem::with_id(app, "show", "Show Freed", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit Freed", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
@@ -505,6 +671,12 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // Start mDNS advertisement and keep the daemon alive.
+            let mdns_daemon = advertise_mdns(8765);
+            app.manage(MdnsState(mdns_daemon));
+
+            // Start the relay — token is already set, so new connections are
+            // immediately subject to authentication.
             let state = relay_state_clone.clone();
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -525,9 +697,11 @@ pub fn run() {
             fetch_url,
             x_api_request,
             get_local_ip,
+            get_all_local_ips,
             get_sync_url,
             get_sync_client_count,
             broadcast_doc,
+            reset_pairing_token,
             show_window,
             get_mdns_active,
             list_snapshots,
