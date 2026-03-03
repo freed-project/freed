@@ -417,7 +417,7 @@ export function SyncConnectDialog({ open, onClose, initialMode = "manual" }: Syn
         ))}
       </div>
 
-      {mode === "scanning" && (
+      {mode === "scanning" ? (
         <div className="mb-4">
           <div className="relative rounded-xl overflow-hidden bg-black aspect-square">
             <video
