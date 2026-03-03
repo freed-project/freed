@@ -259,9 +259,11 @@ export async function docBatchRefreshFeeds(
         stored.lastFetched = feed.lastFetched;
       }
 
-      // Heal sentinel titles from live feed XML — never clobbers user-set names.
-      // Both "Untitled Feed" (OPML fallback) and the raw feed URL (addRssFeed fallback)
-      // are treated as sentinels indicating a title was never properly resolved.
+      // Heal sentinel titles — never clobbers user-set names.
+      // "Untitled Feed" (OPML fallback) and the raw feed URL (addRssFeed fallback)
+      // are treated as sentinels. The incoming title may be the real XML title or
+      // a hostname-derived fallback from refreshAllFeeds; both are better than
+      // leaving the sentinel in place.
       if (feed.title && feed.title !== "Untitled Feed" && feed.title !== feed.url) {
         if (stored.title === "Untitled Feed" || stored.title === stored.url) {
           stored.title = feed.title;
