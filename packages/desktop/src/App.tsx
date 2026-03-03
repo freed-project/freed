@@ -2,7 +2,7 @@ import { useEffect, useMemo, useCallback, useRef, useState } from "react";
 import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
 import { PlatformProvider, type PlatformConfig } from "@freed/ui/context";
-import { UpdateNotification } from "./components/UpdateNotification";
+import { UpdateNotification, type UpdateState } from "./components/UpdateNotification";
 import { CloudSyncSetupDialog } from "./components/CloudSyncSetupDialog";
 import { CloudSyncNudge } from "./components/CloudSyncNudge";
 import { useAppStore } from "./lib/store";
@@ -27,6 +27,9 @@ import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
 import { check, type Update } from "@tauri-apps/plugin-updater";
+
+const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+const JUST_UPDATED_KEY = "freed-updated-to";
 
 function App() {
   const initialize = useAppStore((state) => state.initialize);
@@ -54,23 +57,97 @@ function App() {
     };
   }, [isInitialized]);
 
+  // --- Update system ---
+
+  // Single source of truth for update state, shared by the toast and the Settings flow.
+  const [updateState, setUpdateState] = useState<UpdateState>({ phase: "idle" });
   const pendingUpdate = useRef<Update | null>(null);
 
+  // Show a "just updated" banner for 5s after a process relaunch.
+  const [justUpdated, setJustUpdated] = useState<string | null>(null);
+  useEffect(() => {
+    const version = localStorage.getItem(JUST_UPDATED_KEY);
+    if (!version) return;
+    localStorage.removeItem(JUST_UPDATED_KEY);
+    setJustUpdated(version);
+    const t = setTimeout(() => setJustUpdated(null), 5_000);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Poll for updates in the background every 30 minutes.
+  useEffect(() => {
+    async function poll() {
+      try {
+        const update = await check();
+        if (update) {
+          pendingUpdate.current = update;
+          setUpdateState({ phase: "available", update });
+        }
+      } catch {
+        // Silent — offline or endpoint down.
+      }
+    }
+    const initial = setTimeout(poll, 5_000);
+    const interval = setInterval(poll, UPDATE_CHECK_INTERVAL_MS);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Manual check triggered from Settings panel.
   const checkForUpdates = useCallback(async (): Promise<string | null> => {
     const update = await check();
     if (update) {
       pendingUpdate.current = update;
+      setUpdateState({ phase: "available", update });
       return update.version;
     }
     return null;
   }, []);
 
+  // Download + install with progress, then relaunch. Used by both the toast
+  // and the "Install & Restart" button in Settings via PlatformContext.
   const applyUpdate = useCallback(async () => {
     const update = pendingUpdate.current;
     if (!update) return;
-    await update.downloadAndInstall();
-    await relaunch();
+
+    let totalBytes = 0;
+    let downloadedBytes = 0;
+    setUpdateState({ phase: "downloading", percent: 0 });
+
+    try {
+      await update.downloadAndInstall((event) => {
+        switch (event.event) {
+          case "Started":
+            totalBytes = event.data.contentLength ?? 0;
+            break;
+          case "Progress":
+            downloadedBytes += event.data.chunkLength;
+            setUpdateState({
+              phase: "downloading",
+              percent: totalBytes > 0 ? (downloadedBytes / totalBytes) * 100 : 0,
+            });
+            break;
+          case "Finished":
+            setUpdateState({ phase: "ready" });
+            break;
+        }
+      });
+
+      // Persist the installed version across the relaunch so we can greet the user.
+      localStorage.setItem(JUST_UPDATED_KEY, update.version);
+      await relaunch();
+    } catch (err) {
+      setUpdateState({
+        phase: "error",
+        message: err instanceof Error ? err.message : "Update failed",
+      });
+    }
   }, []);
+
+  const handleRelaunch = useCallback(() => relaunch(), []);
+  const handleDismissUpdate = useCallback(() => setUpdateState({ phase: "idle" }), []);
 
   const handleFactoryReset = useCallback(async (deleteFromCloud: boolean) => {
     const providers = getActiveProviders();
@@ -147,13 +224,33 @@ function App() {
         <AppShell>
           <FeedView />
         </AppShell>
-        <UpdateNotification />
+        <UpdateNotification
+          state={updateState}
+          onInstall={applyUpdate}
+          onRelaunch={handleRelaunch}
+          onDismiss={handleDismissUpdate}
+        />
       </div>
+
       {/* Toast nudge — shown every launch while no cloud provider is connected */}
       <CloudSyncNudge onSetUp={() => setShowCloudSetup(true)} />
 
       {showCloudSetup && (
         <CloudSyncSetupDialog onDismiss={() => setShowCloudSetup(false)} />
+      )}
+
+      {/* Post-restart confirmation — shown for 5s after a successful update relaunch */}
+      {justUpdated && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 animate-slide-up pointer-events-none">
+          <div className="glass-card px-4 py-3 shadow-lg border border-[rgba(34,197,94,0.3)] flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+              <path d="M3 8l3.5 3.5L13 5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="text-sm text-text-primary">
+              Updated to <span className="font-mono font-bold">v{justUpdated}</span>
+            </span>
+          </div>
+        </div>
       )}
     </PlatformProvider>
   );

@@ -1,80 +1,28 @@
-import { useState, useEffect, useCallback } from "react";
-import { check, type Update } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
+import type { Update } from "@tauri-apps/plugin-updater";
 
-type UpdateState =
+export type UpdateState =
   | { phase: "idle" }
   | { phase: "available"; update: Update }
   | { phase: "downloading"; percent: number }
   | { phase: "ready" }
   | { phase: "error"; message: string };
 
-const CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
-
-export function UpdateNotification() {
-  const [state, setState] = useState<UpdateState>({ phase: "idle" });
-  const [dismissed, setDismissed] = useState(false);
-
-  const checkForUpdate = useCallback(async () => {
-    try {
-      const update = await check();
-      if (update) {
-        setState({ phase: "available", update });
-      }
-    } catch {
-      // Silently ignore check failures (offline, endpoint down, etc.)
-    }
-  }, []);
-
-  useEffect(() => {
-    // Initial check after a short delay so it doesn't block startup
-    const initial = setTimeout(checkForUpdate, 5_000);
-    const interval = setInterval(checkForUpdate, CHECK_INTERVAL_MS);
-    return () => {
-      clearTimeout(initial);
-      clearInterval(interval);
-    };
-  }, [checkForUpdate]);
-
-  const handleDownloadAndInstall = useCallback(async () => {
-    if (state.phase !== "available") return;
-    const { update } = state;
-
-    try {
-      let totalBytes = 0;
-      let downloadedBytes = 0;
-      setState({ phase: "downloading", percent: 0 });
-
-      await update.downloadAndInstall((event) => {
-        switch (event.event) {
-          case "Started":
-            totalBytes = event.data.contentLength ?? 0;
-            break;
-          case "Progress":
-            downloadedBytes += event.data.chunkLength;
-            setState({
-              phase: "downloading",
-              percent: totalBytes > 0 ? (downloadedBytes / totalBytes) * 100 : 0,
-            });
-            break;
-          case "Finished":
-            setState({ phase: "ready" });
-            break;
-        }
-      });
-    } catch (err) {
-      setState({
-        phase: "error",
-        message: err instanceof Error ? err.message : "Update failed",
-      });
-    }
-  }, [state]);
-
-  const handleRelaunch = useCallback(async () => {
-    await relaunch();
-  }, []);
-
-  if (state.phase === "idle" || dismissed) return null;
+/**
+ * Controlled update toast — all state lives in App.tsx.
+ * Renders nothing when phase is "idle".
+ */
+export function UpdateNotification({
+  state,
+  onInstall,
+  onRelaunch,
+  onDismiss,
+}: {
+  state: UpdateState;
+  onInstall: () => void;
+  onRelaunch: () => void;
+  onDismiss: () => void;
+}) {
+  if (state.phase === "idle") return null;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 max-w-sm animate-slide-up">
@@ -87,14 +35,14 @@ export function UpdateNotification() {
           <div className="flex-1 min-w-0">
             <UpdateContent
               state={state}
-              onInstall={handleDownloadAndInstall}
-              onRelaunch={handleRelaunch}
+              onInstall={onInstall}
+              onRelaunch={onRelaunch}
             />
           </div>
 
           {state.phase !== "downloading" && (
             <button
-              onClick={() => setDismissed(true)}
+              onClick={onDismiss}
               className="shrink-0 text-text-muted hover:text-text-primary transition-colors"
               aria-label="Dismiss"
             >
