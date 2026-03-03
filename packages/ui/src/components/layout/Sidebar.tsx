@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef, type ReactNode } from "react"
 import type { RssFeed } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { SettingsPanel } from "../SettingsPanel.js";
+import { AllIcon, RssIcon, FacebookIcon, InstagramIcon, MapPinIcon, BookmarkIcon, ArchiveIcon } from "../icons.js";
 
 /** Compact number: 1234 → "1.2k", 1_200_000 → "1.2m". Trims trailing ".0". */
 function fmt(n: number): string {
@@ -199,16 +200,16 @@ const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
 const DEFAULT_WIDTH = 256;
 
-const topSources = [
-  { id: undefined, label: "All", icon: "🌊" },
-  { id: "x", label: "X", icon: "𝕏" },
-  { id: "rss", label: "RSS", icon: "📡" },
+const topSources: { id: string | undefined; label: string; icon: ReactNode }[] = [
+  { id: undefined, label: "All", icon: <AllIcon /> },
+  { id: "x", label: "X", icon: <span className="text-sm font-bold leading-none">𝕏</span> },
+  { id: "rss", label: "RSS", icon: <RssIcon /> },
 ];
 
-const comingSoonSources = [
-  { id: "facebook", label: "Facebook", icon: "📘" },
-  { id: "instagram", label: "Instagram", icon: "📷" },
-  { id: "map", label: "Map", icon: "🗺️" },
+const comingSoonSources: { id: string; label: string; icon: ReactNode }[] = [
+  { id: "facebook", label: "Facebook", icon: <FacebookIcon /> },
+  { id: "instagram", label: "Instagram", icon: <InstagramIcon /> },
+  { id: "map", label: "Map", icon: <MapPinIcon /> },
 ];
 
 export function Sidebar({ open, onClose }: SidebarProps) {
@@ -367,7 +368,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                       }
                     `}
                   >
-                    <span className="w-5 text-center">{source.icon}</span>
+                    <span className="w-5 flex items-center justify-center">{source.icon}</span>
                     <span className="flex-1">{source.label}</span>
                     {sourceTotalCount(source) > 0 && (
                       <span className="shrink-0 flex items-center gap-0.5 text-[10px] tabular-nums">
@@ -387,7 +388,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               {comingSoonSources.map((source) => (
                 <li key={source.id}>
                   <div className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[#52525b] cursor-default">
-                    <span className="w-5 text-center opacity-50">{source.icon}</span>
+                    <span className="w-5 flex items-center justify-center opacity-50">{source.icon}</span>
                     <span className="flex-1">{source.label}</span>
                     <span className="text-[10px] uppercase tracking-wider bg-white/5 px-1.5 py-0.5 rounded">soon</span>
                   </div>
@@ -412,7 +413,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     }
                   `}
                 >
-                  <span className="w-5 text-center">📌</span>
+                  <span className="w-5 flex items-center justify-center"><BookmarkIcon /></span>
                   <span>Saved</span>
                 </button>
               </li>
@@ -429,7 +430,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     }
                   `}
                 >
-                  <span className="w-5 text-center">📦</span>
+                  <span className="w-5 flex items-center justify-center"><ArchiveIcon /></span>
                   <span>Archived</span>
                 </button>
               </li>
@@ -467,9 +468,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                             className="w-4 h-4 rounded-sm shrink-0 object-cover"
                           />
                         ) : (
-                          <span className="w-4 h-4 shrink-0 flex items-center justify-center text-[10px] text-[#52525b]">
-                            📡
-                          </span>
+                          <RssIcon className="w-4 h-4 shrink-0 text-[#52525b]" />
                         )}
                         <span className="flex-1 truncate text-xs">{feed.title}</span>
                       </button>
