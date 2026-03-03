@@ -81,6 +81,7 @@ body {
 #root {
   height: 100svh;
   height: 100dvh;
+  height: 100lvh; /* extend to physical screen bottom so sidebar/content bleed behind Safari address bar */
   display: flex;
   flex-direction: column;
 }
