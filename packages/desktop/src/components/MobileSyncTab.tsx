@@ -189,6 +189,21 @@ export function MobileSyncTab() {
               provider === "gdrive"
                 ? "~5 s sync · app data folder"
                 : "~1–4 s sync · /Apps/Freed/";
+            const icon =
+              provider === "gdrive" ? (
+                <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 87.3 78" fill="none">
+                  <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L27.5 53H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066DA" />
+                  <path d="M43.65 25L29.9 1.2C28.55 2 27.4 3.1 26.6 4.5L1.2 48.5A9.06 9.06 0 000 53h27.5z" fill="#00AC47" />
+                  <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.8l5.85 11.2z" fill="#EA4335" />
+                  <path d="M43.65 25L57.4 1.2C56.05.4 54.5 0 52.9 0H34.4c-1.6 0-3.15.45-4.5 1.2z" fill="#00832D" />
+                  <path d="M59.8 53H27.5L13.75 76.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.4 4.5-1.2z" fill="#2684FC" />
+                  <path d="M73.4 26.5l-12.65-21.9c-.8-1.4-1.95-2.5-3.3-3.3L43.65 25 59.8 53h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#FFBA00" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="#0061FF">
+                  <path d="M6 2L0 6l6 4-6 4 6 4 6-4-6-4 6-4L6 2zM18 2l-6 4 6 4-6 4 6 4 6-4-6-4 6-4-6-4zM12 14l-6 4 6 4 6-4-6-4z" />
+                </svg>
+              );
 
             return (
               <div
@@ -199,11 +214,7 @@ export function MobileSyncTab() {
                     : "bg-white/5 border-[rgba(255,255,255,0.08)]"
                 }`}
               >
-                <span
-                  className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                    isConnected ? "bg-green-400" : "bg-[#52525b]"
-                  }`}
-                />
+                {icon}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-white">{label}</p>
                   <p className="text-xs text-[#71717a]">{detail}</p>
