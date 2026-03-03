@@ -103,6 +103,25 @@ export async function dropboxDownloadLatest(
 }
 
 /**
+ * Permanently delete the `freed.automerge` file from Dropbox.
+ * Used during factory reset when the user opts to also wipe cloud storage.
+ * A 409 response (path not found) is treated as success.
+ */
+export async function dropboxDeleteFile(token: string): Promise<void> {
+  const res = await fetch("https://api.dropboxapi.com/2/files/delete_v2", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ path: DBX_PATH }),
+  });
+  if (!res.ok && res.status !== 409) {
+    throw new Error(`Dropbox delete failed: ${res.status}`);
+  }
+}
+
+/**
  * Dropbox longpoll loop — near-instant change notification.
  * Blocks at the notify endpoint until the folder changes or timeout expires,
  * then fetches the diff and calls `onRemoteChange` when our file was updated.

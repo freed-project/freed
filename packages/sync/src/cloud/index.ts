@@ -11,10 +11,11 @@
  */
 
 export type { CloudProvider } from "./types.js";
-export { gdriveUploadSafe, gdriveDownloadLatest, gdriveStartPollLoop } from "./gdrive.js";
+export { gdriveUploadSafe, gdriveDownloadLatest, gdriveStartPollLoop, gdriveDeleteFile } from "./gdrive.js";
 export {
   dropboxUploadSafe,
   dropboxDownloadLatest,
   dropboxStartLongpollLoop,
+  dropboxDeleteFile,
 } from "./dropbox.js";
 export { mergeBinaries, delay } from "./merge.js";

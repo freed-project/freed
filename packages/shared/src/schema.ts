@@ -213,6 +213,26 @@ export function toggleFeedEnabled(doc: FreedDoc, url: string): void {
   }
 }
 
+/**
+ * Remove all RSS feed subscriptions in a single CRDT change.
+ *
+ * This propagates to all synced devices. When `includeItems` is true,
+ * all feedItems are also deleted — equivalent to a full data wipe.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @param includeItems - Whether to also delete all feed items
+ */
+export function removeAllFeeds(doc: FreedDoc, includeItems: boolean): void {
+  for (const url of Object.keys(doc.rssFeeds)) {
+    delete doc.rssFeeds[url];
+  }
+  if (includeItems) {
+    for (const id of Object.keys(doc.feedItems)) {
+      delete doc.feedItems[id];
+    }
+  }
+}
+
 // =============================================================================
 // Preferences Operations
 // =============================================================================

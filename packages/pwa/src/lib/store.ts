@@ -13,6 +13,7 @@ import {
   docAddFeedItems,
   docAddRssFeed,
   docRemoveRssFeed,
+  docRemoveAllFeeds,
   docUpdateRssFeed,
   docUpdateFeedItem,
   docMarkAsRead,
@@ -152,6 +153,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   removeFeed: async (url) => {
     await docRemoveRssFeed(url);
+  },
+
+  removeAllFeeds: async (includeItems) => {
+    await docRemoveAllFeeds(includeItems);
   },
 
   renameFeed: async (url, title) => {

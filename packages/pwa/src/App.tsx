@@ -11,10 +11,15 @@ import {
   disconnect,
   onStatusChange,
   getStoredRelayUrl,
+  clearStoredRelayUrl,
   startCloudSync,
+  stopCloudSync,
   getCloudProvider,
   getCloudToken,
+  clearCloudSync,
+  deleteCloudFile,
 } from "./lib/sync";
+import { clearLocalDoc } from "./lib/automerge";
 import { checkForPwaUpdate, applyPwaUpdate, onUpdateAvailable } from "./lib/pwa-updater";
 import { SyncIndicator } from "./components/layout/SyncIndicator";
 import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
@@ -69,6 +74,20 @@ function App() {
 
   const checkForUpdates = useCallback(() => checkForPwaUpdate(), []);
 
+  const handleFactoryReset = useCallback(async (deleteFromCloud: boolean) => {
+    const provider = getCloudProvider();
+    const token = provider ? getCloudToken(provider) : null;
+    if (deleteFromCloud && provider && token) {
+      await deleteCloudFile(provider, token);
+    } else {
+      stopCloudSync();
+    }
+    clearStoredRelayUrl();
+    if (provider) clearCloudSync(provider);
+    await clearLocalDoc();
+    location.reload();
+  }, []);
+
   const platform: PlatformConfig = useMemo(
     () => ({
       store: useAppStore,
@@ -81,8 +100,15 @@ function App() {
       FeedEmptyState: PwaFeedEmptyState,
       checkForUpdates,
       applyUpdate: applyPwaUpdate,
+      factoryReset: handleFactoryReset,
+      activeCloudProviderLabel: () => {
+        const p = getCloudProvider();
+        if (p === "gdrive") return "Google Drive";
+        if (p === "dropbox") return "Dropbox";
+        return null;
+      },
     }),
-    [checkForUpdates],
+    [checkForUpdates, handleFactoryReset],
   );
 
   if (!isInitialized && isLoading) {

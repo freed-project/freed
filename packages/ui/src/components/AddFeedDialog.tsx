@@ -150,8 +150,12 @@ function AddUrlTab({ onClose }: { onClose: () => void }) {
 function ManageTab() {
   const feeds = useAppStore((s) => s.feeds);
   const removeFeed = useAppStore((s) => s.removeFeed);
+  const removeAllFeeds = useAppStore((s) => s.removeAllFeeds);
   const feedList = Object.values(feeds);
   const [removing, setRemoving] = useState<string | null>(null);
+  const [showRemoveAll, setShowRemoveAll] = useState(false);
+  const [includeItems, setIncludeItems] = useState(false);
+  const [removingAll, setRemovingAll] = useState(false);
 
   const handleRemove = async (url: string) => {
     setRemoving(url);
@@ -159,6 +163,17 @@ function ManageTab() {
       await removeFeed(url);
     } finally {
       setRemoving(null);
+    }
+  };
+
+  const handleRemoveAll = async () => {
+    setRemovingAll(true);
+    try {
+      await removeAllFeeds(includeItems);
+    } finally {
+      setRemovingAll(false);
+      setShowRemoveAll(false);
+      setIncludeItems(false);
     }
   };
 
@@ -172,42 +187,114 @@ function ManageTab() {
   }
 
   return (
-    <div className="space-y-2">
-      {feedList.map((feed) => (
-        <div
-          key={feed.url}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)]"
-        >
-          {feed.imageUrl ? (
-            <img src={feed.imageUrl} alt="" className="w-8 h-8 rounded-md flex-shrink-0 object-cover" />
-          ) : (
-            <div className="w-8 h-8 rounded-md bg-[#8b5cf6]/10 flex items-center justify-center flex-shrink-0">
-              <span className="text-sm">📡</span>
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <p className="text-sm text-white truncate">{feed.title}</p>
-            <p className="text-xs text-[#52525b] truncate">{feed.url}</p>
-          </div>
-          <button
-            onClick={() => handleRemove(feed.url)}
-            disabled={removing === feed.url}
-            className="flex-shrink-0 p-1.5 rounded-lg hover:bg-red-500/20 text-[#71717a] hover:text-red-400 transition-colors disabled:opacity-50"
-            aria-label={`Remove ${feed.title}`}
+    <>
+      <div className="space-y-2">
+        {feedList.map((feed) => (
+          <div
+            key={feed.url}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)]"
           >
-            {removing === feed.url ? (
-              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
+            {feed.imageUrl ? (
+              <img src={feed.imageUrl} alt="" className="w-8 h-8 rounded-md flex-shrink-0 object-cover" />
             ) : (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
+              <div className="w-8 h-8 rounded-md bg-[#8b5cf6]/10 flex items-center justify-center flex-shrink-0">
+                <span className="text-sm">📡</span>
+              </div>
             )}
-          </button>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-white truncate">{feed.title}</p>
+              <p className="text-xs text-[#52525b] truncate">{feed.url}</p>
+            </div>
+            <button
+              onClick={() => handleRemove(feed.url)}
+              disabled={removing === feed.url}
+              className="flex-shrink-0 p-1.5 rounded-lg hover:bg-red-500/20 text-[#71717a] hover:text-red-400 transition-colors disabled:opacity-50"
+              aria-label={`Remove ${feed.title}`}
+            >
+              {removing === feed.url ? (
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              )}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Remove all section */}
+      <div className="mt-4 pt-4 border-t border-[rgba(255,255,255,0.06)]">
+        <button
+          onClick={() => setShowRemoveAll(true)}
+          className="text-xs text-red-400/70 hover:text-red-400 transition-colors"
+        >
+          Remove all {feedList.length.toLocaleString()} feeds&hellip;
+        </button>
+      </div>
+
+      {/* Remove-all confirmation overlay */}
+      {showRemoveAll && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded-2xl p-6 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-white">Remove all feeds?</p>
+                <p className="text-xs text-[#71717a] mt-0.5">
+                  This will unsubscribe from all {feedList.length.toLocaleString()} feeds on every synced device.
+                </p>
+              </div>
+            </div>
+
+            <label className="flex items-start gap-3 mb-5 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={includeItems}
+                onChange={(e) => setIncludeItems(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-[rgba(255,255,255,0.2)] bg-white/5 text-red-500 focus:ring-red-500 focus:ring-offset-0"
+              />
+              <div>
+                <p className="text-sm text-[#a1a1aa] group-hover:text-white transition-colors">
+                  Also delete all articles and reading history
+                </p>
+                <p className="text-xs text-[#52525b] mt-0.5">Cannot be undone</p>
+              </div>
+            </label>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowRemoveAll(false); setIncludeItems(false); }}
+                disabled={removingAll}
+                className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-[#a1a1aa] hover:text-white transition-colors text-sm disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRemoveAll}
+                disabled={removingAll}
+                className="flex-1 py-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 hover:text-red-300 transition-colors text-sm font-medium disabled:opacity-50"
+              >
+                {removingAll ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                    Removing&hellip;
+                  </span>
+                ) : (
+                  "Remove All"
+                )}
+              </button>
+            </div>
+          </div>
         </div>
-      ))}
-    </div>
+      )}
+    </>
   );
 }
 

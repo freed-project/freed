@@ -121,6 +121,30 @@ export async function gdriveDownloadLatest(
 }
 
 /**
+ * Permanently delete the `freed.automerge` file from Google Drive appDataFolder.
+ * Used during factory reset when the user opts to also wipe cloud storage.
+ * Silently succeeds if the file does not exist (404).
+ */
+export async function gdriveDeleteFile(token: string): Promise<void> {
+  const listRes = await fetch(
+    `${GDRIVE_FILES}?spaces=appDataFolder&q=name%3D'${FILE_NAME}'&fields=files(id)`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!listRes.ok) throw new Error(`GDrive list failed: ${listRes.status}`);
+
+  const { files } = await listRes.json();
+  if (files.length === 0) return; // Nothing to delete.
+
+  const deleteRes = await fetch(`${GDRIVE_FILES}/${files[0].id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!deleteRes.ok && deleteRes.status !== 404) {
+    throw new Error(`GDrive delete failed: ${deleteRes.status}`);
+  }
+}
+
+/**
  * Poll the GDrive Changes API every 5 s.
  * Uses a server-side page-token cursor so only genuine changes trigger a
  * download. Runs until `signal` is aborted.
