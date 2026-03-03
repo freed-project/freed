@@ -26,6 +26,41 @@ Run `./scripts/release.sh` with no args to auto-compute the next version.
 | `desktop/` | Tauri shell. May import from `@freed/pwa`. |
 | `capture-*/` | Isolated. Never import between capture packages. |
 
+## Git Workflow
+
+**Never work directly on `main`.** Always create a git worktree for feature work:
+
+```bash
+git worktree add ../freed-<slug> -b <branch>
+# work in ../freed-<slug>/
+# remove when done: git worktree remove ../freed-<slug>
+```
+
+**Branch naming:** `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/` prefix followed by a short kebab-case description.
+
+**Commit messages** follow Conventional Commits:
+
+| Prefix | When to use |
+|---|---|
+| `feat:` | New user-facing feature |
+| `fix:` | Bug fix |
+| `chore:` | Tooling, deps, config — no production code change |
+| `docs:` | Documentation only |
+| `refactor:` | Code restructure with no behavior change |
+| `perf:` | Performance improvement |
+| `style:` | Formatting, whitespace, CSS-only |
+
+**Merge policy:** Squash merge only. One PR = one commit on `main`.
+
+```bash
+# From the primary worktree (not the feature worktree):
+gh pr merge <n> --squash --delete-branch
+```
+
+Branches are deleted after merge. The squash commit message is derived from the PR title — write PR titles as if they are commit messages.
+
+---
+
 ## Automerge
 
 **Schema** (`packages/shared/src/schema.ts`): backward-compatible only. Add optional fields; never delete (mark `@deprecated`).
