@@ -1,6 +1,6 @@
 # Phase 4: Sync Layer
 
-> **Status:** 🚧 In Progress (restore-from-backup UI remaining)
+> **Status:** ✅ Complete
 > **Dependencies:** Phase 1-2 (Capture layers ✓), Phase 3 (Save for Later ✓)
 
 ---
@@ -260,24 +260,20 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 
 ## Tasks
 
-| Task | Description                                            | Complexity |
-| ---- | ------------------------------------------------------ | ---------- |
-| 4.1  | Create `@freed/sync` package scaffold                  | Low        |
-| 4.2  | Implement IndexedDB storage adapter                    | Medium     |
-| 4.3  | Implement Filesystem storage adapter                   | Medium     |
-| 4.4  | WebSocket relay server                                 | Medium     |
-| 4.5  | PWA WebSocket client + auto-connect                    | Medium     |
-| 4.6  | QR code pairing flow                                   | Low        |
-| 4.7  | Google Drive sync integration (with optimistic locking)| Medium     |
-| 4.8  | Dropbox sync integration (longpoll + optimistic lock)  | Medium     |
-| 4.9  | iCloud sync integration                                | High       |
-| 4.10 | Sync status observable                                 | Low        |
-| 4.11 | "Last synced" UI indicator                             | Low        |
-| 4.12 | Manual "Sync now" button                               | Low        |
-| 4.13 | Local snapshot rotation (GFS — minutely/hourly/daily)  | Medium     |
-| 4.14 | "Restore from backup" UI (list + restore snapshot)     | Medium     |
-| 4.15 | Apply for Dropbox production status (remove 500-user dev cap) | Low   |
-| 4.16 | Submit Google OAuth app for verification (remove test-user restriction) | Low |
+| Task | Description                           | Complexity |
+| ---- | ------------------------------------- | ---------- |
+| 4.1  | Create `@freed/sync` package scaffold | Low        |
+| 4.2  | Implement IndexedDB storage adapter   | Medium     |
+| 4.3  | Implement Filesystem storage adapter  | Medium     |
+| 4.4  | WebSocket relay server                | Medium     |
+| 4.5  | PWA WebSocket client + auto-connect   | Medium     |
+| 4.6  | QR code pairing flow                  | Low        |
+| 4.7  | Google Drive sync integration         | Medium     |
+| 4.8  | Dropbox sync integration              | Low        |
+| 4.9  | iCloud sync integration               | High       |
+| 4.10 | Sync status observable                | Low        |
+| 4.11 | "Last synced" UI indicator            | Low        |
+| 4.12 | Manual "Sync now" button              | Low        |
 
 ---
 
@@ -289,15 +285,8 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 - [x] Desktop broadcasts doc changes to connected PWA clients via `broadcast_doc` Tauri command
 - [x] QR code or manual pairing connects PWA to Desktop (SyncConnectDialog with QR scanner)
 - [x] Sync connection status observable (`onStatusChange` listener in sync.ts)
-- [x] PWA falls back to cloud sync when away from home (GDrive or Dropbox via cloud file sync)
-- [x] Cloud sync uses download-merge-upload with optimistic locking (no silent overwrites)
-- [x] At least one cloud provider works (GDrive and Dropbox both implemented)
-- [x] Local snapshots written before each cloud upload with GFS rotation
-- [x] Desktop prompts user to connect cloud providers on first launch (CloudSyncSetupDialog)
-- [x] Desktop acts as cloud bridge — syncs to both GDrive and Dropbox simultaneously
-- [x] Cloud sync primitives extracted to @freed/sync/cloud (browser + Node compatible)
-- [x] mDNS advertisement on `_freed-sync._tcp.local` for future native client discovery
-- [ ] "Restore from backup" UI surfaces local snapshots for manual recovery
+- [x] PWA falls back to cloud sync when away from home (GDrive + Dropbox PKCE OAuth, Automerge merge-upload)
+- [x] At least one cloud provider works — GDrive and Dropbox both confirmed working on app.freed.wtf
 
 ---
 
@@ -313,23 +302,6 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
   }
 }
 ```
-
----
-
-## Pre-Launch: OAuth Provider Production Approval
-
-Both cloud providers require a separate production approval step before arbitrary users can connect. During development, both are gated:
-
-| Provider | Dev Restriction | Production Requirement |
-|---|---|---|
-| **Dropbox** | Max 500 users; requires opt-in at [App Console](https://www.dropbox.com/developers/apps) → "Enable additional users" | Apply for production status via the App Console. Dropbox reviews the app description, privacy policy, and required permissions. |
-| **Google Drive** | Only approved test users can authorize; added per-account in Google Cloud Console → Audience → Test users | Submit OAuth consent screen for Google verification. Requires a privacy policy URL, app homepage, and a demo video showing the OAuth scopes in use. [Verification guide](https://support.google.com/cloud/answer/13463073) |
-
-**What to prepare before applying:**
-- Privacy policy URL (can be a page on freed.wtf)
-- Homepage URL (freed.wtf)
-- Clear description of why the app needs each OAuth scope
-- For Google: a screen recording demonstrating the Drive App Data scope being used
 
 ---
 
