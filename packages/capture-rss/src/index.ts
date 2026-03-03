@@ -13,6 +13,7 @@ export {
   fetchFeeds,
   validateFeed,
   getFeedMetadata,
+  parseFeedXml,
 } from "./parser.js";
 
 // Re-export OPML utilities

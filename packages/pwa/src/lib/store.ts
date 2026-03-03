@@ -5,8 +5,8 @@
  */
 
 import { create } from "zustand";
-import type { FeedItem, UserPreferences, RssFeed } from "@freed/shared";
 import { createDefaultPreferences, rankFeedItems } from "@freed/shared";
+import type { BaseAppState } from "@freed/shared";
 import {
   initDoc,
   subscribe,
@@ -22,62 +22,10 @@ import {
 } from "./automerge";
 import type { FreedDoc } from "@freed/shared/schema";
 
-// Filter options for the feed view
-interface FilterOptions {
-  platform?: string;
-  feedUrl?: string;
-  tags?: string[];
-  savedOnly?: boolean;
-  showArchived?: boolean;
-}
-
-// App state interface
-interface AppState {
-  // Data (derived from Automerge doc)
-  items: FeedItem[];
-  feeds: Record<string, RssFeed>;
-  preferences: UserPreferences;
-  /** Unread count per feed URL — derived in hydrateFromDoc, stable reference when unchanged */
-  feedUnreadCounts: Record<string, number>;
-
-  // Sync state
+/** PWA-specific store state — extends the shared base with sync connection status. */
+interface AppState extends BaseAppState {
   syncConnected: boolean;
-
-  // UI state
-  isLoading: boolean;
-  isSyncing: boolean;
-  isInitialized: boolean;
-  error: string | null;
-  activeFilter: FilterOptions;
-  selectedItemId: string | null;
-
-  // Initialization
-  initialize: () => Promise<void>;
-
-  // Item actions (persisted to Automerge)
-  addItems: (items: FeedItem[]) => Promise<void>;
-  updateItem: (id: string, update: Partial<FeedItem>) => Promise<void>;
-  markAsRead: (id: string) => Promise<void>;
-  markAllAsRead: (platform?: string) => Promise<void>;
-  toggleSaved: (id: string) => Promise<void>;
-
-  // Feed actions (persisted to Automerge)
-  addFeed: (feed: RssFeed) => Promise<void>;
-  removeFeed: (url: string) => Promise<void>;
-  renameFeed: (url: string, title: string) => Promise<void>;
-
-  // Preference actions (persisted to Automerge)
-  updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;
-
-  // Sync actions
   setSyncConnected: (connected: boolean) => void;
-
-  // UI actions (not persisted)
-  setFilter: (filter: FilterOptions) => void;
-  setSelectedItem: (id: string | null) => void;
-  setLoading: (loading: boolean) => void;
-  setSyncing: (syncing: boolean) => void;
-  setError: (error: string | null) => void;
 }
 
 /**
