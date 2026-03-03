@@ -5,7 +5,7 @@ import { ToastContainer } from "@freed/ui/components/Toast";
 import { OAuthCallback } from "./components/OAuthCallback";
 import { PlatformProvider, type PlatformConfig } from "@freed/ui/context";
 import { useAppStore } from "./lib/store";
-import { exportFeedsAsOPML } from "./lib/capture";
+import { exportFeedsAsOPML, subscribeToFeed } from "./lib/capture";
 import {
   connect,
   disconnect,
@@ -72,6 +72,7 @@ function App() {
   const platform: PlatformConfig = useMemo(
     () => ({
       store: useAppStore,
+      addRssFeed: subscribeToFeed,
       exportFeedsAsOPML,
       SidebarConnectionSection: null,
       SourceIndicator: null,
