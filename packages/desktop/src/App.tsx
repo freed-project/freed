@@ -22,7 +22,6 @@ import {
 import { clearLocalDoc } from "./lib/automerge";
 import { clearStoredCookies } from "./lib/x-auth";
 import { XFeedEmptyState } from "./components/XFeedEmptyState";
-import { XAuthSection } from "./components/XAuthSection";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
@@ -95,7 +94,6 @@ function App() {
       importOPMLFeeds,
       exportFeedsAsOPML,
       headerDragRegion: true,
-      SidebarConnectionSection: XAuthSection,
       SourceIndicator: XSourceIndicator,
       HeaderSyncIndicator: DesktopSyncIndicator,
       SettingsExtraSections: MobileSyncTab,

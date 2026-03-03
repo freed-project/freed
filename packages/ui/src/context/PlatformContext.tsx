@@ -64,9 +64,6 @@ export interface PlatformConfig {
 
   // -- Layout slot components (null = not rendered) --
 
-  /** Rendered at top of Sidebar nav (e.g. Desktop Sync card, X Auth card) */
-  SidebarConnectionSection: ComponentType | null;
-
   /** Rendered inline per source button for status indicators (e.g. X auth dot) */
   SourceIndicator: ComponentType<{ sourceId: string }> | null;
 

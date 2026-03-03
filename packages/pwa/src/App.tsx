@@ -93,7 +93,6 @@ function App() {
       store: useAppStore,
       addRssFeed: subscribeToFeed,
       exportFeedsAsOPML,
-      SidebarConnectionSection: null,
       SourceIndicator: null,
       HeaderSyncIndicator: SyncIndicator,
       SettingsExtraSections: null,
