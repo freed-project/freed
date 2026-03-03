@@ -36,16 +36,51 @@ export async function getLocalIP(): Promise<string> {
   }
 }
 
+export interface NetworkInterface {
+  interface: string;
+  ip: string;
+  url: string;
+}
+
 /**
- * Get the sync relay URL for PWA to connect to
+ * Get all non-loopback IPv4 network interfaces with sync URLs.
+ * Use this to let the user pick the right IP when a VPN is active.
+ */
+export async function getAllLocalIPs(): Promise<NetworkInterface[]> {
+  try {
+    return await invoke<NetworkInterface[]>("get_all_local_ips");
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Get the sync relay URL for PWA to connect to.
+ * The returned URL includes the pairing token as `?t=<token>`.
  */
 export async function getSyncUrl(): Promise<string> {
   try {
     return await invoke<string>("get_sync_url");
   } catch {
     const ip = await getLocalIP();
+    // Fallback lacks a token — any connection using this URL will be
+    // rejected by the relay, which is correct (pairing requires a QR scan).
     return `ws://${ip}:8765`;
   }
+}
+
+/**
+ * Rotate the pairing token.
+ *
+ * The new token is persisted to disk and takes effect immediately for new
+ * connections. Devices that are currently connected remain unaffected until
+ * they disconnect. Paired phones must rescan the QR code after a reset.
+ *
+ * Returns the new sync URL (including the rotated token).
+ */
+export async function resetPairingToken(): Promise<string> {
+  await invoke("reset_pairing_token");
+  return getSyncUrl();
 }
 
 /**

@@ -3,7 +3,7 @@ import { useState, useRef, useCallback, type ReactNode } from "react";
 interface PullToRefreshProps {
   children: ReactNode;
   onRefresh: () => Promise<void>;
-  threshold?: number; // Pull distance to trigger refresh
+  threshold?: number;
 }
 
 export function PullToRefresh({
@@ -32,13 +32,10 @@ export function PullToRefresh({
       const currentY = e.touches[0].clientY;
       const diff = currentY - startY.current;
 
-      // Only pull down, not up
       if (diff > 0) {
-        // Apply resistance to make it feel natural
         const resistance = Math.min(diff * 0.5, threshold * 1.5);
         setPullDistance(resistance);
 
-        // Prevent default scroll when pulling
         if (containerRef.current && containerRef.current.scrollTop === 0) {
           e.preventDefault();
         }
@@ -53,7 +50,7 @@ export function PullToRefresh({
 
     if (pullDistance >= threshold && !isRefreshing) {
       setIsRefreshing(true);
-      setPullDistance(50); // Keep indicator visible during refresh
+      setPullDistance(50);
 
       try {
         await onRefresh();

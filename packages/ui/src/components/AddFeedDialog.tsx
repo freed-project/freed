@@ -1,12 +1,8 @@
 import { useCallback, useRef, useState } from "react";
 import { parseOPML, readFileAsText } from "@freed/shared";
 import type { OPMLFeedEntry, ImportProgress } from "@freed/shared";
-import { useAppStore, usePlatform } from "../context/PlatformContext";
-import { BottomSheet } from "./BottomSheet";
-
-// =============================================================================
-// Types
-// =============================================================================
+import { useAppStore, usePlatform } from "../context/PlatformContext.js";
+import { BottomSheet } from "./BottomSheet.js";
 
 type DialogTab = "url" | "manage" | "import" | "export";
 type ImportPhase = "idle" | "preview" | "importing" | "complete";
@@ -15,10 +11,6 @@ interface AddFeedDialogProps {
   open: boolean;
   onClose: () => void;
 }
-
-// =============================================================================
-// Main Dialog
-// =============================================================================
 
 export function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
   const { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } = usePlatform();
@@ -71,10 +63,6 @@ export function AddFeedDialog({ open, onClose }: AddFeedDialogProps) {
     </BottomSheet>
   );
 }
-
-// =============================================================================
-// Tab 1: Add URL (existing functionality)
-// =============================================================================
 
 function AddUrlTab({ onClose }: { onClose: () => void }) {
   const { addRssFeed } = usePlatform();
@@ -136,7 +124,6 @@ function AddUrlTab({ onClose }: { onClose: () => void }) {
         </div>
       </form>
 
-      {/* Example feeds */}
       <div className="mt-6 pt-4 border-t border-[rgba(255,255,255,0.08)]">
         <p className="text-xs text-[#71717a] mb-3">Try these example feeds:</p>
         <div className="flex flex-wrap gap-2">
@@ -159,10 +146,6 @@ function AddUrlTab({ onClose }: { onClose: () => void }) {
     </>
   );
 }
-
-// =============================================================================
-// Tab 2: Manage Feeds
-// =============================================================================
 
 function ManageTab() {
   const feeds = useAppStore((s) => s.feeds);
@@ -228,10 +211,6 @@ function ManageTab() {
   );
 }
 
-// =============================================================================
-// Tab 3: Import OPML
-// =============================================================================
-
 function ImportTab({ onClose }: { onClose: () => void }) {
   const { importOPMLFeeds } = usePlatform();
   const [phase, setPhase] = useState<ImportPhase>("idle");
@@ -245,8 +224,6 @@ function ImportTab({ onClose }: { onClose: () => void }) {
   const existingFeeds = useAppStore((s) => s.feeds);
   const existingUrls = new Set(Object.values(existingFeeds).map((f) => f.url));
 
-  // -- File handling --
-
   const handleFile = useCallback(
     async (file: File) => {
       setError(null);
@@ -255,7 +232,6 @@ function ImportTab({ onClose }: { onClose: () => void }) {
         const feeds = parseOPML(xml);
         setParsedFeeds(feeds);
 
-        // Auto-select all feeds not already subscribed
         const autoSelected = new Set<number>();
         feeds.forEach((f, i) => {
           if (!existingUrls.has(f.url)) autoSelected.add(i);
@@ -287,8 +263,6 @@ function ImportTab({ onClose }: { onClose: () => void }) {
     [handleFile],
   );
 
-  // -- Selection --
-
   const toggleFeed = (index: number) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -310,8 +284,6 @@ function ImportTab({ onClose }: { onClose: () => void }) {
     }
   };
 
-  // -- Import --
-
   const handleImport = async () => {
     const feedsToImport = parsedFeeds.filter((_, i) => selected.has(i));
     if (feedsToImport.length === 0 || !importOPMLFeeds) return;
@@ -324,8 +296,6 @@ function ImportTab({ onClose }: { onClose: () => void }) {
     setPhase("complete");
   };
 
-  // -- Reset --
-
   const handleReset = () => {
     setPhase("idle");
     setParsedFeeds([]);
@@ -335,23 +305,15 @@ function ImportTab({ onClose }: { onClose: () => void }) {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // -- Computed --
-
   const newCount = parsedFeeds.filter((f) => !existingUrls.has(f.url)).length;
   const duplicateCount = parsedFeeds.length - newCount;
   const folders = [...new Set(parsedFeeds.map((f) => f.folder).filter(Boolean))];
 
-  // ---- Render by phase ----
-
   if (phase === "idle") {
     return (
       <>
-        {/* Drop zone */}
         <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDragOver(true);
-          }}
+          onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
           onDragLeave={() => setIsDragOver(false)}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
@@ -364,27 +326,15 @@ function ImportTab({ onClose }: { onClose: () => void }) {
             }
           `}
         >
-          <svg
-            className="w-10 h-10 text-[#71717a]"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-            />
+          <svg className="w-10 h-10 text-[#71717a]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
           </svg>
           <div className="text-center">
             <p className="text-sm text-white">
               Drop an OPML file here or{" "}
               <span className="text-[#8b5cf6]">browse</span>
             </p>
-            <p className="text-xs text-[#71717a] mt-1">
-              Supports .opml and .xml files
-            </p>
+            <p className="text-xs text-[#71717a] mt-1">Supports .opml and .xml files</p>
           </div>
           <input
             ref={fileInputRef}
@@ -413,17 +363,13 @@ function ImportTab({ onClose }: { onClose: () => void }) {
   if (phase === "preview") {
     return (
       <>
-        {/* Summary bar */}
         <div className="flex items-center gap-3 mb-4">
           <div className="flex-1 min-w-0">
             <p className="text-sm text-white">
               <span className="font-semibold">{parsedFeeds.length}</span> feed
               {parsedFeeds.length !== 1 ? "s" : ""} found
               {duplicateCount > 0 && (
-                <span className="text-[#71717a]">
-                  {" "}
-                  · {duplicateCount} already subscribed
-                </span>
+                <span className="text-[#71717a]"> · {duplicateCount} already subscribed</span>
               )}
             </p>
             {folders.length > 0 && (
@@ -432,25 +378,17 @@ function ImportTab({ onClose }: { onClose: () => void }) {
               </p>
             )}
           </div>
-          <button
-            onClick={handleReset}
-            className="text-xs text-[#a1a1aa] hover:text-white transition-colors px-2 py-1"
-          >
+          <button onClick={handleReset} className="text-xs text-[#a1a1aa] hover:text-white transition-colors px-2 py-1">
             Change file
           </button>
         </div>
 
-        {/* Select all toggle */}
         {newCount > 0 && (
-          <button
-            onClick={toggleAll}
-            className="mb-3 text-xs text-[#8b5cf6] hover:text-[#a78bfa] transition-colors"
-          >
+          <button onClick={toggleAll} className="mb-3 text-xs text-[#8b5cf6] hover:text-[#a78bfa] transition-colors">
             {selected.size === newCount ? "Deselect all" : "Select all"}
           </button>
         )}
 
-        {/* Feed list */}
         <div className="space-y-1 max-h-64 overflow-y-auto -mx-1 px-1">
           {parsedFeeds.map((feed, i) => {
             const isExisting = existingUrls.has(feed.url);
@@ -490,12 +428,8 @@ function ImportTab({ onClose }: { onClose: () => void }) {
           })}
         </div>
 
-        {/* Actions */}
         <div className="flex gap-3 justify-end mt-4 pt-4 border-t border-[rgba(255,255,255,0.08)]">
-          <button
-            onClick={handleReset}
-            className="px-4 py-2.5 text-[#a1a1aa] hover:text-white transition-colors text-sm"
-          >
+          <button onClick={handleReset} className="px-4 py-2.5 text-[#a1a1aa] hover:text-white transition-colors text-sm">
             Change file
           </button>
           <button
@@ -515,7 +449,6 @@ function ImportTab({ onClose }: { onClose: () => void }) {
 
     return (
       <div className="flex flex-col items-center gap-4 py-4">
-        {/* Progress ring / bar */}
         <div className="w-full bg-white/5 rounded-full h-2 overflow-hidden">
           <div
             className="h-full bg-[#8b5cf6] rounded-full transition-all duration-300"
@@ -528,9 +461,7 @@ function ImportTab({ onClose }: { onClose: () => void }) {
             Subscribing to feeds... {progress.completed}/{progress.total}
           </p>
           {progress.current && (
-            <p className="text-xs text-[#71717a] mt-1 truncate max-w-xs">
-              {progress.current}
-            </p>
+            <p className="text-xs text-[#71717a] mt-1 truncate max-w-xs">{progress.current}</p>
           )}
         </div>
       </div>
@@ -540,26 +471,14 @@ function ImportTab({ onClose }: { onClose: () => void }) {
   if (phase === "complete" && progress) {
     return (
       <div className="flex flex-col gap-4 py-2">
-        {/* Success icon */}
         <div className="flex justify-center">
           <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center">
-            <svg
-              className="w-6 h-6 text-green-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 13l4 4L19 7"
-              />
+            <svg className="w-6 h-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
         </div>
 
-        {/* Results summary */}
         <div className="text-center">
           <p className="text-lg font-semibold text-white">Import Complete</p>
           <div className="flex justify-center gap-4 mt-3 text-sm">
@@ -569,29 +488,22 @@ function ImportTab({ onClose }: { onClose: () => void }) {
             </div>
             {progress.skipped > 0 && (
               <div className="text-center">
-                <p className="text-lg font-bold text-[#a1a1aa]">
-                  {progress.skipped}
-                </p>
+                <p className="text-lg font-bold text-[#a1a1aa]">{progress.skipped}</p>
                 <p className="text-xs text-[#71717a]">skipped</p>
               </div>
             )}
             {progress.failed.length > 0 && (
               <div className="text-center">
-                <p className="text-lg font-bold text-red-400">
-                  {progress.failed.length}
-                </p>
+                <p className="text-lg font-bold text-red-400">{progress.failed.length}</p>
                 <p className="text-xs text-[#71717a]">failed</p>
               </div>
             )}
           </div>
         </div>
 
-        {/* Failed feed details */}
         {progress.failed.length > 0 && (
           <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3">
-            <p className="text-xs text-red-400 font-medium mb-2">
-              Failed to subscribe:
-            </p>
+            <p className="text-xs text-red-400 font-medium mb-2">Failed to subscribe:</p>
             {progress.failed.map(({ url, error }) => (
               <p key={url} className="text-xs text-[#71717a] truncate">
                 {url} — {error}
@@ -601,23 +513,14 @@ function ImportTab({ onClose }: { onClose: () => void }) {
         )}
 
         {progress.added > 0 && (
-          <p className="text-xs text-[#71717a] text-center">
-            Fetching items in the background...
-          </p>
+          <p className="text-xs text-[#71717a] text-center">Fetching items in the background...</p>
         )}
 
-        {/* Actions */}
         <div className="flex gap-3 justify-center mt-2">
-          <button
-            onClick={handleReset}
-            className="px-4 py-2.5 text-[#a1a1aa] hover:text-white transition-colors text-sm"
-          >
+          <button onClick={handleReset} className="px-4 py-2.5 text-[#a1a1aa] hover:text-white transition-colors text-sm">
             Import More
           </button>
-          <button
-            onClick={onClose}
-            className="btn-primary px-6 py-2.5 text-sm"
-          >
+          <button onClick={onClose} className="btn-primary px-6 py-2.5 text-sm">
             Done
           </button>
         </div>
@@ -628,38 +531,26 @@ function ImportTab({ onClose }: { onClose: () => void }) {
   return null;
 }
 
-// =============================================================================
-// Tab 3: Export OPML
-// =============================================================================
-
 function ExportTab() {
   const { exportFeedsAsOPML } = usePlatform();
   const feeds = useAppStore((s) => s.feeds);
   const feedList = Object.values(feeds);
-  const folders = [
-    ...new Set(feedList.map((f) => f.folder).filter(Boolean)),
-  ];
+  const folders = [...new Set(feedList.map((f) => f.folder).filter(Boolean))];
 
   return (
     <div className="flex flex-col gap-4">
       {feedList.length === 0 ? (
         <div className="text-center py-6">
-          <p className="text-sm text-[#71717a]">
-            No feed subscriptions to export.
-          </p>
-          <p className="text-xs text-[#71717a] mt-1">
-            Add some feeds first, then come back here.
-          </p>
+          <p className="text-sm text-[#71717a]">No feed subscriptions to export.</p>
+          <p className="text-xs text-[#71717a] mt-1">Add some feeds first, then come back here.</p>
         </div>
       ) : (
         <>
-          {/* Feed stats */}
           <div className="bg-white/[0.03] rounded-xl p-4">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-white">
-                  <span className="font-semibold">{feedList.length}</span> feed
-                  {feedList.length !== 1 ? "s" : ""}
+                  <span className="font-semibold">{feedList.length}</span> feed{feedList.length !== 1 ? "s" : ""}
                 </p>
                 {folders.length > 0 && (
                   <p className="text-xs text-[#71717a] mt-0.5">
@@ -667,33 +558,17 @@ function ExportTab() {
                   </p>
                 )}
               </div>
-              <svg
-                className="w-8 h-8 text-[#71717a]"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
+              <svg className="w-8 h-8 text-[#71717a]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
           </div>
 
-          {/* Feed list preview */}
           <div className="max-h-48 overflow-y-auto space-y-1">
             {feedList.map((feed) => (
-              <div
-                key={feed.url}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg"
-              >
+              <div key={feed.url} className="flex items-center gap-2 px-3 py-2 rounded-lg">
                 <span className="text-xs text-[#8b5cf6]">📡</span>
-                <span className="text-sm text-white truncate flex-1">
-                  {feed.title}
-                </span>
+                <span className="text-sm text-white truncate flex-1">{feed.title}</span>
                 {feed.folder && (
                   <span className="flex-shrink-0 text-[10px] px-2 py-0.5 bg-white/5 rounded-full text-[#a1a1aa]">
                     {feed.folder}
@@ -703,17 +578,12 @@ function ExportTab() {
             ))}
           </div>
 
-          {/* Download button */}
-          <button
-            onClick={() => exportFeedsAsOPML?.()}
-            className="btn-primary w-full py-3 text-sm font-medium"
-          >
+          <button onClick={() => exportFeedsAsOPML?.()} className="btn-primary w-full py-3 text-sm font-medium">
             Download OPML
           </button>
 
           <p className="text-xs text-[#71717a] text-center">
-            Compatible with Feedly, Inoreader, NetNewsWire, and other RSS
-            readers.
+            Compatible with Feedly, Inoreader, NetNewsWire, and other RSS readers.
           </p>
         </>
       )}

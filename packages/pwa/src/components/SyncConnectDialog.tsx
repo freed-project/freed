@@ -1,9 +1,22 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import jsQR from "jsqr";
 import { connect, storeRelayUrl, onStatusChange } from "../lib/sync";
-import { BottomSheet } from "./BottomSheet";
+import { BottomSheet } from "@freed/ui/components/BottomSheet";
+import { addDebugEvent } from "@freed/ui/lib/debug-store";
 
 const CONNECT_TIMEOUT_MS = 5000;
+
+/**
+ * Returns true if the given WebSocket URL includes a `?t=` pairing token.
+ * URLs without a token will be rejected by the relay with HTTP 401.
+ */
+function hasTokenParam(url: string): boolean {
+  try {
+    return new URL(url).searchParams.has("t");
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Returns a promise that resolves when the sync WebSocket connects,
@@ -13,7 +26,11 @@ function waitForConnection(): Promise<void> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       unsubscribe();
-      reject(new Error("Connection timed out. Check that the desktop app is running and on the same network."));
+      reject(
+        new Error(
+          "Connection timed out. Check that the desktop app is running and on the same network.",
+        ),
+      );
     }, CONNECT_TIMEOUT_MS);
 
     const unsubscribe = onStatusChange((connected) => {
@@ -32,6 +49,11 @@ interface SyncConnectDialogProps {
 }
 
 type Mode = "manual" | "scanning";
+
+/** True when the page protocol makes ws:// connections likely to be blocked */
+function isMixedContentRisk(wsUrl: string): boolean {
+  return window.location.protocol === "https:" && wsUrl.startsWith("ws://");
+}
 
 /**
  * Decode a QR code from a video frame via an offscreen canvas + jsQR.
@@ -54,12 +76,21 @@ function detectQrCode(video: HTMLVideoElement): string | null {
   return result?.data ?? null;
 }
 
+/** Validate a base64url token — exactly 43 chars, URL-safe alphabet only. */
+function isValidToken(t: string): boolean {
+  return t.length === 43 && /^[A-Za-z0-9_-]+$/.test(t);
+}
+
 export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
   const [mode, setMode] = useState<Mode>("manual");
-  const [url, setUrl] = useState("");
+  const [ip, setIp] = useState("");
+  const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [scanStatus, setScanStatus] = useState<"waiting" | "found">("waiting");
+  const [scanFrameCount, setScanFrameCount] = useState(0);
+  const [videoResolution, setVideoResolution] = useState<string | null>(null);
+  const [lastQrContent, setLastQrContent] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -81,15 +112,22 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
   const handleClose = useCallback(() => {
     stopCamera();
     setMode("manual");
-    setUrl("");
+    setIp("");
+    setToken("");
     setError(null);
     setScanStatus("waiting");
+    setScanFrameCount(0);
+    setVideoResolution(null);
+    setLastQrContent(null);
     onClose();
   }, [stopCamera, onClose]);
 
   const startCamera = useCallback(async () => {
     setError(null);
     setScanStatus("waiting");
+    setScanFrameCount(0);
+    setVideoResolution(null);
+    setLastQrContent(null);
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -102,34 +140,73 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
         await videoRef.current.play();
       }
 
+      // Capture resolution once video metadata is available
+      const vid = videoRef.current;
+      if (vid) {
+        const onMeta = () => {
+          setVideoResolution(`${vid.videoWidth}×${vid.videoHeight}`);
+        };
+        vid.addEventListener("loadedmetadata", onMeta, { once: true });
+      }
+
+      addDebugEvent("camera_started", stream.getVideoTracks()[0]?.label ?? "unknown track");
+
       scanIntervalRef.current = setInterval(() => {
         if (!videoRef.current || videoRef.current.readyState < 2) return;
 
-        const detected = detectQrCode(videoRef.current);
-        if (detected && (detected.startsWith("ws://") || detected.startsWith("wss://"))) {
-          stopCamera();
-          storeRelayUrl(detected);
-          connect(detected);
+        setScanFrameCount((n) => n + 1);
 
-          waitForConnection()
-            .then(() => {
-              setScanStatus("found");
-              setTimeout(() => handleClose(), 800);
-            })
-            .catch((err) => {
-              setError(err instanceof Error ? err.message : "Connection failed");
+        // Capture resolution on first good frame if not yet set
+        if (videoRef.current.videoWidth && videoRef.current.videoHeight) {
+          setVideoResolution(
+            `${videoRef.current.videoWidth}×${videoRef.current.videoHeight}`,
+          );
+        }
+
+        const detected = detectQrCode(videoRef.current);
+
+        if (detected) {
+          setLastQrContent(detected);
+
+          if (detected.startsWith("ws://") || detected.startsWith("wss://")) {
+            // Reject QR codes from older desktop versions that lack a pairing token.
+            if (!hasTokenParam(detected)) {
+              stopCamera();
+              setError(
+                "This QR code has no pairing token. Please update your desktop app and rescan.",
+              );
               setMode("manual");
-            });
+              return;
+            }
+
+            addDebugEvent("qr_decoded", detected);
+            stopCamera();
+            storeRelayUrl(detected);
+            connect(detected);
+
+            waitForConnection()
+              .then(() => {
+                setScanStatus("found");
+                setTimeout(() => handleClose(), 800);
+              })
+              .catch((err) => {
+                addDebugEvent("connect_timeout", detected);
+                setError(err instanceof Error ? err.message : "Connection failed");
+                setMode("manual");
+              });
+          }
+          // Non-ws QR codes: content shown in the diagnostic line below viewfinder
         }
       }, 250);
     } catch (e) {
-      setError(
+      const msg =
         e instanceof Error
           ? e.message.includes("NotAllowed")
             ? "Camera permission denied. Please allow camera access and try again."
             : e.message
-          : "Could not access camera.",
-      );
+          : "Could not access camera.";
+      addDebugEvent("camera_denied", msg);
+      setError(msg);
       setMode("manual");
     }
   }, [stopCamera, handleClose]);
@@ -150,45 +227,89 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
   }, [open, stopCamera]);
 
   const handleConnect = async () => {
-    if (!url.trim()) return;
+    const trimmedIp = ip.trim();
+    const trimmedToken = token.trim();
 
-    try {
-      const parsed = new URL(url.trim());
-      if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") {
-        throw new Error("URL must start with ws:// or wss://");
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Invalid URL format");
+    if (!trimmedIp) {
+      setError("Enter the desktop IP address shown in the Freed desktop app.");
+      return;
+    }
+    if (!isValidToken(trimmedToken)) {
+      setError(
+        trimmedToken.length === 0
+          ? "Enter the 43-character pairing token shown in the Freed desktop app."
+          : `Token must be exactly 43 characters (${trimmedToken.length} entered).`,
+      );
       return;
     }
 
+    // Construct the full WebSocket URL — user never has to type the protocol,
+    // port, or query key themselves.
+    const relayUrl = `ws://${trimmedIp}:8765?t=${trimmedToken}`;
+
     setError(null);
     setConnecting(true);
+    addDebugEvent("connect_attempt", relayUrl);
+
+    // Warn about mixed content — the connection will likely be blocked by the browser.
+    if (isMixedContentRisk(relayUrl)) {
+      addDebugEvent("mixed_content_warn", relayUrl);
+    }
 
     try {
-      storeRelayUrl(url.trim());
-      connect(url.trim());
+      storeRelayUrl(relayUrl);
+      connect(relayUrl);
       await waitForConnection();
       handleClose();
     } catch (e) {
+      addDebugEvent("connect_timeout", relayUrl);
       setError(e instanceof Error ? e.message : "Failed to connect");
     } finally {
       setConnecting(false);
     }
   };
 
+  // Derive the constructed URL for display and HTTPS warning
+  const constructedUrl = ip.trim()
+    ? `ws://${ip.trim()}:8765${token.trim() ? `?t=${token.trim()}` : ""}`
+    : "";
+  const mixedContentRisk =
+    typeof window !== "undefined" &&
+    window.location.protocol === "https:" &&
+    (constructedUrl.startsWith("ws://") ||
+      (mode === "scanning" && lastQrContent?.startsWith("ws://")));
+
   return (
     <BottomSheet open={open} onClose={handleClose} title="Connect to Desktop">
+      {/* HTTPS mixed-content warning — the #1 reason sync fails on iPhone */}
+      {mixedContentRisk && (
+        <div className="mb-4 p-3 bg-orange-500/15 border border-orange-500/40 rounded-xl">
+          <p className="text-xs font-semibold text-orange-400 mb-1">
+            HTTPS → ws:// Connection Blocked
+          </p>
+          <p className="text-xs text-orange-300/80">
+            Safari and Chrome block plain{" "}
+            <code className="font-mono">ws://</code> connections from HTTPS
+            pages. This is why sync likely fails on iPhone even when the desktop
+            is running. Use the desktop app directly, or open the app over HTTP.
+          </p>
+        </div>
+      )}
+
       <p className="text-sm text-[#71717a] mb-5">
         {mode === "scanning"
           ? "Point your camera at the QR code shown in the Freed desktop app."
-          : "Enter the sync URL from your Freed desktop app, or scan the QR code."}
+          : "Enter your desktop's IP address and pairing token, or scan the QR code."}
       </p>
 
       {/* Mode tabs */}
       <div className="flex gap-2 mb-5">
         <button
-          onClick={() => { setMode("manual"); stopCamera(); setError(null); }}
+          onClick={() => {
+            setMode("manual");
+            stopCamera();
+            setError(null);
+          }}
           className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
             mode === "manual"
               ? "bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30"
@@ -228,9 +349,7 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div
                 className={`w-48 h-48 border-2 rounded-2xl transition-colors ${
-                  scanStatus === "found"
-                    ? "border-green-400"
-                    : "border-white/40"
+                  scanStatus === "found" ? "border-green-400" : "border-white/40"
                 }`}
               >
                 <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-[#8b5cf6] rounded-tl-lg" />
@@ -244,39 +363,106 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
               <div className="absolute inset-0 flex items-center justify-center bg-black/40">
                 <div className="flex flex-col items-center gap-2">
                   <div className="w-12 h-12 rounded-full bg-green-500/20 border-2 border-green-400 flex items-center justify-center">
-                    <svg className="w-6 h-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    <svg
+                      className="w-6 h-6 text-green-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
                     </svg>
                   </div>
-                  <p className="text-green-400 text-sm font-medium">Connecting...</p>
+                  <p className="text-green-400 text-sm font-medium">
+                    Connecting...
+                  </p>
                 </div>
               </div>
             )}
           </div>
 
-          <p className="text-xs text-[#71717a] text-center mt-3">
-            Open the desktop app &rarr; Settings &rarr; Mobile Sync to see the QR code
+          {/* Live scan diagnostics */}
+          <div className="mt-3 flex items-center justify-between text-[10px] text-[#52525b] font-mono">
+            <span>
+              {videoResolution
+                ? `Camera ${videoResolution}`
+                : "Camera initialising..."}
+              {scanFrameCount > 0 && ` · Frame ${scanFrameCount}`}
+            </span>
+            {lastQrContent &&
+              !lastQrContent.startsWith("ws://") &&
+              !lastQrContent.startsWith("wss://") && (
+                <span
+                  className="text-orange-400 truncate max-w-[140px]"
+                  title={lastQrContent}
+                >
+                  QR: {lastQrContent.slice(0, 20)}
+                  {lastQrContent.length > 20 ? "…" : ""}
+                </span>
+              )}
+          </div>
+          <p className="text-xs text-[#71717a] text-center mt-2">
+            Open the desktop app &rarr; Settings &rarr; Mobile Sync to see the
+            QR code
           </p>
         </div>
       ) : (
-        /* Manual URL entry */
-        <div className="mb-4">
-          <label htmlFor="sync-url" className="block text-sm text-[#a1a1aa] mb-2">
-            Sync URL
-          </label>
-          <input
-            id="sync-url"
-            type="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="ws://192.168.1.x:8765"
-            className="w-full px-4 py-3 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-xl focus:outline-none focus:border-[#8b5cf6] text-white placeholder-[#71717a] font-mono text-sm transition-colors"
-            disabled={connecting}
-            autoFocus
-            onKeyDown={(e) => e.key === "Enter" && handleConnect()}
-          />
-          <p className="mt-2 text-xs text-[#71717a]">
-            Find this in your desktop app: Settings &rarr; Mobile Sync
+        /* Manual entry — structured IP + token fields */
+        <div className="mb-4 space-y-4">
+          {/* IP address */}
+          <div>
+            <label htmlFor="sync-ip" className="block text-sm text-[#a1a1aa] mb-2">
+              Desktop IP address
+            </label>
+            <input
+              id="sync-ip"
+              type="text"
+              inputMode="decimal"
+              value={ip}
+              onChange={(e) => setIp(e.target.value)}
+              placeholder="192.168.1.x"
+              className="w-full px-4 py-3 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-xl focus:outline-none focus:border-[#8b5cf6] text-white placeholder-[#71717a] font-mono text-sm transition-colors"
+              disabled={connecting}
+              autoFocus
+              onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+            />
+          </div>
+
+          {/* Pairing token */}
+          <div>
+            <label htmlFor="sync-token" className="block text-sm text-[#a1a1aa] mb-2">
+              Pairing token{" "}
+              <span className="text-[#52525b] text-xs">(43 characters)</span>
+            </label>
+            <input
+              id="sync-token"
+              type="text"
+              value={token}
+              onChange={(e) => setToken(e.target.value.trim())}
+              placeholder="43-character token from desktop app"
+              maxLength={43}
+              className="w-full px-4 py-3 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-xl focus:outline-none focus:border-[#8b5cf6] text-white placeholder-[#71717a] font-mono text-xs tracking-wide transition-colors"
+              disabled={connecting}
+              onKeyDown={(e) => e.key === "Enter" && handleConnect()}
+            />
+            {token.length > 0 && (
+              <p
+                className={`mt-1 text-xs ${
+                  token.length === 43 ? "text-green-500" : "text-[#71717a]"
+                }`}
+              >
+                {token.length}/43 characters
+              </p>
+            )}
+          </div>
+
+          <p className="text-xs text-[#71717a]">
+            Find these in your desktop app: Settings &rarr; Mobile Sync &rarr;
+            Manual Entry
           </p>
         </div>
       )}
@@ -288,14 +474,21 @@ export function SyncConnectDialog({ open, onClose }: SyncConnectDialogProps) {
       )}
 
       {mode === "manual" && (
-        <div className="flex justify-end">
-          <button
-            onClick={handleConnect}
-            className="btn-primary px-6 py-2.5 disabled:opacity-50"
-            disabled={connecting || !url.trim()}
-          >
-            {connecting ? "Connecting..." : "Connect"}
-          </button>
+        <div className="flex flex-col gap-2">
+          {connecting && constructedUrl && (
+            <p className="text-xs text-[#52525b] font-mono text-center truncate">
+              Attempting: {constructedUrl}
+            </p>
+          )}
+          <div className="flex justify-end">
+            <button
+              onClick={handleConnect}
+              className="btn-primary px-6 py-2.5 disabled:opacity-50"
+              disabled={connecting || !ip.trim() || token.length === 0}
+            >
+              {connecting ? "Connecting..." : "Connect"}
+            </button>
+          </div>
         </div>
       )}
 

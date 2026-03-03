@@ -94,7 +94,19 @@ export async function refreshAllFeeds(): Promise<void> {
       const results = await Promise.allSettled(
         batch.map(async (feed) => {
           const items = await fetchRssFeed(feed.url);
-          return { feed: { ...feed, lastFetched: Date.now() }, items };
+          const liveFeedTitle = items[0]?.rssSource?.feedTitle;
+          const liveSiteUrl = items[0]?.rssSource?.siteUrl;
+          // Sentinel check: OPML fallback or raw URL as title both indicate a broken import
+          const isUntitled = feed.title === "Untitled Feed" || feed.title === feed.url;
+          return {
+            feed: {
+              ...feed,
+              lastFetched: Date.now(),
+              ...(isUntitled && liveFeedTitle ? { title: liveFeedTitle } : {}),
+              ...(!feed.siteUrl && liveSiteUrl ? { siteUrl: liveSiteUrl } : {}),
+            },
+            items,
+          };
         }),
       );
       for (const result of results) {

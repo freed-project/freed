@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { AppShell } from "./components/layout/AppShell";
-import { FeedView } from "./components/feed/FeedView";
-import { ToastContainer } from "./components/Toast";
-import { PlatformProvider, type PlatformConfig } from "./context/PlatformContext";
+import { AppShell } from "@freed/ui/components/layout";
+import { FeedView } from "@freed/ui/components/feed";
+import { ToastContainer } from "@freed/ui/components/Toast";
+import { PlatformProvider, type PlatformConfig } from "@freed/ui/context";
 import { useAppStore } from "./lib/store";
 import { exportFeedsAsOPML } from "./lib/capture";
 import {

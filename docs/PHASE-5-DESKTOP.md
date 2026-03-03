@@ -13,7 +13,7 @@ The universal liberation tool. Anyone can install this and escape algorithmic ma
 **Key architectural decisions:**
 
 - **TypeScript capture via subprocess** — Existing `capture-x`, `capture-rss` packages run via Node/Bun subprocess, not rewritten in Rust
-- **Shared React codebase** — `packages/pwa/` is embedded in WebView AND deployed standalone to freed.wtf/app
+- **Shared React codebase** — `packages/pwa/` is embedded in WebView AND deployed standalone to app.freed.wtf
 - **X authentication via WebView** — User logs into X inside the app; cookies captured from WebView session
 - **Ranking runs here** — Desktop computes `priority` scores, syncs to PWA via Automerge
 - **Tauri 2.0 for mobile** — Same codebase targets iOS and Android via Tauri's mobile support
@@ -247,7 +247,7 @@ packages/desktop/
 - [x] Desktop app launches with native vibrancy on macOS
 - [x] Captures from X, RSS in background (refreshAllFeeds covers both)
 - [x] Local WebSocket relay enables instant phone sync (binary protocol)
-- [x] QR code pairing works
+- [x] QR code pairing works (token-authenticated; local SVG render, no third-party QR API)
 - [x] System tray shows sync status
 - [x] App runs in background after window close
 - [x] Auto-updater checks GitHub Releases and installs updates in-app

@@ -14,8 +14,8 @@
   "dependencies": {
     "@freed/capture-rss": "*",
     "@freed/capture-x": "*",
-    "@freed/pwa": "*",
     "@freed/shared": "*",
+    "@freed/ui": "*",
     "@freed/sync": "*",
     "@tanstack/react-virtual": "^3.13.6",
     "@tauri-apps/api": "^2.2.0",
@@ -24,6 +24,7 @@
     "date-fns": "^4.1.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-qr-code": "^2.0.18",
     "react-router-dom": "^7.1.1",
     "zustand": "^5.0.3"
   },

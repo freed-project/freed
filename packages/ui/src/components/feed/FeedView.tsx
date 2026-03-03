@@ -1,8 +1,8 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { FeedList } from "./FeedList";
-import { ReaderView } from "./ReaderView";
-import { AddFeedDialog } from "../AddFeedDialog";
-import { useAppStore, usePlatform } from "../../context/PlatformContext";
+import { FeedList } from "./FeedList.js";
+import { ReaderView } from "./ReaderView.js";
+import { AddFeedDialog } from "../AddFeedDialog.js";
+import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { sortByPriority, filterFeedItems } from "@freed/shared";
 import type { FeedItem } from "@freed/shared";
 
@@ -47,7 +47,6 @@ export function FeedView() {
   // Keyboard navigation: j/k to move, Enter/o to open, Escape to close
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      // Don't intercept inside inputs or textareas
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement
@@ -61,9 +60,7 @@ export function FeedView() {
 
       if (e.key === "j" || e.key === "ArrowDown") {
         e.preventDefault();
-        setFocusedIndex((prev) =>
-          Math.min(prev + 1, filteredItems.length - 1),
-        );
+        setFocusedIndex((prev) => Math.min(prev + 1, filteredItems.length - 1));
       } else if (e.key === "k" || e.key === "ArrowUp") {
         e.preventDefault();
         setFocusedIndex((prev) => Math.max(prev - 1, 0));

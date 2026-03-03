@@ -1,0 +1,33 @@
+{
+  "name": "@freed/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./components/layout": "./src/components/layout/index.ts",
+    "./components/feed": "./src/components/feed/index.ts",
+    "./components/BottomSheet": "./src/components/BottomSheet.tsx",
+    "./components/PullToRefresh": "./src/components/PullToRefresh.tsx",
+    "./components/Toast": "./src/components/Toast.tsx",
+    "./components/AddFeedDialog": "./src/components/AddFeedDialog.tsx",
+    "./components/SettingsPanel": "./src/components/SettingsPanel.tsx",
+    "./components/DebugPanel": "./src/components/DebugPanel.tsx",
+    "./lib/debug-store": "./src/lib/debug-store.ts",
+    "./context": "./src/context/index.ts"
+  },
+  "peerDependencies": {
+    "react": ">=19",
+    "react-dom": ">=19"
+  },
+  "dependencies": {
+    "@freed/shared": "*",
+    "@tanstack/react-virtual": "^3.13.6",
+    "date-fns": "^4.1.0",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "~5.9.3"
+  }
+}
