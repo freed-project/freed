@@ -92,6 +92,16 @@ export function OAuthCallback() {
     const provider = sessionStorage.getItem("freed_pkce_provider") as CloudProvider | null;
     const verifier = sessionStorage.getItem("freed_pkce_verifier");
 
+    // Diagnostic logging — retained until OAuth flow is verified stable.
+    console.log("[OAuthCallback] effect running", {
+      hasCode: !!code,
+      hasProvider: !!provider,
+      provider,
+      hasVerifier: !!verifier,
+      hasError: !!oauthError,
+      search: window.location.search.slice(0, 80),
+    });
+
     // Clean up PKCE state immediately — single-use.
     sessionStorage.removeItem("freed_pkce_provider");
     sessionStorage.removeItem("freed_pkce_verifier");
@@ -103,6 +113,11 @@ export function OAuthCallback() {
     }
 
     if (!code || !provider || !verifier) {
+      console.warn("[OAuthCallback] missing required params — aborting", {
+        code: code ? "ok" : "MISSING",
+        provider: provider ?? "MISSING",
+        verifier: verifier ? "ok" : "MISSING",
+      });
       setStatus("error");
       setErrorMessage(
         "OAuth callback is missing required parameters. Please try connecting again.",
@@ -110,10 +125,12 @@ export function OAuthCallback() {
       return;
     }
 
+    console.log("[OAuthCallback] starting token exchange for", provider);
     const exchange = provider === "gdrive" ? exchangeGDrive : exchangeDropbox;
 
     exchange(code, verifier)
       .then(async (result) => {
+        console.log("[OAuthCallback] exchange resolved", { ok: result.ok });
         if (!result.ok) {
           setStatus("error");
           setErrorMessage(result.error);
