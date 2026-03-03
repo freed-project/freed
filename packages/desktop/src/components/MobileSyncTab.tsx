@@ -180,7 +180,7 @@ export function MobileSyncTab() {
       {/* Cloud Sync tab */}
       {activeTab === "cloud" && (
         <div className="space-y-3 mb-4">
-          {(["gdrive", "dropbox"] as CloudProvider[]).map((provider) => {
+          {(["dropbox", "gdrive"] as CloudProvider[]).map((provider) => {
             const status = cloudStatus[provider];
             const isConnected = status === "connected";
             const isConnecting = status === "connecting";
