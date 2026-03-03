@@ -123,6 +123,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Public OAuth client IDs — no secret needed for desktop PKCE flows
+          VITE_DROPBOX_CLIENT_ID: yaqbppqya009gky
+          VITE_GDRIVE_DESKTOP_CLIENT_ID: 304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com
         with:
           projectPath: packages/desktop
           tauriScript: npx tauri
