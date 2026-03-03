@@ -7,8 +7,10 @@ import { CloudSyncSetupDialog, isCloudSetupDone } from "./components/CloudSyncSe
 import { useAppStore } from "./lib/store";
 import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } from "./lib/capture";
 import { startRssPoller, stopRssPoller } from "./lib/rss-poller";
-import { startAllCloudSyncs } from "./lib/sync";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { startSync, stopSync, startAllCloudSyncs } from "./lib/sync";
 import { XFeedEmptyState } from "./components/XFeedEmptyState";
+import { XAuthSection } from "./components/XAuthSection";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
@@ -30,9 +32,14 @@ function App() {
   useEffect(() => {
     if (!isInitialized) return;
     startRssPoller();
+    // Wire the LAN relay change subscription + client-count polling.
+    startSync();
     // Resume cloud sync loops for any previously authenticated providers.
     startAllCloudSyncs();
-    return () => stopRssPoller();
+    return () => {
+      stopRssPoller();
+      stopSync();
+    };
   }, [isInitialized]);
 
   const pendingUpdate = useRef<Update | null>(null);
@@ -50,6 +57,7 @@ function App() {
     const update = pendingUpdate.current;
     if (!update) return;
     await update.downloadAndInstall();
+    await relaunch();
   }, []);
 
   const platform: PlatformConfig = useMemo(
@@ -59,7 +67,7 @@ function App() {
       importOPMLFeeds,
       exportFeedsAsOPML,
       headerDragRegion: true,
-      SidebarConnectionSection: null,
+      SidebarConnectionSection: XAuthSection,
       SourceIndicator: XSourceIndicator,
       HeaderSyncIndicator: DesktopSyncIndicator,
       SettingsExtraSections: MobileSyncTab,
