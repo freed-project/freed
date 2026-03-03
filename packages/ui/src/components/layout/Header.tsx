@@ -39,8 +39,12 @@ export function Header({ onMenuClick }: HeaderProps) {
           : {})}
       >
         <div
-          className="h-14 flex items-center pl-4 pr-2"
-          style={headerDragRegion ? { paddingLeft: MACOS_TRAFFIC_LIGHT_INSET } : undefined}
+          className="h-[55px] flex items-center pl-4 pr-2"
+          style={
+            headerDragRegion
+              ? ({ paddingLeft: MACOS_TRAFFIC_LIGHT_INSET, WebkitAppRegion: "drag" } as React.CSSProperties)
+              : undefined
+          }
           {...(headerDragRegion ? { "data-tauri-drag-region": true } : {})}
         >
           {/* Mobile menu button */}

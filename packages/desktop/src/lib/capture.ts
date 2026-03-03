@@ -126,6 +126,9 @@ export async function refreshAllFeeds(): Promise<void> {
             } catch {
               healedTitle = liveTitle;
             }
+            console.log(
+              `[Heal] ${feed.url} | stored="${feed.title}" liveTitle="${liveTitle}" healedTitle="${healedTitle}"`,
+            );
           }
 
           return {

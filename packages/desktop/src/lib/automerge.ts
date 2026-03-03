@@ -288,6 +288,7 @@ export async function docBatchRefreshFeeds(
       // leaving the sentinel in place.
       if (feed.title && feed.title !== "Untitled Feed" && feed.title !== feed.url) {
         if (stored.title === "Untitled Feed" || stored.title === stored.url) {
+          console.log(`[Heal] CRDT write: "${stored.title}" → "${feed.title}" (${feed.url})`);
           stored.title = feed.title;
         }
       }
@@ -314,6 +315,37 @@ export async function docBatchRefreshFeeds(
       if (linkUrl) existingLinkUrls.add(linkUrl);
     }
   }, `Refresh ${feeds.length} feeds, ${items.length} items`);
+}
+
+/**
+ * Startup migration: heal "Untitled Feed" and raw-URL-as-title sentinels using
+ * the feed URL hostname as a fallback — zero network required.
+ *
+ * This runs synchronously during app initialization so the user never sees
+ * "Untitled Feed" in the sidebar. The RSS poller's network-based heal can
+ * later upgrade these hostname titles to the real XML <title> values.
+ *
+ * Safe to call on every startup — it is a no-op for feeds that already have
+ * a proper title.
+ */
+export async function docHealUntitledFeedTitles(): Promise<FreedDoc> {
+  return applyChange((doc) => {
+    for (const feed of Object.values(doc.rssFeeds)) {
+      const isUntitled = feed.title === "Untitled Feed" || feed.title === feed.url;
+      if (!isUntitled) continue;
+
+      let healed: string | undefined;
+      try {
+        healed = new URL(feed.url).hostname.replace(/^(?:www|feeds?)\./, "");
+      } catch {
+        // Malformed URL — leave as-is; network heal will try again later
+      }
+
+      if (healed) {
+        feed.title = healed;
+      }
+    }
+  }, "Heal untitled feed titles from URL hostname");
 }
 
 /**
