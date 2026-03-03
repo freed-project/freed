@@ -144,7 +144,8 @@ export interface OPMLFeed {
   title: string;
   siteUrl?: string;
   description?: string;
-  category?: string;
+  /** Folder/category name — aligned with RssFeed.folder */
+  folder?: string;
 }
 
 // =============================================================================

@@ -1,6 +1,6 @@
 # Phase 4: Sync Layer
 
-> **Status:** ✅ Core Complete (cloud sync fallback pending)
+> **Status:** ✅ Complete
 > **Dependencies:** Phase 1-2 (Capture layers ✓), Phase 3 (Save for Later ✓)
 
 ---
@@ -229,9 +229,18 @@ export function createSyncManager(repo: Repo): SyncManager {
 
 ## Device Pairing
 
-1. **QR code** — Desktop displays QR with local IP, phone scans
-2. **Manual entry** — User enters IP in PWA settings
-3. **mDNS discovery** — PWA auto-discovers `desktop.local`
+1. **QR code** — Desktop displays QR with local IP + pairing token, phone scans
+2. **Manual entry** — User copies full URL (including `?t=<token>`) from desktop settings
+3. **mDNS discovery** — PWA auto-discovers `desktop.local` (not yet implemented)
+
+### Pairing Security
+
+The relay requires a 256-bit token in the WebSocket upgrade URI (`?t=<base64url>`).
+
+- Token is generated on first launch, persisted to the app data directory, and re-used across restarts so paired devices auto-reconnect.
+- QR code is rendered locally via `react-qr-code` — the user's LAN IP and token are never sent to a third party.
+- "Reset Pairing Token" button (desktop Settings → Mobile Sync) rotates the token and persists the new value; connected devices remain unaffected until they disconnect and attempt to reconnect.
+- New devices must scan the current QR code to obtain a valid token.
 
 ---
 
@@ -276,8 +285,8 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 - [x] Desktop broadcasts doc changes to connected PWA clients via `broadcast_doc` Tauri command
 - [x] QR code or manual pairing connects PWA to Desktop (SyncConnectDialog with QR scanner)
 - [x] Sync connection status observable (`onStatusChange` listener in sync.ts)
-- [ ] PWA falls back to cloud sync when away from home
-- [ ] At least one cloud provider works (GDrive recommended)
+- [x] PWA falls back to cloud sync when away from home (GDrive + Dropbox PKCE OAuth, Automerge merge-upload)
+- [x] At least one cloud provider works — GDrive and Dropbox both confirmed working on app.freed.wtf
 
 ---
 
@@ -293,6 +302,19 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
   }
 }
 ```
+
+---
+
+## Implemented: Pairing Token Authentication
+
+**Status: ✅ Complete** (branch `feat/secure-pairing-token`)
+
+The relay validates a `?t=<base64url>` token on every WebSocket upgrade request using `accept_hdr_async`. Invalid or missing tokens receive HTTP 401 before any document data is exchanged.
+
+Key files:
+- `packages/desktop/src-tauri/src/lib.rs` — token generation, persistence, relay auth gate
+- `packages/desktop/src/components/MobileSyncTab.tsx` — local QR render, Reset Pairing button
+- `packages/pwa/src/components/SyncConnectDialog.tsx` — token presence validation before connect
 
 ---
 

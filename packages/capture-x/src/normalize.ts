@@ -251,7 +251,9 @@ export function tweetToFeedItem(tweet: XTweetResult): FeedItem {
     engagement,
     userState: {
       hidden: false,
-      bookmarked: false,
+      saved: false,
+      archived: false,
+      tags: [],
     },
     topics,
   };

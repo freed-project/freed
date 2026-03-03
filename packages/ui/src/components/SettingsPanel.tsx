@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from "react";
-import { useAppStore, usePlatform } from "../context/PlatformContext";
-import { BottomSheet } from "./BottomSheet";
+import { useAppStore, usePlatform } from "../context/PlatformContext.js";
+import { BottomSheet } from "./BottomSheet.js";
+import { useDebugStore } from "../lib/debug-store.js";
 
 interface SettingsPanelProps {
   open: boolean;
@@ -54,12 +55,11 @@ type UpdateCheckState =
 export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
   const { SettingsExtraSections, checkForUpdates, applyUpdate, headerDragRegion } = usePlatform();
   const preferences = useAppStore((s) => s.preferences);
+  const toggleDebug = useDebugStore((s) => s.toggle);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
 
   const [display, setDisplay] = useState(() => preferences.display);
-  const [updateState, setUpdateState] = useState<UpdateCheckState>({
-    status: "idle",
-  });
+  const [updateState, setUpdateState] = useState<UpdateCheckState>({ status: "idle" });
   const fadeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const handleCheckForUpdates = useCallback(async () => {
@@ -73,18 +73,12 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
       setUpdateState(next);
       if (next.status === "up-to-date") {
         clearTimeout(fadeTimer.current);
-        fadeTimer.current = setTimeout(
-          () => setUpdateState({ status: "idle" }),
-          4000,
-        );
+        fadeTimer.current = setTimeout(() => setUpdateState({ status: "idle" }), 4000);
       }
     } catch {
       setUpdateState({ status: "error" });
       clearTimeout(fadeTimer.current);
-      fadeTimer.current = setTimeout(
-        () => setUpdateState({ status: "idle" }),
-        4000,
-      );
+      fadeTimer.current = setTimeout(() => setUpdateState({ status: "idle" }), 4000);
     }
   }, [checkForUpdates]);
 
@@ -150,9 +144,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                   {(["light", "normal", "strong"] as const).map((level) => (
                     <button
                       key={level}
-                      onClick={() =>
-                        handleReadingChange({ focusIntensity: level })
-                      }
+                      onClick={() => handleReadingChange({ focusIntensity: level })}
                       className={`flex-1 py-1.5 rounded-lg text-sm capitalize transition-colors border ${
                         display.reading.focusIntensity === level
                           ? "bg-[#8b5cf6]/20 text-[#8b5cf6] border-[#8b5cf6]/30"
@@ -179,9 +171,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
           <div className="space-y-3">
             <p className="text-xs text-[#52525b]">
               Current version:{" "}
-              <span className="text-sm font-bold font-mono">
-                v{__APP_VERSION__}
-              </span>
+              <span className="text-sm font-bold font-mono">v{__APP_VERSION__}</span>
             </p>
             {checkForUpdates && (
               <div className="flex items-center gap-3">
@@ -200,15 +190,11 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                   )}
                 </button>
                 {updateState.status === "up-to-date" && (
-                  <span className="text-xs text-green-400">
-                    You're up to date
-                  </span>
+                  <span className="text-xs text-green-400">You're up to date</span>
                 )}
                 {updateState.status === "available" && (
                   <span className="flex items-center gap-2">
-                    <span className="text-xs text-[#8b5cf6]">
-                      Update available
-                    </span>
+                    <span className="text-xs text-[#8b5cf6]">Update available</span>
                     {applyUpdate && (
                       <button
                         onClick={applyUpdate}
@@ -225,6 +211,23 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
               </div>
             )}
           </div>
+        </section>
+
+        {/* Developer */}
+        <section>
+          <h3 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-4">
+            Developer
+          </h3>
+          <button
+            onClick={() => { onClose(); setTimeout(toggleDebug, 150); }}
+            className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-left"
+          >
+            <div>
+              <p className="text-sm text-[#a1a1aa]">Open Debug Panel</p>
+              <p className="text-xs text-[#52525b] mt-0.5">Sync diagnostics, event log, document inspector</p>
+            </div>
+            <span className="text-[10px] font-mono text-[#52525b] shrink-0 ml-3">⌘⇧D</span>
+          </button>
         </section>
 
         {/* Footer */}

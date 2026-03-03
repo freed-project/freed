@@ -1,7 +1,7 @@
 {
   "name": "@freed/desktop",
   "private": true,
-  "version": "26.3.104",
+  "version": "26.3.200",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,16 +12,20 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
-    "@freed/pwa": "*",
+    "@freed/capture-rss": "*",
+    "@freed/capture-x": "*",
     "@freed/shared": "*",
     "@freed/sync": "*",
+    "@freed/ui": "*",
     "@tanstack/react-virtual": "^3.13.6",
     "@tauri-apps/api": "^2.2.0",
     "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-shell": "^2.3.5",
     "@tauri-apps/plugin-updater": "^2.10.0",
     "date-fns": "^4.1.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-qr-code": "^2.0.18",
     "react-router-dom": "^7.1.1",
     "zustand": "^5.0.3"
   },

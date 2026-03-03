@@ -95,6 +95,14 @@ export default function Footer() {
                   RSS Feed
                 </a>
               </li>
+              <li>
+                <Link
+                  href="/privacy"
+                  className="text-text-secondary text-sm hover:text-text-primary transition-colors"
+                >
+                  Privacy Policy
+                </Link>
+              </li>
             </ul>
           </div>
         </div>
