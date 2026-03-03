@@ -3,9 +3,13 @@
  *
  * Three tabs: Connection, Events, Document.
  * Opened via Cmd/Ctrl+Shift+D, 5-tap on the sync indicator, or Settings → Developer.
+ *
+ * Responsive rendering:
+ *   Mobile  (< sm): overlay bottom-sheet — AppShell renders this conditionally
+ *   Desktop (sm+):  right-edge push drawer — AppShell renders this always (width-animates open/closed)
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useDebugStore, type SyncEvent, type SyncEventKind } from "../lib/debug-store";
 
 // ---------------------------------------------------------------------------
@@ -294,87 +298,111 @@ function DocumentTab() {
 }
 
 // ---------------------------------------------------------------------------
-// Main panel
+// Shared panel chrome — header + tabs + scrollable content + footer
 // ---------------------------------------------------------------------------
 
 type Tab = "connection" | "events" | "document";
 
-export function DebugPanel() {
+const TABS: { id: Tab; label: string }[] = [
+  { id: "connection", label: "Connection" },
+  { id: "events", label: "Events" },
+  { id: "document", label: "Document" },
+];
+
+function PanelContent({
+  tab,
+  setTab,
+  onClose,
+}: {
+  tab: Tab;
+  setTab: (t: Tab) => void;
+  onClose: () => void;
+}) {
+  return (
+    <>
+      {/* Header — subtle bg tint creates section rhythm without a hard border line */}
+      <div className="flex items-center justify-between px-5 py-4 bg-white/[0.03] shrink-0">
+        <div className="flex items-center gap-2.5">
+          <span className="text-xs font-mono px-2 py-0.5 rounded bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30">
+            DEBUG
+          </span>
+          <h2 className="text-sm font-semibold text-white">Sync Diagnostics</h2>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1.5 rounded-lg hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+          aria-label="Close debug panel"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Tabs — active underline provides visual separation; no additional border needed */}
+      <div className="flex shrink-0">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`flex-1 py-2.5 text-xs font-medium transition-colors ${
+              tab === t.id
+                ? "text-[#8b5cf6] border-b-2 border-[#8b5cf6]"
+                : "text-[#71717a] hover:text-white"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto min-h-0 p-5">
+        {tab === "connection" && <ConnectionTab />}
+        {tab === "events" && <EventsTab />}
+        {tab === "document" && <DocumentTab />}
+      </div>
+
+      {/* Footer — subtle bg tint mirrors the header */}
+      <div className="px-5 py-3 bg-white/[0.03] shrink-0">
+        <p className="text-[10px] text-[#52525b] text-center font-mono">
+          Esc to close · Cmd+Shift+D to toggle · window.__freed in DevTools
+        </p>
+      </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main panel — variant-aware root
+// ---------------------------------------------------------------------------
+
+type PanelVariant = "overlay" | "drawer";
+
+export function DebugPanel({ variant = "overlay" }: { variant?: PanelVariant }) {
   const toggle = useDebugStore((s) => s.toggle);
   const [tab, setTab] = useState<Tab>("connection");
-  const panelRef = useRef<HTMLDivElement>(null);
 
-  // Escape key closes
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") toggle();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [toggle]);
+  const content = <PanelContent tab={tab} setTab={setTab} onClose={toggle} />;
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: "connection", label: "Connection" },
-    { id: "events", label: "Events" },
-    { id: "document", label: "Document" },
-  ];
+  if (variant === "drawer") {
+    // Desktop: fills the width-animated wrapper in AppShell.
+    // Border is here (not on the wrapper) so it's clipped when width is 0.
+    return (
+      <div className="w-full h-full bg-[#111111] border-l border-white/[0.06] flex flex-col">
+        {content}
+      </div>
+    );
+  }
 
+  // Mobile overlay: bottom-sheet anchored to the viewport
   return (
-    <div className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[200] flex items-end bg-black/60 backdrop-blur-sm">
       <div
-        ref={panelRef}
-        className="w-full sm:max-w-lg bg-[#111111] border border-[rgba(255,255,255,0.1)] rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col"
+        className="w-full bg-[#111111] border border-[rgba(255,255,255,0.1)] rounded-t-2xl shadow-2xl flex flex-col"
         style={{ maxHeight: "85vh" }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <span className="text-xs font-mono px-2 py-0.5 rounded bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30">
-              DEBUG
-            </span>
-            <h2 className="text-sm font-semibold text-white">Sync Diagnostics</h2>
-          </div>
-          <button
-            onClick={toggle}
-            className="p-1.5 rounded-lg hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
-            aria-label="Close debug panel"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div className="flex border-b border-white/8 shrink-0">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex-1 py-2.5 text-xs font-medium transition-colors ${
-                tab === t.id
-                  ? "text-[#8b5cf6] border-b-2 border-[#8b5cf6]"
-                  : "text-[#71717a] hover:text-white"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto min-h-0 p-5">
-          {tab === "connection" && <ConnectionTab />}
-          {tab === "events" && <EventsTab />}
-          {tab === "document" && <DocumentTab />}
-        </div>
-
-        {/* Footer hint */}
-        <div className="px-5 py-3 border-t border-white/8 shrink-0">
-          <p className="text-[10px] text-[#52525b] text-center font-mono">
-            Esc to close · Cmd+Shift+D to toggle · window.__freed in DevTools
-          </p>
-        </div>
+        {content}
       </div>
     </div>
   );
