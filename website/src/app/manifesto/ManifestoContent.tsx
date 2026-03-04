@@ -48,9 +48,7 @@ export default function ManifestoContent() {
                 Odysseus wanted to hear the Sirens without dying. He couldn't
                 trust himself in the moment, so he had his crew lash him to the
                 mast before the ship got close. He heard the song. He survived.
-                Do it once, in a moment of clarity: tell Freed which creators
-                matter, how much you trust each source. Your algorithm. Not one
-                engineered to exploit you.
+                Install Freed in a moment of clarity. Choose which creators matter. Set how much you trust each one. Then step away. Those choices run in your place. Your attention, yours again. Your algorithm. Not one engineered to exploit you.
               </p>
             </section>
 
