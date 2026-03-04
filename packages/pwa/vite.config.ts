@@ -14,16 +14,14 @@ export default defineConfig({
     topLevelAwait(),
     react(),
     VitePWA({
-      // autoUpdate: new service worker activates immediately without waiting for
-      // user interaction. Combined with skipWaiting + clientsClaim below, every
-      // deployment propagates to all open tabs on next page focus/load.
-      registerType: 'autoUpdate',
+      // prompt: new service workers park in `waiting` and fire onNeedRefresh
+      // so the user sees a toast and chooses when to reload. The app checks
+      // periodically in the background (see pwa-updater.ts) so long-running
+      // sessions are not skipped.
+      registerType: 'prompt',
       includeAssets: ['favicon.svg', 'icons/*.png'],
       manifest: false,
       workbox: {
-        // Skip the waiting phase so the new SW activates the moment it installs,
-        // rather than sitting in `waiting` until the user closes all tabs.
-        skipWaiting: true,
         runtimeCaching: [
           {
             // API routes must bypass the service worker entirely — Workbox's
