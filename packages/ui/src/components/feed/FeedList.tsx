@@ -31,6 +31,10 @@ interface FeedListProps {
   onItemSave?: (item: FeedItemType) => void;
   /** Called when user archives an item from the feed card */
   onItemArchive?: (item: FeedItemType) => void;
+  /** True when a search query is active — changes the empty state message */
+  isSearching?: boolean;
+  /** The active search query text — used in the empty state message */
+  searchQuery?: string;
 }
 
 /**
@@ -92,6 +96,8 @@ export function FeedList({
   hasFeedsSubscribed = false,
   onItemSave,
   onItemArchive,
+  isSearching = false,
+  searchQuery = "",
 }: FeedListProps) {
   // Desktop in-element scroll container
   const parentRef = useRef<HTMLDivElement>(null);
@@ -125,6 +131,24 @@ export function FeedList({
   });
 
   if (items.length === 0) {
+    // Search returned no results — custom empty state.
+    if (isSearching) {
+      return (
+        <div className="flex flex-col items-center justify-center flex-1 min-h-0 overflow-auto text-center px-6 py-12">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#3b82f6]/20 to-[#8b5cf6]/20 flex items-center justify-center mb-4">
+            <svg className="w-7 h-7 text-[#3b82f6]/60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+          <p className="text-lg font-medium mb-2">No results</p>
+          <p className="text-sm text-[#71717a] max-w-xs">
+            Nothing matched{searchQuery ? <> &ldquo;<span className="text-white/60">{searchQuery}</span>&rdquo;</> : ""}.
+            Try a different term, or switch to <span className="text-white/60">All Sources</span> in the sidebar to search everywhere.
+          </p>
+        </div>
+      );
+    }
+
     if (FeedEmptyState) {
       return (
         <div className="flex flex-col items-center justify-center flex-1 min-h-0 overflow-auto text-center px-6 py-12">

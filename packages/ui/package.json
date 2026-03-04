@@ -27,6 +27,7 @@
     "@types/d3-force": "^3.0.10",
     "d3-force": "^3.0.0",
     "date-fns": "^4.1.0",
+    "minisearch": "^7.2.0",
     "zustand": "^5.0.3"
   },
   "devDependencies": {
