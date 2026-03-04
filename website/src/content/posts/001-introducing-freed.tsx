@@ -119,12 +119,9 @@ export default definePost(
       <li>Cloud sync (Google Drive, Dropbox, iCloud)</li>
       <li>Facebook and Instagram capture</li>
     </ol>
-    <p>I'll send an update when each of these lands. I don't spam.</p>
-
     <p>
-      Until next time,
-      <br />
-      <a href="https://AubreyFalconer.com">Aubrey Falconer</a>
+      I'll post an update when each of these lands.{" "}
+      <a href="/updates">Follow along here.</a> I don't spam.
     </p>
   </>
 );
