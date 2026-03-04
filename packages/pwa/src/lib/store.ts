@@ -30,6 +30,21 @@ interface AppState extends BaseAppState {
 }
 
 /**
+ * Shallow-compare two string-keyed number maps.
+ * Used to preserve object identity on count maps so Zustand selectors that
+ * subscribe to these objects don't trigger re-renders when values are unchanged.
+ */
+function shallowEqualRecord(
+  a: Record<string, number>,
+  b: Record<string, number>,
+): boolean {
+  const aKeys = Object.keys(a);
+  return (
+    aKeys.length === Object.keys(b).length && aKeys.every((k) => a[k] === b[k])
+  );
+}
+
+/**
  * Hydrate store state from Automerge document
  */
 function hydrateFromDoc(doc: FreedDoc): Partial<AppState> {
@@ -106,9 +121,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ isLoading: true });
       const doc = await initDoc();
 
-      // Subscribe to future changes (for sync)
+      // Subscribe to future changes (for sync).
+      // Reuse count map references when values haven't changed so Sidebar
+      // selectors don't trigger re-renders on unrelated mutations.
       subscribe((updatedDoc) => {
-        set(hydrateFromDoc(updatedDoc));
+        const next = hydrateFromDoc(updatedDoc);
+        const prev = get();
+        if (shallowEqualRecord(next.feedUnreadCounts!, prev.feedUnreadCounts))
+          next.feedUnreadCounts = prev.feedUnreadCounts;
+        if (shallowEqualRecord(next.feedTotalCounts!, prev.feedTotalCounts))
+          next.feedTotalCounts = prev.feedTotalCounts;
+        if (shallowEqualRecord(next.unreadCountByPlatform!, prev.unreadCountByPlatform))
+          next.unreadCountByPlatform = prev.unreadCountByPlatform;
+        if (shallowEqualRecord(next.itemCountByPlatform!, prev.itemCountByPlatform))
+          next.itemCountByPlatform = prev.itemCountByPlatform;
+        set(next);
       });
 
       // Hydrate initial state

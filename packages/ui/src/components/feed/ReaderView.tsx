@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform, MACOS_TRAFFIC_LIGHT_INSET } from "../../context/PlatformContext.js";
@@ -28,7 +28,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
     intensity: storedDisplay.reading.focusIntensity,
   });
 
-  const toggleSaved = () => {
+  const toggleSaved = useCallback(() => {
     updateItem(item.globalId, {
       userState: {
         ...item.userState,
@@ -36,18 +36,18 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
         savedAt: item.userState.saved ? undefined : Date.now(),
       },
     });
-  };
+  }, [updateItem, item.globalId, item.userState]);
 
-  const toggleArchived = () => {
+  const toggleArchived = useCallback(() => {
     updateItem(item.globalId, {
       userState: {
         ...item.userState,
         archived: !item.userState.archived,
       },
     });
-  };
+  }, [updateItem, item.globalId, item.userState]);
 
-  const toggleFocus = () => {
+  const toggleFocus = useCallback(() => {
     setFocusOptions((prev) => {
       const next = { ...prev, enabled: !prev.enabled };
       updatePreferences({
@@ -58,14 +58,20 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
       });
       return next;
     });
-  };
+  }, [updatePreferences, storedDisplay]);
 
-  const hasContent = item.preservedContent?.html;
-  const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
+  const hasContent = !!item.preservedContent?.html;
+  const timeAgo = useMemo(
+    () => formatDistanceToNow(item.publishedAt, { addSuffix: true }),
+    [item.publishedAt],
+  );
 
-  const plainText = hasContent
-    ? htmlToText(item.preservedContent!.html)
-    : item.content.text;
+  // Parsing the HTML into plain text for focus mode is expensive - memoize it
+  // so repeated re-renders while the reader is open don't recreate a DOM node.
+  const plainText = useMemo(() => {
+    if (!item.preservedContent?.html) return item.content.text;
+    return htmlToText(item.preservedContent.html);
+  }, [item.preservedContent?.html, item.content.text]);
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0a0a0a] overflow-auto">
