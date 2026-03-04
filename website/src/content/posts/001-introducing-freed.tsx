@@ -5,7 +5,7 @@ export default definePost(
     slug: "introducing-freed",
     title: "Introducing Freed: Take Back Your Feed",
     description:
-      "Your feeds, your algorithms, your devices.",
+      "Your feeds, your way, on all your devices.",
     date: "2026-02-17",
     author: "Aubrey Falconer",
     authorUrl: "https://AubreyFalconer.com",
