@@ -5,7 +5,7 @@ export default definePost(
     slug: "introducing-freed",
     title: "Introducing Freed: Take Back Your Feed",
     description:
-      "A local-first, open-source reader that captures your feeds in the background and puts you back in charge of what you read.",
+      "Your feeds, your algorithms, your devices.",
     date: "2026-02-17",
     author: "Aubrey Falconer",
     authorUrl: "https://AubreyFalconer.com",
