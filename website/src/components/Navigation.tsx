@@ -66,6 +66,10 @@ export default function Navigation() {
   // Update underline position when pathname changes
   useLayoutEffect(() => {
     const activeIndex = NAV_ITEMS.findIndex((item) => item.path === pathname);
+    if (activeIndex === -1) {
+      setUnderlineStyle({ left: 0, width: 0 });
+      return;
+    }
     const activeRef = navRefs.current[activeIndex];
     if (activeRef) {
       const parent = activeRef.parentElement;

@@ -8,11 +8,12 @@
 - **IDs:** Display tail — `...${id.slice(-8)}`.
 - **Number formatting:** All user-facing numbers must use `Number.toLocaleString()` (or `Intl.NumberFormat`) — never raw `.toString()` or string interpolation. This ensures locale-appropriate grouping separators (e.g. commas in `en-US`) for counts, totals, and stats.
 - **Before creating any new component or hook:** `SemanticSearch` or `Grep` the package for existing code that does the same thing. Duplication is never acceptable — if two surfaces need the same UI or logic, extract a shared primitive and have both import it.
-- **Before shipping any feature:** Verify that every exported function/class you added or touched is actually *called* from an appropriate entry point. Exported-but-never-called code is a bug. Grep for each new export name to confirm it appears in a consumer.
+- **Before shipping any feature:** Verify that every exported function/class you added or touched is actually _called_ from an appropriate entry point. Exported-but-never-called code is a bug. Grep for each new export name to confirm it appears in a consumer.
 
 ## Versioning
 
 CalVer `YY.M.DDBUILD` — patch segment encodes the day and build number:
+
 - `patch = (day_of_month × 100) + build_number`
 - March 1, first build → `26.3.100`; fifth build → `26.3.104`
 - March 15, first build → `26.3.1500`
@@ -21,22 +22,22 @@ Run `./scripts/release.sh` with no args to auto-compute the next version.
 
 ## Package Boundaries
 
-| Package | Rule |
-|---|---|
-| `shared/` | Pure functions + types. Zero runtime deps. No React. |
-| `ui/` | Platform-agnostic React UI layer. May import `@freed/shared`. No platform stores, no Tauri APIs, no service-worker logic, no `@freed/sync` imports. Ships raw `.tsx` source — no build step. |
-| `sync/` | Storage-agnostic. Works in browser (IndexedDB) and Node (filesystem). |
-| `pwa/` | PWA app shell only. Imports `@freed/ui` and `@freed/shared`. Never import Tauri APIs. |
-| `desktop/` | Tauri shell. Imports `@freed/ui` and `@freed/shared`. Never import from `@freed/pwa`. |
-| `capture-*/` | Isolated. Never import between capture packages. |
+| Package      | Rule                                                                                                                                                                                         |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shared/`    | Pure functions + types. Zero runtime deps. No React.                                                                                                                                         |
+| `ui/`        | Platform-agnostic React UI layer. May import `@freed/shared`. No platform stores, no Tauri APIs, no service-worker logic, no `@freed/sync` imports. Ships raw `.tsx` source — no build step. |
+| `sync/`      | Storage-agnostic. Works in browser (IndexedDB) and Node (filesystem).                                                                                                                        |
+| `pwa/`       | PWA app shell only. Imports `@freed/ui` and `@freed/shared`. Never import Tauri APIs.                                                                                                        |
+| `desktop/`   | Tauri shell. Imports `@freed/ui` and `@freed/shared`. Never import from `@freed/pwa`.                                                                                                        |
+| `capture-*/` | Isolated. Never import between capture packages.                                                                                                                                             |
 
 ## URLs
 
-| Property | URL |
-|---|---|
-| Marketing site | `https://freed.wtf` |
+| Property            | URL                     |
+| ------------------- | ----------------------- |
+| Marketing site      | `https://freed.wtf`     |
 | PWA (mobile reader) | `https://app.freed.wtf` |
-| Download page | `https://freed.wtf/get` |
+| Download page       | `https://freed.wtf/get` |
 
 **Never write `freed.wtf/app`** — the PWA lives at the subdomain `app.freed.wtf`.
 
@@ -54,15 +55,15 @@ git worktree add ../freed-<slug> -b <branch>
 
 **Commit messages** follow Conventional Commits:
 
-| Prefix | When to use |
-|---|---|
-| `feat:` | New user-facing feature |
-| `fix:` | Bug fix |
-| `chore:` | Tooling, deps, config — no production code change |
-| `docs:` | Documentation only |
-| `refactor:` | Code restructure with no behavior change |
-| `perf:` | Performance improvement |
-| `style:` | Formatting, whitespace, CSS-only |
+| Prefix      | When to use                                       |
+| ----------- | ------------------------------------------------- |
+| `feat:`     | New user-facing feature                           |
+| `fix:`      | Bug fix                                           |
+| `chore:`    | Tooling, deps, config — no production code change |
+| `docs:`     | Documentation only                                |
+| `refactor:` | Code restructure with no behavior change          |
+| `perf:`     | Performance improvement                           |
+| `style:`    | Formatting, whitespace, CSS-only                  |
 
 **Merge policy:** Squash merge only. One PR = one commit on `main`.
 
@@ -75,16 +76,31 @@ Branches are deleted after merge. The squash commit message is derived from the 
 
 ---
 
+## Writing Style (All User-Facing Copy)
+
+Copy must read like a person wrote it. When in doubt, read it aloud. If it sounds like a press release, rewrite it.
+
+- **No em dashes (—) or en dashes (–).** Standard hyphens and normal punctuation only. Em dashes are a near-universal AI tell.
+- **No AI filler phrases:** "not just X but Y", "delve into", "it's worth noting", "leverage" (verb), "in today's world", "Furthermore,", "Moreover,", "Additionally,", "at the end of the day", "game-changer", "seamlessly".
+- **No throat-clearing.** Cut the first sentence of any paragraph that just announces what the paragraph is about.
+- **Short sentences.** If a sentence needs an em dash to hold together, split it in two.
+- **Concrete over abstract.** "Stores posts on your hard drive" beats "enables local-first data persistence".
+- **Contractions are fine.** "We don't" reads warmer than "We do not". Use them.
+
 ## Automerge
 
 **Schema** (`packages/shared/src/schema.ts`): backward-compatible only. Add optional fields; never delete (mark `@deprecated`).
 
 **Mutations** must use `A.change()` — direct mutation silently fails to sync:
+
 ```ts
-A.change(doc, d => { d.items.push(item) }) // ✅
-doc.items.push(item)                        // ❌ silent failure
+A.change(doc, (d) => {
+  d.items.push(item);
+}); // ✅
+doc.items.push(item); // ❌ silent failure
 ```
 
 **Proxy constraints inside `A.change()`:**
+
 - Never assign `undefined` — use `delete` instead
 - Never replace an existing nested object — assign fields individually or use a `deepMergeInto` helper
