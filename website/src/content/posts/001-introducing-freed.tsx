@@ -168,8 +168,11 @@ export default definePost(
     </p>
     <ul>
       <li>
-        <strong>Star the repo.</strong> It helps us understand how many people
-        care about this, and it helps others discover the project.
+        <strong>
+          <a href="https://github.com/freed-project/freed">Star the repo.</a>
+        </strong>{" "}
+        It helps us understand how many people care about this, and it helps
+        others discover the project.
       </li>
       <li>
         <strong>Try the PWA.</strong> Go to{" "}
