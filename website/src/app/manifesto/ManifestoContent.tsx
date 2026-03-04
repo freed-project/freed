@@ -47,9 +47,9 @@ export default function ManifestoContent() {
               <p>
                 Odysseus lashed himself to the mast before his ship reached the
                 Sirens. He heard the song. He survived. The secret: decide
-                before temptation arrives. Install Freed now. Choose your
-                sources. Set your priorities. Our algorithm serves you. Your
-                attention, yours again.
+                before temptation arrives. Install Freed. It browses your feeds
+                and stores what you care about in a vault on your device. The
+                platforms become players in your game.
               </p>
             </section>
 
@@ -72,7 +72,7 @@ export default function ManifestoContent() {
               <ul className="space-y-5">
                 <li>
                   <strong className="text-text-primary block mb-1">
-                    Your attention is sacred
+                    Your attention is priceless
                   </strong>
                   Your time and your data stay yours. Everything you read lives
                   on your device. We never see any of it. And when you've read
@@ -80,11 +80,11 @@ export default function ManifestoContent() {
                 </li>
                 <li>
                   <strong className="text-text-primary block mb-1">
-                    You deserve to see the algorithm.
+                    You should own the algorithm.
                   </strong>
-                  Freed's ranking is open source. You can read exactly why a
-                  post appears first. You can change the weights. You can fork
-                  the whole thing.
+                  Freed's ranking is open source. You can tune which sources
+                  matter most to you. You can read exactly why a post appears
+                  first. You are in control.
                 </li>
                 <li>
                   <strong className="text-text-primary block mb-1">
