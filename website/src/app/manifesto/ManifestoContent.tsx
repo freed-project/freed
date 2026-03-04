@@ -34,7 +34,7 @@ export default function ManifestoContent() {
 
             <section>
               <h2 className="text-2xl font-bold text-text-primary mb-4">The Pact</h2>
-              <p>Odysseus wanted to hear the Sirens without dying. He couldn't trust himself in the moment, so he had his crew lash him to the mast before the ship got close. He heard the song. He survived. He got what he wanted by choosing his constraints <em>before</em> the temptation arrived. Configure Freed once, in a moment of clarity: which creators matter, how much weight each source gets, which platforms you'll only access through a filtered lens. Your algorithm. Not one engineered to exploit you.</p>
+              <p>Odysseus wanted to hear the Sirens without dying. He couldn't trust himself in the moment, so he had his crew lash him to the mast before the ship got close. He heard the song. He survived. He got what he wanted by choosing his constraints <em>before</em> the temptation arrived. Do it once, in a moment of clarity: tell Freed which creators matter, how much you trust each source, which platforms you'll only read through Freed. Your algorithm. Not one engineered to exploit you.</p>
             </section>
 
             <section>
@@ -47,7 +47,7 @@ export default function ManifestoContent() {
               <ul className="space-y-5">
                 <li>
                   <strong className="text-text-primary block mb-1">Your attention is not a resource to be harvested.</strong>
-                  Your time, your focus, and your data belong to you. Everything lives on your device. No servers. No telemetry. We never see your content, your follows, or your habits. And when you've read what you came to read, you're done.
+                  Your time and your data stay yours. Everything you read lives on your device. We never see any of it. And when you've read what you came to read, you're done.
                 </li>
                 <li>
                   <strong className="text-text-primary block mb-1">You deserve to see the algorithm.</strong>
@@ -89,7 +89,7 @@ export default function ManifestoContent() {
                     href: "https://www.youtube.com/watch?v=v1eW62X5fiE",
                     title: "What if we had fixed social media? An alternative history",
                     source: "Center for Humane Technology",
-                    description: "What if we'd optimized for people instead of engagement? This is that internet.",
+                    description: "What if we'd optimized for people instead of engagement? That internet is possible.",
                   },
                   {
                     href: "https://www.youtube.com/watch?v=0v5RiMdSqwk&t=2109s",
