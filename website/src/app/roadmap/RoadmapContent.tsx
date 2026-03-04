@@ -501,7 +501,7 @@ const phases: Phase[] = [
     title: "PWA Reader",
     description:
       "Mobile companion app. Read your feed anywhere, synced to your desktop.",
-    status: "current",
+    status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-6-PWA.md",
   },
@@ -543,8 +543,9 @@ const phases: Phase[] = [
   },
   {
     number: 11,
-    title: "OpenClaw Integration 🦞",
-    description: "Headless capture for power users. Run Freed without the GUI.",
+    title: "OpenClaw + Omi 🦞",
+    description:
+      "Headless capture for power users via OpenClaw CLI. Plus bidirectional Omi wearable integration: say \"Hey Freed\" to save a voice note, and your reading activity enriches Omi's memory.",
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-11-OPENCLAW.md",
