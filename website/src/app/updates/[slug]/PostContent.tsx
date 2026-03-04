@@ -121,10 +121,10 @@ export default function PostContent({ post }: PostContentProps) {
               >
                 Share on X
               </a>
-              {" • "}
+              <span className="mx-3 text-text-muted">•</span>
               <button
                 onClick={handleCopy}
-                className="text-glow-purple hover:text-glow-blue transition-colors relative"
+                className="text-glow-purple hover:text-glow-blue transition-colors relative cursor-pointer"
               >
                 Copy link
                 <AnimatePresence>
