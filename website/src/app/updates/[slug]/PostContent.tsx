@@ -55,7 +55,18 @@ export default function PostContent({ post }: PostContentProps) {
               {post.author && (
                 <>
                   <span className="text-text-muted">•</span>
-                  <span className="text-sm text-text-muted">{post.author}</span>
+                  {post.authorUrl ? (
+                    <a
+                      href={post.authorUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-text-muted hover:text-glow-purple transition-colors"
+                    >
+                      {post.author}
+                    </a>
+                  ) : (
+                    <span className="text-sm text-text-muted">{post.author}</span>
+                  )}
                 </>
               )}
             </div>

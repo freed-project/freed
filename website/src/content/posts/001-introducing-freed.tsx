@@ -7,7 +7,8 @@ export default definePost(
     description:
       "Why we built a local-first, open-source feed reader that puts you back in control of your information diet.",
     date: "2026-02-17",
-    author: "The Freed Team",
+    author: "Aubrey Falconer",
+    authorUrl: "https://AubreyFalconer.com",
     tags: ["announcement", "philosophy", "technical"],
   },
   <>
@@ -93,7 +94,7 @@ export default definePost(
     <p>
       Until next time,
       <br />
-      The Freed Team
+      <a href="https://AubreyFalconer.com">Aubrey Falconer</a>
     </p>
   </>
 );
