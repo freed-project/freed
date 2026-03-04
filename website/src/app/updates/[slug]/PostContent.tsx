@@ -108,8 +108,14 @@ export default function PostContent({ post }: PostContentProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.4 }}
-            className="mt-24 text-right not-prose"
+            className="mt-24 not-prose flex items-center justify-between"
           >
+            <Link
+              href="/updates"
+              className="text-sm text-text-muted hover:text-glow-purple transition-colors"
+            >
+              ← Back to Updates
+            </Link>
             <p className="text-text-muted text-sm">
               <a
                 href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(
