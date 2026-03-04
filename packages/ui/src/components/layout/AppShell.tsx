@@ -31,7 +31,7 @@ export function AppShell({ children }: AppShellProps) {
     // On mobile (<md), the layout flows naturally in the document so Safari can
     // collapse its address bar when the feed scrolls. min-h-0 and overflow-hidden
     // are desktop-only; they lock the layout to 100dvh for in-element scrolling.
-    <div className="flex-1 md:min-h-0 flex flex-col bg-[#121212] pb-[env(safe-area-inset-bottom)]">
+    <div className="flex-1 md:min-h-0 flex flex-col bg-[#121212]">
       <Header onMenuClick={() => setSidebarOpen(true)} />
 
       <div className="flex-1 md:min-h-0 flex md:overflow-hidden">

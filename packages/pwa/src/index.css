@@ -84,11 +84,13 @@ body {
   html {
     height: auto;
     overflow: visible;
+    /* Must be on html (not just body) — iOS Safari applies the pull-to-refresh
+       gesture at the root element level when overflow:visible is set here. */
+    overscroll-behavior: none;
   }
   body {
     height: auto;
     overflow: visible;
-    /* none prevents pull-to-refresh without affecting address-bar collapse */
     overscroll-behavior: none;
   }
   #root {
