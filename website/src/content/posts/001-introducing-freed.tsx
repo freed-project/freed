@@ -107,8 +107,8 @@ export default definePost(
         capture sources.
       </li>
       <li>
-        <strong>Share this.</strong> Send it to someone who's complained about
-        social media lately.
+        <strong>Share this. 🤍</strong> Send it to someone who's complained
+        about social media lately.
       </li>
     </ul>
 
