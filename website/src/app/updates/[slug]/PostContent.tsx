@@ -1,7 +1,8 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import { useState, useCallback } from "react";
 import { useNewsletter } from "@/context/NewsletterContext";
 import type { Post } from "@/content";
 
@@ -22,6 +23,13 @@ interface PostContentProps {
 
 export default function PostContent({ post }: PostContentProps) {
   const { openModal } = useNewsletter();
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(`https://freed.wtf/updates/${post.slug}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [post.slug]);
 
   return (
     <section className="py-24 sm:py-32 px-4 sm:px-6 md:px-12 lg:px-8">
@@ -65,7 +73,9 @@ export default function PostContent({ post }: PostContentProps) {
                       {post.author}
                     </a>
                   ) : (
-                    <span className="text-sm text-text-muted">{post.author}</span>
+                    <span className="text-sm text-text-muted">
+                      {post.author}
+                    </span>
                   )}
                 </>
               )}
@@ -101,10 +111,9 @@ export default function PostContent({ post }: PostContentProps) {
             className="mt-24 text-right not-prose"
           >
             <p className="text-text-muted text-sm">
-              Share this post:{" "}
               <a
                 href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(
-                  `https://freed.wtf/updates/${post.slug}`
+                  `https://freed.wtf/updates/${post.slug}`,
                 )}&text=${encodeURIComponent(post.title)}`}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -114,14 +123,22 @@ export default function PostContent({ post }: PostContentProps) {
               </a>
               {" • "}
               <button
-                onClick={() =>
-                  navigator.clipboard.writeText(
-                    `https://freed.wtf/updates/${post.slug}`
-                  )
-                }
-                className="text-glow-purple hover:text-glow-blue transition-colors"
+                onClick={handleCopy}
+                className="text-glow-purple hover:text-glow-blue transition-colors relative"
               >
                 Copy link
+                <AnimatePresence>
+                  {copied && (
+                    <motion.span
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
+                      className="absolute -top-7 left-1/2 -translate-x-1/2 bg-freed-surface border border-freed-border text-text-primary text-xs px-2 py-1 rounded whitespace-nowrap"
+                    >
+                      Copied!
+                    </motion.span>
+                  )}
+                </AnimatePresence>
               </button>
             </p>
           </motion.div>
