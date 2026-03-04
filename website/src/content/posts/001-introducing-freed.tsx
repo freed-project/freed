@@ -121,8 +121,8 @@ export default definePost(
       <li>Facebook and Instagram capture</li>
     </ol>
     <p>
-      I'll post an update when each of these lands.{" "}
-      <a href="/updates">Follow along here.</a> I don't spam.
+      I'll post an update as each of these ships.{" "}
+      <a href="/updates">Follow along.</a>
     </p>
   </>
 );
