@@ -14,10 +14,10 @@ export default definePost(
   <>
     <p>
       The chronological feed was quietly killed by every major social platform.
-      Because it failed to exploit you.
+      Because it failed. Only to exploit you.
     </p>
     <p>
-      What replaced it was engineered to keep you scrolling. Outrage gets
+      What replaced it was psychological warfare to keep you scrolling. Outrage gets
       amplified because it's engaging. Nuance gets buried because it's slow.
       Infinite scroll removes the stopping point. Variable reward schedules,
       the same mechanism that makes slot machines addictive, keep you pulling
