@@ -55,6 +55,12 @@ interface AppState {
   totalItemCount: number;
   /** Total visible item count bucketed by platform. */
   itemCountByPlatform: Record<string, number>;
+  /** Total read-but-not-saved items eligible for archiving. */
+  totalArchivableCount: number;
+  /** Archivable item count bucketed by platform. */
+  archivableCountByPlatform: Record<string, number>;
+  /** Archivable item count per feed URL. */
+  archivableFeedCounts: Record<string, number>;
 
   // X auth state
   xAuth: XAuthState;
@@ -77,6 +83,8 @@ interface AppState {
   markAllAsRead: (platform?: string) => Promise<void>;
   toggleSaved: (id: string) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
+  toggleArchived: (id: string) => Promise<void>;
+  archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
 
   // Feed actions (persisted to Automerge)
   addFeed: (feed: RssFeed) => Promise<void>;

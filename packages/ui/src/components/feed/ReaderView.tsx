@@ -177,7 +177,6 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
     });
   }, [updatePreferences, storedDisplay]);
 
-  const hasContent = !!(html || item.preservedContent?.html);
   const timeAgo = useMemo(
     () => formatDistanceToNow(item.publishedAt, { addSuffix: true }),
     [item.publishedAt],

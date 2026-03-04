@@ -3,25 +3,13 @@
   "version": "0.1.0",
   "description": "Save any URL to your Freed library",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./browser": {
-      "types": "./dist/browser.d.ts",
-      "import": "./dist/browser.js"
-    },
-    "./import-markdown": {
-      "types": "./dist/import-markdown.d.ts",
-      "import": "./dist/import-markdown.js"
-    },
-    "./export-markdown": {
-      "types": "./dist/export-markdown.d.ts",
-      "import": "./dist/export-markdown.js"
-    }
+    ".": "./src/index.ts",
+    "./browser": "./src/browser.ts",
+    "./import-markdown": "./src/import-markdown.ts",
+    "./export-markdown": "./src/export-markdown.ts"
   },
   "scripts": {
     "build": "tsc",

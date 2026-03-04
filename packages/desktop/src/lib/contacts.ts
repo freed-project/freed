@@ -22,7 +22,8 @@ interface ContactPickerResult {
  */
 export async function pickContactViaTauri(): Promise<ContactPickerResult | null> {
   try {
-    const result = await window.__TAURI__?.core.invoke<{
+    if (!window.__TAURI__) return null;
+    const result = await window.__TAURI__.core.invoke<{
       name: string;
       phone: string | null;
       email: string | null;

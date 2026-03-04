@@ -159,7 +159,7 @@ export async function importMarkdownFiles(
 export async function exportLibrary(items: FeedItem[]): Promise<void> {
   const blob = await exportLibraryAsMarkdown(
     items,
-    (id) => contentCache.get(id),
+    (id: string) => contentCache.get(id),
   );
 
   const url = URL.createObjectURL(blob);
