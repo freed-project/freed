@@ -81,29 +81,32 @@ export default definePost(
     <ul>
       <li>
         <strong>
-          ⭐ <a href="https://github.com/freed-project/freed">Star the repo</a>
+          <a href="https://github.com/freed-project/freed">Star the repo</a>
+          {" ⭐"}
         </strong>{" "}
         It signals that this matters and helps others find it.
       </li>
       <li>
         <strong>
-          📱 <a href="https://app.freed.wtf">Try the PWA</a>
+          <a href="https://app.freed.wtf">Try the PWA</a>
+          {" 📱"}
         </strong>{" "}
         Add some RSS feeds and tell me what's broken.
       </li>
       <li>
         <strong>
-          🛠️{" "}
           <a href="https://github.com/freed-project/freed/blob/main/CONTRIBUTING.md">
             Contribute
           </a>
+          {" 🛠️"}
         </strong>{" "}
         Especially if you know Rust/TypeScript or have ideas for additional
         capture sources.
       </li>
       <li>
-        <strong>Share this 🤍</strong>&nbsp;&nbsp;Pass along to a friend who's
-        complained about social media lately. We can win, together!
+        <strong>Share this 🤍</strong>{" "}
+        Pass along to a friend who's complained about social media lately. We
+        can win, together!
       </li>
     </ul>
 
