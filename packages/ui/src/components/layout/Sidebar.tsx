@@ -1,8 +1,9 @@
-import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from "react";
 import type { RssFeed } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { SettingsPanel } from "../SettingsPanel.js";
 import { AllIcon, RssIcon, FacebookIcon, InstagramIcon, MapPinIcon, BookmarkIcon, ArchiveIcon } from "../icons.js";
+import { LibraryDialog } from "../LibraryDialog.js";
 
 /** Compact number: 1234 → "1.2k", 1_200_000 → "1.2m". Trims trailing ".0". */
 function fmt(n: number): string {
@@ -213,7 +214,7 @@ const comingSoonSources: { id: string; label: string; icon: ReactNode }[] = [
 ];
 
 export function Sidebar({ open, onClose }: SidebarProps) {
-  const { SourceIndicator, headerDragRegion } = usePlatform();
+  const { SourceIndicator, headerDragRegion, saveUrl, importMarkdown, exportMarkdown } = usePlatform();
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
   const feeds = useAppStore((s) => s.feeds);
@@ -227,7 +228,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const itemCountByPlatform = useAppStore((s) => s.itemCountByPlatform);
   const sidebarWidth = useAppStore((s) => s.preferences.display.sidebarWidth) ?? DEFAULT_WIDTH;
   const updatePreferences = useAppStore((s) => s.updatePreferences);
+  const items = useAppStore((s) => s.items);
+
   const [showSettings, setShowSettings] = useState(false);
+  const [showLibraryDialog, setShowLibraryDialog] = useState(false);
+  const [saveUrlDraft, setSaveUrlDraft] = useState("");
+  const [savingUrl, setSavingUrl] = useState(false);
   const [settingsScrollTarget, setSettingsScrollTarget] = useState<string | null>(null);
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const [openMenuFeedUrl, setOpenMenuFeedUrl] = useState<string | null>(null);
@@ -257,6 +263,63 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     }, 100);
     return () => clearTimeout(timer);
   }, [showSettings, settingsScrollTarget]);
+
+  // ─── Tag tree ────────────────────────────────────────────────────────────────
+
+  /** All unique tags collected from the library, sorted alphabetically */
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    for (const item of items) {
+      for (const tag of item.userState.tags ?? []) {
+        tagSet.add(tag);
+      }
+    }
+    return Array.from(tagSet).sort();
+  }, [items]);
+
+  /**
+   * Top-level tag segments (before the first "/").
+   * E.g. ["Technology/AI", "Technology/React", "Science"] → ["Science", "Technology"]
+   */
+  const topLevelTags = useMemo(() => {
+    const tops = new Set<string>();
+    for (const tag of allTags) {
+      tops.add(tag.split("/")[0]);
+    }
+    return Array.from(tops).sort();
+  }, [allTags]);
+
+  /** All descendant tag paths under a given top-level segment */
+  const childTagsOf = (top: string) =>
+    allTags.filter((t) => t === top || t.startsWith(`${top}/`));
+
+  const handleTagClick = (tag: string) => {
+    const children = childTagsOf(tag);
+    setFilter({ tags: children });
+    onClose();
+  };
+
+  const isTagActive = (tag: string) => {
+    const active = activeFilter.tags;
+    if (!active || active.length === 0) return false;
+    return childTagsOf(tag).some((t) => active.includes(t));
+  };
+
+  // ─── Save URL ────────────────────────────────────────────────────────────────
+
+  const handleSaveUrl = async () => {
+    const url = saveUrlDraft.trim();
+    if (!url || !saveUrl) return;
+    setSavingUrl(true);
+    try {
+      await saveUrl(url);
+      setSaveUrlDraft("");
+    } catch (err) {
+      console.error("[Sidebar] saveUrl failed:", err);
+    } finally {
+      setSavingUrl(false);
+    }
+  };
 
   const width = dragWidth ?? sidebarWidth;
 
@@ -435,7 +498,91 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 </button>
               </li>
             </ul>
+
+            {/* Save URL inline input */}
+            {saveUrl && (
+              <div className="mt-2 flex gap-1.5">
+                <input
+                  type="url"
+                  value={saveUrlDraft}
+                  onChange={(e) => setSaveUrlDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSaveUrl();
+                    if (e.key === "Escape") setSaveUrlDraft("");
+                  }}
+                  placeholder="Save URL..."
+                  className="flex-1 min-w-0 bg-white/5 border border-[rgba(255,255,255,0.1)] rounded-lg px-2.5 py-1.5 text-xs text-[#a1a1aa] placeholder-[#3f3f46] focus:outline-none focus:border-[#8b5cf6]/50 transition-colors"
+                />
+                <button
+                  onClick={handleSaveUrl}
+                  disabled={!saveUrlDraft.trim() || savingUrl}
+                  className="px-2.5 py-1.5 text-xs rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors disabled:opacity-40 shrink-0"
+                  aria-label="Save URL"
+                >
+                  {savingUrl ? (
+                    <div className="w-3 h-3 border border-[#8b5cf6]/30 border-t-[#8b5cf6] rounded-full animate-spin" />
+                  ) : (
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Import / Export Library */}
+            {(importMarkdown || exportMarkdown) && (
+              <button
+                onClick={() => setShowLibraryDialog(true)}
+                className="mt-2 w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-[#71717a] hover:text-[#a1a1aa] hover:bg-white/5 transition-colors text-left"
+              >
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                Import / Export Library
+              </button>
+            )}
           </SidebarSection>
+
+          {/* Tags */}
+          {topLevelTags.length > 0 && (
+            <SidebarSection title="Tags" defaultOpen={true} count={allTags.length}>
+              <ul className="space-y-0.5">
+                {topLevelTags.map((top) => {
+                  const children = allTags.filter(
+                    (t) => t.startsWith(`${top}/`) && t !== top,
+                  );
+                  const hasChildren = children.length > 0;
+                  const active = isTagActive(top);
+                  return (
+                    <TagTreeNode
+                      key={top}
+                      tag={top}
+                      label={top}
+                      active={active}
+                      onClick={() => handleTagClick(top)}
+                    >
+                      {hasChildren &&
+                        children.map((child) => (
+                          <TagTreeNode
+                            key={child}
+                            tag={child}
+                            label={child.slice(top.length + 1)}
+                            active={
+                              !!(activeFilter.tags?.includes(child))
+                            }
+                            onClick={() => {
+                              setFilter({ tags: [child] });
+                              onClose();
+                            }}
+                          />
+                        ))}
+                    </TagTreeNode>
+                  );
+                })}
+              </ul>
+            </SidebarSection>
+          )}
 
           {/* Feeds */}
           {feedList.length > 0 && (
@@ -535,6 +682,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
       <SettingsPanel open={showSettings} onClose={() => setShowSettings(false)} />
 
+      {/* Library import/export dialog */}
+      {showLibraryDialog && (
+        <LibraryDialog
+          onClose={() => setShowLibraryDialog(false)}
+          importMarkdown={importMarkdown}
+          exportMarkdown={exportMarkdown}
+        />
+      )}
+
       {/* Feed context menu — rendered outside scroll container to avoid clipping */}
       {openMenuFeedUrl && menuAnchorRect && feeds[openMenuFeedUrl] && (
         <FeedContextMenu
@@ -560,5 +716,65 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         />
       )}
     </>
+  );
+}
+
+// ─── TagTreeNode ──────────────────────────────────────────────────────────────
+
+function TagTreeNode({
+  tag: _tag,
+  label,
+  active,
+  onClick,
+  children,
+}: {
+  tag: string;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  children?: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const hasChildren = !!children;
+
+  return (
+    <li>
+      <div className="flex items-center">
+        <button
+          onClick={onClick}
+          className={`flex-1 flex items-center gap-2 pl-3 pr-1 py-1.5 rounded-lg text-xs transition-all text-left ${
+            active
+              ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
+              : "text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+          }`}
+        >
+          <svg className="w-3 h-3 shrink-0 text-[#52525b]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+          </svg>
+          <span className="truncate">{label}</span>
+        </button>
+        {hasChildren && (
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="p-1 rounded text-[#52525b] hover:text-[#a1a1aa] transition-colors"
+            aria-label={open ? "Collapse" : "Expand"}
+          >
+            <svg
+              className={`w-3 h-3 transition-transform ${open ? "rotate-90" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        )}
+      </div>
+      {hasChildren && open && (
+        <ul className="ml-4 mt-0.5 space-y-0.5 border-l border-[rgba(255,255,255,0.06)] pl-2">
+          {children}
+        </ul>
+      )}
+    </li>
   );
 }

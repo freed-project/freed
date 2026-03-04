@@ -18,6 +18,7 @@ import type {
   ImportProgress,
 } from "@freed/shared";
 import type { OPMLFeedEntry } from "@freed/shared";
+import type { ImportSummary, ProgressFn } from "../components/LibraryDialog.types.js";
 
 /**
  * Pixel offset reserved for macOS traffic-light window controls when
@@ -96,6 +97,43 @@ export interface PlatformConfig {
    * Called lazily in the Danger Zone UI so it reflects live state.
    */
   activeCloudProviderLabel?: () => string | null;
+
+  /**
+   * Save a URL to the local library with full content extraction.
+   * Desktop: fetches HTML via Tauri IPC, extracts content, writes to cache.
+   * PWA: writes a stub item; desktop picks it up via relay and fetches content.
+   */
+  saveUrl?: (url: string, options?: { tags?: string[] }) => Promise<void>;
+
+  /**
+   * Import Freed Markdown archive files into the library.
+   * Desktop only -- the PWA has no filesystem access.
+   */
+  importMarkdown?: (files: FileList, onProgress: ProgressFn) => Promise<ImportSummary>;
+
+  /**
+   * Export the entire library as a zipped Freed Markdown archive.
+   * Desktop only (triggers a file download).
+   */
+  exportMarkdown?: () => Promise<void>;
+
+  /**
+   * Retrieve cached article HTML for a globalId from the device-local store.
+   * Desktop: reads from Tauri FS content cache.
+   * PWA: reads from the Workbox Cache API.
+   * Returns null when no cached content exists.
+   */
+  getLocalContent?: (globalId: string) => Promise<string | null>;
+
+  /**
+   * Encrypted device-local API key store (desktop only).
+   * Used by the AI settings UI to read/write/clear API keys.
+   */
+  secureStorage?: {
+    getApiKey: (provider: string) => Promise<string | null>;
+    setApiKey: (provider: string, key: string) => Promise<void>;
+    clearApiKey: (provider: string) => Promise<void>;
+  };
 }
 
 const PlatformCtx = createContext<PlatformConfig | null>(null);

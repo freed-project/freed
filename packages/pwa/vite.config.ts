@@ -27,6 +27,30 @@ export default defineConfig({
             handler: 'NetworkOnly',
           },
           {
+            // Article HTML cached by the PWA reader (Layer 2 for PWA devices).
+            // CacheFirst: once cached, served offline indefinitely up to 30 days.
+            // The PWA reader writes to this cache after a successful live fetch.
+            urlPattern: ({ url }) => url.pathname.startsWith('/content/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'freed-articles-v1',
+              expiration: {
+                maxEntries: 5_000,
+                maxAgeSeconds: 30 * 24 * 60 * 60,
+              },
+            },
+          },
+          {
+            // Automerge relay sync -- NetworkFirst so we always attempt live sync
+            // but fall back to last cached state when offline.
+            urlPattern: ({ url }) => url.pathname === '/sync',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'freed-sync-v1',
+              networkTimeoutSeconds: 5,
+            },
+          },
+          {
             urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|avif)$/i,
             handler: 'CacheFirst',
             options: {

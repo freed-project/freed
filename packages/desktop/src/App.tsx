@@ -21,6 +21,12 @@ import {
 } from "./lib/sync";
 import { clearLocalDoc } from "./lib/automerge";
 import { clearStoredCookies } from "./lib/x-auth";
+import { contentCache } from "./lib/content-cache";
+import { saveUrlInDesktop } from "./lib/save-url";
+import { importMarkdownFiles, exportLibrary } from "./lib/import-export";
+import { secureStorage } from "./lib/secure-storage";
+import { start as startContentFetcher, stop as stopContentFetcher } from "./lib/content-fetcher";
+import { useAppStore as useDesktopStore } from "./lib/store";
 import { XFeedEmptyState } from "./components/XFeedEmptyState";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
@@ -50,9 +56,12 @@ function App() {
     startSync();
     // Resume cloud sync loops for any previously authenticated providers.
     startAllCloudSyncs();
+    // Start background content fetcher -- processes article HTML fetch queue.
+    startContentFetcher();
     return () => {
       stopRssPoller();
       stopSync();
+      stopContentFetcher();
     };
   }, [isInitialized]);
 
@@ -184,6 +193,23 @@ function App() {
         return providers
           .map((p) => (p === "gdrive" ? "Google Drive" : "Dropbox"))
           .join(" & ");
+      },
+      // Library import/export
+      saveUrl: async (url, options) => {
+        await saveUrlInDesktop(url, options);
+      },
+      importMarkdown: importMarkdownFiles,
+      exportMarkdown: () => {
+        const items = Object.values(useDesktopStore.getState().items ?? {});
+        return exportLibrary(items);
+      },
+      // Local content cache (Tauri FS layer)
+      getLocalContent: (globalId) => contentCache.get(globalId),
+      // Encrypted API key store (type-widened: ApiKeyProvider -> string for PlatformConfig interface)
+      secureStorage: secureStorage as {
+        getApiKey: (provider: string) => Promise<string | null>;
+        setApiKey: (provider: string, key: string) => Promise<void>;
+        clearApiKey: (provider: string) => Promise<void>;
       },
     }),
     [checkForUpdates, applyUpdate, handleFactoryReset],

@@ -19,7 +19,7 @@ import {
   clearCloudSync,
   deleteCloudFile,
 } from "./lib/sync";
-import { clearLocalDoc } from "./lib/automerge";
+import { clearLocalDoc, docAddStubItem } from "./lib/automerge";
 import { checkForPwaUpdate, applyPwaUpdate, onUpdateAvailable } from "./lib/pwa-updater";
 import { SyncIndicator } from "./components/layout/SyncIndicator";
 import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
@@ -105,6 +105,21 @@ function App() {
         if (p === "gdrive") return "Google Drive";
         if (p === "dropbox") return "Dropbox";
         return null;
+      },
+      // PWA save URL: writes a stub that the desktop fetcher picks up via relay
+      saveUrl: async (url, options) => {
+        await docAddStubItem(url, options?.tags);
+      },
+      // PWA local content: check the Workbox Cache API
+      getLocalContent: async (globalId: string) => {
+        if (!("caches" in window)) return null;
+        try {
+          const cache = await caches.open("freed-articles-v1");
+          const resp = await cache.match(`/content/${globalId}`);
+          return resp ? resp.text() : null;
+        } catch {
+          return null;
+        }
       },
     }),
     [checkForUpdates, handleFactoryReset],

@@ -244,6 +244,61 @@ export async function docAddFeedItems(items: FeedItem[]): Promise<FreedDoc> {
 }
 
 /**
+ * Add a minimal stub FeedItem for a URL that has not yet been fetched.
+ *
+ * Used by the PWA Save URL flow. The stub syncs to the desktop via relay,
+ * where the content fetcher picks it up, fetches the HTML (bypassing CORS),
+ * extracts the content, and syncs the result back to all devices.
+ *
+ * The stub has no preservedContent -- the desktop fills that in after fetch.
+ */
+export async function docAddStubItem(
+  url: string,
+  tags: string[] = [],
+): Promise<FeedItem> {
+  let hash = 0;
+  for (let i = 0; i < url.length; i++) {
+    const ch = url.charCodeAt(i);
+    hash = (hash << 5) - hash + ch;
+    hash = hash & hash;
+  }
+  const globalId = `saved:${Math.abs(hash).toString(36)}`;
+  const now = Date.now();
+
+  let hostname = url;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    // malformed URL
+  }
+
+  const stub: FeedItem = {
+    globalId,
+    platform: "saved",
+    contentType: "article",
+    capturedAt: now,
+    publishedAt: now,
+    author: { id: hostname, handle: hostname, displayName: hostname },
+    content: {
+      text: url,
+      mediaUrls: [],
+      mediaTypes: [],
+      linkPreview: { url, title: url },
+    },
+    userState: { hidden: false, saved: true, savedAt: now, archived: false, tags },
+    topics: [],
+  };
+
+  await applyChange((doc) => {
+    if (!doc.feedItems[stub.globalId]) {
+      addFeedItem(doc, stub);
+    }
+  }, `Add stub item for ${url}`);
+
+  return stub;
+}
+
+/**
  * Get binary representation for sync
  */
 export function getDocBinary(): Uint8Array {

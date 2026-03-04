@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform, MACOS_TRAFFIC_LIGHT_INSET } from "../../context/PlatformContext.js";
@@ -9,6 +9,9 @@ interface ReaderViewProps {
   onClose: () => void;
 }
 
+/** Content source labels for the offline badge */
+type ContentSource = "cache" | "text" | "live" | null;
+
 /** Strip HTML tags, returning plain text for focus mode rendering */
 function htmlToText(html: string): string {
   const div = document.createElement("div");
@@ -18,15 +21,132 @@ function htmlToText(html: string): string {
 
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
+const PROSE_CLASSES = `
+  prose prose-invert prose-lg max-w-none
+  prose-headings:text-[#fafafa] prose-headings:font-semibold
+  prose-p:text-[#a1a1aa] prose-p:leading-relaxed
+  prose-a:text-[#8b5cf6] prose-a:no-underline hover:prose-a:underline
+  prose-strong:text-[#fafafa] prose-strong:font-semibold
+  prose-code:text-[#8b5cf6] prose-code:bg-white/5 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
+  prose-pre:bg-[#141414] prose-pre:border prose-pre:border-[rgba(255,255,255,0.08)] prose-pre:rounded-xl
+  prose-blockquote:border-l-[#8b5cf6] prose-blockquote:text-[#a1a1aa] prose-blockquote:bg-white/5 prose-blockquote:rounded-r-xl prose-blockquote:py-1
+  prose-img:rounded-xl prose-img:ring-1 prose-img:ring-white/5
+  prose-li:text-[#a1a1aa]
+`.trim();
+
 export function ReaderView({ item, onClose }: ReaderViewProps) {
-  const { headerDragRegion } = usePlatform();
+  const { headerDragRegion, getLocalContent } = usePlatform();
   const updateItem = useAppStore((s) => s.updateItem);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const storedDisplay = useAppStore((s) => s.preferences.display);
+
   const [focusOptions, setFocusOptions] = useState<FocusOptions>({
     enabled: storedDisplay.reading.focusMode,
     intensity: storedDisplay.reading.focusIntensity,
   });
+
+  // Content waterfall state
+  const [html, setHtml] = useState<string | null>(null);
+  const [contentSource, setContentSource] = useState<ContentSource>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isCaching, setIsCaching] = useState(false);
+
+  const articleUrl = item.content.linkPreview?.url;
+  const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
+
+  // ─── Content waterfall ─────────────────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadContent() {
+      setIsLoading(true);
+
+      // Layer 1: Device-local content cache (desktop: Tauri FS, PWA: Cache API)
+      if (getLocalContent) {
+        // Desktop path -- platform provides Tauri FS backed cache
+        const cached = await getLocalContent(item.globalId);
+        if (!cancelled && cached) {
+          setHtml(cached);
+          setContentSource("cache");
+          setIsLoading(false);
+          return;
+        }
+      } else if (articleUrl && "caches" in window) {
+        // PWA path -- check the Workbox-managed Cache API
+        try {
+          const cache = await caches.open("freed-articles-v1");
+          const cachedResponse = await cache.match(articleUrl);
+          if (cachedResponse) {
+            const text = await cachedResponse.text();
+            if (!cancelled && text) {
+              setHtml(text);
+              setContentSource("cache");
+              setIsLoading(false);
+              return;
+            }
+          }
+        } catch {
+          // Cache API unavailable -- continue waterfall
+        }
+      }
+
+      // Layer 2: preservedContent.text -- always available for imported items
+      if (item.preservedContent?.text) {
+        if (!cancelled) {
+          // Render text as a simple HTML block for consistent styling
+          const escaped = item.preservedContent.text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\n\n+/g, "</p><p>")
+            .replace(/\n/g, "<br>");
+          setHtml(`<p>${escaped}</p>`);
+          setContentSource("text");
+          setIsLoading(false);
+        }
+
+        // Still try a live fetch to get the full HTML (async, non-blocking)
+        if (articleUrl && navigator.onLine) {
+          liveFetch(articleUrl, item.globalId, cancelled, (h) => {
+            if (!cancelled) {
+              setHtml(h);
+              setContentSource("live");
+              setIsCaching(false);
+            }
+          });
+        }
+        return;
+      }
+
+      // Layer 3: Live fetch (online only)
+      if (articleUrl && navigator.onLine) {
+        setIsCaching(true);
+        liveFetch(articleUrl, item.globalId, cancelled, (h) => {
+          if (!cancelled) {
+            setHtml(h);
+            setContentSource("live");
+            setIsCaching(false);
+          }
+          if (!cancelled) setIsLoading(false);
+        });
+      } else {
+        // Offline and no cached content -- fall back to feed preview text
+        if (!cancelled) {
+          setHtml(null);
+          setContentSource(null);
+          setIsLoading(false);
+        }
+      }
+    }
+
+    loadContent().catch(() => {
+      if (!cancelled) setIsLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [item.globalId, articleUrl, getLocalContent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleSaved = () => {
     updateItem(item.globalId, {
@@ -60,12 +180,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
     });
   };
 
-  const hasContent = item.preservedContent?.html;
-  const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
-
-  const plainText = hasContent
-    ? htmlToText(item.preservedContent!.html)
-    : item.content.text;
+  const plainText = html ? htmlToText(html) : item.content.text;
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0a0a0a] overflow-auto">
@@ -103,6 +218,32 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
           </button>
 
           <div className="flex-1" />
+
+          {/* Offline / cached badge */}
+          {contentSource === "cache" && (
+            <span
+              className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20"
+              title="Served from your device cache"
+            >
+              Offline
+            </span>
+          )}
+          {contentSource === "text" && (
+            <span
+              className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20"
+              title="Showing text summary -- full content will load when online"
+            >
+              Summary
+            </span>
+          )}
+
+          {/* Background caching spinner */}
+          {isCaching && (
+            <div
+              className="w-4 h-4 border border-[#52525b] border-t-[#8b5cf6] rounded-full animate-spin"
+              title="Loading full article..."
+            />
+          )}
 
           {/* Focus mode toggle */}
           <button
@@ -180,9 +321,9 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
             {item.content.linkPreview?.title || item.content.text?.slice(0, 100)}
           </h1>
 
-          {item.content.linkPreview?.url && (
+          {articleUrl && (
             <a
-              href={item.content.linkPreview.url}
+              href={articleUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-[#8b5cf6] hover:text-[#a78bfa] text-sm font-medium transition-colors"
@@ -205,27 +346,26 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
         )}
 
         {/* Content */}
-        {focusOptions.enabled ? (
+        {isLoading ? (
+          <div className="flex justify-center py-16">
+            <div className="w-8 h-8 border-2 border-[#27272a] border-t-[#8b5cf6] rounded-full animate-spin" />
+          </div>
+        ) : focusOptions.enabled ? (
           <div className="text-[#a1a1aa] text-lg leading-relaxed">
             <FocusText text={plainText ?? ""} options={focusOptions} />
           </div>
-        ) : hasContent ? (
+        ) : html ? (
           <div
-            className="prose prose-invert prose-lg max-w-none
-              prose-headings:text-[#fafafa] prose-headings:font-semibold
-              prose-p:text-[#a1a1aa] prose-p:leading-relaxed
-              prose-a:text-[#8b5cf6] prose-a:no-underline hover:prose-a:underline
-              prose-strong:text-[#fafafa] prose-strong:font-semibold
-              prose-code:text-[#8b5cf6] prose-code:bg-white/5 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
-              prose-pre:bg-[#141414] prose-pre:border prose-pre:border-[rgba(255,255,255,0.08)] prose-pre:rounded-xl
-              prose-blockquote:border-l-[#8b5cf6] prose-blockquote:text-[#a1a1aa] prose-blockquote:bg-white/5 prose-blockquote:rounded-r-xl prose-blockquote:py-1
-              prose-img:rounded-xl prose-img:ring-1 prose-img:ring-white/5
-              prose-li:text-[#a1a1aa]"
-            dangerouslySetInnerHTML={{ __html: item.preservedContent!.html }}
+            className={PROSE_CLASSES}
+            dangerouslySetInnerHTML={{ __html: html }}
           />
         ) : (
           <div className="text-[#a1a1aa] text-lg leading-relaxed">
-            {item.content.text}
+            {item.content.text || (
+              <span className="text-[#52525b] italic">
+                No content available. Connect to the internet to load this article.
+              </span>
+            )}
           </div>
         )}
 
@@ -266,4 +406,42 @@ function FocusText({ text, options }: { text: string; options: FocusOptions }) {
       )}
     </>
   );
+}
+
+/**
+ * Live-fetch an article URL and cache it in the PWA Cache API.
+ * Calls `onDone` with the extracted HTML on success.
+ */
+async function liveFetch(
+  url: string,
+  globalId: string,
+  cancelled: boolean,
+  onDone: (html: string) => void,
+): Promise<void> {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok || cancelled) return;
+    const html = await resp.text();
+    if (cancelled) return;
+
+    // Cache in the PWA Cache API for offline access
+    if ("caches" in window) {
+      try {
+        const cache = await caches.open("freed-articles-v1");
+        await cache.put(url, new Response(html, {
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        }));
+        // Also store by globalId for direct cache lookup
+        await cache.put(`/content/${globalId}`, new Response(html, {
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        }));
+      } catch {
+        // Cache write failure is non-fatal
+      }
+    }
+
+    onDone(html);
+  } catch {
+    // Network error -- content unavailable offline, silent fail
+  }
 }
