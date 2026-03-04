@@ -12,60 +12,50 @@ export default definePost(
   },
   <>
     <p>
-      Welcome to the first Freed newsletter. You're here because you subscribed
-      or found us through RSS. Both are good choices.
+      Welcome to the first Freed update. You're here because you subscribed or
+      found us through RSS. Both are good choices.
     </p>
 
-    <h2>The Feed Isn't For You</h2>
+    <h2>The Problem</h2>
     <p>
-      Somewhere in the last decade, reading the internet became something that
-      happened to you. Platforms killed chronological feeds and replaced them
-      with algorithms optimized for one thing: engagement. Not your
-      satisfaction. Not your learning. Engagement: clicks, shares,
-      time-on-screen. That's what they sell.
-    </p>
-    <p>
-      Outrage gets amplified because it's engaging. Nuance gets buried because
-      it's slow. Infinite scroll removes the stopping point. None of this is
-      accidental.
+      Open your feed. Something else has already decided what's waiting. Not to
+      serve you. To keep you in the system. Platforms replaced chronological
+      reading with engagement algorithms optimized for clicks, shares, and
+      time-on-screen. That's what they sell. The machine is working perfectly.
+      It's just not working for you.
     </p>
 
     <h2>What Freed Does</h2>
     <p>
-      Freed captures content from the sources you choose (X, RSS feeds, YouTube
-      channels, newsletters, podcasts) and shows it to you chronologically, on
-      your device, ranked the way you decide. You control the weights. You write
-      the algorithm.
+      Freed runs in the background, capturing posts from the sources you care
+      about: X, RSS feeds, YouTube channels, newsletters, and podcasts.
+      Everything lands in a local vault on your computer, live-synced to your
+      phone. No central servers. We never see your data.
     </p>
     <ul>
       <li>
-        <strong>No central servers.</strong> Your content lives on your device,
-        synced between your own devices via Google Drive, iCloud, or Dropbox. We
-        never see it.
+        <strong>Your algorithm, your rules.</strong> Posts are ranked by
+        criteria you set: author trust, topic relevance, freshness. You can
+        tune the weights and read exactly why any post appears first.
       </li>
       <li>
-        <strong>No engagement optimization.</strong> Posts are ranked by criteria
-        you define: author trust, topic relevance, freshness. Not by what made
-        someone else angry yesterday.
+        <strong>You can be done.</strong> When you've read everything from your
+        subscribed sources, you're caught up. There's an actual end.
       </li>
       <li>
-        <strong>You can be done.</strong> When you've seen everything from your
-        subscribed sources, you've caught up. There's an actual end.
+        <strong>Ulysses Mode.</strong> Lock yourself out of X or Instagram's
+        algorithmic feed and only access them through Freed. You get the
+        content without the compulsion.
       </li>
       <li>
-        <strong>Ulysses Mode.</strong> Configure Freed as your only lens for X
-        or Instagram. You get the content without the algorithm. Named after the
-        hero who had himself lashed to the mast so he could hear the Sirens
-        without jumping overboard.
-      </li>
-      <li>
-        <strong>Open source.</strong> MIT licensed. Read it, fork it, audit it.
+        <strong>Open source.</strong> MIT licensed. Fork it, audit it, build
+        on it.
       </li>
     </ul>
 
     <h2>Where We Are</h2>
     <p>
-      Capturing from X and RSS works. Save for Later works. The desktop app and
+      X and RSS capture are working. Save for Later works. The desktop app and
       mobile reader are in active development. We're building in public and
       shipping fast.
     </p>
@@ -95,9 +85,9 @@ export default definePost(
 
     <h2>What's Next</h2>
     <p>
-      Sync between desktop and phone. A polished, downloadable desktop app.
-      Windows and Linux builds. Cloud sync. Facebook and Instagram capture.
-      We'll send an update when each of these lands. We don't spam.
+      Desktop-to-phone sync. A downloadable desktop app for macOS, Windows, and
+      Linux. Facebook and Instagram capture. Cloud sync via Google Drive,
+      iCloud, or Dropbox. We'll update you when each one ships. We don't spam.
     </p>
 
     <p>
