@@ -45,10 +45,7 @@ export default function ManifestoContent() {
                 The Pact
               </h2>
               <p>
-                Odysseus wanted to hear the Sirens without dying. He couldn't
-                trust himself in the moment, so he had his crew lash him to the
-                mast before the ship got close. He heard the song. He survived.
-                Install Freed in a moment of clarity. Choose which creators matter. Set how much you trust each one. Then step away. Those choices run in your place. Your attention, yours again. Your algorithm. Not one engineered to exploit you.
+                Odysseus lashed himself to the mast before the ship reached the Sirens. He heard the song. He survived. The secret: decide before the temptation arrives, not during it. Install Freed in a clear moment. Choose your sources. Set your trust. Then step away. Your algorithm runs in your place. Not one engineered to exploit you. Your attention, yours again.
               </p>
             </section>
 
