@@ -98,7 +98,7 @@ export default function PostContent({ post }: PostContentProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.4 }}
-            className="mt-24 text-center not-prose"
+            className="mt-24 text-right not-prose"
           >
             <p className="text-text-muted text-sm">
               Share this post:{" "}
@@ -110,7 +110,7 @@ export default function PostContent({ post }: PostContentProps) {
                 rel="noopener noreferrer"
                 className="text-glow-purple hover:text-glow-blue transition-colors"
               >
-                X
+                Share on X
               </a>
               {" • "}
               <button
