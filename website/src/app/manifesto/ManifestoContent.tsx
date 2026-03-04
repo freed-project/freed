@@ -92,7 +92,9 @@ export default function ManifestoContent() {
                     This belongs to everyone
                   </strong>
                   The code is public. The roadmap is public. Fork it. Audit it.
-                  Share it. Resonate? Join the movement.
+                  Share it.
+                  <br />
+                  Resonate? Join the movement.
                 </li>
               </ul>
             </section>
@@ -127,7 +129,7 @@ export default function ManifestoContent() {
                       "What if we had fixed social media? An alternative history",
                     source: "Center for Humane Technology",
                     description:
-                      "What if we'd optimized for people instead of engagement? That internet is possible.",
+                      "What if we'd optimized for human flourishing instead of engagement?",
                   },
                   {
                     href: "https://www.youtube.com/watch?v=0v5RiMdSqwk&t=2109s",
