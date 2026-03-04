@@ -1,15 +1,15 @@
 # Contributing to Freed
 
-First off, thank you for considering contributing to Freed. It's people like you who will help make mental sovereignty a reality for millions.
+The platforms that hijacked your feed spent billions of dollars on it. This is the counter-move. It's built in public, by whoever shows up. If that's you, here's how to get started.
 
 ## Philosophy
 
-Freed exists to restore human autonomy in the attention economy. Every contribution should further this mission. We value:
+Every contribution should make Freed more useful, more transparent, or more trustworthy. The guiding principles:
 
-- **Privacy above all** — Never introduce telemetry or data collection
-- **Transparency** — Code should be readable and well-documented
-- **User empowerment** — Features should give users more control, not less
-- **Simplicity** — Prefer simple solutions over clever ones
+- **Privacy, always.** Never introduce telemetry or data collection.
+- **Transparency.** Code should be readable. Complexity should be justified.
+- **User control.** Features should give users more power, not less.
+- **Simplicity.** Prefer the obvious solution over the clever one.
 
 ## Ways to Contribute
 
@@ -165,4 +165,4 @@ Before adding a new platform:
 
 ---
 
-_Thank you for helping build a freer internet._
+_The platforms become players in your game. Thanks for helping build the board._
