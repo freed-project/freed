@@ -44,7 +44,7 @@ export default function PostContent({ post }: PostContentProps) {
             href="/updates"
             className="text-sm text-text-muted hover:text-glow-purple transition-colors"
           >
-            ← Back to Updates
+            ‹ Back to Updates
           </Link>
         </motion.div>
 
