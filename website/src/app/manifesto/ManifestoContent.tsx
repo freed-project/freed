@@ -144,7 +144,7 @@ export default function ManifestoContent() {
                       "How a handful of tech companies control billions of minds",
                     source: "Tristan Harris, TED",
                     description:
-                      "The attention economy, explained by the person who tried hardest to redeem it.",
+                      "Seventeen minutes. The clearest explanation of how this happened, by someone who was inside Google when it did.",
                   },
                   {
                     href: "https://www.eff.org/cyberspace-independence",
