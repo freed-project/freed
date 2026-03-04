@@ -96,11 +96,16 @@ export function BottomSheet({
   if (!open) return null;
 
   return createPortal(
-    // Use --visual-viewport-height (kept in sync with window.visualViewport)
-    // so the backdrop stays above the software keyboard on iOS PWA.
+    // Container spans 100lvh (full physical screen) so the panel background
+    // bleeds behind the Safari address bar. --keyboard-height drives a
+    // translateY that lifts the sheet above the software keyboard without
+    // shrinking the container (which would lose the bleed).
     <div
       className="fixed inset-x-0 top-0 z-50 flex items-end sm:items-center justify-center"
-      style={{ height: 'var(--visual-viewport-height, 100dvh)' }}
+      style={{
+        height: '100lvh',
+        transform: 'translateY(calc(-1 * var(--keyboard-height, 0px)))',
+      }}
     >
       {/* Backdrop */}
       <div
@@ -108,10 +113,15 @@ export function BottomSheet({
         onClick={onClose}
       />
 
-      {/* Panel */}
+      {/* Panel — max-height uses --visual-viewport-height (above keyboard + address
+          bar) so the panel never overflows upward off-screen when the keyboard opens.
+          85vh (≈ 85lvh on Safari) was the prior value; it allowed ~724 px panels
+          even when only ~432 px of screen was visible, causing content to fly off
+          the top edge. */}
       <div
         ref={panelRef}
-        className={`relative w-full ${maxWidth} sm:mx-4 bg-[#141414] border border-[rgba(255,255,255,0.08)] rounded-t-2xl sm:rounded-2xl shadow-2xl max-h-[85vh] flex flex-col`}
+        className={`relative w-full ${maxWidth} sm:mx-4 bg-[#141414] border border-[rgba(255,255,255,0.08)] rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col`}
+        style={{ maxHeight: 'calc(var(--visual-viewport-height, 100dvh) * 0.85)' }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -143,10 +153,15 @@ export function BottomSheet({
           </button>
         </div>
 
-        {/* Scrollable content */}
+        {/* Scrollable content — padding-bottom accounts for:
+            · 1.5rem  : aesthetic spacing (replaces pb-6)
+            · 100lvh - 100dvh : Safari address bar height (positive when bar is
+              visible, zero when hidden or in standalone mode)
+            · env(safe-area-inset-bottom) : home indicator in standalone PWA */}
         <div
           data-bottom-sheet-scroll
-          className="overflow-y-auto flex-1 px-6 pb-6"
+          className="overflow-y-auto flex-1 px-6"
+          style={{ paddingBottom: 'calc(1.5rem + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))' }}
         >
           {children}
         </div>

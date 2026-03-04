@@ -44,6 +44,11 @@ const NAV_ITEMS = [
   { path: "/updates", label: "Updates" },
 ];
 
+function isActive(itemPath: string, pathname: string): boolean {
+  if (itemPath === "/") return pathname === "/";
+  return pathname === itemPath || pathname.startsWith(itemPath + "/");
+}
+
 export default function Navigation() {
   const pathname = usePathname();
   const { openModal } = useNewsletter();
@@ -65,7 +70,7 @@ export default function Navigation() {
 
   // Update underline position when pathname changes
   useLayoutEffect(() => {
-    const activeIndex = NAV_ITEMS.findIndex((item) => item.path === pathname);
+    const activeIndex = NAV_ITEMS.findIndex((item) => isActive(item.path, pathname));
     if (activeIndex === -1) {
       setUnderlineStyle({ left: 0, width: 0 });
       return;
@@ -149,7 +154,7 @@ export default function Navigation() {
             navRefs.current[index] = el;
           }}
           className={`text-sm font-medium transition-colors ${
-            pathname === item.path
+            isActive(item.path, pathname)
               ? "text-text-primary"
               : "text-text-secondary hover:text-text-primary"
           }`}
@@ -305,7 +310,7 @@ export default function Navigation() {
                       href={item.path}
                       onClick={() => setMobileMenuOpen(false)}
                       className={`text-2xl font-medium transition-colors ${
-                        pathname === item.path
+                        isActive(item.path, pathname)
                           ? "text-text-primary underline underline-offset-8 decoration-2"
                           : "text-text-secondary"
                       }`}

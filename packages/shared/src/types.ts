@@ -106,12 +106,21 @@ export interface RssSourceInfo {
 /**
  * Preserved article content for reader view
  * Used by capture-save and optionally by capture-rss for full articles
+ *
+ * Architecture note: `html` is device-local ONLY and must never be stored in
+ * Automerge. Large HTML blobs balloon the CRDT history by 3-10x the raw size.
+ * Store full HTML in the device content cache (Tauri FS / PWA Cache API) and
+ * keep only `text` (short summary) in the synced document.
  */
 export interface PreservedContent {
-  /** Extracted article HTML */
-  html: string;
+  /**
+   * Extracted article HTML -- device-local only.
+   * Present when the item has been fetched and cached on this device.
+   * Never write this to Automerge; use the content cache layer instead.
+   */
+  html?: string;
 
-  /** Plain text version */
+  /** Plain text summary -- safe to sync via Automerge (keep < 10 KB) */
   text: string;
 
   /** Extracted author */
@@ -128,6 +137,26 @@ export interface PreservedContent {
 
   /** When content was preserved */
   preservedAt: number;
+}
+
+/**
+ * AI provider and model preferences (synced -- no secrets here)
+ */
+export interface AIPreferences {
+  /** AI provider selection */
+  provider: "none" | "ollama" | "openai" | "anthropic" | "gemini";
+
+  /** Model identifier (e.g. "qwen2.5:1.5b", "gpt-4o-mini", "claude-haiku-4-5") */
+  model: string;
+
+  /** Ollama base URL (default: "http://localhost:11434") */
+  ollamaUrl?: string;
+
+  /** Summarize articles as they are cached (may incur API costs with frontier providers) */
+  autoSummarize: boolean;
+
+  /** Extract topics from summaries to feed the ranking algorithm */
+  extractTopics: boolean;
 }
 
 /**
@@ -148,6 +177,9 @@ export interface UserState {
 
   /** Archived (removed from active queue, kept in library) */
   archived: boolean;
+
+  /** When item was archived (Unix ms) — used for 30-day pruning */
+  archivedAt?: number;
 
   /** User-assigned tags */
   tags: string[];
@@ -403,6 +435,9 @@ export interface DisplayPreferences {
 
   /** Sidebar width in pixels (default: 256, min: 180, max: 480) */
   sidebarWidth?: number;
+
+  /** Days to keep archived items before pruning (default: 30, 0 = never prune) */
+  archivePruneDays: number;
 }
 
 /**
@@ -414,6 +449,83 @@ export interface UserPreferences {
   sync: SyncPreferences;
   display: DisplayPreferences;
   xCapture: XCapturePreferences;
+  /** AI summarization + topic extraction preferences (no API keys here) */
+  ai: AIPreferences;
+}
+
+// =============================================================================
+// Friends & Identity
+// =============================================================================
+
+/**
+ * A single social media profile linked to a Friend.
+ * Matched at render time against FeedItem.author.id for the given platform.
+ */
+export interface FriendSource {
+  platform: Platform;
+  /** Matches FeedItem.author.id for this platform */
+  authorId: string;
+  handle?: string;
+  displayName?: string;
+  avatarUrl?: string;
+  profileUrl?: string;
+}
+
+/**
+ * Address book data imported once from the device.
+ * Not a content source — carries contact info only.
+ */
+export interface DeviceContact {
+  importedFrom: "macos" | "ios" | "android" | "web";
+  name: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  /** Native contact ID for potential future re-sync */
+  nativeId?: string;
+  importedAt: number;
+}
+
+/**
+ * A single reach-out event logged by the user
+ */
+export interface ReachOutLog {
+  loggedAt: number;
+  channel?: "phone" | "text" | "email" | "in_person" | "other";
+  notes?: string;
+}
+
+/**
+ * Canonical record for a real person.
+ *
+ * Unifies social media profiles (sources) and address book data (contact)
+ * into a single identity. careLevel drives automatic reach-out nudge timing.
+ */
+export interface Friend {
+  /** UUID, client-generated */
+  id: string;
+  /** Canonical display name chosen by the user */
+  name: string;
+  /** Overrides platform avatars when set */
+  avatarUrl?: string;
+  bio?: string;
+  /** Social media profiles that produce FeedItems */
+  sources: FriendSource[];
+  /** Address book import — contact info only, not a content source */
+  contact?: DeviceContact;
+  /**
+   * Relationship priority: 5 = closest (nudge weekly), 1 = acquaintance (never nudged).
+   * Drives effectiveInterval() in friends.ts.
+   */
+  careLevel: 1 | 2 | 3 | 4 | 5;
+  /** Override for the nudge interval in days (auto-inferred from careLevel if absent) */
+  reachOutIntervalDays?: number;
+  /** Most recent reach-out entries first; capped at 20 */
+  reachOutLog?: ReachOutLog[];
+  tags?: string[];
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 // =============================================================================
@@ -469,6 +581,7 @@ export function createDefaultPreferences(): UserPreferences {
         focusMode: false,
         focusIntensity: "normal",
       },
+      archivePruneDays: 30,
     },
     xCapture: {
       mode: "mirror", // Default: capture from everyone you follow
@@ -476,6 +589,12 @@ export function createDefaultPreferences(): UserPreferences {
       blacklist: {},
       includeRetweets: true,
       includeReplies: false,
+    },
+    ai: {
+      provider: "none",
+      model: "",
+      autoSummarize: false,
+      extractTopics: false,
     },
   };
 }

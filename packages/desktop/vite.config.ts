@@ -26,4 +26,22 @@ export default defineConfig({
     minify: !process.env.TAURI_DEBUG ? "esbuild" : false,
     sourcemap: !!process.env.TAURI_DEBUG,
   },
+
+  // Unit test configuration
+  test: {
+    environment: "jsdom",
+    include: ["src/**/*.test.ts"],
+    // Polyfill Blob.prototype.text (missing from jsdom's older Blob spec).
+    setupFiles: ["./src/vitest.setup.ts"],
+    // Tauri IPC and plugins are unavailable in the test environment, so we
+    // mock their modules via vi.mock() inside each test file.
+    globals: true,
+    // Force workspace packages through vitest's transform pipeline so that
+    // vi.mock() can intercept their imports correctly.
+    server: {
+      deps: {
+        inline: [/@freed\//],
+      },
+    },
+  },
 });

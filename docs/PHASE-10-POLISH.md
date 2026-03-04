@@ -376,12 +376,12 @@ Reward security researchers for responsible disclosure.
 
 | Task  | Description              | Complexity |
 | ----- | ------------------------ | ---------- |
-| 10.10 | Topic extraction (local) | High       |
-| 10.11 | Topic extraction (API)   | Medium     |
-| 10.12 | Content summarization    | High       |
-| 10.13 | Sentiment analysis       | Medium     |
+| 10.10 | Topic extraction (local) | High       | ✓ Complete (Ollama via ai-summarizer.ts)
+| 10.11 | Topic extraction (API)   | Medium     | ✓ Complete (OpenAI/Anthropic/Gemini adapters)
+| 10.12 | Content summarization    | High       | ✓ Complete (summarize() in content-fetcher.ts)
+| 10.13 | Sentiment analysis       | Medium     | ✓ Complete (AISummary.sentiment field)
 | 10.14 | Smart notifications      | High       |
-| 10.15 | AI settings UI           | Medium     |
+| 10.15 | AI settings UI           | Medium     | ✓ Complete (AISection.tsx in packages/ui)
 
 ### Extensibility
 

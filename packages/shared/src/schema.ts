@@ -7,6 +7,8 @@
 import * as A from "@automerge/automerge";
 import type {
   FeedItem,
+  Friend,
+  ReachOutLog,
   RssFeed,
   UserPreferences,
   DocumentMeta,
@@ -30,6 +32,9 @@ export interface FreedDoc {
   /** RSS feed subscriptions indexed by URL */
   rssFeeds: Record<string, RssFeed>;
 
+  /** Friends (unified identities) indexed by Friend.id */
+  friends: Record<string, Friend>;
+
   /** User preferences */
   preferences: UserPreferences;
 
@@ -48,6 +53,7 @@ export function createEmptyDoc(): FreedDoc {
   const doc: FreedDoc = {
     feedItems: {},
     rssFeeds: {},
+    friends: {},
     preferences: createDefaultPreferences(),
     meta: createDefaultMeta(),
   };
@@ -63,6 +69,7 @@ export function createDocFromData(data: Partial<FreedDoc>): FreedDoc {
   const doc: FreedDoc = {
     feedItems: data.feedItems ?? {},
     rssFeeds: data.rssFeeds ?? {},
+    friends: data.friends ?? {},
     preferences: data.preferences ?? createDefaultPreferences(),
     meta: data.meta ?? createDefaultMeta(),
   };
@@ -124,6 +131,80 @@ export function markAsRead(doc: FreedDoc, globalId: string): void {
   if (item) {
     item.userState.readAt = Date.now();
   }
+}
+
+/**
+ * Toggle archived status for a feed item, maintaining the archivedAt timestamp.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @param globalId - The item's global ID
+ */
+export function toggleArchived(doc: FreedDoc, globalId: string): void {
+  const item = doc.feedItems[globalId];
+  if (!item) return;
+  if (item.userState.archived) {
+    item.userState.archived = false;
+    delete (item.userState as unknown as Record<string, unknown>).archivedAt;
+  } else {
+    item.userState.archived = true;
+    item.userState.archivedAt = Date.now();
+  }
+}
+
+/**
+ * Archive all read, non-saved items — optionally scoped to a platform or feed.
+ * Skips items already archived, hidden, or saved.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @param platform - Optional platform filter (e.g. "rss", "x")
+ * @param feedUrl - Optional RSS feed URL filter
+ */
+export function archiveAllReadUnsaved(
+  doc: FreedDoc,
+  platform?: string,
+  feedUrl?: string,
+): number {
+  const now = Date.now();
+  let count = 0;
+  for (const item of Object.values(doc.feedItems)) {
+    if (item.userState.archived) continue;
+    if (item.userState.hidden) continue;
+    if (item.userState.saved) continue;
+    if (!item.userState.readAt) continue;
+    if (platform && item.platform !== platform) continue;
+    if (feedUrl && item.rssSource?.feedUrl !== feedUrl) continue;
+    item.userState.archived = true;
+    item.userState.archivedAt = now;
+    count++;
+  }
+  return count;
+}
+
+/**
+ * Delete archived items older than maxAgeMs. Saved items are never deleted.
+ * Items archived before archivedAt was introduced (no timestamp) are skipped.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @param maxAgeMs - Max age in milliseconds (default: 30 days)
+ * @returns Number of items deleted
+ */
+export function pruneArchivedItems(
+  doc: FreedDoc,
+  maxAgeMs: number = 30 * 24 * 60 * 60 * 1000,
+): number {
+  if (maxAgeMs <= 0) return 0;
+  const cutoff = Date.now() - maxAgeMs;
+  let pruned = 0;
+  for (const [id, item] of Object.entries(doc.feedItems)) {
+    if (!item.userState.archived) continue;
+    if (item.userState.saved) continue;
+    const { archivedAt } = item.userState;
+    if (archivedAt !== undefined && archivedAt < cutoff) {
+      delete doc.feedItems[id];
+      pruned++;
+    }
+  }
+  return pruned;
 }
 
 /**
@@ -231,6 +312,114 @@ export function removeAllFeeds(doc: FreedDoc, includeItems: boolean): void {
       delete doc.feedItems[id];
     }
   }
+}
+
+// =============================================================================
+// Friend Operations
+// =============================================================================
+
+/**
+ * Add a friend to the document
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @param friend - The friend to add
+ */
+export function addFriend(doc: FreedDoc, friend: Friend): void {
+  doc.friends[friend.id] = friend;
+}
+
+/**
+ * Update a friend's scalar and array fields.
+ *
+ * Uses field-by-field assignment rather than Object.assign to avoid replacing
+ * Automerge Map/List proxies (sources, reachOutLog arrays) with plain objects.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @param id - Friend.id
+ * @param updates - Partial updates to apply
+ */
+export function updateFriend(
+  doc: FreedDoc,
+  id: string,
+  updates: Partial<Friend>
+): void {
+  const existing = doc.friends[id];
+  if (!existing) return;
+
+  const { sources, reachOutLog, contact, ...scalars } = updates;
+
+  // Assign scalar fields directly
+  Object.assign(existing, scalars);
+
+  // Replace sources array by splicing (Automerge list proxy)
+  if (sources !== undefined) {
+    existing.sources.splice(0, existing.sources.length, ...sources);
+  }
+
+  // Replace reachOutLog array by splicing
+  if (reachOutLog !== undefined) {
+    if (!existing.reachOutLog) {
+      existing.reachOutLog = reachOutLog;
+    } else {
+      existing.reachOutLog.splice(
+        0,
+        existing.reachOutLog.length,
+        ...reachOutLog
+      );
+    }
+  }
+
+  // Replace contact by assigning individual fields (never replace the Map)
+  if (contact !== undefined) {
+    if (!existing.contact) {
+      existing.contact = contact;
+    } else {
+      deepMergeInto(
+        existing.contact as unknown as Record<string, unknown>,
+        contact as unknown as Record<string, unknown>
+      );
+    }
+  }
+
+  existing.updatedAt = Date.now();
+}
+
+/**
+ * Remove a friend from the document
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @param id - Friend.id
+ */
+export function removeFriend(doc: FreedDoc, id: string): void {
+  delete doc.friends[id];
+}
+
+/**
+ * Prepend a reach-out log entry for a friend, capped at 20 entries.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @param id - Friend.id
+ * @param entry - The reach-out log entry
+ */
+export function logReachOut(
+  doc: FreedDoc,
+  id: string,
+  entry: ReachOutLog
+): void {
+  const friend = doc.friends[id];
+  if (!friend) return;
+
+  if (!friend.reachOutLog) {
+    friend.reachOutLog = [entry];
+  } else {
+    friend.reachOutLog.unshift(entry);
+    // Keep the log bounded to 20 entries
+    if (friend.reachOutLog.length > 20) {
+      friend.reachOutLog.splice(20);
+    }
+  }
+
+  friend.updatedAt = Date.now();
 }
 
 // =============================================================================

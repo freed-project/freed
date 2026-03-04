@@ -1,7 +1,9 @@
 # Phase 4: Sync Layer
 
-> **Status:** ✅ Complete
-> **Dependencies:** Phase 1-2 (Capture layers ✓), Phase 3 (Save for Later ✓)
+> **Status:** 🚧 In Progress
+> **Dependencies:** Phase 1-2 (Capture layers ✓)
+>
+> Local relay, GDrive/Dropbox cloud sync, "Sync Now" button, and "Last synced" indicator are all working. iCloud sync is the remaining open item.
 
 ---
 
@@ -260,20 +262,20 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 
 ## Tasks
 
-| Task | Description                           | Complexity |
-| ---- | ------------------------------------- | ---------- |
-| 4.1  | Create `@freed/sync` package scaffold | Low        |
-| 4.2  | Implement IndexedDB storage adapter   | Medium     |
-| 4.3  | Implement Filesystem storage adapter  | Medium     |
-| 4.4  | WebSocket relay server                | Medium     |
-| 4.5  | PWA WebSocket client + auto-connect   | Medium     |
-| 4.6  | QR code pairing flow                  | Low        |
-| 4.7  | Google Drive sync integration         | Medium     |
-| 4.8  | Dropbox sync integration              | Low        |
-| 4.9  | iCloud sync integration               | High       |
-| 4.10 | Sync status observable                | Low        |
-| 4.11 | "Last synced" UI indicator            | Low        |
-| 4.12 | Manual "Sync now" button              | Low        |
+| Task | Description                           | Status | Complexity |
+| ---- | ------------------------------------- | ------ | ---------- |
+| 4.1  | Create `@freed/sync` package scaffold | ✓      | Low        |
+| 4.2  | Implement IndexedDB storage adapter   | ✓      | Medium     |
+| 4.3  | Implement Filesystem storage adapter  | ✓      | Medium     |
+| 4.4  | WebSocket relay server                | ✓      | Medium     |
+| 4.5  | PWA WebSocket client + auto-connect   | ✓      | Medium     |
+| 4.6  | QR code pairing flow                  | ✓      | Low        |
+| 4.7  | Google Drive sync integration         | ✓      | Medium     |
+| 4.8  | Dropbox sync integration              | ✓      | Low        |
+| 4.9  | iCloud sync integration               | ☐      | High       |
+| 4.10 | Sync status observable                | ✓      | Low        |
+| 4.11 | "Last synced" UI indicator            | ✓      | Low        |
+| 4.12 | Manual "Sync now" button              | ✓      | Low        |
 
 ---
 
@@ -287,6 +289,7 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 - [x] Sync connection status observable (`onStatusChange` listener in sync.ts)
 - [x] PWA falls back to cloud sync when away from home (GDrive + Dropbox PKCE OAuth, Automerge merge-upload)
 - [x] At least one cloud provider works — GDrive and Dropbox both confirmed working on app.freed.wtf
+- [ ] iCloud sync integration
 
 ---
 

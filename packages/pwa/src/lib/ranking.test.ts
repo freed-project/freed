@@ -255,8 +255,9 @@ describe("filterFeedItems", () => {
     expect(result.find((i) => i.globalId === "archived")).toBeUndefined();
   });
 
-  it("includes archived items when showArchived is true", () => {
-    const result = filterFeedItems(items, { showArchived: true });
+  it("shows only archived items when archivedOnly is true", () => {
+    const result = filterFeedItems(items, { archivedOnly: true });
+    expect(result.every((i) => i.userState.archived)).toBe(true);
     expect(result.find((i) => i.globalId === "archived")).toBeDefined();
   });
 

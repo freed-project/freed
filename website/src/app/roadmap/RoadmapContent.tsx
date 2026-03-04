@@ -463,7 +463,7 @@ const phases: Phase[] = [
     number: 2,
     title: "Capture Skills",
     description:
-      "capture-x and capture-rss packages with OpenClaw skill wrappers.",
+      "RSS and X capture complete. Freed Markdown import/export, batch library management.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-2-CAPTURE-SKILLS.md",
@@ -472,7 +472,7 @@ const phases: Phase[] = [
     number: 3,
     title: "Save for Later",
     description:
-      "URL capture with Readability extraction. Capture any article, thread, or page.",
+      "Save any URL from desktop or mobile. Full offline reading with layered content cache. AI summarization and tag navigation.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-3-SAVE-FOR-LATER.md",
@@ -481,8 +481,8 @@ const phases: Phase[] = [
     number: 4,
     title: "Sync Layer",
     description:
-      "Local WebSocket relay + cloud backup. Automerge CRDT for conflict-free sync.",
-    status: "complete",
+      "Local relay and GDrive/Dropbox sync working. iCloud and remaining UI polish in progress.",
+    status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-4-SYNC.md",
   },
@@ -501,7 +501,7 @@ const phases: Phase[] = [
     title: "PWA Reader",
     description:
       "Mobile companion app. Read your feed anywhere, synced to your desktop.",
-    status: "current",
+    status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-6-PWA.md",
   },
@@ -516,12 +516,12 @@ const phases: Phase[] = [
   },
   {
     number: 8,
-    title: "Friend Map",
+    title: "Friends + Social Graph",
     description:
-      "Location-based social view. See where your friends are posting from.",
+      "A friend CRM with a force-directed social graph. Unify profiles across platforms into one identity per person, track relationship health, and get nudged when you've drifted from people you care about.",
     status: "upcoming",
     planLink:
-      "https://github.com/freed-project/freed/blob/main/docs/PHASE-8-FRIEND-MAP.md",
+      "https://github.com/freed-project/freed/blob/main/docs/PHASE-8-FRIENDS.md",
   },
   {
     number: 9,
@@ -543,8 +543,9 @@ const phases: Phase[] = [
   },
   {
     number: 11,
-    title: "OpenClaw Integration 🦞",
-    description: "Headless capture for power users. Run Freed without the GUI.",
+    title: "OpenClaw + Omi 🦞",
+    description:
+      "Headless capture for power users via OpenClaw CLI. Plus bidirectional Omi wearable integration: say \"Hey Freed\" to save a voice note, and your reading activity enriches Omi's memory.",
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-11-OPENCLAW.md",

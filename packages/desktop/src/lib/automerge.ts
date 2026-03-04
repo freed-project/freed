@@ -19,10 +19,17 @@ import {
   removeFeedItem,
   markAsRead,
   toggleSaved,
+  toggleArchived,
+  archiveAllReadUnsaved,
+  pruneArchivedItems,
   updatePreferences,
   updateLastSync,
+  addFriend,
+  updateFriend,
+  removeFriend,
+  logReachOut,
 } from "@freed/shared/schema";
-import type { FeedItem, RssFeed, UserPreferences } from "@freed/shared";
+import type { FeedItem, Friend, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
 import { addDebugEvent, setDocSnapshot, registerDocAccessors } from "@freed/ui/lib/debug-store";
 
 // Singleton storage instance
@@ -195,6 +202,27 @@ export async function docToggleSaved(globalId: string): Promise<FreedDoc> {
   return applyChange((doc) => toggleSaved(doc, globalId), "Toggle saved");
 }
 
+export async function docToggleArchived(globalId: string): Promise<FreedDoc> {
+  return applyChange((doc) => toggleArchived(doc, globalId), "Toggle archived");
+}
+
+export async function docArchiveAllReadUnsaved(
+  platform?: string,
+  feedUrl?: string,
+): Promise<FreedDoc> {
+  return applyChange(
+    (doc) => archiveAllReadUnsaved(doc, platform, feedUrl),
+    "Archive all read",
+  );
+}
+
+export async function docPruneArchivedItems(maxAgeMs?: number): Promise<FreedDoc> {
+  return applyChange(
+    (doc) => pruneArchivedItems(doc, maxAgeMs),
+    "Prune archived items",
+  );
+}
+
 export async function docUpdatePreferences(
   updates: Partial<UserPreferences>
 ): Promise<FreedDoc> {
@@ -206,6 +234,32 @@ export async function docUpdatePreferences(
 
 export async function docUpdateLastSync(): Promise<FreedDoc> {
   return applyChange((doc) => updateLastSync(doc), "Update last sync");
+}
+
+// =============================================================================
+// Friend Operations
+// =============================================================================
+
+export async function docAddFriend(friend: Friend): Promise<FreedDoc> {
+  return applyChange((doc) => addFriend(doc, friend), "Add friend");
+}
+
+export async function docUpdateFriend(
+  id: string,
+  updates: Partial<Friend>
+): Promise<FreedDoc> {
+  return applyChange((doc) => updateFriend(doc, id, updates), "Update friend");
+}
+
+export async function docRemoveFriend(id: string): Promise<FreedDoc> {
+  return applyChange((doc) => removeFriend(doc, id), "Remove friend");
+}
+
+export async function docLogReachOut(
+  id: string,
+  entry: ReachOutLog
+): Promise<FreedDoc> {
+  return applyChange((doc) => logReachOut(doc, id, entry), "Log reach-out");
 }
 
 /**
@@ -398,6 +452,93 @@ export async function docDeduplicateFeedItems(): Promise<FreedDoc> {
       }
     }
   }, "Deduplicate feed items by article link URL");
+}
+
+/**
+ * Batch import FeedItems in chunks of 500, one Automerge change per chunk.
+ * Skips existing globalIds (idempotent -- safe to call multiple times).
+ *
+ * @param onChunk - Optional callback fired after each chunk is committed.
+ *   Receives (chunkIndex, totalChunks) so callers can emit phased progress.
+ */
+export async function docBatchImportItems(
+  items: FeedItem[],
+  onChunk?: (chunkIndex: number, totalChunks: number) => void,
+): Promise<FreedDoc> {
+  const CHUNK = 500;
+  const totalChunks = Math.ceil(items.length / CHUNK);
+  let doc = getDoc();
+
+  for (let i = 0; i < items.length; i += CHUNK) {
+    const chunkIndex = Math.floor(i / CHUNK);
+    const chunk = items.slice(i, i + CHUNK);
+    doc = await applyChange((d) => {
+      for (const item of chunk) {
+        if (!d.feedItems[item.globalId]) {
+          addFeedItem(d, item);
+        }
+      }
+    }, `Batch import ${chunk.length} items (chunk ${chunkIndex + 1}/${totalChunks})`);
+    onChunk?.(chunkIndex + 1, totalChunks);
+  }
+
+  return doc;
+}
+
+/**
+ * Add a minimal stub FeedItem for a URL that has not yet been fetched.
+ *
+ * Stubs are created when the user saves a URL from the PWA (which cannot
+ * bypass CORS to fetch content directly). The desktop content fetcher picks
+ * them up via subscribe() and does the HTTP fetch + content extraction.
+ *
+ * A stub has no preservedContent and minimal metadata. The contentFetcher
+ * fills in the real content once it fetches the page.
+ */
+export async function docAddStubItem(
+  url: string,
+  tags: string[] = [],
+): Promise<FeedItem> {
+  let hash = 0;
+  for (let i = 0; i < url.length; i++) {
+    const ch = url.charCodeAt(i);
+    hash = (hash << 5) - hash + ch;
+    hash = hash & hash;
+  }
+  const globalId = `saved:${Math.abs(hash).toString(36)}`;
+  const now = Date.now();
+
+  let hostname = url;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    // malformed URL -- use raw string
+  }
+
+  const stub: FeedItem = {
+    globalId,
+    platform: "saved",
+    contentType: "article",
+    capturedAt: now,
+    publishedAt: now,
+    author: { id: hostname, handle: hostname, displayName: hostname },
+    content: {
+      text: url,
+      mediaUrls: [],
+      mediaTypes: [],
+      linkPreview: { url, title: url },
+    },
+    userState: { hidden: false, saved: true, savedAt: now, archived: false, tags },
+    topics: [],
+  };
+
+  await applyChange((doc) => {
+    if (!doc.feedItems[stub.globalId]) {
+      addFeedItem(doc, stub);
+    }
+  }, `Add stub item for ${url}`);
+
+  return stub;
 }
 
 /**
