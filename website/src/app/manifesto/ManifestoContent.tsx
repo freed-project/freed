@@ -47,8 +47,8 @@ export default function ManifestoContent() {
               <p>
                 Odysseus lashed himself to the mast before his ship reached the
                 Sirens. He heard the songs. He survived. The secret: decide
-                before temptation arrives. Install Freed now. We'll protect you
-                from ever doom scrolling again.
+                before temptation arrives. Install Freed now. Never doom-scroll
+                again.
               </p>
             </section>
 
@@ -60,8 +60,8 @@ export default function ManifestoContent() {
                 Freed browses your feeds in the background and strips out the
                 noise. Posts land in a secure vault on your computer, and are
                 live-synced to your phone. Freed curates a unified feed of
-                everything you love, with you in control. The platforms become
-                players in your game.
+                everything you love, with you in control. Your algorithm, your
+                rules. The platforms become players in your game.
               </p>
             </section>
 
@@ -76,23 +76,23 @@ export default function ManifestoContent() {
                   </strong>
                   It's also finite. With Freed, your time, your focus, and your
                   data stay yours. Everything you read lives on your device. We
-                  never see any of it. Read what you came for. Get back to life.
+                  never see any of it. Read what you came for. Get back to your
+                  life.
                 </li>
                 <li>
                   <strong className="text-text-primary block mb-1">
-                    You should own the algorithm.
+                    You should own the algorithm
                   </strong>
                   Freed's ranking is open source. You can tune which sources
                   matter most to you. You can read exactly why a post appears
-                  first. You are in control.
+                  first. You're in control.
                 </li>
                 <li>
                   <strong className="text-text-primary block mb-1">
-                    This belongs to everyone.
+                    This belongs to everyone
                   </strong>
-                  MIT licensed. Fork it. Audit it. Share it. Your feed, your
-                  algorithm, your rules. The code is public. The roadmap is
-                  public. Resonate? Subscribe below.
+                  The code is public. The roadmap is public. Fork it. Audit it.
+                  Share it. Resonate? Join the movement.
                 </li>
               </ul>
             </section>
