@@ -93,8 +93,41 @@ export default function PostContent({ post }: PostContentProps) {
             {post.content}
           </div>
 
+          {/* Share */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4 }}
+            className="mt-24 text-center not-prose"
+          >
+            <p className="text-text-muted text-sm">
+              Share this post:{" "}
+              <a
+                href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(
+                  `https://freed.wtf/updates/${post.slug}`
+                )}&text=${encodeURIComponent(post.title)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-glow-purple hover:text-glow-blue transition-colors"
+              >
+                X
+              </a>
+              {" • "}
+              <button
+                onClick={() =>
+                  navigator.clipboard.writeText(
+                    `https://freed.wtf/updates/${post.slug}`
+                  )
+                }
+                className="text-glow-purple hover:text-glow-blue transition-colors"
+              >
+                Copy link
+              </button>
+            </p>
+          </motion.div>
+
           {/* Footer */}
-          <footer className="mt-16 pt-8 border-t border-freed-border not-prose">
+          <footer className="mt-8 pt-8 border-t border-freed-border not-prose">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <p className="text-text-secondary text-sm mb-1">
@@ -130,39 +163,6 @@ export default function PostContent({ post }: PostContentProps) {
             </div>
           </footer>
         </motion.article>
-
-        {/* Share */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.4 }}
-          className="mt-8 text-center"
-        >
-          <p className="text-text-muted text-sm">
-            Share this post:{" "}
-            <a
-              href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(
-                `https://freed.wtf/updates/${post.slug}`
-              )}&text=${encodeURIComponent(post.title)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-glow-purple hover:text-glow-blue transition-colors"
-            >
-              X
-            </a>
-            {" • "}
-            <button
-              onClick={() =>
-                navigator.clipboard.writeText(
-                  `https://freed.wtf/updates/${post.slug}`
-                )
-              }
-              className="text-glow-purple hover:text-glow-blue transition-colors"
-            >
-              Copy link
-            </button>
-          </p>
-        </motion.div>
       </div>
     </section>
   );
