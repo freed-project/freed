@@ -463,8 +463,8 @@ const phases: Phase[] = [
     number: 2,
     title: "Capture Skills",
     description:
-      "capture-x and capture-rss packages with OpenClaw skill wrappers.",
-    status: "complete",
+      "RSS capture complete. X capture built; OpenClaw skill integration in progress.",
+    status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-2-CAPTURE-SKILLS.md",
   },
@@ -473,7 +473,7 @@ const phases: Phase[] = [
     title: "Save for Later",
     description:
       "URL capture with Readability extraction. Capture any article, thread, or page.",
-    status: "complete",
+    status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-3-SAVE-FOR-LATER.md",
   },
@@ -481,8 +481,8 @@ const phases: Phase[] = [
     number: 4,
     title: "Sync Layer",
     description:
-      "Local WebSocket relay + cloud backup. Automerge CRDT for conflict-free sync.",
-    status: "complete",
+      "Local relay and GDrive/Dropbox sync working. iCloud and remaining UI polish in progress.",
+    status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-4-SYNC.md",
   },
