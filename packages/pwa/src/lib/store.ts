@@ -19,6 +19,9 @@ import {
   docMarkAsRead,
   docMarkAllAsRead,
   docToggleSaved,
+  docToggleArchived,
+  docArchiveAllReadUnsaved,
+  docPruneArchivedItems,
   docUpdatePreferences,
   docAddFriend,
   docUpdateFriend,
@@ -31,6 +34,21 @@ import type { FreedDoc } from "@freed/shared/schema";
 interface AppState extends BaseAppState {
   syncConnected: boolean;
   setSyncConnected: (connected: boolean) => void;
+}
+
+/**
+ * Shallow-compare two string-keyed number maps.
+ * Used to preserve object identity on count maps so Zustand selectors that
+ * subscribe to these objects don't trigger re-renders when values are unchanged.
+ */
+function shallowEqualRecord(
+  a: Record<string, number>,
+  b: Record<string, number>,
+): boolean {
+  const aKeys = Object.keys(a);
+  return (
+    aKeys.length === Object.keys(b).length && aKeys.every((k) => a[k] === b[k])
+  );
 }
 
 /**
@@ -50,8 +68,11 @@ function hydrateFromDoc(doc: FreedDoc): Partial<AppState> {
   const feedTotalCounts: Record<string, number> = {};
   const unreadCountByPlatform: Record<string, number> = {};
   const itemCountByPlatform: Record<string, number> = {};
+  const archivableCountByPlatform: Record<string, number> = {};
+  const archivableFeedCounts: Record<string, number> = {};
   let totalUnreadCount = 0;
   let totalItemCount = 0;
+  let totalArchivableCount = 0;
   for (const item of allItems) {
     if (item.userState.hidden || item.userState.archived) continue;
     totalItemCount++;
@@ -67,6 +88,14 @@ function hydrateFromDoc(doc: FreedDoc): Partial<AppState> {
         const url = item.rssSource.feedUrl;
         feedUnreadCounts[url] = (feedUnreadCounts[url] ?? 0) + 1;
       }
+    } else if (!item.userState.saved) {
+      // Read and not saved: eligible for batch archive
+      totalArchivableCount++;
+      archivableCountByPlatform[item.platform] = (archivableCountByPlatform[item.platform] ?? 0) + 1;
+      if (item.rssSource) {
+        const url = item.rssSource.feedUrl;
+        archivableFeedCounts[url] = (archivableFeedCounts[url] ?? 0) + 1;
+      }
     }
   }
 
@@ -81,6 +110,9 @@ function hydrateFromDoc(doc: FreedDoc): Partial<AppState> {
     unreadCountByPlatform,
     totalItemCount,
     itemCountByPlatform,
+    totalArchivableCount,
+    archivableCountByPlatform,
+    archivableFeedCounts,
   };
 }
 
@@ -96,6 +128,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   unreadCountByPlatform: {},
   totalItemCount: 0,
   itemCountByPlatform: {},
+  totalArchivableCount: 0,
+  archivableCountByPlatform: {},
+  archivableFeedCounts: {},
   syncConnected: false,
   isLoading: false,
   isSyncing: false,
@@ -103,6 +138,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   error: null,
   activeFilter: {},
   selectedItemId: null,
+  searchQuery: "",
 
   // Initialize from Automerge
   initialize: async () => {
@@ -112,9 +148,27 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ isLoading: true });
       const doc = await initDoc();
 
-      // Subscribe to future changes (for sync)
+      // Prune archived items older than the configured threshold
+      const pruneDays = doc.preferences.display.archivePruneDays ?? 30;
+      if (pruneDays > 0) {
+        await docPruneArchivedItems(pruneDays * 24 * 60 * 60 * 1000);
+      }
+
+      // Subscribe to future changes (for sync).
+      // Reuse count map references when values haven't changed so Sidebar
+      // selectors don't trigger re-renders on unrelated mutations.
       subscribe((updatedDoc) => {
-        set(hydrateFromDoc(updatedDoc));
+        const next = hydrateFromDoc(updatedDoc);
+        const prev = get();
+        if (shallowEqualRecord(next.feedUnreadCounts!, prev.feedUnreadCounts))
+          next.feedUnreadCounts = prev.feedUnreadCounts;
+        if (shallowEqualRecord(next.feedTotalCounts!, prev.feedTotalCounts))
+          next.feedTotalCounts = prev.feedTotalCounts;
+        if (shallowEqualRecord(next.unreadCountByPlatform!, prev.unreadCountByPlatform))
+          next.unreadCountByPlatform = prev.unreadCountByPlatform;
+        if (shallowEqualRecord(next.itemCountByPlatform!, prev.itemCountByPlatform))
+          next.itemCountByPlatform = prev.itemCountByPlatform;
+        set(next);
       });
 
       // Hydrate initial state
@@ -150,6 +204,14 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   toggleSaved: async (id) => {
     await docToggleSaved(id);
+  },
+
+  toggleArchived: async (id) => {
+    await docToggleArchived(id);
+  },
+
+  archiveAllReadUnsaved: async (platform, feedUrl) => {
+    await docArchiveAllReadUnsaved(platform, feedUrl);
   },
 
   // Feed actions
@@ -200,4 +262,5 @@ export const useAppStore = create<AppState>((set, get) => ({
   setLoading: (isLoading) => set({ isLoading }),
   setSyncing: (isSyncing) => set({ isSyncing }),
   setError: (error) => set({ error }),
+  setSearchQuery: (searchQuery) => set({ searchQuery }),
 }));

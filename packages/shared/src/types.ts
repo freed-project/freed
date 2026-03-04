@@ -149,6 +149,9 @@ export interface UserState {
   /** Archived (removed from active queue, kept in library) */
   archived: boolean;
 
+  /** When item was archived (Unix ms) — used for 30-day pruning */
+  archivedAt?: number;
+
   /** User-assigned tags */
   tags: string[];
 
@@ -403,6 +406,9 @@ export interface DisplayPreferences {
 
   /** Sidebar width in pixels (default: 256, min: 180, max: 480) */
   sidebarWidth?: number;
+
+  /** Days to keep archived items before pruning (default: 30, 0 = never prune) */
+  archivePruneDays: number;
 }
 
 /**
@@ -544,6 +550,7 @@ export function createDefaultPreferences(): UserPreferences {
         focusMode: false,
         focusIntensity: "normal",
       },
+      archivePruneDays: 30,
     },
     xCapture: {
       mode: "mirror", // Default: capture from everyone you follow

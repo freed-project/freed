@@ -301,7 +301,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const isTopSourceActive = (source: (typeof topSources)[0]) => {
     if (activeFilter.feedUrl) return false;
-    if (activeFilter.showArchived) return false;
+    if (activeFilter.archivedOnly) return false;
     if (activeFilter.savedOnly) return false;
     return activeFilter.platform === source.id;
   };
@@ -420,12 +420,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               </li>
               <li>
                 <button
-                  onClick={() => { setFilter({ showArchived: true }); onClose(); }}
+                  onClick={() => { setFilter({ archivedOnly: true }); onClose(); }}
                   className={`
                     w-full flex items-center gap-3 px-3 py-2 rounded-lg
                     text-left text-sm transition-all border
                     ${
-                      activeFilter.showArchived
+                      activeFilter.archivedOnly
                         ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
                         : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
                     }

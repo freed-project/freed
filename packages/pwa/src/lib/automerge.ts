@@ -18,6 +18,9 @@ import {
   removeFeedItem,
   markAsRead,
   toggleSaved,
+  toggleArchived,
+  archiveAllReadUnsaved,
+  pruneArchivedItems,
   updatePreferences,
   updateLastSync,
   addFriend,
@@ -181,6 +184,27 @@ export async function docMarkAsRead(globalId: string): Promise<FreedDoc> {
 
 export async function docToggleSaved(globalId: string): Promise<FreedDoc> {
   return applyChange((doc) => toggleSaved(doc, globalId), "Toggle saved");
+}
+
+export async function docToggleArchived(globalId: string): Promise<FreedDoc> {
+  return applyChange((doc) => toggleArchived(doc, globalId), "Toggle archived");
+}
+
+export async function docArchiveAllReadUnsaved(
+  platform?: string,
+  feedUrl?: string,
+): Promise<FreedDoc> {
+  return applyChange(
+    (doc) => archiveAllReadUnsaved(doc, platform, feedUrl),
+    "Archive all read",
+  );
+}
+
+export async function docPruneArchivedItems(maxAgeMs?: number): Promise<FreedDoc> {
+  return applyChange(
+    (doc) => pruneArchivedItems(doc, maxAgeMs),
+    "Prune archived items",
+  );
 }
 
 export async function docUpdatePreferences(

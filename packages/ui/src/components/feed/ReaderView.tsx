@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform, MACOS_TRAFFIC_LIGHT_INSET } from "../../context/PlatformContext.js";
@@ -21,6 +21,7 @@ const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 export function ReaderView({ item, onClose }: ReaderViewProps) {
   const { headerDragRegion } = usePlatform();
   const updateItem = useAppStore((s) => s.updateItem);
+  const toggleArchived = useAppStore((s) => s.toggleArchived);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const storedDisplay = useAppStore((s) => s.preferences.display);
   const [focusOptions, setFocusOptions] = useState<FocusOptions>({
@@ -28,7 +29,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
     intensity: storedDisplay.reading.focusIntensity,
   });
 
-  const toggleSaved = () => {
+  const toggleSaved = useCallback(() => {
     updateItem(item.globalId, {
       userState: {
         ...item.userState,
@@ -36,18 +37,15 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
         savedAt: item.userState.saved ? undefined : Date.now(),
       },
     });
-  };
+  }, [updateItem, item.globalId, item.userState]);
 
-  const toggleArchived = () => {
-    updateItem(item.globalId, {
-      userState: {
-        ...item.userState,
-        archived: !item.userState.archived,
-      },
-    });
-  };
+  const handleToggleArchived = useCallback(() => {
+    toggleArchived(item.globalId);
+    // Close the reader when archiving — item leaves the active feed
+    if (!item.userState.archived) onClose();
+  }, [toggleArchived, item.globalId, item.userState.archived, onClose]);
 
-  const toggleFocus = () => {
+  const toggleFocus = useCallback(() => {
     setFocusOptions((prev) => {
       const next = { ...prev, enabled: !prev.enabled };
       updatePreferences({
@@ -58,14 +56,20 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
       });
       return next;
     });
-  };
+  }, [updatePreferences, storedDisplay]);
 
-  const hasContent = item.preservedContent?.html;
-  const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
+  const hasContent = !!item.preservedContent?.html;
+  const timeAgo = useMemo(
+    () => formatDistanceToNow(item.publishedAt, { addSuffix: true }),
+    [item.publishedAt],
+  );
 
-  const plainText = hasContent
-    ? htmlToText(item.preservedContent!.html)
-    : item.content.text;
+  // Parsing the HTML into plain text for focus mode is expensive - memoize it
+  // so repeated re-renders while the reader is open don't recreate a DOM node.
+  const plainText = useMemo(() => {
+    if (!item.preservedContent?.html) return item.content.text;
+    return htmlToText(item.preservedContent.html);
+  }, [item.preservedContent?.html, item.content.text]);
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0a0a0a] overflow-auto">
@@ -144,7 +148,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
           </button>
 
           <button
-            onClick={toggleArchived}
+            onClick={handleToggleArchived}
             className={`p-2 rounded-lg transition-colors ${
               item.userState.archived
                 ? "bg-green-500/20 text-green-400"
