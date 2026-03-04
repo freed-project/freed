@@ -47,21 +47,12 @@ export default function ManifestoContent() {
               <p>
                 Odysseus lashed himself to the mast before his ship reached the
                 Sirens. He heard the song. He survived. The secret: decide
-                before temptation arrives. Install Freed. It browses your feeds
-                in the background, and stores what you care about in a vault on
-                your machine. The platforms become players in your game.
-              </p>
-            </section>
-
-            <section>
-              <h2 className="text-2xl font-bold text-text-primary mb-4">
-                What You Can Reclaim
-              </h2>
-              <p>
-                It wasn't always this way. Before extractive social media, you
-                followed people. They shared ideas, learnings, things they
-                loved. You checked in, then got on with your day. That model
-                still works. Let's bring it back.
+                before temptation arrives. Install Freed now.
+                <br />
+                <br />
+                We browse in the background. Posts land in a vault on your
+                device, synced to your phone. We build you a feed from
+                everything you love. The platforms become players in your game.
               </p>
             </section>
 
