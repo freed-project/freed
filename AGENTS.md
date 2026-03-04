@@ -70,9 +70,27 @@ git worktree add ../freed-<slug> -b <branch>
 ```bash
 # From the primary worktree (not the feature worktree):
 gh pr merge <n> --squash --delete-branch
+
+# Immediately after merging, tear down the feature worktree:
+git worktree remove --force ../freed-<slug>
+git branch -D <branch>   # must use -D, not -d (squash leaves commits unreachable)
+```
+
+Or run the cleanup helper to sweep all merged worktrees at once:
+
+```bash
+./scripts/worktree-cleanup.sh        # interactive
+./scripts/worktree-cleanup.sh --yes  # non-interactive
 ```
 
 Branches are deleted after merge. The squash commit message is derived from the PR title — write PR titles as if they are commit messages.
+
+**Never use `git log main..branch` to check whether a branch has been merged.** Squash merge creates a new commit hash on `main`, so the original branch commits are never reachable from `main`'s history. The branch always looks "ahead" even when its content is fully shipped. Use these instead:
+
+```bash
+gh pr list --state merged --head <branch>   # authoritative: did a PR for this branch land?
+git branch -vv | grep '\[gone\]'            # remote branch deleted = PR merged + auto-deleted
+```
 
 ---
 
