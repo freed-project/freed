@@ -351,7 +351,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </button>
         </div>
 
-        <nav className="flex-1 min-h-0 flex flex-col p-4 overflow-y-auto minimal-scroll">
+        <nav
+          className="flex-1 min-h-0 flex flex-col px-4 pt-4 overflow-y-auto minimal-scroll"
+          style={{ paddingBottom: 'calc(1rem + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))' }}
+        >
+          {SidebarConnectionSection && <SidebarConnectionSection />}
+
           {/* Sources */}
           <SidebarSection title="Sources">
             <ul className="space-y-1">

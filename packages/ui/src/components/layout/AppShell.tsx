@@ -28,12 +28,15 @@ export function AppShell({ children }: AppShellProps) {
   }, [toggleDebug, debugVisible]);
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-[#121212] pb-[env(safe-area-inset-bottom)]">
+    // On mobile (<md), the layout flows naturally in the document so Safari can
+    // collapse its address bar when the feed scrolls. min-h-0 and overflow-hidden
+    // are desktop-only; they lock the layout to 100dvh for in-element scrolling.
+    <div className="flex-1 md:min-h-0 flex flex-col bg-[#121212]">
       <Header onMenuClick={() => setSidebarOpen(true)} />
 
-      <div className="flex-1 min-h-0 flex overflow-hidden">
+      <div className="flex-1 md:min-h-0 flex md:overflow-hidden">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-        <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
+        <main className="flex-1 md:min-h-0 md:overflow-hidden">{children}</main>
 
         {/* Desktop push drawer — always mounted so width can animate smoothly.
             The DebugPanel's own border-l is clipped by overflow-hidden when width is 0. */}
