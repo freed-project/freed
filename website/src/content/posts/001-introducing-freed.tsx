@@ -3,7 +3,7 @@ import { definePost } from "../types";
 export default definePost(
   {
     slug: "introducing-freed",
-    title: "Introducing Freed: Take Back Your Feed",
+    title: "Introducing Freed",
     description: "Your feeds, your way, on all your devices.",
     date: "2026-02-17",
     author: "Aubrey Falconer",
@@ -82,14 +82,14 @@ export default definePost(
       <li>
         <strong>
           <a href="https://github.com/freed-project/freed">Star the repo</a>
-          {" ⭐"}
+          <span className="mx-2">⭐</span>
         </strong>{" "}
         It signals that this matters and helps others find it.
       </li>
       <li>
         <strong>
           <a href="https://app.freed.wtf">Try the PWA</a>
-          {" 📱"}
+          <span className="mx-2">📱</span>
         </strong>{" "}
         Add some RSS feeds and tell me what's broken.
       </li>
@@ -98,15 +98,14 @@ export default definePost(
           <a href="https://github.com/freed-project/freed/blob/main/CONTRIBUTING.md">
             Contribute
           </a>
-          {" 🛠️"}
+          <span className="mx-2">🛠️</span>
         </strong>{" "}
         Especially if you know Rust/TypeScript or have ideas for additional
         capture sources.
       </li>
       <li>
-        <strong>Share this 🤍</strong>{" "}
-        Pass along to a friend who's complained about social media lately. We
-        can win, together!
+        <strong>Share <span className="mx-2">🤍</span></strong> Pass along to a
+        friend who's complained about social media lately. We can win, together!
       </li>
     </ul>
 
