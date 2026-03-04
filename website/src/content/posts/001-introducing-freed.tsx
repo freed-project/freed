@@ -13,8 +13,8 @@ export default definePost(
   },
   <>
     <p>
-      The chronological feed was quietly killed at every major platform. Not
-      because it failed you. Because it let you leave.
+      The chronological feed was quietly killed by every major social platform.
+      Because it failed to exploit you.
     </p>
     <p>
       What replaced it was engineered to keep you scrolling. Outrage gets
