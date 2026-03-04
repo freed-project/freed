@@ -176,7 +176,7 @@ const features = [
     icon: <UnifiedFeedIcon />,
     title: "Unified Feed",
     description:
-      "One feed to rule them all. X, Facebook, Instagram—combined and weighted by what matters to you.",
+      "One feed to rule them all. X, Facebook, Instagram, combined and weighted by what matters to you.",
   },
   {
     icon: <FriendMapIcon />,
@@ -194,7 +194,7 @@ const features = [
     icon: <SyncIcon />,
     title: "Cross-Device Sync",
     description:
-      "CRDT-powered sync across all your devices. No cloud required—peer-to-peer when you want it.",
+      "CRDT-powered sync across all your devices. No cloud required. Peer-to-peer when you want it.",
   },
   {
     icon: <OpenSourceIcon />,

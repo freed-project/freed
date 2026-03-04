@@ -34,8 +34,8 @@ export default function ManifestoContent() {
               <p>
                 Every time you open a social media app, you are not a customer.
                 You are the product. Your attention is being harvested, packaged,
-                and sold to the highest bidder—and the platform's entire
-                engineering budget is dedicated to maximizing the yield.
+                and sold to the highest bidder, with the platform's entire
+                engineering budget dedicated to maximizing the yield.
               </p>
               <p>
                 These platforms didn't accidentally become addictive. They
@@ -66,7 +66,7 @@ export default function ManifestoContent() {
               <p>
                 Then the platforms learned they could grow faster by hijacking
                 the signal. They replaced chronological feeds with algorithmic
-                ones optimized for engagement—not for your benefit, but for
+                ones optimized for engagement, not for your benefit but for
                 theirs. They introduced infinite scroll. They removed the ability
                 to be "done." They made it technically impossible to simply read
                 what the people you chose to follow had written.
@@ -85,7 +85,7 @@ export default function ManifestoContent() {
               </h2>
               <p>
                 In Homer's <em>Odyssey</em>, Odysseus wanted to hear the
-                Sirens' song—the most beautiful music in the world—without being
+                Sirens' song (the most beautiful music in the world) without being
                 lured to his death on the rocks below. He couldn't trust himself
                 to resist in the moment. So he made a decision in advance: had
                 his crew bind him to the mast and fill their own ears with wax.
@@ -98,10 +98,10 @@ export default function ManifestoContent() {
                 self would make.
               </p>
               <p>
-                Freed is your mast. You configure it once—deciding which
+                Freed is your mast. You configure it once, deciding which
                 creators matter to you, how much weight to give different
                 sources, which platforms to access only through Freed's filtered
-                lens—and then you engage with the internet only through that
+                lens, and then you engage with the internet only through that
                 configuration. The algorithm that shapes your experience is one
                 you wrote yourself, in a moment of clarity, rather than one
                 written by engineers optimizing for your compulsion.
@@ -121,8 +121,8 @@ export default function ManifestoContent() {
                   servers. We collect no telemetry. We never see your content,
                   your follows, or your reading habits. When you sync between
                   your devices, the data travels through cloud storage you
-                  already own—your Google Drive, your iCloud, your Dropbox—
-                  without ever touching our infrastructure.
+                  already own: your Google Drive, your iCloud, your Dropbox.
+                  None of it ever touches our infrastructure.
                 </li>
                 <li>
                   <strong className="text-text-primary block mb-1">
@@ -131,7 +131,7 @@ export default function ManifestoContent() {
                   Freed's ranking algorithm is open source. You can read exactly
                   how it decides what to show you first. You can edit the weights
                   yourself. You can fork it and build your own. This is not a
-                  feature—it is a requirement for any tool that shapes your
+                  feature; it is a requirement for any tool that shapes your
                   information diet.
                 </li>
                 <li>
@@ -149,8 +149,8 @@ export default function ManifestoContent() {
                     Attention is finite and precious.
                   </strong>
                   The platforms have forgotten this. We have not. Freed is
-                  designed to help you finish your feed—to know when you've
-                  read the things that matter and have permission to stop.
+                  designed to help you finish your feed. You know when you've
+                  read what matters and you have permission to stop.
                 </li>
                 <li>
                   <strong className="text-text-primary block mb-1">
@@ -172,8 +172,8 @@ export default function ManifestoContent() {
               </p>
               <p>
                 A Freed user sees a clean timeline of posts from people they
-                genuinely care about—writers, friends, researchers, journalists—
-                ranked by criteria they defined: author authority, topic
+                genuinely care about: writers, friends, researchers, journalists.
+                Posts are ranked by criteria they defined: author authority, topic
                 relevance, freshness. They read through it until they're done.
                 Then they close the app. There is no infinite scroll. There is
                 no algorithmic outrage-injection. There is no dark pattern
@@ -197,7 +197,7 @@ export default function ManifestoContent() {
                 "The algorithm that serves you best is the one you wrote
                 yourself."
                 <footer className="text-text-secondary text-base mt-2 not-italic">
-                  — The Freed Manifesto
+                  From the Freed Manifesto
                 </footer>
               </blockquote>
             </section>
@@ -209,8 +209,8 @@ export default function ManifestoContent() {
                 feedback, and your critique.
               </p>
               <p>
-                And if this resonates with you—if you've been waiting for
-                someone to build this—subscribe below. We'll let you know when
+                And if this resonates with you, if you've been waiting for
+                someone to build this, subscribe below. We'll let you know when
                 it's ready to install.
               </p>
             </section>

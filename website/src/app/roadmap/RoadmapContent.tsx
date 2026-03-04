@@ -434,7 +434,7 @@ function ArchitectureDiagram() {
           fontStyle="italic"
           className="hidden sm:inline"
         >
-          Desktop is the hub — runs capture, hosts sync, powers everything
+          Desktop is the hub: runs capture, hosts sync, powers everything
         </text>
       </svg>
     </div>
@@ -689,7 +689,7 @@ export default function RoadmapContent() {
           {/*  We build in daylight.*/}
           {/*</p>*/}
           <p className="text-text-muted text-sm sm:text-base">
-            Every commit, every decision, every pivot — visible.
+            Every commit, every decision, every pivot. All visible.
           </p>
         </motion.header>
 

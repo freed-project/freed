@@ -228,7 +228,7 @@ export default function NewsletterModal() {
                     {/* Early-build disclaimer */}
                     <div className="mb-6 px-4 py-3 rounded-xl border border-amber-500/30 bg-amber-500/5">
                       <p className="text-center text-xs sm:text-sm font-bold text-amber-400/90">
-                        ⚠️ Very early build — nothing works yet!
+                        ⚠️ Very early build. Nothing works yet!
                       </p>
                       <p className="text-center text-xs text-amber-400/60 mt-1">
                         Active development in progress. Expect a functional
@@ -263,7 +263,7 @@ export default function NewsletterModal() {
                           Open Web App
                         </p>
                         <p className="text-xs text-text-muted">
-                          Read your feeds anywhere — great on mobile
+                          Read your feeds anywhere, great on mobile
                         </p>
                       </div>
                       <svg

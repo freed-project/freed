@@ -13,8 +13,8 @@ export default definePost(
   <>
     <p>
       Welcome to the first Freed newsletter. If you're reading this, you've
-      either subscribed to our email list or discovered us through RSS—which,
-      by the way, is exactly the kind of choice we think you should always have.
+      either subscribed to our email list or discovered us through RSS, which
+      is exactly the kind of choice we think you should always have.
     </p>
 
     <p>
@@ -25,16 +25,16 @@ export default definePost(
     <h2>The Scroll That Doesn't End</h2>
     <p>
       Somewhere in the last decade, social media stopped being a place where you
-      read things and became a place where things happened to you. The
-      chronological feed—the simple idea that you see what the people you follow
-      published, in the order they published it—was quietly killed at every major
+      read things and became a place where things happened to you.       The
+      chronological feed (the simple idea that you see what the people you follow
+      published, in the order they published it) was quietly killed at every major
       platform.
     </p>
     <p>
       What replaced it was algorithmic curation optimized for one thing:
       engagement. Not your satisfaction. Not your education. Not your
-      connection to the people you care about. Engagement—clicks, shares,
-      reactions, time-on-screen—because those are what platforms sell to
+      connection to the people you care about. Engagement: clicks, shares,
+      reactions, time-on-screen. That is what platforms sell to
       advertisers.
     </p>
     <p>
@@ -42,8 +42,8 @@ export default definePost(
       engaging. Nuance gets suppressed because it's slow. The most compelling
       lies travel faster than measured truth, and the algorithm can't tell the
       difference and doesn't try. Infinite scroll removes the natural stopping
-      point. Variable reward schedules—the same mechanism that makes slot
-      machines addictive—keep you pulling down to refresh.
+      point. Variable reward schedules (the same mechanism that makes slot
+      machines addictive) keep you pulling down to refresh.
     </p>
     <p>
       None of this is accidental. It is the product of billions of dollars in
@@ -54,8 +54,8 @@ export default definePost(
     <h2>What Freed Does Differently</h2>
     <p>
       Freed is a local-first feed reader. It captures content from your social
-      sources—X (formerly Twitter), RSS feeds, YouTube channels, newsletters,
-      podcasts—and presents them in a unified, chronological timeline on your
+      sources: X (formerly Twitter), RSS feeds, YouTube channels, newsletters,
+      and podcasts. It presents them in a unified, chronological timeline on your
       device. You decide the ranking. You control the weights. The algorithm is
       yours.
     </p>
@@ -64,7 +64,7 @@ export default definePost(
       <li>
         <strong>No central servers.</strong> Your captured content lives on your
         device, synced between your own devices (laptop, phone) via your own
-        cloud storage—Google Drive, iCloud, or Dropbox. We never touch it.
+        cloud storage: Google Drive, iCloud, or Dropbox. We never touch it.
       </li>
       <li>
         <strong>No engagement optimization.</strong> Posts are ranked by
@@ -112,7 +112,7 @@ export default definePost(
         <strong>Shared library (@freed/shared)</strong>: The common types and
         Automerge CRDT schema that both apps use. The CRDT (Conflict-free
         Replicated Data Type) handles merging changes from multiple devices
-        automatically—no sync conflicts, no data loss.
+        automatically, with no sync conflicts and no data loss.
       </li>
       <li>
         <strong>Capture packages</strong>: Separate, composable packages for

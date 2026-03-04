@@ -50,9 +50,9 @@ export default function PrivacyContent() {
               </h2>
               <p>
                 This marketing site is a static Next.js application hosted on
-                Vercel. Like any web host, Vercel's infrastructure logs standard
-                HTTP request metadata — your IP address, browser user-agent,
-                timestamp, and the URL requested — as part of their CDN
+                Vercel.                 Like any web host, Vercel's infrastructure logs standard
+                HTTP request metadata (your IP address, browser user-agent,
+                timestamp, and the URL requested) as part of their CDN
                 operation. This data is governed by{" "}
                 <a
                   href="https://vercel.com/legal/privacy-policy"
@@ -90,7 +90,7 @@ export default function PrivacyContent() {
                     Your feed data stays on your device.
                   </strong>
                   Posts captured from X, RSS, YouTube, or any other source are
-                  written to local storage — IndexedDB in the browser, the
+                  written to local storage: IndexedDB in the browser, the
                   filesystem in the desktop app. None of this ever touches our
                   infrastructure, because we have no infrastructure to touch.
                 </li>
@@ -116,8 +116,8 @@ export default function PrivacyContent() {
                     Your credentials never leave your device.
                   </strong>
                   Freed accesses social platforms through your own authenticated
-                  browser sessions. Credentials are stored in your local
-                  keychain or browser storage — never transmitted to us.
+                  browser sessions.                   Credentials are stored in your local
+                  keychain or browser storage and never transmitted to us.
                 </li>
               </ul>
             </section>
@@ -125,11 +125,11 @@ export default function PrivacyContent() {
             {/* 3. Sync */}
             <section>
               <h2 className="text-2xl font-bold text-text-primary mb-4">
-                Data Sync — Your Cloud, Your Keys
+                Data Sync: Your Cloud, Your Keys
               </h2>
               <p>
                 If you enable cross-device sync, your Freed data is backed up
-                to cloud storage <em>you already own</em> — Google Drive,
+                to cloud storage <em>you already own</em>: Google Drive,
                 iCloud, or Dropbox. The data is encrypted with a passphrase
                 only you know before it ever leaves your device. We cannot read
                 it. We cannot be compelled to hand it over, because we do not
@@ -173,8 +173,8 @@ export default function PrivacyContent() {
                 Freed captures content from third-party platforms (X, YouTube,
                 RSS feeds, etc.) on your behalf, using your own authenticated
                 session. By doing so, you remain subject to those platforms'
-                terms of service and privacy policies. Freed does not aggregate
-                or transmit that content anywhere — it stays local — but the
+                terms of service and privacy policies.                 Freed does not aggregate
+                or transmit that content anywhere. It stays local. The
                 act of accessing it is governed by each platform's relationship
                 with you, not with us.
               </p>
@@ -187,9 +187,9 @@ export default function PrivacyContent() {
               </h2>
               <p>
                 Freed is not directed at children under 13. We do not knowingly
-                collect any personal information from children. Given our
+                collect any personal information from children.                 Given our
                 local-first architecture, we are not positioned to collect
-                anyone's personal information — but we state this explicitly for
+                anyone's personal information, but we state this explicitly for
                 compliance clarity.
               </p>
             </section>
@@ -200,8 +200,8 @@ export default function PrivacyContent() {
                 Changes to This Policy
               </h2>
               <p>
-                If we ever change anything material here — which would require
-                us to build infrastructure we currently don't have — we'll
+                If we ever change anything material here (which would require
+                us to build infrastructure we currently don't have), we'll
                 update the effective date at the top and post a note in the{" "}
                 <Link
                   href="/updates"
@@ -237,8 +237,8 @@ export default function PrivacyContent() {
                 >
                   GitHub
                 </a>
-                . We'd rather have a public conversation about our privacy
-                posture than a private one — transparency is kind of the whole
+                .                 We'd rather have a public conversation about our privacy
+                posture than a private one; transparency is kind of the whole
                 point.
               </p>
             </section>
@@ -248,7 +248,7 @@ export default function PrivacyContent() {
               <blockquote className="text-xl italic text-text-primary border-l-4 border-glow-purple pl-6">
                 "Your data belongs to you."
                 <footer className="text-text-secondary text-base mt-2 not-italic">
-                  — The Freed Manifesto
+                  From the Freed Manifesto
                 </footer>
               </blockquote>
             </section>

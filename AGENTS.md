@@ -75,6 +75,18 @@ Branches are deleted after merge. The squash commit message is derived from the 
 
 ---
 
+## Writing Style (All User-Facing Copy)
+
+These rules apply to every string rendered in the browser: marketing pages, manifesto, privacy policy, roadmap, blog posts, modal text, feature descriptions, and any future content.
+
+- **No em dashes (—) or en dashes (–).** Rewrite the sentence. Use a comma, semicolon, colon, or parentheses instead. Em dashes are a reliable signal that copy was auto-generated.
+- **No double-hyphen constructions (`--`).** Use a comma or rewrite.
+- **No curly/smart quotes in source code.** Use straight quotes (`"`, `'`) in TSX string literals. The browser handles typographic rendering.
+- **No overused AI constructions:** avoid "not just X but Y", "delve into", "it's worth noting", "in today's world", "leverage" (as a verb), and list items that all start with adverbs ("Furthermore,", "Moreover,", "Additionally,").
+- **Parentheses for asides**, colons for introductions, commas or semicolons for clauses. Plain punctuation reads like a person wrote it.
+- **Short sentences beat compound-complex ones.** If you need an em dash to hold a sentence together, the sentence is too long.
+- **Blockquote attributions** use "From ..." prose, not a leading dash.
+
 ## Automerge
 
 **Schema** (`packages/shared/src/schema.ts`): backward-compatible only. Add optional fields; never delete (mark `@deprecated`).
