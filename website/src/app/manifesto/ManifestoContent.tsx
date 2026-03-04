@@ -46,20 +46,12 @@ export default function ManifestoContent() {
               <h2 className="text-2xl font-bold text-text-primary mb-4">What We Believe</h2>
               <ul className="space-y-5">
                 <li>
-                  <strong className="text-text-primary block mb-1">Your data belongs to you.</strong>
-                  Everything lives on your device. No servers. No telemetry. We never see your content, your follows, or your habits.
+                  <strong className="text-text-primary block mb-1">Your attention is not a resource to be harvested.</strong>
+                  Your time, your focus, and your data belong to you. Everything lives on your device. No servers. No telemetry. We never see your content, your follows, or your habits. And when you've read what you came to read, you're done. No machine will try to stop you.
                 </li>
                 <li>
                   <strong className="text-text-primary block mb-1">You deserve to see the algorithm.</strong>
                   Freed's ranking is open source. You can read exactly why a post appears first. You can change the weights. You can fork the whole thing.
-                </li>
-                <li>
-                  <strong className="text-text-primary block mb-1">Chronological is not naïve.</strong>
-                  Reading things in the order they were written is a choice, not a failure of curation.
-                </li>
-                <li>
-                  <strong className="text-text-primary block mb-1">You have the right to be done.</strong>
-                  Freed lets you finish your feed. When you're done, you're done. No machine will try to stop you.
                 </li>
                 <li>
                   <strong className="text-text-primary block mb-1">This belongs to everyone.</strong>
