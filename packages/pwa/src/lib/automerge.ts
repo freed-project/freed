@@ -20,8 +20,12 @@ import {
   toggleSaved,
   updatePreferences,
   updateLastSync,
+  addFriend,
+  updateFriend,
+  removeFriend,
+  logReachOut,
 } from "@freed/shared/schema";
-import type { FeedItem, RssFeed, UserPreferences } from "@freed/shared";
+import type { FeedItem, Friend, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
 import { addDebugEvent, setDocSnapshot, registerDocAccessors } from "@freed/ui/lib/debug-store";
 
 // Singleton storage instance
@@ -190,6 +194,32 @@ export async function docUpdatePreferences(
 
 export async function docUpdateLastSync(): Promise<FreedDoc> {
   return applyChange((doc) => updateLastSync(doc), "Update last sync");
+}
+
+// =============================================================================
+// Friend Operations
+// =============================================================================
+
+export async function docAddFriend(friend: Friend): Promise<FreedDoc> {
+  return applyChange((doc) => addFriend(doc, friend), "Add friend");
+}
+
+export async function docUpdateFriend(
+  id: string,
+  updates: Partial<Friend>
+): Promise<FreedDoc> {
+  return applyChange((doc) => updateFriend(doc, id, updates), "Update friend");
+}
+
+export async function docRemoveFriend(id: string): Promise<FreedDoc> {
+  return applyChange((doc) => removeFriend(doc, id), "Remove friend");
+}
+
+export async function docLogReachOut(
+  id: string,
+  entry: ReachOutLog
+): Promise<FreedDoc> {
+  return applyChange((doc) => logReachOut(doc, id, entry), "Log reach-out");
 }
 
 /**

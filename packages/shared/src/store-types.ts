@@ -5,7 +5,7 @@
  * implement, enabling shared UI components to work with either store.
  */
 
-import type { FeedItem, UserPreferences, RssFeed } from "./types.js";
+import type { FeedItem, Friend, ReachOutLog, UserPreferences, RssFeed } from "./types.js";
 
 /**
  * Filter options for the feed view.
@@ -29,6 +29,8 @@ export interface BaseAppState {
   // Data (derived from Automerge doc)
   items: FeedItem[];
   feeds: Record<string, RssFeed>;
+  /** Friends (unified identities) — keyed by Friend.id */
+  friends: Record<string, Friend>;
   preferences: UserPreferences;
   /** Unread item count per RSS feed URL. Derived in hydrateFromDoc so shared
    *  UI components (Sidebar) don't need to subscribe to the full items array. */
@@ -68,6 +70,12 @@ export interface BaseAppState {
   renameFeed: (url: string, title: string) => Promise<void>;
   /** Remove all feed subscriptions. Pass `includeItems: true` to also wipe all articles. */
   removeAllFeeds: (includeItems: boolean) => Promise<void>;
+
+  // Friend actions
+  addFriend: (friend: Friend) => Promise<void>;
+  updateFriend: (id: string, updates: Partial<Friend>) => Promise<void>;
+  removeFriend: (id: string) => Promise<void>;
+  logReachOut: (id: string, entry: ReachOutLog) => Promise<void>;
 
   // Preference actions
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;
