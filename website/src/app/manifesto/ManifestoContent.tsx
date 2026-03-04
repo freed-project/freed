@@ -39,7 +39,7 @@ export default function ManifestoContent() {
 
             <section>
               <h2 className="text-2xl font-bold text-text-primary mb-4">What You Can Reclaim</h2>
-              <p>You followed people. They shared ideas, learnings, things they loved. You checked in, then got on with your day. That model still works. Let's bring it back.</p>
+              <p>It wasn't always this way. You followed people. They shared ideas, learnings, things they loved. You checked in, then got on with your day. That model still works. Let's bring it back.</p>
             </section>
 
             <section>
