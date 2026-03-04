@@ -6,6 +6,7 @@ export interface PostMeta {
   description: string;
   date: string; // ISO 8601 format: YYYY-MM-DD
   author?: string;
+  authorUrl?: string;
   tags?: string[];
 }
 
