@@ -47,7 +47,7 @@ export default function ManifestoContent() {
               <ul className="space-y-5">
                 <li>
                   <strong className="text-text-primary block mb-1">Your attention is not a resource to be harvested.</strong>
-                  Your time, your focus, and your data belong to you. Everything lives on your device. No servers. No telemetry. We never see your content, your follows, or your habits. And when you've read what you came to read, you're done. The machine knows that, and it respects it.
+                  Your time, your focus, and your data belong to you. Everything lives on your device. No servers. No telemetry. We never see your content, your follows, or your habits. And when you've read what you came to read, you're done.
                 </li>
                 <li>
                   <strong className="text-text-primary block mb-1">You deserve to see the algorithm.</strong>
