@@ -91,9 +91,10 @@ export default definePost(
         It signals that this matters and helps others find us.
       </li>
       <li>
-        <strong>Try the PWA.</strong> Add some RSS feeds at{" "}
-        <a href="https://app.freed.wtf">app.freed.wtf</a> and tell us what's
-        broken.
+        <strong>
+          <a href="https://app.freed.wtf">Try the PWA.</a>
+        </strong>{" "}
+        Add some RSS feeds and tell us what's broken.
       </li>
       <li>
         <strong>Contribute.</strong> Especially if you know Rust or have ideas
