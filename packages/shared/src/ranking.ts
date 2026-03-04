@@ -134,7 +134,8 @@ export function filterFeedItems(
   items: FeedItem[],
   options: {
     showHidden?: boolean;
-    showArchived?: boolean;
+    /** Show only archived items (the Archived view). Mutually exclusive with normal feed. */
+    archivedOnly?: boolean;
     platform?: string;
     tags?: string[];
     savedOnly?: boolean;
@@ -144,8 +145,12 @@ export function filterFeedItems(
     // Filter hidden unless explicitly showing
     if (!options.showHidden && item.userState.hidden) return false;
 
-    // Filter archived unless explicitly showing
-    if (!options.showArchived && item.userState.archived) return false;
+    // Archived view shows only archived; normal feed excludes archived
+    if (options.archivedOnly) {
+      if (!item.userState.archived) return false;
+    } else {
+      if (item.userState.archived) return false;
+    }
 
     // Filter by platform
     if (options.platform && item.platform !== options.platform) return false;

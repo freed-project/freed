@@ -127,6 +127,80 @@ export function markAsRead(doc: FreedDoc, globalId: string): void {
 }
 
 /**
+ * Toggle archived status for a feed item, maintaining the archivedAt timestamp.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @param globalId - The item's global ID
+ */
+export function toggleArchived(doc: FreedDoc, globalId: string): void {
+  const item = doc.feedItems[globalId];
+  if (!item) return;
+  if (item.userState.archived) {
+    item.userState.archived = false;
+    delete (item.userState as unknown as Record<string, unknown>).archivedAt;
+  } else {
+    item.userState.archived = true;
+    item.userState.archivedAt = Date.now();
+  }
+}
+
+/**
+ * Archive all read, non-saved items — optionally scoped to a platform or feed.
+ * Skips items already archived, hidden, or saved.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @param platform - Optional platform filter (e.g. "rss", "x")
+ * @param feedUrl - Optional RSS feed URL filter
+ */
+export function archiveAllReadUnsaved(
+  doc: FreedDoc,
+  platform?: string,
+  feedUrl?: string,
+): number {
+  const now = Date.now();
+  let count = 0;
+  for (const item of Object.values(doc.feedItems)) {
+    if (item.userState.archived) continue;
+    if (item.userState.hidden) continue;
+    if (item.userState.saved) continue;
+    if (!item.userState.readAt) continue;
+    if (platform && item.platform !== platform) continue;
+    if (feedUrl && item.rssSource?.feedUrl !== feedUrl) continue;
+    item.userState.archived = true;
+    item.userState.archivedAt = now;
+    count++;
+  }
+  return count;
+}
+
+/**
+ * Delete archived items older than maxAgeMs. Saved items are never deleted.
+ * Items archived before archivedAt was introduced (no timestamp) are skipped.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @param maxAgeMs - Max age in milliseconds (default: 30 days)
+ * @returns Number of items deleted
+ */
+export function pruneArchivedItems(
+  doc: FreedDoc,
+  maxAgeMs: number = 30 * 24 * 60 * 60 * 1000,
+): number {
+  if (maxAgeMs <= 0) return 0;
+  const cutoff = Date.now() - maxAgeMs;
+  let pruned = 0;
+  for (const [id, item] of Object.entries(doc.feedItems)) {
+    if (!item.userState.archived) continue;
+    if (item.userState.saved) continue;
+    const { archivedAt } = item.userState;
+    if (archivedAt !== undefined && archivedAt < cutoff) {
+      delete doc.feedItems[id];
+      pruned++;
+    }
+  }
+  return pruned;
+}
+
+/**
  * Toggle bookmark status for a feed item
  *
  * @param doc - The Automerge document (mutable within A.change)
