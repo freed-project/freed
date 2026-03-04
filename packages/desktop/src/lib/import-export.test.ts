@@ -100,10 +100,6 @@ function makeFileList(files: File[]): FileList {
   return files as unknown as FileList;
 }
 
-function collectPhases(calls: ImportProgress[]): ImportPhase[] {
-  return [...new Set(calls.map((p) => p.phase))];
-}
-
 // ── folderTagsFromRelativePath tests ──────────────────────────────────────────
 
 describe("folderTagsFromRelativePath", () => {
