@@ -5,7 +5,7 @@ export default definePost(
     slug: "introducing-freed",
     title: "Introducing Freed: Take Back Your Feed",
     description:
-      "Why we built a local-first, open-source feed reader that puts you back in control of your information diet.",
+      "A local-first, open-source reader that captures your feeds in the background and puts you back in charge of what you read.",
     date: "2026-02-17",
     author: "Aubrey Falconer",
     authorUrl: "https://AubreyFalconer.com",
@@ -13,52 +13,73 @@ export default definePost(
   },
   <>
     <p>
-      Welcome to the first Freed update. You're here because you subscribed or
-      found us through RSS. Both are good choices.
+      The chronological feed was quietly killed at every major platform. Not
+      because it failed you. Because it let you leave.
     </p>
-
-    <h2>The Problem</h2>
     <p>
-      Open your feed. Something else has already decided what's waiting. Not to
-      serve you. To keep you in the system. Platforms replaced chronological
-      reading with engagement algorithms optimized for clicks, shares, and
-      time-on-screen. That's what they sell. The machine is working perfectly.
-      It's just not working for you.
+      What replaced it was engineered to keep you scrolling. Outrage gets
+      amplified because it's engaging. Nuance gets buried because it's slow.
+      Infinite scroll removes the stopping point. Variable reward schedules,
+      the same mechanism that makes slot machines addictive, keep you pulling
+      down to refresh. None of this is accidental. Billions of dollars in
+      engineering talent were deployed specifically to exploit the gaps in human
+      cognition.
     </p>
+    <p>We built Freed because we were done with it.</p>
 
-    <h2>What Freed Does</h2>
+    <h2>What Freed Is</h2>
     <p>
-      Freed runs in the background, capturing posts from the sources you care
-      about: X, RSS feeds, YouTube channels, newsletters, and podcasts.
-      Everything lands in a local vault on your computer, live-synced to your
-      phone. No central servers. We never see your data.
+      Freed is a local-first feed reader. It captures content from the sources
+      you choose: X, RSS feeds, YouTube channels, newsletters, and podcasts.
+      Everything lands in a vault on your device, live-synced to your phone.
+      You get a unified, chronological feed of everything you care about, ranked
+      the way you decide. Your algorithm, your rules. The platforms become
+      players in your game.
     </p>
     <ul>
       <li>
-        <strong>Your algorithm, your rules.</strong> Posts are ranked by
-        criteria you set: author trust, topic relevance, freshness. You can
-        tune the weights and read exactly why any post appears first.
+        <strong>No central servers.</strong> Your content lives on your device,
+        synced between your own devices via Google Drive, iCloud, or Dropbox.
+        We never see it.
       </li>
       <li>
-        <strong>You can be done.</strong> When you've read everything from your
-        subscribed sources, you're caught up. There's an actual end.
+        <strong>No engagement optimization.</strong> Posts are ranked by
+        criteria you set: author trust, topic relevance, freshness. Not by what
+        made someone else angry yesterday.
       </li>
       <li>
-        <strong>Ulysses Mode.</strong> Lock yourself out of X or Instagram's
-        algorithmic feed and only access them through Freed. You get the
-        content without the compulsion.
+        <strong>You can be done.</strong> Freed tracks what you've read. When
+        you've seen everything from your subscribed sources, you're caught up.
+        There's an actual end.
       </li>
       <li>
-        <strong>Open source.</strong> MIT licensed. Fork it, audit it, build
-        on it.
+        <strong>Ulysses Mode.</strong> Configure Freed as the only way you
+        access X or Instagram. You get the content without the compulsion. Named
+        after the hero who lashed himself to the mast so he could hear the
+        Sirens without losing his mind.
+      </li>
+      <li>
+        <strong>Open source.</strong> MIT licensed. Read it, fork it, audit it.
       </li>
     </ul>
 
+    <h2>How It's Built</h2>
+    <p>
+      Freed runs as a desktop app (macOS, Windows, Linux) that captures content
+      in the background using your existing browser sessions. A companion PWA at{" "}
+      <a href="https://app.freed.wtf">app.freed.wtf</a> syncs with the desktop
+      when you're on the same network and falls back to your cloud storage when
+      you're not. The architecture is deliberately local-first: if we shut down
+      tomorrow, your data and your app keep working.
+    </p>
+
     <h2>Where We Are</h2>
     <p>
-      X and RSS capture are working. Save for Later works. The desktop app and
-      mobile reader are in active development. We're building in public and
-      shipping fast.
+      X and RSS capture are working. Save for Later works: save any URL and
+      Freed extracts the full article. The desktop app is running with capture,
+      reader UI, and local sync. The PWA is live at{" "}
+      <a href="https://app.freed.wtf">app.freed.wtf</a> with virtual scrolling,
+      focus reading mode, and offline support. Active development on both.
     </p>
 
     <h2>How You Can Help</h2>
@@ -85,11 +106,14 @@ export default definePost(
     </ul>
 
     <h2>What's Next</h2>
-    <p>
-      Desktop-to-phone sync. A downloadable desktop app for macOS, Windows, and
-      Linux. Facebook and Instagram capture. Cloud sync via Google Drive,
-      iCloud, or Dropbox. We'll update you when each one ships. We don't spam.
-    </p>
+    <ol>
+      <li>Desktop-to-phone sync over LAN</li>
+      <li>Notarized, downloadable desktop app for macOS</li>
+      <li>Windows and Linux builds</li>
+      <li>Cloud sync (Google Drive, Dropbox, iCloud)</li>
+      <li>Facebook and Instagram capture</li>
+    </ol>
+    <p>We'll send an update when each of these lands. We don't spam.</p>
 
     <p>
       Until next time,
