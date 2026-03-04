@@ -3,9 +3,12 @@
  *
  * vite-plugin-pwa's `prompt` mode parks new service workers in the `waiting`
  * state and fires `onNeedRefresh` so the user can choose when to reload.
- * This module bridges that signal to React components via pub/sub, and
- * provides an imperative `checkForPwaUpdate()` for the Settings button.
+ * This module bridges that signal to React components via pub/sub,
+ * provides an imperative `checkForPwaUpdate()` for the Settings button,
+ * and runs a background interval so long-running sessions are not skipped.
  */
+
+const POLL_INTERVAL_MS = 60 * 60 * 1_000; // 1 hour
 
 type UpdateListener = (available: boolean) => void;
 
@@ -97,4 +100,20 @@ export function applyPwaUpdate() {
   } else {
     window.location.reload();
   }
+}
+
+/**
+ * Start a background interval that calls `checkForPwaUpdate()` every hour.
+ *
+ * This ensures long-running PWA sessions (e.g. the app pinned to a phone's
+ * Home Screen and left open all day) detect new deployments and surface the
+ * update toast without requiring any manual action from the user.
+ *
+ * Call once from main.tsx. Fire-and-forget: errors are swallowed so a
+ * failed network check never propagates to the app.
+ */
+export function startPeriodicUpdateCheck(): void {
+  setInterval(() => {
+    checkForPwaUpdate().catch(() => {});
+  }, POLL_INTERVAL_MS);
 }

@@ -14,8 +14,12 @@ export default defineConfig({
     topLevelAwait(),
     react(),
     VitePWA({
+      // prompt: new service workers park in `waiting` and fire onNeedRefresh
+      // so the user sees a toast and chooses when to reload. The app checks
+      // periodically in the background (see pwa-updater.ts) so long-running
+      // sessions are not skipped.
       registerType: 'prompt',
-      includeAssets: ['favicon.ico', 'icons/*.png'],
+      includeAssets: ['favicon.svg', 'icons/*.png'],
       manifest: false,
       workbox: {
         runtimeCaching: [
