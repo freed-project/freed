@@ -19,13 +19,12 @@ export default definePost(
 
     <p>
       We want to tell you why we built this, how it works, and what we believe.
-      Let's start with the problem we're trying to solve.
     </p>
 
     <h2>The Scroll That Doesn't End</h2>
     <p>
       Somewhere in the last decade, social media stopped being a place where you
-      read things and became a place where things happened to you.       The
+      read things and became a place where things happened to you. The
       chronological feed (the simple idea that you see what the people you follow
       published, in the order they published it) was quietly killed at every major
       platform.
@@ -93,7 +92,7 @@ export default definePost(
 
     <h2>How It's Built</h2>
     <p>
-      Freed is a monorepo with several packages that work together:
+      Freed is a monorepo with four main packages:
     </p>
     <ul>
       <li>

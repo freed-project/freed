@@ -28,191 +28,116 @@ export default function ManifestoContent() {
           {/* Content */}
           <div className="space-y-10 text-text-secondary">
             <section>
-              <h2 className="text-2xl font-bold text-text-primary mb-4">
-                The Extraction
-              </h2>
-              <p>
-                Every time you open a social media app, you are not a customer.
-                You are the product. Your attention is being harvested, packaged,
-                and sold to the highest bidder, with the platform's entire
-                engineering budget dedicated to maximizing the yield.
-              </p>
-              <p>
-                These platforms didn't accidentally become addictive. They
-                employed thousands of engineers, behavioral psychologists, and
-                machine learning researchers specifically to exploit the gaps in
-                human cognition. They discovered that outrage travels six times
-                faster than measured reflection. That variable reward schedules
-                create compulsive checking behaviors. That social comparison
-                triggers anxiety that sends you back to the feed looking for
-                relief.
-              </p>
-              <p>
-                They race to the bottom of the brainstem. Your rational mind
-                never gets a vote.
-              </p>
+              <h2 className="text-2xl font-bold text-text-primary mb-4">The Problem</h2>
+              <p>Every time you open your feed, a machine decides what you see. Not to serve you. To keep you in the system. The design is deliberate. Outrage travels faster than nuance. Anxiety keeps you scrolling. The machine is working perfectly. It's just not working for you.</p>
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold text-text-primary mb-4">
-                What We Lost
-              </h2>
-              <p>
-                It wasn't always like this. RSS readers existed. Chronological
-                feeds existed. The early web was about publishing what you made
-                and reading what others made, without a middleman deciding what
-                you deserved to see.
-              </p>
-              <p>
-                Then the platforms learned they could grow faster by hijacking
-                the signal. They replaced chronological feeds with algorithmic
-                ones optimized for engagement, not for your benefit but for
-                theirs. They introduced infinite scroll. They removed the ability
-                to be "done." They made it technically impossible to simply read
-                what the people you chose to follow had written.
-              </p>
-              <p>
-                The cost has been enormous: the erosion of genuine discourse,
-                the polarization of communities, the commodification of
-                friendship, and billions of hours of human attention redirected
-                from everything that matters toward a compulsive, joyless scroll.
-              </p>
+              <h2 className="text-2xl font-bold text-text-primary mb-4">The Pact</h2>
+              <p>Odysseus wanted to hear the Sirens without dying. He couldn't trust himself in the moment, so he had his crew lash him to the mast before the ship got close. He heard the song. He survived. He got what he wanted by choosing his constraints <em>before</em> the temptation arrived. Configure Freed once, in a moment of clarity: which creators matter, how much weight each source gets, which platforms you'll only access through a filtered lens. Your algorithm. Not one engineered to exploit you.</p>
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold text-text-primary mb-4">
-                The Ulysses Pact
-              </h2>
-              <p>
-                In Homer's <em>Odyssey</em>, Odysseus wanted to hear the
-                Sirens' song (the most beautiful music in the world) without being
-                lured to his death on the rocks below. He couldn't trust himself
-                to resist in the moment. So he made a decision in advance: had
-                his crew bind him to the mast and fill their own ears with wax.
-                He heard the Sirens. He survived. He got what he wanted by
-                choosing his constraints <em>before</em> the temptation arrived.
-              </p>
-              <p>
-                This is a Ulysses Pact: a commitment made in advance, by your
-                deliberate self, to protect you from the choices your impulsive
-                self would make.
-              </p>
-              <p>
-                Freed is your mast. You configure it once, deciding which
-                creators matter to you, how much weight to give different
-                sources, which platforms to access only through Freed's filtered
-                lens, and then you engage with the internet only through that
-                configuration. The algorithm that shapes your experience is one
-                you wrote yourself, in a moment of clarity, rather than one
-                written by engineers optimizing for your compulsion.
-              </p>
+              <h2 className="text-2xl font-bold text-text-primary mb-4">What You Can Reclaim</h2>
+              <p>You followed people. They shared ideas, learnings, things they loved. You checked in, then got on with your day. That model still works. Let's bring it back.</p>
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold text-text-primary mb-4">
-                What We Believe
-              </h2>
-              <ul className="space-y-6">
+              <h2 className="text-2xl font-bold text-text-primary mb-4">What We Believe</h2>
+              <ul className="space-y-5">
                 <li>
-                  <strong className="text-text-primary block mb-1">
-                    Your data belongs to you.
-                  </strong>
-                  Freed stores everything locally on your device. We have no
-                  servers. We collect no telemetry. We never see your content,
-                  your follows, or your reading habits. When you sync between
-                  your devices, the data travels through cloud storage you
-                  already own: your Google Drive, your iCloud, your Dropbox.
-                  None of it ever touches our infrastructure.
+                  <strong className="text-text-primary block mb-1">Your data belongs to you.</strong>
+                  Everything lives on your device. No servers. No telemetry. We never see your content, your follows, or your habits.
                 </li>
                 <li>
-                  <strong className="text-text-primary block mb-1">
-                    Algorithms should be transparent and editable.
-                  </strong>
-                  Freed's ranking algorithm is open source. You can read exactly
-                  how it decides what to show you first. You can edit the weights
-                  yourself. You can fork it and build your own. This is not a
-                  feature; it is a requirement for any tool that shapes your
-                  information diet.
+                  <strong className="text-text-primary block mb-1">You deserve to see the algorithm.</strong>
+                  Freed's ranking is open source. You can read exactly why a post appears first. You can change the weights. You can fork the whole thing.
                 </li>
                 <li>
-                  <strong className="text-text-primary block mb-1">
-                    Chronological is not naïve.
-                  </strong>
-                  Choosing to see content in the order it was published is a
-                  legitimate preference, not a failure of curation. The people
-                  you follow made decisions about what to share and when. You
-                  should have the option to respect those decisions without a
-                  platform overriding them.
+                  <strong className="text-text-primary block mb-1">Chronological is not naïve.</strong>
+                  Reading things in the order they were written is a choice, not a failure of curation.
                 </li>
                 <li>
-                  <strong className="text-text-primary block mb-1">
-                    Attention is finite and precious.
-                  </strong>
-                  The platforms have forgotten this. We have not. Freed is
-                  designed to help you finish your feed. You know when you've
-                  read what matters and you have permission to stop.
+                  <strong className="text-text-primary block mb-1">You have the right to be done.</strong>
+                  Freed lets you finish your feed. When you're done, you're done. No machine will try to stop you.
                 </li>
                 <li>
-                  <strong className="text-text-primary block mb-1">
-                    Liberation tools should belong to everyone.
-                  </strong>
-                  Freed is MIT licensed. Fork it, audit it, distribute it,
-                  improve it. Build the future you want to live in.
+                  <strong className="text-text-primary block mb-1">This belongs to everyone.</strong>
+                  MIT licensed. Fork it. Audit it. Build on it.
                 </li>
               </ul>
             </section>
 
             <section>
-              <h2 className="text-2xl font-bold text-text-primary mb-4">
-                The Vision
-              </h2>
-              <p>
-                We're not asking you to quit social media. We're asking you to
-                engage with it on your terms.
-              </p>
-              <p>
-                A Freed user sees a clean timeline of posts from people they
-                genuinely care about: writers, friends, researchers, journalists.
-                Posts are ranked by criteria they defined: author authority, topic
-                relevance, freshness. They read through it until they're done.
-                Then they close the app. There is no infinite scroll. There is
-                no algorithmic outrage-injection. There is no dark pattern
-                designed to prevent them from leaving.
-              </p>
-              <p>
-                They know when they've caught up. They can mark something as
-                read, archive a conversation, save an article for later. They can
-                enable Ulysses Mode and block themselves from accessing the raw
-                platform until morning. They sync their reading state across
-                their laptop and phone without any of it touching our servers.
-              </p>
-              <p>
-                That's the whole vision. It's not revolutionary. It's just what
-                the internet was supposed to be.
-              </p>
+              <p>We're building a world where you stay in the driver's seat. Your feed, your algorithm, your rules. The code is public. The roadmap is public. Resonate? Subscribe below.</p>
             </section>
 
-            <section className="pt-8 border-t border-freed-border">
-              <blockquote className="text-xl italic text-text-primary border-l-4 border-glow-purple pl-6">
-                "The algorithm that serves you best is the one you wrote
-                yourself."
-                <footer className="text-text-secondary text-base mt-2 not-italic">
-                  From the Freed Manifesto
-                </footer>
-              </blockquote>
+            <section className="not-prose text-center py-14">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={openModal}
+                className="btn-primary text-base px-8 py-3"
+              >
+                Free My Feed
+              </motion.button>
             </section>
 
             <section>
-              <p>
-                We're building this in the open. The roadmap is public. The code
-                is public. The process is public. We'd love your help, your
-                feedback, and your critique.
-              </p>
-              <p>
-                And if this resonates with you, if you've been waiting for
-                someone to build this, subscribe below. We'll let you know when
-                it's ready to install.
-              </p>
+              <h2 className="text-2xl font-bold text-text-primary mb-6">Go Deeper</h2>
+              <div className="space-y-3 not-prose">
+                {[
+                  {
+                    href: "https://www.youtube.com/watch?v=Ma4VZ7rxGOw",
+                    title: "The Slow Poison of Endless Fantasy",
+                    source: "After Skool",
+                    description: "On escapism, variable reward loops, and what the attention economy is slowly doing to your capacity for sustained thought.",
+                  },
+                  {
+                    href: "https://www.youtube.com/watch?v=v1eW62X5fiE",
+                    title: "What if we had fixed social media? An alternative history",
+                    source: "Center for Humane Technology",
+                    description: "What if we'd optimized for people instead of engagement? This is that internet.",
+                  },
+                  {
+                    href: "https://www.youtube.com/watch?v=0v5RiMdSqwk&t=2109s",
+                    title: "War on Sensemaking V",
+                    source: "Daniel Schmachtenberger, Rebel Wisdom",
+                    description: "How algorithmic feeds degrade our collective ability to reason about reality. The linked timestamp drops you into the key section.",
+                  },
+                  {
+                    href: "https://www.youtube.com/watch?v=C74amJRp730",
+                    title: "How a handful of tech companies control billions of minds",
+                    source: "Tristan Harris, TED",
+                    description: "The 17-minute version of everything in this manifesto's first two sections, by the person who spent years inside Google trying to fix it.",
+                  },
+                  {
+                    href: "https://www.eff.org/cyberspace-independence",
+                    title: "A Declaration of the Independence of Cyberspace",
+                    source: "John Perry Barlow, 1996",
+                    description: "The original. Written the day the U.S. government first tried to regulate the internet. This manifesto was written in its spirit.",
+                  },
+                ].map((item) => (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group flex flex-col gap-1 p-4 rounded-xl border border-freed-border hover:border-glow-purple/50 bg-freed-surface/30 hover:bg-freed-surface/60 transition-all duration-200"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-sm font-semibold text-text-primary group-hover:text-white transition-colors leading-snug">
+                        {item.title}
+                      </span>
+                      <svg className="w-3.5 h-3.5 text-text-muted group-hover:text-text-secondary transition-colors shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </div>
+                    <span className="text-xs text-text-muted">{item.source}</span>
+                    <p className="text-xs text-text-secondary mt-1 leading-relaxed">{item.description}</p>
+                  </a>
+                ))}
+              </div>
             </section>
           </div>
 
@@ -221,7 +146,7 @@ export default function ManifestoContent() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
-            className="mt-16 text-center"
+            className="pt-24 pb-8 text-center"
           >
             <motion.button
               whileHover={{ scale: 1.05 }}
@@ -229,7 +154,7 @@ export default function ManifestoContent() {
               onClick={openModal}
               className="btn-primary text-base px-8 py-3"
             >
-              Get Freed
+              Join the Movement
             </motion.button>
           </motion.div>
         </motion.article>

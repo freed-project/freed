@@ -50,7 +50,7 @@ export default function PrivacyContent() {
               </h2>
               <p>
                 This marketing site is a static Next.js application hosted on
-                Vercel.                 Like any web host, Vercel's infrastructure logs standard
+                Vercel. Like any web host, Vercel's infrastructure logs standard
                 HTTP request metadata (your IP address, browser user-agent,
                 timestamp, and the URL requested) as part of their CDN
                 operation. This data is governed by{" "}
@@ -116,7 +116,7 @@ export default function PrivacyContent() {
                     Your credentials never leave your device.
                   </strong>
                   Freed accesses social platforms through your own authenticated
-                  browser sessions.                   Credentials are stored in your local
+                  browser sessions. Credentials are stored in your local
                   keychain or browser storage and never transmitted to us.
                 </li>
               </ul>
@@ -173,7 +173,7 @@ export default function PrivacyContent() {
                 Freed captures content from third-party platforms (X, YouTube,
                 RSS feeds, etc.) on your behalf, using your own authenticated
                 session. By doing so, you remain subject to those platforms'
-                terms of service and privacy policies.                 Freed does not aggregate
+                terms of service and privacy policies. Freed does not aggregate
                 or transmit that content anywhere. It stays local. The
                 act of accessing it is governed by each platform's relationship
                 with you, not with us.
@@ -187,7 +187,7 @@ export default function PrivacyContent() {
               </h2>
               <p>
                 Freed is not directed at children under 13. We do not knowingly
-                collect any personal information from children.                 Given our
+                collect any personal information from children. Given our
                 local-first architecture, we are not positioned to collect
                 anyone's personal information, but we state this explicitly for
                 compliance clarity.
@@ -236,8 +236,8 @@ export default function PrivacyContent() {
                   className="text-text-primary underline hover:no-underline transition-colors"
                 >
                   GitHub
-                </a>
-                .                 We'd rather have a public conversation about our privacy
+                </a                >
+                . We'd rather have a public conversation about our privacy
                 posture than a private one; transparency is kind of the whole
                 point.
               </p>
@@ -248,7 +248,7 @@ export default function PrivacyContent() {
               <blockquote className="text-xl italic text-text-primary border-l-4 border-glow-purple pl-6">
                 "Your data belongs to you."
                 <footer className="text-text-secondary text-base mt-2 not-italic">
-                  From the Freed Manifesto
+                  - The Freed Manifesto
                 </footer>
               </blockquote>
             </section>
