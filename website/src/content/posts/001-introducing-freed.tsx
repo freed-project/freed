@@ -25,7 +25,7 @@ export default definePost(
       engineering talent were deployed specifically to exploit the gaps in human
       cognition.
     </p>
-    <p>We built Freed because we were done with it.</p>
+    <p>I built Freed because I was done with it.</p>
 
     <h2>What Freed Is</h2>
     <p>
@@ -40,7 +40,7 @@ export default definePost(
       <li>
         <strong>No central servers.</strong> Your content lives on your device,
         synced between your own devices via Google Drive, iCloud, or Dropbox.
-        We never see it.
+        I never see it.
       </li>
       <li>
         <strong>No engagement optimization.</strong> Posts are ranked by
@@ -69,11 +69,11 @@ export default definePost(
       in the background using your existing browser sessions. A companion PWA at{" "}
       <a href="https://app.freed.wtf">app.freed.wtf</a> syncs with the desktop
       when you're on the same network and falls back to your cloud storage when
-      you're not. The architecture is deliberately local-first: if we shut down
-      tomorrow, your data and your app keep working.
+      you're not. The architecture is deliberately local-first: if Freed shuts
+      down tomorrow, your data and your app keep working.
     </p>
 
-    <h2>Where We Are</h2>
+    <h2>Where Things Stand</h2>
     <p>
       X and RSS capture are working. Save for Later works: save any URL and
       Freed extracts the full article. The desktop app is running with capture,
@@ -88,13 +88,13 @@ export default definePost(
         <strong>
           <a href="https://github.com/freed-project/freed">Star the repo.</a>
         </strong>{" "}
-        It signals that this matters and helps others find us.
+        It signals that this matters and helps others find it.
       </li>
       <li>
         <strong>
           <a href="https://app.freed.wtf">Try the PWA.</a>
         </strong>{" "}
-        Add some RSS feeds and tell us what's broken.
+        Add some RSS feeds and tell me what's broken.
       </li>
       <li>
         <strong>Contribute.</strong> Especially if you know Rust or have ideas
@@ -114,7 +114,7 @@ export default definePost(
       <li>Cloud sync (Google Drive, Dropbox, iCloud)</li>
       <li>Facebook and Instagram capture</li>
     </ol>
-    <p>We'll send an update when each of these lands. We don't spam.</p>
+    <p>I'll send an update when each of these lands. I don't spam.</p>
 
     <p>
       Until next time,
