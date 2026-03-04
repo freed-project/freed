@@ -1,7 +1,9 @@
 # Phase 3: Save for Later (`capture-save`)
 
-> **Status:** ✓ Complete  
-> **Dependencies:** Phase 1-2 (Capture layers ✓)
+> **Status:** Not Started  
+> **Dependencies:** Phase 1-2 (Capture layers)
+>
+> No implementation exists yet. The design below reflects the intended architecture.
 
 ---
 
@@ -201,14 +203,14 @@ Capture any URL to your Freed library with full article extraction.
 
 ## Tasks
 
-| Task | Description                                   | Complexity |
-| ---- | --------------------------------------------- | ---------- |
-| 3.1  | Create `@freed/capture-save` package scaffold | Low        |
-| 3.2  | Implement URL metadata extraction             | Medium     |
-| 3.3  | Implement Readability-style content parser    | Medium     |
-| 3.4  | Normalize to FeedItem with PreservedContent   | Low        |
-| 3.5  | Create OpenClaw skill wrapper                 | Low        |
-| 3.6  | CLI commands (add, list, search)              | Medium     |
+| Task | Description                                   | Status | Complexity |
+| ---- | --------------------------------------------- | ------ | ---------- |
+| 3.1  | Create `@freed/capture-save` package scaffold | ☐      | Low        |
+| 3.2  | Implement URL metadata extraction             | ☐      | Medium     |
+| 3.3  | Implement Readability-style content parser    | ☐      | Medium     |
+| 3.4  | Normalize to FeedItem with PreservedContent   | ☐      | Low        |
+| 3.5  | Create OpenClaw skill wrapper                 | ☐      | Low        |
+| 3.6  | CLI commands (add, list, search)              | ☐      | Medium     |
 
 ---
 
