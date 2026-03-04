@@ -88,7 +88,8 @@ body {
   body {
     height: auto;
     overflow: visible;
-    overscroll-behavior: auto;
+    /* none prevents pull-to-refresh without affecting address-bar collapse */
+    overscroll-behavior: none;
   }
   #root {
     /* Definite height lets flex children fill the viewport (no color gap).
