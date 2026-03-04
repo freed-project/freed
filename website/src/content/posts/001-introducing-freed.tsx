@@ -81,21 +81,21 @@ export default definePost(
     <ul>
       <li>
         <strong>
-          <a href="https://github.com/freed-project/freed" target="_blank" rel="noopener noreferrer">Star the repo</a>
+          <a href="https://github.com/freed-project/freed">Star the repo</a>
           <span className="mx-2">⭐</span>
         </strong>{" "}
         It signals that this matters and helps others find it.
       </li>
       <li>
         <strong>
-          <a href="https://app.freed.wtf" target="_blank" rel="noopener noreferrer">Try the PWA</a>
+          <a href="https://app.freed.wtf">Try the PWA</a>
           <span className="mx-2">📱</span>
         </strong>{" "}
         Add some RSS feeds and tell me what's broken.
       </li>
       <li>
         <strong>
-          <a href="https://github.com/freed-project/freed/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">
+          <a href="https://github.com/freed-project/freed/blob/main/CONTRIBUTING.md">
             Contribute
           </a>
           <span className="mx-2">🛠️</span>
