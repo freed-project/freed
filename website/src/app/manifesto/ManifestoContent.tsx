@@ -32,9 +32,9 @@ export default function ManifestoContent() {
                 The Problem
               </h2>
               <p>
-                Open your feed. Something else has already decided what's waiting.
-                Not to serve you. To keep you in the system. The design is
-                deliberate. Outrage travels faster than nuance. Anxiety keeps
+                Open your feed. Something else has already decided what's
+                waiting. Not to serve you. To keep you in the system. The design
+                is deliberate. Outrage travels faster than nuance. Anxiety keeps
                 you scrolling. The machine is working perfectly. It's just not
                 working for you.
               </p>
@@ -45,7 +45,11 @@ export default function ManifestoContent() {
                 The Pact
               </h2>
               <p>
-                Odysseus lashed himself to the mast before the ship reached the Sirens. He heard the song. He survived. The secret: decide before the temptation arrives, not during it. Install Freed in a clear moment. Choose your sources. Set your trust. Then step away. Your algorithm runs in your place. Not one engineered to exploit you. Your attention, yours again.
+                Odysseus lashed himself to the mast before his ship reached the
+                Sirens. He heard the song. He survived. The secret: decide
+                before temptation arrives. Install Freed now. Choose your
+                sources. Set your priorities. Our algorithm serves you. Your
+                attention, yours again.
               </p>
             </section>
 
@@ -68,7 +72,7 @@ export default function ManifestoContent() {
               <ul className="space-y-5">
                 <li>
                   <strong className="text-text-primary block mb-1">
-                    Your attention is not a resource to be harvested.
+                    Your attention is sacred
                   </strong>
                   Your time and your data stay yours. Everything you read lives
                   on your device. We never see any of it. And when you've read
