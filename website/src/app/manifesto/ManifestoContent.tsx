@@ -115,7 +115,7 @@ export default function ManifestoContent() {
                     href: "https://www.eff.org/cyberspace-independence",
                     title: "A Declaration of the Independence of Cyberspace",
                     source: "John Perry Barlow, 1996",
-                    description: "The original. Written the day the U.S. government first tried to regulate the internet. This manifesto was written in its spirit.",
+                    description: "The original. Written the day the U.S. government first tried to regulate the internet. Thirty years later, may we each do our part.",
                   },
                 ].map((item) => (
                   <a
