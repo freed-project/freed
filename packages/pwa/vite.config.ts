@@ -14,10 +14,16 @@ export default defineConfig({
     topLevelAwait(),
     react(),
     VitePWA({
-      registerType: 'prompt',
-      includeAssets: ['favicon.ico', 'icons/*.png'],
+      // autoUpdate: new service worker activates immediately without waiting for
+      // user interaction. Combined with skipWaiting + clientsClaim below, every
+      // deployment propagates to all open tabs on next page focus/load.
+      registerType: 'autoUpdate',
+      includeAssets: ['favicon.svg', 'icons/*.png'],
       manifest: false,
       workbox: {
+        // Skip the waiting phase so the new SW activates the moment it installs,
+        // rather than sitting in `waiting` until the user closes all tabs.
+        skipWaiting: true,
         runtimeCaching: [
           {
             // API routes must bypass the service worker entirely — Workbox's

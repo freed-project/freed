@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
-import { notifyUpdateAvailable, setUpdateSwCallback } from './lib/pwa-updater'
+import { setUpdateSwCallback } from './lib/pwa-updater'
 import './index.css'
 import App from './App.tsx'
 
@@ -26,10 +26,10 @@ if (window.visualViewport) {
 }
 syncVisualViewport()
 
+// autoUpdate mode: the SW activates automatically (no user prompt needed).
+// We still store the handle so the Settings "Check for updates" button can
+// call update() on demand and trigger a reload if a new SW is waiting.
 const updateSW = registerSW({
-  onNeedRefresh() {
-    notifyUpdateAvailable()
-  },
   onOfflineReady() {
     console.log('[PWA] App ready for offline use')
   },
