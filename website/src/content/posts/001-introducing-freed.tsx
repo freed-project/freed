@@ -97,8 +97,13 @@ export default definePost(
         Add some RSS feeds and tell me what's broken.
       </li>
       <li>
-        <strong>Contribute.</strong> Especially if you know Rust or have ideas
-        for additional capture sources. Check the issues list.
+        <strong>
+          <a href="https://github.com/freed-project/freed/blob/main/CONTRIBUTING.md">
+            Contribute.
+          </a>
+        </strong>{" "}
+        Especially if you know Rust/TypeScript or have ideas for additional
+        capture sources.
       </li>
       <li>
         <strong>Share this.</strong> Send it to someone who's complained about
