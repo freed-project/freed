@@ -19,6 +19,7 @@ import {
   docMarkAsRead,
   docMarkAllAsRead,
   docToggleSaved,
+  docRemoveFeedItem,
   docToggleArchived,
   docArchiveAllReadUnsaved,
   docPruneArchivedItems,
@@ -212,6 +213,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   archiveAllReadUnsaved: async (platform, feedUrl) => {
     await docArchiveAllReadUnsaved(platform, feedUrl);
+  },
+
+  removeItem: async (id) => {
+    await docRemoveFeedItem(id);
   },
 
   // Feed actions

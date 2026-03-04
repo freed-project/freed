@@ -19,6 +19,7 @@ import {
   docMarkAsRead,
   docMarkAllAsRead,
   docToggleSaved,
+  docRemoveFeedItem,
   docToggleArchived,
   docArchiveAllReadUnsaved,
   docPruneArchivedItems,
@@ -75,6 +76,7 @@ interface AppState {
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: (platform?: string) => Promise<void>;
   toggleSaved: (id: string) => Promise<void>;
+  removeItem: (id: string) => Promise<void>;
 
   // Feed actions (persisted to Automerge)
   addFeed: (feed: RssFeed) => Promise<void>;
@@ -295,6 +297,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   archiveAllReadUnsaved: async (platform, feedUrl) => {
     await docArchiveAllReadUnsaved(platform, feedUrl);
+  },
+
+  removeItem: async (id) => {
+    await docRemoveFeedItem(id);
   },
 
   // Feed actions

@@ -455,6 +455,93 @@ export async function docDeduplicateFeedItems(): Promise<FreedDoc> {
 }
 
 /**
+ * Batch import FeedItems in chunks of 500, one Automerge change per chunk.
+ * Skips existing globalIds (idempotent -- safe to call multiple times).
+ *
+ * @param onChunk - Optional callback fired after each chunk is committed.
+ *   Receives (chunkIndex, totalChunks) so callers can emit phased progress.
+ */
+export async function docBatchImportItems(
+  items: FeedItem[],
+  onChunk?: (chunkIndex: number, totalChunks: number) => void,
+): Promise<FreedDoc> {
+  const CHUNK = 500;
+  const totalChunks = Math.ceil(items.length / CHUNK);
+  let doc = getDoc();
+
+  for (let i = 0; i < items.length; i += CHUNK) {
+    const chunkIndex = Math.floor(i / CHUNK);
+    const chunk = items.slice(i, i + CHUNK);
+    doc = await applyChange((d) => {
+      for (const item of chunk) {
+        if (!d.feedItems[item.globalId]) {
+          addFeedItem(d, item);
+        }
+      }
+    }, `Batch import ${chunk.length} items (chunk ${chunkIndex + 1}/${totalChunks})`);
+    onChunk?.(chunkIndex + 1, totalChunks);
+  }
+
+  return doc;
+}
+
+/**
+ * Add a minimal stub FeedItem for a URL that has not yet been fetched.
+ *
+ * Stubs are created when the user saves a URL from the PWA (which cannot
+ * bypass CORS to fetch content directly). The desktop content fetcher picks
+ * them up via subscribe() and does the HTTP fetch + content extraction.
+ *
+ * A stub has no preservedContent and minimal metadata. The contentFetcher
+ * fills in the real content once it fetches the page.
+ */
+export async function docAddStubItem(
+  url: string,
+  tags: string[] = [],
+): Promise<FeedItem> {
+  let hash = 0;
+  for (let i = 0; i < url.length; i++) {
+    const ch = url.charCodeAt(i);
+    hash = (hash << 5) - hash + ch;
+    hash = hash & hash;
+  }
+  const globalId = `saved:${Math.abs(hash).toString(36)}`;
+  const now = Date.now();
+
+  let hostname = url;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    // malformed URL -- use raw string
+  }
+
+  const stub: FeedItem = {
+    globalId,
+    platform: "saved",
+    contentType: "article",
+    capturedAt: now,
+    publishedAt: now,
+    author: { id: hostname, handle: hostname, displayName: hostname },
+    content: {
+      text: url,
+      mediaUrls: [],
+      mediaTypes: [],
+      linkPreview: { url, title: url },
+    },
+    userState: { hidden: false, saved: true, savedAt: now, archived: false, tags },
+    topics: [],
+  };
+
+  await applyChange((doc) => {
+    if (!doc.feedItems[stub.globalId]) {
+      addFeedItem(doc, stub);
+    }
+  }, `Add stub item for ${url}`);
+
+  return stub;
+}
+
+/**
  * Get binary representation for sync
  */
 export function getDocBinary(): Uint8Array {

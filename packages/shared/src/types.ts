@@ -106,12 +106,21 @@ export interface RssSourceInfo {
 /**
  * Preserved article content for reader view
  * Used by capture-save and optionally by capture-rss for full articles
+ *
+ * Architecture note: `html` is device-local ONLY and must never be stored in
+ * Automerge. Large HTML blobs balloon the CRDT history by 3-10x the raw size.
+ * Store full HTML in the device content cache (Tauri FS / PWA Cache API) and
+ * keep only `text` (short summary) in the synced document.
  */
 export interface PreservedContent {
-  /** Extracted article HTML */
-  html: string;
+  /**
+   * Extracted article HTML -- device-local only.
+   * Present when the item has been fetched and cached on this device.
+   * Never write this to Automerge; use the content cache layer instead.
+   */
+  html?: string;
 
-  /** Plain text version */
+  /** Plain text summary -- safe to sync via Automerge (keep < 10 KB) */
   text: string;
 
   /** Extracted author */
@@ -128,6 +137,26 @@ export interface PreservedContent {
 
   /** When content was preserved */
   preservedAt: number;
+}
+
+/**
+ * AI provider and model preferences (synced -- no secrets here)
+ */
+export interface AIPreferences {
+  /** AI provider selection */
+  provider: "none" | "ollama" | "openai" | "anthropic" | "gemini";
+
+  /** Model identifier (e.g. "qwen2.5:1.5b", "gpt-4o-mini", "claude-haiku-4-5") */
+  model: string;
+
+  /** Ollama base URL (default: "http://localhost:11434") */
+  ollamaUrl?: string;
+
+  /** Summarize articles as they are cached (may incur API costs with frontier providers) */
+  autoSummarize: boolean;
+
+  /** Extract topics from summaries to feed the ranking algorithm */
+  extractTopics: boolean;
 }
 
 /**
@@ -420,6 +449,8 @@ export interface UserPreferences {
   sync: SyncPreferences;
   display: DisplayPreferences;
   xCapture: XCapturePreferences;
+  /** AI summarization + topic extraction preferences (no API keys here) */
+  ai: AIPreferences;
 }
 
 // =============================================================================
@@ -558,6 +589,12 @@ export function createDefaultPreferences(): UserPreferences {
       blacklist: {},
       includeRetweets: true,
       includeReplies: false,
+    },
+    ai: {
+      provider: "none",
+      model: "",
+      autoSummarize: false,
+      extractTopics: false,
     },
   };
 }

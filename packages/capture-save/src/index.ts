@@ -5,7 +5,11 @@
 export { extractMetadata } from "./extract.js";
 export { extractContent } from "./readability.js";
 export { urlToFeedItem } from "./normalize.js";
+export { extractMetadataBrowser, extractContentBrowser } from "./browser.js";
+export { parseMarkdownArchiveFile } from "./import-markdown.js";
+export { feedItemToMarkdown, exportLibraryAsMarkdown } from "./export-markdown.js";
 export type { UrlMetadata, ExtractedContent, SaveOptions } from "./types.js";
+export type { ParsedArchiveFile } from "./import-markdown.js";
 
 import type { FeedItem } from "@freed/shared";
 import { extractMetadata } from "./extract.js";

@@ -1,0 +1,193 @@
+/**
+ * Background content fetcher for desktop
+ *
+ * Maintains an in-memory queue of FeedItems that need their HTML fetched,
+ * extracted, and cached. Processes one item every 2 seconds to be polite to
+ * remote servers.
+ *
+ * Responsibilities:
+ *  1. Fetch raw HTML via the `fetchUrl` Tauri IPC command (bypasses CORS)
+ *  2. Extract article content with Readability via extractContentBrowser()
+ *  3. Write full HTML to the device content cache (contentCache.set)
+ *  4. Update Automerge with preservedContent.text + wordCount + readingTime
+ *     (which then syncs back to the PWA via relay)
+ *  5. Optionally run AI summarization and update preservedContent.text again
+ *
+ * Subscribe behavior: call start() once at app init. The fetcher wires a
+ * subscribe() callback so any stub item that arrives via relay sync is
+ * automatically enqueued.
+ */
+
+import { invoke } from "@tauri-apps/api/core";
+import { extractContentBrowser, extractMetadataBrowser } from "@freed/capture-save/browser";
+import type { FeedItem, AIPreferences } from "@freed/shared";
+import { contentCache } from "./content-cache.js";
+import { docUpdateFeedItem, subscribe, getDoc } from "./automerge.js";
+import { summarize } from "./ai-summarizer.js";
+import { secureStorage } from "./secure-storage.js";
+
+export interface FetcherStatus {
+  pending: number;
+  completed: number;
+  failed: string[]; // globalIds of permanently-failed items
+}
+
+interface QueueEntry {
+  globalId: string;
+  url: string;
+}
+
+// In-memory queue and status
+const queue: QueueEntry[] = [];
+const failed = new Set<string>();
+let completed = 0;
+let running = false;
+let intervalHandle: ReturnType<typeof setInterval> | null = null;
+let unsubscribeDoc: (() => void) | null = null;
+
+// Status subscribers
+type StatusSubscriber = (status: FetcherStatus) => void;
+const statusSubscribers = new Set<StatusSubscriber>();
+
+function notifyStatus(): void {
+  const status: FetcherStatus = {
+    pending: queue.length,
+    completed,
+    failed: Array.from(failed),
+  };
+  for (const sub of statusSubscribers) sub(status);
+}
+
+/** Subscribe to fetcher status changes */
+export function subscribeToStatus(cb: StatusSubscriber): () => void {
+  statusSubscribers.add(cb);
+  return () => statusSubscribers.delete(cb);
+}
+
+/** Returns items from the doc that have a URL but no cached content */
+function newStubItems(items: FeedItem[]): QueueEntry[] {
+  const queuedIds = new Set(queue.map((e) => e.globalId));
+  return items
+    .filter((item) => {
+      if (queuedIds.has(item.globalId) || failed.has(item.globalId)) return false;
+      const url = item.content.linkPreview?.url;
+      return !!url && !item.preservedContent?.text;
+    })
+    .map((item) => ({
+      globalId: item.globalId,
+      url: item.content.linkPreview!.url!,
+    }));
+}
+
+/**
+ * Add items to the fetch queue.
+ * Skips items already queued, already failed, or that already have content.
+ */
+export function enqueue(items: FeedItem[]): void {
+  const newEntries = newStubItems(items);
+  queue.push(...newEntries);
+  if (newEntries.length > 0) notifyStatus();
+}
+
+/** Process one item from the front of the queue */
+async function processNext(): Promise<void> {
+  if (queue.length === 0) return;
+
+  const entry = queue.shift()!;
+  notifyStatus();
+
+  try {
+    // Fetch HTML via Tauri IPC (bypasses CORS, uses native HTTP)
+    const html = await invoke<string>("fetch_url", { url: entry.url });
+
+    // Extract structured content using browser-safe Readability
+    const content = extractContentBrowser(html, entry.url);
+    const metadata = extractMetadataBrowser(html, entry.url);
+
+    // Write full HTML to the device content cache (Layer 2 -- NOT Automerge)
+    await contentCache.set(entry.globalId, html);
+
+    // Get current AI preferences from the live doc
+    const doc = getDoc();
+    const prefs = (doc.preferences as { ai?: AIPreferences })?.ai;
+
+    let summaryText = content.text;
+    let extraTopics: string[] = [];
+
+    // Optionally run AI summarization (replaces raw text in Automerge with a concise summary)
+    if (prefs?.autoSummarize && prefs.provider !== "none") {
+      const apiKey = prefs.provider !== "ollama"
+        ? await secureStorage.getApiKey(prefs.provider as "openai" | "anthropic" | "gemini")
+        : null;
+      const aiResult = await summarize(content.text, prefs, apiKey);
+      if (aiResult) {
+        summaryText = aiResult.summary;
+        extraTopics = aiResult.topics;
+      }
+    }
+
+    // Write metadata + short text summary to Automerge (syncs to all devices)
+    await docUpdateFeedItem(entry.globalId, {
+      preservedContent: {
+        text: summaryText.slice(0, 10_000),
+        author: content.author ?? metadata.author,
+        publishedAt: metadata.publishedAt,
+        wordCount: content.wordCount,
+        readingTime: content.readingTime,
+        preservedAt: Date.now(),
+      },
+      ...(extraTopics.length > 0 ? { topics: extraTopics } : {}),
+    });
+
+    completed++;
+  } catch (err) {
+    console.warn(`[content-fetcher] Failed to fetch ${entry.url}:`, err);
+    failed.add(entry.globalId);
+  }
+
+  notifyStatus();
+}
+
+/**
+ * Start the background fetcher.
+ * Safe to call multiple times -- a second call is a no-op if already running.
+ */
+export function start(): void {
+  if (running) return;
+  running = true;
+
+  // Wire up the Automerge subscription so stub items arriving via relay sync
+  // are automatically enqueued for background fetch.
+  unsubscribeDoc = subscribe((doc) => {
+    const items = Object.values(doc.feedItems ?? {}) as FeedItem[];
+    enqueue(items);
+  });
+
+  // Process one item every 2 seconds -- polite to remote servers
+  intervalHandle = setInterval(() => {
+    processNext().catch((err) => console.error("[content-fetcher] Unexpected error:", err));
+  }, 2_000);
+}
+
+/**
+ * Stop the background fetcher and clean up subscriptions.
+ */
+export function stop(): void {
+  if (!running) return;
+  running = false;
+
+  if (intervalHandle !== null) {
+    clearInterval(intervalHandle);
+    intervalHandle = null;
+  }
+
+  if (unsubscribeDoc) {
+    unsubscribeDoc();
+    unsubscribeDoc = null;
+  }
+}
+
+/** Get current fetcher status without subscribing */
+export function getStatus(): FetcherStatus {
+  return { pending: queue.length, completed, failed: Array.from(failed) };
+}

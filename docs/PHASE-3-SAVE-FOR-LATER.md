@@ -1,9 +1,12 @@
 # Phase 3: Save for Later (`capture-save`)
 
-> **Status:** Not Started  
+> **Status:** Complete  
 > **Dependencies:** Phase 1-2 (Capture layers)
 >
-> No implementation exists yet. The design below reflects the intended architecture.
+> All 6 core tasks complete. Implemented: URL save flow (desktop + PWA stub), browser-safe
+> content extraction, Freed Markdown import/export, hierarchical tag navigation, layered
+> content cache (Tauri FS + PWA Cache API), background content fetcher, AI summarization
+> pipeline, and secure API key storage.
 
 ---
 

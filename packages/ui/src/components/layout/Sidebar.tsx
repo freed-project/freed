@@ -1,9 +1,8 @@
-import { useState, useCallback, useEffect, useRef, type ReactNode } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from "react";
 import type { RssFeed } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { SettingsPanel } from "../SettingsPanel.js";
 import { AllIcon, RssIcon, FacebookIcon, InstagramIcon, MapPinIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
-
 /** Compact number: 1234 → "1.2k", 1_200_000 → "1.2m". Trims trailing ".0". */
 function fmt(n: number): string {
   if (n >= 1_000_000) return `${+(n / 1_000_000).toFixed(1)}m`;
@@ -228,6 +227,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const itemCountByPlatform = useAppStore((s) => s.itemCountByPlatform);
   const sidebarWidth = useAppStore((s) => s.preferences.display.sidebarWidth) ?? DEFAULT_WIDTH;
   const updatePreferences = useAppStore((s) => s.updatePreferences);
+  const items = useAppStore((s) => s.items);
+
   const [showSettings, setShowSettings] = useState(false);
   const [settingsScrollTarget, setSettingsScrollTarget] = useState<string | null>(null);
   const [dragWidth, setDragWidth] = useState<number | null>(null);
@@ -258,6 +259,47 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     }, 100);
     return () => clearTimeout(timer);
   }, [showSettings, settingsScrollTarget]);
+
+  // ─── Tag tree ────────────────────────────────────────────────────────────────
+
+  /** All unique tags collected from the library, sorted alphabetically */
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    for (const item of items) {
+      for (const tag of item.userState.tags ?? []) {
+        tagSet.add(tag);
+      }
+    }
+    return Array.from(tagSet).sort();
+  }, [items]);
+
+  /**
+   * Top-level tag segments (before the first "/").
+   * E.g. ["Technology/AI", "Technology/React", "Science"] → ["Science", "Technology"]
+   */
+  const topLevelTags = useMemo(() => {
+    const tops = new Set<string>();
+    for (const tag of allTags) {
+      tops.add(tag.split("/")[0]);
+    }
+    return Array.from(tops).sort();
+  }, [allTags]);
+
+  /** All descendant tag paths under a given top-level segment */
+  const childTagsOf = (top: string) =>
+    allTags.filter((t) => t === top || t.startsWith(`${top}/`));
+
+  const handleTagClick = (tag: string) => {
+    const children = childTagsOf(tag);
+    setFilter({ tags: children });
+    onClose();
+  };
+
+  const isTagActive = (tag: string) => {
+    const active = activeFilter.tags;
+    if (!active || active.length === 0) return false;
+    return childTagsOf(tag).some((t) => active.includes(t));
+  };
 
   const width = dragWidth ?? sidebarWidth;
 
@@ -441,7 +483,48 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 </button>
               </li>
             </ul>
+
           </SidebarSection>
+
+          {/* Tags */}
+          {topLevelTags.length > 0 && (
+            <SidebarSection title="Tags" defaultOpen={true} count={allTags.length}>
+              <ul className="space-y-0.5">
+                {topLevelTags.map((top) => {
+                  const children = allTags.filter(
+                    (t) => t.startsWith(`${top}/`) && t !== top,
+                  );
+                  const hasChildren = children.length > 0;
+                  const active = isTagActive(top);
+                  return (
+                    <TagTreeNode
+                      key={top}
+                      tag={top}
+                      label={top}
+                      active={active}
+                      onClick={() => handleTagClick(top)}
+                    >
+                      {hasChildren &&
+                        children.map((child) => (
+                          <TagTreeNode
+                            key={child}
+                            tag={child}
+                            label={child.slice(top.length + 1)}
+                            active={
+                              !!(activeFilter.tags?.includes(child))
+                            }
+                            onClick={() => {
+                              setFilter({ tags: [child] });
+                              onClose();
+                            }}
+                          />
+                        ))}
+                    </TagTreeNode>
+                  );
+                })}
+              </ul>
+            </SidebarSection>
+          )}
 
           {/* Feeds */}
           {feedList.length > 0 && (
@@ -566,5 +649,65 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         />
       )}
     </>
+  );
+}
+
+// ─── TagTreeNode ──────────────────────────────────────────────────────────────
+
+function TagTreeNode({
+  tag: _tag,
+  label,
+  active,
+  onClick,
+  children,
+}: {
+  tag: string;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  children?: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const hasChildren = !!children;
+
+  return (
+    <li>
+      <div className="flex items-center">
+        <button
+          onClick={onClick}
+          className={`flex-1 flex items-center gap-2 pl-3 pr-1 py-1.5 rounded-lg text-xs transition-all text-left ${
+            active
+              ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
+              : "text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+          }`}
+        >
+          <svg className="w-3 h-3 shrink-0 text-[#52525b]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+          </svg>
+          <span className="truncate">{label}</span>
+        </button>
+        {hasChildren && (
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="p-1 rounded text-[#52525b] hover:text-[#a1a1aa] transition-colors"
+            aria-label={open ? "Collapse" : "Expand"}
+          >
+            <svg
+              className={`w-3 h-3 transition-transform ${open ? "rotate-90" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        )}
+      </div>
+      {hasChildren && open && (
+        <ul className="ml-4 mt-0.5 space-y-0.5 border-l border-[rgba(255,255,255,0.06)] pl-2">
+          {children}
+        </ul>
+      )}
+    </li>
   );
 }

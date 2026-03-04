@@ -463,8 +463,8 @@ const phases: Phase[] = [
     number: 2,
     title: "Capture Skills",
     description:
-      "RSS capture complete. X capture built; OpenClaw skill integration in progress.",
-    status: "current",
+      "RSS and X capture complete. Freed Markdown import/export, batch library management.",
+    status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-2-CAPTURE-SKILLS.md",
   },
@@ -472,8 +472,8 @@ const phases: Phase[] = [
     number: 3,
     title: "Save for Later",
     description:
-      "URL capture with Readability extraction. Capture any article, thread, or page.",
-    status: "upcoming",
+      "Save any URL from desktop or mobile. Full offline reading with layered content cache. AI summarization and tag navigation.",
+    status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-3-SAVE-FOR-LATER.md",
   },
