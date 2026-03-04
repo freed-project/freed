@@ -112,9 +112,9 @@ export default function PostContent({ post }: PostContentProps) {
           >
             <Link
               href="/updates"
-              className="text-sm text-text-muted hover:text-glow-purple transition-colors"
+              className="text-sm text-glow-purple hover:text-glow-blue transition-colors"
             >
-              ← Back to Updates
+              ‹ Back to Updates
             </Link>
             <p className="text-text-muted text-sm">
               <a
