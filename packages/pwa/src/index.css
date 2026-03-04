@@ -81,9 +81,24 @@ body {
 #root {
   height: 100svh;
   height: 100dvh;
-  height: 100lvh; /* extend to physical screen bottom so sidebar/content bleed behind Safari address bar */
   display: flex;
   flex-direction: column;
+}
+
+/* Fill the zone behind the Safari address bar (between 100dvh and 100lvh)
+   with the app's surface colour so there is no visible colour gap.
+   position: fixed + z-index: -1 keeps it behind all content and out of
+   the flex layout. Height resolves to 0 when the bar is hidden. */
+#root::after {
+  content: '';
+  position: fixed;
+  bottom: calc(-1 * (100lvh - 100dvh));
+  left: 0;
+  right: 0;
+  height: calc(100lvh - 100dvh);
+  background: #121212;
+  z-index: -1;
+  pointer-events: none;
 }
 
 /* iOS Safari viewport fix: svh fallback with dvh override */
