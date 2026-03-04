@@ -25,7 +25,7 @@ export default definePost(
       engineering talent were deployed specifically to exploit the gaps in human
       cognition.
     </p>
-    <p>I built Freed because I was done with it.</p>
+    <p>I built Freed because we can do better.</p>
 
     <h2>What Freed Is</h2>
     <p>
