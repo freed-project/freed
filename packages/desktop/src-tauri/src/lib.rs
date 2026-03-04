@@ -239,6 +239,50 @@ fn get_platform() -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Tauri commands — contacts
+// ---------------------------------------------------------------------------
+
+/// Result type returned to the frontend for contact picking.
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+struct ContactResult {
+    name: String,
+    phone: Option<String>,
+    email: Option<String>,
+    address: Option<String>,
+    /// Native CNContact identifier for potential future re-sync.
+    native_id: Option<String>,
+}
+
+/// Present the native macOS contact picker and return the chosen contact.
+///
+/// Requires:
+///   - `objc2-contacts` crate in Cargo.toml
+///   - `NSContactsUsageDescription` key in Info.plist
+///   - `com.apple.security.personal-information.addressbook` entitlement
+///
+/// Returns `None` when the user cancels.
+/// Returns an error string if the Contacts framework is unavailable or
+/// authorization is denied.
+///
+/// TODO: implement macOS CNContactStore picker using objc2-contacts.
+/// Until then this command always returns an authorization-pending error so
+/// callers can display a helpful message rather than silently failing.
+#[tauri::command]
+async fn pick_contact() -> Result<Option<ContactResult>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        // Placeholder until objc2-contacts is integrated.
+        // Replace this block with CNContactStore + CNContactPickerViewController
+        // once the entitlement and Cargo dependency are added.
+        Err("Contacts integration not yet implemented — coming in a future release.".to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("Native contact picker is only available on macOS.".to_string())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tauri commands — network / proxy
 // ---------------------------------------------------------------------------
 
@@ -832,6 +876,7 @@ pub fn run() {
             get_mdns_active,
             list_snapshots,
             start_oauth_server,
+            pick_contact,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Freed");

@@ -19,6 +19,12 @@ export * from "./focus-text.js";
 // Re-export store types (browser-safe, no deps)
 export * from "./store-types.js";
 
+// Re-export friends identity resolution and CRM utilities (browser-safe, no deps)
+export * from "./friends.js";
+
+// Re-export location extraction utilities (browser-safe, no deps)
+export * from "./location.js";
+
 // Note: schema.js is NOT re-exported here because it imports Automerge
 // which uses WebAssembly and requires special bundler configuration.
 // For schema operations, import directly from '@freed/shared/schema' in Node.js/Tauri.

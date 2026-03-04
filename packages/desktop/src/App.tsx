@@ -27,6 +27,7 @@ import { importMarkdownFiles, exportLibrary } from "./lib/import-export";
 import { secureStorage } from "./lib/secure-storage";
 import { start as startContentFetcher, stop as stopContentFetcher } from "./lib/content-fetcher";
 import { useAppStore as useDesktopStore } from "./lib/store";
+import { pickContactViaTauri } from "./lib/contacts";
 import { XFeedEmptyState } from "./components/XFeedEmptyState";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
@@ -211,6 +212,9 @@ function App() {
         setApiKey: (provider: string, key: string) => Promise<void>;
         clearApiKey: (provider: string) => Promise<void>;
       },
+      // Native macOS contact picker via CNContactStore.
+      // Returns null until objc2-contacts integration is complete (see lib/contacts.ts).
+      pickContact: pickContactViaTauri,
     }),
     [checkForUpdates, applyUpdate, handleFactoryReset],
   );

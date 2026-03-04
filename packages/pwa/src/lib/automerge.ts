@@ -18,10 +18,17 @@ import {
   removeFeedItem,
   markAsRead,
   toggleSaved,
+  toggleArchived,
+  archiveAllReadUnsaved,
+  pruneArchivedItems,
   updatePreferences,
   updateLastSync,
+  addFriend,
+  updateFriend,
+  removeFriend,
+  logReachOut,
 } from "@freed/shared/schema";
-import type { FeedItem, RssFeed, UserPreferences } from "@freed/shared";
+import type { FeedItem, Friend, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
 import { addDebugEvent, setDocSnapshot, registerDocAccessors } from "@freed/ui/lib/debug-store";
 
 // Singleton storage instance
@@ -179,6 +186,27 @@ export async function docToggleSaved(globalId: string): Promise<FreedDoc> {
   return applyChange((doc) => toggleSaved(doc, globalId), "Toggle saved");
 }
 
+export async function docToggleArchived(globalId: string): Promise<FreedDoc> {
+  return applyChange((doc) => toggleArchived(doc, globalId), "Toggle archived");
+}
+
+export async function docArchiveAllReadUnsaved(
+  platform?: string,
+  feedUrl?: string,
+): Promise<FreedDoc> {
+  return applyChange(
+    (doc) => archiveAllReadUnsaved(doc, platform, feedUrl),
+    "Archive all read",
+  );
+}
+
+export async function docPruneArchivedItems(maxAgeMs?: number): Promise<FreedDoc> {
+  return applyChange(
+    (doc) => pruneArchivedItems(doc, maxAgeMs),
+    "Prune archived items",
+  );
+}
+
 export async function docUpdatePreferences(
   updates: Partial<UserPreferences>
 ): Promise<FreedDoc> {
@@ -190,6 +218,32 @@ export async function docUpdatePreferences(
 
 export async function docUpdateLastSync(): Promise<FreedDoc> {
   return applyChange((doc) => updateLastSync(doc), "Update last sync");
+}
+
+// =============================================================================
+// Friend Operations
+// =============================================================================
+
+export async function docAddFriend(friend: Friend): Promise<FreedDoc> {
+  return applyChange((doc) => addFriend(doc, friend), "Add friend");
+}
+
+export async function docUpdateFriend(
+  id: string,
+  updates: Partial<Friend>
+): Promise<FreedDoc> {
+  return applyChange((doc) => updateFriend(doc, id, updates), "Update friend");
+}
+
+export async function docRemoveFriend(id: string): Promise<FreedDoc> {
+  return applyChange((doc) => removeFriend(doc, id), "Remove friend");
+}
+
+export async function docLogReachOut(
+  id: string,
+  entry: ReachOutLog
+): Promise<FreedDoc> {
+  return applyChange((doc) => logReachOut(doc, id, entry), "Log reach-out");
 }
 
 /**

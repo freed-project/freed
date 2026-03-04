@@ -516,12 +516,12 @@ const phases: Phase[] = [
   },
   {
     number: 8,
-    title: "Friend Map",
+    title: "Friends + Social Graph",
     description:
-      "Location-based social view. See where your friends are posting from.",
+      "A friend CRM with a force-directed social graph. Unify profiles across platforms into one identity per person, track relationship health, and get nudged when you've drifted from people you care about.",
     status: "upcoming",
     planLink:
-      "https://github.com/freed-project/freed/blob/main/docs/PHASE-8-FRIEND-MAP.md",
+      "https://github.com/freed-project/freed/blob/main/docs/PHASE-8-FRIENDS.md",
   },
   {
     number: 9,

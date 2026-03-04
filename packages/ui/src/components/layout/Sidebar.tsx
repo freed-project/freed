@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } fro
 import type { RssFeed } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { SettingsPanel } from "../SettingsPanel.js";
-import { AllIcon, RssIcon, FacebookIcon, InstagramIcon, MapPinIcon, BookmarkIcon, ArchiveIcon } from "../icons.js";
+import { AllIcon, RssIcon, FacebookIcon, InstagramIcon, MapPinIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
 /** Compact number: 1234 → "1.2k", 1_200_000 → "1.2m". Trims trailing ".0". */
 function fmt(n: number): string {
   if (n >= 1_000_000) return `${+(n / 1_000_000).toFixed(1)}m`;
@@ -208,6 +208,7 @@ const topSources: { id: string | undefined; label: string; icon: ReactNode }[] =
 const comingSoonSources: { id: string; label: string; icon: ReactNode }[] = [
   { id: "facebook", label: "Facebook", icon: <FacebookIcon /> },
   { id: "instagram", label: "Instagram", icon: <InstagramIcon /> },
+  { id: "friends", label: "Friends", icon: <UsersIcon /> },
   { id: "map", label: "Map", icon: <MapPinIcon /> },
 ];
 
@@ -342,7 +343,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const isTopSourceActive = (source: (typeof topSources)[0]) => {
     if (activeFilter.feedUrl) return false;
-    if (activeFilter.showArchived) return false;
+    if (activeFilter.archivedOnly) return false;
     if (activeFilter.savedOnly) return false;
     return activeFilter.platform === source.id;
   };
@@ -392,7 +393,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           </button>
         </div>
 
-        <nav className="flex-1 min-h-0 flex flex-col p-4 overflow-y-auto minimal-scroll">
+        <nav
+          className="flex-1 min-h-0 flex flex-col px-4 pt-4 overflow-y-auto minimal-scroll"
+          style={{ paddingBottom: 'calc(1rem + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))' }}
+        >
+          {SidebarConnectionSection && <SidebarConnectionSection />}
+
           {/* Sources */}
           <SidebarSection title="Sources">
             <ul className="space-y-1">
@@ -461,12 +467,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               </li>
               <li>
                 <button
-                  onClick={() => { setFilter({ showArchived: true }); onClose(); }}
+                  onClick={() => { setFilter({ archivedOnly: true }); onClose(); }}
                   className={`
                     w-full flex items-center gap-3 px-3 py-2 rounded-lg
                     text-left text-sm transition-all border
                     ${
-                      activeFilter.showArchived
+                      activeFilter.archivedOnly
                         ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
                         : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
                     }

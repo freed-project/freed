@@ -5,7 +5,7 @@
  * implement, enabling shared UI components to work with either store.
  */
 
-import type { FeedItem, UserPreferences, RssFeed } from "./types.js";
+import type { FeedItem, Friend, ReachOutLog, UserPreferences, RssFeed } from "./types.js";
 
 /**
  * Filter options for the feed view.
@@ -16,7 +16,8 @@ export interface FilterOptions {
   feedUrl?: string;
   tags?: string[];
   savedOnly?: boolean;
-  showArchived?: boolean;
+  /** Navigate to the Archived view - shows only archived items. */
+  archivedOnly?: boolean;
 }
 
 /**
@@ -29,6 +30,8 @@ export interface BaseAppState {
   // Data (derived from Automerge doc)
   items: FeedItem[];
   feeds: Record<string, RssFeed>;
+  /** Friends (unified identities) — keyed by Friend.id */
+  friends: Record<string, Friend>;
   preferences: UserPreferences;
   /** Unread item count per RSS feed URL. Derived in hydrateFromDoc so shared
    *  UI components (Sidebar) don't need to subscribe to the full items array. */
@@ -43,6 +46,12 @@ export interface BaseAppState {
   totalItemCount: number;
   /** Total visible item count bucketed by platform. */
   itemCountByPlatform: Record<string, number>;
+  /** Count of archivable items (read, non-saved, non-archived) across all platforms. */
+  totalArchivableCount: number;
+  /** Archivable count bucketed by platform. */
+  archivableCountByPlatform: Record<string, number>;
+  /** Archivable count bucketed by RSS feed URL. */
+  archivableFeedCounts: Record<string, number>;
 
   // UI state
   isLoading: boolean;
@@ -61,6 +70,9 @@ export interface BaseAppState {
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: (platform?: string) => Promise<void>;
   toggleSaved: (id: string) => Promise<void>;
+  toggleArchived: (id: string) => Promise<void>;
+  /** Archive all read, non-saved items in the current view. */
+  archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
   /** Permanently remove a single feed item from the library. */
   removeItem: (id: string) => Promise<void>;
 
@@ -71,6 +83,12 @@ export interface BaseAppState {
   /** Remove all feed subscriptions. Pass `includeItems: true` to also wipe all articles. */
   removeAllFeeds: (includeItems: boolean) => Promise<void>;
 
+  // Friend actions
+  addFriend: (friend: Friend) => Promise<void>;
+  updateFriend: (id: string, updates: Partial<Friend>) => Promise<void>;
+  removeFriend: (id: string) => Promise<void>;
+  logReachOut: (id: string, entry: ReachOutLog) => Promise<void>;
+
   // Preference actions
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;
 
@@ -80,6 +98,10 @@ export interface BaseAppState {
   setLoading: (loading: boolean) => void;
   setSyncing: (syncing: boolean) => void;
   setError: (error: string | null) => void;
+  /** Current full-text search query. Empty string means no search active. */
+  searchQuery: string;
+  /** Update the full-text search query. Empty string clears the search. */
+  setSearchQuery: (query: string) => void;
 }
 
 /**

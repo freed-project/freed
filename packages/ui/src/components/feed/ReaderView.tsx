@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform, MACOS_TRAFFIC_LIGHT_INSET } from "../../context/PlatformContext.js";
@@ -37,6 +37,7 @@ const PROSE_CLASSES = `
 export function ReaderView({ item, onClose }: ReaderViewProps) {
   const { headerDragRegion, getLocalContent } = usePlatform();
   const updateItem = useAppStore((s) => s.updateItem);
+  const toggleArchived = useAppStore((s) => s.toggleArchived);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const storedDisplay = useAppStore((s) => s.preferences.display);
 
@@ -52,7 +53,6 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
   const [isCaching, setIsCaching] = useState(false);
 
   const articleUrl = item.content.linkPreview?.url;
-  const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
 
   // ─── Content waterfall ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -148,7 +148,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
     };
   }, [item.globalId, articleUrl, getLocalContent]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toggleSaved = () => {
+  const toggleSaved = useCallback(() => {
     updateItem(item.globalId, {
       userState: {
         ...item.userState,
@@ -156,18 +156,15 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
         savedAt: item.userState.saved ? undefined : Date.now(),
       },
     });
-  };
+  }, [updateItem, item.globalId, item.userState]);
 
-  const toggleArchived = () => {
-    updateItem(item.globalId, {
-      userState: {
-        ...item.userState,
-        archived: !item.userState.archived,
-      },
-    });
-  };
+  const handleToggleArchived = useCallback(() => {
+    toggleArchived(item.globalId);
+    // Close the reader when archiving — item leaves the active feed
+    if (!item.userState.archived) onClose();
+  }, [toggleArchived, item.globalId, item.userState.archived, onClose]);
 
-  const toggleFocus = () => {
+  const toggleFocus = useCallback(() => {
     setFocusOptions((prev) => {
       const next = { ...prev, enabled: !prev.enabled };
       updatePreferences({
@@ -178,9 +175,19 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
       });
       return next;
     });
-  };
+  }, [updatePreferences, storedDisplay]);
 
-  const plainText = html ? htmlToText(html) : item.content.text;
+  const hasContent = !!(html || item.preservedContent?.html);
+  const timeAgo = useMemo(
+    () => formatDistanceToNow(item.publishedAt, { addSuffix: true }),
+    [item.publishedAt],
+  );
+
+  // Parsing HTML into plain text for focus mode is expensive -- memoize it.
+  const plainText = useMemo(
+    () => (html ? htmlToText(html) : item.content.text),
+    [html, item.content.text],
+  );
 
   return (
     <div className="fixed inset-0 z-50 bg-[#0a0a0a] overflow-auto">
@@ -285,7 +292,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
           </button>
 
           <button
-            onClick={toggleArchived}
+            onClick={handleToggleArchived}
             className={`p-2 rounded-lg transition-colors ${
               item.userState.archived
                 ? "bg-green-500/20 text-green-400"

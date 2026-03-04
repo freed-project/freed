@@ -107,7 +107,12 @@ export function sortByPriority(items: FeedItem[]): FeedItem[] {
 }
 
 /**
- * Compute priorities for all items and return updated items
+ * Compute priorities for all items and return updated items.
+ *
+ * Preserves object identity for items whose priority score has not changed.
+ * This is critical for React.memo and useMemo to bail out correctly — if every
+ * item gets a new object reference on every call (even for unrelated mutations
+ * like markAsRead on a different item), every mounted card re-renders.
  */
 export function rankFeedItems(
   items: FeedItem[],
@@ -115,11 +120,11 @@ export function rankFeedItems(
 ): FeedItem[] {
   const now = Date.now();
 
-  return items.map((item) => ({
-    ...item,
-    priority: calculatePriority(item, preferences, now),
-    priorityComputedAt: now,
-  }));
+  return items.map((item) => {
+    const newPriority = calculatePriority(item, preferences, now);
+    if (item.priority === newPriority) return item;
+    return { ...item, priority: newPriority, priorityComputedAt: now };
+  });
 }
 
 /**
@@ -129,7 +134,8 @@ export function filterFeedItems(
   items: FeedItem[],
   options: {
     showHidden?: boolean;
-    showArchived?: boolean;
+    /** Show only archived items (the Archived view). Mutually exclusive with normal feed. */
+    archivedOnly?: boolean;
     platform?: string;
     tags?: string[];
     savedOnly?: boolean;
@@ -139,8 +145,12 @@ export function filterFeedItems(
     // Filter hidden unless explicitly showing
     if (!options.showHidden && item.userState.hidden) return false;
 
-    // Filter archived unless explicitly showing
-    if (!options.showArchived && item.userState.archived) return false;
+    // Archived view shows only archived; normal feed excludes archived
+    if (options.archivedOnly) {
+      if (!item.userState.archived) return false;
+    } else {
+      if (item.userState.archived) return false;
+    }
 
     // Filter by platform
     if (options.platform && item.platform !== options.platform) return false;

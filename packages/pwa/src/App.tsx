@@ -21,6 +21,7 @@ import {
 } from "./lib/sync";
 import { clearLocalDoc, docAddStubItem } from "./lib/automerge";
 import { checkForPwaUpdate, applyPwaUpdate, onUpdateAvailable } from "./lib/pwa-updater";
+import { pickContactViaWebApi } from "./lib/contacts";
 import { SyncIndicator } from "./components/layout/SyncIndicator";
 import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
 
@@ -121,6 +122,9 @@ function App() {
           return null;
         }
       },
+      // Web Contact Picker API — available on iOS/Android, absent on desktop browsers.
+      // FriendEditor falls back to manual entry when this is undefined at runtime.
+      pickContact: pickContactViaWebApi,
     }),
     [checkForUpdates, handleFactoryReset],
   );

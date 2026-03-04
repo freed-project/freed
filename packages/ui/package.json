@@ -14,7 +14,8 @@
     "./components/DebugPanel": "./src/components/DebugPanel.tsx",
     "./components/CloudProviderCard": "./src/components/CloudProviderCard.tsx",
     "./lib/debug-store": "./src/lib/debug-store.ts",
-    "./context": "./src/context/index.ts"
+    "./context": "./src/context/index.ts",
+    "./components/friends": "./src/components/friends/index.ts"
   },
   "peerDependencies": {
     "react": ">=19",
@@ -23,7 +24,10 @@
   "dependencies": {
     "@freed/shared": "*",
     "@tanstack/react-virtual": "^3.13.6",
+    "@types/d3-force": "^3.0.10",
+    "d3-force": "^3.0.0",
     "date-fns": "^4.1.0",
+    "minisearch": "^7.2.0",
     "zustand": "^5.0.3"
   },
   "devDependencies": {
