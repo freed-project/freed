@@ -19,6 +19,7 @@ import {
   docMarkAsRead,
   docMarkAllAsRead,
   docToggleSaved,
+  docRemoveFeedItem,
   docUpdatePreferences,
 } from "./automerge";
 import type { FreedDoc } from "@freed/shared/schema";
@@ -144,6 +145,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   toggleSaved: async (id) => {
     await docToggleSaved(id);
+  },
+
+  removeItem: async (id) => {
+    await docRemoveFeedItem(id);
   },
 
   // Feed actions

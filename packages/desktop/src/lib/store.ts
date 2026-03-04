@@ -19,6 +19,7 @@ import {
   docMarkAsRead,
   docMarkAllAsRead,
   docToggleSaved,
+  docRemoveFeedItem,
   docUpdatePreferences,
   docDeduplicateFeedItems,
   docHealUntitledFeedTitles,
@@ -74,6 +75,7 @@ interface AppState {
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: (platform?: string) => Promise<void>;
   toggleSaved: (id: string) => Promise<void>;
+  removeItem: (id: string) => Promise<void>;
 
   // Feed actions (persisted to Automerge)
   addFeed: (feed: RssFeed) => Promise<void>;
@@ -224,6 +226,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   toggleSaved: async (id) => {
     await docToggleSaved(id);
+  },
+
+  removeItem: async (id) => {
+    await docRemoveFeedItem(id);
   },
 
   // Feed actions

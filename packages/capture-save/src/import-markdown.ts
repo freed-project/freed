@@ -70,15 +70,47 @@ function stripSourcesSection(body: string): string {
 }
 
 /**
+ * Derive hierarchical tags from a file's relative path within its root folder.
+ *
+ * Given "my-export/articles/tech/react-hooks.md":
+ *   - Strip root folder ("my-export") and filename ("react-hooks.md")
+ *   - Return ["articles/tech"] (the deepest folder path relative to root)
+ *
+ * Intermediate ancestor tags are also included so the sidebar tag tree renders
+ * correctly: ["articles", "articles/tech"].
+ */
+export function folderTagsFromRelativePath(relativePath: string): string[] {
+  // Normalise separators then split
+  const parts = relativePath.replace(/\\/g, "/").split("/").filter(Boolean);
+  // Need at least: rootFolder + filename (depth 2) to have any folder segments
+  if (parts.length < 3) return [];
+
+  // Drop root folder (index 0) and filename (last index)
+  const segments = parts.slice(1, -1);
+
+  // Build every ancestor path so the tag tree has all intermediate nodes
+  const tags: string[] = [];
+  for (let i = 1; i <= segments.length; i++) {
+    tags.push(segments.slice(0, i).join("/"));
+  }
+  return tags;
+}
+
+/**
  * Parse a single Freed Markdown archive file.
  *
  * @param filename - Original filename (used for error context only)
  * @param content - Raw file content string
+ * @param relativePath - Optional path relative to the selected root folder
+ *   (e.g. "my-export/articles/tech/react-hooks.md"). When provided, intermediate
+ *   folder segments are merged into the item's tags so the folder hierarchy can
+ *   be reconstructed later via the sidebar tag tree.
  * @returns Parsed item + optional HTML, or null if the file cannot be parsed
  */
 export function parseMarkdownArchiveFile(
   filename: string,
   content: string,
+  relativePath?: string,
 ): ParsedArchiveFile | null {
   // Extract YAML frontmatter between the first two --- delimiters.
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
@@ -110,6 +142,14 @@ export function parseMarkdownArchiveFile(
     for (const line of tagsMatch[1].split("\n")) {
       const tag = line.replace(/^\s*-\s*/, "").replace(/^["']|["']$/g, "").trim();
       if (tag) tags.push(tag);
+    }
+  }
+
+  // Merge folder hierarchy tags derived from the file's relative path.
+  // These allow the sidebar tag tree to reconstruct the original folder structure.
+  if (relativePath) {
+    for (const folderTag of folderTagsFromRelativePath(relativePath)) {
+      if (!tags.includes(folderTag)) tags.push(folderTag);
     }
   }
 

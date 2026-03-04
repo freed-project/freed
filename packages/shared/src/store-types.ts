@@ -61,6 +61,8 @@ export interface BaseAppState {
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: (platform?: string) => Promise<void>;
   toggleSaved: (id: string) => Promise<void>;
+  /** Permanently remove a single feed item from the library. */
+  removeItem: (id: string) => Promise<void>;
 
   // Feed actions
   addFeed: (feed: RssFeed) => Promise<void>;

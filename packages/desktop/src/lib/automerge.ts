@@ -403,12 +403,20 @@ export async function docDeduplicateFeedItems(): Promise<FreedDoc> {
 /**
  * Batch import FeedItems in chunks of 500, one Automerge change per chunk.
  * Skips existing globalIds (idempotent -- safe to call multiple times).
+ *
+ * @param onChunk - Optional callback fired after each chunk is committed.
+ *   Receives (chunkIndex, totalChunks) so callers can emit phased progress.
  */
-export async function docBatchImportItems(items: FeedItem[]): Promise<FreedDoc> {
+export async function docBatchImportItems(
+  items: FeedItem[],
+  onChunk?: (chunkIndex: number, totalChunks: number) => void,
+): Promise<FreedDoc> {
   const CHUNK = 500;
+  const totalChunks = Math.ceil(items.length / CHUNK);
   let doc = getDoc();
 
   for (let i = 0; i < items.length; i += CHUNK) {
+    const chunkIndex = Math.floor(i / CHUNK);
     const chunk = items.slice(i, i + CHUNK);
     doc = await applyChange((d) => {
       for (const item of chunk) {
@@ -416,7 +424,8 @@ export async function docBatchImportItems(items: FeedItem[]): Promise<FreedDoc> 
           addFeedItem(d, item);
         }
       }
-    }, `Batch import ${chunk.length} items (chunk ${Math.floor(i / CHUNK) + 1})`);
+    }, `Batch import ${chunk.length} items (chunk ${chunkIndex + 1}/${totalChunks})`);
+    onChunk?.(chunkIndex + 1, totalChunks);
   }
 
   return doc;
