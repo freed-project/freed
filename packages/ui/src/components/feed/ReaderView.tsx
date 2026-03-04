@@ -21,6 +21,7 @@ const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 export function ReaderView({ item, onClose }: ReaderViewProps) {
   const { headerDragRegion } = usePlatform();
   const updateItem = useAppStore((s) => s.updateItem);
+  const toggleArchived = useAppStore((s) => s.toggleArchived);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const storedDisplay = useAppStore((s) => s.preferences.display);
   const [focusOptions, setFocusOptions] = useState<FocusOptions>({
@@ -38,14 +39,11 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
     });
   }, [updateItem, item.globalId, item.userState]);
 
-  const toggleArchived = useCallback(() => {
-    updateItem(item.globalId, {
-      userState: {
-        ...item.userState,
-        archived: !item.userState.archived,
-      },
-    });
-  }, [updateItem, item.globalId, item.userState]);
+  const handleToggleArchived = useCallback(() => {
+    toggleArchived(item.globalId);
+    // Close the reader when archiving — item leaves the active feed
+    if (!item.userState.archived) onClose();
+  }, [toggleArchived, item.globalId, item.userState.archived, onClose]);
 
   const toggleFocus = useCallback(() => {
     setFocusOptions((prev) => {
@@ -150,7 +148,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
           </button>
 
           <button
-            onClick={toggleArchived}
+            onClick={handleToggleArchived}
             className={`p-2 rounded-lg transition-colors ${
               item.userState.archived
                 ? "bg-green-500/20 text-green-400"

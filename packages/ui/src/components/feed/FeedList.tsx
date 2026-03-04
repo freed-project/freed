@@ -15,6 +15,8 @@ interface FeedListProps {
   hasFeedsSubscribed?: boolean;
   /** Called when user bookmarks/unbookmarks an item */
   onItemSave?: (item: FeedItemType) => void;
+  /** Called when user archives an item from the feed card */
+  onItemArchive?: (item: FeedItemType) => void;
 }
 
 /**
@@ -30,6 +32,7 @@ interface FeedItemRowProps {
   onItemClick?: (item: FeedItemType) => void;
   onFocusChange?: (index: number) => void;
   onItemSave?: (item: FeedItemType) => void;
+  onItemArchive?: (item: FeedItemType) => void;
 }
 
 const FeedItemRow = memo(function FeedItemRow({
@@ -40,12 +43,17 @@ const FeedItemRow = memo(function FeedItemRow({
   onItemClick,
   onFocusChange,
   onItemSave,
+  onItemArchive,
 }: FeedItemRowProps) {
   const handleClick = useCallback(() => onItemClick?.(item), [item, onItemClick]);
   const handleMouseEnter = useCallback(() => onFocusChange?.(index), [index, onFocusChange]);
   const handleSave = useCallback(
     (e: React.MouseEvent) => { e.stopPropagation(); onItemSave?.(item); },
     [item, onItemSave],
+  );
+  const handleArchive = useCallback(
+    (e: React.MouseEvent) => { e.stopPropagation(); onItemArchive?.(item); },
+    [item, onItemArchive],
   );
 
   return (
@@ -56,6 +64,7 @@ const FeedItemRow = memo(function FeedItemRow({
       showEngagement={showEngagement}
       onMouseEnter={handleMouseEnter}
       onSave={onItemSave ? handleSave : undefined}
+      onArchive={onItemArchive ? handleArchive : undefined}
     />
   );
 });
@@ -68,6 +77,7 @@ export function FeedList({
   onAddFeed,
   hasFeedsSubscribed = false,
   onItemSave,
+  onItemArchive,
 }: FeedListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const { FeedEmptyState } = usePlatform();
@@ -153,6 +163,7 @@ export function FeedList({
               onItemClick={onItemClick}
               onFocusChange={onFocusChange}
               onItemSave={onItemSave}
+              onItemArchive={onItemArchive}
             />
           </div>
         ))}

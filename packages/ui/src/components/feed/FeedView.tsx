@@ -14,9 +14,15 @@ export function FeedView() {
   const activeFilter = useAppStore((s) => s.activeFilter);
   const markAsRead = useAppStore((s) => s.markAsRead);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
+  const toggleArchived = useAppStore((s) => s.toggleArchived);
   const handleItemSave = useCallback(
     (item: FeedItem) => toggleSaved(item.globalId),
     [toggleSaved],
+  );
+  // Only offer archive action on non-archived views; archived view shows the item already
+  const handleItemArchive = useCallback(
+    (item: FeedItem) => toggleArchived(item.globalId),
+    [toggleArchived],
   );
   const [addFeedOpen, setAddFeedOpen] = useState(false);
 
@@ -89,6 +95,7 @@ export function FeedView() {
         onAddFeed={canAddFeeds ? () => setAddFeedOpen(true) : undefined}
         hasFeedsSubscribed={Object.keys(feeds).length > 0}
         onItemSave={handleItemSave}
+        onItemArchive={activeFilter.archivedOnly ? undefined : handleItemArchive}
       />
 
       {selectedItem && (
