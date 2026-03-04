@@ -73,28 +73,29 @@ export default definePost(
 
     <h2>Where Things Stand</h2>
     <p>
-      RSS capture is working. X capture and Save for Later are coming soon.
-      The desktop app and mobile reader are in active development.
+      RSS capture is working. X and Save for Later are coming soon. The desktop
+      app and mobile reader are in active development.
     </p>
 
     <h2>How You Can Help</h2>
     <ul>
       <li>
         <strong>
-          <a href="https://github.com/freed-project/freed">Star the repo.</a>
+          ⭐ <a href="https://github.com/freed-project/freed">Star the repo</a>
         </strong>{" "}
         It signals that this matters and helps others find it.
       </li>
       <li>
         <strong>
-          <a href="https://app.freed.wtf">Try the PWA.</a>
+          📱 <a href="https://app.freed.wtf">Try the PWA</a>
         </strong>{" "}
         Add some RSS feeds and tell me what's broken.
       </li>
       <li>
         <strong>
+          🛠️{" "}
           <a href="https://github.com/freed-project/freed/blob/main/CONTRIBUTING.md">
-            Contribute.
+            Contribute
           </a>
         </strong>{" "}
         Especially if you know Rust/TypeScript or have ideas for additional
