@@ -34,7 +34,7 @@ export default function ManifestoContent() {
 
             <section>
               <h2 className="text-2xl font-bold text-text-primary mb-4">The Pact</h2>
-              <p>Odysseus wanted to hear the Sirens without dying. He couldn't trust himself in the moment, so he had his crew lash him to the mast before the ship got close. He heard the song. He survived. He got what he wanted by choosing his constraints <em>before</em> the temptation arrived. Do it once, in a moment of clarity: tell Freed which creators matter, how much you trust each source, which platforms you'll only read through Freed. Your algorithm. Not one engineered to exploit you.</p>
+              <p>Odysseus wanted to hear the Sirens without dying. He couldn't trust himself in the moment, so he had his crew lash him to the mast before the ship got close. He heard the song. He survived. Do it once, in a moment of clarity: tell Freed which creators matter, how much you trust each source. Your algorithm. Not one engineered to exploit you.</p>
             </section>
 
             <section>
