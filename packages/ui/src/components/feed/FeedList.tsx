@@ -127,14 +127,14 @@ export function FeedList({
   if (items.length === 0) {
     if (FeedEmptyState) {
       return (
-        <div className="flex flex-col items-center justify-center min-h-[60dvh] md:flex-1 md:min-h-0 md:overflow-auto text-center px-6 py-12">
+        <div className="flex flex-col items-center justify-center flex-1 min-h-0 overflow-auto text-center px-6 py-12">
           <FeedEmptyState />
         </div>
       );
     }
 
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60dvh] md:flex-1 md:min-h-0 md:overflow-auto text-center px-6 py-12">
+      <div className="flex flex-col items-center justify-center flex-1 min-h-0 overflow-auto text-center px-6 py-12">
         <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#3b82f6]/20 to-[#8b5cf6]/20 flex items-center justify-center mb-4">
           <span className="text-2xl">📡</span>
         </div>
@@ -170,7 +170,13 @@ export function FeedList({
   // collapses naturally and content scrolls behind it.
   if (isMobile) {
     return (
-      <div ref={windowListRef}>
+      // paddingBottom ensures the last item can scroll fully above the address
+      // bar. calc(100lvh - 100dvh) = the height of the address-bar zone;
+      // safe-area-inset-bottom covers the home indicator in standalone mode.
+      <div
+        ref={windowListRef}
+        style={{ paddingBottom: 'calc(100lvh - 100dvh + env(safe-area-inset-bottom, 0px))' }}
+      >
         <div
           style={{ height: windowVirtualizer.getTotalSize() }}
           className="relative w-full"

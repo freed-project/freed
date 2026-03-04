@@ -72,11 +72,14 @@ body {
   padding-right: env(safe-area-inset-right);
 }
 
-/* Mobile: allow document-level scrolling so Safari collapses its address bar
-   and feed content physically travels through the address-bar zone.
-   The desktop in-element scroll layout (overflow: hidden chain) is preserved
-   via the @media (min-width: 768px) block below, but the defaults above win
-   for desktop and the overrides below apply only on narrow (phone) viewports. */
+/* Mobile: document-level scrolling so Safari collapses its address bar
+   and feed items physically travel through the address-bar zone.
+
+   Key insight: #root must keep height:100dvh (giving AppShell a DEFINITE
+   flex height so it fills the viewport with no gap), but overflow:visible
+   lets feed content spill past that boundary into the document so window
+   scroll works. html/body are set to overflow:visible so the window can
+   actually scroll the overflowed content. Desktop layout is unchanged. */
 @media (max-width: 767px) {
   html {
     height: auto;
@@ -85,14 +88,15 @@ body {
   body {
     height: auto;
     overflow: visible;
-    /* Rubber-band at top/bottom of page is fine on mobile; the overscroll-none
-       on the desktop scroll container handles desktop behavior. */
     overscroll-behavior: auto;
   }
   #root {
-    height: auto;
-    min-height: 100svh;
-    min-height: 100dvh;
+    /* Definite height lets flex children fill the viewport (no color gap).
+       overflow:visible lets feed content extend past 100dvh into the
+       document so window scroll fires and the address bar can collapse. */
+    height: 100svh;
+    height: 100dvh;
+    overflow: visible;
   }
 }
 
@@ -109,21 +113,6 @@ body {
   flex-direction: column;
 }
 
-/* Fill the zone behind the Safari address bar (between 100dvh and 100lvh)
-   with the app's surface colour so there is no visible colour gap.
-   position: fixed + z-index: -1 keeps it behind all content and out of
-   the flex layout. Height resolves to 0 when the bar is hidden. */
-#root::after {
-  content: '';
-  position: fixed;
-  bottom: calc(-1 * (100lvh - 100dvh));
-  left: 0;
-  right: 0;
-  height: calc(100lvh - 100dvh);
-  background: #121212;
-  z-index: -1;
-  pointer-events: none;
-}
 
 /* iOS Safari viewport fix: svh fallback with dvh override */
 .min-h-viewport-safe {
