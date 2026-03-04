@@ -30,7 +30,8 @@ export default definePost(
     <h2>What Freed Is</h2>
     <p>
       Freed is a local-first feed reader. It captures content from the sources
-      you choose: X, RSS feeds, YouTube channels, newsletters, and podcasts.
+      you choose: social platforms, RSS feeds, YouTube channels, newsletters,
+      and podcasts.
       Everything lands in a vault on your device, live-synced to your phone.
       You get a unified, chronological feed of everything you care about, ranked
       the way you decide. Your algorithm, your rules. The platforms become
@@ -54,7 +55,7 @@ export default definePost(
       </li>
       <li>
         <strong>Ulysses Mode.</strong> Configure Freed as the only way you
-        access X or Instagram. You get the content without the compulsion. Named
+        access social platforms. You get the content without the compulsion. Named
         after the hero who lashed himself to the mast so he could hear the
         Sirens without losing his mind.
       </li>
