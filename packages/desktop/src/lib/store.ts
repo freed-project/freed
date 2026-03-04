@@ -5,7 +5,7 @@
  */
 
 import { create } from "zustand";
-import type { FeedItem, UserPreferences, RssFeed, FilterOptions } from "@freed/shared";
+import type { FeedItem, FilterOptions, Friend, ReachOutLog, UserPreferences, RssFeed } from "@freed/shared";
 import { createDefaultPreferences, rankFeedItems } from "@freed/shared";
 import {
   initDoc,
@@ -25,6 +25,10 @@ import {
   docUpdatePreferences,
   docDeduplicateFeedItems,
   docHealUntitledFeedTitles,
+  docAddFriend,
+  docUpdateFriend,
+  docRemoveFriend,
+  docLogReachOut,
 } from "./automerge";
 import type { FreedDoc } from "@freed/shared/schema";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
@@ -35,6 +39,8 @@ interface AppState {
   // Data (derived from Automerge doc)
   items: FeedItem[];
   feeds: Record<string, RssFeed>;
+  /** Friends (unified identities) — keyed by Friend.id */
+  friends: Record<string, Friend>;
   preferences: UserPreferences;
   /** Unread count per feed URL — derived in hydrateFromDoc */
   feedUnreadCounts: Record<string, number>;
@@ -75,6 +81,12 @@ interface AppState {
   removeFeed: (url: string) => Promise<void>;
   renameFeed: (url: string, title: string) => Promise<void>;
   removeAllFeeds: (includeItems: boolean) => Promise<void>;
+
+  // Friend actions (persisted to Automerge)
+  addFriend: (friend: Friend) => Promise<void>;
+  updateFriend: (id: string, updates: Partial<Friend>) => Promise<void>;
+  removeFriend: (id: string) => Promise<void>;
+  logReachOut: (id: string, entry: ReachOutLog) => Promise<void>;
 
   // Preference actions (persisted to Automerge)
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;
@@ -158,6 +170,7 @@ function hydrateFromDoc(doc: FreedDoc): Partial<AppState> {
   return {
     items: rankedItems,
     feeds: doc.rssFeeds,
+    friends: doc.friends ?? {},
     preferences: doc.preferences,
     feedUnreadCounts,
     feedTotalCounts,
@@ -175,6 +188,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   items: [],
   feeds: {},
+  friends: {},
   preferences: createDefaultPreferences(),
   feedUnreadCounts: {},
   feedTotalCounts: {},
@@ -298,6 +312,23 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   renameFeed: async (url, title) => {
     await docUpdateRssFeed(url, { title });
+  },
+
+  // Friend actions
+  addFriend: async (friend: Friend) => {
+    await docAddFriend(friend);
+  },
+
+  updateFriend: async (id: string, updates: Partial<Friend>) => {
+    await docUpdateFriend(id, updates);
+  },
+
+  removeFriend: async (id: string) => {
+    await docRemoveFriend(id);
+  },
+
+  logReachOut: async (id: string, entry: ReachOutLog) => {
+    await docLogReachOut(id, entry);
   },
 
   // Preference actions

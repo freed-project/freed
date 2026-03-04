@@ -423,6 +423,81 @@ export interface UserPreferences {
 }
 
 // =============================================================================
+// Friends & Identity
+// =============================================================================
+
+/**
+ * A single social media profile linked to a Friend.
+ * Matched at render time against FeedItem.author.id for the given platform.
+ */
+export interface FriendSource {
+  platform: Platform;
+  /** Matches FeedItem.author.id for this platform */
+  authorId: string;
+  handle?: string;
+  displayName?: string;
+  avatarUrl?: string;
+  profileUrl?: string;
+}
+
+/**
+ * Address book data imported once from the device.
+ * Not a content source — carries contact info only.
+ */
+export interface DeviceContact {
+  importedFrom: "macos" | "ios" | "android" | "web";
+  name: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  /** Native contact ID for potential future re-sync */
+  nativeId?: string;
+  importedAt: number;
+}
+
+/**
+ * A single reach-out event logged by the user
+ */
+export interface ReachOutLog {
+  loggedAt: number;
+  channel?: "phone" | "text" | "email" | "in_person" | "other";
+  notes?: string;
+}
+
+/**
+ * Canonical record for a real person.
+ *
+ * Unifies social media profiles (sources) and address book data (contact)
+ * into a single identity. careLevel drives automatic reach-out nudge timing.
+ */
+export interface Friend {
+  /** UUID, client-generated */
+  id: string;
+  /** Canonical display name chosen by the user */
+  name: string;
+  /** Overrides platform avatars when set */
+  avatarUrl?: string;
+  bio?: string;
+  /** Social media profiles that produce FeedItems */
+  sources: FriendSource[];
+  /** Address book import — contact info only, not a content source */
+  contact?: DeviceContact;
+  /**
+   * Relationship priority: 5 = closest (nudge weekly), 1 = acquaintance (never nudged).
+   * Drives effectiveInterval() in friends.ts.
+   */
+  careLevel: 1 | 2 | 3 | 4 | 5;
+  /** Override for the nudge interval in days (auto-inferred from careLevel if absent) */
+  reachOutIntervalDays?: number;
+  /** Most recent reach-out entries first; capped at 20 */
+  reachOutLog?: ReachOutLog[];
+  tags?: string[];
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// =============================================================================
 // Document Metadata
 // =============================================================================
 

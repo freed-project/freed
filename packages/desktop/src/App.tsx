@@ -21,6 +21,7 @@ import {
 } from "./lib/sync";
 import { clearLocalDoc } from "./lib/automerge";
 import { clearStoredCookies } from "./lib/x-auth";
+import { pickContactViaTauri } from "./lib/contacts";
 import { XFeedEmptyState } from "./components/XFeedEmptyState";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
@@ -185,6 +186,9 @@ function App() {
           .map((p) => (p === "gdrive" ? "Google Drive" : "Dropbox"))
           .join(" & ");
       },
+      // Native macOS contact picker via CNContactStore.
+      // Returns null until objc2-contacts integration is complete (see lib/contacts.ts).
+      pickContact: pickContactViaTauri,
     }),
     [checkForUpdates, applyUpdate, handleFactoryReset],
   );

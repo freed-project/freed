@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef, type ReactNode } from "react"
 import type { RssFeed } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { SettingsPanel } from "../SettingsPanel.js";
-import { AllIcon, RssIcon, FacebookIcon, InstagramIcon, MapPinIcon, BookmarkIcon, ArchiveIcon } from "../icons.js";
+import { AllIcon, RssIcon, FacebookIcon, InstagramIcon, MapPinIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
 
 /** Compact number: 1234 → "1.2k", 1_200_000 → "1.2m". Trims trailing ".0". */
 function fmt(n: number): string {
@@ -209,6 +209,7 @@ const topSources: { id: string | undefined; label: string; icon: ReactNode }[] =
 const comingSoonSources: { id: string; label: string; icon: ReactNode }[] = [
   { id: "facebook", label: "Facebook", icon: <FacebookIcon /> },
   { id: "instagram", label: "Instagram", icon: <InstagramIcon /> },
+  { id: "friends", label: "Friends", icon: <UsersIcon /> },
   { id: "map", label: "Map", icon: <MapPinIcon /> },
 ];
 

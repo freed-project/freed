@@ -96,6 +96,24 @@ export interface PlatformConfig {
    * Called lazily in the Danger Zone UI so it reflects live state.
    */
   activeCloudProviderLabel?: () => string | null;
+
+  /**
+   * Present the platform's native contact picker and return the selected
+   * contact's details for importing into a Friend record.
+   *
+   * - Desktop: uses the macOS CNContactStore native picker via a Tauri command.
+   * - PWA (iOS/Android): uses the Web Contact Picker API (navigator.contacts).
+   * - PWA (desktop browsers): absent — FriendEditor falls back to a manual form.
+   *
+   * Returns null when the user cancels the picker.
+   */
+  pickContact?: () => Promise<{
+    name: string;
+    phone?: string;
+    email?: string;
+    address?: string;
+    nativeId?: string;
+  } | null>;
 }
 
 const PlatformCtx = createContext<PlatformConfig | null>(null);

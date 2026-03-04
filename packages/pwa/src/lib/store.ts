@@ -6,7 +6,7 @@
 
 import { create } from "zustand";
 import { createDefaultPreferences, rankFeedItems } from "@freed/shared";
-import type { BaseAppState } from "@freed/shared";
+import type { BaseAppState, Friend, ReachOutLog } from "@freed/shared";
 import {
   initDoc,
   subscribe,
@@ -23,6 +23,10 @@ import {
   docArchiveAllReadUnsaved,
   docPruneArchivedItems,
   docUpdatePreferences,
+  docAddFriend,
+  docUpdateFriend,
+  docRemoveFriend,
+  docLogReachOut,
 } from "./automerge";
 import type { FreedDoc } from "@freed/shared/schema";
 
@@ -98,6 +102,7 @@ function hydrateFromDoc(doc: FreedDoc): Partial<AppState> {
   return {
     items: rankedItems,
     feeds: doc.rssFeeds,
+    friends: doc.friends ?? {},
     preferences: doc.preferences,
     feedUnreadCounts,
     feedTotalCounts,
@@ -115,6 +120,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   items: [],
   feeds: {},
+  friends: {},
   preferences: createDefaultPreferences(),
   feedUnreadCounts: {},
   feedTotalCounts: {},
@@ -223,6 +229,23 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   renameFeed: async (url, title) => {
     await docUpdateRssFeed(url, { title });
+  },
+
+  // Friend actions
+  addFriend: async (friend: Friend) => {
+    await docAddFriend(friend);
+  },
+
+  updateFriend: async (id: string, updates: Partial<Friend>) => {
+    await docUpdateFriend(id, updates);
+  },
+
+  removeFriend: async (id: string) => {
+    await docRemoveFriend(id);
+  },
+
+  logReachOut: async (id: string, entry: ReachOutLog) => {
+    await docLogReachOut(id, entry);
   },
 
   // Preference actions
