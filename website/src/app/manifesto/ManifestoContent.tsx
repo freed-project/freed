@@ -48,8 +48,8 @@ export default function ManifestoContent() {
                 Odysseus lashed himself to the mast before his ship reached the
                 Sirens. He heard the song. He survived. The secret: decide
                 before temptation arrives. Install Freed. It browses your feeds
-                and stores what you care about in a vault on your device. The
-                platforms become players in your game.
+                in the background, and stores what you care about in a vault on
+                your machine. The platforms become players in your game.
               </p>
             </section>
 
@@ -74,9 +74,11 @@ export default function ManifestoContent() {
                   <strong className="text-text-primary block mb-1">
                     Your attention is priceless
                   </strong>
-                  Your time and your data stay yours. Everything you read lives
-                  on your device. We never see any of it. And when you've read
-                  what you came to read, you're done.
+                  It's also finite. Every algorithm on earth knows this. That's
+                  the business model. Freed takes the opposite position: your
+                  time, your focus, and your data stay yours. Everything you
+                  read lives on your device. We never see any of it. And when
+                  you've read what you came to read, you're done.
                 </li>
                 <li>
                   <strong className="text-text-primary block mb-1">
