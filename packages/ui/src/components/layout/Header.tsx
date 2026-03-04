@@ -61,7 +61,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   return (
     <>
       <header
-        className={`flex-shrink-0 bg-[#0a0a0a]/90 backdrop-blur-xl z-30 border-b border-[rgba(255,255,255,0.08)] ${
+        className={`sticky top-0 flex-shrink-0 bg-[#0a0a0a]/90 backdrop-blur-xl z-30 border-b border-[rgba(255,255,255,0.08)] ${
           headerDragRegion ? "" : "pt-[env(safe-area-inset-top)]"
         }`}
         {...(headerDragRegion

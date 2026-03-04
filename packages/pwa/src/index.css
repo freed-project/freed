@@ -72,6 +72,30 @@ body {
   padding-right: env(safe-area-inset-right);
 }
 
+/* Mobile: allow document-level scrolling so Safari collapses its address bar
+   and feed content physically travels through the address-bar zone.
+   The desktop in-element scroll layout (overflow: hidden chain) is preserved
+   via the @media (min-width: 768px) block below, but the defaults above win
+   for desktop and the overrides below apply only on narrow (phone) viewports. */
+@media (max-width: 767px) {
+  html {
+    height: auto;
+    overflow: visible;
+  }
+  body {
+    height: auto;
+    overflow: visible;
+    /* Rubber-band at top/bottom of page is fine on mobile; the overscroll-none
+       on the desktop scroll container handles desktop behavior. */
+    overscroll-behavior: auto;
+  }
+  #root {
+    height: auto;
+    min-height: 100svh;
+    min-height: 100dvh;
+  }
+}
+
 /* Logo typography */
 .font-logo {
   font-family: var(--font-logo);

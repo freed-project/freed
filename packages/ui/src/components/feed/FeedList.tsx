@@ -1,8 +1,22 @@
-import { useRef, memo, useCallback } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useRef, memo, useCallback, useEffect, useState } from "react";
+import { useVirtualizer, useWindowVirtualizer } from "@tanstack/react-virtual";
 import { FeedItem } from "./FeedItem.js";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
+
+/** Returns true when the viewport is narrower than Tailwind's `md` breakpoint (768px). */
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 768,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return isMobile;
+}
 
 interface FeedListProps {
   items: FeedItemType[];
@@ -79,31 +93,48 @@ export function FeedList({
   onItemSave,
   onItemArchive,
 }: FeedListProps) {
+  // Desktop in-element scroll container
   const parentRef = useRef<HTMLDivElement>(null);
+  // Mobile window-scroll container (used to compute scrollMargin for the virtualizer)
+  const windowListRef = useRef<HTMLDivElement>(null);
+
+  const isMobile = useIsMobile();
   const { FeedEmptyState } = usePlatform();
   const showEngagementCounts = useAppStore(
     (s) => s.preferences.display.showEngagementCounts,
   );
 
-  const virtualizer = useVirtualizer({
-    count: items.length,
-    getScrollElement: () => parentRef.current,
+  // Both virtualizers are always constructed (rules of hooks). Only the active
+  // one's output is rendered. On mobile the element virtualizer has no scroll
+  // element (returns 0 items); on desktop the window virtualizer is idle.
+  const elementVirtualizer = useVirtualizer({
+    count: isMobile ? 0 : items.length,
+    getScrollElement: () => (isMobile ? null : parentRef.current),
     estimateSize: () => 220,
     overscan: 5,
     measureElement: (el) => el.getBoundingClientRect().height,
   });
 
+  const windowVirtualizer = useWindowVirtualizer({
+    count: isMobile ? items.length : 0,
+    estimateSize: () => 220,
+    overscan: 5,
+    // Distance from window top to the list container. Accounts for the sticky
+    // header so items are offset correctly as window.scrollY changes.
+    scrollMargin: windowListRef.current?.offsetTop ?? 0,
+  });
+
   if (items.length === 0) {
     if (FeedEmptyState) {
       return (
-        <div className="flex flex-col items-center justify-center flex-1 min-h-0 overflow-auto text-center px-6 py-12">
+        <div className="flex flex-col items-center justify-center min-h-[60dvh] md:flex-1 md:min-h-0 md:overflow-auto text-center px-6 py-12">
           <FeedEmptyState />
         </div>
       );
     }
 
     return (
-      <div className="flex flex-col items-center justify-center flex-1 min-h-0 overflow-auto text-center px-6 py-12">
+      <div className="flex flex-col items-center justify-center min-h-[60dvh] md:flex-1 md:min-h-0 md:overflow-auto text-center px-6 py-12">
         <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#3b82f6]/20 to-[#8b5cf6]/20 flex items-center justify-center mb-4">
           <span className="text-2xl">📡</span>
         </div>
@@ -135,21 +166,62 @@ export function FeedList({
     );
   }
 
+  // Mobile: window scroll — feed items flow in the document. The address bar
+  // collapses naturally and content scrolls behind it.
+  if (isMobile) {
+    return (
+      <div ref={windowListRef}>
+        <div
+          style={{ height: windowVirtualizer.getTotalSize() }}
+          className="relative w-full"
+        >
+          {windowVirtualizer.getVirtualItems().map((virtualItem) => (
+            <div
+              key={virtualItem.key}
+              data-index={virtualItem.index}
+              ref={windowVirtualizer.measureElement}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                // Subtract scrollMargin so item positions are relative to the
+                // list container's top, not the window's origin.
+                transform: `translateY(${virtualItem.start - windowVirtualizer.options.scrollMargin}px)`,
+              }}
+              className={`px-3 pb-3 max-w-2xl mx-auto${virtualItem.index === 0 ? " pt-3" : ""}`}
+            >
+              <FeedItemRow
+                item={items[virtualItem.index]}
+                index={virtualItem.index}
+                focused={virtualItem.index === focusedIndex}
+                showEngagement={showEngagementCounts}
+                onItemClick={onItemClick}
+                onFocusChange={onFocusChange}
+                onItemSave={onItemSave}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Desktop: in-element scroll with fixed layout.
   return (
     <div
       ref={parentRef}
       className="flex-1 min-h-0 overflow-auto overscroll-none minimal-scroll"
-      style={{ paddingBottom: 'calc(100lvh - 100dvh + env(safe-area-inset-bottom, 0px))' }}
     >
       <div
-        style={{ height: virtualizer.getTotalSize() }}
+        style={{ height: elementVirtualizer.getTotalSize() }}
         className="relative w-full"
       >
-        {virtualizer.getVirtualItems().map((virtualItem) => (
+        {elementVirtualizer.getVirtualItems().map((virtualItem) => (
           <div
             key={virtualItem.key}
             data-index={virtualItem.index}
-            ref={virtualizer.measureElement}
+            ref={elementVirtualizer.measureElement}
             style={{
               position: "absolute",
               top: 0,
@@ -157,7 +229,7 @@ export function FeedList({
               width: "100%",
               transform: `translateY(${virtualItem.start}px)`,
             }}
-            className={`px-3 sm:px-4 pb-3 sm:pb-4 max-w-2xl mx-auto${virtualItem.index === 0 ? " pt-3 sm:pt-4" : ""}`}
+            className={`px-4 pb-4 max-w-2xl mx-auto${virtualItem.index === 0 ? " pt-4" : ""}`}
           >
             <FeedItemRow
               item={items[virtualItem.index]}

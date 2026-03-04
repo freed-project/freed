@@ -86,7 +86,9 @@ export function FeedView() {
   }, [activeFilter]);
 
   return (
-    <div className="h-full flex flex-col">
+    // h-full + flex-col only needed on desktop (in-element scroll layout).
+    // On mobile the document scrolls so FeedView is auto-height.
+    <div className="md:h-full md:flex md:flex-col">
       <FeedList
         items={filteredItems}
         onItemClick={openItem}
