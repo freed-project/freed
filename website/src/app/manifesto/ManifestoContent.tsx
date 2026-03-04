@@ -46,13 +46,22 @@ export default function ManifestoContent() {
               </h2>
               <p>
                 Odysseus lashed himself to the mast before his ship reached the
-                Sirens. He heard the song. He survived. The secret: decide
-                before temptation arrives. Install Freed now.
-                <br />
-                <br />
-                We browse in the background. Posts land in a vault on your
-                device, synced to your phone. We build you a feed from
-                everything you love. The platforms become players in your game.
+                Sirens. He heard the songs. He survived. The secret: decide
+                before temptation arrives. Install Freed now. We'll protect you
+                from ever doom scrolling again.
+              </p>
+            </section>
+
+            <section>
+              <h2 className="text-2xl font-bold text-text-primary mb-4">
+                The Solution
+              </h2>
+              <p>
+                Freed browses your feeds in the background and strips out the
+                noise. Posts land in a secure vault on your computer, and are
+                live-synced to your phone. Freed curates a unified feed of
+                everything you love, with you in control. The platforms become
+                players in your game.
               </p>
             </section>
 
@@ -65,11 +74,9 @@ export default function ManifestoContent() {
                   <strong className="text-text-primary block mb-1">
                     Your attention is priceless
                   </strong>
-                  It's also finite. Every algorithm on earth knows this. That's
-                  the business model. Freed takes the opposite position: your
-                  time, your focus, and your data stay yours. Everything you
-                  read lives on your device. We never see any of it. And when
-                  you've read what you came to read, you're done.
+                  It's also finite. With Freed, your time, your focus, and your
+                  data stay yours. Everything you read lives on your device. We
+                  never see any of it. Read what you came for. Get back to life.
                 </li>
                 <li>
                   <strong className="text-text-primary block mb-1">
@@ -83,17 +90,11 @@ export default function ManifestoContent() {
                   <strong className="text-text-primary block mb-1">
                     This belongs to everyone.
                   </strong>
-                  MIT licensed. Fork it. Audit it. Share it.
+                  MIT licensed. Fork it. Audit it. Share it. Your feed, your
+                  algorithm, your rules. The code is public. The roadmap is
+                  public. Resonate? Subscribe below.
                 </li>
               </ul>
-            </section>
-
-            <section>
-              <p>
-                We're building a world where you stay in the driver's seat. Your
-                feed, your algorithm, your rules. The code is public. The
-                roadmap is public. Resonate? Subscribe below.
-              </p>
             </section>
 
             <section className="not-prose text-center py-14">
