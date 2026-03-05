@@ -40,7 +40,6 @@ const JUST_UPDATED_KEY = "freed-updated-to";
 function App() {
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
-  const isLoading = useAppStore((state) => state.isLoading);
   const error = useAppStore((state) => state.error);
 
   useEffect(() => {
@@ -216,17 +215,6 @@ function App() {
     }),
     [checkForUpdates, applyUpdate, handleFactoryReset],
   );
-
-  if (!isInitialized && isLoading) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-transparent">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-glow-purple border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-text-secondary">Loading your feed...</p>
-        </div>
-      </div>
-    );
-  }
 
   if (error && !isInitialized) {
     return (

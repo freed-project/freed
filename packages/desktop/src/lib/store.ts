@@ -194,6 +194,33 @@ function hydrateFromDoc(doc: FreedDoc): Partial<AppState> {
   };
 }
 
+/**
+ * Run idempotent startup migrations in the background after the app renders.
+ * subscribe() is already wired up at call time, so any doc mutations propagate
+ * to the UI automatically. Errors are swallowed — all three ops are non-fatal.
+ */
+async function runStartupMigrations(archivePruneDays: number): Promise<void> {
+  try {
+    // Heal "Untitled Feed" sentinels from URL hostname — zero network required.
+    await docHealUntitledFeedTitles();
+  } catch {
+    // non-fatal
+  }
+  try {
+    // Remove phantom duplicates caused by key-scheme changes (guid vs link priority).
+    await docDeduplicateFeedItems();
+  } catch {
+    // non-fatal
+  }
+  try {
+    if (archivePruneDays > 0) {
+      await docPruneArchivedItems(archivePruneDays * 24 * 60 * 60 * 1000);
+    }
+  } catch {
+    // non-fatal
+  }
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   items: [],
@@ -226,21 +253,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ isLoading: true });
       const doc = await initDoc();
 
-      // Heal "Untitled Feed" sentinels from URL hostname — zero network,
-      // runs before any cloud merge so users never see the sentinel on startup.
-      await docHealUntitledFeedTitles();
-
-      // Run dedup migration — no-op when clean, removes phantom duplicates
-      // caused by key-scheme changes (guid vs link priority).
-      await docDeduplicateFeedItems();
-
-      // Prune archived items older than the configured threshold
-      const pruneDays = doc.preferences.display.archivePruneDays ?? 30;
-      if (pruneDays > 0) {
-        await docPruneArchivedItems(pruneDays * 24 * 60 * 60 * 1000);
-      }
-
-      // Subscribe to future changes (for sync).
+      // Subscribe to future changes (for sync) before we flip isInitialized so
+      // background migrations that fire immediately after are propagated to the UI.
       // Reuse count map references when values haven't changed so Sidebar
       // selectors don't trigger re-renders on unrelated mutations.
       subscribe((updatedDoc) => {
@@ -263,13 +277,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         ? { isAuthenticated: true, cookies: xCookies }
         : { isAuthenticated: false };
 
-      // Hydrate initial state
+      // Hydrate and show the app immediately — no need to wait for migrations.
       set({
         ...hydrateFromDoc(doc),
         xAuth,
         isInitialized: true,
         isLoading: false,
       });
+
+      // Run cleanup migrations in the background. All three are idempotent; failures
+      // are non-fatal. subscribe() above propagates any changes to the UI automatically.
+      void runStartupMigrations(doc.preferences.display.archivePruneDays ?? 30);
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : "Failed to initialize",

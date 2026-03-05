@@ -1,8 +1,11 @@
 import { useRef, memo, useCallback, useEffect, useState } from "react";
 import { useVirtualizer, useWindowVirtualizer } from "@tanstack/react-virtual";
 import { FeedItem } from "./FeedItem.js";
+import { FeedItemSkeleton } from "./FeedItemSkeleton.js";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
+
+const SKELETON_COUNT = 8;
 
 /** Returns true when the viewport is narrower than Tailwind's `md` breakpoint (768px). */
 function useIsMobile(): boolean {
@@ -106,6 +109,7 @@ export function FeedList({
 
   const isMobile = useIsMobile();
   const { FeedEmptyState } = usePlatform();
+  const isLoading = useAppStore((s) => s.isLoading);
   const showEngagementCounts = useAppStore(
     (s) => s.preferences.display.showEngagementCounts,
   );
@@ -165,6 +169,21 @@ export function FeedList({
     }
     scrollReadHighWater.current = minVisible - 1;
   });
+
+  // Show shimmer placeholders while the doc is loading from IndexedDB.
+  // Once isLoading flips false, items will populate and we drop into the
+  // normal virtualizer path (or the empty state if the library is genuinely empty).
+  if (isLoading && items.length === 0) {
+    return (
+      <div className="flex-1 min-h-0 overflow-auto overscroll-none minimal-scroll">
+        <div className="px-4 pt-4 space-y-4 max-w-2xl mx-auto">
+          {Array.from({ length: SKELETON_COUNT }, (_, i) => (
+            <FeedItemSkeleton key={i} />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (items.length === 0) {
     // Search returned no results — custom empty state.

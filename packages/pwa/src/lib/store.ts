@@ -149,13 +149,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ isLoading: true });
       const doc = await initDoc();
 
-      // Prune archived items older than the configured threshold
-      const pruneDays = doc.preferences.display.archivePruneDays ?? 30;
-      if (pruneDays > 0) {
-        await docPruneArchivedItems(pruneDays * 24 * 60 * 60 * 1000);
-      }
-
-      // Subscribe to future changes (for sync).
+      // Subscribe to future changes (for sync) before we flip isInitialized so
+      // background migrations that fire immediately after are propagated to the UI.
       // Reuse count map references when values haven't changed so Sidebar
       // selectors don't trigger re-renders on unrelated mutations.
       subscribe((updatedDoc) => {
@@ -172,12 +167,21 @@ export const useAppStore = create<AppState>((set, get) => ({
         set(next);
       });
 
-      // Hydrate initial state
+      // Hydrate and show the app immediately — no need to wait for migrations.
       set({
         ...hydrateFromDoc(doc),
         isInitialized: true,
         isLoading: false,
       });
+
+      // Prune archived items in the background. Idempotent; failure is non-fatal.
+      // subscribe() above propagates the resulting doc change to the UI automatically.
+      const pruneDays = doc.preferences.display.archivePruneDays ?? 30;
+      if (pruneDays > 0) {
+        void docPruneArchivedItems(pruneDays * 24 * 60 * 60 * 1000).catch(() => {
+          // non-fatal
+        });
+      }
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : "Failed to initialize",
