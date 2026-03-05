@@ -232,6 +232,21 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const { open: showSettings, openDefault: openSettings, close: closeSettings } = useSettingsStore();
   const [dragWidth, setDragWidth] = useState<number | null>(null);
+
+  // Allow external packages (desktop, pwa) to open settings to a specific section
+  // via a DOM event rather than importing the store directly across package boundaries.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { scrollTo?: string } | undefined;
+      if (detail?.scrollTo) {
+        useSettingsStore.getState().openTo(detail.scrollTo);
+      } else {
+        useSettingsStore.getState().openDefault();
+      }
+    };
+    window.addEventListener("freed:open-settings", handler);
+    return () => window.removeEventListener("freed:open-settings", handler);
+  }, []);
   const [openMenuFeedUrl, setOpenMenuFeedUrl] = useState<string | null>(null);
   const [menuAnchorRect, setMenuAnchorRect] = useState<DOMRect | null>(null);
   const dragging = useRef(false);

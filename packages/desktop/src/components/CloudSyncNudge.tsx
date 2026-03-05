@@ -10,7 +10,6 @@
 
 import { useState, useCallback } from "react";
 import { getCloudToken } from "../lib/sync";
-import { useSettingsStore } from "@freed/ui/lib/settings-store";
 
 /** Returns true when at least one cloud provider has a stored token. */
 export function hasAnyCloudProvider(): boolean {
@@ -21,10 +20,11 @@ export function CloudSyncNudge() {
   const [dismissed, setDismissed] = useState(false);
 
   const handleDismiss = useCallback(() => setDismissed(true), []);
-  const handleSetUp = useCallback(
-    () => useSettingsStore.getState().openTo("sync"),
-    [],
-  );
+  const handleSetUp = useCallback(() => {
+    window.dispatchEvent(
+      new CustomEvent("freed:open-settings", { detail: { scrollTo: "sync" } }),
+    );
+  }, []);
 
   if (dismissed || hasAnyCloudProvider()) return null;
 
