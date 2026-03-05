@@ -28,6 +28,7 @@ import { start as startContentFetcher, stop as stopContentFetcher } from "./lib/
 import { useAppStore as useDesktopStore } from "./lib/store";
 import { pickContactViaTauri } from "./lib/contacts";
 import { XFeedEmptyState } from "./components/XFeedEmptyState";
+import { XSettingsSection } from "./components/XSettingsSection";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
@@ -181,6 +182,7 @@ function App() {
       HeaderSyncIndicator: DesktopSyncIndicator,
       SettingsExtraSections: MobileSyncTab,
       FeedEmptyState: XFeedEmptyState,
+      XSettingsContent: XSettingsSection,
       checkForUpdates,
       applyUpdate,
       factoryReset: handleFactoryReset,
