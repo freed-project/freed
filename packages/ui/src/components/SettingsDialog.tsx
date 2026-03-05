@@ -720,8 +720,24 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
           <NavList />
 
-          {/* Footer link — desktop only */}
-          <div className="hidden sm:block px-4 py-3 shrink-0 border-t border-[rgba(255,255,255,0.05)]">
+          {/* Footer — desktop sidebar only */}
+          <div className="hidden sm:flex items-center justify-between px-4 py-3 shrink-0 border-t border-[rgba(255,255,255,0.05)]">
+            {checkForUpdates ? (
+              <button
+                onClick={() => {
+                  setSearch("");
+                  scrollToSection("updates");
+                  handleCheckForUpdates();
+                }}
+                className="text-xs font-mono text-[#52525b] hover:text-[#a1a1aa] transition-colors tabular-nums"
+              >
+                v{__APP_VERSION__}
+              </button>
+            ) : (
+              <span className="text-xs font-mono text-[#52525b] tabular-nums">
+                v{__APP_VERSION__}
+              </span>
+            )}
             <a
               href="https://freed.wtf"
               target="_blank"
