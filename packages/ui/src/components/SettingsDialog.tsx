@@ -277,14 +277,35 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [activeSection, setActiveSection] = useState<SectionId>("sync");
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-check for updates whenever the Updates section becomes active,
-  // but only if we haven't already checked (or are currently checking).
+  // Ref attached to the "Check for updates" button container -- observed below.
+  const checkButtonRef = useRef<HTMLDivElement>(null);
+  // Keep a ref in sync with updateState.status so the observer callback always
+  // reads the latest value without needing to be re-created on every status change.
+  const updateStatusRef = useRef(updateState.status);
+  updateStatusRef.current = updateState.status;
+
+  // Auto-check for updates as soon as the button enters the scroll viewport.
+  // Using a dedicated observer on the button itself (rather than waiting for the
+  // section header to reach the top-20% scrollspy threshold) means the check
+  // fires whenever the button is actually visible, not just when the section is
+  // considered "active" by the nav highlight logic.
   useEffect(() => {
-    if (activeSection === "updates" && updateState.status === "idle" && checkForUpdates) {
-      handleCheckForUpdates();
-    }
+    const btn = checkButtonRef.current;
+    const root = scrollRef.current;
+    if (!btn || !root || !checkForUpdates) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && updateStatusRef.current === "idle") {
+          handleCheckForUpdates();
+        }
+      },
+      { root, threshold: 0 },
+    );
+    observer.observe(btn);
+    return () => observer.disconnect();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSection]);
+  }, [open, checkForUpdates]);
   // While true, IntersectionObserver updates are suppressed so intermediate
   // sections that drift through the trigger zone during a smooth-scroll
   // animation don't cause nav items to flicker.
@@ -521,7 +542,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 <span className="text-sm font-bold font-mono">v{__APP_VERSION__}</span>
               </p>
               {checkForUpdates && (
-                <div className="flex items-center gap-3">
+                <div ref={checkButtonRef} className="flex items-center gap-3">
                   <button
                     onClick={handleCheckForUpdates}
                     disabled={updateState.status === "checking"}
@@ -743,7 +764,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 onClick={() => {
                   setSearch("");
                   scrollToSection("updates");
-                  handleCheckForUpdates();
                 }}
                 className="text-xs font-mono text-[#52525b] hover:text-[#a1a1aa] transition-colors tabular-nums"
               >
