@@ -4,26 +4,27 @@
  *
  * Shown on every app launch until the user connects at least one provider.
  * Dismissing it hides it for the current session only; it reappears on the
- * next launch if still unconfigured. Clicking "Set up" opens the full
- * CloudSyncSetupDialog flow.
+ * next launch if still unconfigured. Clicking "Set up" opens the unified
+ * Settings dialog pre-scrolled to the Sync section.
  */
 
 import { useState, useCallback } from "react";
 import { getCloudToken } from "../lib/sync";
-
-interface CloudSyncNudgeProps {
-  onSetUp: () => void;
-}
+import { useSettingsStore } from "@freed/ui/lib/settings-store";
 
 /** Returns true when at least one cloud provider has a stored token. */
 export function hasAnyCloudProvider(): boolean {
   return !!(getCloudToken("gdrive") || getCloudToken("dropbox"));
 }
 
-export function CloudSyncNudge({ onSetUp }: CloudSyncNudgeProps) {
+export function CloudSyncNudge() {
   const [dismissed, setDismissed] = useState(false);
 
   const handleDismiss = useCallback(() => setDismissed(true), []);
+  const handleSetUp = useCallback(
+    () => useSettingsStore.getState().openTo("sync"),
+    [],
+  );
 
   if (dismissed || hasAnyCloudProvider()) return null;
 
@@ -49,7 +50,7 @@ export function CloudSyncNudge({ onSetUp }: CloudSyncNudgeProps) {
       </p>
 
       <button
-        onClick={onSetUp}
+        onClick={handleSetUp}
         className="text-xs font-medium text-[#8b5cf6] hover:text-[#a78bfa] transition-colors whitespace-nowrap"
       >
         Set up

@@ -19,6 +19,7 @@ import {
 import { createPortal } from "react-dom";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
 import { useDebugStore } from "../lib/debug-store.js";
+import { useSettingsStore } from "../lib/settings-store.js";
 import { FeedsSection } from "./settings/FeedsSection.js";
 import { SavedSection } from "./settings/SavedSection.js";
 import { AISection } from "./settings/AISection.js";
@@ -324,6 +325,23 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       setMobileView("nav");
     }
   }, [open]);
+
+  // Scroll to a programmatically requested section (e.g. nudge → Sync)
+  const { targetSection, clearTarget } = useSettingsStore();
+  useEffect(() => {
+    if (!open || !targetSection) return;
+    // Wait one frame for the DOM to be fully painted before scrolling
+    const rafId = requestAnimationFrame(() => {
+      const el = scrollRef.current?.querySelector<HTMLElement>(`[data-section="${targetSection}"]`);
+      if (el && scrollRef.current) {
+        scrollRef.current.scrollTop = el.offsetTop - 16;
+        setActiveSection(targetSection as SectionId);
+        setMobileView("section");
+      }
+      clearTarget();
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [open, targetSection, clearTarget]);
 
   // Body scroll lock
   useEffect(() => {

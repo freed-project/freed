@@ -21,3 +21,4 @@ export { ToastContainer, useToastStore, toast } from "./components/Toast.js";
 export type { ToastType } from "./components/Toast.js";
 export { AddFeedDialog } from "./components/AddFeedDialog.js";
 export { SettingsDialog } from "./components/SettingsDialog.js";
+export { useSettingsStore } from "./lib/settings-store.js";

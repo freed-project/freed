@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } fro
 import type { RssFeed } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { SettingsDialog } from "../SettingsDialog.js";
+import { useSettingsStore } from "../../lib/settings-store.js";
 import { AllIcon, RssIcon, FacebookIcon, InstagramIcon, MapPinIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
 /** Compact number: 1234 → "1.2k", 1_200_000 → "1.2m". Trims trailing ".0". */
 function fmt(n: number): string {
@@ -229,36 +230,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const items = useAppStore((s) => s.items);
 
-  const [showSettings, setShowSettings] = useState(false);
-  const [settingsScrollTarget, setSettingsScrollTarget] = useState<string | null>(null);
+  const { open: showSettings, openDefault: openSettings, close: closeSettings } = useSettingsStore();
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const [openMenuFeedUrl, setOpenMenuFeedUrl] = useState<string | null>(null);
   const [menuAnchorRect, setMenuAnchorRect] = useState<DOMRect | null>(null);
   const dragging = useRef(false);
 
-  // Listen for programmatic "open settings" requests (e.g. desktop sync indicator)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { scrollTo?: string } | undefined;
-      setShowSettings(true);
-      if (detail?.scrollTo) {
-        setSettingsScrollTarget(detail.scrollTo);
-      }
-    };
-    window.addEventListener("freed:open-settings", handler);
-    return () => window.removeEventListener("freed:open-settings", handler);
-  }, []);
-
-  // Scroll to target section after settings panel opens
-  useEffect(() => {
-    if (!showSettings || !settingsScrollTarget) return;
-    const timer = setTimeout(() => {
-      const el = document.getElementById(`${settingsScrollTarget}-section`);
-      el?.scrollIntoView({ behavior: "smooth", block: "start" });
-      setSettingsScrollTarget(null);
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [showSettings, settingsScrollTarget]);
 
   // ─── Tag tree ────────────────────────────────────────────────────────────────
 
@@ -599,7 +576,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           {/* Settings — pushed to bottom */}
           <div className="mt-auto shrink-0">
             <button
-              onClick={() => setShowSettings(true)}
+              onClick={openSettings}
               className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-all"
             >
               <span className="w-5 text-center">
@@ -620,7 +597,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         />
       </aside>
 
-      <SettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
+      <SettingsDialog open={showSettings} onClose={closeSettings} />
 
       {/* Feed context menu — rendered outside scroll container to avoid clipping */}
       {openMenuFeedUrl && menuAnchorRect && feeds[openMenuFeedUrl] && (
