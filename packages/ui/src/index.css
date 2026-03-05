@@ -1,0 +1,311 @@
+/* ============================================
+   Freed Design System - Shared Component CSS
+   Canonical source of truth for all global
+   class names used by @freed/ui components.
+   Consumed via @import by pwa/ and desktop/.
+   ============================================ */
+
+/* Design tokens */
+:root {
+  --font-body: "Manrope", system-ui, -apple-system, sans-serif;
+  --font-logo: "Space Grotesk", system-ui, sans-serif;
+
+  --freed-black: #0a0a0a;
+  --freed-dark: #0f0f0f;
+  --freed-surface: #141414;
+  --freed-border: rgba(255, 255, 255, 0.08);
+
+  --glow-blue: #3b82f6;
+  --glow-purple: #8b5cf6;
+  --glow-cyan: #06b6d4;
+
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+
+  --bg-card: rgba(255, 255, 255, 0.03);
+  --bg-card-hover: rgba(255, 255, 255, 0.05);
+  --bg-sidebar: rgba(20, 20, 20, 0.8);
+  --bg-input: rgba(255, 255, 255, 0.05);
+
+  --sidebar-width: 240px;
+  --card-radius: 16px;
+  --button-radius: 8px;
+}
+
+/* ---- Typography ---- */
+
+.font-logo {
+  font-family: var(--font-logo);
+  letter-spacing: -0.02em;
+}
+
+.gradient-text {
+  background: linear-gradient(
+    135deg,
+    var(--glow-blue),
+    var(--glow-purple),
+    var(--glow-cyan)
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ---- Glow utilities ---- */
+
+.glow-sm {
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.2), 0 0 20px rgba(59, 130, 246, 0.1);
+}
+
+.glow-md {
+  box-shadow:
+    0 0 20px rgba(139, 92, 246, 0.3),
+    0 0 40px rgba(59, 130, 246, 0.15),
+    0 0 60px rgba(139, 92, 246, 0.05);
+}
+
+/* ---- Cards ---- */
+
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--freed-border);
+  border-radius: var(--card-radius);
+}
+
+.glass-card:hover {
+  background: var(--bg-card-hover);
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+/* No backdrop-filter here — blur compositing across 10-15 simultaneous
+   cards destroys scroll frame rate. The solid surface is visually equivalent
+   on our near-black background. */
+.feed-card {
+  background: var(--freed-surface);
+  border: 1px solid var(--freed-border);
+  border-radius: var(--card-radius);
+  padding: 16px;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.feed-card:hover {
+  background: #1a1a1a;
+  border-color: rgba(139, 92, 246, 0.2);
+}
+
+/* ---- Buttons ---- */
+
+.btn-primary {
+  position: relative;
+  background: linear-gradient(135deg, var(--glow-blue), var(--glow-purple));
+  color: white;
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--button-radius);
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
+  overflow: hidden;
+}
+
+.btn-primary:hover {
+  transform: scale(1.03);
+  box-shadow: 0 0 25px rgba(139, 92, 246, 0.4);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--text-primary);
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--button-radius);
+  border: 1px solid var(--freed-border);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  border-color: var(--glow-purple);
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.glass-button {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--freed-border);
+  border-radius: var(--button-radius);
+  color: var(--text-primary);
+  padding: 8px 16px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.glass-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.glass-button:active {
+  transform: scale(0.98);
+}
+
+/* ---- Selection ---- */
+
+::selection {
+  background: rgba(139, 92, 246, 0.4);
+  color: white;
+}
+
+/* ---- Scrollbars ---- */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Thin auto-hiding scrollbar used by Sidebar and FeedList */
+.minimal-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.2s ease;
+}
+
+.minimal-scroll:hover,
+.minimal-scroll:active {
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.minimal-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.minimal-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.minimal-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+  transition: background 0.2s ease;
+}
+
+.minimal-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.minimal-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Hide scrollbar entirely (mobile feed) */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ---- Sync indicator ---- */
+
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.sync-dot.connected {
+  background: #22c55e;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+}
+
+.sync-dot.disconnected {
+  background: var(--text-muted);
+}
+
+.sync-dot.syncing {
+  background: var(--glow-purple);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* ---- Animations ---- */
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Slide up — notification/toast entry used by both app shells */
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+/* Slide in/out — used by Toast component */
+@keyframes slide-in {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-out {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.2s ease-out;
+}
+
+.animate-slide-out {
+  animation: slide-out 0.2s ease-in;
+}

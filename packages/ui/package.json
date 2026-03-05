@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./index.css": "./src/index.css",
     "./components/layout": "./src/components/layout/index.ts",
     "./components/feed": "./src/components/feed/index.ts",
     "./components/BottomSheet": "./src/components/BottomSheet.tsx",
