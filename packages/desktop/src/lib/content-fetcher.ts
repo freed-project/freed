@@ -25,6 +25,7 @@ import { contentCache } from "./content-cache.js";
 import { docUpdateFeedItem, subscribe, getDoc } from "./automerge.js";
 import { summarize } from "./ai-summarizer.js";
 import { secureStorage } from "./secure-storage.js";
+import { addDebugEvent } from "@freed/ui/lib/debug-store";
 
 export interface FetcherStatus {
   pending: number;
@@ -144,8 +145,10 @@ async function processNext(): Promise<void> {
 
     completed++;
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[content-fetcher] Failed to fetch ${entry.url}:`, err);
     failed.add(entry.globalId);
+    addDebugEvent("error", `[Fetcher] failed to fetch ${entry.url}: ${msg}`);
   }
 
   notifyStatus();
@@ -168,7 +171,11 @@ export function start(): void {
 
   // Process one item every 2 seconds -- polite to remote servers
   intervalHandle = setInterval(() => {
-    processNext().catch((err) => console.error("[content-fetcher] Unexpected error:", err));
+    processNext().catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[content-fetcher] Unexpected error:", err);
+      addDebugEvent("error", `[Fetcher] unexpected error in processNext: ${msg}`);
+    });
   }, 2_000);
 }
 

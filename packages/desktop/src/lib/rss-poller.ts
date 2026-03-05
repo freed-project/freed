@@ -6,6 +6,7 @@
  */
 
 import { refreshAllFeeds } from "./capture";
+import { addDebugEvent } from "@freed/ui/lib/debug-store";
 
 /** Default poll interval: 30 minutes */
 const DEFAULT_INTERVAL_MS = 30 * 60 * 1000;
@@ -52,7 +53,9 @@ async function triggerPoll(): Promise<void> {
   try {
     await refreshAllFeeds();
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     console.error("[RssPoller] Error during poll:", err);
+    addDebugEvent("error", `[RSS] poller crashed: ${msg}`);
   } finally {
     isPolling = false;
   }

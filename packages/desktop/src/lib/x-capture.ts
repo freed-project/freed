@@ -23,6 +23,7 @@ import {
 import type { XTweetResult, TimelineResponse } from "@freed/capture-x/browser";
 import type { XCookies } from "./x-auth";
 import { useAppStore } from "./store";
+import { addDebugEvent } from "@freed/ui/lib/debug-store";
 
 // =============================================================================
 // Injectable Transport
@@ -266,7 +267,9 @@ export async function captureXTimeline(
     const result = await fetchXTimeline(cookies, requester);
 
     if (result.diag.errorStage) {
+      const detail = `[X] sync failed at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
       store.setError(result.diag.errorMessage ?? result.diag.errorStage);
+      addDebugEvent("error", detail);
       return result;
     }
 
@@ -275,6 +278,12 @@ export async function captureXTimeline(
       await store.addItems(result.items);
       const after = useAppStore.getState().items.filter((i) => i.platform === "x").length;
       result.diag.itemsAdded = Math.max(0, after - before);
+      addDebugEvent(
+        "change",
+        `[X] synced: ${result.diag.tweetsExtracted} tweets → ${result.diag.itemsAdded} new items`,
+      );
+    } else {
+      addDebugEvent("change", `[X] sync complete: timeline returned 0 tweets`);
     }
 
     return result;
@@ -282,6 +291,7 @@ export async function captureXTimeline(
     const message =
       error instanceof Error ? error.message : "Failed to capture X timeline";
     store.setError(message);
+    addDebugEvent("error", `[X] captureXTimeline threw: ${message}`);
     throw error;
   } finally {
     store.setLoading(false);
