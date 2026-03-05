@@ -296,12 +296,15 @@ export interface FollowingEntry {
   entryId: string;
   sortIndex: string;
   content: {
-    entryType: "TimelineTimelineItem";
+    entryType: "TimelineTimelineItem" | "TimelineTimelineCursor";
     itemContent?: {
       user_results: {
         result: XUserResult;
       };
     };
+    /** Pagination token — present on cursor entries only */
+    value?: string;
+    cursorType?: "Top" | "Bottom";
   };
 }
 
