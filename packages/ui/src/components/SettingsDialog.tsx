@@ -33,7 +33,6 @@ type SectionId =
   | "ai"
   | "sync"
   | "updates"
-  | "developer"
   | "danger";
 
 interface Section {
@@ -134,11 +133,6 @@ const ICONS: Record<SectionId, ReactNode> = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
     </svg>
   ),
-  developer: (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-    </svg>
-  ),
   danger: (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -178,7 +172,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     { id: "ai", label: "AI", icon: ICONS.ai },
     ...(SettingsExtraSections ? [{ id: "sync" as const, label: "Sync", icon: ICONS.sync }] : []),
     ...(checkForUpdates ? [{ id: "updates" as const, label: "Updates", icon: ICONS.updates }] : []),
-    { id: "developer", label: "Developer", icon: ICONS.developer },
     ...(factoryReset ? [{ id: "danger" as const, label: "Danger Zone", icon: ICONS.danger }] : []),
   ];
 
@@ -197,7 +190,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     { id: "ai", label: "AI", icon: ICONS.ai },
     ...(SettingsExtraSections ? [{ id: "sync" as const, label: "Sync", icon: ICONS.sync }] : []),
     ...(checkForUpdates ? [{ id: "updates" as const, label: "Updates", icon: ICONS.updates }] : []),
-    { id: "developer", label: "Developer", icon: ICONS.developer },
     ...(factoryReset ? [{ id: "danger" as const, label: "Danger Zone", icon: ICONS.danger }] : []),
   ];
 
@@ -522,42 +514,37 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           </>
         );
 
-      case "developer":
-        return (
-          <>
-            <SectionHeading label="Developer" />
-            <button
-              onClick={() => {
-                onClose();
-                setTimeout(toggleDebug, 150);
-              }}
-              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-left"
-            >
-              <div>
-                <p className="text-sm text-[#a1a1aa]">Open Debug Panel</p>
-                <p className="text-xs text-[#52525b] mt-0.5">Sync diagnostics, event log, document inspector</p>
-              </div>
-              <span className="text-[10px] font-mono text-[#52525b] shrink-0 ml-3">⌘⇧D</span>
-            </button>
-          </>
-        );
-
       case "danger":
         return factoryReset ? (
           <>
             <SectionHeading label="Danger Zone" danger />
-            <button
-              onClick={() => setShowResetConfirm(true)}
-              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 hover:border-red-500/20 transition-colors text-left"
-            >
-              <div>
-                <p className="text-sm text-red-400">Reset this device</p>
-                <p className="text-xs text-red-400/50 mt-0.5">Wipes all local data and restarts fresh</p>
-              </div>
-              <svg className="w-4 h-4 text-red-400/40 shrink-0 ml-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  onClose();
+                  setTimeout(toggleDebug, 150);
+                }}
+                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-left"
+              >
+                <div>
+                  <p className="text-sm text-[#a1a1aa]">Open Debug Panel</p>
+                  <p className="text-xs text-[#52525b] mt-0.5">Sync diagnostics, event log, document inspector</p>
+                </div>
+                <span className="text-[10px] font-mono text-[#52525b] shrink-0 ml-3">⌘⇧D</span>
+              </button>
+              <button
+                onClick={() => setShowResetConfirm(true)}
+                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 hover:border-red-500/20 transition-colors text-left"
+              >
+                <div>
+                  <p className="text-sm text-red-400">Reset this device</p>
+                  <p className="text-xs text-red-400/50 mt-0.5">Wipes all local data and restarts fresh</p>
+                </div>
+                <svg className="w-4 h-4 text-red-400/40 shrink-0 ml-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
           </>
         ) : null;
     }
