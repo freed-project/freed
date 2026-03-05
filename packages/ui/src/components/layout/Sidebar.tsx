@@ -32,7 +32,7 @@ function SidebarSection({
     <div className="shrink-0 mb-2">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center px-3 py-1.5 rounded-lg group hover:bg-white/5 transition-colors"
+        className="w-full flex items-center px-3 py-1.5 rounded-lg border border-transparent group hover:bg-white/5 transition-colors"
       >
         <span className="text-xs font-semibold text-[#71717a] uppercase tracking-wider flex-1 text-left leading-5">
           {title}
