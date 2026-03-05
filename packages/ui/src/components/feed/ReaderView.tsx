@@ -121,14 +121,28 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
       // Layer 3: Live fetch (online only)
       if (articleUrl && navigator.onLine) {
         setIsCaching(true);
-        liveFetch(articleUrl, item.globalId, cancelled, (h) => {
-          if (!cancelled) {
-            setHtml(h);
-            setContentSource("live");
-            setIsCaching(false);
-          }
-          if (!cancelled) setIsLoading(false);
-        });
+        liveFetch(
+          articleUrl,
+          item.globalId,
+          cancelled,
+          (h) => {
+            if (!cancelled) {
+              setHtml(h);
+              setContentSource("live");
+              setIsCaching(false);
+              setIsLoading(false);
+            }
+          },
+          () => {
+            // Fetch failed (CORS, network error, non-2xx) -- show feed preview text
+            if (!cancelled) {
+              setHtml(null);
+              setContentSource(null);
+              setIsCaching(false);
+              setIsLoading(false);
+            }
+          },
+        );
       } else {
         // Offline and no cached content -- fall back to feed preview text
         if (!cancelled) {
@@ -419,17 +433,22 @@ function FocusText({ text, options }: { text: string; options: FocusOptions }) {
 
 /**
  * Live-fetch an article URL and cache it in the PWA Cache API.
- * Calls `onDone` with the extracted HTML on success.
+ * Calls `onDone` with the extracted HTML on success, `onError` on any failure
+ * (CORS block, non-2xx response, network error, or cancellation).
  */
 async function liveFetch(
   url: string,
   globalId: string,
   cancelled: boolean,
   onDone: (html: string) => void,
+  onError?: () => void,
 ): Promise<void> {
   try {
     const resp = await fetch(url);
-    if (!resp.ok || cancelled) return;
+    if (!resp.ok || cancelled) {
+      onError?.();
+      return;
+    }
     const html = await resp.text();
     if (cancelled) return;
 
@@ -451,6 +470,7 @@ async function liveFetch(
 
     onDone(html);
   } catch {
-    // Network error -- content unavailable offline, silent fail
+    // Network error, CORS block, or any other exception
+    onError?.();
   }
 }

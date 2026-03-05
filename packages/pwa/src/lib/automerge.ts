@@ -1,395 +1,280 @@
 /**
- * Automerge document management for Freed PWA
+ * Automerge document client for Freed PWA (main thread)
  *
- * Handles loading, saving, and syncing the Automerge CRDT document.
+ * This module is a thin wrapper around the Automerge Web Worker. All WASM
+ * operations (A.change, A.save, A.load, A.merge) run in the worker thread,
+ * keeping the main thread free to paint and respond to user input.
+ *
+ * Public API is identical to the previous direct implementation so callers
+ * (store.ts, sync.ts, App.tsx) require no changes other than the subscriber
+ * type changing from (doc: FreedDoc) to (state: DocState).
  */
 
-import * as A from "@automerge/automerge";
-import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
-import type { FreedDoc } from "@freed/shared/schema";
-import {
-  createEmptyDoc,
-  addFeedItem,
-  addRssFeed,
-  removeRssFeed,
-  removeAllFeeds,
-  updateRssFeed,
-  updateFeedItem,
-  removeFeedItem,
-  markAsRead,
-  toggleSaved,
-  toggleArchived,
-  archiveAllReadUnsaved,
-  pruneArchivedItems,
-  updatePreferences,
-  updateLastSync,
-  addFriend,
-  updateFriend,
-  removeFriend,
-  logReachOut,
-} from "@freed/shared/schema";
-import type { FeedItem, Friend, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
 import { addDebugEvent, setDocSnapshot, registerDocAccessors } from "@freed/ui/lib/debug-store";
+import type { FeedItem, Friend, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
+import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
+export type { DocState } from "./automerge-types";
 
-// Singleton storage instance
-const storage = new IndexedDBStorage();
+// ---------------------------------------------------------------------------
+// Worker lifecycle
+// ---------------------------------------------------------------------------
 
-// Current document state
-let currentDoc: FreedDoc | null = null;
+const worker = new Worker(new URL("./automerge.worker.ts", import.meta.url), {
+  type: "module",
+});
 
-// Subscribers for document changes
-type Subscriber = (doc: FreedDoc) => void;
-const subscribers = new Set<Subscriber>();
+// ---------------------------------------------------------------------------
+// Request/response plumbing
+// ---------------------------------------------------------------------------
 
-/** Snapshot current doc stats into the debug store */
-function snapshotDoc(): void {
-  if (!currentDoc) return;
-  const binary = A.save(currentDoc);
-  setDocSnapshot({
-    deviceId: (currentDoc.meta?.deviceId as string | undefined) ?? "unknown",
-    itemCount: Object.keys(currentDoc.feedItems ?? {}).length,
-    feedCount: Object.keys(currentDoc.rssFeeds ?? {}).length,
-    binarySize: binary.byteLength,
-    savedAt: Date.now(),
+let nextReqId = 1;
+const pending = new Map<number, { resolve: () => void; reject: (err: Error) => void }>();
+
+function request(msg: WorkerRequest): Promise<void> {
+  return new Promise((resolve, reject) => {
+    pending.set(msg.reqId, { resolve, reject });
+    worker.postMessage(msg);
   });
 }
 
-/**
- * Initialize or load the Automerge document
- */
-export async function initDoc(): Promise<FreedDoc> {
-  const saved = await storage.load();
+// Latest binary from the worker — updated on every STATE_UPDATE.
+// Returned synchronously by getDocBinary() so sync.ts callers are unchanged.
+let lastBinary: Uint8Array | null = null;
 
-  if (saved) {
-    currentDoc = A.load<FreedDoc>(saved);
-  } else {
-    currentDoc = createEmptyDoc();
-    await saveDoc();
-  }
+// ---------------------------------------------------------------------------
+// Subscriber model
+// ---------------------------------------------------------------------------
 
-  const deviceId = (currentDoc.meta?.deviceId as string | undefined) ?? "unknown";
-  addDebugEvent("init", `device ...${deviceId.slice(-8)}`);
-  // Defer the debug snapshot so it doesn't block the init render path.
-  // A.save() is synchronous WASM work — run it after the UI is visible.
-  setTimeout(() => snapshotDoc(), 0);
+type Subscriber = (state: DocState) => void;
+const subscribers = new Set<Subscriber>();
 
-  // Register window escape hatch so the console can inspect the live doc.
-  registerDocAccessors(
-    () => currentDoc,
-    () => JSON.stringify(A.toJS(currentDoc!), null, 2),
-    () => A.save(currentDoc!),
-  );
-
-  return currentDoc;
-}
-
-/**
- * Get the current document (throws if not initialized)
- */
-export function getDoc(): FreedDoc {
-  if (!currentDoc) {
-    throw new Error("Document not initialized. Call initDoc() first.");
-  }
-  return currentDoc;
-}
-
-/**
- * Save the current document to IndexedDB
- */
-async function saveDoc(): Promise<void> {
-  if (!currentDoc) return;
-  const binary = A.save(currentDoc);
-  await storage.save(binary);
-}
-
-/**
- * Apply a change to the document and persist
- */
-async function applyChange(
-  changeFn: (doc: FreedDoc) => void,
-  message?: string
-): Promise<FreedDoc> {
-  if (!currentDoc) {
-    throw new Error("Document not initialized. Call initDoc() first.");
-  }
-
-  currentDoc = A.change(currentDoc, message || "update", changeFn);
-  await saveDoc();
-  addDebugEvent("change", message);
-
-  // Notify subscribers
-  for (const subscriber of subscribers) {
-    subscriber(currentDoc);
-  }
-
-  return currentDoc;
-}
-
-/**
- * Subscribe to document changes
- */
 export function subscribe(callback: Subscriber): () => void {
   subscribers.add(callback);
   return () => subscribers.delete(callback);
 }
 
-// =============================================================================
-// Document Operations (wrapped for persistence)
-// =============================================================================
+// ---------------------------------------------------------------------------
+// Inbound worker message handler
+// ---------------------------------------------------------------------------
 
-export async function docAddFeedItem(item: FeedItem): Promise<FreedDoc> {
-  // Guard: never overwrite an existing item — that would clobber the user's
-  // read/saved/tags state. Consistent with the bulk docAddFeedItems path.
-  return applyChange((doc) => {
-    if (!doc.feedItems[item.globalId]) {
-      addFeedItem(doc, item);
+worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+  const msg = event.data;
+
+  if (msg.type === "STATE_UPDATE") {
+    lastBinary = msg.binary;
+    for (const sub of subscribers) sub(msg.state);
+    return;
+  }
+
+  if (msg.type === "DEBUG_EVENT") {
+    addDebugEvent(msg.kind as Parameters<typeof addDebugEvent>[0], msg.detail, msg.bytes);
+    return;
+  }
+
+  if (msg.type === "DEBUG_SNAPSHOT") {
+    setDocSnapshot({
+      deviceId: msg.deviceId,
+      itemCount: msg.itemCount,
+      feedCount: msg.feedCount,
+      binarySize: msg.binarySize,
+      savedAt: Date.now(),
+    });
+    return;
+  }
+
+  // ACK — resolve or reject the pending promise
+  const p = pending.get(msg.reqId);
+  if (!p) return;
+  pending.delete(msg.reqId);
+  if (msg.error) {
+    p.reject(new Error(msg.error));
+  } else {
+    p.resolve();
+  }
+};
+
+worker.onerror = (err) => {
+  console.error("[AutomergeWorker] Unhandled error:", err);
+};
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Initialize the Automerge document. Must be called once before any mutations.
+ * Returns the initial hydrated state (equivalent to the old FreedDoc return,
+ * but already processed into plain JS — no WASM on the main thread).
+ */
+export async function initDoc(): Promise<DocState> {
+  return new Promise((resolve, reject) => {
+    const reqId = nextReqId++;
+
+    // One-time handler: resolve with the state from the first STATE_UPDATE
+    // that arrives while we wait for the INIT ACK.
+    let initialState: DocState | null = null;
+    let initAcked = false;
+
+    function tryResolve() {
+      if (initialState && initAcked) resolve(initialState);
     }
-  }, "Add feed item");
-}
 
-export async function docAddRssFeed(feed: RssFeed): Promise<FreedDoc> {
-  return applyChange((doc) => addRssFeed(doc, feed), "Add RSS feed");
-}
-
-export async function docRemoveRssFeed(url: string): Promise<FreedDoc> {
-  return applyChange((doc) => removeRssFeed(doc, url), "Remove RSS feed");
-}
-
-export async function docUpdateRssFeed(
-  url: string,
-  updates: Parameters<typeof updateRssFeed>[2]
-): Promise<FreedDoc> {
-  return applyChange((doc) => updateRssFeed(doc, url, updates), "Update RSS feed");
-}
-
-export async function docUpdateFeedItem(
-  globalId: string,
-  updates: Partial<FeedItem>
-): Promise<FreedDoc> {
-  return applyChange(
-    (doc) => updateFeedItem(doc, globalId, updates),
-    "Update feed item"
-  );
-}
-
-export async function docRemoveFeedItem(globalId: string): Promise<FreedDoc> {
-  return applyChange(
-    (doc) => removeFeedItem(doc, globalId),
-    "Remove feed item"
-  );
-}
-
-export async function docMarkAsRead(globalId: string): Promise<FreedDoc> {
-  return applyChange((doc) => markAsRead(doc, globalId), "Mark as read");
-}
-
-export async function docToggleSaved(globalId: string): Promise<FreedDoc> {
-  return applyChange((doc) => toggleSaved(doc, globalId), "Toggle saved");
-}
-
-export async function docToggleArchived(globalId: string): Promise<FreedDoc> {
-  return applyChange((doc) => toggleArchived(doc, globalId), "Toggle archived");
-}
-
-export async function docArchiveAllReadUnsaved(
-  platform?: string,
-  feedUrl?: string,
-): Promise<FreedDoc> {
-  return applyChange(
-    (doc) => archiveAllReadUnsaved(doc, platform, feedUrl),
-    "Archive all read",
-  );
-}
-
-export async function docPruneArchivedItems(maxAgeMs?: number): Promise<FreedDoc> {
-  return applyChange(
-    (doc) => pruneArchivedItems(doc, maxAgeMs),
-    "Prune archived items",
-  );
-}
-
-export async function docUpdatePreferences(
-  updates: Partial<UserPreferences>
-): Promise<FreedDoc> {
-  return applyChange(
-    (doc) => updatePreferences(doc, updates),
-    "Update preferences"
-  );
-}
-
-export async function docUpdateLastSync(): Promise<FreedDoc> {
-  return applyChange((doc) => updateLastSync(doc), "Update last sync");
-}
-
-// =============================================================================
-// Friend Operations
-// =============================================================================
-
-export async function docAddFriend(friend: Friend): Promise<FreedDoc> {
-  return applyChange((doc) => addFriend(doc, friend), "Add friend");
-}
-
-export async function docUpdateFriend(
-  id: string,
-  updates: Partial<Friend>
-): Promise<FreedDoc> {
-  return applyChange((doc) => updateFriend(doc, id, updates), "Update friend");
-}
-
-export async function docRemoveFriend(id: string): Promise<FreedDoc> {
-  return applyChange((doc) => removeFriend(doc, id), "Remove friend");
-}
-
-export async function docLogReachOut(
-  id: string,
-  entry: ReachOutLog
-): Promise<FreedDoc> {
-  return applyChange((doc) => logReachOut(doc, id, entry), "Log reach-out");
-}
-
-/**
- * Remove all feed subscriptions in a single CRDT change.
- * When includeItems is true, all articles are also deleted.
- * This change propagates to all synced devices.
- */
-export async function docRemoveAllFeeds(includeItems: boolean): Promise<FreedDoc> {
-  return applyChange(
-    (doc) => removeAllFeeds(doc, includeItems),
-    includeItems ? "Remove all feeds and articles" : "Remove all feeds",
-  );
-}
-
-/**
- * Wipe the IndexedDB document store for this device.
- * Local-only — does NOT propagate to other devices.
- * After calling this, reload the page to start fresh.
- */
-export async function clearLocalDoc(): Promise<void> {
-  await storage.clear();
-}
-
-/**
- * Mark all unread items as read in a single Automerge change.
- * Optionally filter by platform.
- */
-export async function docMarkAllAsRead(platform?: string): Promise<FreedDoc> {
-  return applyChange((doc) => {
-    const now = Date.now();
-    for (const item of Object.values(doc.feedItems)) {
-      if (item.userState.readAt) continue;
-      if (item.userState.hidden || item.userState.archived) continue;
-      if (platform && item.platform !== platform) continue;
-      item.userState.readAt = now;
-    }
-  }, "Mark all as read");
-}
-
-/**
- * Bulk add feed items (more efficient for initial feed fetch)
- */
-export async function docAddFeedItems(items: FeedItem[]): Promise<FreedDoc> {
-  return applyChange((doc) => {
-    for (const item of items) {
-      // Only add if not already present
-      if (!doc.feedItems[item.globalId]) {
-        addFeedItem(doc, item);
+    const stateHandler = (event: MessageEvent<WorkerResponse>) => {
+      const msg = event.data;
+      if (msg.type === "STATE_UPDATE" && !initialState) {
+        lastBinary = msg.binary;
+        initialState = msg.state;
+        tryResolve();
+      } else if (msg.type === "ACK" && msg.reqId === reqId) {
+        // Register the doc accessors so window.__freed works in the console.
+        registerDocAccessors(
+          () => null,
+          () => "(doc lives in worker — not directly accessible)",
+          () => lastBinary ?? new Uint8Array(0),
+        );
+        worker.removeEventListener("message", stateHandler);
+        if (msg.error) {
+          reject(new Error(msg.error));
+        } else {
+          initAcked = true;
+          tryResolve();
+        }
       }
-    }
-  }, `Add ${items.length} feed items`);
+    };
+
+    worker.addEventListener("message", stateHandler);
+    worker.postMessage({ reqId, type: "INIT" } satisfies WorkerRequest);
+  });
+}
+
+/** Binary snapshot of the current doc — used by sync.ts for relay/cloud upload. */
+export function getDocBinary(): Uint8Array {
+  if (!lastBinary) throw new Error("Document not initialized");
+  return lastBinary;
+}
+
+/** Merge incoming sync binary into the doc (relay / cloud download). */
+export async function mergeDoc(incoming: Uint8Array): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "MERGE_DOC", binary: incoming });
+}
+
+/** Permanently wipe the local IndexedDB store. Reload the page afterwards. */
+export async function clearLocalDoc(): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "CLEAR_LOCAL" });
+}
+
+// ---------------------------------------------------------------------------
+// Document mutations — one function per schema operation
+// ---------------------------------------------------------------------------
+
+export async function docAddFeedItem(item: FeedItem): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "ADD_FEED_ITEM", item });
+}
+
+export async function docAddFeedItems(items: FeedItem[]): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "ADD_FEED_ITEMS", items });
+}
+
+export async function docRemoveFeedItem(globalId: string): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "REMOVE_FEED_ITEM", globalId });
+}
+
+export async function docUpdateFeedItem(globalId: string, updates: Partial<FeedItem>): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "UPDATE_FEED_ITEM", globalId, updates });
+}
+
+export async function docMarkAsRead(globalId: string): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "MARK_AS_READ", globalId });
+}
+
+export async function docMarkAllAsRead(platform?: string): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "MARK_ALL_AS_READ", platform });
+}
+
+export async function docToggleSaved(globalId: string): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "TOGGLE_SAVED", globalId });
+}
+
+export async function docToggleArchived(globalId: string): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "TOGGLE_ARCHIVED", globalId });
+}
+
+export async function docArchiveAllReadUnsaved(platform?: string, feedUrl?: string): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "ARCHIVE_ALL_READ_UNSAVED", platform, feedUrl });
+}
+
+export async function docPruneArchivedItems(maxAgeMs?: number): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "PRUNE_ARCHIVED_ITEMS", maxAgeMs });
+}
+
+export async function docAddRssFeed(feed: RssFeed): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "ADD_RSS_FEED", feed });
+}
+
+export async function docRemoveRssFeed(url: string): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "REMOVE_RSS_FEED", url });
+}
+
+export async function docUpdateRssFeed(url: string, updates: Partial<RssFeed>): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "UPDATE_RSS_FEED", url, updates });
+}
+
+export async function docRemoveAllFeeds(includeItems: boolean): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "REMOVE_ALL_FEEDS", includeItems });
+}
+
+export async function docUpdatePreferences(updates: Partial<UserPreferences>): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "UPDATE_PREFERENCES", updates });
+}
+
+export async function docUpdateLastSync(): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "UPDATE_LAST_SYNC" });
+}
+
+export async function docAddFriend(friend: Friend): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "ADD_FRIEND", friend });
+}
+
+export async function docUpdateFriend(friendId: string, updates: Partial<Friend>): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "UPDATE_FRIEND", friendId, updates });
+}
+
+export async function docRemoveFriend(friendId: string): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "REMOVE_FRIEND", friendId });
+}
+
+export async function docLogReachOut(friendId: string, entry: ReachOutLog): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "LOG_REACH_OUT", friendId, entry });
 }
 
 /**
  * Add a minimal stub FeedItem for a URL that has not yet been fetched.
- *
- * Used by the PWA Save URL flow. The stub syncs to the desktop via relay,
- * where the content fetcher picks it up, fetches the HTML (bypassing CORS),
- * extracts the content, and syncs the result back to all devices.
- *
- * The stub has no preservedContent -- the desktop fills that in after fetch.
+ * The stub is created inside the worker; the return value is void because
+ * the PWA caller (App.tsx) does not use the returned stub object.
  */
-export async function docAddStubItem(
-  url: string,
-  tags: string[] = [],
-): Promise<FeedItem> {
-  let hash = 0;
-  for (let i = 0; i < url.length; i++) {
-    const ch = url.charCodeAt(i);
-    hash = (hash << 5) - hash + ch;
-    hash = hash & hash;
-  }
-  const globalId = `saved:${Math.abs(hash).toString(36)}`;
-  const now = Date.now();
-
-  let hostname = url;
-  try {
-    hostname = new URL(url).hostname;
-  } catch {
-    // malformed URL
-  }
-
-  const stub: FeedItem = {
-    globalId,
-    platform: "saved",
-    contentType: "article",
-    capturedAt: now,
-    publishedAt: now,
-    author: { id: hostname, handle: hostname, displayName: hostname },
-    content: {
-      text: url,
-      mediaUrls: [],
-      mediaTypes: [],
-      linkPreview: { url, title: url },
-    },
-    userState: { hidden: false, saved: true, savedAt: now, archived: false, tags },
-    topics: [],
-  };
-
-  await applyChange((doc) => {
-    if (!doc.feedItems[stub.globalId]) {
-      addFeedItem(doc, stub);
-    }
-  }, `Add stub item for ${url}`);
-
-  return stub;
-}
-
-/**
- * Get binary representation for sync
- */
-export function getDocBinary(): Uint8Array {
-  if (!currentDoc) {
-    throw new Error("Document not initialized");
-  }
-  return A.save(currentDoc);
-}
-
-/**
- * Merge with incoming sync data
- */
-export async function mergeDoc(incoming: Uint8Array): Promise<FreedDoc> {
-  if (!currentDoc) {
-    throw new Error("Document not initialized");
-  }
-
-  try {
-    const beforeCount = Object.keys(currentDoc.feedItems ?? {}).length;
-    const incomingDoc = A.load<FreedDoc>(incoming);
-    currentDoc = A.merge(currentDoc, incomingDoc);
-    await saveDoc();
-
-    const afterCount = Object.keys(currentDoc.feedItems ?? {}).length;
-    const delta = afterCount - beforeCount;
-    addDebugEvent("merge_ok", delta !== 0 ? `${delta > 0 ? "+" : ""}${delta} items` : "no new items", incoming.byteLength);
-    snapshotDoc();
-  } catch (err) {
-    addDebugEvent("merge_err", err instanceof Error ? err.message : String(err));
-    throw err;
-  }
-
-  // Notify subscribers
-  for (const subscriber of subscribers) {
-    subscriber(currentDoc);
-  }
-
-  return currentDoc;
+export async function docAddStubItem(url: string, tags: string[] = []): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "ADD_STUB_ITEM", url, tags });
 }

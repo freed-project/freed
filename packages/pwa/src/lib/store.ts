@@ -2,10 +2,13 @@
  * Global app state management with Zustand
  *
  * PWA version - uses Automerge for persistence and syncs with desktop.
+ * Hydration (CRDT → plain JS) now runs in the Automerge Web Worker, so the
+ * subscriber callback receives already-processed DocState — no O(n) work
+ * or WASM calls on the main thread.
  */
 
 import { create } from "zustand";
-import { createDefaultPreferences, rankFeedItems } from "@freed/shared";
+import { createDefaultPreferences } from "@freed/shared";
 import type { BaseAppState, Friend, ReachOutLog } from "@freed/shared";
 import {
   initDoc,
@@ -29,7 +32,7 @@ import {
   docRemoveFriend,
   docLogReachOut,
 } from "./automerge";
-import type { FreedDoc } from "@freed/shared/schema";
+import type { DocState } from "./automerge";
 
 /** PWA-specific store state — extends the shared base with sync connection status. */
 interface AppState extends BaseAppState {
@@ -39,8 +42,8 @@ interface AppState extends BaseAppState {
 
 /**
  * Shallow-compare two string-keyed number maps.
- * Used to preserve object identity on count maps so Zustand selectors that
- * subscribe to these objects don't trigger re-renders when values are unchanged.
+ * Preserves object identity on count maps so Zustand selectors don't trigger
+ * re-renders when values haven't changed.
  */
 function shallowEqualRecord(
   a: Record<string, number>,
@@ -50,71 +53,6 @@ function shallowEqualRecord(
   return (
     aKeys.length === Object.keys(b).length && aKeys.every((k) => a[k] === b[k])
   );
-}
-
-/**
- * Hydrate store state from Automerge document
- */
-function hydrateFromDoc(doc: FreedDoc): Partial<AppState> {
-  const allItems = Object.values(doc.feedItems);
-
-  const visibleItems = allItems.filter((item) => !item.userState.hidden);
-  const rankedItems = rankFeedItems(
-    visibleItems.sort((a, b) => b.publishedAt - a.publishedAt),
-    doc.preferences.weights,
-  );
-
-  // Single pass: derive all count derivations.
-  const feedUnreadCounts: Record<string, number> = {};
-  const feedTotalCounts: Record<string, number> = {};
-  const unreadCountByPlatform: Record<string, number> = {};
-  const itemCountByPlatform: Record<string, number> = {};
-  const archivableCountByPlatform: Record<string, number> = {};
-  const archivableFeedCounts: Record<string, number> = {};
-  let totalUnreadCount = 0;
-  let totalItemCount = 0;
-  let totalArchivableCount = 0;
-  for (const item of allItems) {
-    if (item.userState.hidden || item.userState.archived) continue;
-    totalItemCount++;
-    itemCountByPlatform[item.platform] = (itemCountByPlatform[item.platform] ?? 0) + 1;
-    if (item.rssSource) {
-      const url = item.rssSource.feedUrl;
-      feedTotalCounts[url] = (feedTotalCounts[url] ?? 0) + 1;
-    }
-    if (!item.userState.readAt) {
-      totalUnreadCount++;
-      unreadCountByPlatform[item.platform] = (unreadCountByPlatform[item.platform] ?? 0) + 1;
-      if (item.rssSource) {
-        const url = item.rssSource.feedUrl;
-        feedUnreadCounts[url] = (feedUnreadCounts[url] ?? 0) + 1;
-      }
-    } else if (!item.userState.saved) {
-      // Read and not saved: eligible for batch archive
-      totalArchivableCount++;
-      archivableCountByPlatform[item.platform] = (archivableCountByPlatform[item.platform] ?? 0) + 1;
-      if (item.rssSource) {
-        const url = item.rssSource.feedUrl;
-        archivableFeedCounts[url] = (archivableFeedCounts[url] ?? 0) + 1;
-      }
-    }
-  }
-
-  return {
-    items: rankedItems,
-    feeds: doc.rssFeeds,
-    friends: doc.friends ?? {},
-    preferences: doc.preferences,
-    feedUnreadCounts,
-    feedTotalCounts,
-    totalUnreadCount,
-    unreadCountByPlatform,
-    totalItemCount,
-    itemCountByPlatform,
-    totalArchivableCount,
-    archivableCountByPlatform,
-    archivableFeedCounts,
-  };
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -141,42 +79,37 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedItemId: null,
   searchQuery: "",
 
-  // Initialize from Automerge
+  // Initialize from Automerge worker
   initialize: async () => {
     if (get().isInitialized) return;
 
     try {
       set({ isLoading: true });
-      const doc = await initDoc();
+      const state = await initDoc();
 
-      // Subscribe to future changes (for sync) before we flip isInitialized so
-      // background migrations that fire immediately after are propagated to the UI.
-      // Reuse count map references when values haven't changed so Sidebar
-      // selectors don't trigger re-renders on unrelated mutations.
-      subscribe((updatedDoc) => {
-        const next = hydrateFromDoc(updatedDoc);
+      // Subscribe to future changes before flipping isInitialized so background
+      // mutations (prune, sync merges) propagate to the UI immediately.
+      // Reuse count map references when values are unchanged to avoid
+      // re-rendering sidebar selectors on unrelated mutations.
+      subscribe((next: DocState) => {
         const prev = get();
-        if (shallowEqualRecord(next.feedUnreadCounts!, prev.feedUnreadCounts))
-          next.feedUnreadCounts = prev.feedUnreadCounts;
-        if (shallowEqualRecord(next.feedTotalCounts!, prev.feedTotalCounts))
-          next.feedTotalCounts = prev.feedTotalCounts;
-        if (shallowEqualRecord(next.unreadCountByPlatform!, prev.unreadCountByPlatform))
-          next.unreadCountByPlatform = prev.unreadCountByPlatform;
-        if (shallowEqualRecord(next.itemCountByPlatform!, prev.itemCountByPlatform))
-          next.itemCountByPlatform = prev.itemCountByPlatform;
-        set(next);
+        const merged = { ...next } as Partial<AppState>;
+        if (shallowEqualRecord(next.feedUnreadCounts, prev.feedUnreadCounts))
+          merged.feedUnreadCounts = prev.feedUnreadCounts;
+        if (shallowEqualRecord(next.feedTotalCounts, prev.feedTotalCounts))
+          merged.feedTotalCounts = prev.feedTotalCounts;
+        if (shallowEqualRecord(next.unreadCountByPlatform, prev.unreadCountByPlatform))
+          merged.unreadCountByPlatform = prev.unreadCountByPlatform;
+        if (shallowEqualRecord(next.itemCountByPlatform, prev.itemCountByPlatform))
+          merged.itemCountByPlatform = prev.itemCountByPlatform;
+        set(merged);
       });
 
-      // Hydrate and show the app immediately — no need to wait for migrations.
-      set({
-        ...hydrateFromDoc(doc),
-        isInitialized: true,
-        isLoading: false,
-      });
+      set({ ...state, isInitialized: true, isLoading: false });
 
       // Prune archived items in the background. Idempotent; failure is non-fatal.
-      // subscribe() above propagates the resulting doc change to the UI automatically.
-      const pruneDays = doc.preferences.display.archivePruneDays ?? 30;
+      // The subscriber above propagates the doc change to the UI automatically.
+      const pruneDays = state.preferences.display.archivePruneDays ?? 30;
       if (pruneDays > 0) {
         void docPruneArchivedItems(pruneDays * 24 * 60 * 60 * 1000).catch(() => {
           // non-fatal
