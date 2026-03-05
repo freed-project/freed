@@ -122,6 +122,10 @@ export function addFeedItem(doc: FreedDoc, item: FeedItem): void {
 /**
  * Update a feed item in the document
  *
+ * Strips `undefined` values before writing — callers may produce partial
+ * updates where optional fields are `undefined` (e.g. `savedAt` when
+ * un-saving, `author` when content extraction yields nothing).
+ *
  * @param doc - The Automerge document (mutable within A.change)
  * @param globalId - The item's global ID
  * @param updates - Partial updates to apply
@@ -133,7 +137,7 @@ export function updateFeedItem(
 ): void {
   const existing = doc.feedItems[globalId];
   if (existing) {
-    Object.assign(existing, updates);
+    Object.assign(existing, stripUndefined(updates));
   }
 }
 
@@ -273,15 +277,21 @@ export function hideItem(doc: FreedDoc, globalId: string): void {
 /**
  * Add an RSS feed subscription
  *
+ * Strips `undefined` values before writing — feed metadata derived from live
+ * XML (imageUrl, siteUrl, etc.) is optional and may be undefined for feeds
+ * that lack those elements.
+ *
  * @param doc - The Automerge document (mutable within A.change)
  * @param feed - The RSS feed to add
  */
 export function addRssFeed(doc: FreedDoc, feed: RssFeed): void {
-  doc.rssFeeds[feed.url] = feed;
+  doc.rssFeeds[feed.url] = stripUndefined(feed);
 }
 
 /**
  * Update an RSS feed
+ *
+ * Strips `undefined` values before writing for the same reasons as addRssFeed.
  *
  * @param doc - The Automerge document (mutable within A.change)
  * @param url - The feed URL
@@ -294,7 +304,7 @@ export function updateRssFeed(
 ): void {
   const existing = doc.rssFeeds[url];
   if (existing) {
-    Object.assign(existing, updates);
+    Object.assign(existing, stripUndefined(updates));
   }
 }
 

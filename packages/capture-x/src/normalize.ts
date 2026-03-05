@@ -203,11 +203,16 @@ export function tweetToFeedItem(tweet: XTweetResult): FeedItem {
     id: displayTweet.core.user_results.result.rest_id,
     handle: displayTweet.core.user_results.result.legacy.screen_name,
     displayName: displayTweet.core.user_results.result.legacy.name,
-    avatarUrl:
-      displayTweet.core.user_results.result.legacy.profile_image_url_https.replace(
-        "_normal",
-        "_bigger"
-      ), // Get larger avatar
+    // Optional-chain in case the API omits the avatar URL on some tweet types.
+    // addFeedItem's stripUndefined removes the key if this resolves to undefined.
+    ...(displayTweet.core.user_results.result.legacy.profile_image_url_https
+      ? {
+          avatarUrl: displayTweet.core.user_results.result.legacy.profile_image_url_https.replace(
+            "_normal",
+            "_bigger"
+          ),
+        }
+      : {}),
   };
 
   // Build content
