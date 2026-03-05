@@ -152,12 +152,23 @@ interface SyncConnectDialogProps {
   initialMode?: Mode;
 }
 
+interface SyncConnectContentProps {
+  /** Called after a successful connection or when the user wants to dismiss. */
+  onDone: () => void;
+  initialMode?: Mode;
+}
+
 /** Validate a base64url token — exactly 43 chars, URL-safe alphabet only. */
 function isValidToken(t: string): boolean {
   return t.length === 43 && /^[A-Za-z0-9_-]+$/.test(t);
 }
 
-export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: SyncConnectDialogProps) {
+/**
+ * SyncConnectContent — the full Cloud/QR/Manual connect UI without any modal
+ * wrapper. Can be rendered inline (e.g. inside the Settings > Sync section) or
+ * inside a BottomSheet via SyncConnectDialog.
+ */
+export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnectContentProps) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [ip, setIp] = useState("");
   const [token, setToken] = useState("");
@@ -177,6 +188,7 @@ export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: Sync
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
 
   const stopCamera = useCallback(() => {
     if (scanIntervalRef.current) {
@@ -193,17 +205,8 @@ export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: Sync
 
   const handleClose = useCallback(() => {
     stopCamera();
-    setMode(initialMode ?? "manual");
-    setIp("");
-    setToken("");
-    setError(null);
-    setScanStatus("waiting");
-    setScanFrameCount(0);
-    setVideoResolution(null);
-    setLastQrContent(null);
-    setCloudConnecting(null);
-    onClose();
-  }, [stopCamera, onClose, initialMode]);
+    onDone();
+  }, [stopCamera, onDone]);
 
   const startCamera = useCallback(async () => {
     setError(null);
@@ -300,17 +303,11 @@ export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: Sync
   }, [stopCamera, handleClose]);
 
   useEffect(() => {
-    if (mode === "scanning" && open) {
+    if (mode === "scanning") {
       startCamera();
     }
-    return () => {
-      if (mode !== "scanning") stopCamera();
-    };
-  }, [mode, open, startCamera, stopCamera]);
-
-  useEffect(() => {
-    if (!open) stopCamera();
-  }, [open, stopCamera]);
+    return () => stopCamera();
+  }, [mode, startCamera, stopCamera]);
 
   const handleConnect = async () => {
     const trimmedIp = ip.trim();
@@ -395,17 +392,9 @@ export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: Sync
     (mode === "scanning" || mode === "manual");
 
   return (
-    <BottomSheet open={open} onClose={handleClose} title="Connect to Desktop">
-      <p className="text-sm text-[#71717a] mb-5">
-        {mode === "scanning"
-          ? "Point your camera at the QR code shown in your desktop app."
-          : mode === "cloud"
-            ? "Sync your reading list across any network via Google Drive or Dropbox."
-            : "Enter your desktop's IP address and pairing token, or scan the QR code."}
-      </p>
-
+    <>
       {/* Mode tabs */}
-      <div className="flex gap-2 mb-4">
+      <div ref={tabsRef} className="flex gap-2 mb-4">
         {tabs.map(({ id, label }) => (
           <button
             key={id}
@@ -413,6 +402,26 @@ export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: Sync
               if (id !== "scanning") stopCamera();
               setMode(id);
               setError(null);
+              if (id === "scanning") {
+                // Scroll the tabs row to the top of the settings pane (minus the
+                // content padding, px-6 = 24px) so the camera viewfinder has
+                // maximum vertical space below it.
+                setTimeout(() => {
+                  const el = tabsRef.current;
+                  if (!el) return;
+                  // Walk up to find the scrollable ancestor.
+                  let parent = el.parentElement;
+                  while (parent && parent.scrollHeight <= parent.clientHeight) {
+                    parent = parent.parentElement;
+                  }
+                  if (!parent) return;
+                  const offset = el.getBoundingClientRect().top
+                    - parent.getBoundingClientRect().top
+                    + parent.scrollTop
+                    - 24; // match px-6 content padding
+                  parent.scrollTo({ top: offset, behavior: "smooth" });
+                }, 50);
+              }
             }}
             className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
               mode === id
@@ -424,6 +433,14 @@ export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: Sync
           </button>
         ))}
       </div>
+
+      {mode !== "cloud" && (
+        <p className="text-sm text-[#71717a] mb-5">
+          {mode === "scanning"
+            ? "Point your camera at the QR code shown in your desktop app."
+            : "Enter your desktop's IP address and pairing token, or scan the QR code."}
+        </p>
+      )}
 
       {/* HTTPS mixed-content warning — shown immediately when a local mode is
           selected on an HTTPS page, before the user wastes time trying to connect */}
@@ -592,10 +609,9 @@ export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: Sync
               />
             );
           })}
-          <p className="text-xs text-[#71717a] text-center pt-1">
-            Your reading list is stored in your own cloud account.
-            <br />
-            Freed never sees your data.
+          <p className="text-xs text-[#71717a] text-center pt-6">
+            Connect to Freed Desktop over the cloud or your local network to keep your library in sync.
+            Your data stays in your own cloud account -- Freed never sees it.
           </p>
         </div>
       )}
@@ -634,17 +650,20 @@ export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: Sync
         </div>
       )}
 
-      <div className="mt-6 pt-5 border-t border-[rgba(255,255,255,0.08)] flex items-center justify-between">
-        <span className="text-xs text-[#71717a]">Don't have the desktop app?</span>
-        <a
-          href="https://freed.wtf/get"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs px-3 py-1.5 bg-white/5 hover:bg-[#8b5cf6]/20 hover:text-[#8b5cf6] rounded-lg text-[#a1a1aa] transition-colors"
-        >
-          Download
-        </a>
-      </div>
+    </>
+  );
+}
+
+/**
+ * SyncConnectDialog — thin BottomSheet wrapper around SyncConnectContent.
+ * Kept for any contexts that still need a modal presentation. New code should
+ * prefer dispatching freed:open-settings (scrollTo: "sync") to route the user
+ * into the unified Settings > Sync section instead.
+ */
+export function SyncConnectDialog({ open, onClose, initialMode = "cloud" }: SyncConnectDialogProps) {
+  return (
+    <BottomSheet open={open} onClose={onClose} title="Connect to Desktop">
+      {open && <SyncConnectContent onDone={onClose} initialMode={initialMode} />}
     </BottomSheet>
   );
 }

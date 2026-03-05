@@ -1,0 +1,7 @@
+[build]
+# Share the compiled Rust artifact cache across all git worktrees.
+# Without this, each new worktree recompiles all 500+ crates from scratch
+# even though the compiled crates are identical. With a shared target-dir,
+# only the first ever build pays the full compile cost; all subsequent
+# worktrees reuse it and compile only the changed application code.
+target-dir = "/Users/aubreyfalconer/.cargo/freed-target"

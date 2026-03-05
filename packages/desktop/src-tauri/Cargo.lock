@@ -925,7 +925,7 @@ dependencies = [
 
 [[package]]
 name = "freed-desktop"
-version = "26.3.303"
+version = "26.3.402"
 dependencies = [
  "base64 0.22.1",
  "futures-util",

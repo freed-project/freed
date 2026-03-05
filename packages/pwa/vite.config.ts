@@ -3,11 +3,24 @@ import react from '@vitejs/plugin-react'
 import wasm from 'vite-plugin-wasm'
 import topLevelAwait from 'vite-plugin-top-level-await'
 import { VitePWA } from 'vite-plugin-pwa'
+import { fileURLToPath } from 'url'
 import pkg from './package.json' with { type: 'json' }
+
+// Resolve workspace packages directly from their TypeScript source so that
+// worktrees don't need to build dist/ artifacts before running the dev server.
+const src = (name: string) =>
+  fileURLToPath(new URL(`../${name}/src`, import.meta.url))
 
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
+  },
+  resolve: {
+    alias: {
+      '@freed/ui': src('ui'),
+      '@freed/shared': src('shared'),
+      '@freed/sync': src('sync'),
+    },
   },
   plugins: [
     wasm(),

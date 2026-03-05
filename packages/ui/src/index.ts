@@ -20,4 +20,5 @@ export { PullToRefresh } from "./components/PullToRefresh.js";
 export { ToastContainer, useToastStore, toast } from "./components/Toast.js";
 export type { ToastType } from "./components/Toast.js";
 export { AddFeedDialog } from "./components/AddFeedDialog.js";
-export { SettingsPanel } from "./components/SettingsPanel.js";
+export { SettingsDialog } from "./components/SettingsDialog.js";
+export { useSettingsStore } from "./lib/settings-store.js";
