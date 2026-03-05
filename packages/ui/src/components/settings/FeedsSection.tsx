@@ -147,14 +147,12 @@ function ManagePane() {
         ))}
       </div>
 
-      <div className="mt-4 pt-4 border-t border-[rgba(255,255,255,0.06)]">
-        <button
-          onClick={() => setShowRemoveAll(true)}
-          className="text-xs text-red-400/70 hover:text-red-400 transition-colors"
-        >
-          Remove all {feedList.length.toLocaleString()} feeds&hellip;
-        </button>
-      </div>
+      <button
+        onClick={() => setShowRemoveAll(true)}
+        className="mt-3 text-xs text-red-400/70 hover:text-red-400 transition-colors"
+      >
+        Remove all {feedList.length.toLocaleString()} feeds&hellip;
+      </button>
 
       {showRemoveAll && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">

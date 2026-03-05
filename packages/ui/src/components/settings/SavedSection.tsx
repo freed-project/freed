@@ -321,7 +321,7 @@ function ExportPane() {
         <div>
           <p className="text-sm text-[#a1a1aa]">Export requires the desktop app</p>
           <p className="text-xs text-[#52525b] mt-1 leading-relaxed max-w-[240px] mx-auto">
-            Download Freed for Mac to export your library as Markdown files.
+            Download Freed Desktop to export your library as Markdown files.
           </p>
         </div>
         <a

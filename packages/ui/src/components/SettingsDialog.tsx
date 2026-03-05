@@ -277,33 +277,47 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [activeSection, setActiveSection] = useState<SectionId>("sync");
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Ref attached to the "Check for updates" button container -- observed below.
-  const checkButtonRef = useRef<HTMLDivElement>(null);
-  // Keep a ref in sync with updateState.status so the observer callback always
-  // reads the latest value without needing to be re-created on every status change.
+  // Keep a ref in sync with updateState.status so scroll/visibility callbacks
+  // always read the current value without needing to be re-created.
   const updateStatusRef = useRef(updateState.status);
   updateStatusRef.current = updateState.status;
 
-  // Auto-check for updates as soon as the button enters the scroll viewport.
-  // Using a dedicated observer on the button itself (rather than waiting for the
-  // section header to reach the top-20% scrollspy threshold) means the check
-  // fires whenever the button is actually visible, not just when the section is
-  // considered "active" by the nav highlight logic.
-  useEffect(() => {
-    const btn = checkButtonRef.current;
-    const root = scrollRef.current;
-    if (!btn || !root || !checkForUpdates) return;
+  // Ref for the "Check for updates" button element.
+  const checkButtonRef = useRef<HTMLDivElement>(null);
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && updateStatusRef.current === "idle") {
+  // Auto-check when the button enters the scroll container's visible area.
+  // Re-checks each time the button transitions from hidden → visible, so scrolling
+  // away and back triggers a fresh check (once the previous check has settled).
+  useEffect(() => {
+    if (!open || !checkForUpdates) return;
+    const root = scrollRef.current;
+    if (!root) return;
+
+    let wasVisible = false;
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const check = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const btn = checkButtonRef.current;
+        if (!btn) return;
+        const rootRect = root.getBoundingClientRect();
+        const btnRect = btn.getBoundingClientRect();
+        const isVisible = btnRect.bottom > rootRect.top && btnRect.top < rootRect.bottom;
+
+        if (isVisible && !wasVisible && updateStatusRef.current === "idle") {
           handleCheckForUpdates();
         }
-      },
-      { root, threshold: 0 },
-    );
-    observer.observe(btn);
-    return () => observer.disconnect();
+        wasVisible = isVisible;
+      }, 120);
+    };
+
+    check();
+    root.addEventListener("scroll", check, { passive: true });
+    return () => {
+      clearTimeout(debounceTimer);
+      root.removeEventListener("scroll", check);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, checkForUpdates]);
   // While true, IntersectionObserver updates are suppressed so intermediate
