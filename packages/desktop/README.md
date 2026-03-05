@@ -62,4 +62,3 @@ Edit `src-tauri/tauri.conf.json` to customize:
 - **Frameless window** - Custom title bar with traffic lights
 - **Local-first** - All data stored on device
 - **Cross-device sync** - Via WebSocket relay on LAN
-- **Command bar** - The global search bar is the foundation of a keyboard-driven action launcher. Focus it to jump to any settings section. Future versions will expose every app action here: subscribe to feeds, navigate to sources, change preferences, and trigger any function without leaving the keyboard
