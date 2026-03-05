@@ -221,7 +221,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           : {})}
       >
         <div
-          className="h-[55px] flex items-center pl-4 pr-2 gap-2"
+          className="h-[55px] flex items-center px-3 gap-2"
           style={
             headerDragRegion
               ? ({ paddingLeft: MACOS_TRAFFIC_LIGHT_INSET, WebkitAppRegion: "drag" } as React.CSSProperties)
@@ -232,7 +232,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           {/* Mobile menu button */}
           <button
             onClick={onMenuClick}
-            className="md:hidden p-2 -ml-2 rounded-lg hover:bg-white/10 transition-colors flex-shrink-0"
+            className="md:hidden p-1.5 rounded-lg hover:bg-white/10 transition-colors flex-shrink-0"
             aria-label="Open menu"
             style={headerDragRegion ? noDrag : undefined}
           >
@@ -243,7 +243,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
           {/* FREED logo */}
           <div
-            className="flex items-center gap-1 ml-1 md:ml-0 flex-shrink-0"
+            className="flex items-center flex-shrink-0"
             style={headerDragRegion ? noDrag : undefined}
           >
             <span className="text-lg font-bold gradient-text font-logo">FREED</span>
@@ -251,7 +251,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
           {/* Search / command bar — fills all remaining center space */}
           <div
-            className="flex-1 flex items-center justify-center min-w-0 px-3"
+            className="flex-1 flex items-center justify-center min-w-0"
             {...(headerDragRegion ? { "data-tauri-drag-region": true, style: dragStyle } : {})}
           >
             <div
@@ -299,12 +299,12 @@ export function Header({ onMenuClick }: HeaderProps) {
                 </button>
               )}
 
-              {/* Command palette dropdown */}
+              {/* Command palette dropdown — desktop only; quick actions aren't useful on mobile */}
               {showPalette && (
                 <div
                   role="listbox"
                   aria-label="Quick actions"
-                  className="absolute left-0 right-0 top-full mt-1.5 bg-[#161616] border border-[rgba(255,255,255,0.1)] rounded-xl shadow-2xl shadow-black/70 overflow-hidden z-50 py-1"
+                  className="hidden sm:block absolute left-0 right-0 top-full mt-1.5 bg-[#161616] border border-[rgba(255,255,255,0.1)] rounded-xl shadow-2xl shadow-black/70 overflow-hidden z-50 py-1"
                 >
                   {!inputValue && (
                     <p className="px-3 pt-1 pb-0.5 text-[10px] font-semibold text-[#3f3f46] uppercase tracking-wider">
@@ -346,7 +346,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
           {/* Actions */}
           <div
-            className="flex items-center gap-1 sm:gap-2 flex-shrink-0"
+            className="flex items-center gap-2 flex-shrink-0"
             style={headerDragRegion ? noDrag : undefined}
           >
             {HeaderSyncIndicator && <HeaderSyncIndicator />}
