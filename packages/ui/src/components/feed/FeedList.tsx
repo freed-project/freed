@@ -274,17 +274,18 @@ export function FeedList({
                 // list container's top, not the window's origin.
                 transform: `translateY(${virtualItem.start - windowVirtualizer.options.scrollMargin}px)`,
               }}
-              className={`px-3 pb-3 max-w-2xl mx-auto${virtualItem.index === 0 ? " pt-3" : ""}`}
             >
-              <FeedItemRow
-                item={items[virtualItem.index]}
-                index={virtualItem.index}
-                focused={virtualItem.index === focusedIndex}
-                showEngagement={showEngagementCounts}
-                onItemClick={onItemClick}
-                onFocusChange={onFocusChange}
-                onItemSave={onItemSave}
-              />
+              <div className={`px-3 pb-3 max-w-2xl mx-auto${virtualItem.index === 0 ? " pt-3" : ""}`}>
+                <FeedItemRow
+                  item={items[virtualItem.index]}
+                  index={virtualItem.index}
+                  focused={virtualItem.index === focusedIndex}
+                  showEngagement={showEngagementCounts}
+                  onItemClick={onItemClick}
+                  onFocusChange={onFocusChange}
+                  onItemSave={onItemSave}
+                />
+              </div>
             </div>
           ))}
         </div>
@@ -314,18 +315,19 @@ export function FeedList({
               width: "100%",
               transform: `translateY(${virtualItem.start}px)`,
             }}
-            className={`px-4 pb-4 max-w-2xl mx-auto${virtualItem.index === 0 ? " pt-4" : ""}`}
           >
-            <FeedItemRow
-              item={items[virtualItem.index]}
-              index={virtualItem.index}
-              focused={virtualItem.index === focusedIndex}
-              showEngagement={showEngagementCounts}
-              onItemClick={onItemClick}
-              onFocusChange={onFocusChange}
-              onItemSave={onItemSave}
-              onItemArchive={onItemArchive}
-            />
+            <div className={`px-4 pb-4 max-w-2xl mx-auto${virtualItem.index === 0 ? " pt-4" : ""}`}>
+              <FeedItemRow
+                item={items[virtualItem.index]}
+                index={virtualItem.index}
+                focused={virtualItem.index === focusedIndex}
+                showEngagement={showEngagementCounts}
+                onItemClick={onItemClick}
+                onFocusChange={onFocusChange}
+                onItemSave={onItemSave}
+                onItemArchive={onItemArchive}
+              />
+            </div>
           </div>
         ))}
       </div>
