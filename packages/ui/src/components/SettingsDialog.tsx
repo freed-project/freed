@@ -169,6 +169,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   // Flat section list — drives scrollspy and right-pane rendering.
   const allSections: Section[] = [
     {
+      id: "sync" as const, label: "Sync", icon: ICONS.sync,
+      keywords: ["cloud", "dropbox", "google drive", "gdrive", "backup", "provider", "connect"],
+    },
+    {
       id: "reading", label: "Reading", icon: ICONS.reading,
       keywords: ["engagement", "counts", "likes", "reposts", "views", "focus", "focus mode", "bionic", "bold", "reading speed", "intensity", "light", "normal", "strong", "display"],
     },
@@ -180,14 +184,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       id: "saved", label: "Saved", icon: ICONS.saved,
       keywords: ["bookmark", "save url", "reading list", "markdown", "import", "export", "manage", "articles", "sources"],
     },
-    {
-      id: "ai", label: "AI", icon: ICONS.ai,
-      keywords: ["artificial intelligence", "model", "ollama", "openai", "anthropic", "api key", "provider", "summarize", "summary", "smart", "assistant"],
-    },
-    ...(SettingsExtraSections ? [{
-      id: "sync" as const, label: "Sync", icon: ICONS.sync,
-      keywords: ["cloud", "dropbox", "google drive", "gdrive", "backup", "provider", "connect"],
-    }] : []),
+    // ── AI section is coming soon -- preserve the entry below, do not delete ──
+    // {
+    //   id: "ai", label: "AI", icon: ICONS.ai,
+    //   keywords: ["artificial intelligence", "model", "ollama", "openai", "anthropic", "api key", "provider", "summarize", "summary", "smart", "assistant"],
+    // },
     ...(checkForUpdates ? [{
       id: "updates" as const, label: "Updates", icon: ICONS.updates,
       keywords: ["update", "version", "upgrade", "check for updates", "install", "restart", "release"],
@@ -202,6 +203,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   // Re-use the Section objects already defined in allSections so keywords stay in sync.
   const sectionById = Object.fromEntries(allSections.map((s) => [s.id, s])) as Record<SectionId, Section>;
   const navStructure: NavStructureItem[] = [
+    sectionById.sync,
     sectionById.reading,
     {
       kind: "group",
@@ -209,8 +211,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       icon: ICON_SOURCES,
       children: [sectionById.feeds, sectionById.saved],
     },
-    sectionById.ai,
-    ...(SettingsExtraSections ? [sectionById.sync] : []),
+    // sectionById.ai, // AI coming soon -- do not delete
     ...(checkForUpdates ? [sectionById.updates] : []),
     ...(factoryReset ? [sectionById.danger] : []),
   ];
@@ -291,8 +292,17 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     : allSections;
 
   // ── Scrollspy ────────────────────────────────────────────────────────────
-  const [activeSection, setActiveSection] = useState<SectionId>("reading");
+  const [activeSection, setActiveSection] = useState<SectionId>("sync");
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-check for updates whenever the Updates section becomes active,
+  // but only if we haven't already checked (or are currently checking).
+  useEffect(() => {
+    if (activeSection === "updates" && updateState.status === "idle" && checkForUpdates) {
+      handleCheckForUpdates();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection]);
   // While true, IntersectionObserver updates are suppressed so intermediate
   // sections that drift through the trigger zone during a smooth-scroll
   // animation don't cause nav items to flicker.
@@ -428,7 +438,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (!isVisible) return null;
 
     return (
-      <section data-section={id} className="pb-8 min-h-full">
+      <section data-section={id} className="pb-8 min-h-full flex flex-col">
         <SectionContent id={id} />
       </section>
     );
@@ -478,12 +488,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         );
 
       case "ai":
-        return (
-          <>
-            <SectionHeading label="AI" />
-            <AISection />
-          </>
-        );
+        // AI section is coming soon -- AISection component is preserved, do not delete.
+        return null;
 
       case "feeds":
         return (
@@ -502,12 +508,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         );
 
       case "sync":
-        return SettingsExtraSections ? (
-          <>
+        return (
+          <div className="flex flex-col flex-1">
             <SectionHeading label="Sync" />
-            <SettingsExtraSections />
-          </>
-        ) : null;
+            {SettingsExtraSections && <SettingsExtraSections />}
+          </div>
+        );
 
       case "updates":
         return (
@@ -534,9 +540,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                       "Check for updates"
                     )}
                   </button>
-                  {updateState.status === "up-to-date" && (
-                    <span className="text-xs text-green-400">You're up to date</span>
-                  )}
+                  {updateState.status === "up-to-date" && <UpToDateBadge />}
                   {updateState.status === "available" && (
                     <span className="flex items-center gap-2">
                       <span className="text-xs text-[#8b5cf6]">Update available</span>
@@ -563,7 +567,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         return factoryReset ? (
           <>
             <SectionHeading label="Danger Zone" danger />
-            <div className="space-y-3">
+            <div className="space-y-6">
               <button
                 onClick={() => {
                   onClose();
@@ -611,7 +615,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       <button
         onClick={() => scrollToSection(section.id)}
         className={`w-full flex items-center gap-2 text-left text-xs transition-colors rounded-md ${
-          indented ? "pl-7 pr-2 py-1.5" : "px-2 py-1.5"
+          indented ? "pl-7 pr-2 py-2" : "px-2 py-2"
         } ${
           isActive
             ? "bg-[#8b5cf6]/15 text-[#8b5cf6]"
@@ -633,13 +637,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (searchLower) {
       return (
         <nav className="flex-1 overflow-y-auto py-2 px-3 space-y-1">
-          {visibleSections.length === 0 ? (
-            <p className="py-3 text-xs text-[#52525b]">No results</p>
-          ) : (
-            visibleSections.map((section) => (
-              <NavButton key={section.id} section={section} />
-            ))
-          )}
+          {visibleSections.map((section) => (
+            <NavButton key={section.id} section={section} />
+          ))}
         </nav>
       );
     }
@@ -655,7 +655,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 {/* Clicking the group header jumps to its first child section */}
                 <button
                   onClick={() => scrollToSection(item.children[0].id)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors rounded-md ${
+                  className={`w-full flex items-center gap-2 px-2 py-2 text-left text-xs transition-colors rounded-md ${
                     isGroupActive
                       ? "text-[#8b5cf6]"
                       : "text-[#a1a1aa] hover:text-white hover:bg-white/5"
@@ -707,32 +707,34 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           `}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-5 pt-5 pb-3 shrink-0">
+          <div className="pl-5 pr-3 pt-4 pb-2 shrink-0">
             <h2 className="text-base font-semibold text-white">Settings</h2>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
-              aria-label="Close settings"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
           </div>
 
           {/* Search */}
-          <div className="px-3 pb-2 shrink-0">
+          <div className="px-3 pt-2 pb-2 shrink-0">
             <div className="relative">
               <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#52525b] pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <input
-                type="search"
+                type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search settings"
-                className="w-full pl-8 pr-3 py-1.5 bg-white/[0.05] border border-[rgba(255,255,255,0.06)] rounded-lg text-sm text-white placeholder-[#52525b] focus:outline-none focus:border-[#8b5cf6]/40 transition-colors"
+                className={`w-full pl-8 py-1.5 bg-white/[0.05] border border-[rgba(255,255,255,0.06)] rounded-lg text-sm text-white placeholder-[#52525b] focus:outline-none focus:border-[#8b5cf6]/40 transition-colors ${search ? "pr-7" : "pr-3"}`}
               />
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-[#71717a] hover:text-white transition-colors"
+                >
+                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
             </div>
           </div>
 
@@ -793,10 +795,19 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           {/* Scrollable sections */}
           <div
             ref={scrollRef}
-            className="flex-1 overflow-y-auto px-6 pt-6 [&>section+section]:mt-14 [&>section+section]:pt-10 [&>section+section]:border-t [&>section+section]:border-[rgba(255,255,255,0.05)]"
+            className="flex-1 overflow-y-auto px-6 pt-6 [&>section+section]:mt-14"
             style={{ paddingBottom: "calc(2rem + env(safe-area-inset-bottom, 0px))" }}
           >
-            {allSections.map((section) => SectionBlock({ id: section.id }))}
+            {searchLower && visibleSections.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center gap-2 pb-16 text-center">
+                <svg className="w-8 h-8 text-[#3f3f46]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <p className="text-sm text-[#52525b]">No settings match <span className="text-[#71717a]">"{search}"</span></p>
+              </div>
+            ) : (
+              allSections.map((section) => SectionBlock({ id: section.id }))
+            )}
 
             {/* Footer — mobile + narrow screens */}
             <div className="sm:hidden text-center pb-4">
@@ -880,12 +891,58 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   );
 }
 
+// ── Up-to-date badge ──────────────────────────────────────────────────────────
+
+function UpToDateBadge() {
+  return (
+    <>
+      <style>{`
+        @keyframes _utd-badge-in {
+          from { opacity: 0; transform: translateY(3px) scale(0.94); }
+          to   { opacity: 1; transform: translateY(0)  scale(1);    }
+        }
+        @keyframes _utd-ring {
+          0%   { transform: scale(1);   opacity: 0.5; }
+          100% { transform: scale(2);   opacity: 0;   }
+        }
+        @keyframes _utd-check {
+          from { stroke-dashoffset: 22; }
+          to   { stroke-dashoffset: 0;  }
+        }
+        ._utd-badge { animation: _utd-badge-in 0.28s cubic-bezier(0.34,1.56,0.64,1) both; }
+        ._utd-ring  { animation: _utd-ring  0.55s ease-out 0.08s both; }
+        ._utd-check { animation: _utd-check 0.38s ease-out 0.18s both;
+                      stroke-dasharray: 22; stroke-dashoffset: 22; }
+      `}</style>
+      <span className="_utd-badge flex items-center gap-2">
+        <span className="relative flex items-center justify-center w-[18px] h-[18px] shrink-0">
+          {/* Ripple ring */}
+          <span className="_utd-ring absolute inset-0 rounded-full bg-green-400/25" />
+          {/* Circle + animated check */}
+          <svg viewBox="0 0 18 18" fill="none" className="w-[18px] h-[18px]">
+            <circle cx="9" cy="9" r="8" stroke="rgb(74 222 128 / 0.35)" strokeWidth="1.5" />
+            <path
+              d="M5.5 9l2.5 2.5 4.5-5"
+              stroke="rgb(74 222 128)"
+              strokeWidth="1.75"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="_utd-check"
+            />
+          </svg>
+        </span>
+        <span className="text-xs text-green-400">You're up to date</span>
+      </span>
+    </>
+  );
+}
+
 // ── Section heading ───────────────────────────────────────────────────────────
 
 function SectionHeading({ label, danger }: { label: string; danger?: boolean }) {
   return (
     <h3
-      className={`text-xs font-semibold uppercase tracking-wider mb-4 ${
+      className={`text-sm font-semibold uppercase tracking-wide mb-5 ${
         danger ? "text-red-400/60" : "text-[#71717a]"
       }`}
     >

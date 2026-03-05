@@ -71,12 +71,20 @@ export function CloudProviderCard({
   const isConnecting = state.status === "connecting";
   const error = state.status === "error" ? state.error : undefined;
 
+  const isIdle = !isConnected && !isConnecting;
+
   return (
     <div
+      role={isIdle ? "button" : undefined}
+      tabIndex={isIdle ? 0 : undefined}
+      onClick={isIdle ? () => onConnect(provider) : undefined}
+      onKeyDown={isIdle ? (e) => e.key === "Enter" && onConnect(provider) : undefined}
       className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
         isConnected
           ? "bg-green-500/5 border-green-500/20"
-          : "bg-white/5 border-[rgba(255,255,255,0.08)]"
+          : isIdle
+            ? "bg-white/5 border-[rgba(255,255,255,0.08)] cursor-pointer hover:bg-white/[0.08] hover:border-[#8b5cf6]/30"
+            : "bg-white/5 border-[rgba(255,255,255,0.08)]"
       }`}
     >
       {meta.icon}
@@ -97,23 +105,23 @@ export function CloudProviderCard({
 
       {isConnected && onDisconnect ? (
         <button
-          onClick={() => onDisconnect(provider)}
+          onClick={(e) => { e.stopPropagation(); onDisconnect(provider); }}
           className="flex-shrink-0 text-xs px-2.5 py-1 rounded-lg bg-white/5 text-[#71717a] hover:text-red-400 hover:bg-red-500/10 transition-colors"
         >
           Disconnect
         </button>
       ) : (
-        <button
-          onClick={() => onConnect(provider)}
-          disabled={isConnecting || isConnected}
-          className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+        <span
+          className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-lg transition-colors ${
             isConnected
               ? "bg-green-500/10 text-green-400 border border-green-500/20"
-              : "bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30"
+              : isConnecting
+                ? "opacity-50 text-[#8b5cf6]"
+                : "bg-[#8b5cf6]/20 text-[#8b5cf6]"
           }`}
         >
           {isConnecting ? "Opening…" : isConnected ? "Connected" : "Connect"}
-        </button>
+        </span>
       )}
     </div>
   );

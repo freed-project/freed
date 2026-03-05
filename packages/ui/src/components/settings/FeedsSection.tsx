@@ -1,9 +1,5 @@
 /**
  * FeedsSection — settings pane for RSS feed management + OPML import/export.
- *
- * Extracted from AddFeedDialog so the full I/O surface lives inside the
- * unified Settings experience. AddFeedDialog now only handles the quick
- * "Add URL" + "Manage" flow.
  */
 
 import { useCallback, useRef, useState } from "react";
@@ -11,7 +7,7 @@ import { parseOPML, readFileAsText } from "@freed/shared";
 import type { OPMLFeedEntry, ImportProgress } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 
-type FeedTab = "add" | "manage" | "import" | "export";
+type FeedTab = "manage" | "import" | "export";
 type ImportPhase = "idle" | "preview" | "importing" | "complete";
 
 // ── Shared tab bar ────────────────────────────────────────────────────────────
@@ -47,117 +43,25 @@ function TabBar({
 // ── Root section component ─────────────────────────────────────────────────────
 
 export function FeedsSection() {
-  const { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } = usePlatform();
+  const { importOPMLFeeds, exportFeedsAsOPML } = usePlatform();
 
   const availableTabs: { id: FeedTab; label: string }[] = [
-    ...(addRssFeed ? [{ id: "add" as const, label: "Add URL" }] : []),
     { id: "manage" as const, label: "Manage" },
     ...(importOPMLFeeds ? [{ id: "import" as const, label: "Import OPML" }] : []),
-    ...(exportFeedsAsOPML ? [{ id: "export" as const, label: "Export OPML" }] : []),
+    ...(exportFeedsAsOPML ? [{ id: "export" as const, label: "Export" }] : []),
   ];
 
-  const defaultTab: FeedTab = addRssFeed ? "add" : "manage";
-  const [activeTab, setActiveTab] = useState<FeedTab>(defaultTab);
+  const [activeTab, setActiveTab] = useState<FeedTab>("manage");
 
   return (
     <div>
       {availableTabs.length > 1 && (
         <TabBar tabs={availableTabs} active={activeTab} onChange={setActiveTab} />
       )}
-      {activeTab === "add" && addRssFeed && <AddUrlPane />}
       {activeTab === "manage" && <ManagePane />}
       {activeTab === "import" && importOPMLFeeds && <ImportPane />}
       {activeTab === "export" && exportFeedsAsOPML && <ExportPane />}
     </div>
-  );
-}
-
-// ── Add URL pane ───────────────────────────────────────────────────────────────
-
-function AddUrlPane() {
-  const { addRssFeed } = usePlatform();
-  const [url, setUrl] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!url.trim() || !addRssFeed) return;
-
-    setLoading(true);
-    setError(null);
-    setSuccess(false);
-    try {
-      await addRssFeed(url.trim());
-      setUrl("");
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add feed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label htmlFor="settings-feed-url" className="block text-sm text-[#a1a1aa] mb-2">
-          Feed URL
-        </label>
-        <input
-          id="settings-feed-url"
-          type="url"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://example.com/feed.xml"
-          className="w-full px-4 py-3 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-xl focus:outline-none focus:border-[#8b5cf6] text-white placeholder-[#71717a] transition-colors"
-          disabled={loading}
-        />
-      </div>
-
-      {error && (
-        <div className="p-3 bg-red-500/20 border border-red-500/50 rounded-xl text-red-400 text-sm">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-sm">
-          Feed added successfully
-        </div>
-      )}
-
-      <div className="flex justify-end">
-        <button
-          type="submit"
-          disabled={loading || !url.trim()}
-          className="btn-primary px-6 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? "Adding..." : "Add Feed"}
-        </button>
-      </div>
-
-      <div className="pt-3 border-t border-[rgba(255,255,255,0.06)]">
-        <p className="text-xs text-[#71717a] mb-3">Try these example feeds:</p>
-        <div className="flex flex-wrap gap-2">
-          {[
-            "https://simonwillison.net/atom/everything/",
-            "https://www.theverge.com/rss/index.xml",
-            "https://hnrss.org/frontpage",
-          ].map((exampleUrl) => (
-            <button
-              key={exampleUrl}
-              type="button"
-              onClick={() => setUrl(exampleUrl)}
-              className="text-xs px-3 py-1.5 bg-white/5 hover:bg-[#8b5cf6]/20 hover:text-[#8b5cf6] rounded-lg text-[#a1a1aa] transition-colors"
-            >
-              {new URL(exampleUrl).hostname}
-            </button>
-          ))}
-        </div>
-      </div>
-    </form>
   );
 }
 

@@ -317,50 +317,52 @@ export function MobileSyncTab() {
       </div>
       )}
 
-      {/* Connected Devices — always visible */}
-      <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl mb-4">
-        <div className="flex items-center gap-2">
-          <span
-            className={`sync-dot ${
-              clientCount > 0 ? "connected" : "disconnected"
-            }`}
-          />
-          <span className="text-sm">Connected devices</span>
-        </div>
-        <span className="text-sm font-medium text-[#a1a1aa]">{clientCount}</span>
-      </div>
-
-      {/* Reset Pairing */}
-      <div className="p-3 bg-white/5 rounded-xl border border-[rgba(255,255,255,0.08)]">
-        <p className="text-xs text-[#71717a] mb-2">
-          Rotate the pairing token if you suspect an unauthorized device has
-          connected. Paired phones will need to rescan the QR code or re-enter
-          the new token.
-        </p>
-        <button
-          onClick={handleResetPairing}
-          disabled={resetting}
-          className="w-full px-3 py-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {resetting ? "Rotating…" : "Reset Pairing Token"}
-        </button>
-      </div>
-
-      {/* mDNS status — visible to future native clients */}
-      {mdnsActive !== null && (
-        <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl mt-3">
-          <div className="flex items-center gap-2">
-            <span
-              className={`inline-block w-2 h-2 rounded-full ${
-                mdnsActive ? "bg-green-400" : "bg-[#71717a]"
-              }`}
-            />
-            <span className="text-sm text-[#a1a1aa]">mDNS discovery</span>
+      {/* LAN-only: connected devices, token rotation, and mDNS are irrelevant for cloud sync */}
+      {activeTab !== "cloud" && (
+        <>
+          <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl mb-4">
+            <div className="flex items-center gap-2">
+              <span
+                className={`sync-dot ${
+                  clientCount > 0 ? "connected" : "disconnected"
+                }`}
+              />
+              <span className="text-sm">Connected devices</span>
+            </div>
+            <span className="text-sm font-medium text-[#a1a1aa]">{clientCount}</span>
           </div>
-          <span className="text-xs text-[#71717a]">
-            {mdnsActive ? "_freed-sync._tcp.local" : "unavailable"}
-          </span>
-        </div>
+
+          <div className="p-3 bg-white/5 rounded-xl border border-[rgba(255,255,255,0.08)]">
+            <p className="text-xs text-[#71717a] mb-2">
+              Rotate the pairing token if you suspect an unauthorized device has
+              connected. Paired phones will need to rescan the QR code or re-enter
+              the new token.
+            </p>
+            <button
+              onClick={handleResetPairing}
+              disabled={resetting}
+              className="w-full px-3 py-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {resetting ? "Rotating…" : "Reset Pairing Token"}
+            </button>
+          </div>
+
+          {mdnsActive !== null && (
+            <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl mt-3">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`inline-block w-2 h-2 rounded-full ${
+                    mdnsActive ? "bg-green-400" : "bg-[#71717a]"
+                  }`}
+                />
+                <span className="text-sm text-[#a1a1aa]">mDNS discovery</span>
+              </div>
+              <span className="text-xs text-[#71717a]">
+                {mdnsActive ? "_freed-sync._tcp.local" : "unavailable"}
+              </span>
+            </div>
+          )}
+        </>
       )}
     </section>
   );

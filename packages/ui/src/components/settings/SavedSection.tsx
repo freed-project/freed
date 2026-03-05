@@ -1,9 +1,5 @@
 /**
  * SavedSection — settings pane for saved content management + Markdown import/export.
- *
- * Extracted from SavedContentDialog so the full I/O surface lives inside the
- * unified Settings experience. SavedContentDialog now only handles the quick
- * "Save URL" + "Manage" flow.
  */
 
 import { useCallback, useRef, useState } from "react";
@@ -11,7 +7,7 @@ import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { toast } from "../Toast.js";
 import type { ImportPhase, ImportProgress, ImportSummary } from "../LibraryDialog.types.js";
 
-type SavedTab = "save" | "manage" | "import" | "export";
+type SavedTab = "manage" | "import" | "export";
 
 const PHASE_LABELS: Record<ImportPhase, string> = {
   scanning: "Scanning files",
@@ -53,90 +49,26 @@ function TabBar({
 // ── Root section component ─────────────────────────────────────────────────────
 
 export function SavedSection() {
-  const { saveUrl, importMarkdown, exportMarkdown } = usePlatform();
+  const { importMarkdown, exportMarkdown } = usePlatform();
 
   const availableTabs: { id: SavedTab; label: string }[] = [
-    ...(saveUrl ? [{ id: "save" as const, label: "Save URL" }] : []),
     { id: "manage" as const, label: "Manage" },
     ...(importMarkdown ? [{ id: "import" as const, label: "Import" }] : []),
-    ...(exportMarkdown ? [{ id: "export" as const, label: "Export" }] : []),
+    // Export tab always shown; ExportPane renders a desktop-app CTA when exportMarkdown is unavailable.
+    { id: "export" as const, label: "Export" },
   ];
 
-  const defaultTab: SavedTab = saveUrl ? "save" : "manage";
-  const [activeTab, setActiveTab] = useState<SavedTab>(defaultTab);
+  const [activeTab, setActiveTab] = useState<SavedTab>("manage");
 
   return (
     <div>
       {availableTabs.length > 1 && (
         <TabBar tabs={availableTabs} active={activeTab} onChange={setActiveTab} />
       )}
-      {activeTab === "save" && saveUrl && <SaveUrlPane />}
       {activeTab === "manage" && <ManagePane />}
       {activeTab === "import" && importMarkdown && <ImportPane />}
-      {activeTab === "export" && exportMarkdown && <ExportPane />}
+      {activeTab === "export" && <ExportPane />}
     </div>
-  );
-}
-
-// ── Save URL pane ─────────────────────────────────────────────────────────────
-
-function SaveUrlPane() {
-  const { saveUrl } = usePlatform();
-  const setFilter = useAppStore((s) => s.setFilter);
-  const [url, setUrl] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = url.trim();
-    if (!trimmed || !saveUrl) return;
-
-    setLoading(true);
-    try {
-      await saveUrl(trimmed);
-      setUrl("");
-      toast.success("Saved to library");
-      setFilter({ savedOnly: true });
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save URL");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label htmlFor="settings-save-url" className="block text-sm text-[#a1a1aa] mb-2">
-          Article or page URL
-        </label>
-        <input
-          id="settings-save-url"
-          type="url"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://example.com/article"
-          className="w-full px-4 py-3 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-xl focus:outline-none focus:border-[#8b5cf6] text-white placeholder-[#71717a] transition-colors"
-          disabled={loading}
-        />
-      </div>
-      <div className="flex justify-end">
-        <button
-          type="submit"
-          disabled={loading || !url.trim()}
-          className="btn-primary px-6 py-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? (
-            <span className="flex items-center gap-2">
-              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Saving...
-            </span>
-          ) : (
-            "Save"
-          )}
-        </button>
-      </div>
-    </form>
   );
 }
 
@@ -378,6 +310,31 @@ function ExportPane() {
   const { exportMarkdown } = usePlatform();
   const items = useAppStore((s) => s.items);
   const [exporting, setExporting] = useState(false);
+
+  // Export is a desktop-only capability. Show a CTA on the PWA.
+  if (!exportMarkdown) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-6 text-center">
+        <svg className="w-10 h-10 text-[#3f3f46]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+        <div>
+          <p className="text-sm text-[#a1a1aa]">Export requires the desktop app</p>
+          <p className="text-xs text-[#52525b] mt-1 leading-relaxed max-w-[240px] mx-auto">
+            Download Freed for Mac to export your library as Markdown files.
+          </p>
+        </div>
+        <a
+          href="https://freed.wtf/get"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs px-4 py-2 rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors"
+        >
+          Download the desktop app
+        </a>
+      </div>
+    );
+  }
 
   const savedCount = items.filter((item) => item.platform === "saved").length;
   const totalCount = items.length;

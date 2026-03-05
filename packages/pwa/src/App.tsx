@@ -24,6 +24,7 @@ import { checkForPwaUpdate, applyPwaUpdate, onUpdateAvailable } from "./lib/pwa-
 import { pickContactViaWebApi } from "./lib/contacts";
 import { SyncIndicator } from "./components/layout/SyncIndicator";
 import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
+import { PwaSyncSettings } from "./components/PwaSyncSettings";
 
 function App() {
   // Intercept OAuth callback before rendering the main app.
@@ -96,7 +97,7 @@ function App() {
       exportFeedsAsOPML,
       SourceIndicator: null,
       HeaderSyncIndicator: SyncIndicator,
-      SettingsExtraSections: null,
+      SettingsExtraSections: PwaSyncSettings,
       FeedEmptyState: PwaFeedEmptyState,
       checkForUpdates,
       applyUpdate: applyPwaUpdate,
