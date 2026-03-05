@@ -1,11 +1,13 @@
 @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap");
 
+/* Shared design system — design tokens + all component classes.
+   Must precede @tailwind directives; @import after any non-import rule
+   is invalid CSS and silently ignored by browsers. */
+@import "../../ui/src/index.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Shared design system — design tokens + all component classes */
-@import "../../ui/src/index.css";
 
 /* ============================================
    Desktop (Tauri) specific additions

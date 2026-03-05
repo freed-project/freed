@@ -85,8 +85,8 @@ export const FeedItem = memo(function FeedItem({
 
   return (
     <div className="relative overflow-hidden rounded-2xl">
-      {/* Archive action revealed by swipe */}
-      {onArchive && (
+      {/* Archive action revealed by swipe — only rendered when actively swiping */}
+      {onArchive && swipeX < 0 && (
         <div
           className="absolute inset-y-0 right-0 flex items-center justify-end pr-5 rounded-2xl transition-colors"
           style={{
