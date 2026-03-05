@@ -210,7 +210,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   archivableCountByPlatform: {},
   archivableFeedCounts: {},
   xAuth: { isAuthenticated: false },
-  isLoading: false,
+  isLoading: true,
   isSyncing: false,
   isInitialized: false,
   error: null,

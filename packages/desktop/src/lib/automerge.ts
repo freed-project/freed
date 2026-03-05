@@ -70,7 +70,9 @@ export async function initDoc(): Promise<FreedDoc> {
 
   const deviceId = (currentDoc.meta?.deviceId as string | undefined) ?? "unknown";
   addDebugEvent("init", `device ...${deviceId.slice(-8)}`);
-  snapshotDoc();
+  // Defer the debug snapshot so it doesn't block the init render path.
+  // A.save() is synchronous WASM work — run it after the UI is visible.
+  setTimeout(() => snapshotDoc(), 0);
 
   registerDocAccessors(
     () => currentDoc,
@@ -127,7 +129,6 @@ async function applyChange(
   currentDoc = A.change(currentDoc, message || "update", changeFn);
   await saveDoc();
   addDebugEvent("change", message);
-  snapshotDoc();
 
   // Notify subscribers
   for (const subscriber of subscribers) {
