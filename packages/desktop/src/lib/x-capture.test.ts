@@ -10,7 +10,7 @@
  * diagnostic panel after the first successful sync.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { fetchXTimeline } from "./x-capture";
 import type { XCookies } from "./x-auth";
 

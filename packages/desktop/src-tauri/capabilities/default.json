@@ -7,6 +7,8 @@
     "core:default",
     "shell:allow-open",
     "updater:default",
-    "process:default"
+    "process:default",
+    "fs:allow-appdata-read-recursive",
+    "fs:allow-appdata-write-recursive"
   ]
 }
