@@ -221,9 +221,9 @@ export function Header({ onMenuClick }: HeaderProps) {
   return (
     <>
       <header
-        className={`sticky top-0 flex-shrink-0 bg-[#0a0a0a]/90 backdrop-blur-xl z-30 border-b border-[rgba(255,255,255,0.08)] ${
+        className={`sticky top-0 flex-shrink-0 bg-[#0a0a0a] z-30 border-b border-[rgba(255,255,255,0.08)] ${
           headerDragRegion ? "" : "pt-[env(safe-area-inset-top)]"
-        }`}
+        } px-1`}
         {...(headerDragRegion
           ? {
               "data-tauri-drag-region": true,
@@ -277,7 +277,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
           {/* Search / command bar — fills all remaining center space */}
           <div
-            className="flex flex-1 items-center justify-center min-w-0 ml-3"
+            className="flex flex-1 items-center justify-center min-w-0 ml-2"
             {...(headerDragRegion
               ? { "data-tauri-drag-region": true, style: dragStyle }
               : {})}
@@ -401,7 +401,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
           {/* Actions */}
           <div
-            className="flex items-center gap-2 flex-shrink-0"
+            className="flex items-center gap-2 flex-shrink-0 ml-[-6px]"
             style={headerDragRegion ? noDrag : undefined}
           >
             {HeaderSyncIndicator && <HeaderSyncIndicator />}
