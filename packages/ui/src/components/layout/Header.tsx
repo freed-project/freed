@@ -221,7 +221,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           : {})}
       >
         <div
-          className="h-[55px] flex items-center px-3 gap-2"
+          className="h-[55px] flex items-center px-3 gap-6"
           style={
             headerDragRegion
               ? ({ paddingLeft: MACOS_TRAFFIC_LIGHT_INSET, WebkitAppRegion: "drag" } as React.CSSProperties)
