@@ -277,7 +277,7 @@ export function Header({ onMenuClick }: HeaderProps) {
 
           {/* Search / command bar — fills all remaining center space */}
           <div
-            className="hidden sm:flex flex-1 items-center justify-center min-w-0 ml-3"
+            className="flex flex-1 items-center justify-center min-w-0 ml-3"
             {...(headerDragRegion
               ? { "data-tauri-drag-region": true, style: dragStyle }
               : {})}
@@ -316,7 +316,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                 aria-label="Search or run a command"
                 aria-expanded={showPalette}
                 aria-haspopup="listbox"
-                className="w-full bg-transparent border border-white/[0.06] rounded-lg pl-8 pr-7 py-1.5 text-sm text-white/70 placeholder-[#3f3f46] focus:outline-none hover:border-white/[0.11] hover:bg-white/[0.02] focus:border-white/[0.16] focus:bg-white/[0.04] transition-colors"
+                className="w-full bg-transparent border border-white/[0.06] rounded-lg pl-8 pr-7 py-1.5 text-sm text-white/70 placeholder-transparent sm:placeholder-[#3f3f46] focus:outline-none hover:border-white/[0.11] hover:bg-white/[0.02] focus:border-white/[0.16] focus:bg-white/[0.04] transition-colors"
               />
 
               {/* Clear button — only visible when there's input */}

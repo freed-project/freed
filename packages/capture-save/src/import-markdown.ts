@@ -193,26 +193,26 @@ export function parseMarkdownArchiveFile(
       id: sourceUrl ? new URL(sourceUrl).hostname : "unknown",
       handle: sourceUrl ? new URL(sourceUrl).hostname : "unknown",
       displayName: author ?? (sourceUrl ? new URL(sourceUrl).hostname : "Unknown"),
-      avatarUrl: undefined,
+      // avatarUrl intentionally omitted -- undefined is not valid in Automerge
     },
     content: {
       text: text.slice(0, 300),
       mediaUrls: [],
       mediaTypes: [],
-      linkPreview: sourceUrl
-        ? { url: sourceUrl, title }
-        : undefined,
+      ...(sourceUrl ? { linkPreview: { url: sourceUrl, title } } : {}),
     },
-    preservedContent: hasBody
+    ...(hasBody
       ? {
-          // html intentionally omitted -- goes to content cache only
-          text,
-          author,
-          wordCount,
-          readingTime,
-          preservedAt: now,
+          preservedContent: {
+            // html intentionally omitted -- goes to content cache only
+            text,
+            ...(author !== undefined ? { author } : {}),
+            wordCount,
+            readingTime,
+            preservedAt: now,
+          },
         }
-      : undefined,
+      : {}),
     userState: {
       hidden: false,
       saved: true,

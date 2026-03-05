@@ -83,13 +83,40 @@ export function createDocFromData(data: Partial<FreedDoc>): FreedDoc {
 // =============================================================================
 
 /**
+ * Recursively remove any keys whose value is `undefined` from a plain object.
+ *
+ * Automerge's CRDT proxy throws on `undefined` assignments. This is a
+ * last-resort defensive sanitizer applied before writing to the document —
+ * normalizers should already produce clean objects, but this prevents a single
+ * bad optional field from crashing the whole capture.
+ */
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map(stripUndefined) as unknown as T;
+  }
+  if (value !== null && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v !== undefined) {
+        result[k] = stripUndefined(v);
+      }
+    }
+    return result as T;
+  }
+  return value;
+}
+
+/**
  * Add a feed item to the document
+ *
+ * Strips any `undefined` values before writing — Automerge's proxy throws on
+ * them, and a single bad optional field would otherwise crash the whole capture.
  *
  * @param doc - The Automerge document (mutable within A.change)
  * @param item - The feed item to add
  */
 export function addFeedItem(doc: FreedDoc, item: FeedItem): void {
-  doc.feedItems[item.globalId] = item;
+  doc.feedItems[item.globalId] = stripUndefined(item);
 }
 
 /**

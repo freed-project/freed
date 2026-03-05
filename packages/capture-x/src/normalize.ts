@@ -125,11 +125,7 @@ export function extractLinkPreview(
     );
 
     if (nonMediaUrls.length > 0) {
-      return {
-        url: nonMediaUrls[0].expanded_url,
-        title: undefined,
-        description: undefined,
-      };
+      return { url: nonMediaUrls[0].expanded_url };
     }
   }
 
@@ -215,11 +211,12 @@ export function tweetToFeedItem(tweet: XTweetResult): FeedItem {
   };
 
   // Build content
+  const linkPreview = extractLinkPreview(displayTweet);
   const content: Content = {
     text: cleanTweetText(displayTweet),
     mediaUrls: extractMediaUrls(displayTweet),
     mediaTypes: extractMediaTypes(displayTweet),
-    linkPreview: extractLinkPreview(displayTweet),
+    ...(linkPreview !== undefined ? { linkPreview } : {}),
   };
 
   // Build engagement (captured for user-controlled ranking)
@@ -227,9 +224,9 @@ export function tweetToFeedItem(tweet: XTweetResult): FeedItem {
     likes: displayTweet.legacy.favorite_count,
     reposts: displayTweet.legacy.retweet_count,
     comments: displayTweet.legacy.reply_count,
-    views: displayTweet.views?.count
-      ? parseInt(displayTweet.views.count)
-      : undefined,
+    ...(displayTweet.views?.count
+      ? { views: parseInt(displayTweet.views.count) }
+      : {}),
   };
 
   // Parse timestamp

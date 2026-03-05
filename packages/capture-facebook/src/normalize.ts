@@ -39,7 +39,7 @@ function buildAuthor(post: RawFbPost): Author {
     id: `fb:${extractAuthorId(post.authorProfileUrl)}`,
     handle: extractAuthorId(post.authorProfileUrl),
     displayName: post.authorName ?? "Unknown",
-    avatarUrl: post.authorAvatarUrl ?? undefined,
+    ...(post.authorAvatarUrl ? { avatarUrl: post.authorAvatarUrl } : {}),
   };
 }
 
@@ -54,7 +54,7 @@ function buildContent(post: RawFbPost): Content {
   });
 
   return {
-    text: post.text ?? undefined,
+    ...(post.text ? { text: post.text } : {}),
     mediaUrls: post.mediaUrls,
     mediaTypes: post.hasVideo
       ? ["video", ...mediaTypes.slice(1)]
@@ -98,9 +98,9 @@ function buildEngagement(post: RawFbPost): Engagement | undefined {
     return undefined;
   }
   return {
-    likes: post.likeCount ?? undefined,
-    comments: post.commentCount ?? undefined,
-    reposts: post.shareCount ?? undefined,
+    ...(post.likeCount != null ? { likes: post.likeCount } : {}),
+    ...(post.commentCount != null ? { comments: post.commentCount } : {}),
+    ...(post.shareCount != null ? { reposts: post.shareCount } : {}),
   };
 }
 
@@ -135,8 +135,8 @@ export function fbPostToFeedItem(post: RawFbPost): FeedItem | null {
     publishedAt,
     author,
     content,
-    engagement,
-    location,
+    ...(engagement !== undefined ? { engagement } : {}),
+    ...(location !== undefined ? { location } : {}),
     topics,
     userState: {
       hidden: false,
