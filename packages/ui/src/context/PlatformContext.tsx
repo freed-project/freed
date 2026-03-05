@@ -77,6 +77,12 @@ export interface PlatformConfig {
   /** Replaces default "All caught up" empty state when feeds exist but no items */
   FeedEmptyState: ComponentType | null;
 
+  /**
+   * Content rendered in the Settings > Sources > X section.
+   * When null, the X section is omitted from settings entirely (e.g. PWA).
+   */
+  XSettingsContent: ComponentType | null;
+
   /** Manual update check. Returns version string if available, null if up-to-date. */
   checkForUpdates?: () => Promise<string | null>;
 

@@ -1,16 +1,25 @@
 /**
  * XFeedEmptyState — shown in the feed blank state when no items are available.
  *
- * When the X platform filter is active and X is not authenticated, renders the
- * full X connection flow inline. When authenticated but empty, offers a manual
- * sync trigger. For all other filters, falls back to the generic "All caught up"
- * message.
+ * When the X platform filter is active and X is not authenticated, shows a
+ * brief invitation with a link to Settings > Sources > X instead of
+ * embedding the full connection form in the feed.
+ *
+ * When authenticated but empty, offers a quick manual sync trigger.
+ * For non-X filters, falls back to the generic "All caught up" message.
  */
 
 import { useState } from "react";
 import { useAppStore } from "../lib/store";
-import { connectX, loadStoredCookies, disconnectX } from "../lib/x-auth";
+import { loadStoredCookies, disconnectX } from "../lib/x-auth";
 import { captureXTimeline } from "../lib/x-capture";
+import { useSettingsStore } from "@freed/ui/lib/settings-store";
+
+const XIcon = () => (
+  <svg className="w-7 h-7 text-[#a1a1aa]" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.747l7.73-8.835L1.254 2.25H8.08l4.259 5.63 5.905-5.63zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
+  </svg>
+);
 
 export function XFeedEmptyState() {
   const xAuth = useAppStore((s) => s.xAuth);
@@ -19,46 +28,21 @@ export function XFeedEmptyState() {
   const activeFilter = useAppStore((s) => s.activeFilter);
   const storeError = useAppStore((s) => s.error);
   const setError = useAppStore((s) => s.setError);
+  const openSettings = useSettingsStore((s) => s.openTo);
 
-  const [xSyncing, setXSyncing] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [ct0, setCt0] = useState("");
-  const [authToken, setAuthToken] = useState("");
-  const [formError, setFormError] = useState("");
-
-  const handleConnect = async () => {
-    setFormError("");
-    setError(null);
-    const cookies = connectX(ct0, authToken);
-    if (!cookies) {
-      setFormError("Both ct0 and auth_token are required.");
-      return;
-    }
-    setXAuth({ isAuthenticated: true, cookies });
-    setShowForm(false);
-    setCt0("");
-    setAuthToken("");
-    setXSyncing(true);
-    try {
-      await captureXTimeline(cookies);
-    } catch (err) {
-      console.error("Failed to capture X timeline:", err);
-    } finally {
-      setXSyncing(false);
-    }
-  };
+  const [syncing, setSyncing] = useState(false);
 
   const handleSync = async () => {
     const cookies = loadStoredCookies();
     if (!cookies) return;
     setError(null);
-    setXSyncing(true);
+    setSyncing(true);
     try {
       await captureXTimeline(cookies);
     } catch (err) {
-      console.error("Failed to capture X timeline:", err);
+      console.error("X sync failed:", err);
     } finally {
-      setXSyncing(false);
+      setSyncing(false);
     }
   };
 
@@ -70,7 +54,7 @@ export function XFeedEmptyState() {
 
   const syncError = storeError && xAuth.isAuthenticated ? storeError : null;
 
-  // Non-X filter → generic empty state with icon
+  // Non-X filter → generic empty state
   if (activeFilter.platform !== "x") {
     return (
       <>
@@ -83,24 +67,22 @@ export function XFeedEmptyState() {
     );
   }
 
-  // X is connected but empty
+  // X connected but empty
   if (xAuth.isAuthenticated) {
     return (
       <>
         <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#3b82f6]/20 to-[#8b5cf6]/20 flex items-center justify-center mb-4">
-          <svg className="w-7 h-7 text-[#a1a1aa]" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.747l7.73-8.835L1.254 2.25H8.08l4.259 5.63 5.905-5.63zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
-          </svg>
+          <XIcon />
         </div>
         <p className="text-lg font-medium mb-2">All caught up!</p>
         <p className="text-sm text-[#71717a] mb-6">Your X timeline is up to date.</p>
         <div className="flex gap-3">
           <button
             onClick={handleSync}
-            disabled={xSyncing || isLoading}
+            disabled={syncing || isLoading}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 disabled:opacity-50 transition-colors font-medium text-sm"
           >
-            {xSyncing ? (
+            {syncing ? (
               <>
                 <div className="w-3.5 h-3.5 border-2 border-[#8b5cf6] border-t-transparent rounded-full animate-spin" />
                 Syncing…
@@ -124,7 +106,7 @@ export function XFeedEmptyState() {
         {syncError && (
           <p className="mt-4 text-xs text-red-400 max-w-xs text-center leading-relaxed">
             {syncError.includes("401") || syncError.includes("403")
-              ? "Your cookies have expired. Disconnect and reconnect with fresh cookies from x.com."
+              ? "Your cookies have expired. Reconnect in Settings > Sources > X."
               : syncError}
           </p>
         )}
@@ -132,73 +114,25 @@ export function XFeedEmptyState() {
     );
   }
 
-  // X not connected — show connection flow
+  // X not connected — invite to settings
   return (
     <>
       <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#3b82f6]/20 to-[#8b5cf6]/20 flex items-center justify-center mb-4">
-        <svg className="w-7 h-7 text-[#a1a1aa]" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.747l7.73-8.835L1.254 2.25H8.08l4.259 5.63 5.905-5.63zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
-        </svg>
+        <XIcon />
       </div>
       <p className="text-lg font-medium mb-2">Connect X / Twitter</p>
-      <p className="text-sm text-[#71717a] mb-6 max-w-xs">
-        Link your X account to pull your timeline into Freed.
+      <p className="text-sm text-[#71717a] mb-6 max-w-xs text-center">
+        Pull your home timeline into Freed. Set it up in Sources settings.
       </p>
-
-      {showForm ? (
-        <div className="w-full max-w-xs space-y-3 text-left">
-          <div className="p-3 rounded-lg bg-white/5 text-[11px] text-[#a1a1aa] leading-relaxed space-y-1">
-            <p className="font-medium text-white mb-1.5">How to get your cookies:</p>
-            <ol className="list-decimal list-inside space-y-1">
-              <li>Log in to <span className="text-white font-medium">x.com</span> in Chrome</li>
-              <li>Open DevTools with <kbd className="px-1 py-0.5 bg-white/10 rounded text-[10px]">⌥⌘I</kbd></li>
-              <li>Click the <span className="text-white">Application</span> tab</li>
-              <li>Expand <span className="text-white">Cookies</span> → select <span className="font-mono text-[10px] text-[#c4b5fd]">https://x.com</span></li>
-              <li>Find <span className="font-mono text-[#c4b5fd]">ct0</span> and copy its value</li>
-              <li>Find <span className="font-mono text-[#c4b5fd]">auth_token</span> and copy its value</li>
-            </ol>
-          </div>
-          <input
-            type="text"
-            placeholder="ct0 value"
-            value={ct0}
-            onChange={(e) => setCt0(e.target.value)}
-            className="w-full text-sm px-3 py-2 bg-white/5 border border-[rgba(255,255,255,0.1)] rounded-xl text-white placeholder-[#52525b] focus:outline-none focus:border-[#8b5cf6]/60"
-          />
-          <input
-            type="text"
-            placeholder="auth_token value"
-            value={authToken}
-            onChange={(e) => setAuthToken(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleConnect(); }}
-            className="w-full text-sm px-3 py-2 bg-white/5 border border-[rgba(255,255,255,0.1)] rounded-xl text-white placeholder-[#52525b] focus:outline-none focus:border-[#8b5cf6]/60"
-          />
-          {formError && (
-            <p className="text-xs text-red-400">{formError}</p>
-          )}
-          <div className="flex gap-2">
-            <button
-              onClick={handleConnect}
-              className="flex-1 px-3 py-2.5 rounded-xl bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors font-medium text-sm"
-            >
-              Connect
-            </button>
-            <button
-              onClick={() => { setShowForm(false); setFormError(""); }}
-              className="px-3 py-2.5 rounded-xl bg-white/5 text-[#71717a] hover:bg-white/10 transition-colors text-sm"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors font-medium text-sm"
-        >
-          Connect X Account
-        </button>
-      )}
+      <button
+        onClick={() => openSettings("x")}
+        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors font-medium text-sm"
+      >
+        Open Settings
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
     </>
   );
 }

@@ -12,7 +12,8 @@ export type SectionId =
   | "ai"
   | "sync"
   | "updates"
-  | "danger";
+  | "danger"
+  | "x";
 
 export interface SectionMeta {
   id: SectionId;
@@ -54,6 +55,13 @@ export const UPDATES_SECTION_META: SectionMeta = {
   id: "updates",
   label: "Updates",
   keywords: ["update", "version", "upgrade", "check for updates", "install", "restart", "release"],
+};
+
+/** Shown only when the platform provides an X/Twitter settings component (desktop). */
+export const X_SECTION_META: SectionMeta = {
+  id: "x",
+  label: "X / Twitter",
+  keywords: ["twitter", "x", "tweet", "timeline", "connect", "cookies", "auth", "token"],
 };
 
 /** Shown only when the platform supports factory reset (desktop). */

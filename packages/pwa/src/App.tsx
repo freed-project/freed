@@ -99,6 +99,7 @@ function App() {
       HeaderSyncIndicator: SyncIndicator,
       SettingsExtraSections: PwaSyncSettings,
       FeedEmptyState: PwaFeedEmptyState,
+      XSettingsContent: null,
       checkForUpdates,
       applyUpdate: applyPwaUpdate,
       factoryReset: handleFactoryReset,

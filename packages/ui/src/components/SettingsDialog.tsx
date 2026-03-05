@@ -24,6 +24,7 @@ import {
   BASE_SECTION_METAS,
   UPDATES_SECTION_META,
   DANGER_SECTION_META,
+  X_SECTION_META,
   type SectionId,
   type SectionMeta,
 } from "../lib/settings-sections.js";
@@ -134,6 +135,11 @@ const ICONS: Record<SectionId, ReactNode> = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
     </svg>
   ),
+  x: (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.747l7.73-8.835L1.254 2.25H8.08l4.259 5.63 5.905-5.63zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
+    </svg>
+  ),
 };
 
 // ── Update check state ────────────────────────────────────────────────────────
@@ -150,6 +156,7 @@ type UpdateCheckState =
 export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const {
     SettingsExtraSections,
+    XSettingsContent,
     checkForUpdates,
     applyUpdate,
     headerDragRegion,
@@ -165,6 +172,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   // ── AI section is coming soon -- preserve ICONS.ai, do not delete ──
   const allSections: Section[] = [
     ...BASE_SECTION_METAS.map((m) => ({ ...m, icon: ICONS[m.id] })),
+    ...(XSettingsContent ? [{ ...X_SECTION_META, icon: ICONS.x }] : []),
     ...(checkForUpdates ? [{ ...UPDATES_SECTION_META, icon: ICONS.updates }] : []),
     ...(factoryReset ? [{ ...DANGER_SECTION_META, icon: ICONS.danger }] : []),
   ];
@@ -179,7 +187,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       kind: "group",
       label: "Sources",
       icon: ICON_SOURCES,
-      children: [sectionById.feeds, sectionById.saved],
+      children: [
+        sectionById.feeds,
+        sectionById.saved,
+        ...(XSettingsContent ? [sectionById.x] : []),
+      ],
     },
     // sectionById.ai, // AI coming soon -- do not delete
     ...(checkForUpdates ? [sectionById.updates] : []),
@@ -462,6 +474,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             </div>
           </>
         );
+
+      case "x":
+        return XSettingsContent ? (
+          <>
+            <SectionHeading label="X / Twitter" />
+            <XSettingsContent />
+          </>
+        ) : null;
 
       case "ai":
         // AI section is coming soon -- AISection component is preserved, do not delete.
