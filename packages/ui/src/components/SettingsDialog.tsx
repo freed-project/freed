@@ -362,7 +362,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (!isVisible) return null;
 
     return (
-      <section data-section={id} className="pb-10">
+      <section data-section={id} className="pb-8 min-h-full">
         <SectionContent id={id} />
       </section>
     );
@@ -671,7 +671,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           {/* Scrollable sections */}
           <div
             ref={scrollRef}
-            className="flex-1 overflow-y-auto px-6 pt-6"
+            className="flex-1 overflow-y-auto px-6 pt-6 [&>section+section]:mt-14 [&>section+section]:pt-10 [&>section+section]:border-t [&>section+section]:border-[rgba(255,255,255,0.05)]"
             style={{ paddingBottom: "calc(2rem + env(safe-area-inset-bottom, 0px))" }}
           >
             {allSections.map((section) => SectionBlock({ id: section.id }))}
