@@ -1,21 +1,16 @@
 /**
  * Saved Content dialog
  *
- * Opened from the "+ New > Saved Content" header dropdown.
- * Provides four tabs:
- *   Save URL  – paste a URL to save immediately
- *   Manage    – list and delete saved items
- *   Import    – import a folder or set of .md files
- *   Export    – download the library as a zip
+ * Quick-access dialog for saving a URL or managing existing saved items.
+ * Import and export live in Settings > Saved Content.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useState } from "react";
 import { BottomSheet } from "./BottomSheet.js";
 import { toast } from "./Toast.js";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
-import type { ImportPhase, ImportProgress } from "./LibraryDialog.types.js";
 
-type DialogTab = "save" | "manage" | "import" | "export";
+type DialogTab = "save" | "manage";
 
 interface SavedContentDialogProps {
   open: boolean;
@@ -23,13 +18,11 @@ interface SavedContentDialogProps {
 }
 
 export function SavedContentDialog({ open, onClose }: SavedContentDialogProps) {
-  const { saveUrl, importMarkdown, exportMarkdown } = usePlatform();
+  const { saveUrl } = usePlatform();
 
   const availableTabs: { id: DialogTab; label: string }[] = [
     ...(saveUrl ? [{ id: "save" as const, label: "Save URL" }] : []),
     { id: "manage" as const, label: "Manage" },
-    ...(importMarkdown ? [{ id: "import" as const, label: "Import" }] : []),
-    ...(exportMarkdown ? [{ id: "export" as const, label: "Export" }] : []),
   ];
 
   const defaultTab: DialogTab = saveUrl ? "save" : "manage";
@@ -42,29 +35,28 @@ export function SavedContentDialog({ open, onClose }: SavedContentDialogProps) {
 
   return (
     <BottomSheet open={open} onClose={handleClose} title="Saved Content" maxWidth="sm:max-w-lg">
-      {/* Tab switcher */}
-      <div className="pb-4 flex-shrink-0">
-        <div className="flex gap-0.5 bg-white/[0.04] rounded-xl p-1">
-          {availableTabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 py-2 px-3 text-sm font-medium rounded-lg transition-all whitespace-nowrap ${
-                activeTab === tab.id
-                  ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
-                  : "text-[#a1a1aa] hover:text-white"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+      {availableTabs.length > 1 && (
+        <div className="pb-4 flex-shrink-0">
+          <div className="flex gap-0.5 bg-white/[0.04] rounded-xl p-1">
+            {availableTabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex-1 py-2 px-3 text-sm font-medium rounded-lg transition-all whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
+                    : "text-[#a1a1aa] hover:text-white"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {activeTab === "save" && saveUrl && <SaveUrlTab onClose={handleClose} />}
       {activeTab === "manage" && <ManageTab />}
-      {activeTab === "import" && importMarkdown && <ImportTab onClose={handleClose} />}
-      {activeTab === "export" && exportMarkdown && <ExportTab />}
     </BottomSheet>
   );
 }
@@ -87,7 +79,6 @@ function SaveUrlTab({ onClose }: { onClose: () => void }) {
       await saveUrl(trimmed);
       setUrl("");
       toast.success("Saved to library");
-      // Navigate to Saved view so the new item is immediately visible
       setFilter({ savedOnly: true });
       onClose();
     } catch (err) {
@@ -198,294 +189,6 @@ function ManageTab() {
           </div>
         );
       })}
-    </div>
-  );
-}
-
-// ── Import tab ────────────────────────────────────────────────────────────────
-
-const PHASE_LABELS: Record<ImportPhase, string> = {
-  scanning: "Scanning files",
-  writing: "Writing to library",
-  caching: "Caching content",
-  fetching: "Queuing for fetch",
-};
-
-type ImportState = "idle" | "importing" | "complete";
-
-function ImportTab({ onClose: _onClose }: { onClose: () => void }) {
-  const { importMarkdown } = usePlatform();
-  const folderInputRef = useRef<HTMLInputElement>(null);
-  const filesInputRef = useRef<HTMLInputElement>(null);
-
-  const [state, setState] = useState<ImportState>("idle");
-  const [progress, setProgress] = useState<ImportProgress | null>(null);
-  const [summary, setSummary] = useState<{ imported: number; skipped: number; errors: string[] } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const runImport = useCallback(
-    async (files: FileList) => {
-      if (!importMarkdown || files.length === 0) return;
-      setState("importing");
-      setSummary(null);
-      setError(null);
-
-      try {
-        const result = await importMarkdown(files, (p) => setProgress({ ...p }));
-        setSummary(result);
-        setState("complete");
-        if (result.imported > 0) {
-          toast.success(
-            `Imported ${result.imported.toLocaleString()} item${result.imported !== 1 ? "s" : ""}`,
-          );
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Import failed");
-        setState("idle");
-      } finally {
-        setProgress(null);
-        // Reset both inputs so the same folder can be re-selected
-        if (folderInputRef.current) folderInputRef.current.value = "";
-        if (filesInputRef.current) filesInputRef.current.value = "";
-      }
-    },
-    [importMarkdown],
-  );
-
-  const handleFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) runImport(e.target.files);
-  };
-  const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) runImport(e.target.files);
-  };
-
-  const reset = () => {
-    setState("idle");
-    setSummary(null);
-    setError(null);
-    setProgress(null);
-  };
-
-  // ── Idle ──
-  if (state === "idle") {
-    const pct = progress
-      ? Math.round((progress.current / Math.max(1, progress.total)) * 100)
-      : 0;
-
-    return (
-      <>
-        <p className="text-sm text-[#71717a] mb-4">
-          Import Freed Markdown archive files. Select a folder to import its
-          entire structure, or pick individual <code className="text-[#8b5cf6] bg-white/5 px-1 rounded">.md</code> files.
-          Subfolder names become searchable tags.
-        </p>
-
-        <div className="flex gap-3">
-          {/* Folder picker */}
-          <button
-            onClick={() => folderInputRef.current?.click()}
-            disabled={state !== "idle"}
-            className="flex-1 flex flex-col items-center gap-2 py-4 rounded-xl border border-dashed border-[rgba(255,255,255,0.15)] text-[#a1a1aa] text-sm hover:border-[#8b5cf6]/50 hover:text-[#8b5cf6] hover:bg-[#8b5cf6]/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-            </svg>
-            Select Folder
-          </button>
-
-          {/* Multi-file picker */}
-          <button
-            onClick={() => filesInputRef.current?.click()}
-            disabled={state !== "idle"}
-            className="flex-1 flex flex-col items-center gap-2 py-4 rounded-xl border border-dashed border-[rgba(255,255,255,0.15)] text-[#a1a1aa] text-sm hover:border-[#8b5cf6]/50 hover:text-[#8b5cf6] hover:bg-[#8b5cf6]/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-            </svg>
-            Select Files
-          </button>
-        </div>
-
-        {/* Hidden inputs */}
-        {/* @ts-expect-error webkitdirectory is valid but not in React's type defs */}
-        <input ref={folderInputRef} type="file" webkitdirectory="" className="hidden" onChange={handleFolderChange} />
-        <input ref={filesInputRef} type="file" accept=".md" multiple className="hidden" onChange={handleFilesChange} />
-
-        {error && (
-          <div className="mt-4 p-3 bg-red-500/20 border border-red-500/50 rounded-xl text-red-400 text-sm">
-            {error}
-          </div>
-        )}
-
-        {/* Leftover progress if re-idle after partial run */}
-        {progress && (
-          <ProgressBar progress={progress} percent={pct} />
-        )}
-      </>
-    );
-  }
-
-  // ── Importing ──
-  if (state === "importing") {
-    const pct = progress
-      ? Math.round((progress.current / Math.max(1, progress.total)) * 100)
-      : 0;
-    return (
-      <div className="py-2">
-        <ProgressBar progress={progress} percent={pct} />
-      </div>
-    );
-  }
-
-  // ── Complete ──
-  return (
-    <div className="flex flex-col gap-4 py-2">
-      <div className="flex justify-center">
-        <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center">
-          <svg className="w-6 h-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-        </div>
-      </div>
-
-      <div className="text-center">
-        <p className="text-lg font-semibold text-white">Import Complete</p>
-        <div className="flex justify-center gap-6 mt-3 text-sm">
-          <div className="text-center">
-            <p className="text-2xl font-bold text-green-400">{summary?.imported.toLocaleString()}</p>
-            <p className="text-xs text-[#71717a]">imported</p>
-          </div>
-          {(summary?.skipped ?? 0) > 0 && (
-            <div className="text-center">
-              <p className="text-2xl font-bold text-[#a1a1aa]">{summary!.skipped.toLocaleString()}</p>
-              <p className="text-xs text-[#71717a]">skipped</p>
-            </div>
-          )}
-          {(summary?.errors.length ?? 0) > 0 && (
-            <div className="text-center">
-              <p className="text-2xl font-bold text-red-400">{summary!.errors.length.toLocaleString()}</p>
-              <p className="text-xs text-[#71717a]">errors</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {(summary?.errors.length ?? 0) > 0 && (
-        <details className="bg-red-500/10 border border-red-500/20 rounded-xl p-3">
-          <summary className="text-xs text-red-400 font-medium cursor-pointer">
-            Show {summary!.errors.length} error{summary!.errors.length !== 1 ? "s" : ""}
-          </summary>
-          <ul className="mt-2 space-y-0.5 max-h-32 overflow-y-auto">
-            {summary!.errors.map((err, i) => (
-              <li key={i} className="text-xs text-red-400 font-mono truncate">{err}</li>
-            ))}
-          </ul>
-        </details>
-      )}
-
-      <div className="flex gap-3 justify-center">
-        <button onClick={reset} className="px-4 py-2.5 text-[#a1a1aa] hover:text-white transition-colors text-sm">
-          Import More
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/** Shared progress bar shown during import phases */
-function ProgressBar({
-  progress,
-  percent,
-}: {
-  progress: ImportProgress | null;
-  percent: number;
-}) {
-  if (!progress) return null;
-
-  const phaseLabel = PHASE_LABELS[progress.phase] ?? progress.phase;
-  const fractionLabel =
-    progress.phase === "writing"
-      ? `batch ${progress.current} of ${progress.total}`
-      : `${progress.current.toLocaleString()} / ${progress.total.toLocaleString()}`;
-
-  return (
-    <div className="mt-4 space-y-2">
-      <div className="flex items-center justify-between text-xs text-[#71717a]">
-        <span className="font-medium text-[#a1a1aa]">{phaseLabel}</span>
-        <span>{fractionLabel}</span>
-      </div>
-      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-        <div
-          className="h-full bg-[#8b5cf6] rounded-full transition-all duration-200"
-          style={{ width: `${percent}%` }}
-        />
-      </div>
-      {(progress.imported > 0 || progress.skipped > 0) && (
-        <div className="flex gap-4 text-xs text-[#71717a]">
-          <span className="text-emerald-400">{progress.imported.toLocaleString()} new</span>
-          {progress.skipped > 0 && <span>{progress.skipped.toLocaleString()} skipped</span>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Export tab ────────────────────────────────────────────────────────────────
-
-function ExportTab() {
-  const { exportMarkdown } = usePlatform();
-  const items = useAppStore((s) => s.items);
-  const [exporting, setExporting] = useState(false);
-
-  const savedCount = items.filter((item) => item.platform === "saved").length;
-  const totalCount = items.length;
-
-  const handleExport = async () => {
-    if (!exportMarkdown || exporting) return;
-    setExporting(true);
-    try {
-      await exportMarkdown();
-      toast.success("Library exported");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Export failed");
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="bg-white/[0.03] rounded-xl p-4">
-        <p className="text-sm text-white">
-          <span className="font-semibold">{totalCount.toLocaleString()}</span> item{totalCount !== 1 ? "s" : ""} total
-          {savedCount < totalCount && (
-            <span className="text-[#71717a]"> · {savedCount.toLocaleString()} saved</span>
-          )}
-        </p>
-        <p className="text-xs text-[#71717a] mt-1">
-          Exported as Freed Markdown with YAML frontmatter. Full article text included where cached.
-        </p>
-      </div>
-
-      <button
-        onClick={handleExport}
-        disabled={exporting || totalCount === 0}
-        className="w-full py-2.5 rounded-xl bg-[#8b5cf6]/20 text-[#8b5cf6] text-sm font-medium hover:bg-[#8b5cf6]/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-      >
-        {exporting ? (
-          <>
-            <span className="w-4 h-4 border border-[#8b5cf6]/30 border-t-[#8b5cf6] rounded-full animate-spin" />
-            Preparing export...
-          </>
-        ) : (
-          <>
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            Download library as zip
-          </>
-        )}
-      </button>
     </div>
   );
 }

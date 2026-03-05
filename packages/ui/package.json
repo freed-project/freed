@@ -10,7 +10,7 @@
     "./components/PullToRefresh": "./src/components/PullToRefresh.tsx",
     "./components/Toast": "./src/components/Toast.tsx",
     "./components/AddFeedDialog": "./src/components/AddFeedDialog.tsx",
-    "./components/SettingsPanel": "./src/components/SettingsPanel.tsx",
+    "./components/SettingsDialog": "./src/components/SettingsDialog.tsx",
     "./components/DebugPanel": "./src/components/DebugPanel.tsx",
     "./components/CloudProviderCard": "./src/components/CloudProviderCard.tsx",
     "./lib/debug-store": "./src/lib/debug-store.ts",

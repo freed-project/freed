@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from "react";
 import type { RssFeed } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
-import { SettingsPanel } from "../SettingsPanel.js";
+import { SettingsDialog } from "../SettingsDialog.js";
 import { AllIcon, RssIcon, FacebookIcon, InstagramIcon, MapPinIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
 /** Compact number: 1234 → "1.2k", 1_200_000 → "1.2m". Trims trailing ".0". */
 function fmt(n: number): string {
@@ -620,7 +620,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         />
       </aside>
 
-      <SettingsPanel open={showSettings} onClose={() => setShowSettings(false)} />
+      <SettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
 
       {/* Feed context menu — rendered outside scroll container to avoid clipping */}
       {openMenuFeedUrl && menuAnchorRect && feeds[openMenuFeedUrl] && (

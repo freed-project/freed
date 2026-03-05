@@ -2,8 +2,8 @@
  * AI settings section for the Settings panel
  *
  * Shows provider selection, model input, Ollama status, API key entry
- * (desktop only), and feature toggles. Designed to be composed into the
- * existing SettingsPanel via PlatformConfig.SettingsExtraSections.
+ * (desktop only), and feature toggles. Rendered inside SettingsDialog
+ * as the "AI" section.
  *
  * Provider preferences write to Automerge (synced).
  * API keys write to secureStorage (device-local, never synced).
