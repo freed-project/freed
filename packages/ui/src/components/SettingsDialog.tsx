@@ -20,27 +20,21 @@ import { createPortal } from "react-dom";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
 import { useDebugStore } from "../lib/debug-store.js";
 import { useSettingsStore } from "../lib/settings-store.js";
+import {
+  BASE_SECTION_METAS,
+  UPDATES_SECTION_META,
+  DANGER_SECTION_META,
+  type SectionId,
+  type SectionMeta,
+} from "../lib/settings-sections.js";
 import { FeedsSection } from "./settings/FeedsSection.js";
 import { SavedSection } from "./settings/SavedSection.js";
 import { AISection } from "./settings/AISection.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type SectionId =
-  | "reading"
-  | "feeds"
-  | "saved"
-  | "ai"
-  | "sync"
-  | "updates"
-  | "danger";
-
-interface Section {
-  id: SectionId;
-  label: string;
+interface Section extends SectionMeta {
   icon: ReactNode;
-  /** Setting names, descriptions, and synonyms searched when filtering. */
-  keywords: string[];
 }
 
 /** A nav group (e.g. "Sources") containing child sections in the left nav. */
@@ -167,36 +161,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const toggleDebug = useDebugStore((s) => s.toggle);
 
   // Flat section list — drives scrollspy and right-pane rendering.
+  // Keywords live in settings-sections.ts so Header's command palette can share them.
+  // ── AI section is coming soon -- preserve ICONS.ai, do not delete ──
   const allSections: Section[] = [
-    {
-      id: "sync" as const, label: "Sync", icon: ICONS.sync,
-      keywords: ["cloud", "dropbox", "google drive", "gdrive", "backup", "provider", "connect"],
-    },
-    {
-      id: "reading", label: "Reading", icon: ICONS.reading,
-      keywords: ["engagement", "counts", "likes", "reposts", "views", "focus", "focus mode", "bionic", "bold", "reading speed", "intensity", "light", "normal", "strong", "display"],
-    },
-    {
-      id: "feeds", label: "Feeds", icon: ICONS.feeds,
-      keywords: ["rss", "atom", "subscribe", "subscription", "add feed", "url", "opml", "import", "export", "manage", "sources"],
-    },
-    {
-      id: "saved", label: "Saved", icon: ICONS.saved,
-      keywords: ["bookmark", "save url", "reading list", "markdown", "import", "export", "manage", "articles", "sources"],
-    },
-    // ── AI section is coming soon -- preserve the entry below, do not delete ──
-    // {
-    //   id: "ai", label: "AI", icon: ICONS.ai,
-    //   keywords: ["artificial intelligence", "model", "ollama", "openai", "anthropic", "api key", "provider", "summarize", "summary", "smart", "assistant"],
-    // },
-    ...(checkForUpdates ? [{
-      id: "updates" as const, label: "Updates", icon: ICONS.updates,
-      keywords: ["update", "version", "upgrade", "check for updates", "install", "restart", "release"],
-    }] : []),
-    ...(factoryReset ? [{
-      id: "danger" as const, label: "Danger Zone", icon: ICONS.danger,
-      keywords: ["debug", "panel", "diagnostics", "event log", "document inspector", "reset", "wipe", "factory reset", "delete", "restart", "developer"],
-    }] : []),
+    ...BASE_SECTION_METAS.map((m) => ({ ...m, icon: ICONS[m.id] })),
+    ...(checkForUpdates ? [{ ...UPDATES_SECTION_META, icon: ICONS.updates }] : []),
+    ...(factoryReset ? [{ ...DANGER_SECTION_META, icon: ICONS.danger }] : []),
   ];
 
   // Hierarchical nav structure — drives left sidebar rendering only.

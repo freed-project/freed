@@ -106,6 +106,20 @@ export async function exportToCsv(items: FeedItem[]): Promise<string> {
 }
 ```
 
+### Command Bar / Action Launcher
+
+The global search bar is the foundation of a keyboard-driven command launcher. It already searches feed content and surfaces settings sections as quick-jump actions (arrow keys to navigate, Enter to select). The long-term goal is for every action in the app to be reachable from this bar without touching the mouse.
+
+Planned action categories beyond the current settings navigation:
+
+- **Feeds** — subscribe to a new RSS feed, unsubscribe, open a specific source
+- **Navigation** — jump to Saved, Archived, a specific tag, or a feed
+- **Content** — save current item, mark all read, archive all read
+- **Preferences** — toggle Focus Mode, engagement counts, and other settings directly
+- **Custom actions** — user-defined shortcuts via the plugin API (see Plugin/Extension API below)
+
+The `CommandAction` interface in `packages/ui/src/components/layout/Header.tsx` and the `buildSettingsActions()` helper are the current extension point. New action categories are added by returning additional `CommandAction[]` arrays and merging them into `allCommandActions`.
+
 ### Keyboard Shortcuts
 
 ```typescript
@@ -360,17 +374,18 @@ Reward security researchers for responsible disclosure.
 
 ### UX Polish
 
-| Task | Description                 | Complexity |
-| ---- | --------------------------- | ---------- |
-| 10.1 | Onboarding wizard           | Medium     |
-| 10.2 | Statistics dashboard        | Medium     |
-| 10.3 | Export to JSON              | Low        |
-| 10.4 | Export to CSV               | Low        |
-| 10.5 | Keyboard shortcuts          | Medium     |
-| 10.6 | Screen reader support       | Medium     |
-| 10.7 | Reduced motion support      | Low        |
-| 10.8 | Color contrast audit        | Low        |
-| 10.9 | Native Liquid Glass buttons | High       |
+| Task  | Description                        | Complexity |
+| ----- | ---------------------------------- | ---------- |
+| 10.1  | Onboarding wizard                  | Medium     |
+| 10.2  | Statistics dashboard               | Medium     |
+| 10.3  | Export to JSON                     | Low        |
+| 10.4  | Export to CSV                      | Low        |
+| 10.5  | Keyboard shortcuts                 | Medium     |
+| 10.6  | Screen reader support              | Medium     |
+| 10.7  | Reduced motion support             | Low        |
+| 10.8  | Color contrast audit               | Low        |
+| 10.9  | Native Liquid Glass buttons        | High       |
+| 10.24 | Command bar — full action launcher | High       |
 
 ### AI Features
 
@@ -418,6 +433,7 @@ Reward security researchers for responsible disclosure.
 - [ ] Keyboard navigation complete
 - [ ] Screen reader accessible
 - [ ] Reduced motion respected
+- [ ] Command bar can trigger every major app action without a mouse
 
 ### AI
 
