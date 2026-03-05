@@ -25,6 +25,7 @@ import { pickContactViaWebApi } from "./lib/contacts";
 import { SyncIndicator } from "./components/layout/SyncIndicator";
 import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
 import { PwaSyncSettings } from "./components/PwaSyncSettings";
+import { PwaXSettings } from "./components/PwaXSettings";
 
 function App() {
   // Intercept OAuth callback before rendering the main app.
@@ -99,7 +100,7 @@ function App() {
       HeaderSyncIndicator: SyncIndicator,
       SettingsExtraSections: PwaSyncSettings,
       FeedEmptyState: PwaFeedEmptyState,
-      XSettingsContent: null,
+      XSettingsContent: PwaXSettings,
       checkForUpdates,
       applyUpdate: applyPwaUpdate,
       factoryReset: handleFactoryReset,

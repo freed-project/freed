@@ -270,7 +270,7 @@ export function Header({ onMenuClick }: HeaderProps) {
               </svg>
 
               <input
-                type="search"
+                type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onFocus={() => setIsFocused(true)}
