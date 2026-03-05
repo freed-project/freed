@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
-import { useAppStore, usePlatform, MACOS_TRAFFIC_LIGHT_INSET } from "../../context/PlatformContext.js";
+import {
+  useAppStore,
+  usePlatform,
+  MACOS_TRAFFIC_LIGHT_INSET,
+} from "../../context/PlatformContext.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import {
   BASE_SECTION_METAS,
@@ -71,7 +75,9 @@ export function Header({ onMenuClick }: HeaderProps) {
   const totalUnreadCount = useAppStore((s) => s.totalUnreadCount);
   const unreadCountByPlatform = useAppStore((s) => s.unreadCountByPlatform);
   const totalArchivableCount = useAppStore((s) => s.totalArchivableCount);
-  const archivableCountByPlatform = useAppStore((s) => s.archivableCountByPlatform);
+  const archivableCountByPlatform = useAppStore(
+    (s) => s.archivableCountByPlatform,
+  );
   const archivableFeedCounts = useAppStore((s) => s.archivableFeedCounts);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
 
@@ -96,19 +102,21 @@ export function Header({ onMenuClick }: HeaderProps) {
 
   // Derive display count from pre-computed store values — no items iteration.
   // savedOnly and archivedOnly views don't show these actions.
-  const unreadCount = (activeFilter.savedOnly || activeFilter.archivedOnly)
-    ? 0
-    : activeFilter.platform
-      ? (unreadCountByPlatform[activeFilter.platform] ?? 0)
-      : totalUnreadCount;
-
-  const archivableCount = (activeFilter.savedOnly || activeFilter.archivedOnly)
-    ? 0
-    : activeFilter.feedUrl
-      ? (archivableFeedCounts[activeFilter.feedUrl] ?? 0)
+  const unreadCount =
+    activeFilter.savedOnly || activeFilter.archivedOnly
+      ? 0
       : activeFilter.platform
-        ? (archivableCountByPlatform[activeFilter.platform] ?? 0)
-        : totalArchivableCount;
+        ? (unreadCountByPlatform[activeFilter.platform] ?? 0)
+        : totalUnreadCount;
+
+  const archivableCount =
+    activeFilter.savedOnly || activeFilter.archivedOnly
+      ? 0
+      : activeFilter.feedUrl
+        ? (archivableFeedCounts[activeFilter.feedUrl] ?? 0)
+        : activeFilter.platform
+          ? (archivableCountByPlatform[activeFilter.platform] ?? 0)
+          : totalArchivableCount;
 
   // ── + New dropdown ─────────────────────────────────────────────────────────
 
@@ -121,7 +129,10 @@ export function Header({ onMenuClick }: HeaderProps) {
   useEffect(() => {
     if (!dropdownOpen) return;
     const handleClick = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(e.target as Node)
+      ) {
         setDropdownOpen(false);
       }
     };
@@ -221,10 +232,13 @@ export function Header({ onMenuClick }: HeaderProps) {
           : {})}
       >
         <div
-          className="h-[55px] flex items-center px-3 gap-6"
+          className="h-[55px] flex items-center pl-3 pr-1 gap-6"
           style={
             headerDragRegion
-              ? ({ paddingLeft: MACOS_TRAFFIC_LIGHT_INSET, WebkitAppRegion: "drag" } as React.CSSProperties)
+              ? ({
+                  paddingLeft: MACOS_TRAFFIC_LIGHT_INSET,
+                  WebkitAppRegion: "drag",
+                } as React.CSSProperties)
               : undefined
           }
           {...(headerDragRegion ? { "data-tauri-drag-region": true } : {})}
@@ -236,8 +250,18 @@ export function Header({ onMenuClick }: HeaderProps) {
             aria-label="Open menu"
             style={headerDragRegion ? noDrag : undefined}
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 6h16M4 12h16M4 18h16"
+              />
             </svg>
           </button>
 
@@ -246,13 +270,17 @@ export function Header({ onMenuClick }: HeaderProps) {
             className="flex items-center flex-shrink-0"
             style={headerDragRegion ? noDrag : undefined}
           >
-            <span className="text-lg font-bold gradient-text font-logo">FREED</span>
+            <span className="text-lg font-bold gradient-text font-logo">
+              FREED
+            </span>
           </div>
 
           {/* Search / command bar — fills all remaining center space */}
           <div
-            className="flex-1 flex items-center justify-center min-w-0"
-            {...(headerDragRegion ? { "data-tauri-drag-region": true, style: dragStyle } : {})}
+            className="hidden sm:flex flex-1 items-center justify-center min-w-0 ml-3"
+            {...(headerDragRegion
+              ? { "data-tauri-drag-region": true, style: dragStyle }
+              : {})}
           >
             <div
               className="relative w-full"
@@ -266,7 +294,12 @@ export function Header({ onMenuClick }: HeaderProps) {
                 stroke="currentColor"
                 aria-hidden="true"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
               </svg>
 
               <input
@@ -293,8 +326,18 @@ export function Header({ onMenuClick }: HeaderProps) {
                   aria-label="Clear search"
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-white/10 transition-colors"
                 >
-                  <svg className="w-3 h-3 text-[#52525b]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    className="w-3 h-3 text-[#52525b]"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2.5}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               )}
@@ -332,11 +375,23 @@ export function Header({ onMenuClick }: HeaderProps) {
                         stroke="currentColor"
                         aria-hidden="true"
                       >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1.5}
+                          d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1.5}
+                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
                       </svg>
                       <span className="flex-1 truncate">{action.label}</span>
-                      <span className="text-xs text-[#3f3f46] shrink-0">{action.hint}</span>
+                      <span className="text-xs text-[#3f3f46] shrink-0">
+                        {action.hint}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -357,8 +412,18 @@ export function Header({ onMenuClick }: HeaderProps) {
                 title={`Mark all ${unreadCount.toLocaleString()} items as read`}
                 className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-[#71717a] hover:bg-white/5 hover:text-white transition-colors"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
                 <span>{unreadCount.toLocaleString()} unread</span>
               </button>
@@ -366,12 +431,27 @@ export function Header({ onMenuClick }: HeaderProps) {
 
             {archivableCount > 0 && (
               <button
-                onClick={() => archiveAllReadUnsaved(activeFilter.platform, activeFilter.feedUrl)}
+                onClick={() =>
+                  archiveAllReadUnsaved(
+                    activeFilter.platform,
+                    activeFilter.feedUrl,
+                  )
+                }
                 title={`Archive all ${archivableCount.toLocaleString()} read items`}
                 className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-[#71717a] hover:bg-white/5 hover:text-white transition-colors"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
                 </svg>
                 <span>{archivableCount.toLocaleString()} read</span>
               </button>
@@ -386,17 +466,34 @@ export function Header({ onMenuClick }: HeaderProps) {
                   aria-haspopup="true"
                   aria-expanded={dropdownOpen}
                 >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 4v16m8-8H4"
+                    />
                   </svg>
-                  <span className="text-sm font-medium hidden sm:inline">New</span>
+                  <span className="text-sm font-medium hidden sm:inline">
+                    New
+                  </span>
                   <svg
                     className={`w-3 h-3 transition-transform hidden sm:block ${dropdownOpen ? "rotate-180" : ""}`}
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 9l-7 7-7-7"
+                    />
                   </svg>
                 </button>
 
@@ -404,22 +501,48 @@ export function Header({ onMenuClick }: HeaderProps) {
                   <div className="absolute right-0 top-full mt-1.5 w-44 bg-[#161616] border border-[rgba(255,255,255,0.1)] rounded-xl shadow-2xl shadow-black/70 overflow-hidden z-50 py-1">
                     {canAddRss && (
                       <button
-                        onClick={() => { setDropdownOpen(false); setAddFeedOpen(true); }}
+                        onClick={() => {
+                          setDropdownOpen(false);
+                          setAddFeedOpen(true);
+                        }}
                         className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-colors text-left"
                       >
-                        <svg className="w-4 h-4 text-orange-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7M6 17a1 1 0 110 2 1 1 0 010-2z" />
+                        <svg
+                          className="w-4 h-4 text-orange-400 shrink-0"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7M6 17a1 1 0 110 2 1 1 0 010-2z"
+                          />
                         </svg>
                         RSS Feed
                       </button>
                     )}
                     {canSaveContent && (
                       <button
-                        onClick={() => { setDropdownOpen(false); setSavedContentOpen(true); }}
+                        onClick={() => {
+                          setDropdownOpen(false);
+                          setSavedContentOpen(true);
+                        }}
                         className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-colors text-left"
                       >
-                        <svg className="w-4 h-4 text-[#8b5cf6] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                        <svg
+                          className="w-4 h-4 text-[#8b5cf6] shrink-0"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                          />
                         </svg>
                         Saved Content
                       </button>
@@ -433,7 +556,10 @@ export function Header({ onMenuClick }: HeaderProps) {
       </header>
 
       <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
-      <SavedContentDialog open={savedContentOpen} onClose={() => setSavedContentOpen(false)} />
+      <SavedContentDialog
+        open={savedContentOpen}
+        onClose={() => setSavedContentOpen(false)}
+      />
     </>
   );
 }
