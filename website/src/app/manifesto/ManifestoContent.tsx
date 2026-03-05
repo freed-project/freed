@@ -33,10 +33,10 @@ export default function ManifestoContent() {
               </h2>
               <p>
                 Open your feed. Something else has already decided what's
-                waiting. Not to serve you. To keep you in the system. The design
-                is deliberate. Outrage travels faster than nuance. Anxiety keeps
-                you scrolling. The machine is working perfectly. It's just not
-                working for you.
+                waiting. Not to serve you... to keep you in the system. The
+                design is deliberate. Outrage travels faster than nuance.
+                Anxiety keeps you scrolling. The machine is working perfectly.
+                It's just not working for you.
               </p>
             </section>
 
@@ -45,10 +45,11 @@ export default function ManifestoContent() {
                 The Pact
               </h2>
               <p>
-                Odysseus lashed himself to the mast before his ship reached the
-                Sirens. He heard the songs. He survived. The secret: decide
-                before temptation arrives. Install Freed now. Never doom-scroll
-                again.
+                To live well, we should make decisions in moments of strength to
+                hold strong in moments of weakness. Ulysses lashed himself to
+                the mast before his ship reached the Sirens. He heard their
+                song. He survived. The secret: decide before temptation arrives.
+                Install Freed now. Never doom-scroll again.
               </p>
             </section>
 

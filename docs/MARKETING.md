@@ -119,7 +119,7 @@ The attention economy treats your focus as a commodity to be extracted and aucti
 
 ### Ulysses Mode
 
-> "Odysseus knew he couldn't resist the Sirens. So he had his crew bind him to the mast. Freed is your mast."
+> Willpower is a bad strategy. You'll lose eventually. Ulysses knew this - so he had his crew bind him to the mast before his ship reached the Sirens. He heard every note. He survived. Make the choice once, when you're thinking clearly, and let the setup do the rest.
 
 ### Local-First Privacy
 
