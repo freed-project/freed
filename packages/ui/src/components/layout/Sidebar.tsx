@@ -32,9 +32,9 @@ function SidebarSection({
     <div className="shrink-0 mb-2">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center px-3 py-1.5 group"
+        className="w-full flex items-center px-3 py-1.5 rounded-lg group hover:bg-white/5 transition-colors"
       >
-        <span className="text-xs font-semibold text-[#71717a] uppercase tracking-wider flex-1 text-left">
+        <span className="text-xs font-semibold text-[#71717a] uppercase tracking-wider flex-1 text-left leading-5">
           {title}
         </span>
         {!open && count !== undefined && count > 0 && (
@@ -397,7 +397,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   <button
                     onClick={() => handleSourceClick(source)}
                     className={`
-                      w-full flex items-center gap-3 px-3 py-2 rounded-lg
+                      w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
                       text-left text-sm transition-all border
                       ${
                         isTopSourceActive(source)
@@ -425,7 +425,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               ))}
               {comingSoonSources.map((source) => (
                 <li key={source.id}>
-                  <div className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[#52525b] cursor-default">
+                  <div className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm text-[#52525b] cursor-default">
                     <span className="w-5 flex items-center justify-center opacity-50">{source.icon}</span>
                     <span className="flex-1">{source.label}</span>
                     <span className="text-[10px] uppercase tracking-wider bg-white/5 px-1.5 py-0.5 rounded">soon</span>
@@ -442,7 +442,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 <button
                   onClick={() => { setFilter({ savedOnly: true }); onClose(); }}
                   className={`
-                    w-full flex items-center gap-3 px-3 py-2 rounded-lg
+                    w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
                     text-left text-sm transition-all border
                     ${
                       activeFilter.savedOnly
@@ -459,7 +459,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 <button
                   onClick={() => { setFilter({ archivedOnly: true }); onClose(); }}
                   className={`
-                    w-full flex items-center gap-3 px-3 py-2 rounded-lg
+                    w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
                     text-left text-sm transition-all border
                     ${
                       activeFilter.archivedOnly
@@ -592,7 +592,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           <div className="mt-auto shrink-0">
             <button
               onClick={openSettings}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-all"
+              className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-left text-sm text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-all"
             >
               <span className="w-5 text-center">
                 <svg className="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">

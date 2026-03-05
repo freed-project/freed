@@ -15,7 +15,7 @@ function buildAuthor(post: RawIgPost): Author {
     id: `ig:${handle}`,
     handle,
     displayName: post.authorDisplayName ?? handle,
-    avatarUrl: post.authorAvatarUrl ?? undefined,
+    ...(post.authorAvatarUrl ? { avatarUrl: post.authorAvatarUrl } : {}),
   };
 }
 
@@ -29,7 +29,7 @@ function buildContent(post: RawIgPost): Content {
     post.isVideo ? ["video", ...mediaTypes.slice(1)] : mediaTypes;
 
   return {
-    text: post.caption ?? undefined,
+    ...(post.caption ? { text: post.caption } : {}),
     mediaUrls: post.mediaUrls,
     mediaTypes: allMediaTypes,
   };
@@ -66,8 +66,8 @@ function buildLocation(post: RawIgPost): Location | undefined {
 function buildEngagement(post: RawIgPost): Engagement | undefined {
   if (post.likeCount == null && post.commentCount == null) return undefined;
   return {
-    likes: post.likeCount ?? undefined,
-    comments: post.commentCount ?? undefined,
+    ...(post.likeCount != null ? { likes: post.likeCount } : {}),
+    ...(post.commentCount != null ? { comments: post.commentCount } : {}),
   };
 }
 
@@ -105,8 +105,8 @@ export function igPostToFeedItem(post: RawIgPost): FeedItem | null {
     publishedAt,
     author,
     content,
-    engagement,
-    location,
+    ...(engagement !== undefined ? { engagement } : {}),
+    ...(location !== undefined ? { location } : {}),
     topics,
     userState: {
       hidden: false,

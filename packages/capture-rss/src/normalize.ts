@@ -243,6 +243,7 @@ export function rssItemToFeedItem(
   // Parse publication date
   const pubDate = item.pubDate ? new Date(item.pubDate) : new Date();
   const publishedAt = isNaN(pubDate.getTime()) ? Date.now() : pubDate.getTime();
+  const textContent = getTextContent(item);
 
   return {
     globalId,
@@ -254,19 +255,23 @@ export function rssItemToFeedItem(
       id: feed.feedUrl,
       handle: extractHandle(feed, item),
       displayName: feed.title,
-      avatarUrl: feed.image?.url,
+      ...(feed.image?.url ? { avatarUrl: feed.image.url } : {}),
     },
     content: {
-      text: getTextContent(item),
+      ...(textContent !== undefined ? { text: textContent } : {}),
       mediaUrls: extractMediaUrls(item),
       mediaTypes: extractMediaTypes(item),
-      linkPreview: item.link
+      ...(item.link
         ? {
-            url: item.link,
-            title: item.title,
-            description: item.contentSnippet?.slice(0, 200),
+            linkPreview: {
+              url: item.link,
+              ...(item.title ? { title: item.title } : {}),
+              ...(item.contentSnippet
+                ? { description: item.contentSnippet.slice(0, 200) }
+                : {}),
+            },
           }
-        : undefined,
+        : {}),
     },
     rssSource: {
       feedUrl: feed.feedUrl,
