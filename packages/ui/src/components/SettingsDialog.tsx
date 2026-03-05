@@ -610,8 +610,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     return (
       <button
         onClick={() => scrollToSection(section.id)}
-        className={`w-full flex items-center gap-3 text-left text-sm transition-colors rounded-lg mx-1 ${
-          indented ? "pl-8 pr-4 py-2" : "px-4 py-2.5"
+        className={`w-full flex items-center gap-2 text-left text-xs transition-colors rounded-md ${
+          indented ? "pl-7 pr-2 py-1.5" : "px-2 py-1.5"
         } ${
           isActive
             ? "bg-[#8b5cf6]/15 text-[#8b5cf6]"
@@ -619,7 +619,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             ? "text-red-400/70 hover:text-red-400 hover:bg-red-500/5"
             : "text-[#a1a1aa] hover:text-white hover:bg-white/5"
         }`}
-        style={{ width: "calc(100% - 0.5rem)" }}
       >
         <span className={`shrink-0 ${isActive ? "text-[#8b5cf6]" : isDanger ? "text-red-400/60" : "text-[#52525b]"}`}>
           {section.icon}
@@ -633,9 +632,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     // When searching, collapse to a flat filtered list for simplicity.
     if (searchLower) {
       return (
-        <nav className="flex-1 overflow-y-auto py-2">
+        <nav className="flex-1 overflow-y-auto py-2 px-3 space-y-1">
           {visibleSections.length === 0 ? (
-            <p className="px-4 py-3 text-sm text-[#52525b]">No results</p>
+            <p className="py-3 text-xs text-[#52525b]">No results</p>
           ) : (
             visibleSections.map((section) => (
               <NavButton key={section.id} section={section} />
@@ -646,22 +645,21 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }
 
     return (
-      <nav className="flex-1 overflow-y-auto py-2">
+      <nav className="flex-1 overflow-y-auto py-2 px-3 space-y-1">
         {navStructure.map((item) => {
           if ("kind" in item) {
             // Group header + indented children
             const isGroupActive = item.children.some((c) => c.id === activeSection);
             return (
-              <div key={item.label}>
+              <div key={item.label} className="space-y-0.5">
                 {/* Clicking the group header jumps to its first child section */}
                 <button
                   onClick={() => scrollToSection(item.children[0].id)}
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors rounded-lg mx-1 ${
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors rounded-md ${
                     isGroupActive
                       ? "text-[#8b5cf6]"
                       : "text-[#a1a1aa] hover:text-white hover:bg-white/5"
                   }`}
-                  style={{ width: "calc(100% - 0.5rem)" }}
                 >
                   <span className={`shrink-0 ${isGroupActive ? "text-[#8b5cf6]" : "text-[#52525b]"}`}>
                     {item.icon}
