@@ -173,7 +173,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
       updatePreferences({
         display: {
           ...storedDisplay,
-          reading: { focusMode: next.enabled, focusIntensity: next.intensity },
+          reading: { ...storedDisplay.reading, focusMode: next.enabled, focusIntensity: next.intensity },
         },
       });
       return next;
