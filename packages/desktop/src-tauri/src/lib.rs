@@ -315,7 +315,7 @@ async fn x_api_request(
     headers: std::collections::HashMap<String, String>,
 ) -> Result<String, String> {
     let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+        .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36")
         .build()
         .map_err(|e| e.to_string())?;
 

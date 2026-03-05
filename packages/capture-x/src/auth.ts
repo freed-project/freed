@@ -116,38 +116,135 @@ function findFirefoxProfilePath(): string | null {
 }
 
 // =============================================================================
-// Chrome Cookie Decryption (macOS)
+// Chrome Cookie Decryption (macOS / Linux)
 // =============================================================================
 
 /**
- * Decrypt Chrome cookies on macOS using keychain
+ * Retrieve the Chrome Safe Storage key from the macOS Keychain.
  *
- * Note: This requires the 'keychain' to be accessible and may prompt for password.
- * For production use, consider alternatives like asking user to export cookies manually.
+ * Chrome stores its cookie encryption master secret in the Keychain under the
+ * service name "Chrome Safe Storage" (Brave uses "Brave Safe Storage").
+ * The `security` CLI is the simplest way to retrieve it without linking to
+ * the Security framework directly.
+ */
+async function getChromeSafeStorageKey(
+  browser: SupportedBrowser,
+): Promise<Buffer | null> {
+  const { execFile } = await import("child_process");
+  const { promisify } = await import("util");
+  const execFileAsync = promisify(execFile);
+
+  const serviceNames: Partial<Record<SupportedBrowser, string>> = {
+    chrome: "Chrome Safe Storage",
+    brave: "Brave Safe Storage",
+    edge: "Microsoft Edge Safe Storage",
+  };
+
+  const service = serviceNames[browser];
+  if (!service) return null;
+
+  try {
+    const { stdout } = await execFileAsync("security", [
+      "find-generic-password",
+      "-s",
+      service,
+      "-w", // print only the password
+    ]);
+    // The key returned by `security` is already the raw master password;
+    // Chrome derives the final AES key via PBKDF2-SHA1 from it.
+    return Buffer.from(stdout.trim(), "utf8");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Decrypt a Chrome/Brave v10/v11 AES-128-CBC encrypted cookie value on macOS.
+ *
+ * Encryption scheme:
+ *   key  = PBKDF2-SHA1(masterPassword, salt="saltysalt", iterations=1003, keylen=16)
+ *   iv   = " " * 16  (16 space characters)
+ *   data = encryptedValue.slice(3)  (strip "v10" or "v11" prefix)
+ */
+async function decryptChromeCookieMacOS(
+  encryptedValue: Buffer,
+  masterPassword: Buffer,
+): Promise<string | null> {
+  const { pbkdf2, createDecipheriv } = await import("crypto");
+  const { promisify } = await import("util");
+  const pbkdf2Async = promisify(pbkdf2);
+
+  try {
+    const key = await pbkdf2Async(
+      masterPassword,
+      "saltysalt",
+      1003,
+      16,
+      "sha1",
+    );
+
+    const iv = Buffer.alloc(16, " ");
+    const ciphertext = encryptedValue.slice(3); // strip v10/v11 prefix
+
+    const decipher = createDecipheriv("aes-128-cbc", key, iv);
+    decipher.setAutoPadding(true);
+
+    const decrypted = Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]);
+
+    return decrypted.toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Decrypt a Chrome/Brave encrypted cookie value, trying the OS-appropriate method.
+ *
+ * - macOS: PBKDF2 key from Keychain + AES-128-CBC
+ * - Linux: fixed password "peanuts" + AES-128-CBC (Chrome's default)
+ * - Windows: DPAPI (not yet implemented; callers fall back to manual paste)
  */
 async function decryptChromeCookie(
   encryptedValue: Buffer,
+  browser: SupportedBrowser = "chrome",
 ): Promise<string | null> {
-  // Chrome encrypts cookies with AES-128-CBC using a key derived from the keychain
-  // The format is: "v10" + 12-byte nonce + encrypted data + 16-byte tag
+  if (!encryptedValue || encryptedValue.length === 0) return null;
 
-  // For now, we'll check if it's encrypted and return null if so
-  // Full decryption requires keychain access which is complex
-
-  if (encryptedValue && encryptedValue.length > 0) {
-    // Check for v10 prefix (encrypted)
-    const prefix = encryptedValue.slice(0, 3).toString();
-    if (prefix === "v10" || prefix === "v11") {
-      // This is encrypted - would need keychain access to decrypt
-      // For now, return null and fall back to unencrypted value
-      console.warn("Encrypted cookie found. Manual export may be required.");
-      return null;
-    }
-
-    // Try to decode as plain text
+  const prefix = encryptedValue.slice(0, 3).toString();
+  if (prefix !== "v10" && prefix !== "v11") {
+    // Not encrypted — plain text value stored directly in the buffer
     return encryptedValue.toString("utf8");
   }
 
+  const os = platform();
+
+  if (os === "darwin") {
+    const masterPassword = await getChromeSafeStorageKey(browser);
+    if (!masterPassword) {
+      console.warn(
+        `[auth] Could not read ${browser} Safe Storage key from Keychain. ` +
+          "Run `capture-x set-cookies` to supply cookies manually.",
+      );
+      return null;
+    }
+    return decryptChromeCookieMacOS(encryptedValue, masterPassword);
+  }
+
+  if (os === "linux") {
+    // Chrome on Linux uses the fixed password "peanuts" by default when no
+    // Secret Service / kwallet is configured (the common case in headless envs).
+    const masterPassword = Buffer.from("peanuts", "utf8");
+    return decryptChromeCookieMacOS(encryptedValue, masterPassword);
+  }
+
+  // Windows DPAPI decryption is not yet implemented.
+  console.warn(
+    "[auth] Chrome cookie decryption is not supported on Windows. " +
+      "Run `capture-x set-cookies` to supply cookies manually.",
+  );
   return null;
 }
 
@@ -156,15 +253,18 @@ async function decryptChromeCookie(
 // =============================================================================
 
 /**
- * Extract X/Twitter cookies from a Chromium-based browser
+ * Extract X/Twitter cookies from a Chromium-based browser.
+ *
+ * Chrome locks its cookie database while the browser is running. On most
+ * platforms better-sqlite3 can still open a read-only snapshot — if that
+ * fails, the caller should instruct the user to close the browser first or
+ * use `capture-x set-cookies` to supply cookies manually.
  */
 async function extractChromiumCookies(
   cookiePath: string,
+  browser: SupportedBrowser,
 ): Promise<XCookies | null> {
   try {
-    // Note: Chrome locks the cookie database while running
-    // We need to copy it first or use a different approach
-
     const db = new Database(cookiePath, { readonly: true });
 
     const query = `
@@ -180,12 +280,13 @@ async function extractChromiumCookies(
     let authToken: string | null = null;
 
     for (const row of rows) {
-      if (row.name === "ct0") {
-        ct0 = row.value || (await decryptChromeCookie(row.encrypted_value!));
-      } else if (row.name === "auth_token") {
-        authToken =
-          row.value || (await decryptChromeCookie(row.encrypted_value!));
-      }
+      const decrypted = row.encrypted_value?.length
+        ? await decryptChromeCookie(row.encrypted_value, browser)
+        : null;
+      const value = row.value || decrypted;
+
+      if (row.name === "ct0") ct0 = value;
+      else if (row.name === "auth_token") authToken = value;
     }
 
     if (ct0 && authToken) {
@@ -267,7 +368,7 @@ export async function extractCookies(
     return null;
   }
 
-  return extractChromiumCookies(cookiePath);
+  return extractChromiumCookies(cookiePath, browser);
 }
 
 /**

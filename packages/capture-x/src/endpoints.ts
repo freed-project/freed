@@ -79,7 +79,7 @@ export interface EndpointDefinition {
  * HomeLatestTimeline - Get chronological "Following" feed
  */
 export const HomeLatestTimeline: EndpointDefinition = {
-  queryId: "HJFjzBgCs16TqxewQOeLNg",
+  queryId: "vIA2Cqe3OdTO9TTi75kXqA",
   operationName: "HomeLatestTimeline",
   features: TIMELINE_FEATURES,
 };
@@ -88,7 +88,7 @@ export const HomeLatestTimeline: EndpointDefinition = {
  * HomeTimeline - Get algorithmic "For You" feed
  */
 export const HomeTimeline: EndpointDefinition = {
-  queryId: "s6ERr1UxkxxBx4YundNsXw",
+  queryId: "5HIFewm4IR4zjZoYSa1vBg",
   operationName: "HomeTimeline",
   features: TIMELINE_FEATURES,
 };
@@ -97,7 +97,7 @@ export const HomeTimeline: EndpointDefinition = {
  * Following - Get list of accounts user follows
  */
 export const Following: EndpointDefinition = {
-  queryId: "eWTmcJY3EMh-dxIR7CYTKw",
+  queryId: "gGVkcwUnM_ISWg3NIby2TA",
   operationName: "Following",
   features: COMMON_FEATURES,
 };
@@ -106,7 +106,7 @@ export const Following: EndpointDefinition = {
  * UserTweets - Get tweets from a specific user
  */
 export const UserTweets: EndpointDefinition = {
-  queryId: "E3opETHurmVJflFsUBVuUQ",
+  queryId: "N9_71NodX1yntoC5pa4IFw",
   operationName: "UserTweets",
   features: COMMON_FEATURES,
 };
@@ -115,7 +115,7 @@ export const UserTweets: EndpointDefinition = {
  * TweetDetail - Get a single tweet with replies
  */
 export const TweetDetail: EndpointDefinition = {
-  queryId: "VWFGPVAGkZMGRKGe3GFFnA",
+  queryId: "flqCy6kvOMolEquuRpOaHQ",
   operationName: "TweetDetail",
   features: COMMON_FEATURES,
 };
@@ -132,15 +132,19 @@ export function buildGraphQLUrl(endpoint: EndpointDefinition): string {
 }
 
 /**
- * Build the request body for a GraphQL request
+ * Build the request body for a GraphQL request.
+ *
+ * X's modern API expects variables and features as plain JSON objects (not
+ * double-stringified), with queryId included in the body alongside them.
  */
 export function buildRequestBody(
   endpoint: EndpointDefinition,
   variables: Record<string, unknown>,
 ): string {
   return JSON.stringify({
-    variables: JSON.stringify(variables),
-    features: JSON.stringify(endpoint.features),
+    variables,
+    features: endpoint.features,
+    queryId: endpoint.queryId,
   });
 }
 

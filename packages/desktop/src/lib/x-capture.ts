@@ -14,7 +14,7 @@ import {
   X_API_BASE,
   X_BEARER_TOKEN,
   HomeLatestTimeline,
-  TIMELINE_FEATURES,
+  buildRequestBody,
   tweetsToFeedItems,
   deduplicateFeedItems,
   getHomeLatestTimelineVariables,
@@ -31,15 +31,11 @@ import { useAppStore } from "./store";
  */
 async function xRequest(
   cookies: XCookies,
-  endpoint: { queryId: string; operationName: string },
+  endpoint: Parameters<typeof buildRequestBody>[0],
   variables: Record<string, unknown>
 ): Promise<unknown> {
   const url = `${X_API_BASE}/${endpoint.queryId}/${endpoint.operationName}`;
-
-  const body = JSON.stringify({
-    variables: JSON.stringify(variables),
-    features: JSON.stringify(TIMELINE_FEATURES),
-  });
+  const body = buildRequestBody(endpoint, variables);
 
   const headers = {
     authorization: `Bearer ${X_BEARER_TOKEN}`,

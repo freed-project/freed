@@ -17,6 +17,8 @@ export function XFeedEmptyState() {
   const setXAuth = useAppStore((s) => s.setXAuth);
   const isLoading = useAppStore((s) => s.isLoading);
   const activeFilter = useAppStore((s) => s.activeFilter);
+  const storeError = useAppStore((s) => s.error);
+  const setError = useAppStore((s) => s.setError);
 
   const [xSyncing, setXSyncing] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -26,6 +28,7 @@ export function XFeedEmptyState() {
 
   const handleConnect = async () => {
     setFormError("");
+    setError(null);
     const cookies = connectX(ct0, authToken);
     if (!cookies) {
       setFormError("Both ct0 and auth_token are required.");
@@ -48,6 +51,7 @@ export function XFeedEmptyState() {
   const handleSync = async () => {
     const cookies = loadStoredCookies();
     if (!cookies) return;
+    setError(null);
     setXSyncing(true);
     try {
       await captureXTimeline(cookies);
@@ -61,7 +65,10 @@ export function XFeedEmptyState() {
   const handleDisconnect = () => {
     disconnectX();
     setXAuth({ isAuthenticated: false });
+    setError(null);
   };
+
+  const syncError = storeError && xAuth.isAuthenticated ? storeError : null;
 
   // Non-X filter → generic empty state with icon
   if (activeFilter.platform !== "x") {
@@ -114,6 +121,13 @@ export function XFeedEmptyState() {
             Disconnect
           </button>
         </div>
+        {syncError && (
+          <p className="mt-4 text-xs text-red-400 max-w-xs text-center leading-relaxed">
+            {syncError.includes("401") || syncError.includes("403")
+              ? "Your cookies have expired. Disconnect and reconnect with fresh cookies from x.com."
+              : syncError}
+          </p>
+        )}
       </>
     );
   }
@@ -133,19 +147,27 @@ export function XFeedEmptyState() {
 
       {showForm ? (
         <div className="w-full max-w-xs space-y-3 text-left">
-          <p className="text-[11px] text-[#71717a] leading-relaxed">
-            Open x.com → DevTools → Application → Cookies → x.com
-          </p>
+          <div className="p-3 rounded-lg bg-white/5 text-[11px] text-[#a1a1aa] leading-relaxed space-y-1">
+            <p className="font-medium text-white mb-1.5">How to get your cookies:</p>
+            <ol className="list-decimal list-inside space-y-1">
+              <li>Log in to <span className="text-white font-medium">x.com</span> in Chrome</li>
+              <li>Open DevTools with <kbd className="px-1 py-0.5 bg-white/10 rounded text-[10px]">⌥⌘I</kbd></li>
+              <li>Click the <span className="text-white">Application</span> tab</li>
+              <li>Expand <span className="text-white">Cookies</span> → select <span className="font-mono text-[10px] text-[#c4b5fd]">https://x.com</span></li>
+              <li>Find <span className="font-mono text-[#c4b5fd]">ct0</span> and copy its value</li>
+              <li>Find <span className="font-mono text-[#c4b5fd]">auth_token</span> and copy its value</li>
+            </ol>
+          </div>
           <input
             type="text"
-            placeholder="ct0 cookie value"
+            placeholder="ct0 value"
             value={ct0}
             onChange={(e) => setCt0(e.target.value)}
             className="w-full text-sm px-3 py-2 bg-white/5 border border-[rgba(255,255,255,0.1)] rounded-xl text-white placeholder-[#52525b] focus:outline-none focus:border-[#8b5cf6]/60"
           />
           <input
             type="text"
-            placeholder="auth_token cookie value"
+            placeholder="auth_token value"
             value={authToken}
             onChange={(e) => setAuthToken(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handleConnect(); }}
