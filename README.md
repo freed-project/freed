@@ -17,6 +17,7 @@ Capture your social/rss/newsletter feeds locally. Tune the ranking algo yourself
 - 📌 **Save for later** — Capture any URL with reader view
 - ⚓ **Ulysses mode** — Block platform feeds, stay intentional
 - 📍 **Friend map** — See where your people are posting from
+- ⌨️ **Command bar** — Search bar doubles as a keyboard-driven action launcher. Focus it to jump to any settings section. Future versions will let you trigger every app action from here: subscribe to feeds, navigate, change preferences, and more without touching the mouse
 
 ---
 

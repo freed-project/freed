@@ -1,7 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
 import { useAppStore, usePlatform, MACOS_TRAFFIC_LIGHT_INSET } from "../../context/PlatformContext.js";
+import { useSettingsStore } from "../../lib/settings-store.js";
+import {
+  BASE_SECTION_METAS,
+  UPDATES_SECTION_META,
+  DANGER_SECTION_META,
+  type SectionMeta,
+} from "../../lib/settings-sections.js";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -10,9 +17,49 @@ interface HeaderProps {
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 const dragStyle = { WebkitAppRegion: "drag" } as React.CSSProperties;
 
+// ── Command palette action type ───────────────────────────────────────────────
+// Foundation for a full in-app action launcher. Currently populated with
+// settings navigation actions. Future categories: navigation, feeds, content.
+
+interface CommandAction {
+  id: string;
+  /** Short human-readable label shown in the palette row. */
+  label: string;
+  /** Right-aligned breadcrumb hint, e.g. "Settings". */
+  hint: string;
+  /** Lowercase strings matched against the search query. */
+  keywords: string[];
+  onSelect: () => void;
+}
+
+function buildSettingsActions(
+  sections: readonly SectionMeta[],
+  openTo: (id: string) => void,
+): CommandAction[] {
+  return sections.map((s) => ({
+    id: `settings-${s.id}`,
+    label: s.label,
+    hint: "Settings",
+    keywords: s.keywords,
+    onSelect: () => openTo(s.id),
+  }));
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export function Header({ onMenuClick }: HeaderProps) {
-  const { HeaderSyncIndicator, headerDragRegion, addRssFeed, saveUrl, importMarkdown, exportMarkdown } =
-    usePlatform();
+  const {
+    HeaderSyncIndicator,
+    headerDragRegion,
+    addRssFeed,
+    saveUrl,
+    importMarkdown,
+    exportMarkdown,
+    checkForUpdates,
+    factoryReset,
+  } = usePlatform();
+
+  const openSettingsTo = useSettingsStore((s) => s.openTo);
 
   const canAddRss = !!addRssFeed;
   const canSaveContent = !!(saveUrl || importMarkdown || exportMarkdown);
@@ -63,13 +110,14 @@ export function Header({ onMenuClick }: HeaderProps) {
         ? (archivableCountByPlatform[activeFilter.platform] ?? 0)
         : totalArchivableCount;
 
+  // ── + New dropdown ─────────────────────────────────────────────────────────
+
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [addFeedOpen, setAddFeedOpen] = useState(false);
   const [savedContentOpen, setSavedContentOpen] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on outside click or Escape
   useEffect(() => {
     if (!dropdownOpen) return;
     const handleClick = (e: MouseEvent) => {
@@ -87,6 +135,77 @@ export function Header({ onMenuClick }: HeaderProps) {
       document.removeEventListener("keydown", handleKey);
     };
   }, [dropdownOpen]);
+
+  // ── Command palette ────────────────────────────────────────────────────────
+
+  const [isFocused, setIsFocused] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+
+  // All available command actions. Currently settings navigation only;
+  // future versions will include feed subscription, navigation, and more.
+  const allCommandActions = useMemo((): CommandAction[] => {
+    const sections: SectionMeta[] = [
+      ...BASE_SECTION_METAS,
+      ...(checkForUpdates ? [UPDATES_SECTION_META] : []),
+      ...(factoryReset ? [DANGER_SECTION_META] : []),
+    ];
+    return buildSettingsActions(sections, openSettingsTo);
+  }, [checkForUpdates, factoryReset, openSettingsTo]);
+
+  const filteredActions = useMemo(() => {
+    const q = inputValue.toLowerCase().trim();
+    if (!q) return allCommandActions;
+    return allCommandActions
+      .filter(
+        (a) =>
+          a.label.toLowerCase().includes(q) ||
+          a.keywords.some((k) => k.includes(q)),
+      )
+      .slice(0, 6);
+  }, [inputValue, allCommandActions]);
+
+  // Reset keyboard selection whenever the filtered list changes.
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [inputValue]);
+
+  const showPalette = isFocused && filteredActions.length > 0;
+
+  function handleActionSelect(action: CommandAction) {
+    setIsFocused(false);
+    setActiveIndex(-1);
+    action.onSelect();
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Escape") {
+      // First Escape collapses the palette; second clears the query and blurs.
+      if (showPalette) {
+        setIsFocused(false);
+        setActiveIndex(-1);
+      } else {
+        clearSearch();
+        e.currentTarget.blur();
+      }
+      return;
+    }
+
+    if (!showPalette) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((i) => (i + 1) % filteredActions.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => (i <= 0 ? filteredActions.length - 1 : i - 1));
+    } else if (e.key === "Enter" && activeIndex >= 0) {
+      e.preventDefault();
+      const action = filteredActions[activeIndex];
+      if (action) handleActionSelect(action);
+    }
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <>
@@ -130,18 +249,18 @@ export function Header({ onMenuClick }: HeaderProps) {
             <span className="text-lg font-bold gradient-text font-logo">FREED</span>
           </div>
 
-          {/* Search bar — takes the center space; outer div stays draggable on desktop */}
+          {/* Search / command bar — fills all remaining center space */}
           <div
-            className="flex-1 flex items-center justify-center min-w-0"
+            className="flex-1 flex items-center justify-center min-w-0 px-3"
             {...(headerDragRegion ? { "data-tauri-drag-region": true, style: dragStyle } : {})}
           >
             <div
-              className="relative w-full max-w-sm"
+              className="relative w-full"
               style={headerDragRegion ? noDrag : undefined}
             >
               {/* Search icon */}
               <svg
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#71717a]"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#3f3f46]"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -154,15 +273,17 @@ export function Header({ onMenuClick }: HeaderProps) {
                 type="search"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    clearSearch();
-                    e.currentTarget.blur();
-                  }
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => {
+                  // Delay so onMouseDown on palette items fires first.
+                  setTimeout(() => setIsFocused(false), 150);
                 }}
-                placeholder="Search..."
-                aria-label="Search all sources"
-                className="w-full bg-white/5 border border-white/10 rounded-lg pl-8 pr-7 py-1.5 text-sm text-white/80 placeholder-[#52525b] focus:outline-none focus:border-white/20 focus:bg-white/[0.08] transition-colors"
+                onKeyDown={handleKeyDown}
+                placeholder="Search or jump to..."
+                aria-label="Search or run a command"
+                aria-expanded={showPalette}
+                aria-haspopup="listbox"
+                className="w-full bg-transparent border border-white/[0.06] rounded-lg pl-8 pr-7 py-1.5 text-sm text-white/70 placeholder-[#3f3f46] focus:outline-none focus:border-white/[0.14] focus:bg-white/[0.03] transition-colors"
               />
 
               {/* Clear button — only visible when there's input */}
@@ -172,10 +293,53 @@ export function Header({ onMenuClick }: HeaderProps) {
                   aria-label="Clear search"
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-white/10 transition-colors"
                 >
-                  <svg className="w-3 h-3 text-[#71717a]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="w-3 h-3 text-[#52525b]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
+              )}
+
+              {/* Command palette dropdown */}
+              {showPalette && (
+                <div
+                  role="listbox"
+                  aria-label="Quick actions"
+                  className="absolute left-0 right-0 top-full mt-1.5 bg-[#161616] border border-[rgba(255,255,255,0.1)] rounded-xl shadow-2xl shadow-black/70 overflow-hidden z-50 py-1"
+                >
+                  {!inputValue && (
+                    <p className="px-3 pt-1 pb-0.5 text-[10px] font-semibold text-[#3f3f46] uppercase tracking-wider">
+                      Quick actions
+                    </p>
+                  )}
+                  {filteredActions.map((action, i) => (
+                    <button
+                      key={action.id}
+                      role="option"
+                      aria-selected={i === activeIndex}
+                      // preventDefault stops the input from losing focus before onClick fires.
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => handleActionSelect(action)}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
+                        i === activeIndex
+                          ? "bg-white/[0.06] text-white"
+                          : "text-[#a1a1aa] hover:bg-white/[0.04] hover:text-white"
+                      }`}
+                    >
+                      <svg
+                        className="w-3.5 h-3.5 text-[#52525b] shrink-0"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      <span className="flex-1 truncate">{action.label}</span>
+                      <span className="text-xs text-[#3f3f46] shrink-0">{action.hint}</span>
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           </div>
