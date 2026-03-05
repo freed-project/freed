@@ -45,13 +45,19 @@ capture-x blacklist remove @user  # Remove from blacklist
 
 ## Usage
 
-### Start/Stop Capture
+### Background Polling (macOS)
 
 ```bash
-capture-x start    # Begin polling
-capture-x stop     # Stop polling
-capture-x status   # Show status and configuration
-capture-x sync     # Manual sync now
+capture-x install    # Install launchd agent — syncs on schedule automatically
+capture-x uninstall  # Remove the agent
+capture-x status     # Show status and configuration
+capture-x sync       # One-shot manual sync
+```
+
+The launchd agent runs `capture-x sync` on a timer (default: every 5 minutes) and survives sleep/wake cycles. On Linux, add a cron entry instead:
+
+```bash
+*/5 * * * * bun run /path/to/skills/capture-x/src/index.ts sync
 ```
 
 ### View Recent Posts

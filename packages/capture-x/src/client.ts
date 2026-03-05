@@ -257,10 +257,12 @@ export class XClient {
             users.push(entry.content.itemContent.user_results.result);
           }
 
-          // Look for cursor in entry ID
-          if (entry.entryId.startsWith("cursor-bottom-")) {
-            // Extract cursor value (it's usually in the content)
-            // This is a simplified approach
+          // Bottom cursor entry carries the next-page token in content.value
+          if (
+            entry.entryId.startsWith("cursor-bottom-") &&
+            entry.content.value
+          ) {
+            nextCursor = entry.content.value;
           }
         }
       }

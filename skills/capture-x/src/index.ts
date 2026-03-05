@@ -5,7 +5,7 @@
  * Supports three modes: mirror, whitelist, mirror_blacklist
  */
 
-import { homedir } from "os";
+import { homedir, platform } from "os";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import * as A from "@automerge/automerge";
@@ -354,41 +354,138 @@ function showList(list: "whitelist" | "blacklist"): void {
 }
 
 // =============================================================================
+// launchd plist management (macOS background polling)
+// =============================================================================
+
+/** Label used in the launchd plist — must match unload command. */
+const LAUNCHD_LABEL = "wtf.freed.capture-x";
+
+function getLaunchdPlistPath(): string {
+  return join(
+    homedir(),
+    "Library/LaunchAgents",
+    `${LAUNCHD_LABEL}.plist`,
+  );
+}
+
+/**
+ * Generate a launchd plist that runs `capture-x sync` on a repeating interval.
+ *
+ * Using launchd rather than a long-running process means the poller survives
+ * app restarts, sleep/wake cycles, and crashes without any watchdog logic.
+ */
+function generateLaunchdPlist(intervalSeconds: number): string {
+  const bunPath = Bun.which("bun") ?? "/usr/local/bin/bun";
+  // Resolve the skill entry point relative to this file at install time
+  const skillScript = join(import.meta.dir, "index.ts");
+  const logPath = join(FREED_DIR, "capture-x.log");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${LAUNCHD_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${bunPath}</string>
+    <string>run</string>
+    <string>${skillScript}</string>
+    <string>sync</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>${intervalSeconds}</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>${logPath}</string>
+  <key>StandardErrorPath</key>
+  <string>${logPath}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>${homedir()}</string>
+  </dict>
+</dict>
+</plist>`;
+}
+
+async function install(): Promise<void> {
+  if (platform() !== "darwin") {
+    console.error(
+      "Background install via launchd is only supported on macOS.\n" +
+        "On Linux, add a cron job: */5 * * * * bun run /path/to/capture-x/src/index.ts sync",
+    );
+    process.exit(1);
+  }
+
+  const config = loadConfig();
+  const intervalSeconds = config["capture-x"].pollInterval * 60;
+  const plistPath = getLaunchdPlistPath();
+  const plistContent = generateLaunchdPlist(intervalSeconds);
+
+  writeFileSync(plistPath, plistContent);
+  console.log(`Plist written to ${plistPath}`);
+
+  // Load the agent into launchd
+  const { execFileSync } = await import("child_process");
+  try {
+    execFileSync("launchctl", ["load", plistPath]);
+    console.log("Background sync agent installed and started.");
+    console.log(
+      `Syncing every ${config["capture-x"].pollInterval} minutes. ` +
+        "Run `capture-x status` to check, `capture-x uninstall` to remove.",
+    );
+  } catch (error) {
+    console.error("launchctl load failed:", error);
+    console.log(
+      `Plist is at ${plistPath} — load it manually with:\n  launchctl load ${plistPath}`,
+    );
+    process.exit(1);
+  }
+}
+
+async function uninstall(): Promise<void> {
+  if (platform() !== "darwin") {
+    console.error("launchd uninstall is only supported on macOS.");
+    process.exit(1);
+  }
+
+  const plistPath = getLaunchdPlistPath();
+  const { execFileSync } = await import("child_process");
+
+  try {
+    execFileSync("launchctl", ["unload", plistPath]);
+    console.log("Background sync agent stopped.");
+  } catch {
+    // Agent may not be loaded — that's fine, just delete the file
+  }
+
+  try {
+    const { unlinkSync } = await import("fs");
+    unlinkSync(plistPath);
+    console.log(`Plist removed from ${plistPath}`);
+  } catch {
+    console.log("Plist was already removed.");
+  }
+}
+
+// =============================================================================
 // Commands
 // =============================================================================
 
 async function start(): Promise<void> {
-  const state = loadState();
-
-  if (state.running) {
-    console.log("Capture is already running.");
-    return;
-  }
-
-  state.running = true;
-  saveState(state);
-
-  console.log("Starting X capture...");
-
-  try {
-    const result = await captureTimeline();
-    console.log(
-      `Initial capture complete. Added ${result.added} new items (${result.filtered} filtered, ${result.total} total).`
-    );
-  } catch (error) {
-    console.error("Initial capture failed:", error);
-    state.errors.push(`${new Date().toISOString()}: ${error}`);
-    saveState(state);
-  }
-
-  console.log("Capture started. Run `capture-x sync` to capture manually.");
+  console.log(
+    "Use `capture-x install` to set up persistent background sync via launchd (macOS).\n" +
+      "Running a one-shot sync now...",
+  );
+  await sync();
 }
 
 async function stop(): Promise<void> {
-  const state = loadState();
-  state.running = false;
-  saveState(state);
-  console.log("Capture stopped.");
+  console.log(
+    "Use `capture-x uninstall` to remove the background sync agent.",
+  );
 }
 
 async function status(): Promise<void> {
@@ -585,6 +682,14 @@ async function main(): Promise<void> {
       }
       break;
 
+    case "install":
+      await install();
+      break;
+
+    case "uninstall":
+      await uninstall();
+      break;
+
     case "set":
       if (args[1] && args[2]) {
         setOption(args[1], args[2]);
@@ -601,8 +706,8 @@ async function main(): Promise<void> {
 capture-x - X/Twitter feed capture for Freed
 
 Commands:
-  start              Start background capture
-  stop               Stop background capture
+  install            Install background sync agent (macOS launchd)
+  uninstall          Remove background sync agent
   status             Show capture status and configuration
   sync               Manual sync (fetch new posts now)
   recent [n]         Show n most recent X posts (default: 10)
@@ -625,6 +730,8 @@ Options:
   set replies on|off   Include/exclude replies
 
 Examples:
+  capture-x set-cookies "ct0=xxx; auth_token=yyy"
+  capture-x install
   capture-x mode mirror_blacklist
   capture-x blacklist add @annoying_account
   capture-x set retweets off

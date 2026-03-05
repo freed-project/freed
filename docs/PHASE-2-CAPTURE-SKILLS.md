@@ -1,9 +1,7 @@
 # Phase 2: Capture Skills
 
-> **Status:** 🚧 In Progress  
+> **Status:** ✓ Complete  
 > **Dependencies:** Phase 1 (Foundation ✓)
->
-> `capture-rss` is complete. `capture-x` core library is built but the OpenClaw skill wrapper is not yet fully integrated.
 
 ---
 
@@ -286,7 +284,7 @@ capture-rss recent [count]
 | 2.3  | Build GraphQL API client                             | ✓      |
 | 2.4  | Normalize tweets to FeedItem                         | ✓      |
 | 2.5  | Implement capture modes (mirror/whitelist/blacklist) | ✓      |
-| 2.6  | Create OpenClaw skill wrapper for X                  | ☐      |
+| 2.6  | Create OpenClaw skill wrapper for X                  | ✓      |
 | 2.7  | Create `@freed/capture-rss` package                  | ✓      |
 | 2.8  | Build RSS/Atom parser                                | ✓      |
 | 2.9  | Implement feed discovery                             | ✓      |

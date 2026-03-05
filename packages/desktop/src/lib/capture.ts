@@ -95,7 +95,9 @@ export async function refreshAllFeeds(): Promise<void> {
   const store = useAppStore.getState();
   const feeds = Object.values(store.feeds).filter((f) => f.enabled);
 
-  if (feeds.length === 0) return;
+  // Skip the entire function only when there is nothing to do at all:
+  // no RSS feeds AND no authenticated X account.
+  if (feeds.length === 0 && !store.xAuth.isAuthenticated) return;
 
   store.setSyncing(true);
   store.setError(null);
