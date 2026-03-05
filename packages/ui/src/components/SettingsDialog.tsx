@@ -452,6 +452,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             <SectionHeading label="Reading" />
             <div className="space-y-5">
               <Toggle
+                label="Mark read on scroll"
+                checked={display.reading.markReadOnScroll}
+                onChange={(v) => handleReadingChange({ markReadOnScroll: v })}
+                description="Mark items as read when you scroll past them in the feed"
+              />
+              <Toggle
                 label="Show engagement counts"
                 checked={display.showEngagementCounts}
                 onChange={(v) => handleDisplayChange({ showEngagementCounts: v })}

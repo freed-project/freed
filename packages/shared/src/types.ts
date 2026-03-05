@@ -415,6 +415,12 @@ export interface ReadingEnhancements {
 
   /** Focus mode intensity */
   focusIntensity: ReadingIntensity;
+
+  /**
+   * Mark items as read when they scroll past in the feed list.
+   * When false, items are only marked read when explicitly opened.
+   */
+  markReadOnScroll: boolean;
 }
 
 /**
@@ -580,6 +586,7 @@ export function createDefaultPreferences(): UserPreferences {
       reading: {
         focusMode: false,
         focusIntensity: "normal",
+        markReadOnScroll: true,
       },
       archivePruneDays: 30,
     },
