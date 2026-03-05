@@ -27,11 +27,10 @@ import { AISection } from "./settings/AISection.js";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type SectionId =
-  | "display"
   | "reading"
-  | "ai"
   | "feeds"
   | "saved"
+  | "ai"
   | "sync"
   | "updates"
   | "developer"
@@ -42,6 +41,16 @@ interface Section {
   label: string;
   icon: ReactNode;
 }
+
+/** A nav group (e.g. "Sources") containing child sections in the left nav. */
+interface NavGroup {
+  kind: "group";
+  label: string;
+  icon: ReactNode;
+  children: Section[];
+}
+
+type NavStructureItem = Section | NavGroup;
 
 interface SettingsDialogProps {
   open: boolean;
@@ -87,12 +96,14 @@ function Toggle({
 
 // ── Section icons ─────────────────────────────────────────────────────────────
 
+/** Icon for the Sources nav group (not a section itself). */
+const ICON_SOURCES = (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+  </svg>
+);
+
 const ICONS: Record<SectionId, ReactNode> = {
-  display: (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-    </svg>
-  ),
   reading: (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
@@ -159,13 +170,31 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const toggleDebug = useDebugStore((s) => s.toggle);
 
-  // Build the ordered list of sections based on platform capabilities
+  // Flat section list — drives scrollspy and right-pane rendering.
   const allSections: Section[] = [
-    { id: "display", label: "Display", icon: ICONS.display },
     { id: "reading", label: "Reading", icon: ICONS.reading },
-    { id: "ai", label: "AI", icon: ICONS.ai },
     { id: "feeds", label: "Feeds", icon: ICONS.feeds },
-    { id: "saved", label: "Saved Content", icon: ICONS.saved },
+    { id: "saved", label: "Saved", icon: ICONS.saved },
+    { id: "ai", label: "AI", icon: ICONS.ai },
+    ...(SettingsExtraSections ? [{ id: "sync" as const, label: "Sync", icon: ICONS.sync }] : []),
+    ...(checkForUpdates ? [{ id: "updates" as const, label: "Updates", icon: ICONS.updates }] : []),
+    { id: "developer", label: "Developer", icon: ICONS.developer },
+    ...(factoryReset ? [{ id: "danger" as const, label: "Danger Zone", icon: ICONS.danger }] : []),
+  ];
+
+  // Hierarchical nav structure — drives left sidebar rendering only.
+  const navStructure: NavStructureItem[] = [
+    { id: "reading", label: "Reading", icon: ICONS.reading },
+    {
+      kind: "group",
+      label: "Sources",
+      icon: ICON_SOURCES,
+      children: [
+        { id: "feeds", label: "Feeds", icon: ICONS.feeds },
+        { id: "saved", label: "Saved", icon: ICONS.saved },
+      ],
+    },
+    { id: "ai", label: "AI", icon: ICONS.ai },
     ...(SettingsExtraSections ? [{ id: "sync" as const, label: "Sync", icon: ICONS.sync }] : []),
     ...(checkForUpdates ? [{ id: "updates" as const, label: "Updates", icon: ICONS.updates }] : []),
     { id: "developer", label: "Developer", icon: ICONS.developer },
@@ -245,7 +274,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     : allSections;
 
   // ── Scrollspy ────────────────────────────────────────────────────────────
-  const [activeSection, setActiveSection] = useState<SectionId>("display");
+  const [activeSection, setActiveSection] = useState<SectionId>("reading");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // When search is cleared, restore observer-driven active section.
@@ -370,10 +399,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   function SectionContent({ id }: { id: SectionId }) {
     switch (id) {
-      case "display":
+      case "reading":
         return (
           <>
-            <SectionHeading label="Display" />
+            <SectionHeading label="Reading" />
             <div className="space-y-5">
               <Toggle
                 label="Show engagement counts"
@@ -381,15 +410,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 onChange={(v) => handleDisplayChange({ showEngagementCounts: v })}
                 description="Show likes, reposts, and views on posts"
               />
-            </div>
-          </>
-        );
-
-      case "reading":
-        return (
-          <>
-            <SectionHeading label="Reading" />
-            <div className="space-y-5">
               <Toggle
                 label="Focus mode"
                 checked={display.reading.focusMode}
@@ -545,33 +565,89 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // ── Left nav ──────────────────────────────────────────────────────────────
 
-  const NavList = () => (
-    <nav className="flex-1 overflow-y-auto py-2">
-      {visibleSections.map((section) => (
-        <button
-          key={section.id}
-          onClick={() => scrollToSection(section.id)}
-          className={`w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors rounded-lg mx-1 ${
-            activeSection === section.id
-              ? "bg-[#8b5cf6]/15 text-[#8b5cf6]"
-              : section.id === "danger"
-              ? "text-red-400/70 hover:text-red-400 hover:bg-red-500/5"
-              : "text-[#a1a1aa] hover:text-white hover:bg-white/5"
-          }`}
-          style={{ width: "calc(100% - 0.5rem)" }}
-        >
-          <span className={`shrink-0 ${activeSection === section.id ? "text-[#8b5cf6]" : section.id === "danger" ? "text-red-400/60" : "text-[#52525b]"}`}>
-            {section.icon}
-          </span>
-          <span>{section.label}</span>
-        </button>
-      ))}
+  /** Single nav button shared by top-level sections and group children. */
+  function NavButton({
+    section,
+    indented = false,
+  }: {
+    section: Section;
+    indented?: boolean;
+  }) {
+    const isActive = activeSection === section.id;
+    const isDanger = section.id === "danger";
+    return (
+      <button
+        onClick={() => scrollToSection(section.id)}
+        className={`w-full flex items-center gap-3 text-left text-sm transition-colors rounded-lg mx-1 ${
+          indented ? "pl-8 pr-4 py-2" : "px-4 py-2.5"
+        } ${
+          isActive
+            ? "bg-[#8b5cf6]/15 text-[#8b5cf6]"
+            : isDanger
+            ? "text-red-400/70 hover:text-red-400 hover:bg-red-500/5"
+            : "text-[#a1a1aa] hover:text-white hover:bg-white/5"
+        }`}
+        style={{ width: "calc(100% - 0.5rem)" }}
+      >
+        <span className={`shrink-0 ${isActive ? "text-[#8b5cf6]" : isDanger ? "text-red-400/60" : "text-[#52525b]"}`}>
+          {section.icon}
+        </span>
+        <span>{section.label}</span>
+      </button>
+    );
+  }
 
-      {visibleSections.length === 0 && (
-        <p className="px-4 py-3 text-sm text-[#52525b]">No results</p>
-      )}
-    </nav>
-  );
+  const NavList = () => {
+    // When searching, collapse to a flat filtered list for simplicity.
+    if (searchLower) {
+      return (
+        <nav className="flex-1 overflow-y-auto py-2">
+          {visibleSections.length === 0 ? (
+            <p className="px-4 py-3 text-sm text-[#52525b]">No results</p>
+          ) : (
+            visibleSections.map((section) => (
+              <NavButton key={section.id} section={section} />
+            ))
+          )}
+        </nav>
+      );
+    }
+
+    return (
+      <nav className="flex-1 overflow-y-auto py-2">
+        {navStructure.map((item) => {
+          if ("kind" in item) {
+            // Group header + indented children
+            const isGroupActive = item.children.some((c) => c.id === activeSection);
+            return (
+              <div key={item.label}>
+                {/* Clicking the group header jumps to its first child section */}
+                <button
+                  onClick={() => scrollToSection(item.children[0].id)}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors rounded-lg mx-1 ${
+                    isGroupActive
+                      ? "text-[#8b5cf6]"
+                      : "text-[#a1a1aa] hover:text-white hover:bg-white/5"
+                  }`}
+                  style={{ width: "calc(100% - 0.5rem)" }}
+                >
+                  <span className={`shrink-0 ${isGroupActive ? "text-[#8b5cf6]" : "text-[#52525b]"}`}>
+                    {item.icon}
+                  </span>
+                  <span>{item.label}</span>
+                </button>
+                {item.children.map((child) => (
+                  <NavButton key={child.id} section={child} indented />
+                ))}
+              </div>
+            );
+          }
+          // Regular top-level section
+          return <NavButton key={item.id} section={item} />;
+        })}
+      </nav>
+    );
+  };
 
   // ── Render ────────────────────────────────────────────────────────────────
 
