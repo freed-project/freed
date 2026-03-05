@@ -7,12 +7,22 @@
  * causing FriendEditor to fall back to manual entry.
  */
 
+import { invoke, isTauri } from "@tauri-apps/api/core";
+
 interface ContactPickerResult {
   name: string;
   phone?: string;
   email?: string;
   address?: string;
   nativeId?: string;
+}
+
+interface PickContactResponse {
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  native_id: string | null;
 }
 
 /**
@@ -22,14 +32,8 @@ interface ContactPickerResult {
  */
 export async function pickContactViaTauri(): Promise<ContactPickerResult | null> {
   try {
-    if (!window.__TAURI__) return null;
-    const result = await window.__TAURI__.core.invoke<{
-      name: string;
-      phone: string | null;
-      email: string | null;
-      address: string | null;
-      native_id: string | null;
-    } | null>("pick_contact");
+    if (!isTauri()) return null;
+    const result = await invoke<PickContactResponse | null>("pick_contact");
 
     if (!result) return null;
 
