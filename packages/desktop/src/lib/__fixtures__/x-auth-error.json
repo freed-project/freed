@@ -1,0 +1,9 @@
+{
+  "_note": "X auth error body (code 32 = bad credentials, code 89 = invalid/expired token). Triggers errorStage='auth'.",
+  "errors": [
+    {
+      "code": 32,
+      "message": "Could not authenticate you."
+    }
+  ]
+}

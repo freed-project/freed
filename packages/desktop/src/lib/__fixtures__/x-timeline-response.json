@@ -1,0 +1,179 @@
+{
+  "_note": "SYNTHETIC FIXTURE — replace with a real response pasted from the XSettingsSection diagnostic panel after the first successful sync.",
+  "home": {
+    "home_timeline_urt": {
+      "instructions": [
+        {
+          "type": "TimelineAddEntries",
+          "entries": [
+            {
+              "entryId": "tweet-1895000000000000001",
+              "sortIndex": "1895000000000000001",
+              "content": {
+                "entryType": "TimelineTimelineItem",
+                "__typename": "TimelineTimelineItem",
+                "itemContent": {
+                  "itemType": "TimelineTweet",
+                  "__typename": "TimelineTweet",
+                  "tweetDisplayType": "Tweet",
+                  "tweet_results": {
+                    "result": {
+                      "__typename": "Tweet",
+                      "rest_id": "1895000000000000001",
+                      "core": {
+                        "user_results": {
+                          "result": {
+                            "__typename": "User",
+                            "id": "VXNlcjoxMjM0NTY3ODk=",
+                            "rest_id": "123456789",
+                            "is_blue_verified": false,
+                            "legacy": {
+                              "id_str": "123456789",
+                              "name": "Alice Example",
+                              "screen_name": "alice_example",
+                              "description": "Engineer. Builder.",
+                              "followers_count": 4200,
+                              "friends_count": 350,
+                              "statuses_count": 8900,
+                              "profile_image_url_https": "https://pbs.twimg.com/profile_images/1000000001/photo_normal.jpg",
+                              "created_at": "Mon Jan 15 00:00:00 +0000 2018"
+                            }
+                          }
+                        }
+                      },
+                      "legacy": {
+                        "id_str": "1895000000000000001",
+                        "full_text": "Just shipped something I've been working on for months. Sometimes the best feeling is deleting code. https://t.co/example001",
+                        "created_at": "Wed Mar 05 12:00:00 +0000 2025",
+                        "favorite_count": 312,
+                        "retweet_count": 47,
+                        "reply_count": 18,
+                        "quote_count": 9,
+                        "bookmark_count": 55,
+                        "conversation_id_str": "1895000000000000001",
+                        "is_quote_status": false,
+                        "lang": "en",
+                        "entities": {
+                          "urls": [
+                            {
+                              "url": "https://t.co/example001",
+                              "expanded_url": "https://example.com/my-post",
+                              "display_url": "example.com/my-post",
+                              "indices": [101, 124]
+                            }
+                          ],
+                          "hashtags": [],
+                          "user_mentions": []
+                        }
+                      },
+                      "views": {
+                        "count": "28400",
+                        "state": "EnabledWithCount"
+                      },
+                      "card": {
+                        "rest_id": "https://t.co/example001",
+                        "legacy": {
+                          "binding_values": [
+                            { "key": "title", "value": { "string_value": "Shipping Fewer Lines" } },
+                            { "key": "description", "value": { "string_value": "A post about deleting code and feeling good about it." } },
+                            { "key": "url", "value": { "string_value": "https://example.com/my-post" } }
+                          ],
+                          "card_platform": {
+                            "platform": { "device": { "name": "Swift", "version": "12" } }
+                          },
+                          "name": "summary_large_image",
+                          "url": "https://t.co/example001"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "entryId": "tweet-1895000000000000002",
+              "sortIndex": "1895000000000000002",
+              "content": {
+                "entryType": "TimelineTimelineItem",
+                "__typename": "TimelineTimelineItem",
+                "itemContent": {
+                  "itemType": "TimelineTweet",
+                  "__typename": "TimelineTweet",
+                  "tweetDisplayType": "Tweet",
+                  "tweet_results": {
+                    "result": {
+                      "__typename": "Tweet",
+                      "rest_id": "1895000000000000002",
+                      "core": {
+                        "user_results": {
+                          "result": {
+                            "__typename": "User",
+                            "id": "VXNlcjoxMjM0NTY3OTA=",
+                            "rest_id": "987654321",
+                            "is_blue_verified": true,
+                            "legacy": {
+                              "id_str": "987654321",
+                              "name": "Bob Builder",
+                              "screen_name": "bob_builds",
+                              "description": "I make things.",
+                              "followers_count": 92000,
+                              "friends_count": 1200,
+                              "statuses_count": 34000,
+                              "profile_image_url_https": "https://pbs.twimg.com/profile_images/1000000002/photo_normal.jpg",
+                              "created_at": "Fri Apr 01 00:00:00 +0000 2011"
+                            }
+                          }
+                        }
+                      },
+                      "legacy": {
+                        "id_str": "1895000000000000002",
+                        "full_text": "Hot take: the hardest part of software is deciding what NOT to build.",
+                        "created_at": "Wed Mar 05 11:30:00 +0000 2025",
+                        "favorite_count": 1840,
+                        "retweet_count": 203,
+                        "reply_count": 97,
+                        "quote_count": 44,
+                        "conversation_id_str": "1895000000000000002",
+                        "is_quote_status": false,
+                        "lang": "en",
+                        "entities": {
+                          "urls": [],
+                          "hashtags": [],
+                          "user_mentions": []
+                        }
+                      },
+                      "views": {
+                        "count": "142000",
+                        "state": "EnabledWithCount"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "entryId": "cursor-top-1895000000000000000",
+              "sortIndex": "1895000000000000000",
+              "content": {
+                "entryType": "TimelineTimelineCursor",
+                "__typename": "TimelineTimelineCursor",
+                "value": "some_cursor_token_top",
+                "cursorType": "Top"
+              }
+            },
+            {
+              "entryId": "cursor-bottom-0",
+              "sortIndex": "0",
+              "content": {
+                "entryType": "TimelineTimelineCursor",
+                "__typename": "TimelineTimelineCursor",
+                "value": "some_cursor_token_bottom",
+                "cursorType": "Bottom"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
