@@ -308,6 +308,11 @@ async fn fetch_url(url: String) -> Result<String, String> {
 }
 
 /// Make an authenticated POST to the X (Twitter) API.
+///
+/// The client bypasses any system/environment proxy (`no_proxy`) and connects
+/// directly to x.com. This matters in dev where the shell may export an
+/// HTTPS_PROXY (e.g. Cursor's safe-chain) whose TLS cert is not trusted by
+/// the Rust native-tls stack, causing a silent connection failure.
 #[tauri::command]
 async fn x_api_request(
     url: String,
@@ -316,6 +321,12 @@ async fn x_api_request(
 ) -> Result<String, String> {
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36")
+        // Bypass any HTTP/HTTPS proxy set via env vars (e.g. HTTPS_PROXY,
+        // NO_PROXY). We need a direct connection so that:
+        //   1. The native-tls TLS stack connects to x.com directly (no MITM).
+        //   2. We don't leak auth cookies through a third-party proxy.
+        .no_proxy()
+        .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| e.to_string())?;
 
