@@ -15,7 +15,6 @@ import {
   X_API_BASE,
   X_BEARER_TOKEN,
   HomeLatestTimeline,
-  buildRequestBody,
   tweetsToFeedItems,
   deduplicateFeedItems,
   getHomeLatestTimelineVariables,
@@ -33,15 +32,19 @@ import { addDebugEvent } from "@freed/ui/lib/debug-store";
  * A function that sends an HTTP request to the X API and returns the raw
  * response body as a string. In production this calls Tauri's x_api_request
  * command; in tests any function that returns fixture JSON can be substituted.
+ *
+ * `method` defaults to "GET" — X's read-only GraphQL endpoints expect GET
+ * with variables/features encoded as URL query params.
  */
 export type XRequester = (
   url: string,
   body: string,
   headers: Record<string, string>,
+  method?: string,
 ) => Promise<string>;
 
-const defaultRequester: XRequester = (url, body, headers) =>
-  invoke<string>("x_api_request", { url, body, headers });
+const defaultRequester: XRequester = (url, body, headers, method = "GET") =>
+  invoke<string>("x_api_request", { url, body, headers, method });
 
 // =============================================================================
 // Diagnostic Types
@@ -93,24 +96,29 @@ export interface XSyncResult {
 
 async function xRequest(
   cookies: XCookies,
-  endpoint: Parameters<typeof buildRequestBody>[0],
+  endpoint: { queryId: string; operationName: string; features: Record<string, boolean> },
   variables: Record<string, unknown>,
   requester: XRequester,
 ): Promise<string> {
-  const url = `${X_API_BASE}/${endpoint.queryId}/${endpoint.operationName}`;
-  const body = buildRequestBody(endpoint, variables);
+  // X read-only GraphQL endpoints use GET with variables/features as URL params.
+  // Sending them as POST causes 422 GRAPHQL_VALIDATION_FAILED.
+  const base = `${X_API_BASE}/${endpoint.queryId}/${endpoint.operationName}`;
+  const params = new URLSearchParams({
+    variables: JSON.stringify(variables),
+    features: JSON.stringify(endpoint.features),
+  });
+  const url = `${base}?${params.toString()}`;
 
   const headers: Record<string, string> = {
     authorization: `Bearer ${X_BEARER_TOKEN}`,
     "x-csrf-token": cookies.ct0,
     cookie: `ct0=${cookies.ct0}; auth_token=${cookies.authToken}`,
-    "content-type": "application/json",
     "x-twitter-active-user": "yes",
     "x-twitter-auth-type": "OAuth2Session",
     "x-twitter-client-language": "en",
   };
 
-  return requester(url, body, headers);
+  return requester(url, "", headers, "GET");
 }
 
 // =============================================================================

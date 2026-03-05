@@ -307,7 +307,11 @@ async fn fetch_url(url: String) -> Result<String, String> {
     response.text().await.map_err(|e| e.to_string())
 }
 
-/// Make an authenticated POST to the X (Twitter) API.
+/// Make an authenticated request to the X (Twitter) API.
+///
+/// Supports both GET (timeline queries) and POST (mutations). The X web client
+/// uses GET for read-only GraphQL queries — sending them as POST causes 422
+/// GRAPHQL_VALIDATION_FAILED.
 ///
 /// The client bypasses any system/environment proxy (`no_proxy`) and connects
 /// directly to x.com. This matters in dev where the shell may export an
@@ -318,6 +322,7 @@ async fn x_api_request(
     url: String,
     body: String,
     headers: std::collections::HashMap<String, String>,
+    method: Option<String>,
 ) -> Result<String, String> {
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36")
@@ -330,7 +335,13 @@ async fn x_api_request(
         .build()
         .map_err(|e| e.to_string())?;
 
-    let mut request = client.post(&url).body(body);
+    let req_builder = if method.as_deref() == Some("GET") {
+        client.get(&url)
+    } else {
+        client.post(&url).body(body)
+    };
+
+    let mut request = req_builder;
     for (key, value) in headers {
         request = request.header(&key, &value);
     }

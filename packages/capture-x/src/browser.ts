@@ -15,6 +15,8 @@
 
 export * from "./types.js";
 
+export type { EndpointDefinition } from "./endpoints.js";
+
 export {
   X_API_BASE,
   X_BEARER_TOKEN,
