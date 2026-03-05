@@ -106,6 +106,100 @@ Copy must read like a person wrote it. When in doubt, read it aloud. If it sound
 - **Concrete over abstract.** "Stores posts on your hard drive" beats "enables local-first data persistence".
 - **Contractions are fine.** "We don't" reads warmer than "We do not". Use them.
 
+## Desktop E2E Testing
+
+The Freed Desktop app has a Playwright test suite that runs in plain Chromium -- no Tauri binary, no
+native build required. Use this to reproduce UI bugs, verify fixes, and write regression tests
+without any manual clicking.
+
+### How it works
+
+`VITE_TEST_TAURI=1` swaps every `@tauri-apps/*` import for a thin mock module under
+`packages/desktop/src/__mocks__/@tauri-apps/`. Each mock tracks calls in `window.__TAURI_MOCK_*`
+globals. A self-contained init script (`tests/e2e/fixtures/tauri-init.ts`) is injected via
+`page.addInitScript()` before any page JavaScript runs -- it installs `window.__TAURI_INTERNALS__`
+with default IPC handlers for every command the app calls on startup.
+
+### Running the tests
+
+```bash
+# Standard run (headless Chromium)
+npm run test:e2e --workspace=packages/desktop
+
+# Playwright UI mode (visual test runner, great for writing new tests)
+npm run test:e2e:ui --workspace=packages/desktop
+
+# Step-through debugger (pauses on each action, shows browser)
+npm run test:e2e:debug --workspace=packages/desktop
+```
+
+All three commands start a Vite dev server automatically on port 1422 with `VITE_TEST_TAURI=1` and
+tear it down after the run. No separate server startup needed.
+
+### Writing a new test
+
+1. Add a spec file under `packages/desktop/tests/e2e/`.
+2. Import from `./fixtures/app` -- not from `@playwright/test` directly:
+
+```ts
+import { test, expect } from "./fixtures/app";
+
+test("my new behaviour", async ({ app }) => {
+  // app.page is a Playwright Page. The Tauri mock is already injected.
+  // app.waitForReady() blocks until <main> is visible (app fully init'd).
+  await expect(app.page.locator("button")).toBeVisible();
+});
+```
+
+3. Use the `ipc` fixture to override handlers or read mock state:
+
+```ts
+test("invoke a command", async ({ app, ipc }) => {
+  await ipc.setHandler("my_command", (_args) => ({ ok: true }));
+
+  const result = await app.page.evaluate(async () =>
+    (window as any).__TAURI_MOCK_INVOKE__("my_command", {})
+  );
+  expect(result).toEqual({ ok: true });
+});
+```
+
+4. To assert on plugin-shell `open()` calls: `await ipc.openedUrls()`.
+5. To assert on plugin-process calls: `await ipc.processCalls()`.
+6. To pre-set the updater state before page load, inject a second `addInitScript`:
+
+```ts
+await page.addInitScript(tauriInitScript());  // always first
+await page.addInitScript(() => {
+  (window as any).__TAURI_MOCK_UPDATE__ = { version: "2.0.0", ... };
+});
+await page.goto("/");
+```
+
+### Adding a new IPC mock handler
+
+If the app starts calling a new `invoke()` command and tests fail because the handler is missing,
+add a default response in both places:
+
+1. `packages/desktop/tests/e2e/fixtures/tauri-init.ts` -- add an entry to `_defaults` inside the
+   IIFE. This covers the init-script path (plain Chromium / CI).
+2. `packages/desktop/src/__mocks__/@tauri-apps/api/core.ts` -- add to the `handlers` map in the
+   module-level mock (only hits when `VITE_TEST_TAURI=1` aliases are active, i.e. dev server runs
+   the real Vite mock modules instead of the injected init script).
+
+The two are complementary. `tauri-init.ts` is the reliable one for tests; the module mocks exist
+for completeness and for any test that doesn't use `page.addInitScript`.
+
+### Debugging a UI bug in the desktop app
+
+1. Create a worktree as usual.
+2. Write a failing test that reproduces the bug.
+3. Run with `--debug` to step through the browser state at each assertion.
+4. Fix the code, confirm the test goes green, then commit both together.
+
+This replaces manual testing. Never ask the user to click through the app to verify a fix -- write
+a test instead.
+
 ## Automerge
 
 **Schema** (`packages/shared/src/schema.ts`): backward-compatible only. Add optional fields; never delete (mark `@deprecated`).
