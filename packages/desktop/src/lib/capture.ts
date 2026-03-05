@@ -13,6 +13,7 @@ import { parseFeedXml, feedToFeedItems, feedToRssFeed } from "@freed/capture-rss
 import { captureXTimeline } from "./x-capture";
 import { docBatchRefreshFeeds } from "./automerge";
 import { useAppStore } from "./store";
+import { addDebugEvent } from "@freed/ui/lib/debug-store";
 
 /**
  * Fetch URL via Tauri backend (bypasses CORS)
@@ -165,6 +166,7 @@ export async function refreshAllFeeds(): Promise<void> {
               : String(result.reason);
             console.error("[Refresh] Feed fetch failed:", result.reason);
             feedErrors.push(msg);
+            addDebugEvent("error", `[RSS] feed fetch failed: ${msg}`);
           }
         }
       }
@@ -197,6 +199,7 @@ export async function refreshAllFeeds(): Promise<void> {
       const msg = rssError instanceof Error ? rssError.message : "RSS refresh failed";
       console.error("[Refresh] RSS batch failed:", rssError);
       store.setError(msg);
+      addDebugEvent("error", `[RSS] batch refresh failed: ${msg}`);
     }
 
     // ── X timeline ────────────────────────────────────────────────────────────
@@ -208,13 +211,13 @@ export async function refreshAllFeeds(): Promise<void> {
       try {
         await captureXTimeline(xAuth.cookies);
       } catch (xError) {
+        const msg = xError instanceof Error ? xError.message : "X timeline sync failed";
         console.error("[Refresh] X timeline failed:", xError);
+        addDebugEvent("error", `[X] timeline sync threw: ${msg}`);
         // captureXTimeline sets the store error before re-throwing; only set
         // ours if something slipped through without doing so.
         if (!useAppStore.getState().error) {
-          store.setError(
-            xError instanceof Error ? xError.message : "X timeline sync failed",
-          );
+          store.setError(msg);
         }
       }
     }

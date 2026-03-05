@@ -10,6 +10,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import { getDocBinary, mergeDoc, subscribe } from "./automerge";
+import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import {
   gdriveUploadSafe,
   gdriveStartPollLoop,
@@ -117,7 +118,9 @@ export async function broadcastDoc(): Promise<void> {
     await invoke("broadcast_doc", { docBytes: Array.from(docBytes) });
     console.log("[Sync] Broadcast document:", docBytes.length, "bytes");
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
     console.error("[Sync] Failed to broadcast:", error);
+    addDebugEvent("error", `[Sync] broadcast failed: ${msg}`);
   }
 }
 
@@ -441,7 +444,11 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
       console.log("[CloudSync/%s] Initial merge (%d bytes)", provider, remote.length);
     }
   } catch (err) {
-    if (!signal.aborted) console.error(`[CloudSync/${provider}] Initial download failed:`, err);
+    if (!signal.aborted) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[CloudSync/${provider}] Initial download failed:`, err);
+      addDebugEvent("error", `[Cloud/${provider}] initial download failed: ${msg}`);
+    }
   }
 
   const onRemoteChange = async (binary: Uint8Array) => {
@@ -449,17 +456,27 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
       await mergeDoc(binary);
       console.log("[CloudSync/%s] Merged remote change (%d bytes)", provider, binary.length);
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       console.error(`[CloudSync/${provider}] Merge failed:`, err);
+      addDebugEvent("merge_err", `[Cloud/${provider}] merge failed: ${msg}`);
     }
   };
 
   if (provider === "gdrive") {
     gdriveStartPollLoop(token, onRemoteChange, signal).catch((err) => {
-      if (!signal.aborted) console.error("[CloudSync/GDrive] Poll loop crashed:", err);
+      if (!signal.aborted) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[CloudSync/GDrive] Poll loop crashed:", err);
+        addDebugEvent("error", `[Cloud/gdrive] poll loop crashed: ${msg}`);
+      }
     });
   } else {
     dropboxStartLongpollLoop(token, onRemoteChange, signal).catch((err) => {
-      if (!signal.aborted) console.error("[CloudSync/Dropbox] Longpoll loop crashed:", err);
+      if (!signal.aborted) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[CloudSync/Dropbox] Longpoll loop crashed:", err);
+        addDebugEvent("error", `[Cloud/dropbox] longpoll loop crashed: ${msg}`);
+      }
     });
   }
 
@@ -529,7 +546,9 @@ export function scheduleCloudUpload(provider: CloudProvider, token: string): voi
       }
       console.log("[CloudSync/%s] Uploaded (%d bytes)", provider, binary.byteLength);
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       console.error(`[CloudSync/${provider}] Upload failed:`, err);
+      addDebugEvent("error", `[Cloud/${provider}] upload failed: ${msg}`);
     }
   }, UPLOAD_DEBOUNCE_MS);
 
@@ -544,7 +563,9 @@ export async function startAllCloudSyncs(): Promise<void> {
   for (const provider of getActiveProviders()) {
     const token = getCloudToken(provider)!;
     startCloudSync(provider, token).catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err);
       console.error(`[CloudSync] Failed to resume ${provider}:`, err);
+      addDebugEvent("error", `[Cloud/${provider}] failed to resume on startup: ${msg}`);
     });
   }
 }

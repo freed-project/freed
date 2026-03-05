@@ -1,0 +1,9 @@
+{
+  "_note": "X rate-limit error body (code 88). Triggers errorStage='rate_limit'.",
+  "errors": [
+    {
+      "code": 88,
+      "message": "Rate limit exceeded."
+    }
+  ]
+}

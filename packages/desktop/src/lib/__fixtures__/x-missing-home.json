@@ -1,0 +1,4 @@
+{
+  "_note": "API returned valid JSON but the 'home' key is absent. Triggers errorStage='instructions'. Common when the queryId is completely wrong or the endpoint was changed.",
+  "data": {}
+}

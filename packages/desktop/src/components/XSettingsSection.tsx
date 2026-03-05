@@ -1,14 +1,118 @@
 /**
  * XSettingsSection — Settings > Sources > X / Twitter
  *
- * Cookie-based X authentication, manual sync, and disconnect.
- * Mounted as XSettingsContent in the desktop PlatformConfig.
+ * Cookie-based X authentication, manual sync, disconnect, and a per-stage
+ * diagnostic panel that surfaces exactly where the pipeline stalls when
+ * "All caught up" appears without any data.
  */
 
 import { useState } from "react";
 import { useAppStore } from "../lib/store";
 import { connectX, loadStoredCookies, disconnectX } from "../lib/x-auth";
 import { captureXTimeline } from "../lib/x-capture";
+import type { XSyncDiag } from "../lib/x-capture";
+
+// =============================================================================
+// Diagnostic Panel
+// =============================================================================
+
+interface DiagRowProps {
+  label: string;
+  value: string;
+  /** Highlight amber when a stage produced 0 after a prior stage produced >0 */
+  warn?: boolean;
+}
+
+function DiagRow({ label, value, warn }: DiagRowProps) {
+  return (
+    <div className="flex justify-between gap-4">
+      <span className={warn ? "text-amber-400" : "text-[#52525b]"}>{label}</span>
+      <span className={warn ? "text-amber-400 font-medium" : "text-[#71717a]"}>{value}</span>
+    </div>
+  );
+}
+
+interface DiagPanelProps {
+  diag: XSyncDiag;
+}
+
+function DiagPanel({ diag }: DiagPanelProps) {
+  const [copied, setCopied] = useState(false);
+
+  const copyPreview = () => {
+    navigator.clipboard.writeText(diag.rawResponsePreview).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const showRawCopy =
+    diag.tweetsExtracted === 0 && diag.rawResponsePreview.length > 0;
+
+  return (
+    <details className="group">
+      <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">
+        <span className="group-open:rotate-90 transition-transform inline-block">›</span>
+        Sync details
+      </summary>
+
+      <div className="mt-2 space-y-1 text-xs font-mono pl-3 border-l border-white/10">
+        <DiagRow
+          label="Response"
+          value={
+            diag.rawResponseBytes > 0
+              ? `${diag.rawResponseBytes.toLocaleString()} bytes`
+              : "—"
+          }
+        />
+        <DiagRow
+          label="Instructions"
+          value={diag.instructionsFound.toLocaleString()}
+          warn={diag.instructionsFound === 0 && diag.rawResponseBytes > 0}
+        />
+        <DiagRow
+          label="Tweets extracted"
+          value={diag.tweetsExtracted.toLocaleString()}
+          warn={diag.tweetsExtracted === 0 && diag.instructionsFound > 0}
+        />
+        <DiagRow
+          label="After normalize"
+          value={diag.itemsNormalized.toLocaleString()}
+          warn={diag.itemsNormalized === 0 && diag.tweetsExtracted > 0}
+        />
+        <DiagRow
+          label="After dedup"
+          value={diag.itemsDeduplicated.toLocaleString()}
+          warn={diag.itemsDeduplicated === 0 && diag.itemsNormalized > 0}
+        />
+        <DiagRow
+          label="New items added"
+          value={diag.itemsAdded.toLocaleString()}
+        />
+
+        {diag.errorStage && (
+          <p className="text-red-400 pt-1 leading-relaxed">
+            Failed at <span className="font-semibold">{diag.errorStage}</span>
+            {diag.errorMessage ? `: ${diag.errorMessage}` : ""}
+          </p>
+        )}
+
+        {showRawCopy && (
+          <button
+            onClick={copyPreview}
+            className="mt-2 text-[10px] px-2 py-1 rounded bg-white/5 text-[#71717a] hover:bg-white/10 hover:text-[#a1a1aa] transition-colors"
+          >
+            {copied ? "Copied!" : "Copy raw response preview"}
+          </button>
+        )}
+      </div>
+    </details>
+  );
+}
+
+// =============================================================================
+// Main Component
+// =============================================================================
 
 export function XSettingsSection() {
   const xAuth = useAppStore((s) => s.xAuth);
@@ -22,7 +126,20 @@ export function XSettingsSection() {
   const [ct0, setCt0] = useState("");
   const [authToken, setAuthToken] = useState("");
   const [formError, setFormError] = useState("");
-  const [lastCount, setLastCount] = useState<number | null>(null);
+  const [lastDiag, setLastDiag] = useState<XSyncDiag | null>(null);
+
+  const runSync = async (cookies: Parameters<typeof captureXTimeline>[0]) => {
+    setSyncing(true);
+    setLastDiag(null);
+    try {
+      const result = await captureXTimeline(cookies);
+      setLastDiag(result.diag);
+    } catch (err) {
+      console.error("X timeline capture failed:", err);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const handleConnect = async () => {
     setFormError("");
@@ -36,41 +153,20 @@ export function XSettingsSection() {
     setShowForm(false);
     setCt0("");
     setAuthToken("");
-    setSyncing(true);
-    try {
-      const before = useAppStore.getState().items.filter((i) => i.platform === "x").length;
-      await captureXTimeline(cookies);
-      const after = useAppStore.getState().items.filter((i) => i.platform === "x").length;
-      setLastCount(after - before);
-    } catch (err) {
-      console.error("X timeline capture failed:", err);
-    } finally {
-      setSyncing(false);
-    }
+    await runSync(cookies);
   };
 
   const handleSync = async () => {
     const cookies = loadStoredCookies();
     if (!cookies) return;
     setError(null);
-    setLastCount(null);
-    setSyncing(true);
-    try {
-      const before = useAppStore.getState().items.filter((i) => i.platform === "x").length;
-      await captureXTimeline(cookies);
-      const after = useAppStore.getState().items.filter((i) => i.platform === "x").length;
-      setLastCount(after - before);
-    } catch (err) {
-      console.error("X timeline capture failed:", err);
-    } finally {
-      setSyncing(false);
-    }
+    await runSync(cookies);
   };
 
   const handleDisconnect = () => {
     disconnectX();
     setXAuth({ isAuthenticated: false });
-    setLastCount(null);
+    setLastDiag(null);
     setError(null);
     setShowForm(false);
   };
@@ -78,6 +174,23 @@ export function XSettingsSection() {
   const syncError = storeError && xAuth.isAuthenticated ? storeError : null;
 
   if (xAuth.isAuthenticated) {
+    const statusLine = (() => {
+      if (!lastDiag) return null;
+      if (lastDiag.errorStage) return null; // error is shown separately
+      if (lastDiag.itemsAdded === 0 && lastDiag.tweetsExtracted === 0) {
+        return <p className="text-xs text-[#52525b]">Timeline returned no posts.</p>;
+      }
+      if (lastDiag.itemsAdded === 0) {
+        return <p className="text-xs text-[#52525b]">Already up to date.</p>;
+      }
+      return (
+        <p className="text-xs text-[#52525b]">
+          Added {lastDiag.itemsAdded.toLocaleString()} new post
+          {lastDiag.itemsAdded === 1 ? "" : "s"}.
+        </p>
+      );
+    })();
+
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
@@ -103,18 +216,15 @@ export function XSettingsSection() {
 
         {syncError && (
           <p className="text-xs text-red-400 leading-relaxed">
-            {syncError.includes("401") || syncError.includes("403")
+            {syncError.includes("401") || syncError.includes("403") || syncError.includes("auth")
               ? "Your cookies have expired. Disconnect and reconnect with fresh cookies from x.com."
               : syncError}
           </p>
         )}
-        {lastCount !== null && !syncError && (
-          <p className="text-xs text-[#52525b]">
-            {lastCount === 0
-              ? "Already up to date."
-              : `Added ${lastCount.toLocaleString()} new post${lastCount === 1 ? "" : "s"}.`}
-          </p>
-        )}
+
+        {statusLine}
+
+        {lastDiag && <DiagPanel diag={lastDiag} />}
 
         <p className="text-xs text-[#52525b] leading-relaxed">
           Freed syncs your home timeline every 30 minutes while the app is open.
