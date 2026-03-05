@@ -293,6 +293,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   // ── Scrollspy ────────────────────────────────────────────────────────────
   const [activeSection, setActiveSection] = useState<SectionId>("reading");
   const scrollRef = useRef<HTMLDivElement>(null);
+  // While true, IntersectionObserver updates are suppressed so intermediate
+  // sections that drift through the trigger zone during a smooth-scroll
+  // animation don't cause nav items to flicker.
+  const isScrollingProgrammatically = useRef(false);
+  const scrollEndTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // When search is cleared, restore observer-driven active section.
   // When searching, highlight the first visible match.
@@ -318,6 +323,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             intersecting.delete(id);
           }
         });
+
+        // Suppress updates while a click-initiated scroll is animating
+        if (isScrollingProgrammatically.current) return;
 
         // Active = topmost intersecting section in document order
         for (const section of allSections) {
@@ -351,9 +359,21 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (scrollRef.current) {
       const el = scrollRef.current.querySelector<HTMLElement>(`[data-section="${id}"]`);
       if (el) {
-        // Scroll within the container rather than the whole page
         const container = scrollRef.current;
         const elTop = el.getBoundingClientRect().top - container.getBoundingClientRect().top;
+
+        // Lock out the observer so intermediate sections don't flicker
+        isScrollingProgrammatically.current = true;
+        clearTimeout(scrollEndTimerRef.current);
+
+        const clearScrolling = () => {
+          isScrollingProgrammatically.current = false;
+        };
+        // scrollend fires when the animation settles (Chrome/FF/Safari 17.4+)
+        container.addEventListener("scrollend", clearScrolling, { once: true });
+        // Timeout fallback for older Safari
+        scrollEndTimerRef.current = setTimeout(clearScrolling, 800);
+
         container.scrollBy({ top: elTop - 16, behavior: "smooth" });
       }
     }
