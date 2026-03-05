@@ -42,15 +42,14 @@ let currentDoc: FreedDoc | null = null;
 type Subscriber = (doc: FreedDoc) => void;
 const subscribers = new Set<Subscriber>();
 
-/** Snapshot current doc stats into the debug store */
+/** Snapshot current doc stats into the debug store using the cached binary. */
 function snapshotDoc(): void {
-  if (!currentDoc) return;
-  const binary = A.save(currentDoc);
+  if (!currentDoc || !lastBinary) return;
   setDocSnapshot({
     deviceId: (currentDoc.meta?.deviceId as string | undefined) ?? "unknown",
     itemCount: Object.keys(currentDoc.feedItems ?? {}).length,
     feedCount: Object.keys(currentDoc.rssFeeds ?? {}).length,
-    binarySize: binary.byteLength,
+    binarySize: lastBinary.byteLength,
     savedAt: Date.now(),
   });
 }
@@ -63,6 +62,8 @@ export async function initDoc(): Promise<FreedDoc> {
 
   if (saved) {
     currentDoc = A.load<FreedDoc>(saved);
+    // Use the stored bytes directly — no need to re-serialize on startup.
+    lastBinary = saved;
   } else {
     currentDoc = createEmptyDoc();
     await saveDoc();
@@ -71,13 +72,12 @@ export async function initDoc(): Promise<FreedDoc> {
   const deviceId = (currentDoc.meta?.deviceId as string | undefined) ?? "unknown";
   addDebugEvent("init", `device ...${deviceId.slice(-8)}`);
   // Defer the debug snapshot so it doesn't block the init render path.
-  // A.save() is synchronous WASM work — run it after the UI is visible.
   setTimeout(() => snapshotDoc(), 0);
 
   registerDocAccessors(
     () => currentDoc,
     () => JSON.stringify(A.toJS(currentDoc!), null, 2),
-    () => A.save(currentDoc!),
+    () => lastBinary ?? new Uint8Array(0),
   );
 
   return currentDoc;
@@ -93,30 +93,65 @@ export function getDoc(): FreedDoc {
   return currentDoc;
 }
 
+// Pending save timer — debounces A.save() so rapid back-to-back mutations
+// (e.g. mark-as-read while scrolling) batch into a single WASM serialization.
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Latest serialized binary — refreshed in flushSave(), used for relay broadcast
+// and getDocBinary() so callers never need to call A.save() themselves.
+let lastBinary: Uint8Array | null = null;
+
 /**
- * Save the current document to IndexedDB
+ * Schedule a debounced persist + relay broadcast. A.save() is synchronous WASM
+ * work; running it on every mutation blocks the main thread before React can
+ * paint. Deferring by 400 ms lets the UI render first while still persisting
+ * and syncing promptly.
+ *
+ * Callers that need the doc saved immediately (init, mergeDoc) use flushSave().
  */
-async function saveDoc(): Promise<void> {
+function scheduleSave(): void {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    void flushSave().then(() => broadcastToRelay());
+  }, 400);
+}
+
+/** Serialize and persist the doc immediately (bypasses debounce). */
+async function flushSave(): Promise<void> {
   if (!currentDoc) return;
-  const binary = A.save(currentDoc);
-  await storage.save(binary);
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  lastBinary = A.save(currentDoc);
+  await storage.save(lastBinary);
 }
 
 /**
- * Broadcast the current document to all connected PWA clients via Tauri relay
+ * Save the current document to IndexedDB (immediate, for init/merge paths).
+ */
+async function saveDoc(): Promise<void> {
+  await flushSave();
+}
+
+/**
+ * Push the latest binary to connected PWA clients via Tauri relay.
+ * Uses the cached binary from the last flushSave() — no extra A.save() call.
  */
 async function broadcastToRelay(): Promise<void> {
-  if (!currentDoc) return;
+  if (!lastBinary) return;
   try {
-    const bytes = A.save(currentDoc);
-    await invoke("broadcast_doc", { docBytes: Array.from(bytes) });
+    await invoke("broadcast_doc", { docBytes: Array.from(lastBinary) });
   } catch {
     // Relay may not be running yet or no clients connected — safe to ignore
   }
 }
 
 /**
- * Apply a change to the document and persist
+ * Apply a change to the document, notify subscribers immediately, and schedule
+ * a debounced persist. Subscribers (and React) fire right after A.change()
+ * so the UI paints before A.save() runs on the main thread.
  */
 async function applyChange(
   changeFn: (doc: FreedDoc) => void,
@@ -127,16 +162,16 @@ async function applyChange(
   }
 
   currentDoc = A.change(currentDoc, message || "update", changeFn);
-  await saveDoc();
-  addDebugEvent("change", message);
 
-  // Notify subscribers
+  // Notify subscribers and push to relay BEFORE persisting so React can paint.
+  addDebugEvent("change", message);
   for (const subscriber of subscribers) {
     subscriber(currentDoc);
   }
-
-  // Push updated doc to connected PWA clients
   broadcastToRelay();
+
+  // Defer the expensive WASM serialization until after the frame paints.
+  scheduleSave();
 
   return currentDoc;
 }
@@ -543,13 +578,14 @@ export async function docAddStubItem(
 }
 
 /**
- * Get binary representation for sync
+ * Return the latest serialized binary for sync/relay.
+ * Uses the cached value from the last flushSave() — no extra A.save() call.
  */
 export function getDocBinary(): Uint8Array {
-  if (!currentDoc) {
+  if (!lastBinary) {
     throw new Error("Document not initialized");
   }
-  return A.save(currentDoc);
+  return lastBinary;
 }
 
 /**
