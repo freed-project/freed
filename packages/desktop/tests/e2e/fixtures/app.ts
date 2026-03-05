@@ -1,188 +1,157 @@
 /**
- * Playwright test fixtures for the Freed Desktop E2E suite.
+ * Playwright fixtures for Freed Desktop e2e tests.
  *
- * Usage:
- *   import { test, expect } from './fixtures/app';
- *   test('my test', async ({ app, ipc }) => { ... });
+ * The `app` fixture navigates to the root and waits for the React app to
+ * finish initializing before handing control to the test. All tests should
+ * use this fixture instead of calling page.goto('/') directly.
  *
- * Fixtures:
- *   app  — AppFixture wrapping the Playwright Page. Provides waitForReady()
- *           and helpers for injecting mock RSS data at scale.
- *   ipc  — IpcFixture for overriding and asserting on invoke() calls.
+ * The `ipc` fixture exposes helpers to register IPC command handlers and to
+ * read mock state (opened URLs, process calls, etc.) from the page context.
  */
 
 import { test as base, expect, type Page } from "@playwright/test";
 import { tauriInitScript } from "./tauri-init";
 
-// ─── Types mirrored from @freed/shared so fixtures have no build dep ─────────
+// ---------------------------------------------------------------------------
+// IPC helpers
+// ---------------------------------------------------------------------------
 
-interface MockFeedItem {
-  globalId: string;
-  platform: string;
-  contentType: string;
-  capturedAt: number;
-  publishedAt: number;
-  author: { id: string; handle: string; displayName: string };
-  content: {
-    text: string;
-    mediaUrls: string[];
-    mediaTypes: string[];
-    linkPreview: { url: string; title: string; description: string };
-  };
-  userState: { hidden: boolean; saved: boolean; archived: boolean; tags: string[] };
-  topics: string[];
-  rssSource: { feedUrl: string; feedTitle: string };
+export interface IpcFixture {
+  /** Override the response for a specific invoke() command. */
+  setHandler(cmd: string, fn: (args: unknown) => unknown): Promise<void>;
+
+  /** Clear all custom IPC handlers (resets to silent no-op defaults). */
+  clearHandlers(): Promise<void>;
+
+  /** Return URLs that were passed to plugin-shell open(). */
+  openedUrls(): Promise<string[]>;
+
+  /** Return calls made to plugin-process (relaunch / exit). */
+  processCalls(): Promise<{ fn: string; args: unknown[] }[]>;
+
+  /** Simulate a Tauri event emitted from the Rust side. */
+  emit<T>(event: string, payload: T): Promise<void>;
+
+  /** Simulate an update being available. */
+  setAvailableUpdate(update: {
+    version: string;
+    currentVersion: string;
+  }): Promise<void>;
 }
 
-// ─── AppFixture ───────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// App fixture — navigates and waits for full init
+// ---------------------------------------------------------------------------
 
-export class AppFixture {
-  constructor(public readonly page: Page) {}
-
-  /** Navigate to the app root and wait until the React tree fully initialises. */
-  async goto(path = "/"): Promise<void> {
-    await this.page.goto(path);
-  }
-
-  /**
-   * Block until the app store reports isInitialized = true and the first
-   * render of <main> is visible. Typically resolves in under 500 ms with an
-   * empty Automerge doc.
-   */
-  async waitForReady(timeout = 15_000): Promise<void> {
-    await this.page.waitForFunction(
-      () => {
-        const w = window as Record<string, unknown>;
-        const store = w.__FREED_STORE__ as
-          | { getState: () => { isInitialized: boolean } }
-          | undefined;
-        return store?.getState().isInitialized === true;
-      },
-      { timeout },
-    );
-    await this.page.locator("main").waitFor({ state: "visible", timeout });
-  }
-
-  /**
-   * Generate and inject `count` mock RSS feed items into the live Automerge doc
-   * via docBatchImportItems(). Items are chunked at 500 per the existing helper.
-   *
-   * Call waitForReady() before this so the doc is initialised.
-   */
-  async injectRssItems(count: number, feedUrl = "https://bench.example/feed.xml"): Promise<void> {
-    await this.page.evaluate(
-      async ({ count, feedUrl }) => {
-        const w = window as Record<string, unknown>;
-        const automerge = w.__FREED_AUTOMERGE__ as {
-          docBatchImportItems: (items: unknown[]) => Promise<unknown>;
-        };
-
-        const now = Date.now();
-        const items: MockFeedItem[] = Array.from({ length: count }, (_, i) => ({
-          globalId: `rss:${feedUrl}:bench-item-${i}`,
-          platform: "rss",
-          contentType: "article",
-          capturedAt: now - i * 60_000,
-          publishedAt: now - i * 60_000,
-          author: {
-            id: "bench-feed",
-            handle: "bench-feed",
-            displayName: "Benchmark Feed",
-          },
-          content: {
-            text: `Article ${i.toLocaleString()}: Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.`,
-            mediaUrls: [],
-            mediaTypes: [],
-            linkPreview: {
-              url: `https://bench.example/article-${i}`,
-              title: `Benchmark Article ${i.toLocaleString()}`,
-              description: `This is benchmark article number ${i.toLocaleString()} for performance testing.`,
-            },
-          },
-          userState: { hidden: false, saved: false, archived: false, tags: [] },
-          topics: [],
-          rssSource: {
-            feedUrl,
-            feedTitle: "Benchmark Feed",
-          },
-        }));
-
-        // docBatchImportItems chunks at 500 items per Automerge change.
-        await automerge.docBatchImportItems(items);
-      },
-      { count, feedUrl },
-    );
-
-    // Wait for the store to hydrate the new items into the UI.
-    await this.page.waitForFunction(
-      (expectedCount: number) => {
-        const w = window as Record<string, unknown>;
-        const store = w.__FREED_STORE__ as
-          | { getState: () => { items: unknown[] } }
-          | undefined;
-        return (store?.getState().items.length ?? 0) >= expectedCount;
-      },
-      count,
-      { timeout: 30_000 },
-    );
-  }
+export interface AppFixture {
+  page: Page;
+  /** Wait until the feed view (main content area) is visible. */
+  waitForReady(): Promise<void>;
 }
 
-// ─── IpcFixture ───────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Composed test + fixture
+// ---------------------------------------------------------------------------
 
-export class IpcFixture {
-  constructor(private readonly page: Page) {}
-
-  /** Override the handler for a specific invoke() command. */
-  async setHandler(cmd: string, handler: (args: unknown) => unknown): Promise<void> {
-    await this.page.evaluate(
-      ({ cmd, handlerStr }) => {
-        const w = window as Record<string, unknown>;
-        const handlers = w.__TAURI_MOCK_HANDLERS__ as Record<string, unknown>;
-        // eslint-disable-next-line no-new-func
-        handlers[cmd] = new Function("return (" + handlerStr + ")")();
-      },
-      { cmd, handlerStr: handler.toString() },
-    );
-  }
-
-  /** Return all recorded invoke() calls as { cmd, args } pairs. */
-  async invocations(): Promise<Array<{ cmd: string; args: unknown }>> {
-    return this.page.evaluate(() => {
-      const w = window as Record<string, unknown>;
-      return (w.__TAURI_MOCK_INVOCATIONS__ as Array<{ cmd: string; args: unknown }>) ?? [];
-    });
-  }
-
-  /** Return URLs passed to plugin-shell open(). */
-  async openedUrls(): Promise<string[]> {
-    return this.page.evaluate(() => {
-      const w = window as Record<string, unknown>;
-      return (w.__TAURI_MOCK_OPENED_URLS__ as string[]) ?? [];
-    });
-  }
-}
-
-// ─── Fixture wiring ───────────────────────────────────────────────────────────
-
-type Fixtures = {
+interface Fixtures {
   app: AppFixture;
   ipc: IpcFixture;
-};
+}
 
 export const test = base.extend<Fixtures>({
-  app: async ({ page }, use) => {
-    // Inject the IPC shim before page JS fires so mock globals are ready.
-    await page.addInitScript(tauriInitScript());
-    await use(new AppFixture(page));
+  // The ipc fixture injects helpers into the page context.
+  ipc: async ({ page }, use) => {
+    const fixture: IpcFixture = {
+      async setHandler(cmd, fn) {
+        // Playwright serialises the fn as a string for injection — wrap it so
+        // the in-page registry receives a real function.
+        await page.evaluate(
+          ([c, fnSrc]) => {
+            const handler = new Function(`return (${fnSrc})`)();
+            (
+              window as unknown as Record<string, (c: string, h: unknown) => void>
+            ).__TAURI_MOCK_SET_HANDLER__?.(c, handler);
+          },
+          [cmd, fn.toString()],
+        );
+      },
+
+      async clearHandlers() {
+        await page.evaluate(() => {
+          (
+            window as unknown as Record<string, () => void>
+          ).__TAURI_MOCK_CLEAR_HANDLERS__?.();
+        });
+      },
+
+      async openedUrls() {
+        return page.evaluate(
+          () =>
+            (
+              (window as unknown as Record<string, unknown>)
+                .__TAURI_MOCK_OPENED_URLS__ as string[]
+            ) ?? [],
+        );
+      },
+
+      async processCalls() {
+        return page.evaluate(
+          () =>
+            (
+              (window as unknown as Record<string, unknown>)
+                .__TAURI_MOCK_PROCESS_CALLS__ as { fn: string; args: unknown[] }[]
+            ) ?? [],
+        );
+      },
+
+      async emit(event, payload) {
+        await page.evaluate(
+          ([e, p]) => {
+            (
+              window as unknown as Record<
+                string,
+                (event: string, payload: unknown) => void
+              >
+            ).__TAURI_MOCK_EMIT__?.(e, p);
+          },
+          [event, payload],
+        );
+      },
+
+      async setAvailableUpdate(update) {
+        await page.evaluate((u) => {
+          (window as unknown as Record<string, unknown>).__TAURI_MOCK_UPDATE__ =
+            {
+              ...u,
+              downloadAndInstall: async () => {},
+            };
+        }, update);
+      },
+    };
+
+    await use(fixture);
   },
 
-  ipc: async ({ page }, use) => {
-    await use(new IpcFixture(page));
+  // The app fixture injects the Tauri IPC mock, navigates, and waits for init.
+  app: async ({ page }, use) => {
+    const fixture: AppFixture = {
+      page,
+
+      async waitForReady() {
+        // The feed view's <main> element is the reliable "app is ready" signal.
+        // It only appears after initialize() resolves and React renders.
+        await expect(page.locator("main")).toBeVisible({ timeout: 15_000 });
+      },
+    };
+
+    // Inject window.__TAURI_INTERNALS__ before any page JavaScript runs.
+    // This satisfies the real (pre-bundled) @tauri-apps/* packages so the app
+    // initializes without a running Tauri backend.
+    await page.addInitScript(tauriInitScript());
+    await page.goto("/");
+    await fixture.waitForReady();
+    await use(fixture);
   },
 });
 
 export { expect };
-
-// Re-export MockFeedItem so spec files can extend it without a re-import.
-export type { MockFeedItem };

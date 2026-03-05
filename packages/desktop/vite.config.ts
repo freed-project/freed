@@ -10,23 +10,39 @@ import pkg from "./package.json" with { type: "json" };
 const src = (name: string) =>
   fileURLToPath(new URL(`../${name}/src`, import.meta.url));
 
-// When VITE_TEST_TAURI=1, swap every @tauri-apps/* import for a thin mock
-// module so the UI runs in plain Chromium without a Tauri binary.
+// When VITE_TEST_TAURI=1, replace every @tauri-apps/* import with a thin
+// in-process mock. This lets Playwright run the full React app in plain
+// Chromium without a running Tauri binary.
 const mock = (name: string) =>
   fileURLToPath(
     new URL(`src/__mocks__/@tauri-apps/${name}`, import.meta.url),
   );
 
-const tauriMockAliases = process.env.VITE_TEST_TAURI
+// All Tauri package identifiers. Used for both alias substitution and dep
+// optimization exclusion — Vite's esbuild pre-bundler runs BEFORE alias
+// resolution, so any package that has an alias must also be excluded from
+// optimizeDeps to ensure the alias is applied at transform time.
+const TAURI_PACKAGES = [
+  "@tauri-apps/api/core",
+  "@tauri-apps/api/event",
+  "@tauri-apps/api/path",
+  "@tauri-apps/plugin-store",
+  "@tauri-apps/plugin-fs",
+  "@tauri-apps/plugin-shell",
+  "@tauri-apps/plugin-process",
+  "@tauri-apps/plugin-updater",
+];
+
+const tauriMocks = process.env.VITE_TEST_TAURI
   ? {
       "@tauri-apps/api/core": mock("api/core.ts"),
       "@tauri-apps/api/event": mock("api/event.ts"),
       "@tauri-apps/api/path": mock("api/path.ts"),
-      "@tauri-apps/plugin-process": mock("plugin-process/index.ts"),
-      "@tauri-apps/plugin-updater": mock("plugin-updater/index.ts"),
-      "@tauri-apps/plugin-shell": mock("plugin-shell/index.ts"),
-      "@tauri-apps/plugin-fs": mock("plugin-fs/index.ts"),
-      "@tauri-apps/plugin-store": mock("plugin-store/index.ts"),
+      "@tauri-apps/plugin-store": mock("plugin-store.ts"),
+      "@tauri-apps/plugin-fs": mock("plugin-fs.ts"),
+      "@tauri-apps/plugin-shell": mock("plugin-shell.ts"),
+      "@tauri-apps/plugin-process": mock("plugin-process.ts"),
+      "@tauri-apps/plugin-updater": mock("plugin-updater.ts"),
     }
   : {};
 
@@ -36,6 +52,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      ...tauriMocks,
       '@freed/ui': src('ui'),
       '@freed/shared': src('shared'),
       '@freed/sync': src('sync'),
@@ -44,10 +61,17 @@ export default defineConfig({
       '@freed/capture-save': src('capture-save'),
       '@freed/capture-facebook': src('capture-facebook'),
       '@freed/capture-instagram': src('capture-instagram'),
-      ...tauriMockAliases,
     },
   },
   plugins: [wasm(), topLevelAwait(), react()],
+
+  // Exclude Tauri packages from dep optimization so aliases are honoured.
+  // Vite's esbuild pre-bundler runs before alias resolution, meaning any
+  // aliased package must also be excluded here — otherwise the real (unaliased)
+  // package gets pre-bundled and the alias is never applied at runtime.
+  optimizeDeps: {
+    exclude: TAURI_PACKAGES,
+  },
 
   // Tauri development server
   clearScreen: false,
