@@ -49,7 +49,7 @@ function TabBar({
 // ── Root section component ─────────────────────────────────────────────────────
 
 export function SavedSection() {
-  const { importMarkdown, exportMarkdown } = usePlatform();
+  const { importMarkdown } = usePlatform();
 
   const availableTabs: { id: SavedTab; label: string }[] = [
     { id: "manage" as const, label: "Manage" },

@@ -30,8 +30,6 @@ import {
 } from "../lib/settings-sections.js";
 import { FeedsSection } from "./settings/FeedsSection.js";
 import { SavedSection } from "./settings/SavedSection.js";
-import { AISection } from "./settings/AISection.js";
-
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Section extends SectionMeta {
