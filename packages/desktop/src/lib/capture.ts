@@ -84,94 +84,140 @@ export async function addRssFeed(feedUrl: string): Promise<void> {
 const FETCH_CONCURRENCY = 5;
 
 /**
- * Refresh all subscribed RSS feeds.
+ * Refresh all subscribed RSS feeds and the X timeline.
  *
  * Key performance contract: ALL feed fetches run in parallel batches, and the
  * entire result (feed timestamps + new items) is committed as ONE Automerge
  * change. Previously this was N sequential changes → N full-doc IndexedDB
  * writes → N React re-renders → N rankFeedItems passes. Now it's 1.
+ *
+ * Error isolation contract: RSS and X are fully independent. A failure in
+ * either path is logged and surfaces a user notification, but never prevents
+ * the other path from running. Individual feed fetch failures are logged
+ * silently unless every single feed failed (in which case the user is told).
  */
 export async function refreshAllFeeds(): Promise<void> {
   const store = useAppStore.getState();
   const feeds = Object.values(store.feeds).filter((f) => f.enabled);
 
-  // Skip the entire function only when there is nothing to do at all:
-  // no RSS feeds AND no authenticated X account.
+  // Skip only when there is truly nothing to do.
   if (feeds.length === 0 && !store.xAuth.isAuthenticated) return;
 
   store.setSyncing(true);
   store.setError(null);
 
   try {
-    const allNewItems: FeedItem[] = [];
-    const fetchedFeeds: RssFeed[] = [];
+    // ── RSS feeds ─────────────────────────────────────────────────────────────
+    // Each feed fetch is already isolated by Promise.allSettled. The Automerge
+    // commit is wrapped in its own try/catch so a CRDT write error can't
+    // prevent the X capture below from running.
+    try {
+      const allNewItems: FeedItem[] = [];
+      const fetchedFeeds: RssFeed[] = [];
+      const feedErrors: string[] = [];
 
-    // Parallel fetch with concurrency cap
-    for (let i = 0; i < feeds.length; i += FETCH_CONCURRENCY) {
-      const batch = feeds.slice(i, i + FETCH_CONCURRENCY);
-      const results = await Promise.allSettled(
-        batch.map(async (feed) => {
-          const { items, liveTitle, liveSiteUrl } = await fetchRssFeed(feed.url);
+      // Parallel fetch with concurrency cap
+      for (let i = 0; i < feeds.length; i += FETCH_CONCURRENCY) {
+        const batch = feeds.slice(i, i + FETCH_CONCURRENCY);
+        const results = await Promise.allSettled(
+          batch.map(async (feed) => {
+            const { items, liveTitle, liveSiteUrl } = await fetchRssFeed(feed.url);
 
-          // Sentinel check: OPML fallback or raw URL as title both indicate a broken import.
-          const isUntitled = feed.title === "Untitled Feed" || feed.title === feed.url;
+            // Sentinel check: OPML fallback or raw URL as title both indicate a broken import.
+            const isUntitled = feed.title === "Untitled Feed" || feed.title === feed.url;
 
-          // Resolve the best available title:
-          //   1. Live XML title (if the parser found one)
-          //   2. Hostname of the feed URL (e.g. "news.ycombinator.com") as a
-          //      last resort so the feed doesn't stay labelled "Untitled Feed"
-          //      forever when the XML genuinely omits a <title> element.
-          let healedTitle: string | undefined;
-          if (isUntitled) {
-            try {
-              healedTitle = liveTitle ?? new URL(feed.url).hostname.replace(/^(?:www|feeds?)\./, "");
-            } catch {
-              healedTitle = liveTitle;
+            // Resolve the best available title:
+            //   1. Live XML title (if the parser found one)
+            //   2. Hostname of the feed URL (e.g. "news.ycombinator.com") as a
+            //      last resort so the feed doesn't stay labelled "Untitled Feed"
+            //      forever when the XML genuinely omits a <title> element.
+            let healedTitle: string | undefined;
+            if (isUntitled) {
+              try {
+                healedTitle = liveTitle ?? new URL(feed.url).hostname.replace(/^(?:www|feeds?)\./, "");
+              } catch {
+                healedTitle = liveTitle;
+              }
+              console.log(
+                `[Heal] ${feed.url} | stored="${feed.title}" liveTitle="${liveTitle}" healedTitle="${healedTitle}"`,
+              );
             }
-            console.log(
-              `[Heal] ${feed.url} | stored="${feed.title}" liveTitle="${liveTitle}" healedTitle="${healedTitle}"`,
-            );
-          }
 
-          return {
-            feed: {
-              ...feed,
-              lastFetched: Date.now(),
-              ...(healedTitle ? { title: healedTitle } : {}),
-              ...(!feed.siteUrl && liveSiteUrl ? { siteUrl: liveSiteUrl } : {}),
-            },
-            items,
-          };
-        }),
-      );
-      for (const result of results) {
-        if (result.status === "fulfilled") {
-          fetchedFeeds.push(result.value.feed);
-          allNewItems.push(...result.value.items);
-        } else {
-          console.error("[Refresh] Feed fetch failed:", result.reason);
+            return {
+              feed: {
+                ...feed,
+                lastFetched: Date.now(),
+                ...(healedTitle ? { title: healedTitle } : {}),
+                ...(!feed.siteUrl && liveSiteUrl ? { siteUrl: liveSiteUrl } : {}),
+              },
+              items,
+            };
+          }),
+        );
+
+        for (const result of results) {
+          if (result.status === "fulfilled") {
+            fetchedFeeds.push(result.value.feed);
+            allNewItems.push(...result.value.items);
+          } else {
+            const msg = result.reason instanceof Error
+              ? result.reason.message
+              : String(result.reason);
+            console.error("[Refresh] Feed fetch failed:", result.reason);
+            feedErrors.push(msg);
+          }
         }
       }
+
+      // Single Automerge change for ALL feed + item updates
+      if (fetchedFeeds.length > 0 || allNewItems.length > 0) {
+        await docBatchRefreshFeeds(fetchedFeeds, allNewItems);
+      }
+
+      // Surface per-feed failures to the user only when every feed failed.
+      // Partial failures are logged but kept silent — some fresh content is
+      // better than a scary error banner.
+      if (feedErrors.length > 0) {
+        if (feedErrors.length === feeds.length) {
+          store.setError(
+            feedErrors.length === 1
+              ? `Feed failed to load: ${feedErrors[0]}`
+              : `All ${feedErrors.length} feeds failed to load. Check your network connection.`,
+          );
+        } else {
+          console.warn(
+            `[Refresh] ${feedErrors.length}/${feeds.length} feeds failed (partial):`,
+            feedErrors,
+          );
+        }
+      }
+    } catch (rssError) {
+      // Automerge commit error or unexpected RSS failure — log and notify,
+      // but continue so the X capture below still runs.
+      const msg = rssError instanceof Error ? rssError.message : "RSS refresh failed";
+      console.error("[Refresh] RSS batch failed:", rssError);
+      store.setError(msg);
     }
 
-    // Single Automerge change for ALL feed + item updates
-    if (fetchedFeeds.length > 0 || allNewItems.length > 0) {
-      await docBatchRefreshFeeds(fetchedFeeds, allNewItems);
-    }
-
-    // X timeline — separate change since it has its own auth path
-    const { xAuth } = store;
+    // ── X timeline ────────────────────────────────────────────────────────────
+    // Always runs — completely independent of RSS outcome. captureXTimeline
+    // already calls store.setError on auth/network failures; we add a fallback
+    // here so any unexpected throw is still surfaced and logged.
+    const { xAuth } = useAppStore.getState();
     if (xAuth.isAuthenticated && xAuth.cookies) {
       try {
         await captureXTimeline(xAuth.cookies);
-      } catch (error) {
-        console.error("Failed to capture X timeline:", error);
+      } catch (xError) {
+        console.error("[Refresh] X timeline failed:", xError);
+        // captureXTimeline sets the store error before re-throwing; only set
+        // ours if something slipped through without doing so.
+        if (!useAppStore.getState().error) {
+          store.setError(
+            xError instanceof Error ? xError.message : "X timeline sync failed",
+          );
+        }
       }
     }
-  } catch (error) {
-    store.setError(
-      error instanceof Error ? error.message : "Failed to refresh feeds",
-    );
   } finally {
     store.setSyncing(false);
   }

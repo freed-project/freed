@@ -126,11 +126,14 @@ async function processNext(): Promise<void> {
       }
     }
 
-    // Write metadata + short text summary to Automerge (syncs to all devices)
+    // Write metadata + short text summary to Automerge (syncs to all devices).
+    // author is omitted rather than set to undefined — Automerge's proxy
+    // throws on undefined assignments and updateFeedItem uses Object.assign.
+    const resolvedAuthor = content.author ?? metadata.author;
     await docUpdateFeedItem(entry.globalId, {
       preservedContent: {
         text: summaryText.slice(0, 10_000),
-        author: content.author ?? metadata.author,
+        ...(resolvedAuthor !== undefined ? { author: resolvedAuthor } : {}),
         publishedAt: metadata.publishedAt,
         wordCount: content.wordCount,
         readingTime: content.readingTime,

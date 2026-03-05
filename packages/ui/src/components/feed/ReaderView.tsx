@@ -149,11 +149,14 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
   }, [item.globalId, articleUrl, getLocalContent]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleSaved = useCallback(() => {
+    const nowSaved = !item.userState.saved;
     updateItem(item.globalId, {
       userState: {
         ...item.userState,
-        saved: !item.userState.saved,
-        savedAt: item.userState.saved ? undefined : Date.now(),
+        saved: nowSaved,
+        // Omit savedAt when un-saving rather than setting undefined —
+        // Automerge's proxy throws on undefined assignments.
+        ...(nowSaved ? { savedAt: Date.now() } : {}),
       },
     });
   }, [updateItem, item.globalId, item.userState]);
