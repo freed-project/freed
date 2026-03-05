@@ -109,6 +109,19 @@ export function FeedList({
   const showEngagementCounts = useAppStore(
     (s) => s.preferences.display.showEngagementCounts,
   );
+  const markAsRead = useAppStore((s) => s.markAsRead);
+  const markReadOnScroll = useAppStore(
+    (s) => s.preferences.display.reading.markReadOnScroll,
+  );
+
+  // Tracks the highest item index already marked read via scroll. Reset when
+  // the items array changes (filter/search switch) so stale offsets don't carry over.
+  const scrollReadHighWater = useRef(-1);
+  const prevItemsRef = useRef(items);
+  if (prevItemsRef.current !== items) {
+    prevItemsRef.current = items;
+    scrollReadHighWater.current = -1;
+  }
 
   // Both virtualizers are always constructed (rules of hooks). Only the active
   // one's output is rendered. On mobile the element virtualizer has no scroll
@@ -128,6 +141,29 @@ export function FeedList({
     // Distance from window top to the list container. Accounts for the sticky
     // header so items are offset correctly as window.scrollY changes.
     scrollMargin: windowListRef.current?.offsetTop ?? 0,
+  });
+
+  // Mark items as read when they scroll past the top of the viewport.
+  // We compare the current minimum visible index against the high-water mark
+  // and mark every item in the gap. Fires on every render triggered by the
+  // virtualizer (i.e. on every scroll tick), which is exactly what we want.
+  useEffect(() => {
+    if (!markReadOnScroll) return;
+    const virtualItems = isMobile
+      ? windowVirtualizer.getVirtualItems()
+      : elementVirtualizer.getVirtualItems();
+    if (virtualItems.length === 0) return;
+
+    const minVisible = virtualItems[0].index;
+    if (minVisible <= scrollReadHighWater.current + 1) return;
+
+    for (let i = scrollReadHighWater.current + 1; i < minVisible; i++) {
+      const item = items[i];
+      if (item && !item.userState.readAt) {
+        markAsRead(item.globalId);
+      }
+    }
+    scrollReadHighWater.current = minVisible - 1;
   });
 
   if (items.length === 0) {
