@@ -39,6 +39,8 @@ interface Section {
   id: SectionId;
   label: string;
   icon: ReactNode;
+  /** Setting names, descriptions, and synonyms searched when filtering. */
+  keywords: string[];
 }
 
 /** A nav group (e.g. "Sources") containing child sections in the left nav. */
@@ -166,31 +168,51 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // Flat section list — drives scrollspy and right-pane rendering.
   const allSections: Section[] = [
-    { id: "reading", label: "Reading", icon: ICONS.reading },
-    { id: "feeds", label: "Feeds", icon: ICONS.feeds },
-    { id: "saved", label: "Saved", icon: ICONS.saved },
-    { id: "ai", label: "AI", icon: ICONS.ai },
-    ...(SettingsExtraSections ? [{ id: "sync" as const, label: "Sync", icon: ICONS.sync }] : []),
-    ...(checkForUpdates ? [{ id: "updates" as const, label: "Updates", icon: ICONS.updates }] : []),
-    ...(factoryReset ? [{ id: "danger" as const, label: "Danger Zone", icon: ICONS.danger }] : []),
+    {
+      id: "reading", label: "Reading", icon: ICONS.reading,
+      keywords: ["engagement", "counts", "likes", "reposts", "views", "focus", "focus mode", "bionic", "bold", "reading speed", "intensity", "light", "normal", "strong", "display"],
+    },
+    {
+      id: "feeds", label: "Feeds", icon: ICONS.feeds,
+      keywords: ["rss", "atom", "subscribe", "subscription", "add feed", "url", "opml", "import", "export", "manage", "sources"],
+    },
+    {
+      id: "saved", label: "Saved", icon: ICONS.saved,
+      keywords: ["bookmark", "save url", "reading list", "markdown", "import", "export", "manage", "articles", "sources"],
+    },
+    {
+      id: "ai", label: "AI", icon: ICONS.ai,
+      keywords: ["artificial intelligence", "model", "ollama", "openai", "anthropic", "api key", "provider", "summarize", "summary", "smart", "assistant"],
+    },
+    ...(SettingsExtraSections ? [{
+      id: "sync" as const, label: "Sync", icon: ICONS.sync,
+      keywords: ["cloud", "dropbox", "google drive", "gdrive", "backup", "provider", "connect"],
+    }] : []),
+    ...(checkForUpdates ? [{
+      id: "updates" as const, label: "Updates", icon: ICONS.updates,
+      keywords: ["update", "version", "upgrade", "check for updates", "install", "restart", "release"],
+    }] : []),
+    ...(factoryReset ? [{
+      id: "danger" as const, label: "Danger Zone", icon: ICONS.danger,
+      keywords: ["debug", "panel", "diagnostics", "event log", "document inspector", "reset", "wipe", "factory reset", "delete", "restart", "developer"],
+    }] : []),
   ];
 
   // Hierarchical nav structure — drives left sidebar rendering only.
+  // Re-use the Section objects already defined in allSections so keywords stay in sync.
+  const sectionById = Object.fromEntries(allSections.map((s) => [s.id, s])) as Record<SectionId, Section>;
   const navStructure: NavStructureItem[] = [
-    { id: "reading", label: "Reading", icon: ICONS.reading },
+    sectionById.reading,
     {
       kind: "group",
       label: "Sources",
       icon: ICON_SOURCES,
-      children: [
-        { id: "feeds", label: "Feeds", icon: ICONS.feeds },
-        { id: "saved", label: "Saved", icon: ICONS.saved },
-      ],
+      children: [sectionById.feeds, sectionById.saved],
     },
-    { id: "ai", label: "AI", icon: ICONS.ai },
-    ...(SettingsExtraSections ? [{ id: "sync" as const, label: "Sync", icon: ICONS.sync }] : []),
-    ...(checkForUpdates ? [{ id: "updates" as const, label: "Updates", icon: ICONS.updates }] : []),
-    ...(factoryReset ? [{ id: "danger" as const, label: "Danger Zone", icon: ICONS.danger }] : []),
+    sectionById.ai,
+    ...(SettingsExtraSections ? [sectionById.sync] : []),
+    ...(checkForUpdates ? [sectionById.updates] : []),
+    ...(factoryReset ? [sectionById.danger] : []),
   ];
 
   // ── Preferences state ────────────────────────────────────────────────────
@@ -262,7 +284,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [search, setSearch] = useState("");
   const searchLower = search.toLowerCase().trim();
   const visibleSections = searchLower
-    ? allSections.filter((s) => s.label.toLowerCase().includes(searchLower))
+    ? allSections.filter((s) =>
+        s.label.toLowerCase().includes(searchLower) ||
+        s.keywords.some((k) => k.includes(searchLower)),
+      )
     : allSections;
 
   // ── Scrollspy ────────────────────────────────────────────────────────────
