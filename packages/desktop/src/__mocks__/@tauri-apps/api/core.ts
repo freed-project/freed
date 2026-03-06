@@ -1,43 +1,58 @@
 /**
- * Mock for @tauri-apps/api/core used when VITE_TEST_TAURI=1.
+ * Mock for @tauri-apps/api/core
  *
- * invoke() dispatches to a handler registry so individual tests can override
- * specific commands via window.__TAURI_MOCK_SET_HANDLER__. Unknown commands
- * return undefined (most callers already handle missing/null responses).
+ * Activated when VITE_TEST_TAURI=1 is set. Each invoke() call is routed
+ * through a per-command handler map so individual tests can override responses
+ * without touching global state. All calls are recorded in
+ * window.__TAURI_MOCK_INVOCATIONS__ for assertion.
  */
 
-type InvokeHandler = (args: unknown) => unknown;
+type Handler = (args: Record<string, unknown>) => unknown;
 
-// Global handler registry keyed by command name. Tests may populate this
-// via window.__TAURI_MOCK_SET_HANDLER__ injected by addInitScript.
-const handlers: Map<string, InvokeHandler> = new Map();
+/** Default handlers for every command the app calls on startup. */
+const handlers: Record<string, Handler> = {
+  broadcast_doc: () => null,
+  fetch_url: () => "",
+  get_local_ip: () => "127.0.0.1",
+  get_all_local_ips: () => [],
+  get_sync_url: () => "ws://127.0.0.1:8765",
+  get_sync_client_count: () => 0,
+  reset_pairing_token: () => null,
+  start_relay: () => null,
+  stop_relay: () => null,
+  save_url_content: () => null,
+  get_x_cookies: () => null,
+  pick_contact: () => null,
+};
 
-// Expose registry manipulation and invoke directly on window so Playwright
-// tests can interact with the IPC layer via page.evaluate() without needing
-// to dynamic-import Vite-aliased modules (which the browser can't resolve).
-if (typeof window !== "undefined") {
-  (window as unknown as Record<string, unknown>).__TAURI_MOCK_SET_HANDLER__ = (
-    cmd: string,
-    fn: InvokeHandler,
-  ) => handlers.set(cmd, fn);
+// Expose handler map so tests and tauri-init.ts can override defaults.
+(window as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ = handlers;
+// Append-only log of every invoke() call for test assertions.
+(window as Record<string, unknown>).__TAURI_MOCK_INVOCATIONS__ = [] as Array<{
+  cmd: string;
+  args: Record<string, unknown> | undefined;
+}>;
 
-  (window as unknown as Record<string, unknown>).__TAURI_MOCK_CLEAR_HANDLERS__ =
-    () => handlers.clear();
-
-  // Direct invoke access for tests — mirrors the module-level invoke() above.
-  (window as unknown as Record<string, unknown>).__TAURI_MOCK_INVOKE__ = invoke;
+export async function invoke<T = unknown>(
+  cmd: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
+  (
+    (window as Record<string, unknown>).__TAURI_MOCK_INVOCATIONS__ as Array<{
+      cmd: string;
+      args: typeof args;
+    }>
+  ).push({ cmd, args });
+  const handler =
+    (
+      (window as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ as Record<
+        string,
+        Handler
+      >
+    )[cmd] ?? (() => null);
+  return handler(args ?? {}) as T;
 }
 
-export async function invoke<T>(cmd: string, args?: unknown): Promise<T> {
-  const handler = handlers.get(cmd);
-  if (handler) return handler(args) as T;
-  // Default: silent no-op. Callers that need a specific shape must register a
-  // handler. Silently returning undefined matches the behaviour of a Tauri
-  // command that returns () (unit).
-  return undefined as T;
-}
-
-/** Always false in the test environment — we're running in plain Chromium. */
 export function isTauri(): boolean {
-  return true; // Pretend we are Tauri so desktop-specific code paths run.
+  return false;
 }
