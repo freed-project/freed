@@ -3,25 +3,13 @@
   "version": "0.1.0",
   "description": "Cross-device sync for Freed",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
   "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    },
-    "./storage/filesystem": {
-      "import": "./dist/storage/filesystem.js",
-      "types": "./dist/storage/filesystem.d.ts"
-    },
-    "./storage/indexeddb": {
-      "import": "./dist/storage/indexeddb.js",
-      "types": "./dist/storage/indexeddb.d.ts"
-    },
-    "./cloud": {
-      "import": "./dist/cloud/index.js",
-      "types": "./dist/cloud/index.d.ts"
-    }
+    ".": "./src/index.ts",
+    "./storage/filesystem": "./src/storage/filesystem.ts",
+    "./storage/indexeddb": "./src/storage/indexeddb.ts",
+    "./cloud": "./src/cloud/index.ts"
   },
   "scripts": {
     "build": "tsc",
