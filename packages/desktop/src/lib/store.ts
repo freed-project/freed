@@ -132,16 +132,55 @@ function shallowEqualRecord(
 }
 
 /**
+ * Cache for the expensive sort + rank step inside hydrateFromDoc.
+ *
+ * Re-ranking is only needed when the set of visible items changes (additions,
+ * removals, hide/show) or when weights / saved-status change — because those
+ * are the only inputs to calculatePriority. Mutations like markAsRead or
+ * archiving do not affect priority scores, so the cache is still valid and we
+ * skip the O(n log n) sort + O(n) rank entirely.
+ */
+const sortCache: {
+  items: FeedItem[];
+  visibleCount: number;
+  savedCount: number;
+  weightsJson: string;
+} = { items: [], visibleCount: -1, savedCount: -1, weightsJson: "" };
+
+/**
  * Hydrate store state from Automerge document
  */
 function hydrateFromDoc(doc: FreedDoc): Partial<AppState> {
   const allItems = Object.values(doc.feedItems);
 
+  // Non-hidden items (archived are included — downstream filters handle them).
   const visibleItems = allItems.filter((item) => !item.userState.hidden);
-  const rankedItems = rankFeedItems(
-    visibleItems.sort((a, b) => b.publishedAt - a.publishedAt),
-    doc.preferences.weights,
+
+  // saved status is the only user-state field that affects calculatePriority.
+  const savedCount = allItems.reduce(
+    (n, item) => (item.userState.saved ? n + 1 : n),
+    0,
   );
+  const weightsJson = JSON.stringify(doc.preferences.weights);
+
+  let rankedItems: FeedItem[];
+  if (
+    sortCache.visibleCount === visibleItems.length &&
+    sortCache.savedCount === savedCount &&
+    sortCache.weightsJson === weightsJson
+  ) {
+    // Fast path: nothing rank-affecting changed (e.g. markAsRead, archive).
+    rankedItems = sortCache.items;
+  } else {
+    rankedItems = rankFeedItems(
+      visibleItems.sort((a, b) => b.publishedAt - a.publishedAt),
+      doc.preferences.weights,
+    );
+    sortCache.items = rankedItems;
+    sortCache.visibleCount = visibleItems.length;
+    sortCache.savedCount = savedCount;
+    sortCache.weightsJson = weightsJson;
+  }
 
   const feedUnreadCounts: Record<string, number> = {};
   const feedTotalCounts: Record<string, number> = {};
