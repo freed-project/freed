@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform, MACOS_TRAFFIC_LIGHT_INSET } from "../../context/PlatformContext.js";
@@ -181,15 +181,23 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
     if (!item.userState.archived) onClose();
   }, [toggleArchived, item.globalId, item.userState.archived, onClose]);
 
+  // Debounce the Automerge write so the local state (and re-render) happens
+  // immediately while the expensive hydrateFromDoc cycle is deferred 1 second.
+  const prefTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const toggleFocus = useCallback(() => {
     setFocusOptions((prev) => {
       const next = { ...prev, enabled: !prev.enabled };
-      updatePreferences({
-        display: {
-          ...storedDisplay,
-          reading: { ...storedDisplay.reading, focusMode: next.enabled, focusIntensity: next.intensity },
-        },
-      });
+      if (prefTimerRef.current) clearTimeout(prefTimerRef.current);
+      prefTimerRef.current = setTimeout(() => {
+        prefTimerRef.current = null;
+        updatePreferences({
+          display: {
+            ...storedDisplay,
+            reading: { ...storedDisplay.reading, focusMode: next.enabled, focusIntensity: next.intensity },
+          },
+        });
+      }, 1_000);
       return next;
     });
   }, [updatePreferences, storedDisplay]);
@@ -199,9 +207,10 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
     [item.publishedAt],
   );
 
-  // Parsing HTML into plain text for focus mode is expensive -- memoize it.
+  // Always strip HTML regardless of source -- item.content.text from RSS feeds
+  // frequently contains markup, which would appear as raw brackets in focus mode.
   const plainText = useMemo(
-    () => (html ? htmlToText(html) : item.content.text),
+    () => htmlToText(html ?? item.content.text ?? ""),
     [html, item.content.text],
   );
 
@@ -413,22 +422,32 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
   );
 }
 
-/** Renders text with focus mode bolding applied to word beginnings */
+/**
+ * Renders text with focus mode bolding applied to word beginnings.
+ *
+ * Builds a single HTML string instead of mapping to individual React elements.
+ * A 2 000-word article would otherwise produce ~4 000 React nodes, causing a
+ * multi-second freeze on every toggle. One innerHTML assignment is orders of
+ * magnitude faster.
+ */
 function FocusText({ text, options }: { text: string; options: FocusOptions }) {
-  const segments = applyFocusMode(text, options);
-  return (
-    <>
-      {segments.map((seg, i) =>
-        seg.emphasis ? (
-          <strong key={i} className="text-[#fafafa] font-bold">
-            {seg.text}
-          </strong>
-        ) : (
-          <span key={i}>{seg.text}</span>
-        ),
-      )}
-    </>
-  );
+  const __html = useMemo(() => {
+    const segments = applyFocusMode(text, options);
+    return segments
+      .map((seg) => {
+        // Escape user content before injecting into HTML.
+        const escaped = seg.text
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        return seg.emphasis
+          ? `<strong class="text-[#fafafa] font-bold">${escaped}</strong>`
+          : escaped;
+      })
+      .join("");
+  }, [text, options]);
+
+  return <div dangerouslySetInnerHTML={{ __html }} />;
 }
 
 /**

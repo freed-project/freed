@@ -101,11 +101,22 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 // and getDocBinary() so callers never need to call A.save() themselves.
 let lastBinary: Uint8Array | null = null;
 
+// Tracks whether any PWA clients are connected. Set by sync.ts via
+// setRelayClientCount() to avoid a circular import. When zero, broadcastToRelay
+// is a no-op and skips the expensive Array.from(Uint8Array) conversion.
+let relayClientCount = 0;
+export function setRelayClientCount(n: number): void {
+  relayClientCount = n;
+}
+
 /**
- * Schedule a debounced persist + relay broadcast. A.save() is synchronous WASM
- * work; running it on every mutation blocks the main thread before React can
- * paint. Deferring by 400 ms lets the UI render first while still persisting
- * and syncing promptly.
+ * Schedule a debounced persist + relay broadcast.
+ *
+ * A.save() is synchronous WASM that can block the main thread for 100-500 ms
+ * on large documents. We first defer 400 ms (batching rapid mutations), then
+ * hand off to requestIdleCallback so the serialization runs during a genuine
+ * browser idle window rather than interrupting an active reading frame.
+ * The 2 000 ms deadline guarantees the doc is saved even under continuous load.
  *
  * Callers that need the doc saved immediately (init, mergeDoc) use flushSave().
  */
@@ -113,7 +124,12 @@ function scheduleSave(): void {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveTimer = null;
-    void flushSave().then(() => broadcastToRelay());
+    const doSave = () => void flushSave().then(() => broadcastToRelay());
+    if (typeof requestIdleCallback !== "undefined") {
+      requestIdleCallback(doSave, { timeout: 2_000 });
+    } else {
+      doSave();
+    }
   }, 400);
 }
 
@@ -138,9 +154,10 @@ async function saveDoc(): Promise<void> {
 /**
  * Push the latest binary to connected PWA clients via Tauri relay.
  * Uses the cached binary from the last flushSave() — no extra A.save() call.
+ * Skips the O(binary-size) Array.from() when no clients are connected.
  */
 async function broadcastToRelay(): Promise<void> {
-  if (!lastBinary) return;
+  if (!lastBinary || relayClientCount === 0) return;
   try {
     await invoke("broadcast_doc", { docBytes: Array.from(lastBinary) });
   } catch {
@@ -163,14 +180,15 @@ async function applyChange(
 
   currentDoc = A.change(currentDoc, message || "update", changeFn);
 
-  // Notify subscribers and push to relay BEFORE persisting so React can paint.
+  // Notify subscribers synchronously so React can paint before the expensive
+  // WASM serialization. broadcastToRelay() is called after flushSave() inside
+  // scheduleSave() — calling it here would send stale (pre-mutation) bytes.
   addDebugEvent("change", message);
   for (const subscriber of subscribers) {
     subscriber(currentDoc);
   }
-  broadcastToRelay();
 
-  // Defer the expensive WASM serialization until after the frame paints.
+  // Defer serialization and broadcast until an idle frame (via scheduleSave).
   scheduleSave();
 
   return currentDoc;
@@ -324,15 +342,36 @@ export async function clearLocalDoc(): Promise<void> {
  * Optionally filter by platform.
  */
 export async function docMarkAllAsRead(platform?: string): Promise<FreedDoc> {
-  return applyChange((doc) => {
-    const now = Date.now();
-    for (const item of Object.values(doc.feedItems)) {
-      if (item.userState.readAt) continue;
-      if (item.userState.hidden || item.userState.archived) continue;
-      if (platform && item.platform !== platform) continue;
-      item.userState.readAt = now;
+  // Chunk at 1 000 items per A.change() so each Automerge transaction stays
+  // small. A single change over thousands of items produces a huge change set
+  // that makes A.save() and CRDT merge proportionally slower. Yielding between
+  // chunks lets the browser paint and handle input between batches.
+  const CHUNK = 1_000;
+  const now = Date.now();
+
+  const ids = Object.values(getDoc().feedItems)
+    .filter((item) => {
+      if (item.userState.readAt) return false;
+      if (item.userState.hidden || item.userState.archived) return false;
+      if (platform && item.platform !== platform) return false;
+      return true;
+    })
+    .map((item) => item.globalId);
+
+  let doc = getDoc();
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const batch = ids.slice(i, i + CHUNK);
+    doc = await applyChange((d) => {
+      for (const id of batch) {
+        if (d.feedItems[id]) d.feedItems[id].userState.readAt = now;
+      }
+    }, `Mark all as read (${i + 1}-${Math.min(i + CHUNK, ids.length)} of ${ids.length})`);
+    if (i + CHUNK < ids.length) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
-  }, "Mark all as read");
+  }
+
+  return doc;
 }
 
 /**
@@ -516,6 +555,9 @@ export async function docBatchImportItems(
       }
     }, `Batch import ${chunk.length} items (chunk ${chunkIndex + 1}/${totalChunks})`);
     onChunk?.(chunkIndex + 1, totalChunks);
+    // Yield to the browser event loop between chunks so the UI stays responsive
+    // during large imports and doesn't block input handling or rendering.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
   }
 
   return doc;

@@ -9,7 +9,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
-import { getDocBinary, mergeDoc, subscribe } from "./automerge";
+import { getDocBinary, mergeDoc, subscribe, setRelayClientCount } from "./automerge";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import {
   gdriveUploadSafe,
@@ -109,12 +109,16 @@ export async function getClientCount(): Promise<number> {
 }
 
 /**
- * Broadcast document to all connected clients
+ * Broadcast document to all connected clients.
+ *
+ * Skips the Array.from(Uint8Array) conversion (O(binary size), can be 50-300 ms
+ * for a large doc) when no clients are connected — the common single-device case.
  */
 export async function broadcastDoc(): Promise<void> {
+  if (clientCount === 0) return;
   try {
     const docBytes = getDocBinary();
-    // Convert Uint8Array to regular array for Tauri serialization
+    // Convert Uint8Array to a plain array for Tauri JSON serialization.
     await invoke("broadcast_doc", { docBytes: Array.from(docBytes) });
     console.log("[Sync] Broadcast document:", docBytes.length, "bytes");
   } catch (error) {
@@ -183,6 +187,9 @@ function startPolling(): void {
     const newCount = await getClientCount();
     if (newCount !== clientCount) {
       clientCount = newCount;
+      // Keep automerge.ts in sync so broadcastToRelay() can skip the expensive
+      // Array.from() conversion when no PWA clients are connected.
+      setRelayClientCount(newCount);
       await notifyStatus();
     }
   }, 2000);
