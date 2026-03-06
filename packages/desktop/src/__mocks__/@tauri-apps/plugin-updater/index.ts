@@ -16,7 +16,7 @@ export interface Update {
 
 export async function check(): Promise<Update | null> {
   // Honour __TAURI_MOCK_UPDATE__ so specific tests can simulate an update.
-  const override = (window as Record<string, unknown>).__TAURI_MOCK_UPDATE__;
+  const override = (window as unknown as Record<string, unknown>).__TAURI_MOCK_UPDATE__;
   if (override) {
     return {
       ...(override as Partial<Update>),

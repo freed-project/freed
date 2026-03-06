@@ -8,7 +8,7 @@ import "./index.css";
 if (import.meta.env.VITE_TEST_TAURI) {
   Promise.all([import("./lib/store"), import("./lib/automerge")]).then(
     ([store, automerge]) => {
-      const w = window as Record<string, unknown>;
+      const w = window as unknown as Record<string, unknown>;
       w.__FREED_STORE__ = store.useAppStore;
       w.__FREED_AUTOMERGE__ = automerge;
     },

@@ -26,9 +26,9 @@ const handlers: Record<string, Handler> = {
 };
 
 // Expose handler map so tests and tauri-init.ts can override defaults.
-(window as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ = handlers;
+(window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ = handlers;
 // Append-only log of every invoke() call for test assertions.
-(window as Record<string, unknown>).__TAURI_MOCK_INVOCATIONS__ = [] as Array<{
+(window as unknown as Record<string, unknown>).__TAURI_MOCK_INVOCATIONS__ = [] as Array<{
   cmd: string;
   args: Record<string, unknown> | undefined;
 }>;
@@ -38,14 +38,14 @@ export async function invoke<T = unknown>(
   args?: Record<string, unknown>,
 ): Promise<T> {
   (
-    (window as Record<string, unknown>).__TAURI_MOCK_INVOCATIONS__ as Array<{
+    (window as unknown as Record<string, unknown>).__TAURI_MOCK_INVOCATIONS__ as Array<{
       cmd: string;
       args: typeof args;
     }>
   ).push({ cmd, args });
   const handler =
     (
-      (window as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ as Record<
+      (window as unknown as Record<string, unknown>).__TAURI_MOCK_HANDLERS__ as Record<
         string,
         Handler
       >
