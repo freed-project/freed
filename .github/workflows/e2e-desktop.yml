@@ -1,0 +1,59 @@
+name: E2E — Desktop (Playwright)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/desktop/**"
+      - "packages/ui/**"
+      - "packages/shared/**"
+      - "packages/sync/**"
+      - ".github/workflows/e2e-desktop.yml"
+
+jobs:
+  e2e:
+    name: Smoke tests (Chromium, Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: packages/desktop
+
+      - name: Run e2e smoke tests
+        run: npm run test:e2e --workspace=packages/desktop
+        env:
+          # Playwright runs headless by default on CI.
+          # DISPLAY is not needed for Chromium headless.
+          CI: "true"
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: packages/desktop/playwright-report/
+          retention-days: 7
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: packages/desktop/test-results/
+          retention-days: 7

@@ -2,21 +2,12 @@
   "name": "@freed/shared",
   "version": "0.1.0",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./schema": {
-      "types": "./dist/schema.d.ts",
-      "import": "./dist/schema.js"
-    },
-    "./opml": {
-      "types": "./dist/opml.d.ts",
-      "import": "./dist/opml.js"
-    }
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts",
+    "./opml": "./src/opml.ts"
   },
   "scripts": {
     "build": "tsc",
