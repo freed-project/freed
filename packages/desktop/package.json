@@ -11,7 +11,10 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "test:unit": "vitest run",
-    "test:unit:watch": "vitest"
+    "test:unit:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug"
   },
   "dependencies": {
     "@freed/capture-rss": "*",
@@ -34,6 +37,7 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tauri-apps/cli": "^2.2.7",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",

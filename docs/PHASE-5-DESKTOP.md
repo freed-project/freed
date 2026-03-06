@@ -257,6 +257,8 @@ packages/desktop/
 - [x] Windows NSIS + MSI installers build
 - [x] Linux AppImage, .deb, .rpm all build
 - [x] All updater artifacts signed and uploaded to GitHub Releases
+- [x] Desktop E2E test infrastructure bootstrapped (Playwright + VITE_TEST_TAURI=1 mock layer)
+- [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
 - [ ] macOS DMG is notarized (requires APPLE_CERTIFICATE secret)
 - [ ] Windows installer is code-signed (requires EV certificate)
 

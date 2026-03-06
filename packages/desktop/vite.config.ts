@@ -10,6 +10,26 @@ import pkg from "./package.json" with { type: "json" };
 const src = (name: string) =>
   fileURLToPath(new URL(`../${name}/src`, import.meta.url));
 
+// When VITE_TEST_TAURI=1, swap every @tauri-apps/* import for a thin mock
+// module so the UI runs in plain Chromium without a Tauri binary.
+const mock = (name: string) =>
+  fileURLToPath(
+    new URL(`src/__mocks__/@tauri-apps/${name}`, import.meta.url),
+  );
+
+const tauriMockAliases = process.env.VITE_TEST_TAURI
+  ? {
+      "@tauri-apps/api/core": mock("api/core.ts"),
+      "@tauri-apps/api/event": mock("api/event.ts"),
+      "@tauri-apps/api/path": mock("api/path.ts"),
+      "@tauri-apps/plugin-process": mock("plugin-process/index.ts"),
+      "@tauri-apps/plugin-updater": mock("plugin-updater/index.ts"),
+      "@tauri-apps/plugin-shell": mock("plugin-shell/index.ts"),
+      "@tauri-apps/plugin-fs": mock("plugin-fs/index.ts"),
+      "@tauri-apps/plugin-store": mock("plugin-store/index.ts"),
+    }
+  : {};
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
@@ -24,6 +44,7 @@ export default defineConfig({
       '@freed/capture-save': src('capture-save'),
       '@freed/capture-facebook': src('capture-facebook'),
       '@freed/capture-instagram': src('capture-instagram'),
+      ...tauriMockAliases,
     },
   },
   plugins: [wasm(), topLevelAwait(), react()],
