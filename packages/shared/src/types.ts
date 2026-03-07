@@ -421,6 +421,9 @@ export interface ReadingEnhancements {
    * When false, items are only marked read when explicitly opened.
    */
   markReadOnScroll: boolean;
+
+  /** Two-column reader layout: compact card thumbnail on left, article on right */
+  dualColumnMode: boolean;
 }
 
 /**
@@ -587,6 +590,7 @@ export function createDefaultPreferences(): UserPreferences {
         focusMode: false,
         focusIntensity: "normal",
         markReadOnScroll: true,
+        dualColumnMode: false,
       },
       archivePruneDays: 30,
     },

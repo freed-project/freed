@@ -7,6 +7,8 @@ import { applyFocusMode, type FocusOptions } from "@freed/shared";
 interface ReaderViewProps {
   item: FeedItemType;
   onClose: () => void;
+  /** When true, renders inline as a flex child instead of a fixed overlay */
+  dualColumn?: boolean;
 }
 
 /** Content source labels for the offline badge */
@@ -34,7 +36,7 @@ const PROSE_CLASSES = `
   prose-li:text-[#a1a1aa]
 `.trim();
 
-export function ReaderView({ item, onClose }: ReaderViewProps) {
+export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProps) {
   const { headerDragRegion, getLocalContent } = usePlatform();
   const updateItem = useAppStore((s) => s.updateItem);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
@@ -202,6 +204,16 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
     });
   }, [updatePreferences, storedDisplay]);
 
+  const toggleDualColumn = useCallback(() => {
+    const next = !storedDisplay.reading.dualColumnMode;
+    updatePreferences({
+      display: {
+        ...storedDisplay,
+        reading: { ...storedDisplay.reading, dualColumnMode: next },
+      },
+    });
+  }, [updatePreferences, storedDisplay]);
+
   const timeAgo = useMemo(
     () => formatDistanceToNow(item.publishedAt, { addSuffix: true }),
     [item.publishedAt],
@@ -215,7 +227,7 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
   );
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0a0a0a] overflow-auto">
+    <div className={dualColumn ? "flex-1 min-w-0 bg-[#0a0a0a] overflow-auto" : "fixed inset-0 z-50 bg-[#0a0a0a] overflow-auto"}>
       {/* Header */}
       <header
         className="sticky top-0 z-10 bg-[#0a0a0a]/90 backdrop-blur-xl border-b border-[rgba(255,255,255,0.08)]"
@@ -328,6 +340,31 @@ export function ReaderView({ item, onClose }: ReaderViewProps) {
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </button>
+
+          {/* Dual-column mode toggle (desktop only) */}
+          <button
+            onClick={toggleDualColumn}
+            title={dualColumn ? "Single column" : "Dual column"}
+            className={`hidden md:flex p-2 rounded-lg transition-colors ${
+              dualColumn
+                ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
+                : "hover:bg-white/10 text-[#71717a]"
+            }`}
+            style={headerDragRegion ? noDrag : undefined}
+            aria-pressed={dualColumn}
+            aria-label="Toggle dual column layout"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              {dualColumn ? (
+                <>
+                  <rect x="3" y="3" width="7.5" height="18" rx="1.5" />
+                  <rect x="13.5" y="3" width="7.5" height="18" rx="1.5" />
+                </>
+              ) : (
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+              )}
             </svg>
           </button>
         </div>
