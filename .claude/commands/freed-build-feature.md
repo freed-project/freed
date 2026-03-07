@@ -1,0 +1,1 @@
+Create a new Worktree branch from main, activate planning mode, and prepare an implementation plan for the feature I will describe below. After you complete the implementation, launch a PWA preview from this Worktree so I can test it live. If the feature is desktop-specific, launch up a Tauri dev preview instead.
