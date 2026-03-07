@@ -23,6 +23,24 @@ const worker = new Worker(new URL("./automerge.worker.ts", import.meta.url), {
   type: "module",
 });
 
+// In Vite dev mode, module workers drop messages sent before module evaluation
+// completes. The worker posts a READY message once its onmessage handler is
+// installed. We gate all outbound postMessage calls behind this promise.
+const workerReady = new Promise<void>((resolve, reject) => {
+  const timeout = setTimeout(() => {
+    reject(new Error("Automerge worker failed to start within 15 seconds"));
+  }, 15_000);
+
+  const onReady = (event: MessageEvent<WorkerResponse>) => {
+    if (event.data.type === "READY") {
+      clearTimeout(timeout);
+      worker.removeEventListener("message", onReady);
+      resolve();
+    }
+  };
+  worker.addEventListener("message", onReady);
+});
+
 // ---------------------------------------------------------------------------
 // Request/response plumbing
 // ---------------------------------------------------------------------------
@@ -30,7 +48,8 @@ const worker = new Worker(new URL("./automerge.worker.ts", import.meta.url), {
 let nextReqId = 1;
 const pending = new Map<number, { resolve: () => void; reject: (err: Error) => void }>();
 
-function request(msg: WorkerRequest): Promise<void> {
+async function request(msg: WorkerRequest): Promise<void> {
+  await workerReady;
   return new Promise((resolve, reject) => {
     pending.set(msg.reqId, { resolve, reject });
     worker.postMessage(msg);
@@ -59,6 +78,8 @@ export function subscribe(callback: Subscriber): () => void {
 
 worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   const msg = event.data;
+
+  if (msg.type === "READY") return;
 
   if (msg.type === "STATE_UPDATE") {
     lastBinary = msg.binary;
@@ -106,12 +127,10 @@ worker.onerror = (err) => {
  * Returns the initial hydrated state (equivalent to the old FreedDoc return,
  * but already processed into plain JS — no WASM on the main thread).
  */
-export async function initDoc(): Promise<DocState> {
+function sendInit(): Promise<DocState> {
   return new Promise((resolve, reject) => {
     const reqId = nextReqId++;
 
-    // One-time handler: resolve with the state from the first STATE_UPDATE
-    // that arrives while we wait for the INIT ACK.
     let initialState: DocState | null = null;
     let initAcked = false;
 
@@ -126,7 +145,6 @@ export async function initDoc(): Promise<DocState> {
         initialState = msg.state;
         tryResolve();
       } else if (msg.type === "ACK" && msg.reqId === reqId) {
-        // Register the doc accessors so window.__freed works in the console.
         registerDocAccessors(
           () => null,
           () => "(doc lives in worker — not directly accessible)",
@@ -145,6 +163,17 @@ export async function initDoc(): Promise<DocState> {
     worker.addEventListener("message", stateHandler);
     worker.postMessage({ reqId, type: "INIT" } satisfies WorkerRequest);
   });
+}
+
+export async function initDoc(): Promise<DocState> {
+  await workerReady;
+
+  try {
+    return await sendInit();
+  } catch {
+    await clearLocalDoc();
+    return sendInit();
+  }
 }
 
 /** Binary snapshot of the current doc — used by sync.ts for relay/cloud upload. */

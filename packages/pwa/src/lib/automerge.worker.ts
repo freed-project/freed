@@ -34,7 +34,7 @@ import {
   removeFriend,
   logReachOut,
 } from "@freed/shared/schema";
-import { rankFeedItems, createDefaultPreferences } from "@freed/shared";
+import { rankFeedItems } from "@freed/shared";
 import type { FeedItem, Friend, RssFeed, UserPreferences } from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
 
@@ -62,11 +62,12 @@ function ack(reqId: number, error?: string): void {
  * A.toJS() converts CRDT proxies to regular objects, safe for structured clone.
  */
 function hydrateFromDoc(doc: FreedDoc): DocState {
-  // A.toJS converts Automerge proxies to plain JS — required for postMessage
-  const plainItems = Object.values(A.toJS(doc.feedItems) as Record<string, FeedItem>);
-  const feeds = A.toJS(doc.rssFeeds) as Record<string, RssFeed>;
-  const friends = A.toJS(doc.friends ?? {}) as Record<string, Friend>;
-  const preferences = A.toJS(doc.preferences) as UserPreferences;
+  // A.toJS must receive the document root, not a sub-property.
+  const plain = A.toJS(doc) as FreedDoc;
+  const plainItems = Object.values(plain.feedItems as Record<string, FeedItem>);
+  const feeds = plain.rssFeeds as Record<string, RssFeed>;
+  const friends = (plain.friends ?? {}) as Record<string, Friend>;
+  const preferences = plain.preferences as UserPreferences;
 
   const visibleItems = plainItems.filter((item) => !item.userState.hidden);
   const rankedItems = rankFeedItems(
@@ -177,15 +178,20 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       case "INIT": {
         const saved = await storage.load();
         if (saved) {
-          currentDoc = A.load<FreedDoc>(saved);
-        } else {
+          try {
+            currentDoc = A.load<FreedDoc>(saved);
+          } catch {
+            await storage.clear();
+            send({ type: "DEBUG_EVENT", kind: "init", detail: "corrupt doc cleared, creating fresh" });
+          }
+        }
+        if (!currentDoc) {
           currentDoc = createEmptyDoc();
           const binary = A.save(currentDoc);
           await storage.save(binary);
         }
         const deviceId = (currentDoc.meta?.deviceId as string | undefined) ?? "unknown";
         send({ type: "DEBUG_EVENT", kind: "init", detail: `device ...${deviceId.slice(-8)}` });
-        // Send initial state back via STATE_UPDATE so the main thread can hydrate
         await saveAndBroadcast();
         ack(req.reqId);
         break;
@@ -378,6 +384,11 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     ack(req.reqId, err instanceof Error ? err.message : String(err));
   }
 };
+
+// Signal the main thread that the module finished loading and the onmessage
+// handler is installed. Without this, messages sent before evaluation completes
+// are silently dropped in Vite's dev-mode module workers.
+self.postMessage({ type: "READY" } satisfies WorkerResponse);
 
 // Required for TypeScript module isolation
 export {};

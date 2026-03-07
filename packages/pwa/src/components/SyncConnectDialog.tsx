@@ -4,11 +4,8 @@ import {
   connect,
   storeRelayUrl,
   onStatusChange,
-  startCloudSync,
   stopCloudSync,
-  storeCloudToken,
   getCloudProvider,
-  getCloudToken,
   clearCloudSync,
   type CloudProvider,
 } from "../lib/sync";

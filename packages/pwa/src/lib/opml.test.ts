@@ -6,7 +6,6 @@
 
 import { describe, it, expect } from "vitest";
 import { parseOPML, generateOPML } from "@freed/shared";
-import type { OPMLFeedEntry } from "@freed/shared";
 import type { RssFeed } from "@freed/shared";
 
 // =============================================================================

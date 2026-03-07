@@ -28,6 +28,7 @@ import {
   type SectionId,
   type SectionMeta,
 } from "../lib/settings-sections.js";
+import { generateSampleFeeds, generateSampleItems } from "@freed/shared";
 import { FeedsSection } from "./settings/FeedsSection.js";
 import { SavedSection } from "./settings/SavedSection.js";
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -260,6 +261,27 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       setShowResetConfirm(false);
     }
   }, [factoryReset, deleteFromCloud]);
+
+  // ── Seed sample data ───────────────────────────────────────────────────────
+  const [seeding, setSeeding] = useState(false);
+  const [seedDone, setSeedDone] = useState(false);
+  const addFeed = useAppStore((s) => s.addFeed);
+  const addItems = useAppStore((s) => s.addItems);
+
+  const handleSeedSampleData = useCallback(async () => {
+    setSeeding(true);
+    try {
+      const feeds = generateSampleFeeds();
+      const items = generateSampleItems();
+      for (const feed of feeds) {
+        await addFeed(feed);
+      }
+      await addItems(items);
+      setSeedDone(true);
+    } finally {
+      setSeeding(false);
+    }
+  }, [addFeed, addItems]);
 
   // ── Search ────────────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
@@ -609,6 +631,35 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   <p className="text-xs text-[#52525b] mt-0.5">Sync diagnostics, event log, document inspector</p>
                 </div>
                 <span className="text-[10px] font-mono text-[#52525b] shrink-0 ml-3">⌘⇧D</span>
+              </button>
+              <button
+                onClick={handleSeedSampleData}
+                disabled={seeding || seedDone}
+                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/10 hover:border-amber-500/20 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div>
+                  <p className="text-sm text-amber-400">
+                    {seedDone ? "Sample data populated" : seeding ? "Populating\u2026" : "Populate sample data"}
+                  </p>
+                  <p className="text-xs text-amber-400/50 mt-0.5">
+                    {seedDone
+                      ? "10 feeds and 100 items added"
+                      : "Adds 10 RSS feeds and 100 items for regression testing"}
+                  </p>
+                </div>
+                {seedDone ? (
+                  <svg className="w-4 h-4 text-amber-400/60 shrink-0 ml-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : seeding ? (
+                  <svg className="w-4 h-4 text-amber-400/40 shrink-0 ml-3 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4 text-amber-400/40 shrink-0 ml-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                )}
               </button>
               <button
                 onClick={() => setShowResetConfirm(true)}
