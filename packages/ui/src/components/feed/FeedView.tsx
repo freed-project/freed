@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { FeedList } from "./FeedList.js";
 import { ReaderView } from "./ReaderView.js";
+import { ReaderThumbnail } from "./ReaderThumbnail.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
@@ -56,6 +57,8 @@ export function FeedView() {
 
   const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds), [activeFilter, feeds]);
 
+  const dualColumnMode = useAppStore((s) => s.preferences.display.reading.dualColumnMode);
+
   const [selectedItem, setSelectedItem] = useState<FeedItem | null>(null);
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
 
@@ -106,6 +109,19 @@ export function FeedView() {
   useEffect(() => {
     setFocusedIndex(-1);
   }, [activeFilter, searchQuery]);
+
+  const showDualColumn = dualColumnMode && !!selectedItem;
+
+  // Dual-column: thumbnail + reader side by side, feed list hidden
+  if (showDualColumn) {
+    return (
+      <div className="h-full flex">
+        <ReaderThumbnail item={selectedItem} />
+        <ReaderView item={selectedItem} onClose={closeItem} dualColumn />
+        <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col">
