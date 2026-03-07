@@ -118,14 +118,29 @@ export function FeedList({
     (s) => s.preferences.display.reading.markReadOnScroll,
   );
 
-  // Tracks the highest item index already marked read via scroll. Reset when
-  // the items array changes (filter/search switch) so stale offsets don't carry over.
-  const scrollReadHighWater = useRef(-1);
+  // Per-item timers for the "mark read after 1 s in viewport" behaviour.
+  // Each entry maps a globalId to its pending setTimeout handle.
+  const READ_DELAY_MS = 1000;
+  const readTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
+
+  // Clear all pending timers when the items array identity changes (filter or
+  // search switch) so timers from a previous view don't fire into a new one.
   const prevItemsRef = useRef(items);
   if (prevItemsRef.current !== items) {
     prevItemsRef.current = items;
-    scrollReadHighWater.current = -1;
+    for (const t of readTimersRef.current.values()) clearTimeout(t);
+    readTimersRef.current.clear();
   }
+
+  // Cleanup on unmount.
+  useEffect(
+    () => () => {
+      for (const t of readTimersRef.current.values()) clearTimeout(t);
+    },
+    [],
+  );
 
   // Both virtualizers are always constructed (rules of hooks). Only the active
   // one's output is rendered. On mobile the element virtualizer has no scroll
@@ -147,27 +162,53 @@ export function FeedList({
     scrollMargin: windowListRef.current?.offsetTop ?? 0,
   });
 
-  // Mark items as read when they scroll past the top of the viewport.
-  // We compare the current minimum visible index against the high-water mark
-  // and mark every item in the gap. Fires on every render triggered by the
-  // virtualizer (i.e. on every scroll tick), which is exactly what we want.
+  // Mark items as read after they have been continuously visible for
+  // READ_DELAY_MS. On each virtualizer scroll tick we compute the true pixel
+  // viewport, start a timer for every unread item inside it, and cancel timers
+  // for items that have left. The setTimeout fires markAsRead independently of
+  // the render cycle, so it works even after the user stops scrolling.
   useEffect(() => {
     if (!markReadOnScroll) return;
-    const virtualItems = isMobile
+
+    const vItems = isMobile
       ? windowVirtualizer.getVirtualItems()
       : elementVirtualizer.getVirtualItems();
-    if (virtualItems.length === 0) return;
+    if (vItems.length === 0) return;
 
-    const minVisible = virtualItems[0].index;
-    if (minVisible <= scrollReadHighWater.current + 1) return;
+    const scrollTop = isMobile
+      ? window.scrollY
+      : (parentRef.current?.scrollTop ?? 0);
+    const vpHeight = isMobile
+      ? window.innerHeight
+      : (parentRef.current?.clientHeight ?? 0);
+    const vpBottom = scrollTop + vpHeight;
 
-    for (let i = scrollReadHighWater.current + 1; i < minVisible; i++) {
-      const item = items[i];
-      if (item && !item.userState.readAt) {
-        markAsRead(item.globalId);
+    const visibleNow = new Set<string>();
+    for (const vi of vItems) {
+      if (vi.start < vpBottom && vi.end > scrollTop) {
+        const item = items[vi.index];
+        if (!item || item.userState.readAt) continue;
+        visibleNow.add(item.globalId);
+        if (!readTimersRef.current.has(item.globalId)) {
+          const id = item.globalId;
+          readTimersRef.current.set(
+            id,
+            setTimeout(() => {
+              markAsRead(id);
+              readTimersRef.current.delete(id);
+            }, READ_DELAY_MS),
+          );
+        }
       }
     }
-    scrollReadHighWater.current = minVisible - 1;
+
+    // Cancel timers for items that left the viewport before the delay elapsed.
+    for (const [id, timer] of readTimersRef.current) {
+      if (!visibleNow.has(id)) {
+        clearTimeout(timer);
+        readTimersRef.current.delete(id);
+      }
+    }
   });
 
   // Show shimmer placeholders while the doc is loading from IndexedDB.

@@ -144,8 +144,9 @@ const sortCache: {
   items: FeedItem[];
   visibleCount: number;
   savedCount: number;
+  archivedCount: number;
   weightsJson: string;
-} = { items: [], visibleCount: -1, savedCount: -1, weightsJson: "" };
+} = { items: [], visibleCount: -1, savedCount: -1, archivedCount: -1, weightsJson: "" };
 
 /**
  * Hydrate store state from Automerge document
@@ -156,9 +157,14 @@ function hydrateFromDoc(doc: FreedDoc): Partial<AppState> {
   // Non-hidden items (archived are included — downstream filters handle them).
   const visibleItems = allItems.filter((item) => !item.userState.hidden);
 
-  // saved status is the only user-state field that affects calculatePriority.
+  // saved and archived counts gate cache invalidation: saved affects priority
+  // scores, and archived determines which items downstream filters keep.
   const savedCount = allItems.reduce(
     (n, item) => (item.userState.saved ? n + 1 : n),
+    0,
+  );
+  const archivedCount = allItems.reduce(
+    (n, item) => (item.userState.archived ? n + 1 : n),
     0,
   );
   const weightsJson = JSON.stringify(doc.preferences.weights);
@@ -167,9 +173,10 @@ function hydrateFromDoc(doc: FreedDoc): Partial<AppState> {
   if (
     sortCache.visibleCount === visibleItems.length &&
     sortCache.savedCount === savedCount &&
+    sortCache.archivedCount === archivedCount &&
     sortCache.weightsJson === weightsJson
   ) {
-    // Fast path: nothing rank-affecting changed (e.g. markAsRead, archive).
+    // Fast path: nothing rank-affecting changed (e.g. markAsRead).
     rankedItems = sortCache.items;
   } else {
     rankedItems = rankFeedItems(
@@ -179,6 +186,7 @@ function hydrateFromDoc(doc: FreedDoc): Partial<AppState> {
     sortCache.items = rankedItems;
     sortCache.visibleCount = visibleItems.length;
     sortCache.savedCount = savedCount;
+    sortCache.archivedCount = archivedCount;
     sortCache.weightsJson = weightsJson;
   }
 
