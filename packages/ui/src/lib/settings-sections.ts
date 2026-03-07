@@ -71,5 +71,6 @@ export const DANGER_SECTION_META: SectionMeta = {
   keywords: [
     "debug", "panel", "diagnostics", "event log", "document inspector",
     "reset", "wipe", "factory reset", "delete", "restart", "developer",
+    "sample", "populate", "seed", "test data", "regression",
   ],
 };
