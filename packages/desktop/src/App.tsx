@@ -20,9 +20,9 @@ import {
   deleteCloudFile,
 } from "./lib/sync";
 import { clearLocalDoc } from "./lib/automerge";
-import { clearStoredCookies } from "./lib/x-auth";
-import { disconnectIg } from "./lib/instagram-auth";
-import { disconnectFb } from "./lib/fb-auth";
+import { clearStoredCookies, storeCookies } from "./lib/x-auth";
+import { disconnectIg, storeIgAuthState } from "./lib/instagram-auth";
+import { disconnectFb, storeFbAuthState } from "./lib/fb-auth";
 import { contentCache } from "./lib/content-cache";
 import { saveUrlInDesktop } from "./lib/save-url";
 import { importMarkdownFiles, exportLibrary } from "./lib/import-export";
@@ -38,6 +38,7 @@ import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
 import { check, type Update } from "@tauri-apps/plugin-updater";
+import { generateSampleFeeds, generateSampleItems } from "@freed/shared";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
@@ -177,6 +178,40 @@ function App() {
     location.reload();
   }, []);
 
+  // Fake-authenticate all social providers for local testing. Writes stub
+  // credentials to localStorage (matching the real auth persistence format)
+  // and updates Zustand state so the sidebar dots light up without a real login.
+  const seedSocialConnections = useCallback(() => {
+    const { setXAuth, setFbAuth, setIgAuth } = useAppStore.getState();
+    const now = Date.now();
+
+    const xCookies = { ct0: "sample-ct0-token", authToken: "sample-auth-token" };
+    storeCookies(xCookies);
+    setXAuth({ isAuthenticated: true, cookies: xCookies, username: "sample_user" });
+
+    const fbState = { isAuthenticated: true, lastCheckedAt: now };
+    storeFbAuthState(fbState);
+    setFbAuth(fbState);
+
+    const igState = { isAuthenticated: true, lastCheckedAt: now };
+    storeIgAuthState(igState);
+    setIgAuth(igState);
+  }, []);
+
+  // In dev mode, auto-seed sample data on first page load of each browser
+  // session. sessionStorage guard prevents re-seeding on hot-reload while
+  // still running fresh on every full browser open (e.g. new worktree test).
+  useEffect(() => {
+    if (!isInitialized || !import.meta.env.DEV) return;
+    if (sessionStorage.getItem("freed_dev_seeded")) return;
+    sessionStorage.setItem("freed_dev_seeded", "1");
+
+    const { addFeed, addItems } = useAppStore.getState();
+    generateSampleFeeds().forEach((f) => addFeed(f));
+    addItems(generateSampleItems());
+    seedSocialConnections();
+  }, [isInitialized, seedSocialConnections]);
+
   const platform: PlatformConfig = useMemo(
     () => ({
       store: useAppStore,
@@ -194,6 +229,7 @@ function App() {
       checkForUpdates,
       applyUpdate,
       factoryReset: handleFactoryReset,
+      seedSocialConnections,
       activeCloudProviderLabel: () => {
         const providers = getActiveProviders();
         if (providers.length === 0) return null;
@@ -221,7 +257,7 @@ function App() {
       openUrl: (url: string) => { void shellOpen(url); },
       pickContact: pickContactViaTauri,
     }),
-    [checkForUpdates, applyUpdate, handleFactoryReset],
+    [checkForUpdates, applyUpdate, handleFactoryReset, seedSocialConnections],
   );
 
   if (error && !isInitialized) {

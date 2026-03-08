@@ -154,6 +154,59 @@ const SAVED_DOMAINS = [
   "atlasobscura.com", "makersguide.io", "indoorgardens.net",
 ];
 
+// ── Social post pools ────────────────────────────────────────────────────────
+
+const X_POSTS: string[] = [
+  "Hot take: the best documentation is the kind that fits in a tweet. Prove me wrong.",
+  "Spent the morning reading CRDT papers. My brain is now a conflict-free replicated data type.",
+  "The best debugging tool is still a good night's sleep. Change my mind.",
+  "Local-first software isn't just a pattern. It's a philosophy about who owns your data.",
+  "Reminder that `git blame` is a feature, not a slur.",
+  "Every abstraction is a lie we agree to believe for long enough to ship.",
+  "The real LLM alignment problem is getting it to stop explaining what a hash map is.",
+  "Compilers are just very confident editors with zero social skills.",
+  "New blog post: why I rewrote my side project in six languages and learned nothing.",
+  "Unpopular opinion: the README is the product. Everything else is implementation detail.",
+];
+
+const X_AUTHORS = [
+  { id: "sample-x-1", handle: "@devposts", displayName: "Dev Posts" },
+  { id: "sample-x-2", handle: "@nullpointer", displayName: "Null Pointer" },
+  { id: "sample-x-3", handle: "@bytewatcher", displayName: "Byte Watcher" },
+];
+
+const FACEBOOK_POSTS: string[] = [
+  "Just shipped a feature I've been sitting on for three weeks. Feels good. Grabbed a coffee to celebrate.",
+  "Does anyone else get unreasonably excited when a PR comes back with zero comments?",
+  "Reminder: your coworkers are not trying to frustrate you. They just have different context than you do.",
+  "Took a long walk today. Came back with the solution to a bug I've been fighting for two days.",
+  "Hot desk tip: find the chair with the best lumbar support and defend it with your life.",
+  "Running retrospectives is basically group therapy for people who refuse to go to therapy.",
+  "Anyone else have a folder called 'temp' that's been around since 2019?",
+  "Finished the book. Would recommend. No spoilers but: the architecture holds.",
+  "Our standup ran exactly 12 minutes today. A personal record.",
+  "The sprint ended. No one died. Ship it.",
+];
+
+const FACEBOOK_AUTHORS = [
+  { id: "sample-fb-1", handle: "Engineering Thoughts", displayName: "Engineering Thoughts" },
+  { id: "sample-fb-2", handle: "The Dev Desk", displayName: "The Dev Desk" },
+  { id: "sample-fb-3", handle: "Ship It Culture", displayName: "Ship It Culture" },
+];
+
+const INSTAGRAM_POSTS: string[] = [
+  "Morning light, cold brew, and a diff that's finally green ☀️",
+  "The office at 7am hits different. Nobody here yet. Just me and the compiler.",
+  "Mechanical keyboard + good headphones = flow state in 3 minutes flat.",
+  "Whiteboard session went long but the diagram finally makes sense.",
+  "Setup tour coming soon. Spoiler: it's mostly cables.",
+  "Found a two-line fix for a week-old bug. Framing this diff.",
+  "First deploy of the week. Clean. Fast. Going back to bed.",
+  "Documenting is an act of kindness for your future self.",
+  "Pair programming session: we argued for 40 minutes and then agreed I was right.",
+  "New desk plant. It will outlive this codebase.",
+];
+
 // ── Deterministic pseudo-random ─────────────────────────────────────────────
 
 /** Simple seeded PRNG (mulberry32) for reproducible distributions. */
@@ -189,9 +242,11 @@ export function generateSampleFeeds(): RssFeed[] {
 }
 
 /**
- * Generate 100 sample feed items: 80 RSS articles (8 per feed) +
- * 20 saved bookmarks. Items are spread across the last 14 days with
- * varied user states (read, saved, archived) to exercise all UI views.
+ * Generate 130 sample feed items: 80 RSS articles (8 per feed) +
+ * 20 saved bookmarks + 10 X posts + 10 Facebook posts + 10 Instagram posts.
+ * Items are spread across the last 14 days with varied user states (read,
+ * saved, archived) to exercise all UI views. All IDs are deterministic so
+ * repeated calls are idempotent against the Automerge duplicate guard.
  */
 export function generateSampleItems(): FeedItem[] {
   const rand = mulberry32(42);
@@ -288,6 +343,115 @@ export function generateSampleItems(): FeedItem[] {
         tags: [],
       },
       topics: pickTopics(rand, 80 + si),
+    });
+  }
+
+  // 10 X posts
+  for (let xi = 0; xi < 10; xi++) {
+    const age = (xi / 10) * 7 * DAY + rand() * DAY;
+    const publishedAt = Math.round(now - age);
+    const r = rand();
+    const author = X_AUTHORS[xi % X_AUTHORS.length];
+
+    items.push({
+      globalId: `sample-x:${xi}`,
+      platform: "x",
+      contentType: "post",
+      capturedAt: publishedAt + 5_000,
+      publishedAt,
+      author,
+      content: {
+        text: X_POSTS[xi % X_POSTS.length],
+        mediaUrls: [],
+        mediaTypes: [],
+      },
+      engagement: {
+        likes: Math.round(rand() * 2000),
+        reposts: Math.round(rand() * 400),
+        comments: Math.round(rand() * 150),
+      },
+      userState: {
+        hidden: false,
+        saved: r > 0.85,
+        savedAt: r > 0.85 ? publishedAt + 10_000 : undefined,
+        archived: r < 0.1,
+        archivedAt: r < 0.1 ? publishedAt + 60_000 : undefined,
+        readAt: r < 0.5 ? publishedAt + 8_000 : undefined,
+        tags: [],
+      },
+      topics: pickTopics(rand, 100 + xi),
+    });
+  }
+
+  // 10 Facebook posts
+  for (let fi = 0; fi < 10; fi++) {
+    const age = (fi / 10) * 7 * DAY + rand() * DAY;
+    const publishedAt = Math.round(now - age);
+    const r = rand();
+    const author = FACEBOOK_AUTHORS[fi % FACEBOOK_AUTHORS.length];
+
+    items.push({
+      globalId: `sample-facebook:${fi}`,
+      platform: "facebook",
+      contentType: "post",
+      capturedAt: publishedAt + 5_000,
+      publishedAt,
+      author,
+      content: {
+        text: FACEBOOK_POSTS[fi % FACEBOOK_POSTS.length],
+        mediaUrls: [],
+        mediaTypes: [],
+      },
+      engagement: {
+        likes: Math.round(rand() * 800),
+        comments: Math.round(rand() * 60),
+      },
+      userState: {
+        hidden: false,
+        saved: r > 0.85,
+        savedAt: r > 0.85 ? publishedAt + 10_000 : undefined,
+        archived: r < 0.1,
+        archivedAt: r < 0.1 ? publishedAt + 60_000 : undefined,
+        readAt: r < 0.5 ? publishedAt + 8_000 : undefined,
+        tags: [],
+      },
+      topics: pickTopics(rand, 110 + fi),
+    });
+  }
+
+  // 10 Instagram posts
+  const IG_AUTHOR = { id: "sample-ig-1", handle: "@freed.desk", displayName: "Freed Desk" };
+  for (let ii = 0; ii < 10; ii++) {
+    const age = (ii / 10) * 7 * DAY + rand() * DAY;
+    const publishedAt = Math.round(now - age);
+    const r = rand();
+
+    items.push({
+      globalId: `sample-instagram:${ii}`,
+      platform: "instagram",
+      contentType: "post",
+      capturedAt: publishedAt + 5_000,
+      publishedAt,
+      author: IG_AUTHOR,
+      content: {
+        text: INSTAGRAM_POSTS[ii % INSTAGRAM_POSTS.length],
+        mediaUrls: [],
+        mediaTypes: [],
+      },
+      engagement: {
+        likes: Math.round(rand() * 1500),
+        comments: Math.round(rand() * 80),
+      },
+      userState: {
+        hidden: false,
+        saved: r > 0.85,
+        savedAt: r > 0.85 ? publishedAt + 10_000 : undefined,
+        archived: r < 0.1,
+        archivedAt: r < 0.1 ? publishedAt + 60_000 : undefined,
+        readAt: r < 0.5 ? publishedAt + 8_000 : undefined,
+        tags: [],
+      },
+      topics: pickTopics(rand, 120 + ii),
     });
   }
 

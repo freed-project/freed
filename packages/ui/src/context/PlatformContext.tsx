@@ -102,6 +102,14 @@ export interface PlatformConfig {
   applyUpdate?: () => void;
 
   /**
+   * Fake-authenticate all social providers (X, Facebook, Instagram) for local
+   * testing. Writes stub credentials to localStorage and updates store auth
+   * state so the purple connection dots appear in the sidebar without needing
+   * a real login flow. Desktop only -- absent on PWA.
+   */
+  seedSocialConnections?: () => void;
+
+  /**
    * Perform a factory reset on this device.
    * Wipes IndexedDB + localStorage. When `deleteFromCloud` is true, also
    * deletes the sync file from the active cloud provider before clearing.
