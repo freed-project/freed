@@ -1,4 +1,5 @@
 # Dependencies
+node_modules
 node_modules/
 
 # Build outputs
@@ -28,6 +29,9 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# TypeScript incremental build info
+*.tsbuildinfo
 
 # Cache
 .cache/
