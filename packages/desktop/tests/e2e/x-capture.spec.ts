@@ -112,7 +112,7 @@ test("X settings section shows connect button when not authenticated", async ({
   await expect(xSection).toBeVisible({ timeout: 3_000 });
   await xSection.click();
 
-  await expect(page.getByText("Connect X Account")).toBeVisible({
+  await expect(page.getByText("Sign in to X")).toBeVisible({
     timeout: 3_000,
   });
 });
@@ -151,13 +151,14 @@ test("X connect form accepts cookies and triggers sync", async ({
   await xSection.click();
   await page.waitForTimeout(500);
 
-  // Click "Connect X Account" and wait for the form to stabilize
-  const connectBtn = page.getByText("Connect X Account");
-  await connectBtn.scrollIntoViewIfNeeded();
-  await connectBtn.click();
-  await page.waitForTimeout(500);
+  // Click "Manual cookie setup" to reach the cookie input form
+  const manualBtn = page.getByText("Manual cookie setup");
+  await expect(manualBtn).toBeVisible({ timeout: 3_000 });
+  await manualBtn.click();
+  await page.waitForTimeout(300);
 
   // Fill cookies using getByPlaceholder which is more stable across re-renders
+  await expect(page.getByPlaceholder("ct0 value")).toBeVisible({ timeout: 3_000 });
   await page.getByPlaceholder("ct0 value").fill("test_ct0_value");
   await page.getByPlaceholder("auth_token value").fill("test_auth_token_value");
 

@@ -12,6 +12,10 @@ on:
       - "packages/sync/**"
       - ".github/workflows/e2e-desktop.yml"
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   e2e:
     name: Smoke tests (Chromium, Linux)

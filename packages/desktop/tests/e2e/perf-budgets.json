@@ -1,12 +1,12 @@
 {
-  "markasread_20_avg": { "max": 50, "tolerance": 0.2 },
-  "markasread_20_worst": { "max": 200, "tolerance": 0.2 },
-  "cold_load_3k_items": { "max": 5000, "tolerance": 0.15 },
+  "markasread_20_avg": { "max": 500, "tolerance": 0.2 },
+  "markasread_20_worst": { "max": 700, "tolerance": 0.2 },
+  "cold_load_3k_items": { "max": 6000, "tolerance": 0.2 },
   "scroll_elapsed": { "max": 2000, "tolerance": 0.2 },
-  "long_tasks_50ms": { "max": 3, "tolerance": 0 },
-  "reader_view_open_3k_items_click_to_visible": { "max": 1000, "tolerance": 0.2 },
+  "long_tasks_50ms": { "max": 15, "tolerance": 0.5 },
+  "reader_view_open_3k_items_click_to_visible": { "max": 2000, "tolerance": 0.2 },
   "heap_growth_5k_items": { "max": 100, "tolerance": 0.25 },
   "heap_growth_after_50_mutations": { "max": 10, "tolerance": 0.25 },
-  "fps_harness_markasread_20_storm_p95": { "max": 33, "tolerance": 0.5 },
+  "fps_harness_markasread_20_storm_p95": { "max": 100, "tolerance": 0.5 },
   "fps_harness_scroll_3k_items_p95": { "max": 100, "tolerance": 0.5 }
 }

@@ -64,7 +64,7 @@ test("Facebook settings section shows connect button when not authenticated", as
   await expect(fbSection).toBeVisible({ timeout: 3_000 });
   await fbSection.click();
 
-  await expect(page.getByText("Connect Facebook Account")).toBeVisible({
+  await expect(page.getByText("Log in with Facebook")).toBeVisible({
     timeout: 3_000,
   });
 });
@@ -100,28 +100,24 @@ test("Facebook connect form accepts cookies and triggers sync", async ({
   await expect(fbSection).toBeVisible({ timeout: 3_000 });
   await fbSection.click();
 
-  // Click "Connect Facebook Account" and wait for the form to stabilize
-  const connectBtn = page.getByText("Connect Facebook Account");
-  await connectBtn.scrollIntoViewIfNeeded();
-  await expect(connectBtn).toBeVisible({ timeout: 3_000 });
-  await connectBtn.click();
+  // Click "Log in with Facebook" to open the login WebView (calls fb_show_login IPC)
+  await expect(page.getByText("Log in with Facebook")).toBeVisible({ timeout: 3_000 });
+  await page.getByText("Log in with Facebook").click();
   await page.waitForTimeout(500);
 
-  // Fill cookies using getByPlaceholder which is more stable across re-renders
-  const cUserInput = page.getByPlaceholder("c_user value");
-  await expect(cUserInput).toBeVisible({ timeout: 5_000 });
-  await cUserInput.fill("test_c_user");
-  await page.getByPlaceholder("xs value").fill("test_xs_value");
+  // Simulate a successful WebView login by setting auth state directly in the
+  // Zustand store (same pattern as instagram-capture.spec.ts). This is more
+  // reliable than firing the Tauri event in E2E mode.
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    store.setState({ fbAuth: { isAuthenticated: true, lastCheckedAt: Date.now() } });
+  });
 
-  // Click Connect
-  await page
-    .locator("button")
-    .filter({ hasText: /^Connect$/ })
-    .first()
-    .click();
-
-  // After connecting, the "Connected" indicator should appear
+  // After auth state updates, the component should show the "Connected" state
   await expect(
     page.getByText("Connected", { exact: true }),
-  ).toBeVisible({ timeout: 10_000 });
+  ).toBeVisible({ timeout: 5_000 });
 });

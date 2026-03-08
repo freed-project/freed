@@ -224,7 +224,11 @@ function App() {
     const { addFeed, addItems } = useAppStore.getState();
     generateSampleFeeds().forEach((f) => addFeed(f));
     addItems(generateSampleItems());
-    seedSocialConnections();
+    // Skip social auth seeding in the Tauri mock E2E environment -- tests
+    // that verify the disconnected/connected states set auth explicitly.
+    if (!import.meta.env.VITE_TEST_TAURI) {
+      seedSocialConnections();
+    }
   }, [isInitialized, seedSocialConnections]);
 
   const platform: PlatformConfig = useMemo(
