@@ -50,10 +50,10 @@ const JUST_UPDATED_KEY = "freed-updated-to";
 // Accumulate React render phases when running under Playwright (VITE_TEST_TAURI=1)
 interface ProfileEntry { id: string; phase: string; actualDuration: number; baseDuration: number }
 if (import.meta.env.VITE_TEST_TAURI === "1") {
-  (window as Record<string, unknown>).__FREED_REACT_PROFILE__ = [] as ProfileEntry[];
+  (window as unknown as Record<string, unknown>).__FREED_REACT_PROFILE__ = [] as ProfileEntry[];
 }
 const onRender: ProfilerOnRenderCallback = (id, phase, actual, base) => {
-  const w = window as Record<string, unknown>;
+  const w = window as unknown as Record<string, unknown>;
   const arr = w.__FREED_REACT_PROFILE__ as ProfileEntry[] | undefined;
   if (arr) arr.push({ id, phase, actualDuration: actual, baseDuration: base });
 };

@@ -167,15 +167,15 @@ export function startOutboxProcessor(
 
     // If new items arrived during drain, schedule another pass so they
     // don't sit in the outbox until the next external doc change.
-    if (hasPendingItems(getDoc())) {
+    if (hasPendingItems(getItems())) {
       scheduleDrain();
     }
   }
 
   /** Quick check for any items that still need outbox processing. */
-  function hasPendingItems(doc: FreedDoc | null): boolean {
-    if (!doc) return false;
-    for (const item of Object.values(doc.feedItems)) {
+  function hasPendingItems(items: FeedItem[] | null): boolean {
+    if (!items) return false;
+    for (const item of items) {
       const us = item.userState;
       if (us.liked && us.likedAt && !us.likedSyncedAt) {
         const r = retryMap.get(item.globalId);
