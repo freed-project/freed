@@ -200,10 +200,11 @@ export async function fetchXTimeline(
     return { items: [], diag };
   }
 
-  const response = parsed as TimelineResponse;
-  // Real API wraps in `data`; fall back to unwrapped for robustness.
-  const home =
-    response?.data?.home ?? (parsed as Record<string, unknown>)?.home as TimelineResponse["data"]["home"] | undefined;
+  // Raw X API wraps in { data: { home: ... } }; capture-x client unwraps
+  // the data layer but desktop hits the API directly via Tauri invoke.
+  const wrapped = parsed as { data?: TimelineResponse };
+  const unwrapped = parsed as TimelineResponse;
+  const home = wrapped?.data?.home ?? unwrapped?.home;
   const instructions = home?.home_timeline_urt?.instructions ?? [];
 
   if (instructions.length === 0) {

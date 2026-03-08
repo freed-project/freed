@@ -27,7 +27,6 @@ import { addDebugEvent } from "@freed/ui/lib/debug-store";
 
 let lastScrapeAt = 0;
 const MIN_INTERVAL_MS = 20 * 60 * 1000; // 20 minutes minimum between scrapes
-const MAX_SCRAPES_PER_HOUR = 3;
 const recentScrapes: number[] = [];
 
 function isRateLimited(): boolean {
