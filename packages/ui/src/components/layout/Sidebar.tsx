@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from "react";
+
 import type { RssFeed } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { SettingsDialog } from "../SettingsDialog.js";
@@ -230,6 +231,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const items = useAppStore((s) => s.items);
 
+  const savedCount = useMemo(() => items.filter((i) => i.userState.saved).length, [items]);
+  const archivedCount = useMemo(() => items.filter((i) => i.userState.archived).length, [items]);
+
   const { open: showSettings, openDefault: openSettings, close: closeSettings } = useSettingsStore();
   const [dragWidth, setDragWidth] = useState<number | null>(null);
 
@@ -452,7 +456,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   `}
                 >
                   <span className="w-5 flex items-center justify-center"><BookmarkIcon /></span>
-                  <span>Saved</span>
+                  <span className="flex-1">Saved</span>
+                  {savedCount > 0 && (
+                    <span className="text-[10px] tabular-nums text-[#52525b]">{fmt(savedCount)}</span>
+                  )}
                 </button>
               </li>
               <li>
@@ -469,7 +476,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   `}
                 >
                   <span className="w-5 flex items-center justify-center"><ArchiveIcon /></span>
-                  <span>Archived</span>
+                  <span className="flex-1">Archived</span>
+                  {archivedCount > 0 && (
+                    <span className="text-[10px] tabular-nums text-[#52525b]">{fmt(archivedCount)}</span>
+                  )}
                 </button>
               </li>
             </ul>

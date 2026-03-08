@@ -198,19 +198,26 @@ export function FeedView() {
 
   const dualColumnMode = useAppStore((s) => s.preferences.display.reading.dualColumnMode);
 
-  const [selectedItem, setSelectedItem] = useState<FeedItem | null>(null);
+  // Store only the ID so the rendered item stays in sync with the store.
+  // Holding the full FeedItem in state would freeze userState (saved, archived,
+  // tags) at the moment the user clicked, making toolbar toggles appear broken.
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const selectedItem = useMemo(
+    () => (selectedItemId ? filteredItems.find((i) => i.globalId === selectedItemId) ?? null : null),
+    [filteredItems, selectedItemId],
+  );
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
 
   const openItem = useCallback(
     (item: FeedItem) => {
-      setSelectedItem(item);
+      setSelectedItemId(item.globalId);
       markAsRead(item.globalId);
     },
     [markAsRead],
   );
 
   const closeItem = useCallback(() => {
-    setSelectedItem(null);
+    setSelectedItemId(null);
   }, []);
 
   // Keyboard navigation: j/k to move, Enter/o to open, Escape to close.
