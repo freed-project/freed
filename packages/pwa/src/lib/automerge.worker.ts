@@ -33,6 +33,9 @@ import {
   updateFriend,
   removeFriend,
   logReachOut,
+  toggleLiked,
+  confirmLikedSynced,
+  confirmSeenSynced,
 } from "@freed/shared/schema";
 import { rankFeedItems } from "@freed/shared";
 import type { FeedItem, Friend, RssFeed, UserPreferences } from "@freed/shared";
@@ -222,6 +225,27 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
       case "TOGGLE_ARCHIVED":
         await applyChange((doc) => toggleArchived(doc, req.globalId), "Toggle archived");
+        ack(req.reqId);
+        break;
+
+      case "TOGGLE_LIKED":
+        await applyChange((doc) => toggleLiked(doc, req.globalId), "Toggle liked");
+        ack(req.reqId);
+        break;
+
+      case "CONFIRM_LIKED_SYNCED":
+        await applyChange(
+          (doc) => confirmLikedSynced(doc, req.globalId, req.syncedAt),
+          "Confirm liked synced",
+        );
+        ack(req.reqId);
+        break;
+
+      case "CONFIRM_SEEN_SYNCED":
+        await applyChange(
+          (doc) => confirmSeenSynced(doc, req.globalId, req.syncedAt),
+          "Confirm seen synced",
+        );
         ack(req.reqId);
         break;
 

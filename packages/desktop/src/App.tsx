@@ -8,6 +8,7 @@ import { useAppStore } from "./lib/store";
 import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } from "./lib/capture";
 import { startRssPoller, stopRssPoller } from "./lib/rss-poller";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import {
   startSync,
   stopSync,
@@ -217,8 +218,7 @@ function App() {
         setApiKey: (provider: string, key: string) => Promise<void>;
         clearApiKey: (provider: string) => Promise<void>;
       },
-      // Native macOS contact picker via CNContactStore.
-      // Returns null until objc2-contacts integration is complete (see lib/contacts.ts).
+      openUrl: (url: string) => { void shellOpen(url); },
       pickContact: pickContactViaTauri,
     }),
     [checkForUpdates, applyUpdate, handleFactoryReset],

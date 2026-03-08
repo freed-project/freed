@@ -1236,6 +1236,108 @@ async fn ig_disconnect(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
+// Tauri commands — social engagement (WebView like/visit)
+// ---------------------------------------------------------------------------
+
+/// Navigate the Facebook scraper WebView to a URL and wait for it to load.
+/// Used by the outbox processor to mark posts as seen.
+///
+/// Returns Ok(()) on navigation success, Err if the window doesn't exist or
+/// navigation fails. The caller should treat Err as a retriable failure.
+#[tauri::command]
+async fn fb_visit_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let wv = app
+        .get_webview_window("fb-scraper")
+        .ok_or_else(|| "fb-scraper window not found".to_string())?;
+
+    wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+
+    tokio::time::sleep(Duration::from_secs(4)).await;
+    Ok(())
+}
+
+/// Navigate the Instagram scraper WebView to a URL and wait for it to load.
+/// Used by the outbox processor to mark posts as seen.
+#[tauri::command]
+async fn ig_visit_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let wv = app
+        .get_webview_window("ig-scraper")
+        .ok_or_else(|| "ig-scraper window not found".to_string())?;
+
+    wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+
+    tokio::time::sleep(Duration::from_secs(4)).await;
+    Ok(())
+}
+
+/// Navigate to a Facebook post URL and click the Like button (best-effort).
+///
+/// Navigates the `fb-scraper` WebView to the given URL, waits for render,
+/// then injects JS to click `[aria-label="Like"]` and similar selectors.
+/// `wv.eval()` cannot return values, so we treat the click as best-effort:
+/// Ok(()) means the script was injected, not that the click succeeded.
+/// The outbox processor treats this as a success; if the DOM selector missed,
+/// the item stays "liked locally" which is an acceptable degradation.
+#[tauri::command]
+async fn fb_like_post(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let wv = app
+        .get_webview_window("fb-scraper")
+        .ok_or_else(|| "fb-scraper window not found".to_string())?;
+
+    wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    wv.eval(r#"
+        (function() {
+            var btn = document.querySelector('[aria-label="Like"]')
+                   || document.querySelector('[data-testid="like_button"]')
+                   || document.querySelector('div[role="button"][aria-label*="Like"]');
+            if (btn) { btn.click(); }
+        })();
+    "#).map_err(|e| e.to_string())?;
+
+    println!("[FB] fb_like_post: injected like click for {}", url);
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    Ok(())
+}
+
+/// Navigate to an Instagram post URL and click the Like button (best-effort).
+///
+/// Same best-effort semantics as `fb_like_post`. `wv.eval()` injects the
+/// click script but cannot confirm whether the selector matched.
+#[tauri::command]
+async fn ig_like_post(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let wv = app
+        .get_webview_window("ig-scraper")
+        .ok_or_else(|| "ig-scraper window not found".to_string())?;
+
+    wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    wv.eval(r#"
+        (function() {
+            var btn = document.querySelector('[aria-label="Like"]')
+                   || (document.querySelector('svg[aria-label="Like"]') || {}).closest
+                      && document.querySelector('svg[aria-label="Like"]').closest('button')
+                   || document.querySelector('button[type="button"][aria-label*="Like"]');
+            if (btn) { btn.click(); }
+        })();
+    "#).map_err(|e| e.to_string())?;
+
+    println!("[IG] ig_like_post: injected like click for {}", url);
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket relay
 // ---------------------------------------------------------------------------
 
@@ -1694,6 +1796,10 @@ pub fn run() {
             ig_check_auth,
             ig_scrape_feed,
             ig_disconnect,
+            fb_visit_url,
+            ig_visit_url,
+            fb_like_post,
+            ig_like_post,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Freed");

@@ -75,6 +75,12 @@ export interface BaseAppState {
   archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
   /** Permanently remove a single feed item from the library. */
   removeItem: (id: string) => Promise<void>;
+  /**
+   * Record like intent in Automerge. On the desktop, the outbox processor
+   * drains this to the source platform. On the PWA, it syncs to desktop first.
+   * Optional — components should check for presence before rendering like buttons.
+   */
+  toggleLiked?: (id: string) => Promise<void>;
 
   // Feed actions
   addFeed: (feed: RssFeed) => Promise<void>;
