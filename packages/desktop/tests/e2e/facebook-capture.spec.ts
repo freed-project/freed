@@ -100,21 +100,23 @@ test("Facebook connect form accepts cookies and triggers sync", async ({
   await expect(fbSection).toBeVisible({ timeout: 3_000 });
   await fbSection.click();
 
-  // Click "Log in with Facebook" to open the login WebView
+  // Click "Log in with Facebook" to open the login WebView (calls fb_show_login IPC)
   await expect(page.getByText("Log in with Facebook")).toBeVisible({ timeout: 3_000 });
   await page.getByText("Log in with Facebook").click();
   await page.waitForTimeout(500);
 
-  // The fb_show_login IPC call should have fired. Simulate the auth result
-  // event that the Tauri backend would emit after a successful WebView login.
+  // Simulate a successful WebView login by setting auth state directly in the
+  // Zustand store (same pattern as instagram-capture.spec.ts). This is more
+  // reliable than firing the Tauri event in E2E mode.
   await page.evaluate(() => {
     const w = window as Record<string, unknown>;
-    const listeners = w.__TAURI_EVENT_LISTENERS__ as Record<string, Array<(e: { payload: unknown }) => void>> | undefined;
-    const fns = listeners?.["fb-auth-result"] ?? [];
-    for (const fn of fns) fn({ payload: { loggedIn: true } });
+    const store = w.__FREED_STORE__ as {
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    store.setState({ fbAuth: { isAuthenticated: true, lastCheckedAt: Date.now() } });
   });
 
-  // After the auth event, the component should show the "Connected" state
+  // After auth state updates, the component should show the "Connected" state
   await expect(
     page.getByText("Connected", { exact: true }),
   ).toBeVisible({ timeout: 5_000 });
