@@ -49,6 +49,7 @@ export function urlToFeedItem(
       },
     },
     preservedContent,
+    sourceUrl: metadata.url,
     userState: {
       hidden: false,
       saved: true,

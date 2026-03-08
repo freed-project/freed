@@ -278,6 +278,7 @@ export function rssItemToFeedItem(
       feedTitle: feed.title,
       siteUrl: feed.link || feed.feedUrl,
     },
+    ...(item.link ? { sourceUrl: item.link } : {}),
     userState: {
       hidden: false,
       saved: false,

@@ -1,5 +1,5 @@
 /**
- * SourceIndicator -- green dot for authenticated social sources in the sidebar.
+ * SourceIndicator -- subtle purple dot for authenticated social sources in the sidebar.
  * Shows a connected indicator for X, Facebook, and Instagram when authenticated.
  */
 
@@ -18,6 +18,6 @@ export function XSourceIndicator({ sourceId }: { sourceId: string }) {
   if (!isConnected) return null;
 
   return (
-    <span className="ml-auto w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+    <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-[#8b5cf6]/50 flex-shrink-0" />
   );
 }

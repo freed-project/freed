@@ -2,17 +2,17 @@
  * Message types for the desktop Automerge Web Worker boundary.
  *
  * Desktop-specific additions over the PWA types:
- *   WorkerRequest  — adds BATCH_REFRESH_FEEDS, BATCH_IMPORT_ITEMS,
+ *   WorkerRequest  - adds BATCH_REFRESH_FEEDS, BATCH_IMPORT_ITEMS,
  *                    HEAL_UNTITLED_FEEDS, DEDUPLICATE_ITEMS,
  *                    UPDATE_RELAY_CLIENT_COUNT
- *   WorkerResponse — adds BROADCAST_REQUEST (main thread calls Tauri invoke),
+ *   WorkerResponse - adds BROADCAST_REQUEST (main thread calls Tauri invoke),
  *                    IMPORT_PROGRESS (chunk progress for large imports)
  */
 
 import type { FeedItem, Friend, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
 
 // ---------------------------------------------------------------------------
-// Hydrated state — identical to PWA's DocState (imported for type safety)
+// Hydrated state - identical to PWA's DocState (imported for type safety)
 // ---------------------------------------------------------------------------
 
 export interface DocState {
@@ -50,6 +50,8 @@ export type WorkerRequest =
   | { reqId: number; type: "TOGGLE_SAVED"; globalId: string }
   | { reqId: number; type: "TOGGLE_ARCHIVED"; globalId: string }
   | { reqId: number; type: "TOGGLE_LIKED"; globalId: string }
+  | { reqId: number; type: "CONFIRM_LIKED_SYNCED"; globalId: string; syncedAt?: number }
+  | { reqId: number; type: "CONFIRM_SEEN_SYNCED"; globalId: string; syncedAt?: number }
   | { reqId: number; type: "ADD_FEED_ITEM"; item: FeedItem }
   | { reqId: number; type: "ADD_FEED_ITEMS"; items: FeedItem[] }
   | { reqId: number; type: "REMOVE_FEED_ITEM"; globalId: string }
@@ -82,7 +84,7 @@ export type WorkerRequest =
 export type WorkerResponse =
   /** Simple acknowledgement for mutations that return void */
   | { reqId: number; type: "ACK"; error?: string }
-  /** Broadcast on every doc mutation — main thread uses this to update UI */
+  /** Broadcast on every doc mutation - main thread uses this to update UI */
   | { type: "STATE_UPDATE"; state: DocState; binary: Uint8Array }
   /** Debug panel event forwarding */
   | { type: "DEBUG_EVENT"; kind: string; detail?: string; bytes?: number }
@@ -93,7 +95,7 @@ export type WorkerResponse =
   /**
    * Desktop-only: the worker has run A.save() + Array.from(binary) and
    * asks the main thread to call invoke("broadcast_doc", { docBytes }).
-   * Array.from() is O(binary size) — doing it in the worker avoids blocking
+   * Array.from() is O(binary size) - doing it in the worker avoids blocking
    * the main thread for 10–100ms on large documents.
    */
   | { type: "BROADCAST_REQUEST"; data: number[] }

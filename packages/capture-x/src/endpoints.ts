@@ -133,6 +133,54 @@ export const TweetDetail: EndpointDefinition = {
 };
 
 // =============================================================================
+// Mutation Endpoints (POST)
+// =============================================================================
+
+/**
+ * Mutation endpoint definitions (POST-only, minimal features)
+ */
+export interface MutationEndpointDefinition {
+  queryId: string;
+  operationName: string;
+}
+
+/**
+ * FavoriteTweet - Like a tweet
+ */
+export const FavoriteTweet: MutationEndpointDefinition = {
+  queryId: "lI07N6Otwv1PhnEgXILM7A",
+  operationName: "FavoriteTweet",
+};
+
+/**
+ * UnfavoriteTweet - Unlike a tweet
+ */
+export const UnfavoriteTweet: MutationEndpointDefinition = {
+  queryId: "ZYKSe-w7KEslx3JhSIk5LA",
+  operationName: "UnfavoriteTweet",
+};
+
+/**
+ * Build the URL for a mutation POST request
+ */
+export function buildMutationUrl(endpoint: MutationEndpointDefinition): string {
+  return `${X_API_BASE}/${endpoint.queryId}/${endpoint.operationName}`;
+}
+
+/**
+ * Build the JSON body for a tweet mutation
+ */
+export function buildMutationBody(
+  endpoint: MutationEndpointDefinition,
+  tweetId: string,
+): string {
+  return JSON.stringify({
+    variables: { tweet_id: tweetId },
+    queryId: endpoint.queryId,
+  });
+}
+
+// =============================================================================
 // Request Building
 // =============================================================================
 

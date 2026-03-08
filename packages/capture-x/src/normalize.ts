@@ -258,8 +258,11 @@ export function tweetToFeedItem(tweet: XTweetResult): FeedItem {
     displayTweet.legacy.entities.hashtags?.map((h) => h.text.toLowerCase()) ||
     [];
 
+  const tweetId = displayTweet.rest_id;
+  const handle = displayTweet.core.user_results.result.legacy.screen_name;
+
   return {
-    globalId: `x:${displayTweet.rest_id}`,
+    globalId: `x:${tweetId}`,
     platform: "x",
     contentType: "post",
     capturedAt: Date.now(),
@@ -267,6 +270,7 @@ export function tweetToFeedItem(tweet: XTweetResult): FeedItem {
     author,
     content,
     engagement,
+    sourceUrl: `https://x.com/${handle}/status/${tweetId}`,
     userState: {
       hidden: false,
       saved: false,

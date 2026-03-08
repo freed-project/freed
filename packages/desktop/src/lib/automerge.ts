@@ -62,7 +62,7 @@ async function request(msg: WorkerRequest): Promise<void> {
 
 let lastBinary: Uint8Array | null = null;
 
-// Latest hydrated state — updated on every STATE_UPDATE, exposed as getDocState()
+// Latest hydrated state - updated on every STATE_UPDATE, exposed as getDocState()
 let lastDocState: DocState | null = null;
 
 // ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ export function subscribe(callback: Subscriber): () => void {
 }
 
 // ---------------------------------------------------------------------------
-// Relay client count — forwarded to the worker for BROADCAST_REQUEST gating
+// Relay client count - forwarded to the worker for BROADCAST_REQUEST gating
 // ---------------------------------------------------------------------------
 
 export function setRelayClientCount(n: number): void {
@@ -109,7 +109,7 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   if (msg.type === "BROADCAST_REQUEST") {
     // The worker already ran Array.from(binary). Just invoke on the main thread.
     void invoke("broadcast_doc", { docBytes: msg.data }).catch(() => {
-      // Relay may not be running or no clients — safe to ignore
+      // Relay may not be running or no clients - safe to ignore
     });
     return;
   }
@@ -167,7 +167,7 @@ function withImportProgress<T>(
 }
 
 // ---------------------------------------------------------------------------
-// Public API — initialization
+// Public API - initialization
 // ---------------------------------------------------------------------------
 
 function sendInit(): Promise<DocState> {
@@ -190,7 +190,7 @@ function sendInit(): Promise<DocState> {
       } else if (msg.type === "ACK" && msg.reqId === reqId) {
         registerDocAccessors(
           () => null,
-          () => "(doc lives in worker — not directly accessible)",
+          () => "(doc lives in worker - not directly accessible)",
           () => lastBinary ?? new Uint8Array(0),
         );
         worker.removeEventListener("message", stateHandler);
@@ -288,6 +288,16 @@ export async function docToggleArchived(globalId: string): Promise<void> {
 export async function docToggleLiked(globalId: string): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "TOGGLE_LIKED", globalId });
+}
+
+export async function docConfirmLikedSynced(globalId: string, syncedAt?: number): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "CONFIRM_LIKED_SYNCED", globalId, syncedAt });
+}
+
+export async function docConfirmSeenSynced(globalId: string, syncedAt?: number): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "CONFIRM_SEEN_SYNCED", globalId, syncedAt });
 }
 
 export async function docArchiveAllReadUnsaved(
@@ -392,7 +402,7 @@ export async function docDeduplicateFeedItems(): Promise<void> {
 
 /**
  * Add a minimal stub FeedItem for a URL. The stub is constructed on the main
- * thread (pure JS — no WASM), then posted to the worker via ADD_FEED_ITEM.
+ * thread (pure JS - no WASM), then posted to the worker via ADD_FEED_ITEM.
  * Returns the stub so callers that use the FeedItem directly are unchanged.
  */
 export async function docAddStubItem(url: string, tags: string[] = []): Promise<FeedItem> {

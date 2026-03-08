@@ -21,6 +21,10 @@ interface FeedListProps {
   onItemSave?: (item: FeedItemType) => void;
   /** Called when user archives an item from the feed card */
   onItemArchive?: (item: FeedItemType) => void;
+  /** Called when user clicks the like button on an item */
+  onItemLike?: (item: FeedItemType) => void;
+  /** Called when user clicks the comment link on an item */
+  onOpenCommentUrl?: (url: string) => void;
   /** True when a search query is active — changes the empty state message */
   isSearching?: boolean;
   /** The active search query text — used in the empty state message */
@@ -41,6 +45,8 @@ interface FeedItemRowProps {
   onFocusChange?: (index: number) => void;
   onItemSave?: (item: FeedItemType) => void;
   onItemArchive?: (item: FeedItemType) => void;
+  onItemLike?: (item: FeedItemType) => void;
+  onOpenCommentUrl?: (url: string) => void;
 }
 
 const FeedItemRow = memo(function FeedItemRow({
@@ -52,6 +58,8 @@ const FeedItemRow = memo(function FeedItemRow({
   onFocusChange,
   onItemSave,
   onItemArchive,
+  onItemLike,
+  onOpenCommentUrl,
 }: FeedItemRowProps) {
   const handleClick = useCallback(() => onItemClick?.(item), [item, onItemClick]);
   const handleMouseEnter = useCallback(() => onFocusChange?.(index), [index, onFocusChange]);
@@ -63,6 +71,10 @@ const FeedItemRow = memo(function FeedItemRow({
     (e: React.MouseEvent) => { e.stopPropagation(); onItemArchive?.(item); },
     [item, onItemArchive],
   );
+  const handleLike = useCallback(
+    (e: React.MouseEvent) => { e.stopPropagation(); onItemLike?.(item); },
+    [item, onItemLike],
+  );
 
   return (
     <FeedItem
@@ -73,6 +85,8 @@ const FeedItemRow = memo(function FeedItemRow({
       onMouseEnter={handleMouseEnter}
       onSave={onItemSave ? handleSave : undefined}
       onArchive={onItemArchive ? handleArchive : undefined}
+      onLike={onItemLike ? handleLike : undefined}
+      onOpenCommentUrl={onOpenCommentUrl}
     />
   );
 });
@@ -86,6 +100,8 @@ export function FeedList({
   hasFeedsSubscribed = false,
   onItemSave,
   onItemArchive,
+  onItemLike,
+  onOpenCommentUrl,
   isSearching = false,
   searchQuery = "",
 }: FeedListProps) {
@@ -327,6 +343,8 @@ export function FeedList({
                   onItemClick={onItemClick}
                   onFocusChange={onFocusChange}
                   onItemSave={onItemSave}
+                  onItemLike={onItemLike}
+                  onOpenCommentUrl={onOpenCommentUrl}
                 />
               </div>
             </div>
@@ -369,6 +387,8 @@ export function FeedList({
                 onFocusChange={onFocusChange}
                 onItemSave={onItemSave}
                 onItemArchive={onItemArchive}
+                onItemLike={onItemLike}
+                onOpenCommentUrl={onOpenCommentUrl}
               />
             </div>
           </div>

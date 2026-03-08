@@ -5,7 +5,7 @@
  *
  * After the Web Worker migration (Phase 4), all CRDT and hydration work runs
  * in automerge.worker.ts. The subscriber here receives a pre-hydrated DocState
- * and calls set() directly — zero hydrateFromDoc cost on the main thread.
+ * and calls set() directly - zero hydrateFromDoc cost on the main thread.
  */
 
 import { create } from "zustand";
@@ -14,6 +14,7 @@ import { createDefaultPreferences } from "@freed/shared";
 import {
   initDoc,
   subscribe,
+  getDocState,
   docAddFeedItems,
   docAddRssFeed,
   docRemoveRssFeed,
@@ -34,9 +35,16 @@ import {
   docUpdateFriend,
   docRemoveFriend,
   docLogReachOut,
+  docToggleLiked,
+  docConfirmLikedSynced,
+  docConfirmSeenSynced,
   type DocState,
 } from "./automerge";
+import { buildPlatformActionsRegistry } from "./platform-actions";
+import { startOutboxProcessor } from "./outbox";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
+
+let outboxTeardown: (() => void) | null = null;
 import { initFbAuth, type FbAuthState } from "./fb-auth";
 import { initIgAuth, type IgAuthState } from "./instagram-auth";
 
@@ -56,7 +64,7 @@ interface AppState {
   totalArchivableCount: number;
   archivableCountByPlatform: Record<string, number>;
   archivableFeedCounts: Record<string, number>;
-  /** All globalIds including hidden/archived — for import dedup pre-scan. */
+  /** All globalIds including hidden/archived - for import dedup pre-scan. */
   allItemIds: string[];
 
   // X auth state
@@ -86,6 +94,8 @@ interface AppState {
   removeItem: (id: string) => Promise<void>;
   toggleArchived: (id: string) => Promise<void>;
   archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
+  /** Record like intent in Automerge. Outbox processor drains to platform. */
+  toggleLiked: (id: string) => Promise<void>;
 
   // Feed actions (persisted to Automerge)
   addFeed: (feed: RssFeed) => Promise<void>;
@@ -137,7 +147,7 @@ function shallowEqualRecord(
 /**
  * Run idempotent startup migrations in the background after the app renders.
  * subscribe() is already wired up at call time, so any doc mutations propagate
- * to the UI automatically. Errors are swallowed — all three ops are non-fatal.
+ * to the UI automatically. Errors are swallowed - all three ops are non-fatal.
  * Migrations now run in the worker (zero main-thread cost).
  */
 async function runStartupMigrations(archivePruneDays: number): Promise<void> {
@@ -192,7 +202,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const docState = await initDoc();
 
       // Subscribe to future state updates from the worker. Each update is already
-      // hydrated — no hydrateFromDoc(), no sort, no rank on the main thread.
+      // hydrated - no hydrateFromDoc(), no sort, no rank on the main thread.
       // Preserve object identity on count maps to avoid spurious selector re-renders.
       subscribe((state: DocState) => {
         const prev = get();
@@ -228,6 +238,23 @@ export const useAppStore = create<AppState>((set, get) => ({
         isLoading: false,
       });
 
+      // Tear down any previous outbox (guard against double-init).
+      outboxTeardown?.();
+      const xCookiesFn = () => {
+        const state = get();
+        return state.xAuth.isAuthenticated && state.xAuth.cookies
+          ? state.xAuth.cookies
+          : null;
+      };
+      const platformActionsRegistry = buildPlatformActionsRegistry(xCookiesFn);
+      outboxTeardown = startOutboxProcessor(
+        () => getDocState()?.items ?? null,
+        (cb) => subscribe(() => cb()),
+        platformActionsRegistry,
+        async (id, syncedAt) => { await docConfirmLikedSynced(id, syncedAt); },
+        async (id, syncedAt) => { await docConfirmSeenSynced(id, syncedAt); },
+      );
+
       // Run cleanup migrations in the background via worker.
       void runStartupMigrations(docState.preferences.display.archivePruneDays ?? 30);
     } catch (error) {
@@ -261,6 +288,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   toggleArchived: async (id) => {
     await docToggleArchived(id);
+  },
+
+  toggleLiked: async (id) => {
+    await docToggleLiked(id);
+    // The outbox processor will pick up the pending like on its next drain.
   },
 
   archiveAllReadUnsaved: async (platform, feedUrl) => {

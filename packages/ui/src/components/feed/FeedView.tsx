@@ -7,19 +7,7 @@ import { AddFeedDialog } from "../AddFeedDialog.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
-import type { FeedItem, RssFeed, FilterOptions } from "@freed/shared";
-
-const PLATFORM_LABELS: Record<string, string> = {
-  x: "X",
-  rss: "RSS",
-  youtube: "YouTube",
-  reddit: "Reddit",
-  mastodon: "Mastodon",
-  github: "GitHub",
-  facebook: "Facebook",
-  instagram: "Instagram",
-  saved: "Saved",
-};
+import { PLATFORM_LABELS, type FeedItem, type RssFeed, type FilterOptions } from "@freed/shared";
 
 // ─── Compact sidebar panel for dual-column mode ────────────────────────────
 
@@ -163,7 +151,7 @@ function getFilterLabel(filter: FilterOptions, feeds: Record<string, RssFeed>): 
   if (filter.savedOnly) return "Saved";
   if (filter.archivedOnly) return "Archived";
   if (filter.feedUrl) return feeds[filter.feedUrl]?.title ?? "this feed";
-  if (filter.platform) return PLATFORM_LABELS[filter.platform] ?? filter.platform;
+  if (filter.platform) return PLATFORM_LABELS[filter.platform as keyof typeof PLATFORM_LABELS] ?? filter.platform;
   return "All Sources";
 }
 
@@ -177,6 +165,7 @@ export function FeedView() {
   const markAsRead = useAppStore((s) => s.markAsRead);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
+  const toggleLiked = useAppStore((s) => s.toggleLiked);
 
   const handleItemSave = useCallback(
     (item: FeedItem) => toggleSaved(item.globalId),
@@ -187,6 +176,19 @@ export function FeedView() {
     (item: FeedItem) => toggleArchived(item.globalId),
     [toggleArchived],
   );
+  const handleItemLike = useCallback(
+    (item: FeedItem) => toggleLiked?.(item.globalId),
+    [toggleLiked],
+  );
+
+  const { openUrl } = usePlatform();
+  const handleOpenCommentUrl = useCallback((url: string) => {
+    if (openUrl) {
+      openUrl(url);
+    } else {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  }, [openUrl]);
 
   const [addFeedOpen, setAddFeedOpen] = useState(false);
 
@@ -351,6 +353,8 @@ export function FeedView() {
         hasFeedsSubscribed={Object.keys(feeds).length > 0}
         onItemSave={handleItemSave}
         onItemArchive={activeFilter.archivedOnly ? undefined : handleItemArchive}
+        onItemLike={toggleLiked ? handleItemLike : undefined}
+        onOpenCommentUrl={handleOpenCommentUrl}
         isSearching={isSearching}
         searchQuery={searchQuery}
       />

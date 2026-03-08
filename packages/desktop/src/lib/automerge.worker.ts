@@ -37,6 +37,9 @@ import {
   updateFriend,
   removeFriend,
   logReachOut,
+  toggleLiked,
+  confirmLikedSynced,
+  confirmSeenSynced,
 } from "@freed/shared/schema";
 import { rankFeedItems } from "@freed/shared";
 import type { FeedItem, Friend, RssFeed, UserPreferences } from "@freed/shared";
@@ -263,14 +266,23 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "TOGGLE_LIKED":
-        // toggleLiked is not yet in @freed/shared/schema — apply inline
-        await applyChange((doc) => {
-          const item = doc.feedItems[req.globalId];
-          if (item) {
-            const state = item.userState as Record<string, unknown>;
-            state.liked = !state.liked;
-          }
-        }, "Toggle liked");
+        await applyChange((doc) => toggleLiked(doc, req.globalId), "Toggle liked");
+        ack(req.reqId);
+        break;
+
+      case "CONFIRM_LIKED_SYNCED":
+        await applyChange(
+          (doc) => confirmLikedSynced(doc, req.globalId, req.syncedAt),
+          "Confirm liked synced",
+        );
+        ack(req.reqId);
+        break;
+
+      case "CONFIRM_SEEN_SYNCED":
+        await applyChange(
+          (doc) => confirmSeenSynced(doc, req.globalId, req.syncedAt),
+          "Confirm seen synced",
+        );
         ack(req.reqId);
         break;
 
