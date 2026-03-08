@@ -3,6 +3,7 @@ import { formatDistanceToNow } from "date-fns";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform, MACOS_TRAFFIC_LIGHT_INSET } from "../../context/PlatformContext.js";
 import { applyFocusMode, type FocusOptions } from "@freed/shared";
+import { Tooltip } from "../Tooltip.js";
 
 interface ReaderViewProps {
   item: FeedItemType;
@@ -38,7 +39,7 @@ const PROSE_CLASSES = `
 
 export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProps) {
   const { headerDragRegion, getLocalContent } = usePlatform();
-  const updateItem = useAppStore((s) => s.updateItem);
+  const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const storedDisplay = useAppStore((s) => s.preferences.display);
@@ -164,18 +165,9 @@ export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProp
     };
   }, [item.globalId, articleUrl, getLocalContent]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toggleSaved = useCallback(() => {
-    const nowSaved = !item.userState.saved;
-    updateItem(item.globalId, {
-      userState: {
-        ...item.userState,
-        saved: nowSaved,
-        // Omit savedAt when un-saving rather than setting undefined —
-        // Automerge's proxy throws on undefined assignments.
-        ...(nowSaved ? { savedAt: Date.now() } : {}),
-      },
-    });
-  }, [updateItem, item.globalId, item.userState]);
+  const handleToggleSaved = useCallback(() => {
+    toggleSaved(item.globalId);
+  }, [toggleSaved, item.globalId]);
 
   const handleToggleArchived = useCallback(() => {
     toggleArchived(item.globalId);
@@ -267,104 +259,107 @@ export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProp
 
           {/* Offline / cached badge */}
           {contentSource === "cache" && (
-            <span
-              className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20"
-              title="Served from your device cache"
-            >
-              Offline
-            </span>
+            <Tooltip label="Served from your device cache">
+              <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                Offline
+              </span>
+            </Tooltip>
           )}
           {contentSource === "text" && (
-            <span
-              className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20"
-              title="Showing text summary -- full content will load when online"
-            >
-              Summary
-            </span>
+            <Tooltip label="Full content will load when online">
+              <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20">
+                Summary
+              </span>
+            </Tooltip>
           )}
 
           {/* Background caching spinner */}
           {isCaching && (
-            <div
-              className="w-4 h-4 border border-[#52525b] border-t-[#8b5cf6] rounded-full animate-spin"
-              title="Loading full article..."
-            />
+            <Tooltip label="Loading full article">
+              <div className="w-4 h-4 border border-[#52525b] border-t-[#8b5cf6] rounded-full animate-spin" />
+            </Tooltip>
           )}
 
           {/* Focus mode toggle */}
-          <button
-            onClick={toggleFocus}
-            title={focusOptions.enabled ? "Disable focus mode" : "Enable focus mode"}
-            className={`p-2 rounded-lg transition-colors text-sm font-bold ${
-              focusOptions.enabled
-                ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
-                : "hover:bg-white/10 text-[#71717a]"
-            }`}
-            style={headerDragRegion ? noDrag : undefined}
-            aria-pressed={focusOptions.enabled}
-            aria-label="Toggle focus reading mode"
-          >
-            <span aria-hidden="true">
-              <span className="font-black">F</span>
-              <span className="font-light text-xs">ocus</span>
-            </span>
-          </button>
-
-          <button
-            onClick={toggleSaved}
-            className={`p-2 rounded-lg transition-colors ${
-              item.userState.saved
-                ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
-                : "hover:bg-white/10 text-[#a1a1aa]"
-            }`}
-            style={headerDragRegion ? noDrag : undefined}
-            aria-label={item.userState.saved ? "Unsave" : "Save"}
-          >
-            <svg
-              className="w-5 h-5"
-              fill={item.userState.saved ? "currentColor" : "none"}
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+          <Tooltip label={focusOptions.enabled ? "Disable focus mode" : "Enable focus mode"}>
+            <button
+              onClick={toggleFocus}
+              className={`p-2 rounded-lg transition-colors text-sm font-bold ${
+                focusOptions.enabled
+                  ? "bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30"
+                  : "hover:bg-white/10 text-[#71717a]"
+              }`}
+              style={headerDragRegion ? noDrag : undefined}
+              aria-pressed={focusOptions.enabled}
+              aria-label="Toggle focus reading mode"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-            </svg>
-          </button>
+              <span aria-hidden="true">
+                <span className="font-black">F</span>
+                <span className="font-light text-xs">ocus</span>
+              </span>
+            </button>
+          </Tooltip>
 
-          <button
-            onClick={handleToggleArchived}
-            className={`p-2 rounded-lg transition-colors ${
-              item.userState.archived
-                ? "bg-green-500/20 text-green-400"
-                : "hover:bg-white/10 text-[#a1a1aa]"
-            }`}
-            style={headerDragRegion ? noDrag : undefined}
-            aria-label={item.userState.archived ? "Unarchive" : "Archive"}
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          </button>
+          <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"}>
+            <button
+              onClick={handleToggleSaved}
+              className={`p-2 rounded-lg transition-colors ${
+                item.userState.saved
+                  ? "bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30"
+                  : "hover:bg-white/10 text-[#a1a1aa]"
+              }`}
+              style={headerDragRegion ? noDrag : undefined}
+              aria-label={item.userState.saved ? "Unsave" : "Save"}
+            >
+              <svg
+                className="w-5 h-5"
+                fill={item.userState.saved ? "currentColor" : "none"}
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+              </svg>
+            </button>
+          </Tooltip>
+
+          <Tooltip label={item.userState.archived ? "Unarchive" : "Archive"}>
+            <button
+              onClick={handleToggleArchived}
+              className={`p-2 rounded-lg transition-colors ${
+                item.userState.archived
+                  ? "bg-green-500/20 text-green-400 hover:bg-green-500/30"
+                  : "hover:bg-white/10 text-[#a1a1aa]"
+              }`}
+              style={headerDragRegion ? noDrag : undefined}
+              aria-label={item.userState.archived ? "Unarchive" : "Archive"}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </button>
+          </Tooltip>
 
           {/* Dual-column mode toggle (desktop only) */}
-          <button
-            onClick={toggleDualColumn}
-            title={dualColumn ? "Single column" : "Dual column"}
-            className={`hidden md:flex p-2 rounded-lg transition-colors ${
-              dualColumn
-                ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
-                : "hover:bg-white/10 text-[#71717a]"
-            }`}
-            style={headerDragRegion ? noDrag : undefined}
-            aria-pressed={dualColumn}
-            aria-label="Toggle dual column layout"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-              <path d="M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12" />
-              <path d="M9 4v16" />
-              <path d={dualColumn ? "M15 10l-2 2l2 2" : "M14 10l2 2l-2 2"} />
-            </svg>
-          </button>
+          <Tooltip label={dualColumn ? "Single column" : "Dual column"}>
+            <button
+              onClick={toggleDualColumn}
+              className={`hidden md:flex p-2 rounded-lg transition-colors ${
+                dualColumn
+                  ? "bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30"
+                  : "hover:bg-white/10 text-[#71717a]"
+              }`}
+              style={headerDragRegion ? noDrag : undefined}
+              aria-pressed={dualColumn}
+              aria-label="Toggle dual column layout"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                <path d="M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12" />
+                <path d="M9 4v16" />
+                <path d={dualColumn ? "M15 10l-2 2l2 2" : "M14 10l2 2l-2 2"} />
+              </svg>
+            </button>
+          </Tooltip>
         </div>
       </header>
 

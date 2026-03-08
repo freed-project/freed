@@ -97,6 +97,21 @@ export function FeedList({
   const isMobile = useIsMobile();
   const { FeedEmptyState } = usePlatform();
   const isLoading = useAppStore((s) => s.isLoading);
+  const activeFilter = useAppStore((s) => s.activeFilter);
+
+  // Reset scroll position when the user switches sources/filters in the sidebar.
+  const filterKeyRef = useRef<string>("");
+  useEffect(() => {
+    const key = JSON.stringify(activeFilter);
+    if (filterKeyRef.current && filterKeyRef.current !== key) {
+      if (isMobile) {
+        window.scrollTo({ top: 0 });
+      } else {
+        parentRef.current?.scrollTo({ top: 0 });
+      }
+    }
+    filterKeyRef.current = key;
+  }, [activeFilter, isMobile]);
   const showEngagementCounts = useAppStore(
     (s) => s.preferences.display.showEngagementCounts,
   );

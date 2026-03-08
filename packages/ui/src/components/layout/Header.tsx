@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
+import { Tooltip } from "../Tooltip.js";
 import {
   useAppStore,
   usePlatform,
@@ -244,26 +245,28 @@ export function Header({ onMenuClick }: HeaderProps) {
           {...(headerDragRegion ? { "data-tauri-drag-region": true } : {})}
         >
           {/* Mobile menu button */}
-          <button
-            onClick={onMenuClick}
-            className="md:hidden p-1.5 rounded-lg hover:bg-white/10 transition-colors flex-shrink-0"
-            aria-label="Open menu"
-            style={headerDragRegion ? noDrag : undefined}
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+          <Tooltip label="Menu" className="md:hidden">
+            <button
+              onClick={onMenuClick}
+              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors flex-shrink-0"
+              aria-label="Open menu"
+              style={headerDragRegion ? noDrag : undefined}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 6h16M4 12h16M4 18h16"
-              />
-            </svg>
-          </button>
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6h16M4 12h16M4 18h16"
+                />
+              </svg>
+            </button>
+          </Tooltip>
 
           {/* FREED logo */}
           <div
@@ -407,64 +410,10 @@ export function Header({ onMenuClick }: HeaderProps) {
             {HeaderSyncIndicator && <HeaderSyncIndicator />}
 
             {unreadCount > 0 && (
-              <button
-                onClick={() => markAllAsRead(activeFilter.platform)}
-                title={`Mark all ${unreadCount.toLocaleString()} items as read`}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-[#71717a] hover:bg-white/5 hover:text-white transition-colors"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                <span>{unreadCount.toLocaleString()} unread</span>
-              </button>
-            )}
-
-            {archivableCount > 0 && (
-              <button
-                onClick={() =>
-                  archiveAllReadUnsaved(
-                    activeFilter.platform,
-                    activeFilter.feedUrl,
-                  )
-                }
-                title={`Archive all ${archivableCount.toLocaleString()} read items`}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-[#71717a] hover:bg-white/5 hover:text-white transition-colors"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-                <span>{archivableCount.toLocaleString()} read</span>
-              </button>
-            )}
-
-            {/* + New dropdown */}
-            {showNewButton && (
-              <div ref={dropdownRef} className="relative">
+              <Tooltip label={`Mark all ${unreadCount.toLocaleString()} items as read`} className="hidden sm:flex">
                 <button
-                  onClick={() => setDropdownOpen((v) => !v)}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors"
-                  aria-haspopup="true"
-                  aria-expanded={dropdownOpen}
+                  onClick={() => markAllAsRead(activeFilter.platform)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-[#71717a] hover:bg-white/5 hover:text-white transition-colors"
                 >
                   <svg
                     className="w-4 h-4"
@@ -476,14 +425,27 @@ export function Header({ onMenuClick }: HeaderProps) {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M12 4v16m8-8H4"
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                     />
                   </svg>
-                  <span className="text-sm font-medium hidden sm:inline">
-                    New
-                  </span>
+                  <span>{unreadCount.toLocaleString()} unread</span>
+                </button>
+              </Tooltip>
+            )}
+
+            {archivableCount > 0 && (
+              <Tooltip label={`Archive all ${archivableCount.toLocaleString()} read items`} className="hidden sm:flex">
+                <button
+                  onClick={() =>
+                    archiveAllReadUnsaved(
+                      activeFilter.platform,
+                      activeFilter.feedUrl,
+                    )
+                  }
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-[#71717a] hover:bg-white/5 hover:text-white transition-colors"
+                >
                   <svg
-                    className={`w-3 h-3 transition-transform hidden sm:block ${dropdownOpen ? "rotate-180" : ""}`}
+                    className="w-4 h-4"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -492,10 +454,55 @@ export function Header({ onMenuClick }: HeaderProps) {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
+                      d="M5 13l4 4L19 7"
                     />
                   </svg>
+                  <span>{archivableCount.toLocaleString()} read</span>
                 </button>
+              </Tooltip>
+            )}
+
+            {/* + New dropdown */}
+            {showNewButton && (
+              <div ref={dropdownRef} className="relative">
+                <Tooltip label="Add new content">
+                  <button
+                    onClick={() => setDropdownOpen((v) => !v)}
+                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors"
+                    aria-haspopup="true"
+                    aria-expanded={dropdownOpen}
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                    <span className="text-sm font-medium hidden sm:inline">
+                      New
+                    </span>
+                    <svg
+                      className={`w-3 h-3 transition-transform hidden sm:block ${dropdownOpen ? "rotate-180" : ""}`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </button>
+                </Tooltip>
 
                 {dropdownOpen && (
                   <div className="absolute right-0 top-full mt-1.5 w-44 bg-[#161616] border border-[rgba(255,255,255,0.1)] rounded-xl shadow-2xl shadow-black/70 overflow-hidden z-50 py-1">
