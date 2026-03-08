@@ -9,10 +9,31 @@
 
 type Handler = (args: Record<string, unknown>) => unknown;
 
+/**
+ * Route an HTTP request through the Vite dev server proxy so it can make
+ * real network calls server-side, bypassing CORS. Mirrors what the Rust
+ * x_api_request / fetch_url commands do in the real Tauri backend.
+ */
+async function proxyFetch(args: Record<string, unknown>): Promise<string> {
+  const resp = await fetch("/api/proxy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url: args.url,
+      headers: args.headers ?? {},
+      method: args.method ?? "GET",
+      body: args.body ?? "",
+    }),
+  });
+  if (!resp.ok) throw new Error(`Proxy ${resp.status}: ${await resp.text()}`);
+  return resp.text();
+}
+
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
   broadcast_doc: () => null,
-  fetch_url: () => "",
+  fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
+  x_api_request: (args: Record<string, unknown>) => proxyFetch(args),
   get_local_ip: () => "127.0.0.1",
   get_all_local_ips: () => [],
   get_sync_url: () => "ws://127.0.0.1:8765",
@@ -26,6 +47,11 @@ const handlers: Record<string, Handler> = {
   check_x_login_cookies: () => ({ status: "closed" }),
   close_x_login_window: () => null,
   pick_contact: () => null,
+  fb_show_login: () => null,
+  fb_hide_login: () => null,
+  fb_check_auth: () => true,
+  fb_scrape_feed: () => null,
+  fb_disconnect: () => null,
 };
 
 // Expose handler map so tests and tauri-init.ts can override defaults.
@@ -53,7 +79,7 @@ export async function invoke<T = unknown>(
         Handler
       >
     )[cmd] ?? (() => null);
-  return handler(args ?? {}) as T;
+  return (await handler(args ?? {})) as T;
 }
 
 export function isTauri(): boolean {

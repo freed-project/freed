@@ -177,25 +177,27 @@ describe("fetchXTimeline", () => {
 
     it("returns 0 items (no error) when a TimelineAddEntries instruction contains no tweets", async () => {
       const noTweets = {
-        home: {
-          home_timeline_urt: {
-            instructions: [
-              {
-                type: "TimelineAddEntries",
-                entries: [
-                  {
-                    entryId: "cursor-top",
-                    sortIndex: "9999",
-                    content: {
-                      entryType: "TimelineTimelineCursor",
-                      __typename: "TimelineTimelineCursor",
-                      value: "cursor_token",
-                      cursorType: "Top",
+        data: {
+          home: {
+            home_timeline_urt: {
+              instructions: [
+                {
+                  type: "TimelineAddEntries",
+                  entries: [
+                    {
+                      entryId: "cursor-top",
+                      sortIndex: "9999",
+                      content: {
+                        entryType: "TimelineTimelineCursor",
+                        __typename: "TimelineTimelineCursor",
+                        value: "cursor_token",
+                        cursorType: "Top",
+                      },
                     },
-                  },
-                ],
-              },
-            ],
+                  ],
+                },
+              ],
+            },
           },
         },
       };

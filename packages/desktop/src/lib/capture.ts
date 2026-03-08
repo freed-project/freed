@@ -11,6 +11,7 @@ import type { FeedItem, RssFeed, OPMLFeedEntry } from "@freed/shared";
 import { generateOPML, downloadFile } from "@freed/shared";
 import { parseFeedXml, feedToFeedItems, feedToRssFeed } from "@freed/capture-rss/browser";
 import { captureXTimeline } from "./x-capture";
+import { captureFbFeed } from "./fb-capture";
 import { docBatchRefreshFeeds } from "./automerge";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
@@ -102,7 +103,7 @@ export async function refreshAllFeeds(): Promise<void> {
   const feeds = Object.values(store.feeds).filter((f) => f.enabled);
 
   // Skip only when there is truly nothing to do.
-  if (feeds.length === 0 && !store.xAuth.isAuthenticated) return;
+  if (feeds.length === 0 && !store.xAuth.isAuthenticated && !store.fbAuth.isAuthenticated) return;
 
   store.setSyncing(true);
   store.setError(null);
@@ -203,9 +204,7 @@ export async function refreshAllFeeds(): Promise<void> {
     }
 
     // ── X timeline ────────────────────────────────────────────────────────────
-    // Always runs — completely independent of RSS outcome. captureXTimeline
-    // already calls store.setError on auth/network failures; we add a fallback
-    // here so any unexpected throw is still surfaced and logged.
+    // Always runs, fully independent of RSS outcome.
     const { xAuth } = useAppStore.getState();
     if (xAuth.isAuthenticated && xAuth.cookies) {
       try {
@@ -214,8 +213,22 @@ export async function refreshAllFeeds(): Promise<void> {
         const msg = xError instanceof Error ? xError.message : "X timeline sync failed";
         console.error("[Refresh] X timeline failed:", xError);
         addDebugEvent("error", `[X] timeline sync threw: ${msg}`);
-        // captureXTimeline sets the store error before re-throwing; only set
-        // ours if something slipped through without doing so.
+        if (!useAppStore.getState().error) {
+          store.setError(msg);
+        }
+      }
+    }
+
+    // ── Facebook feed ─────────────────────────────────────────────────────────
+    // Independent of both RSS and X outcomes.
+    const { fbAuth } = useAppStore.getState();
+    if (fbAuth.isAuthenticated) {
+      try {
+        await captureFbFeed();
+      } catch (fbError) {
+        const msg = fbError instanceof Error ? fbError.message : "Facebook feed sync failed";
+        console.error("[Refresh] Facebook feed failed:", fbError);
+        addDebugEvent("error", `[FB] feed sync threw: ${msg}`);
         if (!useAppStore.getState().error) {
           store.setError(msg);
         }

@@ -9,7 +9,7 @@ import type {
   MediaType,
   RssFeed,
 } from "@freed/shared";
-import type { ParsedFeed, ParsedFeedItem, MediaContent } from "./types.js";
+import type { ParsedFeed, ParsedFeedItem } from "./types.js";
 import { detectPlatform } from "./discovery.js";
 
 // =============================================================================

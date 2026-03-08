@@ -17,66 +17,66 @@ const PLATFORM_PATTERNS: PlatformPattern[] = [
   // Medium
   {
     match: /^https?:\/\/(www\.)?medium\.com\/@([^\/]+)/,
-    transform: (url, match) => `https://medium.com/feed/@${match[2]}`,
+    transform: (_url, match) => `https://medium.com/feed/@${match[2]}`,
   },
   {
     match: /^https?:\/\/([^.]+)\.medium\.com/,
-    transform: (url, match) => `https://${match[1]}.medium.com/feed`,
+    transform: (_url, match) => `https://${match[1]}.medium.com/feed`,
   },
 
   // Substack
   {
     match: /^https?:\/\/([^.]+)\.substack\.com/,
-    transform: (url, match) => `https://${match[1]}.substack.com/feed`,
+    transform: (_url, match) => `https://${match[1]}.substack.com/feed`,
   },
 
   // YouTube - Channel
   {
     match: /^https?:\/\/(www\.)?youtube\.com\/channel\/([^\/]+)/,
-    transform: (url, match) =>
+    transform: (_url, match) =>
       `https://www.youtube.com/feeds/videos.xml?channel_id=${match[2]}`,
   },
   // YouTube - User
   {
     match: /^https?:\/\/(www\.)?youtube\.com\/user\/([^\/]+)/,
-    transform: (url, match) =>
+    transform: (_url, match) =>
       `https://www.youtube.com/feeds/videos.xml?user=${match[2]}`,
   },
   // YouTube - Custom URL (@handle)
   {
     match: /^https?:\/\/(www\.)?youtube\.com\/@([^\/]+)/,
-    transform: (url, match) =>
+    transform: (_url, match) =>
       `https://www.youtube.com/feeds/videos.xml?channel_id=@${match[2]}`,
   },
 
   // Reddit - Subreddit
   {
     match: /^https?:\/\/(www\.)?reddit\.com\/r\/([^\/]+)/,
-    transform: (url, match) => `https://www.reddit.com/r/${match[2]}/.rss`,
+    transform: (_url, match) => `https://www.reddit.com/r/${match[2]}/.rss`,
   },
   // Reddit - User
   {
     match: /^https?:\/\/(www\.)?reddit\.com\/u(ser)?\/([^\/]+)/,
-    transform: (url, match) => `https://www.reddit.com/user/${match[3]}/.rss`,
+    transform: (_url, match) => `https://www.reddit.com/user/${match[3]}/.rss`,
   },
 
   // GitHub - Releases
   {
     match: /^https?:\/\/(www\.)?github\.com\/([^\/]+)\/([^\/]+)(\/releases)?$/,
-    transform: (url, match) =>
+    transform: (_url, match) =>
       `https://github.com/${match[2]}/${match[3]}/releases.atom`,
   },
   // GitHub - Commits
   {
     match: /^https?:\/\/(www\.)?github\.com\/([^\/]+)\/([^\/]+)\/commits/,
-    transform: (url, match) =>
+    transform: (_url, match) =>
       `https://github.com/${match[2]}/${match[3]}/commits.atom`,
   },
 
   // Mastodon
   {
     match: /^https?:\/\/([^\/]+)\/@([^\/]+)$/,
-    transform: (url, match) => `https://${match[1]}/@${match[2]}.rss`,
+    transform: (_url, match) => `https://${match[1]}/@${match[2]}.rss`,
   },
 
   // Ghost blogs
@@ -94,14 +94,14 @@ const PLATFORM_PATTERNS: PlatformPattern[] = [
   // Blogger
   {
     match: /^https?:\/\/([^.]+)\.blogspot\.com/,
-    transform: (url, match) =>
+    transform: (_url, match) =>
       `https://${match[1]}.blogspot.com/feeds/posts/default`,
   },
 
   // Tumblr
   {
     match: /^https?:\/\/([^.]+)\.tumblr\.com/,
-    transform: (url, match) => `https://${match[1]}.tumblr.com/rss`,
+    transform: (_url, match) => `https://${match[1]}.tumblr.com/rss`,
   },
 ];
 
@@ -136,8 +136,6 @@ const COMMON_FEED_PATHS = [
  */
 export async function discoverFeed(url: string): Promise<string | null> {
   // Normalize URL
-  const normalizedUrl = url.endsWith("/") ? url : url + "/";
-
   // Try platform-specific patterns first
   for (const pattern of PLATFORM_PATTERNS) {
     const match = url.match(pattern.match);

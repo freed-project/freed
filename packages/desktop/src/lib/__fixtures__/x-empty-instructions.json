@@ -1,8 +1,10 @@
 {
   "_note": "API returned valid JSON but the instructions array is missing. Triggers errorStage='instructions'. Seen when the queryId is stale or the response shape changes.",
-  "home": {
-    "home_timeline_urt": {
-      "instructions": []
+  "data": {
+    "home": {
+      "home_timeline_urt": {
+        "instructions": []
+      }
     }
   }
 }

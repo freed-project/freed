@@ -13,7 +13,8 @@ export type SectionId =
   | "sync"
   | "updates"
   | "danger"
-  | "x";
+  | "x"
+  | "facebook";
 
 export interface SectionMeta {
   id: SectionId;
@@ -62,6 +63,13 @@ export const X_SECTION_META: SectionMeta = {
   id: "x",
   label: "X / Twitter",
   keywords: ["twitter", "x", "tweet", "timeline", "connect", "cookies", "auth", "token"],
+};
+
+/** Shown only when the platform provides a Facebook settings component (desktop). */
+export const FB_SECTION_META: SectionMeta = {
+  id: "facebook",
+  label: "Facebook",
+  keywords: ["facebook", "fb", "meta", "feed", "connect", "cookies", "auth", "mbasic"],
 };
 
 /** Shown only when the platform supports factory reset (desktop). */

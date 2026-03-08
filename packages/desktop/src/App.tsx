@@ -27,8 +27,9 @@ import { secureStorage } from "./lib/secure-storage";
 import { start as startContentFetcher, stop as stopContentFetcher } from "./lib/content-fetcher";
 import { useAppStore as useDesktopStore } from "./lib/store";
 import { pickContactViaTauri } from "./lib/contacts";
-import { XFeedEmptyState } from "./components/XFeedEmptyState";
+import { FeedEmptyState } from "./components/FeedEmptyState";
 import { XSettingsSection } from "./components/XSettingsSection";
+import { FacebookSettingsSection } from "./components/FacebookSettingsSection";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
@@ -180,8 +181,9 @@ function App() {
       SourceIndicator: XSourceIndicator,
       HeaderSyncIndicator: DesktopSyncIndicator,
       SettingsExtraSections: MobileSyncTab,
-      FeedEmptyState: XFeedEmptyState,
+      FeedEmptyState: FeedEmptyState,
       XSettingsContent: XSettingsSection,
+      FacebookSettingsContent: FacebookSettingsSection,
       checkForUpdates,
       applyUpdate,
       factoryReset: handleFactoryReset,

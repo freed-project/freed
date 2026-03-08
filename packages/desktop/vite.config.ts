@@ -17,7 +17,7 @@ const mock = (name: string) =>
     new URL(`src/__mocks__/@tauri-apps/${name}`, import.meta.url),
   );
 
-const tauriMockAliases = process.env.VITE_TEST_TAURI
+const tauriMockAliases: Record<string, string> = process.env.VITE_TEST_TAURI
   ? {
       "@tauri-apps/api/core": mock("api/core.ts"),
       "@tauri-apps/api/event": mock("api/event.ts"),

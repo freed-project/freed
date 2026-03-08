@@ -52,7 +52,7 @@ export function checkRateLimit(
  * Record a successful scrape — resets error count and updates lastScrapeAt.
  */
 export function recordSuccess(
-  state: RateLimitState,
+  _state: RateLimitState,
   now: number = Date.now()
 ): RateLimitState {
   return {
