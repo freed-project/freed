@@ -956,6 +956,286 @@ async fn fb_disconnect(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
+// Tauri commands — Instagram WebView scraper
+// ---------------------------------------------------------------------------
+
+/// The extraction script injected into the Instagram WebView after page load.
+/// Reads posts from the rendered DOM and emits them via Tauri event IPC.
+const IG_EXTRACT_SCRIPT: &str = include_str!("ig-extract.js");
+
+/// Safari UA to avoid Instagram detecting the bare WKWebView identifier
+/// and serving a degraded experience.
+const IG_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
+    AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
+
+/// Show a visible WebView window navigated to instagram.com/accounts/login
+/// so the user can authenticate through the real Instagram login flow.
+///
+/// An `on_navigation` handler detects when the user completes login
+/// (URL leaves /accounts/login) and auto-hides the window + emits
+/// `ig-auth-result`.
+#[tauri::command]
+async fn ig_show_login(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+
+    if let Some(existing) = app.get_webview_window("ig-scraper") {
+        existing.navigate("https://www.instagram.com/accounts/login/".parse().unwrap())
+            .map_err(|e| e.to_string())?;
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+
+    let app_handle = app.clone();
+    // Track whether we've already emitted the auth result (one-shot)
+    let auth_emitted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+    WebviewWindowBuilder::new(
+        &app,
+        "ig-scraper",
+        tauri::WebviewUrl::External("https://www.instagram.com/accounts/login/".parse().unwrap()),
+    )
+    .user_agent(IG_USER_AGENT)
+    .title("Connect Instagram — Freed")
+    .inner_size(460.0, 700.0)
+    .center()
+    .visible(true)
+    .on_navigation(move |url| {
+        let path = url.path();
+        let host = url.host_str().unwrap_or("");
+
+        // Detect successful login: navigated away from /accounts/login on instagram.
+        // Only fire once — don't hide again on subsequent navigations during scraping.
+        if host.contains("instagram.com")
+            && path != "/accounts/login"
+            && path != "/accounts/login/"
+            && !auth_emitted.swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
+            // Hide the login UI — the window stays alive for scraping but is not
+            // visible to the user. ig_scrape_feed will show it again when needed.
+            if let Some(w) = app_handle.get_webview_window("ig-scraper") {
+                let _ = w.hide();
+            }
+            let _ = app_handle.emit("ig-auth-result", serde_json::json!({ "loggedIn": true }));
+
+            // Auto-trigger a scrape shortly after login so the user doesn't need
+            // to manually click "Sync Now".
+            let scrape_app = app_handle.clone();
+            tauri::async_runtime::spawn(async move {
+                println!("[IG] login detected, auto-scraping in 3s...");
+                tokio::time::sleep(Duration::from_secs(3)).await;
+                match ig_scrape_feed(scrape_app).await {
+                    Ok(()) => println!("[IG] post-login auto-scrape complete"),
+                    Err(e) => println!("[IG] post-login auto-scrape error: {}", e),
+                }
+            });
+        }
+
+        true
+    })
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Hide the Instagram login window after successful authentication.
+#[tauri::command]
+async fn ig_hide_login(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("ig-scraper") {
+        w.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Check whether the Instagram WebView has an authenticated session.
+///
+/// Creates a hidden WebView if none exists, navigates to instagram.com,
+/// waits for the page to settle, then checks for the sessionid cookie.
+#[tauri::command]
+async fn ig_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri::WebviewWindowBuilder;
+
+    let wv = match app.get_webview_window("ig-scraper") {
+        Some(w) => w,
+        None => {
+            WebviewWindowBuilder::new(
+                &app,
+                "ig-scraper",
+                tauri::WebviewUrl::External(
+                    "https://www.instagram.com/".parse().unwrap(),
+                ),
+            )
+            .user_agent(IG_USER_AGENT)
+            .title("Freed Instagram")
+            .inner_size(460.0, 700.0)
+            .visible(false)
+            .build()
+            .map_err(|e| e.to_string())?
+        }
+    };
+
+    tokio::time::sleep(Duration::from_secs(6)).await;
+
+    wv.eval(
+        r#"
+        (function() {
+            try {
+                var loggedIn = document.cookie.indexOf('sessionid=') !== -1
+                    && document.cookie.indexOf('sessionid=;') === -1;
+                window.__TAURI__.event.emit('ig-auth-result', { loggedIn: loggedIn });
+            } catch(e) {
+                window.__TAURI__.event.emit('ig-auth-result', { loggedIn: false, error: e.message });
+            }
+        })();
+        "#,
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(true)
+}
+
+/// Trigger a feed scrape in the hidden Instagram WebView.
+///
+/// Navigates to instagram.com, waits for content to render, then injects
+/// the extraction script which reads the DOM and emits 'ig-feed-data'.
+#[tauri::command]
+async fn ig_scrape_feed(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+
+    let ig_feed_url = "https://www.instagram.com/?variant=following";
+
+    let wv = match app.get_webview_window("ig-scraper") {
+        Some(w) => {
+            // Window exists (user already logged in). Show it and let it load.
+            // DO NOT re-navigate — that would fire the ig_show_login on_navigation
+            // callback which hides the window, causing WebKit to throttle rendering.
+            let _ = w.show();
+            let _ = w.set_focus();
+            println!("[IG] reusing existing ig-scraper window (already authenticated)");
+            w
+        }
+        None => {
+            // No existing window — create one. This path runs on first-ever scrape
+            // (when the user hasn't gone through ig_show_login yet, e.g. auto-scrape).
+            // Use a minimal on_navigation that only hides during the login page.
+            let app_handle = app.clone();
+            WebviewWindowBuilder::new(
+                &app,
+                "ig-scraper",
+                tauri::WebviewUrl::External(
+                    ig_feed_url.parse().unwrap(),
+                ),
+            )
+            .user_agent(IG_USER_AGENT)
+            .title("Freed Instagram")
+            .inner_size(1280.0, 900.0)
+            .visible(true)
+            .on_navigation(move |url| {
+                let path = url.path();
+                let host = url.host_str().unwrap_or("");
+                // Only emit auth result when moving away from login page
+                if host.contains("instagram.com")
+                    && (path == "/accounts/login" || path == "/accounts/login/")
+                {
+                    // Still on login — do nothing
+                } else if host.contains("instagram.com") {
+                    let _ = app_handle.emit("ig-auth-result",
+                        serde_json::json!({ "loggedIn": true }));
+                }
+                true
+            })
+            .build()
+            .map_err(|e| e.to_string())?
+        }
+    };
+
+    println!("[IG] scrape started, waiting for feed to render...");
+
+    let jitter = {
+        use rand::Rng;
+        rand::thread_rng().gen_range(2000..4000)
+    };
+    tokio::time::sleep(Duration::from_millis(8000 + jitter)).await;
+
+    // Ensure window is still visible (anything could have hidden it)
+    let _ = wv.show();
+    let _ = wv.set_focus();
+    println!("[IG] window visible, proceeding with extraction");
+
+    // Belt-and-suspenders: click the Following tab if present
+    let _ = wv.eval(r#"document.querySelector('a[href="/?variant=following"]')?.click();"#);
+    tokio::time::sleep(Duration::from_millis(2000)).await;
+
+    // Instagram virtualizes its feed similarly to Facebook. Scroll
+    // incrementally, extracting at each position.
+    let num_passes = 10;
+    for i in 0..num_passes {
+        // Keep window visible — WebKit throttles hidden windows
+        let _ = wv.show();
+
+        wv.eval(IG_EXTRACT_SCRIPT)
+            .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
+
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        let scroll_amount = {
+            use rand::Rng;
+            rand::thread_rng().gen_range(400..700)
+        };
+        // Dispatch real WheelEvent + ScrollEvent so Instagram's React virtualizer
+        // detects the scroll and renders new posts into the DOM.
+        let scroll_js = format!(
+            r#"(function() {{
+                var el = document.scrollingElement || document.documentElement || document.body;
+                var target = el.scrollTop + {amt};
+                // Simulate wheel delta in small steps so React's scroll handler fires
+                var steps = 8;
+                var step = {amt} / steps;
+                var done = 0;
+                function tick() {{
+                    el.scrollTop += step;
+                    el.dispatchEvent(new Event('scroll', {{bubbles: true}}));
+                    window.dispatchEvent(new Event('scroll', {{bubbles: false}}));
+                    done++;
+                    if (done < steps) setTimeout(tick, 60);
+                }}
+                tick();
+            }})();"#,
+            amt = scroll_amount
+        );
+        wv.eval(&scroll_js).map_err(|e| e.to_string())?;
+
+        let pause = {
+            use rand::Rng;
+            rand::thread_rng().gen_range(3500..5500)
+        };
+        tokio::time::sleep(Duration::from_millis(pause)).await;
+
+        println!("[IG] pass {}/{}: scrolled +{}px", i + 1, num_passes, scroll_amount);
+    }
+
+    wv.eval(IG_EXTRACT_SCRIPT)
+        .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    println!("[IG] scrape complete, {} extraction passes emitted", num_passes + 1);
+
+    Ok(())
+}
+
+/// Disconnect Instagram by clearing all browsing data in the scraper WebView.
+#[tauri::command]
+async fn ig_disconnect(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(wv) = app.get_webview_window("ig-scraper") {
+        wv.clear_all_browsing_data()
+            .map_err(|e| e.to_string())?;
+        let _ = wv.close();
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket relay
 // ---------------------------------------------------------------------------
 
@@ -1275,6 +1555,64 @@ pub fn run() {
                 }
             });
 
+            // Log Instagram scraper events to stdout for debugging.
+            let ig_unique_ids: Arc<StdRwLock<std::collections::HashSet<String>>> =
+                Arc::new(StdRwLock::new(std::collections::HashSet::new()));
+            let ig_total_posts = Arc::new(AtomicUsize::new(0));
+            let ig_ids_clone = ig_unique_ids.clone();
+            let ig_total_clone = ig_total_posts.clone();
+
+            let app_for_ig = app.handle().clone();
+            app_for_ig.listen("ig-feed-data", move |event| {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+                    let scroll_y = val.get("scrollY")
+                        .and_then(|s| s.as_f64())
+                        .unwrap_or(0.0) as i64;
+                    let candidates = val.get("candidateCount")
+                        .and_then(|c| c.as_u64())
+                        .unwrap_or(0);
+                    let error = val.get("error")
+                        .and_then(|e| e.as_str())
+                        .unwrap_or("");
+
+                    if !error.is_empty() {
+                        println!("[IG] extraction error: {}", error);
+                        return;
+                    }
+
+                    let mut new_count = 0usize;
+                    if let Some(posts) = val.get("posts").and_then(|p| p.as_array()) {
+                        let mut ids = ig_ids_clone.write().unwrap();
+                        for post in posts {
+                            let id = post.get("shortcode")
+                                .and_then(|i| i.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            if !id.is_empty() && ids.insert(id) {
+                                new_count += 1;
+                                let total = ig_total_clone.fetch_add(1, Ordering::Relaxed) + 1;
+                                let author = post.get("authorHandle")
+                                    .and_then(|a| a.as_str())
+                                    .unwrap_or("?");
+                                let text = post.get("caption")
+                                    .and_then(|t| t.as_str())
+                                    .unwrap_or("")
+                                    .chars()
+                                    .take(80)
+                                    .collect::<String>();
+                                println!("[IG]   #{}: @{} — {:?}", total, author, text);
+                            }
+                        }
+                    }
+
+                    let total = ig_total_clone.load(Ordering::Relaxed);
+                    let strategy = val.get("strategy").and_then(|s| s.as_str()).unwrap_or("?");
+                    let url = val.get("url").and_then(|u| u.as_str()).unwrap_or("?");
+                    println!("[IG] pass @ scrollY={}: candidates={}, new={}, total_unique={}, strategy={}, url={}",
+                        scroll_y, candidates, new_count, total, strategy, &url[..url.len().min(60)]);
+                }
+            });
+
             // Start mDNS advertisement and keep the daemon alive.
             let mdns_daemon = advertise_mdns(8765);
             app.manage(MdnsState(mdns_daemon));
@@ -1298,6 +1636,21 @@ pub fn run() {
                     match fb_scrape_feed(auto_app).await {
                         Ok(()) => println!("[FB] auto-scrape command returned OK"),
                         Err(e) => println!("[FB] auto-scrape error: {}", e),
+                    }
+                });
+            }
+
+            // Dev-only: auto-trigger an Instagram scrape on startup so we can
+            // iterate without manual clicking. Set IG_AUTO_SCRAPE=1 env var.
+            if std::env::var("IG_AUTO_SCRAPE").unwrap_or_default() == "1" {
+                let auto_app = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    println!("[IG] auto-scrape enabled, waiting 8s for app init...");
+                    tokio::time::sleep(Duration::from_secs(8)).await;
+                    println!("[IG] triggering auto-scrape now");
+                    match ig_scrape_feed(auto_app).await {
+                        Ok(()) => println!("[IG] auto-scrape command returned OK"),
+                        Err(e) => println!("[IG] auto-scrape error: {}", e),
                     }
                 });
             }
@@ -1336,6 +1689,11 @@ pub fn run() {
             fb_check_auth,
             fb_scrape_feed,
             fb_disconnect,
+            ig_show_login,
+            ig_hide_login,
+            ig_check_auth,
+            ig_scrape_feed,
+            ig_disconnect,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Freed");

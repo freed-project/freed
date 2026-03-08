@@ -20,6 +20,8 @@ import {
 } from "./lib/sync";
 import { clearLocalDoc } from "./lib/automerge";
 import { clearStoredCookies } from "./lib/x-auth";
+import { disconnectIg } from "./lib/instagram-auth";
+import { disconnectFb } from "./lib/fb-auth";
 import { contentCache } from "./lib/content-cache";
 import { saveUrlInDesktop } from "./lib/save-url";
 import { importMarkdownFiles, exportLibrary } from "./lib/import-export";
@@ -30,6 +32,7 @@ import { pickContactViaTauri } from "./lib/contacts";
 import { FeedEmptyState } from "./components/FeedEmptyState";
 import { XSettingsSection } from "./components/XSettingsSection";
 import { FacebookSettingsSection } from "./components/FacebookSettingsSection";
+import { InstagramSettingsSection } from "./components/InstagramSettingsSection";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
@@ -166,6 +169,8 @@ function App() {
       stopAllCloudSyncs();
     }
     clearStoredCookies();
+    await disconnectFb().catch(() => {});
+    await disconnectIg().catch(() => {});
     for (const provider of providers) clearCloudProvider(provider);
     await clearLocalDoc();
     location.reload();
@@ -184,6 +189,7 @@ function App() {
       FeedEmptyState: FeedEmptyState,
       XSettingsContent: XSettingsSection,
       FacebookSettingsContent: FacebookSettingsSection,
+      InstagramSettingsContent: InstagramSettingsSection,
       checkForUpdates,
       applyUpdate,
       factoryReset: handleFactoryReset,

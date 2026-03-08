@@ -52,6 +52,11 @@ const handlers: Record<string, Handler> = {
   fb_check_auth: () => true,
   fb_scrape_feed: () => null,
   fb_disconnect: () => null,
+  ig_show_login: () => null,
+  ig_hide_login: () => null,
+  ig_check_auth: () => true,
+  ig_scrape_feed: () => null,
+  ig_disconnect: () => null,
 };
 
 // Expose handler map so tests and tauri-init.ts can override defaults.

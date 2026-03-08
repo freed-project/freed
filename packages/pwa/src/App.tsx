@@ -101,6 +101,7 @@ function App() {
       FeedEmptyState: PwaFeedEmptyState,
       XSettingsContent: PwaXSettings,
       FacebookSettingsContent: null,
+      InstagramSettingsContent: null,
       checkForUpdates,
       applyUpdate: applyPwaUpdate,
       factoryReset: handleFactoryReset,

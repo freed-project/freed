@@ -14,7 +14,8 @@ export type SectionId =
   | "updates"
   | "danger"
   | "x"
-  | "facebook";
+  | "facebook"
+  | "instagram";
 
 export interface SectionMeta {
   id: SectionId;
@@ -70,6 +71,13 @@ export const FB_SECTION_META: SectionMeta = {
   id: "facebook",
   label: "Facebook",
   keywords: ["facebook", "fb", "meta", "feed", "connect", "cookies", "auth", "mbasic"],
+};
+
+/** Shown only when the platform provides an Instagram settings component (desktop). */
+export const IG_SECTION_META: SectionMeta = {
+  id: "instagram",
+  label: "Instagram",
+  keywords: ["instagram", "ig", "meta", "feed", "connect", "photos", "reels", "stories"],
 };
 
 /** Shown only when the platform supports factory reset (desktop). */

@@ -34,6 +34,7 @@ import {
 import type { FreedDoc } from "@freed/shared/schema";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
 import { initFbAuth, type FbAuthState } from "./fb-auth";
+import { initIgAuth, type IgAuthState } from "./instagram-auth";
 
 
 // App state interface
@@ -67,6 +68,8 @@ interface AppState {
   xAuth: XAuthState;
   // Facebook auth state
   fbAuth: FbAuthState;
+  // Instagram auth state
+  igAuth: IgAuthState;
 
   // UI state
   isLoading: boolean;
@@ -108,6 +111,8 @@ interface AppState {
   setXAuth: (auth: XAuthState) => void;
   // Facebook auth actions
   setFbAuth: (auth: FbAuthState) => void;
+  // Instagram auth actions
+  setIgAuth: (auth: IgAuthState) => void;
 
   // UI actions (not persisted)
   setFilter: (filter: FilterOptions) => void;
@@ -290,6 +295,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   archivableFeedCounts: {},
   xAuth: { isAuthenticated: false },
   fbAuth: { isAuthenticated: false },
+  igAuth: { isAuthenticated: false },
   isLoading: true,
   isSyncing: false,
   isInitialized: false,
@@ -331,12 +337,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         : { isAuthenticated: false };
 
       const fbAuth = initFbAuth();
+      const igAuth = initIgAuth();
 
       // Hydrate and show the app immediately — no need to wait for migrations.
       set({
         ...hydrateFromDoc(doc),
         xAuth,
         fbAuth,
+        igAuth,
         isInitialized: true,
         isLoading: false,
       });
@@ -428,6 +436,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setXAuth: (auth) => set({ xAuth: auth }),
   // Facebook auth actions
   setFbAuth: (auth) => set({ fbAuth: auth }),
+  // Instagram auth actions
+  setIgAuth: (auth) => set({ igAuth: auth }),
 
   // UI actions
   setFilter: (filter) => set({ activeFilter: filter }),

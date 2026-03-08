@@ -12,6 +12,7 @@ import { generateOPML, downloadFile } from "@freed/shared";
 import { parseFeedXml, feedToFeedItems, feedToRssFeed } from "@freed/capture-rss/browser";
 import { captureXTimeline } from "./x-capture";
 import { captureFbFeed } from "./fb-capture";
+import { captureIgFeed } from "./instagram-capture";
 import { docBatchRefreshFeeds } from "./automerge";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
@@ -103,7 +104,7 @@ export async function refreshAllFeeds(): Promise<void> {
   const feeds = Object.values(store.feeds).filter((f) => f.enabled);
 
   // Skip only when there is truly nothing to do.
-  if (feeds.length === 0 && !store.xAuth.isAuthenticated && !store.fbAuth.isAuthenticated) return;
+  if (feeds.length === 0 && !store.xAuth.isAuthenticated && !store.fbAuth.isAuthenticated && !store.igAuth.isAuthenticated) return;
 
   store.setSyncing(true);
   store.setError(null);
@@ -229,6 +230,22 @@ export async function refreshAllFeeds(): Promise<void> {
         const msg = fbError instanceof Error ? fbError.message : "Facebook feed sync failed";
         console.error("[Refresh] Facebook feed failed:", fbError);
         addDebugEvent("error", `[FB] feed sync threw: ${msg}`);
+        if (!useAppStore.getState().error) {
+          store.setError(msg);
+        }
+      }
+    }
+
+    // ── Instagram feed ───────────────────────────────────────────────────────
+    // Independent of RSS, X, and Facebook outcomes.
+    const { igAuth } = useAppStore.getState();
+    if (igAuth.isAuthenticated) {
+      try {
+        await captureIgFeed();
+      } catch (igError) {
+        const msg = igError instanceof Error ? igError.message : "Instagram feed sync failed";
+        console.error("[Refresh] Instagram feed failed:", igError);
+        addDebugEvent("error", `[IG] feed sync threw: ${msg}`);
         if (!useAppStore.getState().error) {
           store.setError(msg);
         }

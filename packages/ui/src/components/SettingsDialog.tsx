@@ -26,6 +26,7 @@ import {
   DANGER_SECTION_META,
   X_SECTION_META,
   FB_SECTION_META,
+  IG_SECTION_META,
   type SectionId,
   type SectionMeta,
 } from "../lib/settings-sections.js";
@@ -145,6 +146,13 @@ const ICONS: Record<SectionId, ReactNode> = {
       <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
     </svg>
   ),
+  instagram: (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+      <circle cx="12" cy="12" r="4" />
+      <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  ),
 };
 
 // ── Update check state ────────────────────────────────────────────────────────
@@ -163,6 +171,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     SettingsExtraSections,
     XSettingsContent,
     FacebookSettingsContent,
+    InstagramSettingsContent,
     checkForUpdates,
     applyUpdate,
     headerDragRegion,
@@ -180,6 +189,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     ...BASE_SECTION_METAS.map((m) => ({ ...m, icon: ICONS[m.id] })),
     ...(XSettingsContent ? [{ ...X_SECTION_META, icon: ICONS.x }] : []),
     ...(FacebookSettingsContent ? [{ ...FB_SECTION_META, icon: ICONS.facebook }] : []),
+    ...(InstagramSettingsContent ? [{ ...IG_SECTION_META, icon: ICONS.instagram }] : []),
     ...(checkForUpdates ? [{ ...UPDATES_SECTION_META, icon: ICONS.updates }] : []),
     ...(factoryReset ? [{ ...DANGER_SECTION_META, icon: ICONS.danger }] : []),
   ];
@@ -199,6 +209,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         sectionById.saved,
         ...(XSettingsContent ? [sectionById.x] : []),
         ...(FacebookSettingsContent ? [sectionById.facebook] : []),
+        ...(InstagramSettingsContent ? [sectionById.instagram] : []),
       ],
     },
     // sectionById.ai, // AI coming soon -- do not delete
@@ -552,6 +563,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <>
             <SectionHeading label="Facebook" />
             <FacebookSettingsContent />
+          </>
+        ) : null;
+
+      case "instagram":
+        return InstagramSettingsContent ? (
+          <>
+            <SectionHeading label="Instagram" />
+            <InstagramSettingsContent />
           </>
         ) : null;
 

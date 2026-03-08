@@ -79,10 +79,25 @@ function buildEngagement(post: RawIgPost): Engagement | undefined {
  * Convert a raw Instagram post to a Freed FeedItem.
  * Returns null if the post lacks a shortcode (can't be deduplicated).
  */
-export function igPostToFeedItem(post: RawIgPost): FeedItem | null {
-  if (!post.shortcode && !post.url) return null;
+function contentHash(handle: string, text: string): string {
+  const seed = (handle || "") + "||" + (text || "").slice(0, 120);
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash << 5) - hash + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  return "h" + Math.abs(hash).toString(36);
+}
 
-  const globalId = `ig:${post.shortcode ?? encodeURIComponent(post.url ?? "")}`;
+export function igPostToFeedItem(post: RawIgPost): FeedItem | null {
+  // Must have some content to be worth keeping
+  if (!post.shortcode && !post.url && !post.caption && post.mediaUrls.length === 0) return null;
+
+  const slug = post.shortcode
+    ?? (post.url ? encodeURIComponent(post.url) : null)
+    ?? contentHash(post.authorHandle ?? "", post.caption ?? "");
+
+  const globalId = `ig:${slug}`;
   const publishedAt = extractTimestamp(post);
   const author = buildAuthor(post);
   const content = buildContent(post);

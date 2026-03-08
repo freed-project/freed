@@ -206,10 +206,10 @@ const topSources: { id: string | undefined; label: string; icon: ReactNode }[] =
   { id: "rss", label: "RSS", icon: <RssIcon /> },
   { id: "x", label: "X", icon: <span className="text-sm font-bold leading-none">𝕏</span> },
   { id: "facebook", label: "Facebook", icon: <FacebookIcon /> },
+  { id: "instagram", label: "Instagram", icon: <InstagramIcon /> },
 ];
 
 const comingSoonSources: { id: string; label: string; icon: ReactNode }[] = [
-  { id: "instagram", label: "Instagram", icon: <InstagramIcon /> },
   { id: "friends", label: "Friends", icon: <UsersIcon /> },
   { id: "map", label: "Map", icon: <MapPinIcon /> },
 ];

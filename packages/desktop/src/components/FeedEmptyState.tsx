@@ -8,11 +8,13 @@
 import { useAppStore } from "../lib/store";
 import { XFeedEmptyState } from "./XFeedEmptyState";
 import { FacebookFeedEmptyState } from "./FacebookFeedEmptyState";
+import { InstagramFeedEmptyState } from "./InstagramFeedEmptyState";
 
 export function FeedEmptyState() {
   const platform = useAppStore((s) => s.activeFilter.platform);
 
   if (platform === "facebook") return <FacebookFeedEmptyState />;
+  if (platform === "instagram") return <InstagramFeedEmptyState />;
 
   // XFeedEmptyState already handles both "x" and non-x filters
   // (it has its own generic fallback for non-x filters)

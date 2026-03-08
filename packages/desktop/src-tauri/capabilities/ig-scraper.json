@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/config/2/capability",
+  "identifier": "ig-scraper",
+  "description": "Allows the hidden Instagram WebView to emit events back to the app",
+  "windows": ["ig-scraper"],
+  "remote": {
+    "urls": ["https://*.instagram.com/*"]
+  },
+  "permissions": [
+    "core:event:allow-emit",
+    "core:event:allow-listen"
+  ]
+}
