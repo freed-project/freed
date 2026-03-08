@@ -16,7 +16,7 @@ jobs:
   e2e:
     name: Smoke tests (Chromium, Linux)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -38,9 +38,44 @@ jobs:
       - name: Run e2e smoke tests
         run: npm run test:e2e --workspace=packages/desktop
         env:
-          # Playwright runs headless by default on CI.
-          # DISPLAY is not needed for Chromium headless.
           CI: "true"
+
+      - name: Run perf regression check
+        if: always()
+        run: |
+          if [ -f packages/desktop/playwright-report/perf-results.json ]; then
+            npx tsx scripts/perf-compare.ts \
+              packages/desktop/playwright-report/perf-results.json \
+              packages/desktop/tests/e2e/perf-baselines.json \
+              packages/desktop/tests/e2e/perf-budgets.json \
+              | tee perf-comparison.md
+          else
+            echo "No perf results found — skipping comparison"
+          fi
+
+      - name: Comment perf comparison on PR
+        if: always() && github.event_name == 'pull_request' && hashFiles('perf-comparison.md') != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (!fs.existsSync('perf-comparison.md')) return;
+            const body = fs.readFileSync('perf-comparison.md', 'utf8');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## Performance Benchmark Results\n\n\`\`\`\n${body}\n\`\`\``,
+            });
+
+      - name: Upload perf results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-results-${{ github.sha }}
+          path: packages/desktop/playwright-report/perf-results.json
+          retention-days: 90
+          if-no-files-found: ignore
 
       - name: Upload test artifacts on failure
         if: failure()

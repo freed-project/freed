@@ -39,6 +39,72 @@ async function measureBrowserMs(
   return elapsed;
 }
 
+/**
+ * Measure actual frame delivery rate (FPS) during an async operation.
+ *
+ * Injects a requestAnimationFrame loop into the page before calling `fn`,
+ * then reads back the collected frame deltas after it resolves. Reports
+ * p50/p95/p99 frame times and dropped-frame count (delta > 32ms).
+ *
+ * This captures jank that PerformanceObserver long-task misses (tasks 16–50ms).
+ */
+async function measureFps(
+  page: Page,
+  label: string,
+  fn: () => Promise<void>,
+): Promise<{ p50Ms: number; p95Ms: number; p99Ms: number; droppedFrames: number; fps: number }> {
+  // Arm the rAF loop
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const deltas: number[] = [];
+    let last: number | null = null;
+    let running = true;
+
+    function loop(ts: number) {
+      if (!running) return;
+      if (last !== null) deltas.push(ts - last);
+      last = ts;
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(loop);
+    w.__PERF_RAF_DELTAS__ = deltas;
+    w.__PERF_RAF_STOP__ = () => { running = false; };
+  });
+
+  await fn();
+
+  // Disarm and collect
+  const result = await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    (w.__PERF_RAF_STOP__ as () => void)();
+    const deltas = (w.__PERF_RAF_DELTAS__ as number[]).slice();
+    if (deltas.length < 2) return { p50Ms: 0, p95Ms: 0, p99Ms: 0, droppedFrames: 0, fps: 0 };
+
+    const sorted = [...deltas].sort((a, b) => a - b);
+    function pct(p: number) {
+      const idx = Math.floor((p / 100) * (sorted.length - 1));
+      return sorted[idx];
+    }
+
+    const avg = deltas.reduce((s, d) => s + d, 0) / deltas.length;
+    return {
+      p50Ms: Math.round(pct(50) * 10) / 10,
+      p95Ms: Math.round(pct(95) * 10) / 10,
+      p99Ms: Math.round(pct(99) * 10) / 10,
+      droppedFrames: deltas.filter((d) => d > 32).length,
+      fps: Math.round(1000 / avg),
+    };
+  });
+
+  console.log(`[PERF] ${label} FPS: ${result.fps}`);
+  console.log(`[PERF] ${label} frame p50: ${result.p50Ms} ms`);
+  console.log(`[PERF] ${label} frame p95: ${result.p95Ms} ms`);
+  console.log(`[PERF] ${label} frame p99: ${result.p99Ms} ms`);
+  console.log(`[PERF] ${label} dropped frames (>32ms): ${result.droppedFrames}`);
+  return result;
+}
+
 // ─── 1. Cold load ─────────────────────────────────────────────────────────────
 
 test.describe("Cold load with pre-populated corpus", () => {
@@ -448,5 +514,185 @@ test.describe("CPU profile", () => {
     console.log("[CPU] Open in Chrome DevTools → Performance → Load Profile to see flame chart");
 
     expect(totalSamples).toBeGreaterThan(0);
+  });
+});
+
+// ─── 7. FPS harness during mark-as-read storm ─────────────────────────────────
+
+test.describe("FPS harness (rAF-based frame measurement)", () => {
+  test("frame delivery during 20 mark-as-read mutations with 3k items", async ({ app, page }) => {
+    await app.goto();
+    await app.waitForReady();
+    await app.injectRssItems(ITEM_COUNT_LARGE);
+
+    const fps = await measureFps(
+      page,
+      "markAsRead × 20 storm",
+      async () => {
+        await page.evaluate(async () => {
+          const w = window as Record<string, unknown>;
+          const store = w.__FREED_STORE__ as {
+            getState: () => { markAsRead: (id: string) => Promise<void>; items: Array<{ globalId: string }> };
+          };
+          const { markAsRead, items } = store.getState();
+          for (const item of items.slice(0, 20)) {
+            await markAsRead(item.globalId);
+          }
+        });
+      },
+    );
+
+    // After the worker migration, no frame should drop below 30fps.
+    // Before the fix, markAsRead blocks the main thread (~300ms), tanking FPS.
+    console.log(`[PERF] FPS harness — mark-as-read storm p95: ${fps.p95Ms} ms`);
+    // Gate is intentionally loose until Phase 4 fix is in place; tighten post-fix.
+    expect(fps.droppedFrames).toBeLessThan(25);
+  });
+
+  test("frame delivery during fast scroll with 3k items", async ({ app, page }) => {
+    await app.goto();
+    await app.waitForReady();
+    await app.injectRssItems(ITEM_COUNT_LARGE);
+
+    const scrollContainer = page.locator(".minimal-scroll").first();
+    await scrollContainer.waitFor({ state: "visible" });
+
+    const fps = await measureFps(
+      page,
+      "scroll 3k items",
+      async () => {
+        for (let i = 0; i < 20; i++) {
+          await scrollContainer.evaluate((el) => el.scrollBy({ top: 500, behavior: "instant" }));
+          await page.waitForTimeout(16);
+        }
+        await page.waitForTimeout(100);
+      },
+    );
+
+    // Scroll should not produce p95 frame times above 33ms (30fps threshold)
+    console.log(`[PERF] FPS harness — scroll p95: ${fps.p95Ms} ms`);
+    expect(fps.p95Ms).toBeLessThan(100); // wide tolerance — informational until fix
+  });
+});
+
+// ─── 8. CDP heap memory profiling ────────────────────────────────────────────
+
+test.describe("Memory profiling (CDP heap snapshots)", () => {
+  test("JS heap growth after injecting 5k items", async ({ app, page }) => {
+    await app.goto();
+    await app.waitForReady();
+
+    const cdp = await page.context().newCDPSession(page);
+
+    // Baseline heap before injection
+    const baselineMetrics = await cdp.send("Performance.getMetrics") as {
+      metrics: Array<{ name: string; value: number }>;
+    };
+    const baselineHeap = baselineMetrics.metrics.find((m) => m.name === "JSHeapUsedSize")?.value ?? 0;
+
+    await app.injectRssItems(ITEM_COUNT_XLARGE);
+
+    // Force GC before measuring to exclude short-lived allocations
+    await cdp.send("HeapProfiler.enable");
+    await cdp.send("HeapProfiler.collectGarbage");
+    await cdp.send("HeapProfiler.disable");
+
+    const afterMetrics = await cdp.send("Performance.getMetrics") as {
+      metrics: Array<{ name: string; value: number }>;
+    };
+    const afterHeap = afterMetrics.metrics.find((m) => m.name === "JSHeapUsedSize")?.value ?? 0;
+
+    const growthMb = (afterHeap - baselineHeap) / (1024 * 1024);
+    console.log(`[PERF] Heap baseline: ${(baselineHeap / (1024 * 1024)).toFixed(1)} MB`);
+    console.log(`[PERF] Heap after 5k items: ${(afterHeap / (1024 * 1024)).toFixed(1)} MB`);
+    console.log(`[PERF] Heap growth 5k items: ${growthMb.toFixed(1)} MB`);
+
+    // 5k items should not grow heap more than 100MB (generous — items are ~20KB each in CRDT)
+    expect(growthMb).toBeLessThan(100);
+  });
+
+  test("heap growth after 50 mark-as-read mutations (leak detection)", async ({ app, page }) => {
+    await app.goto();
+    await app.waitForReady();
+    await app.injectRssItems(ITEM_COUNT_LARGE);
+
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("HeapProfiler.enable");
+    await cdp.send("HeapProfiler.collectGarbage");
+    await cdp.send("HeapProfiler.disable");
+
+    const beforeMetrics = await cdp.send("Performance.getMetrics") as {
+      metrics: Array<{ name: string; value: number }>;
+    };
+    const beforeHeap = beforeMetrics.metrics.find((m) => m.name === "JSHeapUsedSize")?.value ?? 0;
+
+    // Run 50 mutations
+    await page.evaluate(async () => {
+      const w = window as Record<string, unknown>;
+      const store = w.__FREED_STORE__ as {
+        getState: () => { markAsRead: (id: string) => Promise<void>; items: Array<{ globalId: string }> };
+      };
+      const { markAsRead, items } = store.getState();
+      for (const item of items.slice(0, 50)) {
+        await markAsRead(item.globalId);
+      }
+    });
+
+    await cdp.send("HeapProfiler.enable");
+    await cdp.send("HeapProfiler.collectGarbage");
+    await cdp.send("HeapProfiler.disable");
+
+    const afterMetrics = await cdp.send("Performance.getMetrics") as {
+      metrics: Array<{ name: string; value: number }>;
+    };
+    const afterHeap = afterMetrics.metrics.find((m) => m.name === "JSHeapUsedSize")?.value ?? 0;
+
+    const growthMb = (afterHeap - beforeHeap) / (1024 * 1024);
+    console.log(`[PERF] Heap growth after 50 mutations: ${growthMb.toFixed(1)} MB`);
+
+    // Mutations should not leak more than 10MB after GC — indicates retained closures
+    expect(growthMb).toBeLessThan(10);
+  });
+});
+
+// ─── 9. IPC round-trip latency ────────────────────────────────────────────────
+
+test.describe("IPC round-trip latency (broadcast_doc)", () => {
+  test("broadcast_doc timing at various corpus sizes", async ({ app, page }) => {
+    await app.goto();
+    await app.waitForReady();
+
+    for (const count of [ITEM_COUNT_MEDIUM, ITEM_COUNT_LARGE]) {
+      await app.injectRssItems(count);
+      // Flush pending save
+      await page.waitForTimeout(600);
+
+      // Trigger a mark-as-read to force a broadcast_doc call
+      await page.evaluate(async () => {
+        const w = window as Record<string, unknown>;
+        const store = w.__FREED_STORE__ as {
+          getState: () => { markAsRead: (id: string) => Promise<void>; items: Array<{ globalId: string }> };
+        };
+        const { markAsRead, items } = store.getState();
+        if (items[0]) await markAsRead(items[0].globalId);
+      });
+
+      // Wait for save to flush (debounce + idle callback)
+      await page.waitForTimeout(800);
+
+      const timings = await page.evaluate(() => {
+        const w = window as Record<string, unknown>;
+        const t = (w.__TAURI_MOCK_IPC_TIMINGS__ as Array<{ cmd: string; startMs: number; endMs: number }>) ?? [];
+        return t.filter((x) => x.cmd === "broadcast_doc");
+      });
+
+      const durations = timings.map((t) => t.endMs - t.startMs);
+      const avg = durations.length ? durations.reduce((s, d) => s + d, 0) / durations.length : 0;
+      const worst = durations.length ? Math.max(...durations) : 0;
+
+      console.log(`[PERF] broadcast_doc IPC (${count.toLocaleString()} items) calls: ${timings.length}`);
+      console.log(`[PERF] broadcast_doc IPC (${count.toLocaleString()} items) avg: ${avg.toFixed(1)} ms`);
+      console.log(`[PERF] broadcast_doc IPC (${count.toLocaleString()} items) worst: ${worst.toFixed(1)} ms`);
+    }
   });
 });

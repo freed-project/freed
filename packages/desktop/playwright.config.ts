@@ -9,7 +9,11 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0, // no retries on benchmarks — flakiness is data
   workers: 1,
-  reporter: [["html", { outputFolder: "playwright-report" }], ["list"]],
+  reporter: [
+    ["html", { outputFolder: "playwright-report" }],
+    ["list"],
+    ["./tests/e2e/reporters/perf-reporter.ts"],
+  ],
 
   use: {
     baseURL: BASE_URL,

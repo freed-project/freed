@@ -13,8 +13,19 @@
 export function tauriInitScript(): string {
   return `(function () {
     // Handler map — tests override individual entries after page.addInitScript.
+    // The broadcast_doc handler wraps the real call to capture IPC timing data
+    // consumed by the IPC latency harness in perf-feed.spec.ts.
+    window.__TAURI_MOCK_IPC_TIMINGS__ = [];
+    function timedHandler(cmd, fn) {
+      return function(args) {
+        var start = performance.now();
+        var result = fn(args);
+        window.__TAURI_MOCK_IPC_TIMINGS__.push({ cmd: cmd, startMs: start, endMs: performance.now(), args: args });
+        return result;
+      };
+    }
     window.__TAURI_MOCK_HANDLERS__ = {
-      broadcast_doc: () => null,
+      broadcast_doc: timedHandler('broadcast_doc', function() { return null; }),
       fetch_url: () => '',
       get_local_ip: () => '127.0.0.1',
       get_all_local_ips: () => [],
