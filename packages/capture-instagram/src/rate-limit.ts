@@ -35,7 +35,7 @@ export function checkRateLimit(
 }
 
 export function recordSuccess(
-  state: RateLimitState,
+  _state: RateLimitState,
   now: number = Date.now()
 ): RateLimitState {
   return { lastScrapeAt: now, consecutiveErrors: 0, cooldownUntil: 0 };
