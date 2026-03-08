@@ -411,7 +411,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     `}
                   >
                     <span className="w-5 flex items-center justify-center">{source.icon}</span>
-                    <span className="flex-1">{source.label}</span>
+                    <span className="flex-1 flex items-center">
+                      <span>{source.label}</span>
+                      {SourceIndicator && (
+                        <SourceIndicator sourceId={source.id ?? "all"} />
+                      )}
+                    </span>
                     {sourceTotalCount(source) > 0 && (
                       <span className="shrink-0 flex items-center gap-0.5 text-[10px] tabular-nums">
                         <span className={sourceUnreadCount(source) > 0 ? "text-[#8b5cf6] font-medium" : "text-[#52525b]"}>
@@ -420,9 +425,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                         <span className="text-[#3f3f46]">/</span>
                         <span className="text-[#52525b]">{fmt(sourceTotalCount(source))}</span>
                       </span>
-                    )}
-                    {SourceIndicator && (
-                      <SourceIndicator sourceId={source.id ?? "all"} />
                     )}
                   </button>
                 </li>

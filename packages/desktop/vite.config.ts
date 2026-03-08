@@ -49,11 +49,15 @@ export default defineConfig({
   },
   plugins: [wasm(), topLevelAwait(), react()],
 
-  // Tauri development server
+  // Tauri development server.
+  // strictPort is only enforced when running with the real Tauri binary (tauri:dev),
+  // because tauri.conf.json hardcodes http://localhost:1420 as the devUrl.
+  // In mock mode (VITE_TEST_TAURI=1) we let Vite pick any free port so that
+  // multiple worktrees can run in parallel without colliding.
   clearScreen: false,
   server: {
     port: 1420,
-    strictPort: true,
+    strictPort: !process.env.VITE_TEST_TAURI,
     watch: {
       ignored: ["**/src-tauri/**"],
     },
