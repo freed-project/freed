@@ -34,6 +34,11 @@ export function tauriInitScript(): string {
       fb_check_auth: () => true,
       fb_scrape_feed: () => null,
       fb_disconnect: () => null,
+      ig_show_login: () => null,
+      ig_hide_login: () => null,
+      ig_check_auth: () => true,
+      ig_scrape_feed: () => null,
+      ig_disconnect: () => null,
     };
     window.__TAURI_MOCK_INVOCATIONS__ = [];
     window.__TAURI_MOCK_OPENED_URLS__ = [];

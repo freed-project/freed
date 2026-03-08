@@ -68,6 +68,14 @@ const FbIcon = () => (
   </svg>
 );
 
+const IgIcon = () => (
+  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+    <circle cx="12" cy="12" r="4" />
+    <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 export function DesktopSyncIndicator() {
   const [panelOpen, setPanelOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -76,6 +84,7 @@ export function DesktopSyncIndicator() {
   const feeds = useAppStore((s) => s.feeds);
   const xAuth = useAppStore((s) => s.xAuth);
   const fbAuth = useAppStore((s) => s.fbAuth);
+  const igAuth = useAppStore((s) => s.igAuth);
   const items = useAppStore((s) => s.items);
 
   const feedList = useMemo(() => Object.values(feeds), [feeds]);
@@ -100,6 +109,10 @@ export function DesktopSyncIndicator() {
     () => items.filter((i) => i.platform === "facebook").length,
     [items],
   );
+  const igItemCount = useMemo(
+    () => items.filter((i) => i.platform === "instagram").length,
+    [items],
+  );
 
   // Close panel on outside click
   useEffect(() => {
@@ -120,7 +133,7 @@ export function DesktopSyncIndicator() {
 
   const statusLabel = isSyncing
     ? "Syncing..."
-    : feedCount > 0 || xAuth.isAuthenticated || fbAuth.isAuthenticated
+    : feedCount > 0 || xAuth.isAuthenticated || fbAuth.isAuthenticated || igAuth.isAuthenticated
       ? "Synced"
       : "Ready";
 
@@ -128,7 +141,7 @@ export function DesktopSyncIndicator() {
     ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
     : "bg-white/5 text-[#71717a]";
 
-  const hasAnySources = feedCount > 0 || xAuth.isAuthenticated || fbAuth.isAuthenticated;
+  const hasAnySources = feedCount > 0 || xAuth.isAuthenticated || fbAuth.isAuthenticated || igAuth.isAuthenticated;
 
   return (
     <div
@@ -212,6 +225,17 @@ export function DesktopSyncIndicator() {
                   : "Not connected"
               }
               syncing={isSyncing && fbAuth.isAuthenticated}
+            />
+            <ProviderRow
+              name="Instagram"
+              icon={<IgIcon />}
+              connected={igAuth.isAuthenticated}
+              detail={
+                igAuth.isAuthenticated
+                  ? `Connected, ${igItemCount.toLocaleString()} items`
+                  : "Not connected"
+              }
+              syncing={isSyncing && igAuth.isAuthenticated}
             />
           </div>
 

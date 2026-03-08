@@ -89,6 +89,12 @@ export interface PlatformConfig {
    */
   FacebookSettingsContent: ComponentType | null;
 
+  /**
+   * Content rendered in the Settings > Sources > Instagram section.
+   * When null, the Instagram section is omitted from settings entirely (e.g. PWA).
+   */
+  InstagramSettingsContent: ComponentType | null;
+
   /** Manual update check. Returns version string if available, null if up-to-date. */
   checkForUpdates?: () => Promise<string | null>;
 

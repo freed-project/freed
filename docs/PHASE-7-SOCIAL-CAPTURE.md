@@ -1,13 +1,13 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress — Facebook integrated into Desktop via mbasic.facebook.com HTTP; Instagram pending
-> **Dependencies:** Phase 5 (Desktop App with Playwright)
+> **Status:** 🚧 In Progress — Facebook and Instagram integrated into Desktop via Tauri WebView scraping
+> **Dependencies:** Phase 5 (Desktop App)
 
 ---
 
 ## Overview
 
-DOM scraping for Facebook and Instagram feeds. Requires the Desktop App's Playwright subprocess for headless browser automation.
+DOM scraping for Facebook and Instagram feeds using Tauri's native WebView (WKWebView on macOS). Instead of Playwright, posts are captured by injecting extraction scripts into the same WebView that handles authentication, making the traffic indistinguishable from normal browsing.
 
 **Note:** DOM scraping is inherently fragile. These platforms actively fight scrapers and frequently change their DOM structure. This is lower priority than X + RSS.
 
@@ -16,25 +16,26 @@ DOM scraping for Facebook and Instagram feeds. Requires the Desktop App's Playwr
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Desktop App                                 │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                   Playwright Subprocess                   │   │
-│  │                                                           │   │
-│  │  ┌──────────────┐    ┌──────────────┐                    │   │
-│  │  │  Facebook    │    │  Instagram   │                    │   │
-│  │  │  Scraper     │    │  Scraper     │                    │   │
-│  │  └──────┬───────┘    └──────┬───────┘                    │   │
-│  │         │                   │                             │   │
-│  │         └─────────┬─────────┘                             │   │
-│  │                   ▼                                       │   │
-│  │          ┌──────────────┐                                 │   │
-│  │          │  Normalize   │                                 │   │
-│  │          │  to FeedItem │                                 │   │
-│  │          └──────────────┘                                 │   │
-│  └─────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                       Desktop App (Tauri)                        │
+│                                                                  │
+│  ┌────────────────────┐  ┌────────────────────┐                 │
+│  │   FB WebView        │  │   IG WebView        │                │
+│  │   (fb-scraper)      │  │   (ig-scraper)      │                │
+│  │                     │  │                     │                │
+│  │  Login: visible     │  │  Login: visible     │                │
+│  │  Scrape: hidden,    │  │  Scrape: hidden,    │                │
+│  │  injects extract.js │  │  injects extract.js │                │
+│  │  emits fb-feed-data │  │  emits ig-feed-data │                │
+│  └──────────┬──────────┘  └──────────┬──────────┘                │
+│             │                        │                           │
+│             └────────────┬───────────┘                           │
+│                          ▼                                       │
+│                ┌──────────────────┐                              │
+│                │  Normalize to    │                              │
+│                │  FeedItem[]      │                              │
+│                └──────────────────┘                              │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -44,160 +45,73 @@ DOM scraping for Facebook and Instagram feeds. Requires the Desktop App's Playwr
 ```
 packages/capture-facebook/
 ├── src/
-│   ├── index.ts          # Public API
-│   ├── scraper.ts        # DOM scraping logic
+│   ├── index.ts          # Playwright-based entry (not used by desktop)
+│   ├── browser.ts        # Browser-safe re-exports (types, normalize, selectors)
+│   ├── scraper.ts        # DOM scraping logic (Playwright)
 │   ├── selectors.ts      # CSS selectors (frequently updated)
 │   ├── normalize.ts      # FB post -> FeedItem
+│   ├── mbasic-parser.ts  # mbasic.facebook.com HTML parser
+│   ├── rate-limit.ts     # Rate limiting state machine
 │   └── types.ts          # FB-specific types
 ├── package.json
 └── tsconfig.json
 
 packages/capture-instagram/
 ├── src/
-│   ├── index.ts
-│   ├── scraper.ts
-│   ├── selectors.ts
-│   ├── normalize.ts
-│   └── types.ts
+│   ├── index.ts          # Playwright-based entry (not used by desktop)
+│   ├── browser.ts        # Browser-safe re-exports (types, normalize, selectors)
+│   ├── scraper.ts        # DOM scraping logic (Playwright)
+│   ├── selectors.ts      # CSS selectors
+│   ├── normalize.ts      # IG post -> FeedItem
+│   ├── rate-limit.ts     # Rate limiting state machine
+│   └── types.ts          # IG-specific types
 ├── package.json
 └── tsconfig.json
 ```
 
 ---
 
-## Core Implementation
+## Desktop Integration (Tauri WebView)
 
-### Facebook Scraper
+### Authentication
 
-```typescript
-// packages/capture-facebook/src/scraper.ts
-import { Page } from "playwright-core";
-import { SELECTORS } from "./selectors";
+Both Facebook and Instagram use the same pattern:
 
-export async function scrapeFacebookFeed(page: Page): Promise<RawFbPost[]> {
-  await page.goto("https://www.facebook.com");
-  await page.waitForSelector(SELECTORS.feed);
+1. `*_show_login` opens a visible WebView to the platform's login page
+2. User authenticates through the real login flow (2FA, CAPTCHA, etc.)
+3. `on_navigation` handler detects redirect away from login page
+4. WebView is hidden and `*-auth-result` event is emitted
+5. Cookies persist in the WebView for future scraping sessions
 
-  // Scroll to load more posts
-  await autoScroll(page, { maxScrolls: 10 });
+### Feed Scraping
 
-  const posts = await page.$$eval(SELECTORS.post, (elements) => {
-    return elements.map((el) => ({
-      id: el.getAttribute("data-pagelet"),
-      authorName: el.querySelector('[data-ad-preview="message"]')?.textContent,
-      content: el.querySelector('[data-ad-comet-preview="message"]')
-        ?.textContent,
-      timestamp: el.querySelector("abbr")?.getAttribute("data-utime"),
-      imageUrls: Array.from(el.querySelectorAll('img[src*="scontent"]')).map(
-        (img) => img.src,
-      ),
-      // ... more extraction
-    }));
-  });
+1. `*_scrape_feed` creates/shows a WebView navigated to the platform's feed
+2. Waits for page load with randomized jitter (12-16s)
+3. Injects extraction script (`fb-extract.js` / `ig-extract.js`) at multiple scroll positions
+4. Script reads visible posts from the DOM and emits them via Tauri event IPC
+5. Frontend normalizes raw posts to `FeedItem[]` using `@freed/capture-*/browser`
 
-  return posts;
-}
-```
+### Extraction Scripts
 
-### Instagram Scraper
+Self-contained JavaScript injected into the WebView's execution context. No external dependencies. Each platform has its own script tuned to its DOM structure:
 
-```typescript
-// packages/capture-instagram/src/scraper.ts
-import { Page } from "playwright-core";
-import { SELECTORS } from "./selectors";
-
-export async function scrapeInstagramFeed(page: Page): Promise<RawIgPost[]> {
-  await page.goto("https://www.instagram.com");
-  await page.waitForSelector(SELECTORS.feed);
-
-  await autoScroll(page, { maxScrolls: 10 });
-
-  const posts = await page.$$eval(SELECTORS.post, (elements) => {
-    return elements.map((el) => ({
-      id: el.getAttribute("data-testid"),
-      authorHandle: el.querySelector(SELECTORS.authorHandle)?.textContent,
-      content: el.querySelector(SELECTORS.caption)?.textContent,
-      imageUrls: Array.from(el.querySelectorAll("img"))
-        .filter((img) => img.src.includes("cdninstagram"))
-        .map((img) => img.src),
-      location: el.querySelector(SELECTORS.location)?.textContent,
-      // ... more extraction
-    }));
-  });
-
-  return posts;
-}
-```
-
-### Selector Maintenance
-
-```typescript
-// packages/capture-facebook/src/selectors.ts
-// These WILL break. Update frequently.
-export const SELECTORS = {
-  feed: '[role="feed"]',
-  post: '[data-pagelet^="FeedUnit"]',
-  authorName: "h4 a strong",
-  content: '[data-ad-comet-preview="message"]',
-  timestamp: "abbr[data-utime]",
-  image: 'img[src*="scontent"]',
-  // ... more selectors
-};
-
-// Version tracking for debugging
-export const SELECTOR_VERSION = "2026-02-01";
-```
-
----
-
-## Session Management
-
-```typescript
-// packages/capture-facebook/src/session.ts
-export interface SessionConfig {
-  cookies: Cookie[];
-  userAgent: string;
-  viewport: { width: number; height: number };
-}
-
-export async function createAuthenticatedContext(
-  browser: Browser,
-  config: SessionConfig,
-): Promise<BrowserContext> {
-  const context = await browser.newContext({
-    userAgent: config.userAgent,
-    viewport: config.viewport,
-  });
-
-  await context.addCookies(config.cookies);
-  return context;
-}
-
-// Cookie extraction from browser
-export async function extractCookiesFromBrowser(
-  browser: "chrome" | "firefox",
-): Promise<Cookie[]> {
-  // Read from browser's cookie store
-  // Handle encryption (Chrome on macOS)
-}
-```
+- **Facebook** (`fb-extract.js`): Locates "Feed posts" h3, walks subtrees for post-sized blocks
+- **Instagram** (`ig-extract.js`): Queries `<article>` elements, extracts author/caption/media from semantic header/footer structure
 
 ---
 
 ## Rate Limiting
 
 ```typescript
-// Avoid getting banned
 const RATE_LIMITS = {
   facebook: {
-    minInterval: 5 * 60 * 1000, // 5 minutes between scrapes
+    minInterval: 20 * 60 * 1000,  // 20 minutes between scrapes
     maxPostsPerScrape: 50,
-    cooldownOnError: 30 * 60 * 1000, // 30 min cooldown if blocked
   },
   instagram: {
-    minInterval: 10 * 60 * 1000, // 10 minutes
-    maxPostsPerScrape: 30,
-    cooldownOnError: 60 * 60 * 1000, // 1 hour cooldown
+    minInterval: 20 * 60 * 1000,  // 20 minutes between scrapes
+    maxPostsPerScrape: 50,
+    cooldownOnError: 60 * 60 * 1000,  // 1 hour cooldown if blocked
   },
 };
 ```
@@ -206,33 +120,39 @@ const RATE_LIMITS = {
 
 ## Tasks
 
-| Task | Description                                 | Complexity |
-| ---- | ------------------------------------------- | ---------- |
-| 7.1  | `@freed/capture-facebook` package scaffold  | Low        |
-| 7.2  | `@freed/capture-instagram` package scaffold | Low        |
-| 7.3  | Facebook DOM selectors                      | Medium     |
-| 7.4  | Instagram DOM selectors                     | Medium     |
-| 7.5  | Feed scraping logic                         | High       |
-| 7.6  | Stories capture                             | High       |
-| 7.7  | Session/cookie management                   | Medium     |
-| 7.8  | Rate limiting to avoid bans                 | Medium     |
-| 7.9  | Selector maintenance strategy               | Medium     |
-| 7.10 | Location extraction (for Phase 8)           | Medium     |
+| Task | Description                                 | Status      |
+| ---- | ------------------------------------------- | ----------- |
+| 7.1  | `@freed/capture-facebook` package scaffold  | ✓ Complete  |
+| 7.2  | `@freed/capture-instagram` package scaffold | ✓ Complete  |
+| 7.3  | Facebook DOM selectors                      | ✓ Complete  |
+| 7.4  | Instagram DOM selectors                     | ✓ Complete  |
+| 7.5  | Facebook feed scraping (WebView)            | ✓ Complete  |
+| 7.6  | Instagram feed scraping (WebView)           | ✓ Complete  |
+| 7.7  | WebView-based authentication                | ✓ Complete  |
+| 7.8  | Rate limiting to avoid bans                 | ✓ Complete  |
+| 7.9  | Selector versioning strategy                | ✓ Complete  |
+| 7.10 | Location extraction (for Phase 8)           | ✓ Complete  |
+| 7.11 | Stories capture                             | Deferred    |
 
 ---
 
 ## Success Criteria
 
-- [x] `@freed/capture-facebook` package scaffolded with full scraper, normalizer, session management, and rate limiting
-- [x] `@freed/capture-instagram` package scaffolded with full scraper, normalizer, session management, and rate limiting
+- [x] `@freed/capture-facebook` package with full scraper, normalizer, and rate limiting
+- [x] `@freed/capture-instagram` package with full scraper, normalizer, and rate limiting
 - [x] Location data extracted from Facebook check-ins and Instagram location tags
-- [x] Rate limiting prevents account bans (5m Facebook, 10m Instagram minimums with exponential backoff)
+- [x] Rate limiting prevents account bans (20m minimum between scrapes)
 - [x] Selector versioning strategy implemented (SELECTOR_VERSION constant)
-- [x] Facebook feed integrated into Desktop via mbasic.facebook.com HTTP (no Playwright dependency)
+- [x] Facebook feed integrated into Desktop via Tauri WebView scraping
+- [x] Instagram feed integrated into Desktop via Tauri WebView scraping
+- [x] Both platforms integrated into Desktop refreshAllFeeds()
+- [x] Settings UI for both platforms (login, check connection, sync, disconnect)
+- [x] Empty states for both platforms in the feed view
+- [x] Source indicators in sidebar for both platforms
+- [x] Sync indicator panel shows both platforms
 - [ ] Facebook feed posts validated against real account (selector tuning)
 - [ ] Instagram feed posts validated against real account (selector tuning)
-- [ ] Stories captured (if feasible)
-- [x] Integrated into Desktop refreshAllFeeds()
+- [ ] Stories captured (deferred)
 
 ---
 
@@ -241,12 +161,12 @@ const RATE_LIMITS = {
 | Risk                   | Mitigation                                                    |
 | ---------------------- | ------------------------------------------------------------- |
 | DOM changes frequently | Version selectors, monitor for breakage, quick update process |
-| Account bans           | Conservative rate limiting, human-like scrolling              |
-| Anti-bot detection     | Realistic user agents, viewport sizes, mouse movements        |
+| Account bans           | Conservative rate limiting, human-like scrolling with jitter  |
+| Anti-bot detection     | Native WebView (WKWebView), real Safari UA, randomized timing |
 | Legal concerns         | User captures their own data, no central server               |
 
 ---
 
 ## Deliverable
 
-`@freed/capture-facebook` and `@freed/capture-instagram` packages for DOM-based feed capture. Most location data for Friend Map comes from here.
+`@freed/capture-facebook` and `@freed/capture-instagram` packages for DOM-based feed capture via Tauri WebView. Location data from these sources feeds into Phase 8 (Friend Map).
