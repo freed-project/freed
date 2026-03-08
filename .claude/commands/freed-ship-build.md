@@ -1,0 +1,1 @@
+Ship a new versioned build from our main branch using GitHub Actions. Monitor to ensure the build is successful for all platforms. In case of build failure, open a new PR and iterate on fixes until the build passes successfully. Once your PR builds successfully, merge to main, initiate a followup build, and continue until all builds are successful.
