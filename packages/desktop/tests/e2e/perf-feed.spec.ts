@@ -696,3 +696,44 @@ test.describe("IPC round-trip latency (broadcast_doc)", () => {
     }
   });
 });
+
+// ─── 10. React Profiler render cost ──────────────────────────────────────────
+
+test.describe("React Profiler render cost", () => {
+  test("no render phase exceeds 50ms during mark-as-read with 3k items", async ({ app, page }) => {
+    await app.goto();
+    await app.waitForReady();
+    await app.injectRssItems(ITEM_COUNT_LARGE);
+
+    // Clear profile data collected during injection
+    await page.evaluate(() => {
+      const w = window as Record<string, unknown>;
+      const arr = w.__FREED_REACT_PROFILE__ as unknown[];
+      if (arr) arr.length = 0;
+    });
+
+    await page.evaluate(async () => {
+      const w = window as Record<string, unknown>;
+      const store = w.__FREED_STORE__ as { getState: () => { markAsRead: (id: string) => Promise<void>; items: Array<{ globalId: string }> } };
+      const { markAsRead, items } = store.getState();
+      for (const item of items.slice(0, 5)) await markAsRead(item.globalId);
+    });
+
+    const profile = await page.evaluate(() => {
+      const w = window as Record<string, unknown>;
+      return (w.__FREED_REACT_PROFILE__ as Array<{ id: string; phase: string; actualDuration: number; baseDuration: number }>) ?? [];
+    });
+
+    const maxActual = Math.max(0, ...profile.map((e) => e.actualDuration));
+    console.log(`[PERF] React Profiler — renders captured: ${profile.length}`);
+    console.log(`[PERF] React Profiler — max actualDuration: ${maxActual.toFixed(1)} ms`);
+
+    // Log the top 5 worst renders for diagnostics
+    const worst = [...profile].sort((a, b) => b.actualDuration - a.actualDuration).slice(0, 5);
+    for (const e of worst) {
+      console.log(`[PERF]   ${e.id} (${e.phase}): ${e.actualDuration.toFixed(1)} ms`);
+    }
+
+    expect(maxActual).toBeLessThan(50);
+  });
+});

@@ -1,0 +1,16 @@
+{
+  "generatedAt": "2026-03-08T00:00:00.000Z",
+  "gitSha": "pre-worker-migration",
+  "metrics": {
+    "markaread_20_avg": { "value": 320, "unit": "ms" },
+    "markaread_20_worst": { "value": 480, "unit": "ms" },
+    "cold_load_1k_items": { "value": 800, "unit": "ms" },
+    "cold_load_3k_items": { "value": 2000, "unit": "ms" },
+    "cold_load_5k_items": { "value": 4500, "unit": "ms" },
+    "scroll_elapsed": { "value": 600, "unit": "ms" },
+    "long_tasks_50ms": { "value": 8, "unit": "count" },
+    "reader_view_open_3k_items_click_to_visible": { "value": 900, "unit": "ms" },
+    "heap_growth_5k_items": { "value": 45, "unit": "MB" },
+    "heap_growth_after_50_mutations": { "value": 3, "unit": "MB" }
+  }
+}

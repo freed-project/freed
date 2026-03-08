@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useCallback, useRef, useState } from "react";
+import { useEffect, useMemo, useCallback, useRef, useState, Profiler, type ProfilerOnRenderCallback } from "react";
 import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
 import { PlatformProvider, type PlatformConfig } from "@freed/ui/context";
@@ -40,6 +40,21 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
+
+// ---------------------------------------------------------------------------
+// React Profiler — activated only under Playwright (VITE_TEST_TAURI=1)
+// ---------------------------------------------------------------------------
+
+// Accumulate React render phases when running under Playwright (VITE_TEST_TAURI=1)
+interface ProfileEntry { id: string; phase: string; actualDuration: number; baseDuration: number }
+if (import.meta.env.VITE_TEST_TAURI === "1") {
+  (window as Record<string, unknown>).__FREED_REACT_PROFILE__ = [] as ProfileEntry[];
+}
+const onRender: ProfilerOnRenderCallback = (id, phase, actual, base) => {
+  const w = window as Record<string, unknown>;
+  const arr = w.__FREED_REACT_PROFILE__ as ProfileEntry[] | undefined;
+  if (arr) arr.push({ id, phase, actualDuration: actual, baseDuration: base });
+};
 
 function App() {
   const initialize = useAppStore((state) => state.initialize);
@@ -241,6 +256,7 @@ function App() {
   }
 
   return (
+    <Profiler id="App" onRender={onRender}>
     <PlatformProvider value={platform}>
       <div className="h-screen flex flex-col bg-transparent">
         <AppShell>
@@ -271,6 +287,7 @@ function App() {
         </div>
       )}
     </PlatformProvider>
+    </Profiler>
   );
 }
 

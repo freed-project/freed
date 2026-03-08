@@ -23,8 +23,10 @@ import type { FeedItem } from "@freed/shared";
 // ── Module mocks ──────────────────────────────────────────────────────────────
 // Only mock I/O — NOT the capture-save parser (ESM live bindings prevent it).
 
-const { mockBatchImport, mockGetDoc, mockCacheSet, mockEnqueue } = vi.hoisted(() => {
+const { mockBatchImport, mockAllItemIds, mockCacheSet, mockEnqueue } = vi.hoisted(() => {
   const docStore: Record<string, FeedItem> = {};
+  // allItemIds mirrors the full docStore keys for deduplication pre-scan
+  let allItemIds: string[] = [];
 
   const mockBatchImport = vi.fn(
     async (items: FeedItem[], onChunk?: (c: number, t: number) => void) => {
@@ -36,12 +38,18 @@ const { mockBatchImport, mockGetDoc, mockCacheSet, mockEnqueue } = vi.hoisted(()
         }
         onChunk?.(Math.floor(i / CHUNK) + 1, total);
       }
+      allItemIds = Object.keys(docStore);
     },
   );
 
+  const mockAllItemIds = {
+    get: () => allItemIds,
+    reset: () => { allItemIds = []; Object.keys(docStore).forEach((k) => delete (docStore as Record<string, unknown>)[k]); },
+  };
+
   return {
     mockBatchImport,
-    mockGetDoc: vi.fn(() => ({ feedItems: { ...docStore } })),
+    mockAllItemIds,
     mockCacheSet: vi.fn(async () => undefined),
     mockEnqueue: vi.fn(),
     _docStore: docStore,
@@ -53,7 +61,12 @@ const docStore: Record<string, FeedItem> = {};
 
 vi.mock("./automerge.js", () => ({
   docBatchImportItems: mockBatchImport,
-  getDoc: mockGetDoc,
+}));
+
+vi.mock("./store.js", () => ({
+  useAppStore: {
+    getState: () => ({ allItemIds: mockAllItemIds.get() }),
+  },
 }));
 
 vi.mock("./content-cache.js", () => ({
@@ -134,7 +147,6 @@ describe("importMarkdownFiles", () => {
     Object.keys(docStore).forEach((k) => delete docStore[k]);
 
     // Restore implementations cleared by resetAllMocks()
-    mockGetDoc.mockImplementation(() => ({ feedItems: { ...docStore } }));
     mockBatchImport.mockImplementation(
       async (items: FeedItem[], onChunk?: (c: number, t: number) => void) => {
         const CHUNK = 500;
@@ -247,7 +259,7 @@ describe("importMarkdownFiles", () => {
     expect(firstResult.imported).toBe(1);
 
     vi.clearAllMocks();
-    mockGetDoc.mockImplementation(() => ({ feedItems: { ...docStore } }));
+    // The mock store now reflects docStore state via mockAllItemIds — no extra setup needed.
 
     await importMarkdownFiles(files);
     expect(mockBatchImport).not.toHaveBeenCalled();

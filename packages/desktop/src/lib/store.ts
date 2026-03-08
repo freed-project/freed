@@ -2,11 +2,15 @@
  * Global app state management with Zustand
  *
  * State is synced with Automerge CRDT for persistence and multi-device sync.
+ *
+ * After the Web Worker migration (Phase 4), all CRDT and hydration work runs
+ * in automerge.worker.ts. The subscriber here receives a pre-hydrated DocState
+ * and calls set() directly — zero hydrateFromDoc cost on the main thread.
  */
 
 import { create } from "zustand";
 import type { FeedItem, FilterOptions, Friend, ReachOutLog, UserPreferences, RssFeed } from "@freed/shared";
-import { createDefaultPreferences, rankFeedItems } from "@freed/shared";
+import { createDefaultPreferences } from "@freed/shared";
 import {
   initDoc,
   subscribe,
@@ -30,39 +34,30 @@ import {
   docUpdateFriend,
   docRemoveFriend,
   docLogReachOut,
+  type DocState,
 } from "./automerge";
-import type { FreedDoc } from "@freed/shared/schema";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
 import { initFbAuth, type FbAuthState } from "./fb-auth";
 import { initIgAuth, type IgAuthState } from "./instagram-auth";
 
-
 // App state interface
 interface AppState {
-  // Data (derived from Automerge doc)
+  // Data (received pre-hydrated from Automerge worker as DocState)
   items: FeedItem[];
   feeds: Record<string, RssFeed>;
-  /** Friends (unified identities) — keyed by Friend.id */
   friends: Record<string, Friend>;
   preferences: UserPreferences;
-  /** Unread count per feed URL — derived in hydrateFromDoc */
   feedUnreadCounts: Record<string, number>;
-  /** Total visible item count per feed URL. */
   feedTotalCounts: Record<string, number>;
-  /** Total unread count across all non-hidden, non-archived items. */
   totalUnreadCount: number;
-  /** Unread count bucketed by platform. */
   unreadCountByPlatform: Record<string, number>;
-  /** Total visible (non-hidden) item count. */
   totalItemCount: number;
-  /** Total visible item count bucketed by platform. */
   itemCountByPlatform: Record<string, number>;
-  /** Total read-but-not-saved items eligible for archiving. */
   totalArchivableCount: number;
-  /** Archivable item count bucketed by platform. */
   archivableCountByPlatform: Record<string, number>;
-  /** Archivable item count per feed URL. */
   archivableFeedCounts: Record<string, number>;
+  /** All globalIds including hidden/archived — for import dedup pre-scan. */
+  allItemIds: string[];
 
   // X auth state
   xAuth: XAuthState;
@@ -120,16 +115,14 @@ interface AppState {
   setLoading: (loading: boolean) => void;
   setSyncing: (syncing: boolean) => void;
   setError: (error: string | null) => void;
-  /** Current full-text search query. Empty string means no search active. */
   searchQuery: string;
-  /** Update the full-text search query. Empty string clears the search. */
   setSearchQuery: (query: string) => void;
 }
 
 /**
  * Shallow-compare two string-keyed number maps.
- * Used to preserve object identity on count maps so Zustand selectors that
- * subscribe to these objects don't trigger re-renders when values are unchanged.
+ * Preserves object identity on count maps so Zustand selectors that subscribe
+ * to these objects don't trigger re-renders when values are unchanged.
  */
 function shallowEqualRecord(
   a: Record<string, number>,
@@ -142,140 +135,23 @@ function shallowEqualRecord(
 }
 
 /**
- * Cache for the expensive sort + rank step inside hydrateFromDoc.
- *
- * Re-ranking is only needed when the set of visible items changes (additions,
- * removals, hide/show) or when weights / saved-status change — because those
- * are the only inputs to calculatePriority. Mutations like markAsRead or
- * archiving do not affect priority scores, so the cache is still valid and we
- * skip the O(n log n) sort + O(n) rank entirely.
- */
-const sortCache: {
-  items: FeedItem[];
-  visibleCount: number;
-  savedCount: number;
-  archivedCount: number;
-  weightsJson: string;
-} = { items: [], visibleCount: -1, savedCount: -1, archivedCount: -1, weightsJson: "" };
-
-/**
- * Hydrate store state from Automerge document
- */
-function hydrateFromDoc(doc: FreedDoc): Partial<AppState> {
-  const allItems = Object.values(doc.feedItems);
-
-  // Non-hidden items (archived are included — downstream filters handle them).
-  const visibleItems = allItems.filter((item) => !item.userState.hidden);
-
-  // saved and archived counts gate cache invalidation: saved affects priority
-  // scores, and archived determines which items downstream filters keep.
-  const savedCount = allItems.reduce(
-    (n, item) => (item.userState.saved ? n + 1 : n),
-    0,
-  );
-  const archivedCount = allItems.reduce(
-    (n, item) => (item.userState.archived ? n + 1 : n),
-    0,
-  );
-  const weightsJson = JSON.stringify(doc.preferences.weights);
-
-  let rankedItems: FeedItem[];
-  if (
-    sortCache.visibleCount === visibleItems.length &&
-    sortCache.savedCount === savedCount &&
-    sortCache.archivedCount === archivedCount &&
-    sortCache.weightsJson === weightsJson
-  ) {
-    // Fast path: nothing rank-affecting changed (e.g. markAsRead).
-    rankedItems = sortCache.items;
-  } else {
-    rankedItems = rankFeedItems(
-      visibleItems.sort((a, b) => b.publishedAt - a.publishedAt),
-      doc.preferences.weights,
-    );
-    sortCache.items = rankedItems;
-    sortCache.visibleCount = visibleItems.length;
-    sortCache.savedCount = savedCount;
-    sortCache.archivedCount = archivedCount;
-    sortCache.weightsJson = weightsJson;
-  }
-
-  const feedUnreadCounts: Record<string, number> = {};
-  const feedTotalCounts: Record<string, number> = {};
-  const unreadCountByPlatform: Record<string, number> = {};
-  const itemCountByPlatform: Record<string, number> = {};
-  const archivableCountByPlatform: Record<string, number> = {};
-  const archivableFeedCounts: Record<string, number> = {};
-  let totalUnreadCount = 0;
-  let totalItemCount = 0;
-  let totalArchivableCount = 0;
-  for (const item of allItems) {
-    if (item.userState.hidden || item.userState.archived) continue;
-    totalItemCount++;
-    itemCountByPlatform[item.platform] = (itemCountByPlatform[item.platform] ?? 0) + 1;
-    if (item.rssSource) {
-      const url = item.rssSource.feedUrl;
-      feedTotalCounts[url] = (feedTotalCounts[url] ?? 0) + 1;
-    }
-    if (!item.userState.readAt) {
-      totalUnreadCount++;
-      unreadCountByPlatform[item.platform] = (unreadCountByPlatform[item.platform] ?? 0) + 1;
-      if (item.rssSource) {
-        const url = item.rssSource.feedUrl;
-        feedUnreadCounts[url] = (feedUnreadCounts[url] ?? 0) + 1;
-      }
-    } else if (!item.userState.saved) {
-      totalArchivableCount++;
-      archivableCountByPlatform[item.platform] = (archivableCountByPlatform[item.platform] ?? 0) + 1;
-      if (item.rssSource) {
-        const url = item.rssSource.feedUrl;
-        archivableFeedCounts[url] = (archivableFeedCounts[url] ?? 0) + 1;
-      }
-    }
-  }
-
-  return {
-    items: rankedItems,
-    feeds: doc.rssFeeds,
-    friends: doc.friends ?? {},
-    preferences: doc.preferences,
-    feedUnreadCounts,
-    feedTotalCounts,
-    totalUnreadCount,
-    unreadCountByPlatform,
-    totalItemCount,
-    itemCountByPlatform,
-    totalArchivableCount,
-    archivableCountByPlatform,
-    archivableFeedCounts,
-  };
-}
-
-/**
  * Run idempotent startup migrations in the background after the app renders.
  * subscribe() is already wired up at call time, so any doc mutations propagate
  * to the UI automatically. Errors are swallowed — all three ops are non-fatal.
+ * Migrations now run in the worker (zero main-thread cost).
  */
 async function runStartupMigrations(archivePruneDays: number): Promise<void> {
   try {
-    // Heal "Untitled Feed" sentinels from URL hostname — zero network required.
     await docHealUntitledFeedTitles();
-  } catch {
-    // non-fatal
-  }
+  } catch { /* non-fatal */ }
   try {
-    // Remove phantom duplicates caused by key-scheme changes (guid vs link priority).
     await docDeduplicateFeedItems();
-  } catch {
-    // non-fatal
-  }
+  } catch { /* non-fatal */ }
   try {
     if (archivePruneDays > 0) {
       await docPruneArchivedItems(archivePruneDays * 24 * 60 * 60 * 1000);
     }
-  } catch {
-    // non-fatal
-  }
+  } catch { /* non-fatal */ }
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -293,6 +169,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   totalArchivableCount: 0,
   archivableCountByPlatform: {},
   archivableFeedCounts: {},
+  allItemIds: [],
   xAuth: { isAuthenticated: false },
   fbAuth: { isAuthenticated: false },
   igAuth: { isAuthenticated: false },
@@ -304,33 +181,35 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedItemId: null,
   searchQuery: "",
 
-  // Initialize from Automerge
+  // Initialize from Automerge worker
   initialize: async () => {
     if (get().isInitialized) return;
 
     try {
       set({ isLoading: true });
-      const doc = await initDoc();
 
-      // Subscribe to future changes (for sync) before we flip isInitialized so
-      // background migrations that fire immediately after are propagated to the UI.
-      // Reuse count map references when values haven't changed so Sidebar
-      // selectors don't trigger re-renders on unrelated mutations.
-      subscribe((updatedDoc) => {
-        const next = hydrateFromDoc(updatedDoc);
+      // initDoc() now returns DocState (pre-hydrated, WASM ran in worker).
+      const docState = await initDoc();
+
+      // Subscribe to future state updates from the worker. Each update is already
+      // hydrated — no hydrateFromDoc(), no sort, no rank on the main thread.
+      // Preserve object identity on count maps to avoid spurious selector re-renders.
+      subscribe((state: DocState) => {
         const prev = get();
-        if (shallowEqualRecord(next.feedUnreadCounts!, prev.feedUnreadCounts))
-          next.feedUnreadCounts = prev.feedUnreadCounts;
-        if (shallowEqualRecord(next.feedTotalCounts!, prev.feedTotalCounts))
-          next.feedTotalCounts = prev.feedTotalCounts;
-        if (shallowEqualRecord(next.unreadCountByPlatform!, prev.unreadCountByPlatform))
-          next.unreadCountByPlatform = prev.unreadCountByPlatform;
-        if (shallowEqualRecord(next.itemCountByPlatform!, prev.itemCountByPlatform))
-          next.itemCountByPlatform = prev.itemCountByPlatform;
+        let next: DocState = state;
+
+        if (shallowEqualRecord(next.feedUnreadCounts, prev.feedUnreadCounts))
+          next = { ...next, feedUnreadCounts: prev.feedUnreadCounts };
+        if (shallowEqualRecord(next.feedTotalCounts, prev.feedTotalCounts))
+          next = { ...next, feedTotalCounts: prev.feedTotalCounts };
+        if (shallowEqualRecord(next.unreadCountByPlatform, prev.unreadCountByPlatform))
+          next = { ...next, unreadCountByPlatform: prev.unreadCountByPlatform };
+        if (shallowEqualRecord(next.itemCountByPlatform, prev.itemCountByPlatform))
+          next = { ...next, itemCountByPlatform: prev.itemCountByPlatform };
+
         set(next);
       });
 
-      // Load X auth state from storage
       const xCookies = loadStoredCookies();
       const xAuth = xCookies
         ? { isAuthenticated: true, cookies: xCookies }
@@ -339,9 +218,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       const fbAuth = initFbAuth();
       const igAuth = initIgAuth();
 
-      // Hydrate and show the app immediately — no need to wait for migrations.
+      // Hydrate immediately from the initial DocState returned by the worker.
       set({
-        ...hydrateFromDoc(doc),
+        ...docState,
         xAuth,
         fbAuth,
         igAuth,
@@ -349,9 +228,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         isLoading: false,
       });
 
-      // Run cleanup migrations in the background. All three are idempotent; failures
-      // are non-fatal. subscribe() above propagates any changes to the UI automatically.
-      void runStartupMigrations(doc.preferences.display.archivePruneDays ?? 30);
+      // Run cleanup migrations in the background via worker.
+      void runStartupMigrations(docState.preferences.display.archivePruneDays ?? 30);
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : "Failed to initialize",
@@ -360,7 +238,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  // Item actions — errors propagate to callers so UI can surface them
+  // Item actions
   addItems: async (items) => {
     await docAddFeedItems(items);
   },
