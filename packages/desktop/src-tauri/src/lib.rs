@@ -8,7 +8,7 @@ use rand::RngCore;
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock as StdRwLock};
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Listener, Manager};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -630,6 +630,271 @@ fn show_window(app: tauri::AppHandle) {
 }
 
 // ---------------------------------------------------------------------------
+// Tauri commands — Facebook WebView scraper
+// ---------------------------------------------------------------------------
+
+/// The extraction script injected into the Facebook WebView after page load.
+/// Reads posts from the rendered DOM and emits them via Tauri event IPC.
+///
+/// This is a self-contained script with no external dependencies.
+/// It runs inside facebook.com's execution context.
+const FB_EXTRACT_SCRIPT: &str = include_str!("fb-extract.js");
+
+/// Real Safari UA to avoid Facebook detecting the bare WKWebView identifier
+/// and serving a degraded/minimal feed experience.
+const FB_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) \
+    AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
+
+/// Show a visible WebView window navigated to facebook.com/login so the
+/// user can authenticate through the real Facebook login flow.
+///
+/// The window reuses the "fb-scraper" label. If it already exists it is
+/// shown and focused; otherwise a new window is created.
+///
+/// An `on_navigation` handler detects when the user completes login
+/// (URL leaves /login) and auto-hides the window + emits `fb-auth-result`.
+#[tauri::command]
+async fn fb_show_login(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+
+    if let Some(existing) = app.get_webview_window("fb-scraper") {
+        existing.navigate("https://www.facebook.com/login".parse().unwrap())
+            .map_err(|e| e.to_string())?;
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+
+    let app_handle = app.clone();
+
+    WebviewWindowBuilder::new(
+        &app,
+        "fb-scraper",
+        tauri::WebviewUrl::External("https://www.facebook.com/login".parse().unwrap()),
+    )
+    .user_agent(FB_USER_AGENT)
+    .title("Connect Facebook — Freed")
+    .inner_size(460.0, 700.0)
+    .center()
+    .visible(true)
+    .on_navigation(move |url| {
+        let path = url.path();
+        let host = url.host_str().unwrap_or("");
+
+        // Detect successful login: navigated away from /login on a facebook domain
+        if host.contains("facebook.com") && path != "/login" && path != "/login/" {
+            // Hide the login window
+            if let Some(w) = app_handle.get_webview_window("fb-scraper") {
+                let _ = w.hide();
+            }
+            // Notify the frontend that auth succeeded
+            let _ = app_handle.emit("fb-auth-result", serde_json::json!({ "loggedIn": true }));
+        }
+
+        true // always allow the navigation
+    })
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Hide the Facebook login window after successful authentication.
+#[tauri::command]
+async fn fb_hide_login(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("fb-scraper") {
+        w.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Check whether the Facebook WebView has an authenticated session.
+///
+/// Creates a hidden WebView if none exists, navigates to facebook.com,
+/// waits for the page to settle, then checks for logged-in indicators
+/// (USER_ID != "0" in the page source).
+#[tauri::command]
+async fn fb_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri::WebviewWindowBuilder;
+
+    let wv = match app.get_webview_window("fb-scraper") {
+        Some(w) => w,
+        None => {
+            WebviewWindowBuilder::new(
+                &app,
+                "fb-scraper",
+                tauri::WebviewUrl::External(
+                    "https://www.facebook.com/".parse().unwrap(),
+                ),
+            )
+            .user_agent(FB_USER_AGENT)
+            .title("Freed Facebook")
+            .inner_size(460.0, 700.0)
+            .visible(false)
+            .build()
+            .map_err(|e| e.to_string())?
+        }
+    };
+
+    // Give the page time to load and settle.
+    tokio::time::sleep(Duration::from_secs(6)).await;
+
+    // Inject a tiny script that checks for authentication markers and
+    // emits the result as a Tauri event.
+    wv.eval(
+        r#"
+        (function() {
+            try {
+                var loggedIn = document.cookie.indexOf('c_user=') !== -1
+                    && document.cookie.indexOf('c_user=0') === -1;
+                window.__TAURI__.event.emit('fb-auth-result', { loggedIn: loggedIn });
+            } catch(e) {
+                window.__TAURI__.event.emit('fb-auth-result', { loggedIn: false, error: e.message });
+            }
+        })();
+        "#,
+    )
+    .map_err(|e| e.to_string())?;
+
+    // The result is delivered asynchronously via event. The frontend
+    // listens for 'fb-auth-result'. For the command return value we
+    // fall back to a cookie-based heuristic checked from Rust.
+    // Since we can't get eval() return values, we return a best-guess
+    // and let the frontend reconcile via the event.
+    Ok(true)
+}
+
+/// Trigger a feed scrape in the hidden Facebook WebView.
+///
+/// Navigates to facebook.com, waits for content to render, then injects
+/// the extraction script which reads the DOM and emits 'fb-feed-data'.
+#[tauri::command]
+async fn fb_scrape_feed(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+
+    let fb_feed_url = "https://www.facebook.com/";
+
+    let wv = match app.get_webview_window("fb-scraper") {
+        Some(w) => {
+            w.navigate(fb_feed_url.parse().unwrap())
+                .map_err(|e| e.to_string())?;
+            let _ = w.show();
+            w
+        }
+        None => {
+            let app_handle = app.clone();
+            WebviewWindowBuilder::new(
+                &app,
+                "fb-scraper",
+                tauri::WebviewUrl::External(
+                    fb_feed_url.parse().unwrap(),
+                ),
+            )
+            .user_agent(FB_USER_AGENT)
+            .title("Freed Facebook")
+            .inner_size(1280.0, 900.0)
+            .visible(true)
+            .on_navigation(move |url| {
+                let host = url.host_str().unwrap_or("");
+                let path = url.path();
+                if host.contains("facebook.com") && path != "/login" && path != "/login/" {
+                    if let Some(w) = app_handle.get_webview_window("fb-scraper") {
+                        let _ = w.hide();
+                    }
+                    let _ = app_handle.emit("fb-auth-result",
+                        serde_json::json!({ "loggedIn": true }));
+                }
+                true
+            })
+            .build()
+            .map_err(|e| e.to_string())?
+        }
+    };
+
+    println!("[FB] scrape started, waiting for page load...");
+
+    // Wait for the initial page load + Facebook's JS to render the feed.
+    let jitter = {
+        use rand::Rng;
+        rand::thread_rng().gen_range(2000..4000)
+    };
+    tokio::time::sleep(Duration::from_millis(12000 + jitter)).await;
+
+    // Log page state after initial load
+    wv.eval(r#"
+        (function() {
+            if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.emit) {
+                window.__TAURI__.event.emit('fb-diag', {
+                    userAgent: navigator.userAgent,
+                    url: window.location.href,
+                    title: document.title,
+                    scrollHeight: document.documentElement.scrollHeight,
+                });
+            }
+        })();
+    "#).map_err(|e| e.to_string())?;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Facebook virtualizes its feed: posts only exist in the DOM when
+    // they're near the viewport, and are unmounted when scrolled away.
+    // We must scroll incrementally, extracting at each position.
+    //
+    // Strategy: scroll down by ~600px at a time (roughly one post height),
+    // extract after each scroll, then scroll again. The extraction script
+    // emits fb-feed-data events; the Rust event listener deduplicates and
+    // accumulates posts across all passes.
+    let num_passes = 12;
+    for i in 0..num_passes {
+        // Extract at current scroll position FIRST (before scrolling)
+        wv.eval(FB_EXTRACT_SCRIPT)
+            .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
+
+        // Small pause for the extraction to complete and event to fire
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        // Scroll down by roughly half-page to trigger lazy loading
+        let scroll_amount = {
+            use rand::Rng;
+            rand::thread_rng().gen_range(300..500)
+        };
+        let scroll_js = format!(
+            "window.scrollBy({{ top: {}, behavior: 'smooth' }});",
+            scroll_amount
+        );
+        wv.eval(&scroll_js).map_err(|e| e.to_string())?;
+
+        // Wait for Facebook to render new content at this scroll position
+        let pause = {
+            use rand::Rng;
+            rand::thread_rng().gen_range(2000..3500)
+        };
+        tokio::time::sleep(Duration::from_millis(pause)).await;
+
+        println!("[FB] pass {}/{}: scrolled +{}px", i + 1, num_passes, scroll_amount);
+    }
+
+    // One final extraction at the bottom
+    wv.eval(FB_EXTRACT_SCRIPT)
+        .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    println!("[FB] scrape complete, {} extraction passes emitted", num_passes + 1);
+
+    Ok(())
+}
+
+/// Disconnect Facebook by clearing all browsing data in the scraper WebView.
+#[tauri::command]
+async fn fb_disconnect(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(wv) = app.get_webview_window("fb-scraper") {
+        wv.clear_all_browsing_data()
+            .map_err(|e| e.to_string())?;
+        let _ = wv.close();
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket relay
 // ---------------------------------------------------------------------------
 
@@ -863,6 +1128,92 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // Log Facebook scraper events to stdout for debugging.
+            // Track unique posts across multiple extraction passes.
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            let fb_unique_ids: Arc<StdRwLock<std::collections::HashSet<String>>> =
+                Arc::new(StdRwLock::new(std::collections::HashSet::new()));
+            let fb_total_posts = Arc::new(AtomicUsize::new(0));
+            let fb_ids_clone = fb_unique_ids.clone();
+            let fb_total_clone = fb_total_posts.clone();
+
+            let app_for_fb = app.handle().clone();
+            app_for_fb.listen("fb-feed-data", move |event| {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+                    let scroll_y = val.get("scrollY")
+                        .and_then(|s| s.as_f64())
+                        .unwrap_or(0.0) as i64;
+                    let candidates = val.get("candidateCount")
+                        .and_then(|c| c.as_u64())
+                        .unwrap_or(0);
+                    let error = val.get("error")
+                        .and_then(|e| e.as_str())
+                        .unwrap_or("");
+
+                    if !error.is_empty() {
+                        println!("[FB] extraction error: {}", error);
+                        return;
+                    }
+
+                    let mut new_count = 0usize;
+                    if let Some(posts) = val.get("posts").and_then(|p| p.as_array()) {
+                        let mut ids = fb_ids_clone.write().unwrap();
+                        for post in posts {
+                            let id = post.get("id")
+                                .and_then(|i| i.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            if !id.is_empty() && ids.insert(id) {
+                                new_count += 1;
+                                let total = fb_total_clone.fetch_add(1, Ordering::Relaxed) + 1;
+                                let author = post.get("authorName")
+                                    .and_then(|a| a.as_str())
+                                    .unwrap_or("?");
+                                let text = post.get("text")
+                                    .and_then(|t| t.as_str())
+                                    .unwrap_or("")
+                                    .chars()
+                                    .take(80)
+                                    .collect::<String>();
+                                let strategy = post.get("strategy")
+                                    .and_then(|s| s.as_str())
+                                    .unwrap_or("?");
+                                println!("[FB]   #{}: [{}] {} — {:?}", total, strategy, author, text);
+                            }
+                        }
+                    }
+
+                    let total = fb_total_clone.load(Ordering::Relaxed);
+                    println!("[FB] pass @ scrollY={}: candidates={}, new={}, total_unique={}",
+                        scroll_y, candidates, new_count, total);
+                }
+            });
+
+            app_for_fb.listen("fb-diag", |event| {
+                let payload = event.payload();
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(payload) {
+                    if let Ok(pretty) = serde_json::to_string_pretty(&val) {
+                        println!("[FB] diag:\n{}", pretty);
+                    } else {
+                        println!("[FB] diag: {}", payload);
+                    }
+                } else {
+                    println!("[FB] diag: {}", payload);
+                }
+            });
+
+            let app_for_gql = app.handle().clone();
+            app_for_gql.listen("fb-graphql", |event| {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+                    let url = val.get("url").and_then(|u| u.as_str()).unwrap_or("?");
+                    let size = val.get("size").and_then(|s| s.as_u64()).unwrap_or(0);
+                    let status = val.get("status").and_then(|s| s.as_u64()).unwrap_or(0);
+                    let preview = val.get("preview").and_then(|p| p.as_str()).unwrap_or("");
+                    println!("[FB-GQL] {} status={} size={} preview={:?}",
+                        url, status, size, &preview[..preview.len().min(200)]);
+                }
+            });
+
             // Start mDNS advertisement and keep the daemon alive.
             let mdns_daemon = advertise_mdns(8765);
             app.manage(MdnsState(mdns_daemon));
@@ -874,6 +1225,21 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 start_sync_relay(state, app_handle).await;
             });
+
+            // Dev-only: auto-trigger a Facebook scrape on startup so we can
+            // iterate without manual clicking. Set FB_AUTO_SCRAPE=1 env var.
+            if std::env::var("FB_AUTO_SCRAPE").unwrap_or_default() == "1" {
+                let auto_app = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    println!("[FB] auto-scrape enabled, waiting 8s for app init...");
+                    tokio::time::sleep(Duration::from_secs(8)).await;
+                    println!("[FB] triggering auto-scrape now");
+                    match fb_scrape_feed(auto_app).await {
+                        Ok(()) => println!("[FB] auto-scrape command returned OK"),
+                        Err(e) => println!("[FB] auto-scrape error: {}", e),
+                    }
+                });
+            }
 
             Ok(())
         })
@@ -899,6 +1265,11 @@ pub fn run() {
             list_snapshots,
             start_oauth_server,
             pick_contact,
+            fb_show_login,
+            fb_hide_login,
+            fb_check_auth,
+            fb_scrape_feed,
+            fb_disconnect,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Freed");

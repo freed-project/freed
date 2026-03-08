@@ -116,6 +116,8 @@ async function xRequest(
     "x-twitter-active-user": "yes",
     "x-twitter-auth-type": "OAuth2Session",
     "x-twitter-client-language": "en",
+    "user-agent":
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   };
 
   return requester(url, "", headers, "GET");
@@ -199,7 +201,10 @@ export async function fetchXTimeline(
   }
 
   const response = parsed as TimelineResponse;
-  const instructions = response?.home?.home_timeline_urt?.instructions ?? [];
+  // Real API wraps in `data`; fall back to unwrapped for robustness.
+  const home =
+    response?.data?.home ?? (parsed as Record<string, unknown>)?.home as TimelineResponse["data"]["home"] | undefined;
+  const instructions = home?.home_timeline_urt?.instructions ?? [];
 
   if (instructions.length === 0) {
     diag.errorStage = "instructions";

@@ -83,6 +83,12 @@ export interface PlatformConfig {
    */
   XSettingsContent: ComponentType | null;
 
+  /**
+   * Content rendered in the Settings > Sources > Facebook section.
+   * When null, the Facebook section is omitted from settings entirely (e.g. PWA).
+   */
+  FacebookSettingsContent: ComponentType | null;
+
   /** Manual update check. Returns version string if available, null if up-to-date. */
   checkForUpdates?: () => Promise<string | null>;
 

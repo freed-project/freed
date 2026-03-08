@@ -11,9 +11,7 @@ import type {
 } from "@freed/shared";
 import type {
   XTweetResult,
-  XMediaEntity,
   XUrlEntity,
-  XCardBindingValue,
 } from "./types.js";
 
 // =============================================================================
@@ -185,18 +183,36 @@ export function cleanTweetText(tweet: XTweetResult): string {
 // =============================================================================
 
 /**
+ * Unwrap `TweetWithVisibilityResults` (and similar wrapper types) so
+ * callers always get a plain `XTweetResult` with `.legacy` on it.
+ */
+function unwrapTweet(raw: XTweetResult): XTweetResult | null {
+  if (raw.legacy) return raw;
+  // TweetWithVisibilityResults wraps the real tweet in `.tweet`
+  const inner = (raw as unknown as Record<string, unknown>).tweet as
+    | XTweetResult
+    | undefined;
+  return inner?.legacy ? inner : null;
+}
+
+/**
  * Convert an X tweet to a Freed FeedItem
  */
 export function tweetToFeedItem(tweet: XTweetResult): FeedItem {
-  // Handle retweets - use the original tweet data
-  const isRetweet = !!tweet.legacy.retweeted_status_result?.result;
-  const displayTweet = isRetweet
-    ? tweet.legacy.retweeted_status_result!.result
-    : tweet;
+  const unwrapped = unwrapTweet(tweet);
+  if (!unwrapped) {
+    throw new Error(
+      `Unsupported tweet shape: __typename=${tweet.__typename}, keys=${Object.keys(tweet).join(",")}`,
+    );
+  }
+  tweet = unwrapped;
 
-  // Handle quoted tweets
-  const isQuote =
-    tweet.legacy.is_quote_status && !!tweet.quoted_status_result?.result;
+  // Handle retweets - use the original tweet data (may also be wrapped)
+  const rawRetweet = tweet.legacy.retweeted_status_result?.result;
+  const isRetweet = !!rawRetweet;
+  const displayTweet = isRetweet
+    ? unwrapTweet(rawRetweet as XTweetResult) ?? tweet
+    : tweet;
 
   // Build author info
   const author: Author = {
@@ -263,11 +279,17 @@ export function tweetToFeedItem(tweet: XTweetResult): FeedItem {
 
 /**
  * Convert multiple tweets to FeedItems, filtering out tombstones
+ * and unsupported wrapper types that can't be unwrapped.
  */
 export function tweetsToFeedItems(tweets: XTweetResult[]): FeedItem[] {
-  return tweets
-    .filter((t) => t.__typename !== "TweetTombstone")
-    .map(tweetToFeedItem);
+  const items: FeedItem[] = [];
+  for (const t of tweets) {
+    if (t.__typename === "TweetTombstone") continue;
+    const unwrapped = unwrapTweet(t);
+    if (!unwrapped) continue;
+    items.push(tweetToFeedItem(unwrapped));
+  }
+  return items;
 }
 
 /**

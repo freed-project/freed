@@ -100,6 +100,7 @@ function App() {
       SettingsExtraSections: PwaSyncSettings,
       FeedEmptyState: PwaFeedEmptyState,
       XSettingsContent: PwaXSettings,
+      FacebookSettingsContent: null,
       checkForUpdates,
       applyUpdate: applyPwaUpdate,
       factoryReset: handleFactoryReset,

@@ -1,6 +1,7 @@
 {
   "_note": "SYNTHETIC FIXTURE — replace with a real response pasted from the XSettingsSection diagnostic panel after the first successful sync.",
-  "home": {
+  "data": {
+    "home": {
     "home_timeline_urt": {
       "instructions": [
         {
@@ -175,5 +176,6 @@
         }
       ]
     }
+  }
   }
 }

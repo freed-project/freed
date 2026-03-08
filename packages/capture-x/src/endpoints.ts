@@ -91,7 +91,7 @@ export interface EndpointDefinition {
  * HomeLatestTimeline - Get chronological "Following" feed
  */
 export const HomeLatestTimeline: EndpointDefinition = {
-  queryId: "vIA2Cqe3OdTO9TTi75kXqA",
+  queryId: "zhX91JE87mWvfprhYE97xA",
   operationName: "HomeLatestTimeline",
   features: TIMELINE_FEATURES,
 };
@@ -100,7 +100,7 @@ export const HomeLatestTimeline: EndpointDefinition = {
  * HomeTimeline - Get algorithmic "For You" feed
  */
 export const HomeTimeline: EndpointDefinition = {
-  queryId: "5HIFewm4IR4zjZoYSa1vBg",
+  queryId: "HCosKfLNW1AcOo3la3mMgg",
   operationName: "HomeTimeline",
   features: TIMELINE_FEATURES,
 };
@@ -109,7 +109,7 @@ export const HomeTimeline: EndpointDefinition = {
  * Following - Get list of accounts user follows
  */
 export const Following: EndpointDefinition = {
-  queryId: "gGVkcwUnM_ISWg3NIby2TA",
+  queryId: "wjvx62Hye2dGVvnvVco0xA",
   operationName: "Following",
   features: COMMON_FEATURES,
 };
@@ -118,7 +118,7 @@ export const Following: EndpointDefinition = {
  * UserTweets - Get tweets from a specific user
  */
 export const UserTweets: EndpointDefinition = {
-  queryId: "N9_71NodX1yntoC5pa4IFw",
+  queryId: "HuTx74BxAnezK1gWvYY7zg",
   operationName: "UserTweets",
   features: COMMON_FEATURES,
 };
@@ -127,7 +127,7 @@ export const UserTweets: EndpointDefinition = {
  * TweetDetail - Get a single tweet with replies
  */
 export const TweetDetail: EndpointDefinition = {
-  queryId: "flqCy6kvOMolEquuRpOaHQ",
+  queryId: "zXaXQgfyR4GxE21uwYQSyA",
   operationName: "TweetDetail",
   features: COMMON_FEATURES,
 };

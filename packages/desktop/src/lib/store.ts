@@ -33,6 +33,7 @@ import {
 } from "./automerge";
 import type { FreedDoc } from "@freed/shared/schema";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
+import { initFbAuth, type FbAuthState } from "./fb-auth";
 
 
 // App state interface
@@ -64,6 +65,8 @@ interface AppState {
 
   // X auth state
   xAuth: XAuthState;
+  // Facebook auth state
+  fbAuth: FbAuthState;
 
   // UI state
   isLoading: boolean;
@@ -103,6 +106,8 @@ interface AppState {
 
   // X auth actions
   setXAuth: (auth: XAuthState) => void;
+  // Facebook auth actions
+  setFbAuth: (auth: FbAuthState) => void;
 
   // UI actions (not persisted)
   setFilter: (filter: FilterOptions) => void;
@@ -284,6 +289,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   archivableCountByPlatform: {},
   archivableFeedCounts: {},
   xAuth: { isAuthenticated: false },
+  fbAuth: { isAuthenticated: false },
   isLoading: true,
   isSyncing: false,
   isInitialized: false,
@@ -324,10 +330,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         ? { isAuthenticated: true, cookies: xCookies }
         : { isAuthenticated: false };
 
+      const fbAuth = initFbAuth();
+
       // Hydrate and show the app immediately — no need to wait for migrations.
       set({
         ...hydrateFromDoc(doc),
         xAuth,
+        fbAuth,
         isInitialized: true,
         isLoading: false,
       });
@@ -417,6 +426,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // X auth actions
   setXAuth: (auth) => set({ xAuth: auth }),
+  // Facebook auth actions
+  setFbAuth: (auth) => set({ fbAuth: auth }),
 
   // UI actions
   setFilter: (filter) => set({ activeFilter: filter }),

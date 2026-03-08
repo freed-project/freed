@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/config/2/capability",
+  "identifier": "fb-scraper",
+  "description": "Allows the hidden Facebook WebView to emit events back to the app",
+  "windows": ["fb-scraper"],
+  "remote": {
+    "urls": ["https://*.facebook.com/*"]
+  },
+  "permissions": [
+    "core:event:allow-emit",
+    "core:event:allow-listen"
+  ]
+}

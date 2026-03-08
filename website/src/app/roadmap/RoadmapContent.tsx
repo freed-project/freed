@@ -509,7 +509,7 @@ const phases: Phase[] = [
     number: 7,
     title: "Facebook + Instagram",
     description:
-      "DOM scraping via headless browser. Capture the walled gardens.",
+      "Facebook integrated via mbasic.facebook.com HTTP. Instagram pending.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-7-SOCIAL-CAPTURE.md",

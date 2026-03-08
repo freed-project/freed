@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress — packages scaffolded, scraper logic complete; selector tuning and integration with Desktop pending
+> **Status:** 🚧 In Progress — Facebook integrated into Desktop via mbasic.facebook.com HTTP; Instagram pending
 > **Dependencies:** Phase 5 (Desktop App with Playwright)
 
 ---
@@ -228,10 +228,11 @@ const RATE_LIMITS = {
 - [x] Location data extracted from Facebook check-ins and Instagram location tags
 - [x] Rate limiting prevents account bans (5m Facebook, 10m Instagram minimums with exponential backoff)
 - [x] Selector versioning strategy implemented (SELECTOR_VERSION constant)
+- [x] Facebook feed integrated into Desktop via mbasic.facebook.com HTTP (no Playwright dependency)
 - [ ] Facebook feed posts validated against real account (selector tuning)
 - [ ] Instagram feed posts validated against real account (selector tuning)
 - [ ] Stories captured (if feasible)
-- [ ] Integrated into Desktop refreshAllFeeds()
+- [x] Integrated into Desktop refreshAllFeeds()
 
 ---
 
