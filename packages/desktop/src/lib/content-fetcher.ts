@@ -22,7 +22,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { extractContentBrowser, extractMetadataBrowser } from "@freed/capture-save/browser";
 import type { FeedItem, AIPreferences } from "@freed/shared";
 import { contentCache } from "./content-cache.js";
-import { docUpdateFeedItem, subscribe, getDoc } from "./automerge.js";
+import { docUpdateFeedItem, subscribe } from "./automerge.js";
+import { useAppStore } from "./store.js";
 import { summarize } from "./ai-summarizer.js";
 import { secureStorage } from "./secure-storage.js";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
@@ -108,9 +109,8 @@ async function processNext(): Promise<void> {
     // Write full HTML to the device content cache (Layer 2 -- NOT Automerge)
     await contentCache.set(entry.globalId, html);
 
-    // Get current AI preferences from the live doc
-    const doc = getDoc();
-    const prefs = (doc.preferences as { ai?: AIPreferences })?.ai;
+    // Get current AI preferences from the store (worker keeps preferences in sync)
+    const prefs = (useAppStore.getState().preferences as { ai?: AIPreferences })?.ai;
 
     let summaryText = content.text;
     let extraTopics: string[] = [];
@@ -164,9 +164,10 @@ export function start(): void {
 
   // Wire up the Automerge subscription so stub items arriving via relay sync
   // are automatically enqueued for background fetch.
-  unsubscribeDoc = subscribe((doc) => {
-    const items = Object.values(doc.feedItems ?? {}) as FeedItem[];
-    enqueue(items);
+  unsubscribeDoc = subscribe((state) => {
+    // state.items contains non-hidden, ranked items (from DocState).
+    // allItemIds covers hidden/archived — stubs are never archived, so items is sufficient.
+    enqueue(state.items);
   });
 
   // Process one item every 2 seconds -- polite to remote servers

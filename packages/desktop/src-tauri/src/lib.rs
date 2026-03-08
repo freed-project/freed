@@ -127,6 +127,7 @@ fn advertise_mdns(port: u16) -> Option<mdns_sd::ServiceDaemon> {
 ///   - last 60 minutely  (≤ 1 hour old)
 ///   - last 24 hourly    (1–24 hours old)
 ///   - last 30 daily     (> 24 hours old)
+#[cfg_attr(feature = "perf", tracing::instrument(skip(doc_bytes), fields(bytes = doc_bytes.len())))]
 fn write_snapshot(snapshot_dir: &std::path::Path, doc_bytes: &[u8]) {
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -149,6 +150,7 @@ fn write_snapshot(snapshot_dir: &std::path::Path, doc_bytes: &[u8]) {
     prune_snapshots(snapshot_dir, ts);
 }
 
+#[cfg_attr(feature = "perf", tracing::instrument(skip(snapshot_dir)))]
 fn prune_snapshots(snapshot_dir: &std::path::Path, now_secs: u64) {
     use std::cmp::Reverse;
 
@@ -440,6 +442,7 @@ async fn get_sync_client_count(state: tauri::State<'_, RelayState>) -> Result<us
 }
 
 /// Push a document update to all connected clients.
+#[cfg_attr(feature = "perf", tracing::instrument(skip(state, app, doc_bytes), fields(bytes = doc_bytes.len())))]
 #[tauri::command]
 async fn broadcast_doc(
     state: tauri::State<'_, RelayState>,
@@ -1346,6 +1349,7 @@ async fn ig_like_post(app: tauri::AppHandle, url: String) -> Result<(), String> 
 /// The client must include `?t=<token>` in the upgrade URI.  Any connection
 /// that omits the token or presents an incorrect value is rejected with HTTP
 /// 401 before the WebSocket handshake completes — no data is exchanged.
+#[cfg_attr(feature = "perf", tracing::instrument(skip(stream, state, app), fields(addr = %addr)))]
 async fn handle_connection(
     stream: TcpStream,
     addr: SocketAddr,
@@ -1492,6 +1496,20 @@ async fn start_sync_relay(state: RelayState, app: tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // When built with --features perf, initialise a JSON tracing subscriber so
+    // span durations for write_snapshot / prune_snapshots / broadcast_doc are
+    // emitted to stderr. Collect with:
+    //   RUST_LOG=freed_desktop_lib=trace ./freed-desktop 2>trace.jsonl
+    #[cfg(feature = "perf")]
+    {
+        use tracing_subscriber::{fmt, EnvFilter};
+        fmt()
+            .json()
+            .with_env_filter(EnvFilter::from_default_env())
+            .with_span_events(fmt::format::FmtSpan::CLOSE)
+            .init();
+    }
+
     let (broadcast_tx, _) = broadcast::channel::<Vec<u8>>(16);
 
     let relay_state = Arc::new(SyncRelayState {

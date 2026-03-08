@@ -49,8 +49,23 @@ export interface DocSnapshot {
   savedAt: number;
 }
 
+// ---------------------------------------------------------------------------
+// Performance snapshot (updated at ~4Hz by useFpsMonitor)
+// ---------------------------------------------------------------------------
+
+export interface FpsSnapshot {
+  fps: number;
+  frameTimeMs: number;
+  droppedFrames: number;
+  p95Ms: number;
+  longTasks: number;
+  worstLongTaskMs: number;
+  /** Raw frame times for last ~120 frames (sparkline data) */
+  frameTimes: number[];
+}
+
 // Cloud sync provider state surfaced in the diagnostics panel.
-// Kept intentionally minimal — the panel only needs status + optional error.
+// Kept intentionally minimal - the panel only needs status + optional error.
 export type CloudSyncStatus = "idle" | "connecting" | "connected" | "error";
 
 export interface CloudProviderDebugState {
@@ -69,12 +84,17 @@ interface DebugState {
   events: SyncEvent[];
   docSnapshot: DocSnapshot | null;
   cloudProviders: CloudProvidersDebugState | null;
+  perfSnapshot: FpsSnapshot | null;
+  /** Incremented by resetPerfSnapshot so useFpsMonitor can clear its refs */
+  perfResetGeneration: number;
 
   toggle: () => void;
   addEvent: (kind: SyncEventKind, detail?: string, bytes?: number) => void;
   clearEvents: () => void;
   setDocSnapshot: (snap: DocSnapshot) => void;
   setCloudProviders: (state: CloudProvidersDebugState) => void;
+  setPerfSnapshot: (snap: FpsSnapshot) => void;
+  resetPerfSnapshot: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,6 +108,8 @@ export const useDebugStore = create<DebugState>()((set) => ({
   events: [],
   docSnapshot: null,
   cloudProviders: null,
+  perfSnapshot: null,
+  perfResetGeneration: 0,
 
   toggle: () => set((s) => ({ visible: !s.visible })),
 
@@ -108,6 +130,10 @@ export const useDebugStore = create<DebugState>()((set) => ({
   setDocSnapshot: (docSnapshot) => set({ docSnapshot }),
 
   setCloudProviders: (cloudProviders) => set({ cloudProviders }),
+
+  setPerfSnapshot: (perfSnapshot) => set({ perfSnapshot }),
+
+  resetPerfSnapshot: () => set((s) => ({ perfSnapshot: null, perfResetGeneration: s.perfResetGeneration + 1 })),
 }));
 
 // ---------------------------------------------------------------------------

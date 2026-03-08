@@ -1,16 +1,17 @@
 /**
- * DebugPanel — in-app sync diagnostics overlay
+ * DebugPanel - in-app sync diagnostics overlay
  *
  * Three tabs: Connection, Events, Document.
  * Opened via Cmd/Ctrl+Shift+D, 5-tap on the sync indicator, or Settings → Developer.
  *
  * Responsive rendering:
- *   Mobile  (< sm): overlay bottom-sheet — AppShell renders this conditionally
- *   Desktop (sm+):  right-edge push drawer — AppShell renders this always (width-animates open/closed)
+ *   Mobile  (< sm): overlay bottom-sheet - AppShell renders this conditionally
+ *   Desktop (sm+):  right-edge push drawer - AppShell renders this always (width-animates open/closed)
  */
 
 import { useEffect, useState, type ReactNode } from "react";
-import { useDebugStore, type SyncEvent, type SyncEventKind, type CloudSyncStatus } from "../lib/debug-store";
+import { useDebugStore, type SyncEvent, type SyncEventKind, type CloudSyncStatus, type FpsSnapshot } from "../lib/debug-store";
+import { useFpsMonitor } from "../lib/perf-monitor";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -159,7 +160,7 @@ function ConnectionTab() {
   const isConnected = lastConnected && (!lastDisconnected || lastConnected.ts > lastDisconnected.ts);
 
   const proto = typeof window !== "undefined" ? window.location.protocol : "";
-  const relayUrl = connectAttempt?.detail ?? "—";
+  const relayUrl = connectAttempt?.detail ?? "-";
   const isWsPlain = relayUrl.startsWith("ws://");
   const mixedContentRisk = proto === "https:" && isWsPlain;
 
@@ -200,7 +201,7 @@ function ConnectionTab() {
               <p className="text-xs font-semibold text-orange-400 mb-1">HTTPS → ws:// Mixed Content</p>
               <p className="text-xs text-orange-300/80">
                 This page is served over HTTPS. Safari and Chrome block plain{" "}
-                <code className="font-mono">ws://</code> connections from HTTPS pages — this is
+                <code className="font-mono">ws://</code> connections from HTTPS pages - this is
                 almost certainly why sync fails on iPhone. The desktop relay works, but the
                 browser kills the socket silently.
               </p>
@@ -221,20 +222,20 @@ function ConnectionTab() {
 
             <div className="bg-white/5 rounded-xl p-3">
               <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Reconnects</p>
-              <p className="text-sm font-medium text-[#a1a1aa] font-mono">{reconnects}</p>
+              <p className="text-sm font-medium text-[#a1a1aa] font-mono">{reconnects.toLocaleString()}</p>
             </div>
 
             <div className="bg-white/5 rounded-xl p-3">
               <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Page Protocol</p>
               <p className={`text-sm font-medium font-mono ${proto === "https:" ? "text-orange-400" : "text-green-400"}`}>
-                {proto || "—"}
+                {proto || "-"}
               </p>
             </div>
 
             <div className="bg-white/5 rounded-xl p-3">
               <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Doc Size</p>
               <p className="text-sm font-medium text-[#a1a1aa] font-mono">
-                {docSnapshot ? formatBytes(docSnapshot.binarySize) : "—"}
+                {docSnapshot ? formatBytes(docSnapshot.binarySize) : "-"}
               </p>
             </div>
           </div>
@@ -249,12 +250,12 @@ function ConnectionTab() {
           <div className="grid grid-cols-2 gap-2">
             <div className="bg-white/5 rounded-xl p-3">
               <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Last Sent</p>
-              <p className="text-xs text-blue-400 font-mono">{lastSent ? formatBytes(lastSent.bytes ?? 0) : "—"}</p>
+              <p className="text-xs text-blue-400 font-mono">{lastSent ? formatBytes(lastSent.bytes ?? 0) : "-"}</p>
               {lastSent && <p className="text-[10px] text-[#52525b] font-mono mt-0.5">{formatRelative(lastSent.ts)}</p>}
             </div>
             <div className="bg-white/5 rounded-xl p-3">
               <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Last Received</p>
-              <p className="text-xs text-cyan-400 font-mono">{lastReceived ? formatBytes(lastReceived.bytes ?? 0) : "—"}</p>
+              <p className="text-xs text-cyan-400 font-mono">{lastReceived ? formatBytes(lastReceived.bytes ?? 0) : "-"}</p>
               {lastReceived && <p className="text-[10px] text-[#52525b] font-mono mt-0.5">{formatRelative(lastReceived.ts)}</p>}
             </div>
           </div>
@@ -271,7 +272,7 @@ function EventsTab() {
 
   const copyAll = async () => {
     const text = events
-      .map((e) => `[${formatTs(e.ts)}] ${e.kind}${e.detail ? ` — ${e.detail}` : ""}${e.bytes !== undefined ? ` (${formatBytes(e.bytes)})` : ""}`)
+      .map((e) => `[${formatTs(e.ts)}] ${e.kind}${e.detail ? ` - ${e.detail}` : ""}${e.bytes !== undefined ? ` (${formatBytes(e.bytes)})` : ""}`)
       .join("\n");
     await navigator.clipboard.writeText(text);
   };
@@ -279,7 +280,7 @@ function EventsTab() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between mb-3 shrink-0">
-        <p className="text-xs text-[#52525b]">{events.length} events (last 200)</p>
+        <p className="text-xs text-[#52525b]">{events.length.toLocaleString()} events (last 200)</p>
         <div className="flex gap-2">
           <button
             onClick={copyAll}
@@ -358,7 +359,7 @@ function DocumentTab() {
         </div>
         <div className="bg-white/5 rounded-xl p-3">
           <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">RSS Feeds</p>
-          <p className="text-sm font-semibold text-white font-mono">{docSnapshot.feedCount}</p>
+          <p className="text-sm font-semibold text-white font-mono">{docSnapshot.feedCount.toLocaleString()}</p>
         </div>
       </div>
 
@@ -391,15 +392,159 @@ function DocumentTab() {
 }
 
 // ---------------------------------------------------------------------------
-// Shared panel chrome — header + tabs + scrollable content + footer
+// PerformanceTab
 // ---------------------------------------------------------------------------
 
-type Tab = "connection" | "events" | "document";
+/** Inline SVG sparkline: renders frame times as a 120×32 polyline. */
+function Sparkline({ frameTimes }: { frameTimes: number[] }) {
+  if (frameTimes.length < 2) return null;
+  const W = 120;
+  const H = 32;
+  const max = Math.max(...frameTimes, 33.3); // floor at 30fps frame time
+  const pts = frameTimes
+    .map((t, i) => {
+      const x = (i / (frameTimes.length - 1)) * W;
+      const y = H - Math.min((t / max) * H, H);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  // 32ms budget line (30fps)
+  const budgetY = H - Math.min((32 / max) * H, H);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-8" preserveAspectRatio="none">
+      <polyline
+        points={pts}
+        fill="none"
+        stroke="#8b5cf6"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      <line
+        x1="0" y1={budgetY.toFixed(1)}
+        x2={W} y2={budgetY.toFixed(1)}
+        stroke="#ef4444"
+        strokeWidth="0.75"
+        strokeDasharray="3 2"
+      />
+    </svg>
+  );
+}
+
+function FpsDisplay({ fps }: { fps: number }) {
+  const color =
+    fps >= 55 ? "text-green-400" : fps >= 30 ? "text-yellow-400" : "text-red-400";
+  return (
+    <div className="text-center">
+      <p className={`text-4xl font-bold font-mono tabular-nums ${color}`}>
+        {fps.toLocaleString()}
+      </p>
+      <p className="text-[10px] text-[#52525b] uppercase tracking-widest mt-0.5">fps</p>
+    </div>
+  );
+}
+
+function StatCell({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="bg-white/5 rounded-xl p-3">
+      <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">{label}</p>
+      <p className="text-sm font-semibold text-white font-mono tabular-nums">{value}</p>
+      {sub && <p className="text-[10px] text-[#52525b] font-mono mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+function PerformanceTabContent({ snap }: { snap: FpsSnapshot | null }) {
+  const resetPerfSnapshot = useDebugStore((s) => s.resetPerfSnapshot);
+
+  if (!snap) {
+    return (
+      <p className="text-xs text-[#52525b] text-center py-8">
+        Measuring… one moment.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Big FPS number */}
+      <FpsDisplay fps={snap.fps} />
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-2 gap-2">
+        <StatCell
+          label="Frame Time"
+          value={`${snap.frameTimeMs.toFixed(1)} ms`}
+          sub="last frame"
+        />
+        <StatCell
+          label="p95 Frame"
+          value={`${snap.p95Ms.toFixed(1)} ms`}
+          sub="2s window"
+        />
+        <StatCell
+          label="Dropped"
+          value={snap.droppedFrames.toLocaleString()}
+          sub="> 32 ms each"
+        />
+        <StatCell
+          label="Long Tasks"
+          value={snap.longTasks.toLocaleString()}
+          sub={snap.worstLongTaskMs > 0 ? `worst ${snap.worstLongTaskMs.toFixed(0)} ms` : "> 50 ms each"}
+        />
+      </div>
+
+      {/* Sparkline */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-[10px] text-[#52525b] uppercase tracking-wider">
+            Frame Times (2s)
+          </p>
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-3 border-t border-[#8b5cf6]" />
+              <span className="text-[9px] text-[#52525b]">actual</span>
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-3 border-t border-dashed border-red-400" />
+              <span className="text-[9px] text-[#52525b]">32 ms</span>
+            </span>
+          </div>
+        </div>
+        <div className="bg-white/5 rounded-xl p-2">
+          <Sparkline frameTimes={snap.frameTimes} />
+        </div>
+      </div>
+
+      {/* Reset button */}
+      <button
+        onClick={resetPerfSnapshot}
+        className="w-full py-2 rounded-xl bg-white/5 text-[#71717a] hover:bg-white/10 hover:text-white text-xs font-medium transition-colors"
+      >
+        Reset Counters
+      </button>
+    </div>
+  );
+}
+
+function PerformanceTab() {
+  const perfSnapshot = useDebugStore((s) => s.perfSnapshot);
+  useFpsMonitor(true);
+
+  return <PerformanceTabContent snap={perfSnapshot} />;
+}
+
+// ---------------------------------------------------------------------------
+// Shared panel chrome - header + tabs + scrollable content + footer
+// ---------------------------------------------------------------------------
+
+type Tab = "connection" | "events" | "document" | "performance";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "connection", label: "Connection" },
   { id: "events", label: "Events" },
   { id: "document", label: "Document" },
+  { id: "performance", label: "Perf" },
 ];
 
 function PanelContent({
@@ -413,7 +558,7 @@ function PanelContent({
 }) {
   return (
     <>
-      {/* Header — subtle bg tint creates section rhythm without a hard border line */}
+      {/* Header - subtle bg tint creates section rhythm without a hard border line */}
       <div className="flex items-center justify-between px-5 py-4 bg-white/[0.03] shrink-0">
         <div className="flex items-center gap-2.5">
           <span className="text-xs font-mono px-2 py-0.5 rounded bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30">
@@ -432,7 +577,7 @@ function PanelContent({
         </button>
       </div>
 
-      {/* Tabs — active underline provides visual separation; no additional border needed */}
+      {/* Tabs - active underline provides visual separation; no additional border needed */}
       <div className="flex shrink-0">
         {TABS.map((t) => (
           <button
@@ -454,9 +599,10 @@ function PanelContent({
         {tab === "connection" && <ConnectionTab />}
         {tab === "events" && <EventsTab />}
         {tab === "document" && <DocumentTab />}
+        {tab === "performance" && <PerformanceTab />}
       </div>
 
-      {/* Footer — subtle bg tint mirrors the header */}
+      {/* Footer - subtle bg tint mirrors the header */}
       <div className="px-5 py-3 bg-white/[0.03] shrink-0">
         <p className="text-[10px] text-[#52525b] text-center font-mono">
           Esc to close · Cmd+Shift+D to toggle · window.__freed in DevTools
@@ -467,7 +613,7 @@ function PanelContent({
 }
 
 // ---------------------------------------------------------------------------
-// Main panel — variant-aware root
+// Main panel - variant-aware root
 // ---------------------------------------------------------------------------
 
 type PanelVariant = "overlay" | "drawer";

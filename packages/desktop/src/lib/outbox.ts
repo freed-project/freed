@@ -21,7 +21,6 @@
  */
 
 import type { FeedItem, Platform } from "@freed/shared";
-import type { FreedDoc } from "@freed/shared/schema";
 import type { PlatformActions } from "./platform-actions";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 
@@ -46,15 +45,15 @@ export type ConfirmFn = (id: string, syncedAt?: number) => Promise<void>;
 /**
  * Start the outbox processor.
  *
- * @param getDoc           Returns the current Automerge doc (live reference)
+ * @param getItems         Returns the current item list (from worker DocState)
  * @param subscribe        Subscribe to doc changes; returns unsubscribe fn
- * @param platformActions  Platform → PlatformActions registry
+ * @param platformActions  Platform -> PlatformActions registry
  * @param confirmLiked     Called on successful like sync
  * @param confirmSeen      Called on successful seen sync
- * @returns Teardown function — call to stop the processor
+ * @returns Teardown function - call to stop the processor
  */
 export function startOutboxProcessor(
-  getDoc: () => FreedDoc | null,
+  getItems: () => FeedItem[] | null,
   subscribe: (cb: () => void) => () => void,
   platformActions: Map<Platform, PlatformActions>,
   confirmLiked: ConfirmFn,
@@ -77,13 +76,11 @@ export function startOutboxProcessor(
     if (isDraining) return;
     isDraining = true;
 
-    const doc = getDoc();
-    if (!doc) {
+    const items = getItems();
+    if (!items) {
       isDraining = false;
       return;
     }
-
-    const items = Object.values(doc.feedItems);
 
     const likeQueue: FeedItem[] = [];
     const seenQueue: FeedItem[] = [];

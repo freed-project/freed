@@ -218,10 +218,9 @@ export async function startSync(): Promise<void> {
   // Start polling for client count
   startPolling();
 
-  // Subscribe to local document changes and broadcast to clients
-  changeUnsubscribe = subscribe(async () => {
-    await broadcastDoc();
-  });
+  // Relay broadcast is now handled by the Automerge worker: after every
+  // applyChange() the worker posts BROADCAST_REQUEST to the main thread which
+  // calls invoke("broadcast_doc") directly. No subscriber needed here.
 
   // Log sync URL
   const url = await getSyncUrl();
