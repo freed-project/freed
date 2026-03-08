@@ -25,6 +25,9 @@ export function tauriInitScript(): string {
       stop_relay: () => null,
       save_url_content: () => null,
       get_x_cookies: () => null,
+      open_x_login_window: () => null,
+      check_x_login_cookies: () => ({ status: 'closed' }),
+      close_x_login_window: () => null,
       pick_contact: () => null,
     };
     window.__TAURI_MOCK_INVOCATIONS__ = [];
