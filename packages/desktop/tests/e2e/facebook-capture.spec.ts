@@ -101,10 +101,8 @@ test("Facebook connect form accepts cookies and triggers sync", async ({
   await fbSection.click();
 
   // Click "Log in with Facebook" to open the login WebView
-  const loginBtn = page.getByText("Log in with Facebook");
-  await loginBtn.scrollIntoViewIfNeeded();
-  await expect(loginBtn).toBeVisible({ timeout: 3_000 });
-  await loginBtn.click();
+  await expect(page.getByText("Log in with Facebook")).toBeVisible({ timeout: 3_000 });
+  await page.getByText("Log in with Facebook").click();
   await page.waitForTimeout(500);
 
   // The fb_show_login IPC call should have fired. Simulate the auth result
