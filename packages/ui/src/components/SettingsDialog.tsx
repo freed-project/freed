@@ -177,6 +177,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     headerDragRegion,
     factoryReset,
     activeCloudProviderLabel,
+    seedSocialConnections,
   } = usePlatform();
   const preferences = useAppStore((s) => s.preferences);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
@@ -297,11 +298,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         await addFeed(feed);
       }
       await addItems(items);
+      seedSocialConnections?.();
       setSeedDone(true);
     } finally {
       setSeeding(false);
     }
-  }, [addFeed, addItems]);
+  }, [addFeed, addItems, seedSocialConnections]);
 
   // ── Search ────────────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
@@ -679,8 +681,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   </p>
                   <p className="text-xs text-amber-400/50 mt-0.5">
                     {seedDone
-                      ? "10 feeds and 100 items added"
-                      : "Adds 10 RSS feeds and 100 items for regression testing"}
+                      ? "10 feeds, 130 items, and social connections added"
+                      : "Adds 10 RSS feeds, 130 items, and X/Facebook/Instagram connections"}
                   </p>
                 </div>
                 {seedDone ? (
