@@ -1,5 +1,5 @@
 /**
- * useFpsMonitor — requestAnimationFrame-based FPS measurement hook
+ * useFpsMonitor - requestAnimationFrame-based FPS measurement hook
  *
  * Runs a rAF loop while the Performance tab is active. Updates a snapshot
  * at ~4Hz to avoid re-render churn from 60fps state updates.
@@ -27,6 +27,7 @@ function percentile(arr: number[], p: number): number {
 
 export function useFpsMonitor(active: boolean) {
   const setPerfSnapshot = useDebugStore((s) => s.setPerfSnapshot);
+  const resetGeneration = useDebugStore((s) => s.perfResetGeneration);
   const rafId = useRef<number | null>(null);
   const lastTs = useRef<number | null>(null);
   const frameTimes = useRef<number[]>([]);
@@ -35,6 +36,7 @@ export function useFpsMonitor(active: boolean) {
   const worstLongTask = useRef(0);
   const lastUpdateTs = useRef(0);
   const observerRef = useRef<PerformanceObserver | null>(null);
+  const prevGeneration = useRef(resetGeneration);
 
   const stop = useCallback(() => {
     if (rafId.current !== null) {
@@ -77,6 +79,17 @@ export function useFpsMonitor(active: boolean) {
     },
     [setPerfSnapshot],
   );
+
+  // Clear accumulated metrics when the user clicks "Reset Counters"
+  useEffect(() => {
+    if (prevGeneration.current === resetGeneration) return;
+    prevGeneration.current = resetGeneration;
+    frameTimes.current = [];
+    droppedFrames.current = 0;
+    longTaskCount.current = 0;
+    worstLongTask.current = 0;
+    lastUpdateTs.current = 0;
+  }, [resetGeneration]);
 
   useEffect(() => {
     if (!active) {

@@ -211,6 +211,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
       case "CLEAR_LOCAL":
         await storage.clear();
+        currentDoc = null;
         ack(req.reqId);
         break;
 

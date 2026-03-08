@@ -65,7 +65,7 @@ export interface FpsSnapshot {
 }
 
 // Cloud sync provider state surfaced in the diagnostics panel.
-// Kept intentionally minimal — the panel only needs status + optional error.
+// Kept intentionally minimal - the panel only needs status + optional error.
 export type CloudSyncStatus = "idle" | "connecting" | "connected" | "error";
 
 export interface CloudProviderDebugState {
@@ -85,6 +85,8 @@ interface DebugState {
   docSnapshot: DocSnapshot | null;
   cloudProviders: CloudProvidersDebugState | null;
   perfSnapshot: FpsSnapshot | null;
+  /** Incremented by resetPerfSnapshot so useFpsMonitor can clear its refs */
+  perfResetGeneration: number;
 
   toggle: () => void;
   addEvent: (kind: SyncEventKind, detail?: string, bytes?: number) => void;
@@ -107,6 +109,7 @@ export const useDebugStore = create<DebugState>()((set) => ({
   docSnapshot: null,
   cloudProviders: null,
   perfSnapshot: null,
+  perfResetGeneration: 0,
 
   toggle: () => set((s) => ({ visible: !s.visible })),
 
@@ -130,7 +133,7 @@ export const useDebugStore = create<DebugState>()((set) => ({
 
   setPerfSnapshot: (perfSnapshot) => set({ perfSnapshot }),
 
-  resetPerfSnapshot: () => set({ perfSnapshot: null }),
+  resetPerfSnapshot: () => set((s) => ({ perfSnapshot: null, perfResetGeneration: s.perfResetGeneration + 1 })),
 }));
 
 // ---------------------------------------------------------------------------

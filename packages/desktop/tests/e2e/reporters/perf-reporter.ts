@@ -1,5 +1,5 @@
 /**
- * Playwright custom reporter — structured performance results
+ * Playwright custom reporter - structured performance results
  *
  * Intercepts [PERF] log lines from perf-feed.spec.ts and writes a
  * structured JSON file (playwright-report/perf-results.json) after the
@@ -52,16 +52,16 @@ export interface PerfResults {
  * Handles:
  *   "Cold load 1k items: 1,234 ms"          → { name: "Cold load 1k items", value: 1234, unit: "ms" }
  *   "Long tasks (>50ms): 3"                 → { name: "Long tasks", value: 3, unit: "count" }
- *   "markAsRead × 20 — avg: 50.1 ms, ..."  → { name: "markAsRead avg", value: 50.1, unit: "ms" }
- *   "markAsRead × 20 — worst: 120.3 ms"    → { name: "markAsRead worst", value: 120.3, unit: "ms" }
+ *   "markAsRead 20 - avg: 50.1 ms, ..."     → { name: "markAsRead 20 avg", value: 50.1, unit: "ms" }
+ *   "markAsRead 20 - worst: 120.3 ms"      → { name: "markAsRead 20 worst", value: 120.3, unit: "ms" }
  */
 function parseMetricLine(line: string, scenario: string): PerfMetric[] {
   // Strip leading "[PERF] "
   const body = line.replace(/^\[PERF\]\s*/, "").trim();
   const metrics: PerfMetric[] = [];
 
-  // Compound line: "foo — avg: X ms, worst: Y ms"
-  const compoundMatch = body.match(/^(.+?)\s+—\s+avg:\s*([\d,.]+)\s*(\w+)?,\s*worst:\s*([\d,.]+)\s*(\w+)?/i);
+  // Compound line: "foo - avg: X ms, worst: Y ms"
+  const compoundMatch = body.match(/^(.+?)\s+-\s+avg:\s*([\d,.]+)\s*(\w+)?,\s*worst:\s*([\d,.]+)\s*(\w+)?/i);
   if (compoundMatch) {
     const label = compoundMatch[1].trim();
     const avg = parseFloat(compoundMatch[2].replace(/,/g, ""));
@@ -128,7 +128,7 @@ class PerfReporter implements Reporter {
   }
 
   onEnd(_result: FullResult): void {
-    // Resolve git metadata — best-effort, safe to fail in detached heads etc.
+    // Resolve git metadata - best-effort, safe to fail in detached heads etc.
     let gitSha = "unknown";
     let gitBranch = "unknown";
     try {

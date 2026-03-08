@@ -1,6 +1,6 @@
 {
-  "markaread_20_avg": { "max": 50, "tolerance": 0.2 },
-  "markaread_20_worst": { "max": 200, "tolerance": 0.2 },
+  "markasread_20_avg": { "max": 50, "tolerance": 0.2 },
+  "markasread_20_worst": { "max": 200, "tolerance": 0.2 },
   "cold_load_3k_items": { "max": 5000, "tolerance": 0.15 },
   "scroll_elapsed": { "max": 2000, "tolerance": 0.2 },
   "long_tasks_50ms": { "max": 3, "tolerance": 0 },

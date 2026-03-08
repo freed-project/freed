@@ -2,8 +2,8 @@
   "generatedAt": "2026-03-08T00:00:00.000Z",
   "gitSha": "pre-worker-migration",
   "metrics": {
-    "markaread_20_avg": { "value": 320, "unit": "ms" },
-    "markaread_20_worst": { "value": 480, "unit": "ms" },
+    "markasread_20_avg": { "value": 320, "unit": "ms" },
+    "markasread_20_worst": { "value": 480, "unit": "ms" },
     "cold_load_1k_items": { "value": 800, "unit": "ms" },
     "cold_load_3k_items": { "value": 2000, "unit": "ms" },
     "cold_load_5k_items": { "value": 4500, "unit": "ms" },

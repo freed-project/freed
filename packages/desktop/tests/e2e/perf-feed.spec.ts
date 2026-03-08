@@ -6,12 +6,12 @@
  * (playwright.config.ts sets retries: 0) because timing variance is useful data.
  *
  * Scenarios covered:
- *   1. Cold load         — time from navigate() to isInitialized with 3k items
- *   2. Scroll            — frame budget while fast-scrolling 3k-item feed
- *   3. Mark-as-read      — hydrateFromDoc cost across 20 rapid mutations
- *   4. Search input      — MiniSearch index rebuild cost while typing a query
- *   5. Reader view open  — simultaneous setSelectedItem + markAsRead with 3k items
- *   6. CPU profile       — V8 call-stack profile of markAsRead with 3k items
+ *   1. Cold load         - time from navigate() to isInitialized with 3k items
+ *   2. Scroll            - frame budget while fast-scrolling 3k-item feed
+ *   3. Mark-as-read      - hydrateFromDoc cost across 20 rapid mutations
+ *   4. Search input      - MiniSearch index rebuild cost while typing a query
+ *   5. Reader view open  - simultaneous setSelectedItem + markAsRead with 3k items
+ *   6. CPU profile       - V8 call-stack profile of markAsRead with 3k items
  */
 
 import { type Page } from "@playwright/test";
@@ -108,7 +108,7 @@ async function measureFps(
 // ─── 1. Cold load ─────────────────────────────────────────────────────────────
 
 test.describe("Cold load with pre-populated corpus", () => {
-  test("1k items — time-to-interactive", async ({ app, page }) => {
+  test("1k items - time-to-interactive", async ({ app, page }) => {
     // Pre-populate IndexedDB BEFORE the app loads by navigating, injecting,
     // then measuring a hard reload. This mirrors the real-world startup path.
     await app.goto();
@@ -119,7 +119,7 @@ test.describe("Cold load with pre-populated corpus", () => {
     // reloading, otherwise the injected items are lost on page refresh.
     await page.waitForTimeout(600);
 
-    // Hard reload — IndexedDB now has data, simulating a returning user.
+    // Hard reload - IndexedDB now has data, simulating a returning user.
     const elapsed = await measureBrowserMs(page, "Cold load 1k items", async () => {
       await page.reload();
       await app.waitForReady();
@@ -130,7 +130,7 @@ test.describe("Cold load with pre-populated corpus", () => {
     console.log(`[PERF] Feed cards visible: ${await page.locator(".feed-card").count()}`);
   });
 
-  test("3k items — time-to-interactive", async ({ app, page }) => {
+  test("3k items - time-to-interactive", async ({ app, page }) => {
     await app.goto();
     await app.waitForReady();
     await app.injectRssItems(ITEM_COUNT_LARGE);
@@ -145,7 +145,7 @@ test.describe("Cold load with pre-populated corpus", () => {
     console.log(`[PERF] Feed cards visible: ${await page.locator(".feed-card").count()}`);
   });
 
-  test("5k items — time-to-interactive (stress)", async ({ app, page }) => {
+  test("5k items - time-to-interactive (stress)", async ({ app, page }) => {
     await app.goto();
     await app.waitForReady();
     await app.injectRssItems(ITEM_COUNT_XLARGE);
@@ -156,7 +156,7 @@ test.describe("Cold load with pre-populated corpus", () => {
       await app.waitForReady();
     });
 
-    // No hard pass/fail at 5k — we capture the number for trend analysis.
+    // No hard pass/fail at 5k - we capture the number for trend analysis.
     console.log(`[PERF] 5k cold load result: ${elapsed.toLocaleString()} ms (informational)`);
     console.log(`[PERF] Feed cards visible: ${await page.locator(".feed-card").count()}`);
   });
@@ -165,7 +165,7 @@ test.describe("Cold load with pre-populated corpus", () => {
 // ─── 2. Scroll performance ────────────────────────────────────────────────────
 
 test.describe("Scroll performance", () => {
-  test("fast scroll through 3k items — frame budget", async ({ app, page }) => {
+  test("fast scroll through 3k items - frame budget", async ({ app, page }) => {
     await app.goto();
     await app.waitForReady();
     await app.injectRssItems(ITEM_COUNT_LARGE);
@@ -223,7 +223,7 @@ test.describe("Scroll performance", () => {
 
     // Flag but don't fail: more than 5 long tasks during a scroll is a red alert.
     if (longTaskData.count > 5) {
-      console.warn(`[PERF] WARNING: ${longTaskData.count} long tasks during scroll — investigate jank`);
+      console.warn(`[PERF] WARNING: ${longTaskData.count} long tasks during scroll - investigate jank`);
     }
   });
 });
@@ -262,7 +262,7 @@ test.describe("Mark-as-read storm (hydrateFromDoc cost)", () => {
     const avg = timings.reduce((s, t) => s + t, 0) / timings.length;
     const worst = Math.max(...timings);
 
-    console.log(`[PERF] markAsRead × 20 — avg: ${avg.toFixed(1)} ms, worst: ${worst.toFixed(1)} ms`);
+    console.log(`[PERF] markAsRead 20 - avg: ${avg.toFixed(1)} ms, worst: ${worst.toFixed(1)} ms`);
     console.log(
       `[PERF] Per-call timings: [${timings.map((t) => t.toFixed(1)).join(", ")}]`,
     );
@@ -296,7 +296,7 @@ test.describe("Search input (MiniSearch index rebuild)", () => {
     });
 
     const elapsed = await measureBrowserMs(page, "Type 'bench' into search (3k items)", async () => {
-      // Type one character at a time — each keystroke fires a state update.
+      // Type one character at a time - each keystroke fires a state update.
       await searchInput.pressSequentially("bench", { delay: 50 });
       // Wait for search results to stabilise.
       await page.waitForTimeout(300);
@@ -339,7 +339,7 @@ test.describe("Reader view open (the worst offender)", () => {
    * We measure the time from click to ReaderView visible (first meaningful paint
    * of the reader panel), and the long tasks that fire during that window.
    */
-  test("open reader view with 3k items loaded — click to visible", async ({ app, page }) => {
+  test("open reader view with 3k items loaded - click to visible", async ({ app, page }) => {
     await app.goto();
     await app.waitForReady();
     await app.injectRssItems(ITEM_COUNT_LARGE);
@@ -431,7 +431,7 @@ test.describe("Reader view open (the worst offender)", () => {
     // This SHOULD fail until we optimize hydrateFromDoc. Record it as a known regression.
     // Target after optimization: < 50ms.
     console.log(`[PERF] hydrateFromDoc regression threshold: ${markAsReadMs.toFixed(0)}ms (target: <50ms after optimization)`);
-    expect(markAsReadMs).toBeLessThan(1_000); // hard upper bound — anything above 1s is broken
+    expect(markAsReadMs).toBeLessThan(1_000); // hard upper bound - anything above 1s is broken
   });
 });
 
@@ -544,7 +544,7 @@ test.describe("FPS harness (rAF-based frame measurement)", () => {
 
     // After the worker migration, no frame should drop below 30fps.
     // Before the fix, markAsRead blocks the main thread (~300ms), tanking FPS.
-    console.log(`[PERF] FPS harness — mark-as-read storm p95: ${fps.p95Ms} ms`);
+    console.log(`[PERF] fps harness markAsRead 20 storm p95: ${fps.p95Ms} ms`);
     // Gate is intentionally loose until Phase 4 fix is in place; tighten post-fix.
     expect(fps.droppedFrames).toBeLessThan(25);
   });
@@ -570,8 +570,8 @@ test.describe("FPS harness (rAF-based frame measurement)", () => {
     );
 
     // Scroll should not produce p95 frame times above 33ms (30fps threshold)
-    console.log(`[PERF] FPS harness — scroll p95: ${fps.p95Ms} ms`);
-    expect(fps.p95Ms).toBeLessThan(100); // wide tolerance — informational until fix
+    console.log(`[PERF] fps harness scroll 3k items p95: ${fps.p95Ms} ms`);
+    expect(fps.p95Ms).toBeLessThan(100); // wide tolerance - informational until fix
   });
 });
 
@@ -607,7 +607,7 @@ test.describe("Memory profiling (CDP heap snapshots)", () => {
     console.log(`[PERF] Heap after 5k items: ${(afterHeap / (1024 * 1024)).toFixed(1)} MB`);
     console.log(`[PERF] Heap growth 5k items: ${growthMb.toFixed(1)} MB`);
 
-    // 5k items should not grow heap more than 100MB (generous — items are ~20KB each in CRDT)
+    // 5k items should not grow heap more than 100MB (generous - items are ~20KB each in CRDT)
     expect(growthMb).toBeLessThan(100);
   });
 
@@ -650,7 +650,7 @@ test.describe("Memory profiling (CDP heap snapshots)", () => {
     const growthMb = (afterHeap - beforeHeap) / (1024 * 1024);
     console.log(`[PERF] Heap growth after 50 mutations: ${growthMb.toFixed(1)} MB`);
 
-    // Mutations should not leak more than 10MB after GC — indicates retained closures
+    // Mutations should not leak more than 10MB after GC - indicates retained closures
     expect(growthMb).toBeLessThan(10);
   });
 });
@@ -725,8 +725,8 @@ test.describe("React Profiler render cost", () => {
     });
 
     const maxActual = Math.max(0, ...profile.map((e) => e.actualDuration));
-    console.log(`[PERF] React Profiler — renders captured: ${profile.length}`);
-    console.log(`[PERF] React Profiler — max actualDuration: ${maxActual.toFixed(1)} ms`);
+    console.log(`[PERF] React Profiler - renders captured: ${profile.length}`);
+    console.log(`[PERF] React Profiler - max actualDuration: ${maxActual.toFixed(1)} ms`);
 
     // Log the top 5 worst renders for diagnostics
     const worst = [...profile].sort((a, b) => b.actualDuration - a.actualDuration).slice(0, 5);

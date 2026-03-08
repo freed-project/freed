@@ -1,12 +1,12 @@
 /**
- * DebugPanel — in-app sync diagnostics overlay
+ * DebugPanel - in-app sync diagnostics overlay
  *
  * Three tabs: Connection, Events, Document.
  * Opened via Cmd/Ctrl+Shift+D, 5-tap on the sync indicator, or Settings → Developer.
  *
  * Responsive rendering:
- *   Mobile  (< sm): overlay bottom-sheet — AppShell renders this conditionally
- *   Desktop (sm+):  right-edge push drawer — AppShell renders this always (width-animates open/closed)
+ *   Mobile  (< sm): overlay bottom-sheet - AppShell renders this conditionally
+ *   Desktop (sm+):  right-edge push drawer - AppShell renders this always (width-animates open/closed)
  */
 
 import { useEffect, useState, type ReactNode } from "react";
@@ -160,7 +160,7 @@ function ConnectionTab() {
   const isConnected = lastConnected && (!lastDisconnected || lastConnected.ts > lastDisconnected.ts);
 
   const proto = typeof window !== "undefined" ? window.location.protocol : "";
-  const relayUrl = connectAttempt?.detail ?? "—";
+  const relayUrl = connectAttempt?.detail ?? "-";
   const isWsPlain = relayUrl.startsWith("ws://");
   const mixedContentRisk = proto === "https:" && isWsPlain;
 
@@ -201,7 +201,7 @@ function ConnectionTab() {
               <p className="text-xs font-semibold text-orange-400 mb-1">HTTPS → ws:// Mixed Content</p>
               <p className="text-xs text-orange-300/80">
                 This page is served over HTTPS. Safari and Chrome block plain{" "}
-                <code className="font-mono">ws://</code> connections from HTTPS pages — this is
+                <code className="font-mono">ws://</code> connections from HTTPS pages - this is
                 almost certainly why sync fails on iPhone. The desktop relay works, but the
                 browser kills the socket silently.
               </p>
@@ -222,20 +222,20 @@ function ConnectionTab() {
 
             <div className="bg-white/5 rounded-xl p-3">
               <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Reconnects</p>
-              <p className="text-sm font-medium text-[#a1a1aa] font-mono">{reconnects}</p>
+              <p className="text-sm font-medium text-[#a1a1aa] font-mono">{reconnects.toLocaleString()}</p>
             </div>
 
             <div className="bg-white/5 rounded-xl p-3">
               <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Page Protocol</p>
               <p className={`text-sm font-medium font-mono ${proto === "https:" ? "text-orange-400" : "text-green-400"}`}>
-                {proto || "—"}
+                {proto || "-"}
               </p>
             </div>
 
             <div className="bg-white/5 rounded-xl p-3">
               <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Doc Size</p>
               <p className="text-sm font-medium text-[#a1a1aa] font-mono">
-                {docSnapshot ? formatBytes(docSnapshot.binarySize) : "—"}
+                {docSnapshot ? formatBytes(docSnapshot.binarySize) : "-"}
               </p>
             </div>
           </div>
@@ -250,12 +250,12 @@ function ConnectionTab() {
           <div className="grid grid-cols-2 gap-2">
             <div className="bg-white/5 rounded-xl p-3">
               <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Last Sent</p>
-              <p className="text-xs text-blue-400 font-mono">{lastSent ? formatBytes(lastSent.bytes ?? 0) : "—"}</p>
+              <p className="text-xs text-blue-400 font-mono">{lastSent ? formatBytes(lastSent.bytes ?? 0) : "-"}</p>
               {lastSent && <p className="text-[10px] text-[#52525b] font-mono mt-0.5">{formatRelative(lastSent.ts)}</p>}
             </div>
             <div className="bg-white/5 rounded-xl p-3">
               <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Last Received</p>
-              <p className="text-xs text-cyan-400 font-mono">{lastReceived ? formatBytes(lastReceived.bytes ?? 0) : "—"}</p>
+              <p className="text-xs text-cyan-400 font-mono">{lastReceived ? formatBytes(lastReceived.bytes ?? 0) : "-"}</p>
               {lastReceived && <p className="text-[10px] text-[#52525b] font-mono mt-0.5">{formatRelative(lastReceived.ts)}</p>}
             </div>
           </div>
@@ -272,7 +272,7 @@ function EventsTab() {
 
   const copyAll = async () => {
     const text = events
-      .map((e) => `[${formatTs(e.ts)}] ${e.kind}${e.detail ? ` — ${e.detail}` : ""}${e.bytes !== undefined ? ` (${formatBytes(e.bytes)})` : ""}`)
+      .map((e) => `[${formatTs(e.ts)}] ${e.kind}${e.detail ? ` - ${e.detail}` : ""}${e.bytes !== undefined ? ` (${formatBytes(e.bytes)})` : ""}`)
       .join("\n");
     await navigator.clipboard.writeText(text);
   };
@@ -280,7 +280,7 @@ function EventsTab() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between mb-3 shrink-0">
-        <p className="text-xs text-[#52525b]">{events.length} events (last 200)</p>
+        <p className="text-xs text-[#52525b]">{events.length.toLocaleString()} events (last 200)</p>
         <div className="flex gap-2">
           <button
             onClick={copyAll}
@@ -359,7 +359,7 @@ function DocumentTab() {
         </div>
         <div className="bg-white/5 rounded-xl p-3">
           <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">RSS Feeds</p>
-          <p className="text-sm font-semibold text-white font-mono">{docSnapshot.feedCount}</p>
+          <p className="text-sm font-semibold text-white font-mono">{docSnapshot.feedCount.toLocaleString()}</p>
         </div>
       </div>
 
@@ -535,7 +535,7 @@ function PerformanceTab() {
 }
 
 // ---------------------------------------------------------------------------
-// Shared panel chrome — header + tabs + scrollable content + footer
+// Shared panel chrome - header + tabs + scrollable content + footer
 // ---------------------------------------------------------------------------
 
 type Tab = "connection" | "events" | "document" | "performance";
@@ -558,7 +558,7 @@ function PanelContent({
 }) {
   return (
     <>
-      {/* Header — subtle bg tint creates section rhythm without a hard border line */}
+      {/* Header - subtle bg tint creates section rhythm without a hard border line */}
       <div className="flex items-center justify-between px-5 py-4 bg-white/[0.03] shrink-0">
         <div className="flex items-center gap-2.5">
           <span className="text-xs font-mono px-2 py-0.5 rounded bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30">
@@ -577,7 +577,7 @@ function PanelContent({
         </button>
       </div>
 
-      {/* Tabs — active underline provides visual separation; no additional border needed */}
+      {/* Tabs - active underline provides visual separation; no additional border needed */}
       <div className="flex shrink-0">
         {TABS.map((t) => (
           <button
@@ -602,7 +602,7 @@ function PanelContent({
         {tab === "performance" && <PerformanceTab />}
       </div>
 
-      {/* Footer — subtle bg tint mirrors the header */}
+      {/* Footer - subtle bg tint mirrors the header */}
       <div className="px-5 py-3 bg-white/[0.03] shrink-0">
         <p className="text-[10px] text-[#52525b] text-center font-mono">
           Esc to close · Cmd+Shift+D to toggle · window.__freed in DevTools
@@ -613,7 +613,7 @@ function PanelContent({
 }
 
 // ---------------------------------------------------------------------------
-// Main panel — variant-aware root
+// Main panel - variant-aware root
 // ---------------------------------------------------------------------------
 
 type PanelVariant = "overlay" | "drawer";

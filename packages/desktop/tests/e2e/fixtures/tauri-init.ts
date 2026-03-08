@@ -12,7 +12,7 @@
 
 export function tauriInitScript(): string {
   return `(function () {
-    // Handler map — tests override individual entries after page.addInitScript.
+    // Handler map - tests override individual entries after page.addInitScript.
     // The broadcast_doc handler wraps the real call to capture IPC timing data
     // consumed by the IPC latency harness in perf-feed.spec.ts.
     window.__TAURI_MOCK_IPC_TIMINGS__ = [];

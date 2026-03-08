@@ -6,9 +6,9 @@
  *   test('my test', async ({ app, ipc }) => { ... });
  *
  * Fixtures:
- *   app  — AppFixture wrapping the Playwright Page. Provides waitForReady()
+ *   app  - AppFixture wrapping the Playwright Page. Provides waitForReady()
  *           and helpers for injecting mock RSS data at scale.
- *   ipc  — IpcFixture for overriding and asserting on invoke() calls.
+ *   ipc  - IpcFixture for overriding and asserting on invoke() calls.
  */
 
 import { test as base, expect, type Page } from "@playwright/test";

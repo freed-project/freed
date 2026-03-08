@@ -76,7 +76,7 @@ export function AppShell({ children }: AppShellProps) {
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <main className="flex-1 md:min-h-0 md:overflow-hidden">{children}</main>
 
-        {/* Desktop push drawer — always mounted so width can animate smoothly.
+        {/* Desktop push drawer - always mounted so width can animate smoothly.
             The DebugPanel's own border-l is clipped by overflow-hidden when width is 0.
             Width is user-draggable; animated only when toggling open/closed. */}
         <div
@@ -86,7 +86,7 @@ export function AppShell({ children }: AppShellProps) {
             transition: dragging.current ? "none" : "width 300ms ease-in-out",
           }}
         >
-          {/* Left-edge resize handle — drag left to widen, drag right to narrow */}
+          {/* Left-edge resize handle - drag left to widen, drag right to narrow */}
           {debugVisible && (
             <div
               className="absolute left-0 top-0 w-1 h-full cursor-col-resize hover:bg-[#8b5cf6]/30 active:bg-[#8b5cf6]/50 transition-colors z-10"
@@ -97,7 +97,7 @@ export function AppShell({ children }: AppShellProps) {
         </div>
       </div>
 
-      {/* Mobile overlay — only on small screens, conditionally rendered */}
+      {/* Mobile overlay - only on small screens, conditionally rendered */}
       {debugVisible && (
         <div className="sm:hidden">
           <DebugPanel variant="overlay" />

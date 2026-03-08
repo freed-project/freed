@@ -1,4 +1,4 @@
-name: E2E — Desktop (Playwright)
+name: E2E - Desktop (Playwright)
 
 on:
   push:
@@ -50,7 +50,7 @@ jobs:
               packages/desktop/tests/e2e/perf-budgets.json \
               | tee perf-comparison.md
           else
-            echo "No perf results found — skipping comparison"
+            echo "No perf results found - skipping comparison"
           fi
 
       - name: Comment perf comparison on PR
@@ -64,7 +64,7 @@ jobs:
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
+              issue_number: context.payload.pull_request?.number ?? context.issue.number,
               body: `## Performance Benchmark Results\n\n\`\`\`\n${body}\n\`\`\``,
             });
 

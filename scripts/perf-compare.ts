@@ -11,8 +11,8 @@
  *   (all paths default to their standard locations below)
  *
  * Environment:
- *   PERF_TOLERANCE  — override default regression tolerance (0.20 = 20%)
- *   CI              — if set, annotates GitHub Actions with warning/error
+ *   PERF_TOLERANCE  - override default regression tolerance (0.20 = 20%)
+ *   CI              - if set, annotates GitHub Actions with warning/error
  */
 
 import { readFileSync, existsSync } from "node:fs";
@@ -104,7 +104,7 @@ console.log(`Results: ${results.gitBranch} @ ${results.gitSha} (${results.timest
 if (baselines) {
   console.log(`Baseline: ${baselines.gitSha} (${baselines.generatedAt})`);
 } else {
-  console.log(`Baseline: none — all metrics are informational (run will pass)`);
+  console.log(`Baseline: none - all metrics are informational (run will pass)`);
 }
 console.log();
 
@@ -126,7 +126,7 @@ for (const metric of results.metrics) {
   const current = metric.value;
   const unit = metric.unit;
 
-  // Determine baseline value — from baselines file or from budget max
+  // Determine baseline value - from baselines file or from budget max
   const baselineVal = baseline?.value;
 
   // Calculate delta
@@ -137,10 +137,10 @@ for (const metric of results.metrics) {
 
   const deltaStr =
     delta === null
-      ? "—"
+      ? "-"
       : `${delta >= 0 ? "+" : ""}${delta.toFixed(1)} ${unit}`;
 
-  const baselineStr = baselineVal !== undefined ? `${baselineVal.toFixed(1)} ${unit}` : "—";
+  const baselineStr = baselineVal !== undefined ? `${baselineVal.toFixed(1)} ${unit}` : "-";
   const currentStr = `${current.toFixed(1)} ${unit}`;
 
   // Determine status
