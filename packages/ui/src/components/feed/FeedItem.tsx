@@ -1,6 +1,6 @@
 import { memo, useRef, useState, type ReactNode } from "react";
 import { formatDistanceToNow } from "date-fns";
-import type { FeedItem as FeedItemType } from "@freed/shared";
+import { PLATFORM_LABELS, type FeedItem as FeedItemType } from "@freed/shared";
 import { RssIcon, FacebookIcon, InstagramIcon, YoutubeIcon, RedditIcon, GithubIcon, MastodonIcon, BookmarkIcon } from "../icons.js";
 
 interface FeedItemProps {
@@ -48,18 +48,6 @@ function likeState(item: FeedItemType): "none" | "noted" | "synced" | "failed" {
   if (us.likedSyncedAt && us.likedSyncedAt > 0) return "synced";
   return "noted";
 }
-
-const PLATFORM_LABELS: Record<string, string> = {
-  x: "X",
-  facebook: "Facebook",
-  instagram: "Instagram",
-  rss: "RSS",
-  youtube: "YouTube",
-  reddit: "Reddit",
-  mastodon: "Mastodon",
-  github: "GitHub",
-  saved: "Saved",
-};
 
 // ─── Component ───────────────────────────────────────────────────────────────
 

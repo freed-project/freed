@@ -243,6 +243,16 @@ export async function docToggleLiked(globalId: string): Promise<void> {
   return request({ reqId, type: "TOGGLE_LIKED", globalId });
 }
 
+export async function docConfirmLikedSynced(globalId: string, syncedAt?: number): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "CONFIRM_LIKED_SYNCED", globalId, syncedAt });
+}
+
+export async function docConfirmSeenSynced(globalId: string, syncedAt?: number): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "CONFIRM_SEEN_SYNCED", globalId, syncedAt });
+}
+
 export async function docArchiveAllReadUnsaved(platform?: string, feedUrl?: string): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "ARCHIVE_ALL_READ_UNSAVED", platform, feedUrl });

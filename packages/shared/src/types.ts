@@ -23,6 +23,20 @@ export type Platform =
   | "linkedin" // LinkedIn (DOM capture, future)
   | "saved"; // Manually saved URLs (bookmarks)
 
+/** User-facing display names for each platform. */
+export const PLATFORM_LABELS: Record<Platform, string> = {
+  x: "X",
+  rss: "RSS",
+  youtube: "YouTube",
+  reddit: "Reddit",
+  mastodon: "Mastodon",
+  github: "GitHub",
+  facebook: "Facebook",
+  instagram: "Instagram",
+  linkedin: "LinkedIn",
+  saved: "Saved",
+};
+
 /**
  * Content type classification
  */

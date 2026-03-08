@@ -1272,14 +1272,16 @@ async fn ig_visit_url(app: tauri::AppHandle, url: String) -> Result<(), String> 
     Ok(())
 }
 
-/// Navigate to a Facebook post URL and click the Like button.
+/// Navigate to a Facebook post URL and click the Like button (best-effort).
 ///
-/// Navigates the `fb-scraper` WebView to the given URL, waits for the page to
-/// render, then tries `[aria-label="Like"]` and common like button selectors.
-/// Returns Ok(true) if a like button was found and clicked, Ok(false) if not
-/// found (caller should treat as retriable), Err on hard failure.
+/// Navigates the `fb-scraper` WebView to the given URL, waits for render,
+/// then injects JS to click `[aria-label="Like"]` and similar selectors.
+/// `wv.eval()` cannot return values, so we treat the click as best-effort:
+/// Ok(()) means the script was injected, not that the click succeeded.
+/// The outbox processor treats this as a success; if the DOM selector missed,
+/// the item stays "liked locally" which is an acceptable degradation.
 #[tauri::command]
-async fn fb_like_post(app: tauri::AppHandle, url: String) -> Result<bool, String> {
+async fn fb_like_post(app: tauri::AppHandle, url: String) -> Result<(), String> {
     let wv = app
         .get_webview_window("fb-scraper")
         .ok_or_else(|| "fb-scraper window not found".to_string())?;
@@ -1289,32 +1291,27 @@ async fn fb_like_post(app: tauri::AppHandle, url: String) -> Result<bool, String
 
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    // Try clicking the Like button via aria-label. Facebook may render it as
-    // a <div role="button"> or <a> so we use querySelector with aria-label.
-    let result = wv.eval(r#"
+    wv.eval(r#"
         (function() {
             var btn = document.querySelector('[aria-label="Like"]')
                    || document.querySelector('[data-testid="like_button"]')
                    || document.querySelector('div[role="button"][aria-label*="Like"]');
-            if (btn) { btn.click(); return true; }
-            return false;
+            if (btn) { btn.click(); }
         })();
     "#).map_err(|e| e.to_string())?;
 
-    // eval() doesn't give us the return value directly — best-effort check
-    let _ = result;
-    println!("[FB] fb_like_post: clicked like button on {}", url);
+    println!("[FB] fb_like_post: injected like click for {}", url);
 
     tokio::time::sleep(Duration::from_millis(500)).await;
-    Ok(true)
+    Ok(())
 }
 
-/// Navigate to an Instagram post URL and click the Like button.
+/// Navigate to an Instagram post URL and click the Like button (best-effort).
 ///
-/// Uses the `ig-scraper` WebView. Tries the SVG heart button via aria-label.
-/// Returns Ok(true) if clicked, Ok(false) if not found, Err on hard failure.
+/// Same best-effort semantics as `fb_like_post`. `wv.eval()` injects the
+/// click script but cannot confirm whether the selector matched.
 #[tauri::command]
-async fn ig_like_post(app: tauri::AppHandle, url: String) -> Result<bool, String> {
+async fn ig_like_post(app: tauri::AppHandle, url: String) -> Result<(), String> {
     let wv = app
         .get_webview_window("ig-scraper")
         .ok_or_else(|| "ig-scraper window not found".to_string())?;
@@ -1324,21 +1321,20 @@ async fn ig_like_post(app: tauri::AppHandle, url: String) -> Result<bool, String
 
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    let result = wv.eval(r#"
+    wv.eval(r#"
         (function() {
             var btn = document.querySelector('[aria-label="Like"]')
-                   || document.querySelector('svg[aria-label="Like"]')?.closest('button')
+                   || (document.querySelector('svg[aria-label="Like"]') || {}).closest
+                      && document.querySelector('svg[aria-label="Like"]').closest('button')
                    || document.querySelector('button[type="button"][aria-label*="Like"]');
-            if (btn) { btn.click(); return true; }
-            return false;
+            if (btn) { btn.click(); }
         })();
     "#).map_err(|e| e.to_string())?;
 
-    let _ = result;
-    println!("[IG] ig_like_post: clicked like button on {}", url);
+    println!("[IG] ig_like_post: injected like click for {}", url);
 
     tokio::time::sleep(Duration::from_millis(500)).await;
-    Ok(true)
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

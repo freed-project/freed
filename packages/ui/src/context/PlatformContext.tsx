@@ -117,6 +117,14 @@ export interface PlatformConfig {
   activeCloudProviderLabel?: () => string | null;
 
   /**
+   * Open a URL in the system browser.
+   * Desktop: calls @tauri-apps/plugin-shell open().
+   * PWA: calls window.open().
+   * If absent, FeedView falls back to window.open().
+   */
+  openUrl?: (url: string) => void;
+
+  /**
    * Save a URL to the local library with full content extraction.
    * Desktop: fetches HTML via Tauri IPC, extracts content, writes to cache.
    * PWA: writes a stub item; desktop picks it up via relay and fetches content.

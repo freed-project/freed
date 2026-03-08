@@ -7,19 +7,7 @@ import { AddFeedDialog } from "../AddFeedDialog.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
-import type { FeedItem, RssFeed, FilterOptions } from "@freed/shared";
-
-const PLATFORM_LABELS: Record<string, string> = {
-  x: "X",
-  rss: "RSS",
-  youtube: "YouTube",
-  reddit: "Reddit",
-  mastodon: "Mastodon",
-  github: "GitHub",
-  facebook: "Facebook",
-  instagram: "Instagram",
-  saved: "Saved",
-};
+import { PLATFORM_LABELS, type FeedItem, type RssFeed, type FilterOptions } from "@freed/shared";
 
 // ─── Compact sidebar panel for dual-column mode ────────────────────────────
 
@@ -163,7 +151,7 @@ function getFilterLabel(filter: FilterOptions, feeds: Record<string, RssFeed>): 
   if (filter.savedOnly) return "Saved";
   if (filter.archivedOnly) return "Archived";
   if (filter.feedUrl) return feeds[filter.feedUrl]?.title ?? "this feed";
-  if (filter.platform) return PLATFORM_LABELS[filter.platform] ?? filter.platform;
+  if (filter.platform) return PLATFORM_LABELS[filter.platform as keyof typeof PLATFORM_LABELS] ?? filter.platform;
   return "All Sources";
 }
 
@@ -193,9 +181,14 @@ export function FeedView() {
     [toggleLiked],
   );
 
+  const { openUrl } = usePlatform();
   const handleOpenCommentUrl = useCallback((url: string) => {
-    window.open(url, "_blank", "noopener,noreferrer");
-  }, []);
+    if (openUrl) {
+      openUrl(url);
+    } else {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  }, [openUrl]);
 
   const [addFeedOpen, setAddFeedOpen] = useState(false);
 

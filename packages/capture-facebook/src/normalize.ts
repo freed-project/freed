@@ -137,7 +137,8 @@ export function fbPostToFeedItem(post: RawFbPost): FeedItem | null {
     content,
     ...(engagement !== undefined ? { engagement } : {}),
     ...(location !== undefined ? { location } : {}),
-    ...(post.url ? { sourceUrl: post.url } : {}),
+    sourceUrl: post.url
+      ?? (post.id ? `https://www.facebook.com/permalink.php?story_fbid=${post.id}` : undefined),
     topics,
     userState: {
       hidden: false,

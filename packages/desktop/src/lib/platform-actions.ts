@@ -49,7 +49,7 @@ export interface PlatformActions {
 // X Actions
 // =============================================================================
 
-function makXActions(getXCookies: () => XCookies | null): PlatformActions {
+function makeXActions(getXCookies: () => XCookies | null): PlatformActions {
   return {
     async like(item) {
       const cookies = getXCookies();
@@ -82,8 +82,8 @@ const fbActions: PlatformActions = {
   async like(item) {
     if (!item.sourceUrl) return false;
     try {
-      const result = await invoke<boolean>("fb_like_post", { url: item.sourceUrl });
-      return result;
+      await invoke<void>("fb_like_post", { url: item.sourceUrl });
+      return true; // best-effort: script was injected, click result unknown
     } catch {
       return false;
     }
@@ -116,8 +116,8 @@ const igActions: PlatformActions = {
   async like(item) {
     if (!item.sourceUrl) return false;
     try {
-      const result = await invoke<boolean>("ig_like_post", { url: item.sourceUrl });
-      return result;
+      await invoke<void>("ig_like_post", { url: item.sourceUrl });
+      return true; // best-effort: script was injected, click result unknown
     } catch {
       return false;
     }
@@ -164,7 +164,7 @@ export function buildPlatformActionsRegistry(
   getXCookies: () => XCookies | null,
 ): Map<Platform, PlatformActions> {
   const registry = new Map<Platform, PlatformActions>();
-  const xActions = makXActions(getXCookies);
+  const xActions = makeXActions(getXCookies);
   registry.set("x", xActions);
   registry.set("facebook", fbActions);
   registry.set("instagram", igActions);

@@ -38,6 +38,8 @@ import {
 import { buildPlatformActionsRegistry } from "./platform-actions";
 import { startOutboxProcessor } from "./outbox";
 import type { FreedDoc } from "@freed/shared/schema";
+
+let outboxTeardown: (() => void) | null = null;
 import { loadStoredCookies, type XAuthState } from "./x-auth";
 import { initFbAuth, type FbAuthState } from "./fb-auth";
 import { initIgAuth, type IgAuthState } from "./instagram-auth";
@@ -357,7 +359,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         isLoading: false,
       });
 
-      // Start the outbox processor (drains pending likes/seen to platforms).
+      // Tear down any previous outbox (guard against double-init).
+      outboxTeardown?.();
       const xCookiesFn = () => {
         const state = get();
         return state.xAuth.isAuthenticated && state.xAuth.cookies
@@ -365,7 +368,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           : null;
       };
       const platformActionsRegistry = buildPlatformActionsRegistry(xCookiesFn);
-      startOutboxProcessor(
+      outboxTeardown = startOutboxProcessor(
         () => { try { return getDoc(); } catch { return null; } },
         (cb) => subscribe((_doc) => cb()),
         platformActionsRegistry,

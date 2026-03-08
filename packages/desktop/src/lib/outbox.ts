@@ -8,10 +8,16 @@
  * Architecture:
  *   - Runs on the desktop only (has WebView sessions + X cookies).
  *   - Debounces 5s to batch rapid changes (e.g. user double-clicking like).
- *   - Processes items sequentially per platform to avoid hammering APIs.
+ *   - Processes items sequentially to avoid hammering APIs.
  *   - Retries up to MAX_RETRIES per item; after that writes sentinel -1.
  *   - Retry counts are in-memory only (not persisted across app restarts).
  *   - Returns a teardown function; call it to stop the processor.
+ *
+ * Limitations:
+ *   - Unlike is NOT synced to platforms. When a user un-likes, the schema
+ *     clears likedSyncedAt, but the outbox only detects liked=true items.
+ *     The unlike stays local. Acceptable for v1 since unlike is rare and
+ *     the user can unlike directly on the platform.
  */
 
 import type { FeedItem, Platform } from "@freed/shared";
@@ -79,14 +85,12 @@ export function startOutboxProcessor(
 
     const items = Object.values(doc.feedItems);
 
-    // Group pending items by platform to process sequentially per-platform
     const likeQueue: FeedItem[] = [];
     const seenQueue: FeedItem[] = [];
 
     for (const item of items) {
       const us = item.userState;
 
-      // Pending like: liked && likedAt && no sync confirmation yet
       if (us.liked && us.likedAt && !us.likedSyncedAt) {
         const retries = getRetries(item.globalId);
         if (retries.likeRetries < MAX_RETRIES) {
@@ -94,7 +98,6 @@ export function startOutboxProcessor(
         }
       }
 
-      // Pending seen: readAt set but no seen confirmation yet, and sourceUrl available
       if (us.readAt && !us.seenSyncedAt && item.sourceUrl) {
         const retries = getRetries(item.globalId);
         if (retries.seenRetries < MAX_RETRIES) {
@@ -110,7 +113,6 @@ export function startOutboxProcessor(
       addDebugEvent("change", `[Outbox] draining ${seenQueue.length} pending seen(s)`);
     }
 
-    // Process likes
     for (const item of likeQueue) {
       const actions = platformActions.get(item.platform);
       if (!actions) continue;
@@ -126,7 +128,7 @@ export function startOutboxProcessor(
           retries.likeRetries++;
           addDebugEvent("change", `[Outbox] like soft-fail #${retries.likeRetries} for ${item.globalId}`);
           if (retries.likeRetries >= MAX_RETRIES) {
-            await confirmLiked(item.globalId, -1); // sentinel: permanently failed
+            try { await confirmLiked(item.globalId, -1); } catch { /* logged below */ }
             addDebugEvent("error", `[Outbox] like permanently failed for ${item.globalId}`);
           }
         }
@@ -134,12 +136,11 @@ export function startOutboxProcessor(
         retries.likeRetries++;
         addDebugEvent("error", `[Outbox] like threw for ${item.globalId}: ${err instanceof Error ? err.message : String(err)}`);
         if (retries.likeRetries >= MAX_RETRIES) {
-          await confirmLiked(item.globalId, -1);
+          try { await confirmLiked(item.globalId, -1); } catch { /* already logged */ }
         }
       }
     }
 
-    // Process seen
     for (const item of seenQueue) {
       const actions = platformActions.get(item.platform);
       if (!actions) continue;
@@ -153,19 +154,42 @@ export function startOutboxProcessor(
         } else {
           retries.seenRetries++;
           if (retries.seenRetries >= MAX_RETRIES) {
-            await confirmSeen(item.globalId, -1);
+            try { await confirmSeen(item.globalId, -1); } catch { /* logged below */ }
           }
         }
       } catch (err) {
         retries.seenRetries++;
         addDebugEvent("error", `[Outbox] seen threw for ${item.globalId}: ${err instanceof Error ? err.message : String(err)}`);
         if (retries.seenRetries >= MAX_RETRIES) {
-          await confirmSeen(item.globalId, -1);
+          try { await confirmSeen(item.globalId, -1); } catch { /* already logged */ }
         }
       }
     }
 
     isDraining = false;
+
+    // If new items arrived during drain, schedule another pass so they
+    // don't sit in the outbox until the next external doc change.
+    if (hasPendingItems(getDoc())) {
+      scheduleDrain();
+    }
+  }
+
+  /** Quick check for any items that still need outbox processing. */
+  function hasPendingItems(doc: FreedDoc | null): boolean {
+    if (!doc) return false;
+    for (const item of Object.values(doc.feedItems)) {
+      const us = item.userState;
+      if (us.liked && us.likedAt && !us.likedSyncedAt) {
+        const r = retryMap.get(item.globalId);
+        if (!r || r.likeRetries < MAX_RETRIES) return true;
+      }
+      if (us.readAt && !us.seenSyncedAt && item.sourceUrl) {
+        const r = retryMap.get(item.globalId);
+        if (!r || r.seenRetries < MAX_RETRIES) return true;
+      }
+    }
+    return false;
   }
 
   function scheduleDrain() {
