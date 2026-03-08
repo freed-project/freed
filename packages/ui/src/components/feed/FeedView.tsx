@@ -177,6 +177,7 @@ export function FeedView() {
   const markAsRead = useAppStore((s) => s.markAsRead);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
+  const toggleLiked = useAppStore((s) => s.toggleLiked);
 
   const handleItemSave = useCallback(
     (item: FeedItem) => toggleSaved(item.globalId),
@@ -187,6 +188,14 @@ export function FeedView() {
     (item: FeedItem) => toggleArchived(item.globalId),
     [toggleArchived],
   );
+  const handleItemLike = useCallback(
+    (item: FeedItem) => toggleLiked?.(item.globalId),
+    [toggleLiked],
+  );
+
+  const handleOpenCommentUrl = useCallback((url: string) => {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, []);
 
   const [addFeedOpen, setAddFeedOpen] = useState(false);
 
@@ -351,6 +360,8 @@ export function FeedView() {
         hasFeedsSubscribed={Object.keys(feeds).length > 0}
         onItemSave={handleItemSave}
         onItemArchive={activeFilter.archivedOnly ? undefined : handleItemArchive}
+        onItemLike={toggleLiked ? handleItemLike : undefined}
+        onOpenCommentUrl={handleOpenCommentUrl}
         isSearching={isSearching}
         searchQuery={searchQuery}
       />

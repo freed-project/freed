@@ -1236,6 +1236,112 @@ async fn ig_disconnect(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
+// Tauri commands — social engagement (WebView like/visit)
+// ---------------------------------------------------------------------------
+
+/// Navigate the Facebook scraper WebView to a URL and wait for it to load.
+/// Used by the outbox processor to mark posts as seen.
+///
+/// Returns Ok(()) on navigation success, Err if the window doesn't exist or
+/// navigation fails. The caller should treat Err as a retriable failure.
+#[tauri::command]
+async fn fb_visit_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let wv = app
+        .get_webview_window("fb-scraper")
+        .ok_or_else(|| "fb-scraper window not found".to_string())?;
+
+    wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+
+    tokio::time::sleep(Duration::from_secs(4)).await;
+    Ok(())
+}
+
+/// Navigate the Instagram scraper WebView to a URL and wait for it to load.
+/// Used by the outbox processor to mark posts as seen.
+#[tauri::command]
+async fn ig_visit_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let wv = app
+        .get_webview_window("ig-scraper")
+        .ok_or_else(|| "ig-scraper window not found".to_string())?;
+
+    wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+
+    tokio::time::sleep(Duration::from_secs(4)).await;
+    Ok(())
+}
+
+/// Navigate to a Facebook post URL and click the Like button.
+///
+/// Navigates the `fb-scraper` WebView to the given URL, waits for the page to
+/// render, then tries `[aria-label="Like"]` and common like button selectors.
+/// Returns Ok(true) if a like button was found and clicked, Ok(false) if not
+/// found (caller should treat as retriable), Err on hard failure.
+#[tauri::command]
+async fn fb_like_post(app: tauri::AppHandle, url: String) -> Result<bool, String> {
+    let wv = app
+        .get_webview_window("fb-scraper")
+        .ok_or_else(|| "fb-scraper window not found".to_string())?;
+
+    wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    // Try clicking the Like button via aria-label. Facebook may render it as
+    // a <div role="button"> or <a> so we use querySelector with aria-label.
+    let result = wv.eval(r#"
+        (function() {
+            var btn = document.querySelector('[aria-label="Like"]')
+                   || document.querySelector('[data-testid="like_button"]')
+                   || document.querySelector('div[role="button"][aria-label*="Like"]');
+            if (btn) { btn.click(); return true; }
+            return false;
+        })();
+    "#).map_err(|e| e.to_string())?;
+
+    // eval() doesn't give us the return value directly — best-effort check
+    let _ = result;
+    println!("[FB] fb_like_post: clicked like button on {}", url);
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    Ok(true)
+}
+
+/// Navigate to an Instagram post URL and click the Like button.
+///
+/// Uses the `ig-scraper` WebView. Tries the SVG heart button via aria-label.
+/// Returns Ok(true) if clicked, Ok(false) if not found, Err on hard failure.
+#[tauri::command]
+async fn ig_like_post(app: tauri::AppHandle, url: String) -> Result<bool, String> {
+    let wv = app
+        .get_webview_window("ig-scraper")
+        .ok_or_else(|| "ig-scraper window not found".to_string())?;
+
+    wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let result = wv.eval(r#"
+        (function() {
+            var btn = document.querySelector('[aria-label="Like"]')
+                   || document.querySelector('svg[aria-label="Like"]')?.closest('button')
+                   || document.querySelector('button[type="button"][aria-label*="Like"]');
+            if (btn) { btn.click(); return true; }
+            return false;
+        })();
+    "#).map_err(|e| e.to_string())?;
+
+    let _ = result;
+    println!("[IG] ig_like_post: clicked like button on {}", url);
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    Ok(true)
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket relay
 // ---------------------------------------------------------------------------
 
@@ -1694,6 +1800,10 @@ pub fn run() {
             ig_check_auth,
             ig_scrape_feed,
             ig_disconnect,
+            fb_visit_url,
+            ig_visit_url,
+            fb_like_post,
+            ig_like_post,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Freed");

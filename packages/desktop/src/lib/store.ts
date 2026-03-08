@@ -10,6 +10,7 @@ import { createDefaultPreferences, rankFeedItems } from "@freed/shared";
 import {
   initDoc,
   subscribe,
+  getDoc,
   docAddFeedItems,
   docAddRssFeed,
   docRemoveRssFeed,
@@ -30,7 +31,12 @@ import {
   docUpdateFriend,
   docRemoveFriend,
   docLogReachOut,
+  docToggleLiked,
+  docConfirmLikedSynced,
+  docConfirmSeenSynced,
 } from "./automerge";
+import { buildPlatformActionsRegistry } from "./platform-actions";
+import { startOutboxProcessor } from "./outbox";
 import type { FreedDoc } from "@freed/shared/schema";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
 import { initFbAuth, type FbAuthState } from "./fb-auth";
@@ -91,6 +97,8 @@ interface AppState {
   removeItem: (id: string) => Promise<void>;
   toggleArchived: (id: string) => Promise<void>;
   archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
+  /** Record like intent in Automerge. Outbox processor drains to platform. */
+  toggleLiked: (id: string) => Promise<void>;
 
   // Feed actions (persisted to Automerge)
   addFeed: (feed: RssFeed) => Promise<void>;
@@ -349,6 +357,22 @@ export const useAppStore = create<AppState>((set, get) => ({
         isLoading: false,
       });
 
+      // Start the outbox processor (drains pending likes/seen to platforms).
+      const xCookiesFn = () => {
+        const state = get();
+        return state.xAuth.isAuthenticated && state.xAuth.cookies
+          ? state.xAuth.cookies
+          : null;
+      };
+      const platformActionsRegistry = buildPlatformActionsRegistry(xCookiesFn);
+      startOutboxProcessor(
+        () => { try { return getDoc(); } catch { return null; } },
+        (cb) => subscribe((_doc) => cb()),
+        platformActionsRegistry,
+        async (id, syncedAt) => { await docConfirmLikedSynced(id, syncedAt); },
+        async (id, syncedAt) => { await docConfirmSeenSynced(id, syncedAt); },
+      );
+
       // Run cleanup migrations in the background. All three are idempotent; failures
       // are non-fatal. subscribe() above propagates any changes to the UI automatically.
       void runStartupMigrations(doc.preferences.display.archivePruneDays ?? 30);
@@ -383,6 +407,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   toggleArchived: async (id) => {
     await docToggleArchived(id);
+  },
+
+  toggleLiked: async (id) => {
+    await docToggleLiked(id);
+    // The outbox processor will pick up the pending like on its next drain.
   },
 
   archiveAllReadUnsaved: async (platform, feedUrl) => {

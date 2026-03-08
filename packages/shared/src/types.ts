@@ -186,6 +186,26 @@ export interface UserState {
 
   /** User highlights/annotations */
   highlights?: Highlight[];
+
+  // ── Social engagement (outbox pattern) ──────────────────────────────────
+
+  /** User has liked this item */
+  liked?: boolean;
+
+  /** When user expressed like intent (any device, Unix ms) */
+  likedAt?: number;
+
+  /**
+   * When the like was confirmed on the source platform (desktop only writes this).
+   * -1 = permanently failed after retries; >0 = success timestamp.
+   */
+  likedSyncedAt?: number;
+
+  /**
+   * When the seen-impression was confirmed on the source platform (desktop only writes this).
+   * -1 = permanently failed; >0 = success timestamp.
+   */
+  seenSyncedAt?: number;
 }
 
 /**
@@ -250,6 +270,9 @@ export interface FeedItem {
 
   /** When priority was last calculated (Unix timestamp) */
   priorityComputedAt?: number;
+
+  /** Original URL on the source platform (for linking + seen-sync via WebView) */
+  sourceUrl?: string;
 }
 
 // =============================================================================

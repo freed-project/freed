@@ -17,6 +17,10 @@ interface FeedItemProps {
   onMouseEnter?: () => void;
   onSave?: (e: React.MouseEvent) => void;
   onArchive?: (e: React.MouseEvent) => void;
+  /** Called when the user clicks the heart/like button */
+  onLike?: (e: React.MouseEvent) => void;
+  /** Opens comment URL in the browser. Pass the URL handler for your platform. */
+  onOpenCommentUrl?: (url: string) => void;
 }
 
 const cls = "w-3.5 h-3.5";
@@ -35,6 +39,30 @@ const platformIcons: Record<string, ReactNode> = {
 
 const SWIPE_THRESHOLD = 72;
 
+// ─── Like button helpers ─────────────────────────────────────────────────────
+
+function likeState(item: FeedItemType): "none" | "noted" | "synced" | "failed" {
+  const us = item.userState;
+  if (!us.liked) return "none";
+  if (us.likedSyncedAt === -1) return "failed";
+  if (us.likedSyncedAt && us.likedSyncedAt > 0) return "synced";
+  return "noted";
+}
+
+const PLATFORM_LABELS: Record<string, string> = {
+  x: "X",
+  facebook: "Facebook",
+  instagram: "Instagram",
+  rss: "RSS",
+  youtube: "YouTube",
+  reddit: "Reddit",
+  mastodon: "Mastodon",
+  github: "GitHub",
+  saved: "Saved",
+};
+
+// ─── Component ───────────────────────────────────────────────────────────────
+
 export const FeedItem = memo(function FeedItem({
   item,
   onClick,
@@ -46,6 +74,8 @@ export const FeedItem = memo(function FeedItem({
   onMouseEnter,
   onSave,
   onArchive,
+  onLike,
+  onOpenCommentUrl,
 }: FeedItemProps) {
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
   const platformIcon = platformIcons[item.platform] ?? <span className="text-xs">📄</span>;
@@ -286,6 +316,7 @@ export const FeedItem = memo(function FeedItem({
           </div>
         )}
 
+        {/* Engagement counts — shown when opt-in flag is set */}
         {showEngagement && item.engagement && (
           <div className="mt-2 flex items-center gap-4 text-xs text-[#52525b]">
             {item.engagement.likes !== undefined && (
@@ -296,6 +327,70 @@ export const FeedItem = memo(function FeedItem({
             )}
             {item.engagement.comments !== undefined && (
               <span title="Comments">💬 {item.engagement.comments.toLocaleString()}</span>
+            )}
+          </div>
+        )}
+
+        {/* Social actions row — like button + comment link */}
+        {(onLike || (onOpenCommentUrl && item.sourceUrl)) && (
+          <div className="mt-2 flex items-center gap-2">
+            {onLike && (() => {
+              const state = likeState(item);
+              const label = state === "synced"
+                ? `Liked on ${PLATFORM_LABELS[item.platform] ?? item.platform}`
+                : state === "noted"
+                ? `Liked, syncing to ${PLATFORM_LABELS[item.platform] ?? item.platform}...`
+                : state === "failed"
+                ? `Could not sync to ${PLATFORM_LABELS[item.platform] ?? item.platform}`
+                : "Like";
+              return (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onLike(e); }}
+                  title={label}
+                  aria-label={label}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors ${
+                    state === "synced"
+                      ? "text-red-400"
+                      : state === "noted"
+                      ? "text-amber-400"
+                      : state === "failed"
+                      ? "text-orange-400"
+                      : "text-[#52525b] hover:text-red-400"
+                  }`}
+                >
+                  {/* Heart icon — filled when liked */}
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24"
+                    fill={state !== "none" ? "currentColor" : "none"}
+                    stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round"
+                      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                  </svg>
+                  {/* Pending sync indicator */}
+                  {state === "noted" && (
+                    <svg className="w-2.5 h-2.5 animate-spin opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  )}
+                  {state === "failed" && (
+                    <svg className="w-2.5 h-2.5 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })()}
+
+            {onOpenCommentUrl && item.sourceUrl && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
+                title={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
+                aria-label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
+                className="p-1.5 rounded-lg text-[#52525b] hover:text-[#a1a1aa] transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+              </button>
             )}
           </div>
         )}

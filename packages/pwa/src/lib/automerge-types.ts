@@ -41,6 +41,9 @@ export type WorkerRequest =
   | { reqId: number; type: "MARK_ALL_AS_READ"; platform?: string }
   | { reqId: number; type: "TOGGLE_SAVED"; globalId: string }
   | { reqId: number; type: "TOGGLE_ARCHIVED"; globalId: string }
+  | { reqId: number; type: "TOGGLE_LIKED"; globalId: string }
+  | { reqId: number; type: "CONFIRM_LIKED_SYNCED"; globalId: string; syncedAt?: number }
+  | { reqId: number; type: "CONFIRM_SEEN_SYNCED"; globalId: string; syncedAt?: number }
   | { reqId: number; type: "ADD_FEED_ITEM"; item: FeedItem }
   | { reqId: number; type: "ADD_FEED_ITEMS"; items: FeedItem[] }
   | { reqId: number; type: "REMOVE_FEED_ITEM"; globalId: string }

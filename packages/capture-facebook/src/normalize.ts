@@ -137,6 +137,7 @@ export function fbPostToFeedItem(post: RawFbPost): FeedItem | null {
     content,
     ...(engagement !== undefined ? { engagement } : {}),
     ...(location !== undefined ? { location } : {}),
+    ...(post.url ? { sourceUrl: post.url } : {}),
     topics,
     userState: {
       hidden: false,

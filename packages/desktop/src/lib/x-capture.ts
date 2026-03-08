@@ -15,6 +15,10 @@ import {
   X_API_BASE,
   X_BEARER_TOKEN,
   HomeLatestTimeline,
+  FavoriteTweet,
+  UnfavoriteTweet,
+  buildMutationUrl,
+  buildMutationBody,
   tweetsToFeedItems,
   deduplicateFeedItems,
   getHomeLatestTimelineVariables,
@@ -255,6 +259,84 @@ export async function fetchXTimeline(
   diag.itemsDeduplicated = items.length;
 
   return { items, diag };
+}
+
+// =============================================================================
+// Mutation Transport
+// =============================================================================
+
+/**
+ * Send a POST mutation to the X GraphQL API (like/unlike).
+ * Returns the raw response string; throws on HTTP error.
+ */
+async function xMutationRequest(
+  cookies: XCookies,
+  url: string,
+  body: string,
+  requester: XRequester,
+): Promise<string> {
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${X_BEARER_TOKEN}`,
+    "content-type": "application/json",
+    "x-csrf-token": cookies.ct0,
+    cookie: `ct0=${cookies.ct0}; auth_token=${cookies.authToken}`,
+    "x-twitter-active-user": "yes",
+    "x-twitter-auth-type": "OAuth2Session",
+    "x-twitter-client-language": "en",
+    "user-agent":
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  };
+  return requester(url, body, headers, "POST");
+}
+
+/**
+ * Like a tweet via X's FavoriteTweet GraphQL mutation.
+ *
+ * @param tweetId - The tweet's rest_id (numeric string)
+ * @param cookies - Valid X session cookies
+ * @param requester - Optional transport override for testing
+ * @returns true on success, false on failure
+ */
+export async function favoriteTweet(
+  tweetId: string,
+  cookies: XCookies,
+  requester: XRequester = defaultRequester,
+): Promise<boolean> {
+  try {
+    const url = buildMutationUrl(FavoriteTweet);
+    const body = buildMutationBody(FavoriteTweet, tweetId);
+    await xMutationRequest(cookies, url, body, requester);
+    addDebugEvent("change", `[X] liked tweet ${tweetId}`);
+    return true;
+  } catch (err) {
+    addDebugEvent("error", `[X] favoriteTweet failed: ${err instanceof Error ? err.message : String(err)}`);
+    return false;
+  }
+}
+
+/**
+ * Unlike a tweet via X's UnfavoriteTweet GraphQL mutation.
+ *
+ * @param tweetId - The tweet's rest_id (numeric string)
+ * @param cookies - Valid X session cookies
+ * @param requester - Optional transport override for testing
+ * @returns true on success, false on false
+ */
+export async function unfavoriteTweet(
+  tweetId: string,
+  cookies: XCookies,
+  requester: XRequester = defaultRequester,
+): Promise<boolean> {
+  try {
+    const url = buildMutationUrl(UnfavoriteTweet);
+    const body = buildMutationBody(UnfavoriteTweet, tweetId);
+    await xMutationRequest(cookies, url, body, requester);
+    addDebugEvent("change", `[X] unliked tweet ${tweetId}`);
+    return true;
+  } catch (err) {
+    addDebugEvent("error", `[X] unfavoriteTweet failed: ${err instanceof Error ? err.message : String(err)}`);
+    return false;
+  }
 }
 
 // =============================================================================

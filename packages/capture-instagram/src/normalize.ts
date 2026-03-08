@@ -112,6 +112,9 @@ export function igPostToFeedItem(post: RawIgPost): FeedItem | null {
       ? "story"
       : "post";
 
+  const sourceUrl = post.url
+    ?? (post.shortcode ? `https://www.instagram.com/p/${post.shortcode}/` : undefined);
+
   return {
     globalId,
     platform: "instagram",
@@ -122,6 +125,7 @@ export function igPostToFeedItem(post: RawIgPost): FeedItem | null {
     content,
     ...(engagement !== undefined ? { engagement } : {}),
     ...(location !== undefined ? { location } : {}),
+    ...(sourceUrl ? { sourceUrl } : {}),
     topics,
     userState: {
       hidden: false,

@@ -270,6 +270,66 @@ export function hideItem(doc: FreedDoc, globalId: string): void {
   }
 }
 
+/**
+ * Toggle liked status for a feed item.
+ * Sets liked + likedAt on like, clears all three like fields on unlike.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @param globalId - The item's global ID
+ */
+export function toggleLiked(doc: FreedDoc, globalId: string): void {
+  const item = doc.feedItems[globalId];
+  if (!item) return;
+  const us = item.userState as unknown as Record<string, unknown>;
+  if (item.userState.liked) {
+    us.liked = false;
+    delete us.likedAt;
+    delete us.likedSyncedAt;
+  } else {
+    us.liked = true;
+    us.likedAt = Date.now();
+    delete us.likedSyncedAt;
+  }
+}
+
+/**
+ * Confirm that the like was successfully synced to the source platform.
+ * Called by the outbox processor after a successful platform action.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @param globalId - The item's global ID
+ * @param syncedAt - Timestamp when the sync completed (or -1 for permanent failure)
+ */
+export function confirmLikedSynced(
+  doc: FreedDoc,
+  globalId: string,
+  syncedAt: number = Date.now(),
+): void {
+  const item = doc.feedItems[globalId];
+  if (item) {
+    (item.userState as unknown as Record<string, unknown>).likedSyncedAt = syncedAt;
+  }
+}
+
+/**
+ * Confirm that the seen-impression was successfully synced to the source platform.
+ * Called by the outbox processor after a successful platform action.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @param globalId - The item's global ID
+ * @param syncedAt - Timestamp when the sync completed (or -1 for permanent failure)
+ */
+export function confirmSeenSynced(
+  doc: FreedDoc,
+  globalId: string,
+  syncedAt: number = Date.now(),
+): void {
+  const item = doc.feedItems[globalId];
+  if (item) {
+    (item.userState as unknown as Record<string, unknown>).seenSyncedAt = syncedAt;
+  }
+}
+
 // =============================================================================
 // RSS Feed Operations
 // =============================================================================

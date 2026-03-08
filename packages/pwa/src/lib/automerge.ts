@@ -238,6 +238,11 @@ export async function docToggleArchived(globalId: string): Promise<void> {
   return request({ reqId, type: "TOGGLE_ARCHIVED", globalId });
 }
 
+export async function docToggleLiked(globalId: string): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "TOGGLE_LIKED", globalId });
+}
+
 export async function docArchiveAllReadUnsaved(platform?: string, feedUrl?: string): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "ARCHIVE_ALL_READ_UNSAVED", platform, feedUrl });

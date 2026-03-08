@@ -15,7 +15,7 @@
 
 export * from "./types.js";
 
-export type { EndpointDefinition } from "./endpoints.js";
+export type { EndpointDefinition, MutationEndpointDefinition } from "./endpoints.js";
 
 export {
   X_API_BASE,
@@ -27,8 +27,12 @@ export {
   Following,
   UserTweets,
   TweetDetail,
+  FavoriteTweet,
+  UnfavoriteTweet,
   buildGraphQLUrl,
   buildRequestBody,
+  buildMutationUrl,
+  buildMutationBody,
   getHomeLatestTimelineVariables,
   getFollowingVariables,
   getUserTweetsVariables,

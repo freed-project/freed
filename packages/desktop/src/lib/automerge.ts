@@ -28,6 +28,9 @@ import {
   updateFriend,
   removeFriend,
   logReachOut,
+  toggleLiked,
+  confirmLikedSynced,
+  confirmSeenSynced,
 } from "@freed/shared/schema";
 import type { FeedItem, Friend, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
 import { addDebugEvent, setDocSnapshot, registerDocAccessors } from "@freed/ui/lib/debug-store";
@@ -258,6 +261,24 @@ export async function docToggleSaved(globalId: string): Promise<FreedDoc> {
 
 export async function docToggleArchived(globalId: string): Promise<FreedDoc> {
   return applyChange((doc) => toggleArchived(doc, globalId), "Toggle archived");
+}
+
+export async function docToggleLiked(globalId: string): Promise<FreedDoc> {
+  return applyChange((doc) => toggleLiked(doc, globalId), "Toggle liked");
+}
+
+export async function docConfirmLikedSynced(globalId: string, syncedAt?: number): Promise<FreedDoc> {
+  return applyChange(
+    (doc) => confirmLikedSynced(doc, globalId, syncedAt),
+    "Confirm liked synced",
+  );
+}
+
+export async function docConfirmSeenSynced(globalId: string, syncedAt?: number): Promise<FreedDoc> {
+  return applyChange(
+    (doc) => confirmSeenSynced(doc, globalId, syncedAt),
+    "Confirm seen synced",
+  );
 }
 
 export async function docArchiveAllReadUnsaved(
