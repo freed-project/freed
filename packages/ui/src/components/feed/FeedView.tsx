@@ -1,10 +1,12 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef, memo } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { FeedList } from "./FeedList.js";
 import { ReaderView } from "./ReaderView.js";
-import { ReaderThumbnail } from "./ReaderThumbnail.js";
+import { FeedItem as FeedItemCard } from "./FeedItem.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
+import { useIsMobile } from "../../hooks/useIsMobile.js";
 import type { FeedItem, RssFeed, FilterOptions } from "@freed/shared";
 
 const PLATFORM_LABELS: Record<string, string> = {
@@ -18,6 +20,143 @@ const PLATFORM_LABELS: Record<string, string> = {
   instagram: "Instagram",
   saved: "Saved",
 };
+
+// ─── Compact sidebar panel for dual-column mode ────────────────────────────
+
+const MIN_PANEL_WIDTH = 100;
+const MAX_PANEL_WIDTH = 500;
+const DEFAULT_PANEL_WIDTH = 150;
+const NARROW_THRESHOLD = 150;
+
+// Card geometry: each compact card is a square via aspect-square.
+// Wrapper padding: px-2 (8px each side = 16px total), pb-2 (8px), first item gets pt-2 (8px).
+const CARD_H_PAD = 16;
+const CARD_V_GAP = 8;
+
+interface CompactFeedPanelProps {
+  items: FeedItem[];
+  selectedId: string;
+  onItemClick: (item: FeedItem) => void;
+  width: number;
+}
+
+const CompactFeedPanel = memo(function CompactFeedPanel({
+  items,
+  selectedId,
+  onItemClick,
+  width,
+}: CompactFeedPanelProps) {
+  const parentRef = useRef<HTMLDivElement>(null);
+  const scrollAnchorRef = useRef<{ index: number; offset: number } | null>(null);
+  const prevWidthRef = useRef(width);
+
+  const cardHeight = width - CARD_H_PAD;
+  const itemHeight = cardHeight + CARD_V_GAP;
+  const firstItemHeight = itemHeight + CARD_V_GAP;
+
+  // Capture the top-visible item before the width change propagates to layout.
+  // Runs during render (synchronously) so we can read the pre-update scroll state.
+  if (prevWidthRef.current !== width && parentRef.current && items.length > 0) {
+    const scrollTop = parentRef.current.scrollTop;
+    const oldCard = prevWidthRef.current - CARD_H_PAD;
+    const oldItem = oldCard + CARD_V_GAP;
+    const oldFirst = oldItem + CARD_V_GAP;
+
+    let idx: number;
+    let offset: number;
+    if (scrollTop < oldFirst) {
+      idx = 0;
+      offset = scrollTop;
+    } else {
+      const past = scrollTop - oldFirst;
+      idx = 1 + Math.floor(past / oldItem);
+      offset = scrollTop - (oldFirst + (idx - 1) * oldItem);
+    }
+    scrollAnchorRef.current = { index: Math.min(idx, items.length - 1), offset };
+    prevWidthRef.current = width;
+  }
+
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: (index) => (index === 0 ? firstItemHeight : itemHeight),
+    overscan: 3,
+  });
+
+  // Restore scroll after DOM updates with new card sizes (runs before paint).
+  useLayoutEffect(() => {
+    const anchor = scrollAnchorRef.current;
+    if (!anchor) return;
+    scrollAnchorRef.current = null;
+
+    virtualizer.measure();
+
+    const newStart =
+      anchor.index === 0
+        ? 0
+        : firstItemHeight + (anchor.index - 1) * itemHeight;
+
+    const el = parentRef.current;
+    if (el) el.scrollTop = newStart + anchor.offset;
+  }); // intentionally no deps: only fires work when anchor ref is set
+
+  // Auto-scroll to the selected item on selection change.
+  const selectedIndex = useMemo(
+    () => items.findIndex((it) => it.globalId === selectedId),
+    [items, selectedId],
+  );
+  const didInitialScroll = useRef(false);
+  useEffect(() => {
+    if (selectedIndex < 0) return;
+    virtualizer.scrollToIndex(selectedIndex, {
+      align: "center",
+      behavior: didInitialScroll.current ? "smooth" : "auto",
+    });
+    didInitialScroll.current = true;
+  }, [selectedIndex, virtualizer]);
+
+  return (
+    <div
+      ref={parentRef}
+      className="shrink-0 min-h-0 bg-[#0a0a0a] overflow-y-auto minimal-scroll"
+      style={{ width }}
+    >
+      <div
+        style={{ height: virtualizer.getTotalSize() }}
+        className="relative w-full"
+      >
+        {virtualizer.getVirtualItems().map((vi) => {
+          const item = items[vi.index];
+          return (
+            <div
+              key={vi.key}
+              data-index={vi.index}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${vi.start}px)`,
+              }}
+            >
+              <div className={`px-2 pb-2${vi.index === 0 ? " pt-2" : ""}`}>
+                <FeedItemCard
+                  item={item}
+                  compact
+                  narrow={width < NARROW_THRESHOLD}
+                  selected={item.globalId === selectedId}
+                  onClick={() => onItemClick(item)}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 /** Human-readable label for the scope currently active in the sidebar. */
 function getFilterLabel(filter: FilterOptions, feeds: Record<string, RssFeed>): string {
@@ -110,13 +249,65 @@ export function FeedView() {
     setFocusedIndex(-1);
   }, [activeFilter, searchQuery]);
 
-  const showDualColumn = dualColumnMode && !!selectedItem;
+  // ─── Dual-column drag-resize ───────────────────────────────────────────────
 
-  // Dual-column: thumbnail + reader side by side, feed list hidden
+  const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH);
+  const isDraggingRef = useRef(false);
+  const dragStartXRef = useRef(0);
+  const dragStartWidthRef = useRef(0);
+
+  const handleDragStart = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      isDraggingRef.current = true;
+      dragStartXRef.current = e.clientX;
+      dragStartWidthRef.current = panelWidth;
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    },
+    [panelWidth],
+  );
+
+  const handleDragMove = useCallback((e: React.PointerEvent) => {
+    if (!isDraggingRef.current) return;
+    const dx = e.clientX - dragStartXRef.current;
+    const clamped = Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, dragStartWidthRef.current + dx));
+    setPanelWidth(clamped);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  }, []);
+
+  // ─── Layout decision ────────────────────────────────────────────────────────
+
+  const isMobile = useIsMobile();
+  const showDualColumn = dualColumnMode && !!selectedItem && !isMobile;
+
   if (showDualColumn) {
     return (
-      <div className="h-full flex">
-        <ReaderThumbnail item={selectedItem} />
+      <div className="h-full flex overflow-hidden">
+        <CompactFeedPanel
+          items={filteredItems}
+          selectedId={selectedItem.globalId}
+          onItemClick={openItem}
+          width={panelWidth}
+        />
+        {/* Draggable column separator -- zero visible width, padding provides the hit area */}
+        <div
+          className="w-0 px-0.5 shrink-0 cursor-col-resize hover:bg-[#8b5cf6]/20 active:bg-[#8b5cf6]/30 transition-colors -mx-0.5 z-10"
+          onPointerDown={handleDragStart}
+          onPointerMove={handleDragMove}
+          onPointerUp={handleDragEnd}
+          onPointerCancel={handleDragEnd}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+        />
         <ReaderView item={selectedItem} onClose={closeItem} dualColumn />
         <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
       </div>

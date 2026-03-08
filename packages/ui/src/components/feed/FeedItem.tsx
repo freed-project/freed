@@ -8,6 +8,12 @@ interface FeedItemProps {
   onClick?: () => void;
   showEngagement?: boolean;
   focused?: boolean;
+  /** Square card variant for the dual-column sidebar */
+  compact?: boolean;
+  /** Hides avatars and platform icons in compact mode to maximize title space */
+  narrow?: boolean;
+  /** Highlights as the currently-open item in dual-column mode */
+  selected?: boolean;
   onMouseEnter?: () => void;
   onSave?: (e: React.MouseEvent) => void;
   onArchive?: (e: React.MouseEvent) => void;
@@ -34,6 +40,9 @@ export const FeedItem = memo(function FeedItem({
   onClick,
   showEngagement = false,
   focused = false,
+  compact = false,
+  narrow = false,
+  selected = false,
   onMouseEnter,
   onSave,
   onArchive,
@@ -41,7 +50,7 @@ export const FeedItem = memo(function FeedItem({
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
   const platformIcon = platformIcons[item.platform] ?? <span className="text-xs">📄</span>;
 
-  // Swipe-to-archive state (mobile only)
+  // Swipe-to-archive state (mobile only, disabled in compact mode)
   const [swipeX, setSwipeX] = useState(0);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
@@ -58,14 +67,12 @@ export const FeedItem = memo(function FeedItem({
     const dy = e.touches[0].clientY - touchStartY.current;
 
     if (!swipeLocked.current) {
-      // Determine swipe axis on first meaningful move
       if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
       swipeLocked.current = Math.abs(dx) > Math.abs(dy) ? "horizontal" : "vertical";
     }
 
     if (swipeLocked.current === "vertical") return;
 
-    // Only track leftward swipe
     if (dx < 0 && onArchive) {
       e.preventDefault();
       setSwipeX(Math.max(dx, -SWIPE_THRESHOLD * 1.4));
@@ -83,10 +90,80 @@ export const FeedItem = memo(function FeedItem({
   const swipeProgress = Math.min(Math.abs(swipeX) / SWIPE_THRESHOLD, 1);
   const pastThreshold = swipeX < -SWIPE_THRESHOLD;
 
+  const enableSwipe = !compact && !!onArchive;
+
+  if (compact) {
+    return (
+      <div className="relative overflow-hidden rounded-xl">
+        <article
+          className={`feed-card group cursor-pointer aspect-square overflow-hidden p-3 flex flex-col transition-colors ${
+            selected
+              ? "border-l-2 border-l-[#8b5cf6] bg-[#8b5cf6]/10"
+              : "hover:bg-white/5"
+          }`}
+          onClick={onClick}
+          onMouseEnter={onMouseEnter}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === "Enter" && onClick?.()}
+        >
+          {!narrow && (
+            <div className="flex items-center gap-2 mb-2">
+              {item.author.avatarUrl ? (
+                <img
+                  src={item.author.avatarUrl}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="w-7 h-7 rounded-full bg-white/5 ring-1 ring-white/10 shrink-0"
+                />
+              ) : (
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#3b82f6] to-[#8b5cf6] flex items-center justify-center font-medium shrink-0 text-xs">
+                  {item.author.displayName[0]?.toUpperCase() || "?"}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <span className="font-medium text-xs truncate block">{item.author.displayName}</span>
+                <div className="flex items-center gap-1.5 text-[10px] text-[#71717a]">
+                  <span>{platformIcon}</span>
+                  <span className="truncate">{timeAgo}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {item.content.linkPreview?.title && (
+            <h3 className={`font-semibold leading-snug mb-1 ${narrow ? "text-xs line-clamp-3" : "text-sm line-clamp-2"}`}>
+              {item.content.linkPreview.title}
+            </h3>
+          )}
+
+          {item.content.text && (
+            <p className={`text-[#a1a1aa] leading-relaxed flex-1 min-h-0 ${narrow ? "text-[10px] line-clamp-4" : "text-xs line-clamp-3"}`}>
+              {item.content.text}
+            </p>
+          )}
+
+          {item.userState.tags.length > 0 && (
+            <div className="mt-auto pt-2 flex flex-wrap gap-1">
+              {item.userState.tags.slice(0, 2).map((tag) => (
+                <span
+                  key={tag}
+                  className="px-1.5 py-0.5 text-[10px] rounded-full bg-[#8b5cf6]/20 text-[#8b5cf6]"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </article>
+      </div>
+    );
+  }
+
   return (
     <div className="relative overflow-hidden rounded-2xl">
-      {/* Archive action revealed by swipe — only rendered when actively swiping */}
-      {onArchive && swipeX < 0 && (
+      {enableSwipe && swipeX < 0 && (
         <div
           className="absolute inset-y-0 right-0 flex items-center justify-end pr-5 rounded-2xl transition-colors"
           style={{
@@ -114,9 +191,9 @@ export const FeedItem = memo(function FeedItem({
         }}
         onClick={onClick}
         onMouseEnter={onMouseEnter}
-        onTouchStart={onArchive ? handleTouchStart : undefined}
-        onTouchMove={onArchive ? handleTouchMove : undefined}
-        onTouchEnd={onArchive ? handleTouchEnd : undefined}
+        onTouchStart={enableSwipe ? handleTouchStart : undefined}
+        onTouchMove={enableSwipe ? handleTouchMove : undefined}
+        onTouchEnd={enableSwipe ? handleTouchEnd : undefined}
         role="button"
         tabIndex={0}
         onKeyDown={(e) => e.key === "Enter" && onClick?.()}
