@@ -133,6 +133,9 @@ const RATE_LIMITS = {
 | 7.9  | Selector versioning strategy                | ✓ Complete  |
 | 7.10 | Location extraction (for Phase 8)           | ✓ Complete  |
 | 7.11 | Stories capture                             | Deferred    |
+| 7.12 | Social engagement write-back (like, seen)   | ✓ Complete  |
+| 7.13 | Outbox processor for cross-device sync      | ✓ Complete  |
+| 7.14 | Comment links (open on platform)            | ✓ Complete  |
 
 ---
 
@@ -153,6 +156,12 @@ const RATE_LIMITS = {
 - [ ] Facebook feed posts validated against real account (selector tuning)
 - [ ] Instagram feed posts validated against real account (selector tuning)
 - [ ] Stories captured (deferred)
+- [x] Like button with outbox pattern: intent recorded immediately, synced to platform async
+- [x] Two-state like UI: "noted" (amber) vs "memorialized" (red confirmed on platform)
+- [x] Seen-sync via WebView navigation (FB/IG) - best-effort, confirmed via seenSyncedAt
+- [x] X likes via GraphQL FavoriteTweet/UnfavoriteTweet mutations
+- [x] Comment links open post URL in system browser (platform-agnostic via PlatformContext.openUrl)
+- [x] sourceUrl populated across all normalizers (X, Facebook, Instagram, RSS, Saved)
 
 ---
 
