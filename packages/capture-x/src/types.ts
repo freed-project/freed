@@ -45,13 +45,11 @@ export interface XApiError {
 // =============================================================================
 
 export interface TimelineResponse {
-  data: {
-    home: {
-      home_timeline_urt: {
-        instructions: TimelineInstruction[];
-        responseObjects?: {
-          feedbackActions?: unknown[];
-        };
+  home: {
+    home_timeline_urt: {
+      instructions: TimelineInstruction[];
+      responseObjects?: {
+        feedbackActions?: unknown[];
       };
     };
   };
