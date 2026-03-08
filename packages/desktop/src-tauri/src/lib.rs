@@ -1247,6 +1247,7 @@ async fn ig_disconnect(app: tauri::AppHandle) -> Result<(), String> {
 /// The client must include `?t=<token>` in the upgrade URI.  Any connection
 /// that omits the token or presents an incorrect value is rejected with HTTP
 /// 401 before the WebSocket handshake completes — no data is exchanged.
+#[cfg_attr(feature = "perf", tracing::instrument(skip(stream, state, app), fields(addr = %addr)))]
 async fn handle_connection(
     stream: TcpStream,
     addr: SocketAddr,
