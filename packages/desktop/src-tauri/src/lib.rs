@@ -630,6 +630,84 @@ fn show_window(app: tauri::AppHandle) {
 }
 
 // ---------------------------------------------------------------------------
+// Tauri commands — X login window
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Serialize)]
+#[serde(tag = "status")]
+enum XLoginCheckResult {
+    /// The login window is not open.
+    #[serde(rename = "closed")]
+    Closed,
+    /// The window is open but session cookies are not yet available.
+    #[serde(rename = "pending")]
+    Pending,
+    /// Both ct0 and auth_token are present.
+    #[serde(rename = "ready")]
+    Ready { ct0: String, auth_token: String },
+}
+
+/// Open a secondary WebView window pointing to X's login page.
+/// If the window already exists, focus it instead of creating a duplicate.
+#[tauri::command]
+async fn open_x_login_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(existing) = app.get_webview_window("x-login") {
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        "x-login",
+        tauri::WebviewUrl::External("https://x.com/i/flow/login".parse().unwrap()),
+    )
+    .title("Sign in to X")
+    .inner_size(480.0, 720.0)
+    .center()
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+/// Check whether the X login webview has session cookies available.
+/// Returns a tagged result so the frontend can distinguish "window gone"
+/// from "window open, still waiting for login."
+#[tauri::command]
+async fn check_x_login_cookies(app: tauri::AppHandle) -> Result<XLoginCheckResult, String> {
+    let Some(window) = app.get_webview_window("x-login") else {
+        return Ok(XLoginCheckResult::Closed);
+    };
+
+    let url: url::Url = "https://x.com".parse().unwrap();
+    let cookies = window.cookies_for_url(url).map_err(|e| e.to_string())?;
+
+    let ct0 = cookies
+        .iter()
+        .find(|c| c.name() == "ct0")
+        .map(|c| c.value().to_string());
+    let auth_token = cookies
+        .iter()
+        .find(|c| c.name() == "auth_token")
+        .map(|c| c.value().to_string());
+
+    match (ct0, auth_token) {
+        (Some(ct0), Some(auth_token)) => Ok(XLoginCheckResult::Ready { ct0, auth_token }),
+        _ => Ok(XLoginCheckResult::Pending),
+    }
+}
+
+/// Close and destroy the X login window.
+#[tauri::command]
+async fn close_x_login_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("x-login") {
+        window.destroy().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Tauri commands — Facebook WebView scraper
 // ---------------------------------------------------------------------------
 
@@ -683,15 +761,13 @@ async fn fb_show_login(app: tauri::AppHandle) -> Result<(), String> {
 
         // Detect successful login: navigated away from /login on a facebook domain
         if host.contains("facebook.com") && path != "/login" && path != "/login/" {
-            // Hide the login window
             if let Some(w) = app_handle.get_webview_window("fb-scraper") {
                 let _ = w.hide();
             }
-            // Notify the frontend that auth succeeded
             let _ = app_handle.emit("fb-auth-result", serde_json::json!({ "loggedIn": true }));
         }
 
-        true // always allow the navigation
+        true
     })
     .build()
     .map_err(|e| e.to_string())?;
@@ -736,11 +812,8 @@ async fn fb_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
         }
     };
 
-    // Give the page time to load and settle.
     tokio::time::sleep(Duration::from_secs(6)).await;
 
-    // Inject a tiny script that checks for authentication markers and
-    // emits the result as a Tauri event.
     wv.eval(
         r#"
         (function() {
@@ -813,14 +886,12 @@ async fn fb_scrape_feed(app: tauri::AppHandle) -> Result<(), String> {
 
     println!("[FB] scrape started, waiting for page load...");
 
-    // Wait for the initial page load + Facebook's JS to render the feed.
     let jitter = {
         use rand::Rng;
         rand::thread_rng().gen_range(2000..4000)
     };
     tokio::time::sleep(Duration::from_millis(12000 + jitter)).await;
 
-    // Log page state after initial load
     wv.eval(r#"
         (function() {
             if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.emit) {
@@ -838,21 +909,13 @@ async fn fb_scrape_feed(app: tauri::AppHandle) -> Result<(), String> {
     // Facebook virtualizes its feed: posts only exist in the DOM when
     // they're near the viewport, and are unmounted when scrolled away.
     // We must scroll incrementally, extracting at each position.
-    //
-    // Strategy: scroll down by ~600px at a time (roughly one post height),
-    // extract after each scroll, then scroll again. The extraction script
-    // emits fb-feed-data events; the Rust event listener deduplicates and
-    // accumulates posts across all passes.
     let num_passes = 12;
     for i in 0..num_passes {
-        // Extract at current scroll position FIRST (before scrolling)
         wv.eval(FB_EXTRACT_SCRIPT)
             .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
 
-        // Small pause for the extraction to complete and event to fire
         tokio::time::sleep(Duration::from_millis(300)).await;
 
-        // Scroll down by roughly half-page to trigger lazy loading
         let scroll_amount = {
             use rand::Rng;
             rand::thread_rng().gen_range(300..500)
@@ -863,7 +926,6 @@ async fn fb_scrape_feed(app: tauri::AppHandle) -> Result<(), String> {
         );
         wv.eval(&scroll_js).map_err(|e| e.to_string())?;
 
-        // Wait for Facebook to render new content at this scroll position
         let pause = {
             use rand::Rng;
             rand::thread_rng().gen_range(2000..3500)
@@ -873,7 +935,6 @@ async fn fb_scrape_feed(app: tauri::AppHandle) -> Result<(), String> {
         println!("[FB] pass {}/{}: scrolled +{}px", i + 1, num_passes, scroll_amount);
     }
 
-    // One final extraction at the bottom
     wv.eval(FB_EXTRACT_SCRIPT)
         .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
 
@@ -1245,8 +1306,10 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                window.hide().unwrap();
-                api.prevent_close();
+                if window.label() == "main" {
+                    window.hide().unwrap();
+                    api.prevent_close();
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -1261,6 +1324,9 @@ pub fn run() {
             broadcast_doc,
             reset_pairing_token,
             show_window,
+            open_x_login_window,
+            check_x_login_cookies,
+            close_x_login_window,
             get_mdns_active,
             list_snapshots,
             start_oauth_server,
