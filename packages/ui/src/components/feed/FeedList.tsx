@@ -1,25 +1,12 @@
-import { useRef, memo, useCallback, useEffect, useState } from "react";
+import { useRef, memo, useCallback, useEffect } from "react";
 import { useVirtualizer, useWindowVirtualizer } from "@tanstack/react-virtual";
 import { FeedItem } from "./FeedItem.js";
 import { FeedItemSkeleton } from "./FeedItemSkeleton.js";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
+import { useIsMobile } from "../../hooks/useIsMobile.js";
 
 const SKELETON_COUNT = 8;
-
-/** Returns true when the viewport is narrower than Tailwind's `md` breakpoint (768px). */
-function useIsMobile(): boolean {
-  const [isMobile, setIsMobile] = useState(
-    () => typeof window !== "undefined" && window.innerWidth < 768,
-  );
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 767px)");
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-  return isMobile;
-}
 
 interface FeedListProps {
   items: FeedItemType[];

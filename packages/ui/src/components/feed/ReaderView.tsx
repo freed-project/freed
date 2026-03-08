@@ -230,7 +230,9 @@ export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProp
     <div className={dualColumn ? "flex-1 min-w-0 bg-[#0a0a0a] overflow-auto" : "fixed inset-0 z-50 bg-[#0a0a0a] overflow-auto"}>
       {/* Header */}
       <header
-        className="sticky top-0 z-10 bg-[#0a0a0a]/90 backdrop-blur-xl border-b border-[rgba(255,255,255,0.08)]"
+        className={`sticky top-0 z-10 bg-[#0a0a0a]/90 backdrop-blur-xl border-b border-[rgba(255,255,255,0.08)]${
+          dualColumn ? " border-l border-l-[rgba(255,255,255,0.08)] rounded-bl-2xl" : ""
+        }`}
         {...(headerDragRegion
           ? {
               "data-tauri-drag-region": true,
@@ -356,15 +358,11 @@ export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProp
             aria-pressed={dualColumn}
             aria-label="Toggle dual column layout"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              {dualColumn ? (
-                <>
-                  <rect x="3" y="3" width="7.5" height="18" rx="1.5" />
-                  <rect x="13.5" y="3" width="7.5" height="18" rx="1.5" />
-                </>
-              ) : (
-                <rect x="3" y="3" width="18" height="18" rx="2" />
-              )}
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+              <path d="M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12" />
+              <path d="M9 4v16" />
+              <path d={dualColumn ? "M15 10l-2 2l2 2" : "M14 10l2 2l-2 2"} />
             </svg>
           </button>
         </div>
