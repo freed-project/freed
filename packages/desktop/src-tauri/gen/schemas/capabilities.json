@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Default capabilities for the Freed desktop app","local":true,"windows":["main"],"permissions":["core:default","shell:allow-open","updater:default","process:default"]}}
+{"default":{"identifier":"default","description":"Default capabilities for the Freed desktop app","local":true,"windows":["main","x-login"],"permissions":["core:default","shell:allow-open","updater:default","process:default","fs:allow-appdata-read-recursive","fs:allow-appdata-write-recursive"]}}
