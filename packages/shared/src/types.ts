@@ -445,6 +445,9 @@ export interface DisplayPreferences {
   /** Sidebar width in pixels (default: 256, min: 180, max: 480) */
   sidebarWidth?: number;
 
+  /** Debug panel width in pixels (default: 320, min: 280, max: 600) */
+  debugPanelWidth?: number;
+
   /** Days to keep archived items before pruning (default: 30, 0 = never prune) */
   archivePruneDays: number;
 }

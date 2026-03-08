@@ -1,8 +1,13 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useRef, useCallback, type ReactNode } from "react";
 import { Sidebar } from "./Sidebar.js";
 import { Header } from "./Header.js";
 import { DebugPanel } from "../DebugPanel.js";
 import { useDebugStore } from "../../lib/debug-store.js";
+import { useAppStore } from "../../context/PlatformContext.js";
+
+const DEFAULT_DEBUG_WIDTH = 320;
+const MIN_DEBUG_WIDTH = 280;
+const MAX_DEBUG_WIDTH = 600;
 
 interface AppShellProps {
   children: ReactNode;
@@ -12,6 +17,39 @@ export function AppShell({ children }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const debugVisible = useDebugStore((s) => s.visible);
   const toggleDebug = useDebugStore((s) => s.toggle);
+  const savedDebugWidth = useAppStore((s) => s.preferences.display.debugPanelWidth) ?? DEFAULT_DEBUG_WIDTH;
+  const updatePreferences = useAppStore((s) => s.updatePreferences);
+  const [dragWidth, setDragWidth] = useState<number | null>(null);
+  const dragging = useRef(false);
+
+  const debugWidth = dragWidth ?? savedDebugWidth;
+
+  const handleDebugDragStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      dragging.current = true;
+      const startX = e.clientX;
+      const startW = debugWidth;
+
+      const onMove = (ev: MouseEvent) => {
+        if (!dragging.current) return;
+        // Panel is on the right; dragging left increases width
+        const next = Math.min(MAX_DEBUG_WIDTH, Math.max(MIN_DEBUG_WIDTH, startW - (ev.clientX - startX)));
+        setDragWidth(next);
+      };
+      const onUp = (ev: MouseEvent) => {
+        dragging.current = false;
+        const final = Math.min(MAX_DEBUG_WIDTH, Math.max(MIN_DEBUG_WIDTH, startW - (ev.clientX - startX)));
+        setDragWidth(null);
+        updatePreferences({ display: { debugPanelWidth: final } } as Parameters<typeof updatePreferences>[0]);
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [debugWidth, updatePreferences],
+  );
 
   // Keyboard shortcuts: Cmd/Ctrl+Shift+D to toggle, Escape to close
   useEffect(() => {
@@ -39,11 +77,22 @@ export function AppShell({ children }: AppShellProps) {
         <main className="flex-1 md:min-h-0 md:overflow-hidden">{children}</main>
 
         {/* Desktop push drawer — always mounted so width can animate smoothly.
-            The DebugPanel's own border-l is clipped by overflow-hidden when width is 0. */}
+            The DebugPanel's own border-l is clipped by overflow-hidden when width is 0.
+            Width is user-draggable; animated only when toggling open/closed. */}
         <div
-          className="hidden sm:block flex-none overflow-hidden transition-[width] duration-300 ease-in-out"
-          style={{ width: debugVisible ? "20rem" : "0" }}
+          className="hidden sm:flex flex-none overflow-hidden relative"
+          style={{
+            width: debugVisible ? debugWidth : 0,
+            transition: dragging.current ? "none" : "width 300ms ease-in-out",
+          }}
         >
+          {/* Left-edge resize handle — drag left to widen, drag right to narrow */}
+          {debugVisible && (
+            <div
+              className="absolute left-0 top-0 w-1 h-full cursor-col-resize hover:bg-[#8b5cf6]/30 active:bg-[#8b5cf6]/50 transition-colors z-10"
+              onMouseDown={handleDebugDragStart}
+            />
+          )}
           <DebugPanel variant="drawer" />
         </div>
       </div>
