@@ -20,7 +20,6 @@ import {
 } from "@freed/capture-facebook/browser";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
-import { getPlatformUA, selectPlatformUA, clearPlatformUA } from "./user-agent";
 
 // =============================================================================
 // Rate Limiting
