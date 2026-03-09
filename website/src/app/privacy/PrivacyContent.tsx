@@ -204,10 +204,10 @@ export default function PrivacyContent() {
                 us to build infrastructure we currently don't have), we'll
                 update the effective date at the top and post a note in the{" "}
                 <Link
-                  href="/blog"
+                  href="/updates"
                   className="text-text-primary underline hover:no-underline transition-colors"
                 >
-                  Blog
+                  Updates
                 </Link>{" "}
                 section. The full history of changes is visible in the{" "}
                 <a

@@ -30,7 +30,7 @@ export default function UpdatesContent() {
           className="text-center mb-16 sm:mb-24"
         >
           <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
-            <span className="gradient-text">Blog</span>
+            <span className="gradient-text">Updates</span>
           </h1>
           <p className="text-text-secondary text-lg sm:text-xl mb-6">
             Latest transmissions from the Feed Liberation Front.
@@ -69,7 +69,7 @@ export default function UpdatesContent() {
               transition={{ duration: 0.4, delay: index * 0.1 }}
             >
               <Link
-                href={`/blog/${post.slug}`}
+                href={`/updates/${post.slug}`}
                 className="block glass-card glass-card-interactive p-6 sm:p-8 rounded-xl transition-all hover:scale-[1.01] group"
               >
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
@@ -109,7 +109,7 @@ export default function UpdatesContent() {
             className="text-center py-16"
           >
             <p className="text-text-secondary text-lg">
-              No posts yet. Subscribe to be notified when we publish.
+              No updates yet. Subscribe to be notified when we publish.
             </p>
           </motion.div>
         )}

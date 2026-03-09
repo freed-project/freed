@@ -127,31 +127,33 @@ function ReleaseCard({
             <p className="text-sm text-text-muted">Bug fixes and improvements.</p>
           )}
 
-          {/* PR links footer */}
-          {release.prNumbers.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-freed-border flex flex-wrap gap-2 items-center">
-              <span className="text-xs text-text-muted">PRs</span>
-              {release.prNumbers.map((num) => (
-                <a
-                  key={num}
-                  href={`https://github.com/freed-project/freed/pull/${num}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-text-muted hover:text-glow-purple transition-colors"
-                >
-                  #{num}
-                </a>
-              ))}
-              <a
-                href={release.htmlUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="ml-auto text-xs text-text-muted hover:text-glow-purple transition-colors"
-              >
-                GitHub release →
-              </a>
-            </div>
-          )}
+          {/* PR links + GitHub release footer - GitHub link always shows */}
+          <div className="mt-4 pt-3 border-t border-freed-border flex flex-wrap gap-2 items-center">
+            {release.prNumbers.length > 0 && (
+              <>
+                <span className="text-xs text-text-muted">PRs</span>
+                {release.prNumbers.map((num) => (
+                  <a
+                    key={num}
+                    href={`https://github.com/freed-project/freed/pull/${num}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-text-muted hover:text-glow-purple transition-colors"
+                  >
+                    #{num}
+                  </a>
+                ))}
+              </>
+            )}
+            <a
+              href={release.htmlUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-auto text-xs text-text-muted hover:text-glow-purple transition-colors"
+            >
+              GitHub release →
+            </a>
+          </div>
         </div>
       </motion.div>
     </div>
@@ -214,10 +216,10 @@ export default function ChangelogContent({
           className="mb-16 sm:mb-20"
         >
           <h1 className="text-3xl sm:text-5xl font-bold mb-4">
-            <span className="gradient-text">Log</span>
+            <span className="gradient-text">Changelog</span>
           </h1>
           <p className="text-text-secondary text-base sm:text-lg">
-            Every release. Every fix. Every feature.
+            Even death stars have an exhaust vent.
           </p>
           <p className="text-text-muted text-sm mt-1">
             Auto-updated when new builds ship.

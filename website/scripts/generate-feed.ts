@@ -61,7 +61,7 @@ async function generateFeed() {
 
   // Add posts to feed
   for (const post of posts) {
-    const postUrl = `${SITE_URL}/blog/${post.slug}`;
+    const postUrl = `${SITE_URL}/updates/${post.slug}`;
 
     feed.addItem({
       title: post.title,

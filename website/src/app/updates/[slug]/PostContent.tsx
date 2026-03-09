@@ -26,7 +26,7 @@ export default function PostContent({ post }: PostContentProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(`https://freed.wtf/blog/${post.slug}`);
+    navigator.clipboard.writeText(`https://freed.wtf/updates/${post.slug}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [post.slug]);
@@ -41,10 +41,10 @@ export default function PostContent({ post }: PostContentProps) {
           className="mb-8"
         >
           <Link
-            href="/blog"
+            href="/updates"
             className="text-sm text-text-muted hover:text-glow-purple transition-colors"
           >
-            ‹ Back to Blog
+            ‹ Back to Updates
           </Link>
         </motion.div>
 
@@ -111,15 +111,15 @@ export default function PostContent({ post }: PostContentProps) {
             className="mt-24 not-prose flex items-center justify-between"
           >
             <Link
-              href="/blog"
+              href="/updates"
               className="text-sm text-glow-purple hover:text-glow-blue transition-colors"
             >
-              ‹ Back to Blog
+              ‹ Back to Updates
             </Link>
             <p className="text-text-muted text-sm">
               <a
                 href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(
-                  `https://freed.wtf/blog/${post.slug}`,
+                  `https://freed.wtf/updates/${post.slug}`,
                 )}&text=${encodeURIComponent(post.title)}`}
                 target="_blank"
                 rel="noopener noreferrer"
