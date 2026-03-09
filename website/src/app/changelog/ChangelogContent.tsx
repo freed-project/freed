@@ -213,7 +213,7 @@ export default function ChangelogContent({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="mb-16 sm:mb-20"
+          className="text-center mb-16 sm:mb-20"
         >
           <h1 className="text-3xl sm:text-5xl font-bold mb-4">
             <span className="gradient-text">Changelog</span>
