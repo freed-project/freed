@@ -69,8 +69,6 @@
 
 .glass-card {
   background: var(--bg-card);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--freed-border);
   border-radius: var(--card-radius);
 }
@@ -139,8 +137,6 @@
 
 .glass-button {
   background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--freed-border);
   border-radius: var(--button-radius);
   color: var(--text-primary);

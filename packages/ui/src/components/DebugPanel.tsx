@@ -636,7 +636,7 @@ export function DebugPanel({ variant = "overlay" }: { variant?: PanelVariant }) 
 
   // Mobile overlay: bottom-sheet anchored to the viewport
   return (
-    <div className="fixed inset-0 z-[200] flex items-end bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[200] flex items-end bg-black/60">
       <div
         className="w-full bg-[#111111] border border-[rgba(255,255,255,0.1)] rounded-t-2xl shadow-2xl flex flex-col"
         style={{ maxHeight: "85vh" }}

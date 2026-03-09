@@ -35,9 +35,9 @@ const posts: PostMeta[] = [
 ];
 
 const SITE_URL = "https://freed.wtf";
-const SITE_TITLE = "Freed Updates";
+const SITE_TITLE = "Freed Blog";
 const SITE_DESCRIPTION =
-  "Progress updates, technical deep-dives, and philosophical rants about the attention economy. From the team building Freed.";
+  "Progress reports, technical deep-dives, and philosophical rants about the attention economy. From the team building Freed.";
 
 async function generateFeed() {
   const feed = new Feed({

@@ -222,7 +222,7 @@ export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProp
     <div className={dualColumn ? "flex-1 min-w-0 bg-[#0a0a0a] overflow-auto" : "fixed inset-0 z-50 bg-[#0a0a0a] overflow-auto"}>
       {/* Header */}
       <header
-        className={`sticky top-0 z-10 bg-[#0a0a0a]/90 backdrop-blur-xl border-b border-[rgba(255,255,255,0.08)]${
+        className={`sticky top-0 z-10 bg-[#0a0a0a] border-b border-[rgba(255,255,255,0.08)]${
           dualColumn ? " border-l border-l-[rgba(255,255,255,0.08)] rounded-bl-2xl" : ""
         }`}
         {...(headerDragRegion

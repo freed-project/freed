@@ -84,7 +84,7 @@ export function LibraryDialog({
       }}
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/60" />
 
       {/* Dialog */}
       <div className="relative z-10 w-full max-w-md mx-4 bg-[#161616] border border-[rgba(255,255,255,0.1)] rounded-2xl shadow-2xl shadow-black/80 overflow-hidden">
