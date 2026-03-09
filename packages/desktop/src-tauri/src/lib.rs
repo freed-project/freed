@@ -885,13 +885,18 @@ async fn fb_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
     Ok(true)
 }
 
-/// Trigger a feed scrape in the hidden Facebook WebView.
+/// Trigger a feed scrape in the Facebook WebView.
 ///
 /// Navigates to facebook.com, waits for content to render, then injects
 /// the extraction script which reads the DOM and emits 'fb-feed-data'.
+///
+/// `show_window` controls visibility during scraping:
+/// - `false` (default): window is positioned off-screen at (-20000, -20000) so
+///   WebKit renders at full speed without the window appearing on the user's desktop.
+/// - `true` (debug): window is centered and focused, matching the original behavior.
 #[tauri::command]
-async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, CaptureState>) -> Result<(), String> {
-    use tauri::WebviewWindowBuilder;
+async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, CaptureState>, show_window: bool) -> Result<(), String> {
+    use tauri::{LogicalPosition, WebviewWindowBuilder};
 
     let fb_feed_url = "https://www.facebook.com/";
 
@@ -899,12 +904,18 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         Some(w) => {
             w.navigate(fb_feed_url.parse().unwrap())
                 .map_err(|e| e.to_string())?;
+            if show_window {
+                let _ = w.center();
+                let _ = w.set_focus();
+            } else {
+                let _ = w.set_position(LogicalPosition::new(-20000.0_f64, -20000.0_f64));
+            }
             let _ = w.show();
             w
         }
         None => {
             let app_handle = app.clone();
-            WebviewWindowBuilder::new(
+            let mut builder = WebviewWindowBuilder::new(
                 &app,
                 "fb-scraper",
                 tauri::WebviewUrl::External(
@@ -927,13 +938,19 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
                         serde_json::json!({ "loggedIn": true }));
                 }
                 true
-            })
-            .build()
-            .map_err(|e| e.to_string())?
+            });
+
+            if show_window {
+                builder = builder.center();
+            } else {
+                builder = builder.position(-20000.0, -20000.0);
+            }
+
+            builder.build().map_err(|e| e.to_string())?
         }
     };
 
-    println!("[FB] scrape started, waiting for page load...");
+    println!("[FB] scrape started (show_window={}), waiting for page load...", show_window);
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(13000.0, 1500.0))).await;
 
@@ -959,6 +976,9 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         rand::thread_rng().gen_range(8usize..=18)
     };
     for i in 0..num_passes {
+        // Keep window visible — WebKit throttles hidden windows, even off-screen ones.
+        let _ = wv.show();
+
         wv.eval(FB_EXTRACT_SCRIPT)
             .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
 
@@ -1097,7 +1117,8 @@ async fn ig_show_login(app: tauri::AppHandle, capture: tauri::State<'_, CaptureS
                 println!("[IG] login detected, auto-scraping...");
                 tokio::time::sleep(Duration::from_millis(gaussian_ms(4000.0, 800.0))).await;
                 let capture = scrape_app.state::<CaptureState>();
-                match ig_scrape_feed(scrape_app.clone(), capture).await {
+                // Auto-scrapes never show the window -- user didn't request debug mode.
+                match ig_scrape_feed(scrape_app.clone(), capture, false).await {
                     Ok(()) => println!("[IG] post-login auto-scrape complete"),
                     Err(e) => println!("[IG] post-login auto-scrape error: {}", e),
                 }
@@ -1174,29 +1195,37 @@ async fn ig_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
 ///
 /// Navigates to instagram.com, waits for content to render, then injects
 /// the extraction script which reads the DOM and emits 'ig-feed-data'.
+///
+/// `show_window` controls visibility during scraping:
+/// - `false` (default): window is positioned off-screen at (-20000, -20000) so
+///   WebKit renders at full speed without the window appearing on the user's desktop.
+/// - `true` (debug): window is centered and on-screen, matching the original behavior.
 #[tauri::command]
-async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, CaptureState>) -> Result<(), String> {
-    use tauri::WebviewWindowBuilder;
+async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, CaptureState>, show_window: bool) -> Result<(), String> {
+    use tauri::{LogicalPosition, WebviewWindowBuilder};
 
     let ig_feed_url = "https://www.instagram.com/?variant=following";
 
     let wv = match app.get_webview_window("ig-scraper") {
         Some(w) => {
-            // Window exists (user already logged in). Show it and let it load.
+            // Window exists (user already logged in). Re-position then show.
             // DO NOT re-navigate — that would fire the ig_show_login on_navigation
             // callback which hides the window, causing WebKit to throttle rendering.
-            // DO NOT set_focus — we don't want to steal focus from the user's
-            // foreground app; show() is sufficient to unthrottle WebKit rendering.
+            if show_window {
+                let _ = w.center();
+                let _ = w.set_focus();
+            } else {
+                let _ = w.set_position(LogicalPosition::new(-20000.0_f64, -20000.0_f64));
+            }
             let _ = w.show();
-            println!("[IG] reusing existing ig-scraper window (already authenticated)");
+            println!("[IG] reusing existing ig-scraper window (show_window={})", show_window);
             w
         }
         None => {
             // No existing window — create one. This path runs on first-ever scrape
             // (when the user hasn't gone through ig_show_login yet, e.g. auto-scrape).
-            // Use a minimal on_navigation that only hides during the login page.
             let app_handle = app.clone();
-            WebviewWindowBuilder::new(
+            let mut builder = WebviewWindowBuilder::new(
                 &app,
                 "ig-scraper",
                 tauri::WebviewUrl::External(
@@ -1211,7 +1240,6 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
             .on_navigation(move |url| {
                 let path = url.path();
                 let host = url.host_str().unwrap_or("");
-                // Only emit auth result when moving away from login page
                 if host.contains("instagram.com")
                     && (path == "/accounts/login" || path == "/accounts/login/")
                 {
@@ -1221,13 +1249,19 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
                         serde_json::json!({ "loggedIn": true }));
                 }
                 true
-            })
-            .build()
-            .map_err(|e| e.to_string())?
+            });
+
+            if show_window {
+                builder = builder.center();
+            } else {
+                builder = builder.position(-20000.0, -20000.0);
+            }
+
+            builder.build().map_err(|e| e.to_string())?
         }
     };
 
-    println!("[IG] scrape started, waiting for feed to render...");
+    println!("[IG] scrape started (show_window={}), waiting for feed to render...", show_window);
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(9000.0, 1200.0))).await;
 
@@ -1852,8 +1886,10 @@ pub fn run() {
                     println!("[FB] auto-scrape enabled, waiting 8s for app init...");
                     tokio::time::sleep(Duration::from_secs(8)).await;
                     println!("[FB] triggering auto-scrape now");
+                    // Dev env var auto-scrape: show_window=true so the window is
+                    // visible during development iteration.
                     let capture = auto_app.state::<CaptureState>();
-                    match fb_scrape_feed(auto_app.clone(), capture).await {
+                    match fb_scrape_feed(auto_app.clone(), capture, true).await {
                         Ok(()) => println!("[FB] auto-scrape command returned OK"),
                         Err(e) => println!("[FB] auto-scrape error: {}", e),
                     }
@@ -1868,8 +1904,10 @@ pub fn run() {
                     println!("[IG] auto-scrape enabled, waiting 8s for app init...");
                     tokio::time::sleep(Duration::from_secs(8)).await;
                     println!("[IG] triggering auto-scrape now");
+                    // Dev env var auto-scrape: show_window=true so the window is
+                    // visible during development iteration.
                     let capture = auto_app.state::<CaptureState>();
-                    match ig_scrape_feed(auto_app.clone(), capture).await {
+                    match ig_scrape_feed(auto_app.clone(), capture, true).await {
                         Ok(()) => println!("[IG] auto-scrape command returned OK"),
                         Err(e) => println!("[IG] auto-scrape error: {}", e),
                     }

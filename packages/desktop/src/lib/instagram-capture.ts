@@ -20,6 +20,7 @@ import {
 } from "@freed/capture-instagram/browser";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
+import { getIgScraperDebugWindow } from "./scraper-prefs";
 
 // =============================================================================
 // Rate Limiting
@@ -120,7 +121,7 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
       }
     });
 
-    await invoke("ig_scrape_feed");
+    await invoke("ig_scrape_feed", { showWindow: getIgScraperDebugWindow() });
 
     // Brief wait for any in-flight events to arrive after invoke resolves
     await new Promise<void>((r) => setTimeout(r, 500));
