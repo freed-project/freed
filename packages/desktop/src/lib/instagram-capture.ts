@@ -28,9 +28,12 @@ import { addDebugEvent } from "@freed/ui/lib/debug-store";
 let lastScrapeAt = 0;
 const MIN_INTERVAL_MS = 20 * 60 * 1000; // 20 minutes minimum between scrapes
 
+const INTERVAL_JITTER_MS = 4 * 60 * 1000;
+
 function isRateLimited(): boolean {
-  // TODO: re-enable rate limiting after scraper is proven working
-  return false;
+  if (lastScrapeAt === 0) return false;
+  const jitter = Math.random() * INTERVAL_JITTER_MS;
+  return Date.now() - lastScrapeAt < MIN_INTERVAL_MS + jitter;
 }
 
 function recordScrape(): void {

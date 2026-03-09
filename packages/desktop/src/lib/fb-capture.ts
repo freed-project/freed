@@ -20,24 +20,26 @@ import {
 } from "@freed/capture-facebook/browser";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
+import { getPlatformUA, selectPlatformUA, clearPlatformUA } from "./user-agent";
 
 // =============================================================================
 // Rate Limiting
 // =============================================================================
 
 let lastScrapeAt = 0;
-const MIN_INTERVAL_MS = 20 * 60 * 1000; // 20 minutes minimum between scrapes
-const recentScrapes: number[] = [];
+// 20 min base interval + up to 4 min of jitter so scrapes don't land at
+// perfectly regular clock-tick intervals (machine-like regularity is a signal).
+const MIN_INTERVAL_MS = 20 * 60 * 1000;
+const INTERVAL_JITTER_MS = 4 * 60 * 1000;
 
 function isRateLimited(): boolean {
-  // TODO: re-enable rate limiting after scraper is proven working
-  return false;
+  if (lastScrapeAt === 0) return false;
+  const jitter = Math.random() * INTERVAL_JITTER_MS;
+  return Date.now() - lastScrapeAt < MIN_INTERVAL_MS + jitter;
 }
 
 function recordScrape(): void {
-  const now = Date.now();
-  lastScrapeAt = now;
-  recentScrapes.push(now);
+  lastScrapeAt = Date.now();
 }
 
 // =============================================================================

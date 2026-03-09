@@ -27,6 +27,7 @@ import type { XTweetResult, TimelineResponse } from "@freed/capture-x/browser";
 import type { XCookies } from "./x-auth";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
+import { getPlatformUA, extractChromeVersion, osPlatformHeader } from "./user-agent";
 
 // =============================================================================
 // Injectable Transport
@@ -37,13 +38,14 @@ import { addDebugEvent } from "@freed/ui/lib/debug-store";
  * response body as a string. In production this calls Tauri's x_api_request
  * command; in tests any function that returns fixture JSON can be substituted.
  *
- * `method` defaults to "GET" — X's read-only GraphQL endpoints expect GET
- * with variables/features encoded as URL query params.
+ * Headers are passed as ordered pairs so the Rust backend preserves the exact
+ * header ordering Chrome would use (important for JA4H fingerprinting).
+ * `method` defaults to "GET" — X's read-only GraphQL endpoints expect GET.
  */
 export type XRequester = (
   url: string,
   body: string,
-  headers: Record<string, string>,
+  headers: Array<[string, string]>,
   method?: string,
 ) => Promise<string>;
 
@@ -98,6 +100,37 @@ export interface XSyncResult {
 // Transport Layer
 // =============================================================================
 
+function buildXHeaders(cookies: XCookies, isPost = false): Array<[string, string]> {
+  const ua = getPlatformUA("x");
+  const chromeVersion = extractChromeVersion(ua) ?? "131";
+  const platform = osPlatformHeader();
+
+  // Headers in Chrome's canonical order — ordering is preserved end-to-end
+  // because we use Vec<(String, String)> in the Rust backend rather than HashMap.
+  const headers: Array<[string, string]> = [
+    ["authorization", `Bearer ${X_BEARER_TOKEN}`],
+    ["accept", "*/*"],
+    ["accept-language", "en-US,en;q=0.9"],
+    ["accept-encoding", "gzip, deflate, br"],
+    ...(isPost ? [["content-type", "application/json"] as [string, string]] : []),
+    ["x-csrf-token", cookies.ct0],
+    ["x-twitter-active-user", "yes"],
+    ["x-twitter-auth-type", "OAuth2Session"],
+    ["x-twitter-client-language", "en"],
+    ["sec-ch-ua", `"Chromium";v="${chromeVersion}", "Google Chrome";v="${chromeVersion}", "Not-A.Brand";v="99"`],
+    ["sec-ch-ua-mobile", "?0"],
+    ["sec-ch-ua-platform", platform],
+    ["sec-fetch-site", "same-site"],
+    ["sec-fetch-mode", "cors"],
+    ["sec-fetch-dest", "empty"],
+    ["origin", "https://twitter.com"],
+    ["referer", "https://twitter.com/"],
+    ["cookie", `ct0=${cookies.ct0}; auth_token=${cookies.authToken}`],
+  ];
+
+  return headers;
+}
+
 async function xRequest(
   cookies: XCookies,
   endpoint: { queryId: string; operationName: string; features: Record<string, boolean> },
@@ -113,18 +146,7 @@ async function xRequest(
   });
   const url = `${base}?${params.toString()}`;
 
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${X_BEARER_TOKEN}`,
-    "x-csrf-token": cookies.ct0,
-    cookie: `ct0=${cookies.ct0}; auth_token=${cookies.authToken}`,
-    "x-twitter-active-user": "yes",
-    "x-twitter-auth-type": "OAuth2Session",
-    "x-twitter-client-language": "en",
-    "user-agent":
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  };
-
-  return requester(url, "", headers, "GET");
+  return requester(url, "", buildXHeaders(cookies, false), "GET");
 }
 
 // =============================================================================
@@ -275,18 +297,7 @@ async function xMutationRequest(
   body: string,
   requester: XRequester,
 ): Promise<string> {
-  const headers: Record<string, string> = {
-    authorization: `Bearer ${X_BEARER_TOKEN}`,
-    "content-type": "application/json",
-    "x-csrf-token": cookies.ct0,
-    cookie: `ct0=${cookies.ct0}; auth_token=${cookies.authToken}`,
-    "x-twitter-active-user": "yes",
-    "x-twitter-auth-type": "OAuth2Session",
-    "x-twitter-client-language": "en",
-    "user-agent":
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-  };
-  return requester(url, body, headers, "POST");
+  return requester(url, body, buildXHeaders(cookies, true), "POST");
 }
 
 /**

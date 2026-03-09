@@ -8,6 +8,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { selectPlatformUA, clearPlatformUA } from "./user-agent";
 
 export interface FbAuthState {
   isAuthenticated: boolean;
@@ -23,7 +24,9 @@ const FB_AUTH_KEY = "fb_auth_state";
  * in, the user closes the window (or we hide it after detecting auth).
  */
 export async function showFbLogin(): Promise<void> {
-  await invoke("fb_show_login");
+  // Generate and persist a fresh session UA at connect time.
+  const userAgent = selectPlatformUA("facebook");
+  await invoke("fb_show_login", { userAgent });
 }
 
 /**
@@ -69,6 +72,7 @@ export async function checkFbAuth(): Promise<boolean> {
 export async function disconnectFb(): Promise<void> {
   await invoke("fb_disconnect");
   localStorage.removeItem(FB_AUTH_KEY);
+  clearPlatformUA("facebook");
 }
 
 /**
