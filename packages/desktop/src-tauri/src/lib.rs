@@ -1009,6 +1009,10 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
     tokio::time::sleep(Duration::from_millis(500)).await;
     println!("[FB] scrape complete, {} extraction passes emitted", num_passes + 1);
 
+    // Hide the window now that scraping is done. The window stays alive in the
+    // background to preserve the authenticated session for the next scrape.
+    let _ = wv.hide();
+
     Ok(())
 }
 
@@ -1181,8 +1185,9 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
             // Window exists (user already logged in). Show it and let it load.
             // DO NOT re-navigate — that would fire the ig_show_login on_navigation
             // callback which hides the window, causing WebKit to throttle rendering.
+            // DO NOT set_focus — we don't want to steal focus from the user's
+            // foreground app; show() is sufficient to unthrottle WebKit rendering.
             let _ = w.show();
-            let _ = w.set_focus();
             println!("[IG] reusing existing ig-scraper window (already authenticated)");
             w
         }
@@ -1226,9 +1231,10 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(9000.0, 1200.0))).await;
 
-    // Ensure window is still visible (anything could have hidden it)
+    // Ensure window is still visible so WebKit doesn't throttle JS execution.
+    // Do NOT set_focus here — we don't want to yank focus from the user's
+    // foreground app on every scrape pass.
     let _ = wv.show();
-    let _ = wv.set_focus();
     println!("[IG] window visible, proceeding with extraction");
 
     // Belt-and-suspenders: click the Following tab if present
@@ -1311,6 +1317,10 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
 
     tokio::time::sleep(Duration::from_millis(500)).await;
     println!("[IG] scrape complete, {} extraction passes emitted", num_passes + 1);
+
+    // Hide the window now that scraping is done. The window stays alive in the
+    // background to preserve the authenticated session for the next scrape.
+    let _ = wv.hide();
 
     Ok(())
 }
