@@ -49,10 +49,10 @@ custom-protocol = ["tauri/custom-protocol"]
 perf = ["dep:tracing", "dep:tracing-subscriber"]
 
 [dependencies.tracing]
-version = "26.3.803"
+version = "0.1"
 optional = true
 
 [dependencies.tracing-subscriber]
-version = "26.3.803"
+version = "0.3"
 features = ["env-filter", "json"]
 optional = true

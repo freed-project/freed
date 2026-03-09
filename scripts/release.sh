@@ -72,8 +72,16 @@ node -e "
   fs.writeFileSync('${TAURI_CONF}', JSON.stringify(conf, null, 2) + '\n');
 "
 
-# Update Cargo.toml version line
-sed -i '' "s/^version = \".*\"/version = \"${VERSION}\"/" "${CARGO_TOML}"
+# Update Cargo.toml - replace only the version in [package] section.
+# sed's ^version = "..." matches ALL top-level version keys (including
+# [dependencies.tracing] etc), so we use awk to scope the replacement to
+# the [package] block only.
+awk -v ver="${VERSION}" '
+  /^\[package\]/ { in_pkg=1 }
+  /^\[/ && !/^\[package\]/ { in_pkg=0 }
+  in_pkg && /^version = / { $0 = "version = \"" ver "\"" }
+  { print }
+' "${CARGO_TOML}" > "${CARGO_TOML}.tmp" && mv "${CARGO_TOML}.tmp" "${CARGO_TOML}"
 
 # Update desktop package.json
 node -e "
