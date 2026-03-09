@@ -208,7 +208,6 @@ jobs:
           npm run build -w @freed/shared
           npm run build -w @freed/sync
           npm run build -w @freed/capture-rss
-          npm run build -w @freed/capture-x
 
       # macOS code signing (only runs if secrets are configured)
       - name: Import Apple signing certificate
