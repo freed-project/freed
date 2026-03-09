@@ -20,6 +20,7 @@ import {
 } from "@freed/capture-facebook/browser";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
+import { getFbScraperDebugWindow } from "./scraper-prefs";
 
 // =============================================================================
 // Rate Limiting
@@ -147,7 +148,7 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
     });
 
     // Trigger the Rust command
-    invoke("fb_scrape_feed").catch((err) => {
+    invoke("fb_scrape_feed", { showWindow: getFbScraperDebugWindow() }).catch((err) => {
       clearTimeout(timeout);
       unlisten?.();
       diag.errorStage = "invoke";
