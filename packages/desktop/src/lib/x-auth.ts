@@ -14,6 +14,7 @@
 
 export type { XCookies } from "@freed/capture-x/browser";
 import type { XCookies } from "@freed/capture-x/browser";
+import { selectPlatformUA, clearPlatformUA } from "./user-agent";
 
 /**
  * Parse a raw cookie string (e.g. from document.cookie or a browser export)
@@ -92,6 +93,8 @@ export function connectX(ct0: string, authToken: string): XCookies | null {
 
   const cookies: XCookies = { ct0: ct0Trimmed, authToken: tokenTrimmed };
   storeCookies(cookies);
+  // Generate and persist a fresh session UA at connect time.
+  selectPlatformUA("x");
   return cookies;
 }
 
@@ -112,4 +115,5 @@ export async function initXAuth(): Promise<XAuthState> {
  */
 export function disconnectX(): void {
   clearStoredCookies();
+  clearPlatformUA("x");
 }

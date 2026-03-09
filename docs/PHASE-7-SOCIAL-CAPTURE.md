@@ -171,8 +171,52 @@ const RATE_LIMITS = {
 | ---------------------- | ------------------------------------------------------------- |
 | DOM changes frequently | Version selectors, monitor for breakage, quick update process |
 | Account bans           | Conservative rate limiting, human-like scrolling with jitter  |
-| Anti-bot detection     | Native WebView (WKWebView), real Safari UA, randomized timing |
+| Anti-bot detection     | Native WebView, per-session OS-aware UA, Gaussian timing, webkit-mask init script, rquest Chrome TLS fingerprint for X |
 | Legal concerns         | User captures their own data, no central server               |
+
+---
+
+## Future Anti-Detection Improvements
+
+These are documented for future implementation. They were discussed and deferred in the anti-detection hardening PR (feat/anti-detection-hardening).
+
+### Quiet Hours Sync Gating
+
+Gate automatic sync to not run between midnight and 6am (configurable by user). A machine that checks social media at 3am with perfectly regular intervals is a bot signal. The sync scheduler should check the current hour before triggering a background scrape and apply additional random delay at day boundaries.
+
+### Canvas Fingerprint Noise
+
+Facebook and Instagram use canvas fingerprinting to build a persistent device fingerprint across sessions. The technique renders text or shapes to an offscreen canvas and reads back the pixel data - minor rendering differences between GPU drivers and font engines make each device unique.
+
+Fix: inject a per-session imperceptible noise layer into `CanvasRenderingContext2D.prototype.getImageData` via the webkit-mask.js init script. Add `±1` to a deterministic-but-session-varied subset of pixel values. This breaks cross-session fingerprint matching without affecting visible rendering.
+
+```javascript
+// In webkit-mask.js (future addition)
+const _origGetImageData = CanvasRenderingContext2D.prototype.getImageData;
+const _noise = (Math.random() * 2 - 1); // stable for this session
+CanvasRenderingContext2D.prototype.getImageData = function(...args) {
+  const data = _origGetImageData.apply(this, args);
+  for (let i = 0; i < data.data.length; i += 127) {
+    data.data[i] = Math.max(0, Math.min(255, data.data[i] + Math.round(_noise)));
+  }
+  return data;
+};
+```
+
+### X API via X Login WebView (Option C)
+
+Instead of Rust HTTP + rquest, inject GraphQL `fetch()` calls into the authenticated X login WebView. Since the WebView is already on the `twitter.com` domain after login, these are same-origin requests - the browser attaches cookies automatically, uses the real browser TLS stack (no BoringSSL compile dependency), and sends headers in the browser's native order.
+
+This requires:
+- Keeping the X login WebView alive after login (as a hidden window, like the FB/IG pattern)
+- Injecting JS that calls `fetch()` against the GraphQL endpoint and returns results via Tauri event IPC
+- Significant refactor of the X capture flow
+
+This approach eliminates the need for rquest entirely and is architecturally cleaner. Deserves its own PR.
+
+### TLS JA4H Header Order Analysis
+
+Profile whether the HashMap → Vec ordered header change in x_api_request meaningfully changes Cloudflare's bot score in practice. Set up a test account, capture baseline bot scores before and after the change using Cloudflare's bot score headers (`cf-bot-score`, visible in network logs when testing against a CF-fronted endpoint), and quantify the improvement.
 
 ---
 

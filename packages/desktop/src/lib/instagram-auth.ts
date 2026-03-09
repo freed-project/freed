@@ -8,6 +8,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { selectPlatformUA, clearPlatformUA } from "./user-agent";
 
 export interface IgAuthState {
   isAuthenticated: boolean;
@@ -22,7 +23,8 @@ const IG_AUTH_KEY = "ig_auth_state";
  * in, the on_navigation handler detects the redirect and hides the window.
  */
 export async function showIgLogin(): Promise<void> {
-  await invoke("ig_show_login");
+  const userAgent = selectPlatformUA("instagram");
+  await invoke("ig_show_login", { userAgent });
 }
 
 /**
@@ -68,6 +70,7 @@ export async function checkIgAuth(): Promise<boolean> {
 export async function disconnectIg(): Promise<void> {
   await invoke("ig_disconnect");
   localStorage.removeItem(IG_AUTH_KEY);
+  clearPlatformUA("instagram");
 }
 
 /**

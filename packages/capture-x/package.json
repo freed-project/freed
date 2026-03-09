@@ -2,25 +2,17 @@
   "name": "@freed/capture-x",
   "version": "0.1.0",
   "type": "module",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
     "./browser": "./src/browser.ts"
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@freed/shared": "*",
-    "@automerge/automerge": "^2.2.0",
-    "better-sqlite3": "^11.0.0"
+    "@freed/shared": "*"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.0",
     "typescript": "^5.3.0"
   }
 }
