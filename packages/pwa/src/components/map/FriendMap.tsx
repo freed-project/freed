@@ -182,13 +182,13 @@ export function FriendMap({ friends, feedItems }: FriendMapProps) {
       <div ref={containerRef} className="w-full h-full" />
 
       {geocodingCount > 0 && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-sm text-xs text-white/70">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-full bg-black/60 text-xs text-white/70">
           Resolving {geocodingCount.toLocaleString()} location{geocodingCount !== 1 ? "s" : ""}...
         </div>
       )}
 
       {resolvedItems.length === 0 && geocodingCount === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/40">
           <div className="text-center px-6">
             <p className="text-white/70 text-sm">No geo-tagged posts yet.</p>
             <p className="text-white/40 text-xs mt-1">

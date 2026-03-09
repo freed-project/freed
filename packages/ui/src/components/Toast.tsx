@@ -83,7 +83,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
   return (
     <div
       className={`
-        flex items-center gap-3 px-4 py-3 rounded-xl border backdrop-blur-xl
+        flex items-center gap-3 px-4 py-3 rounded-xl border
         ${bgColor}
         ${isExiting ? "animate-slide-out" : "animate-slide-in"}
       `}

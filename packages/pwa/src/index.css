@@ -149,9 +149,7 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
-  background: rgba(10, 10, 10, 0.9);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(10, 10, 10, 1);
   border-top: 1px solid var(--freed-border);
   padding-bottom: var(--safe-area-bottom);
   z-index: 50;

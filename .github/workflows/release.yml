@@ -10,7 +10,121 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Generate structured release notes from commits + PR bodies between tags.
+  # Runs once on ubuntu before the 4-platform matrix so all legs share the same body.
+  notes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      release_body: ${{ steps.gen.outputs.release_body }}
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        id: gen
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+
+          # Find the previous tag to bound the commit range
+          PREV_TAG=$(git tag --sort=version:refname | grep -v "^${TAG}$" | tail -1)
+
+          # Collect commits between prev tag and this tag
+          if [[ -n "$PREV_TAG" ]]; then
+            COMMITS=$(git log "${PREV_TAG}..${TAG}" --format="%s" 2>/dev/null || true)
+          else
+            COMMITS=$(git log "${TAG}" --format="%s" 2>/dev/null || true)
+          fi
+
+          # Strip conventional prefix and optional scope: "feat(pwa): add X (#42)" → "Add X"
+          strip_prefix() {
+            local msg="$1"
+            msg="${msg% \(#[0-9]*\)}"
+            msg=$(echo "$msg" | sed -E 's/^(feat|fix|perf|refactor|style|chore|docs|test|build|ci)(\([^)]+\))?!?: //')
+            echo "${msg^}"
+          }
+
+          # Fetch PR summary for a given PR number
+          fetch_summary() {
+            local num="$1"
+            gh pr view "$num" --json body --jq '.body' 2>/dev/null | \
+              awk '/^## Summary/{found=1; next} found && /^## /{exit} found{print}' | \
+              sed '/^[[:space:]]*$/d' | head -5 | \
+              sed -E 's/\*\*([^*]+)\*\*/\1/g; s/\*([^*]+)\*/\1/g; s/`([^`]+)`/\1/g; s/^[-*] //' | \
+              head -1
+          }
+
+          FEAT_LINES=""
+          FIX_LINES=""
+          PERF_LINES=""
+
+          while IFS= read -r subject; do
+            [[ -z "$subject" ]] && continue
+            [[ "$subject" =~ ^(release|chore|docs|test|build|ci|Merge\ branch): ]] && continue
+
+            PR_NUM=$(echo "$subject" | grep -oE '\(#[0-9]+\)$' | grep -oE '[0-9]+' || true)
+
+            if [[ -n "$PR_NUM" ]]; then
+              SUMMARY=$(fetch_summary "$PR_NUM" || true)
+              if [[ -n "$SUMMARY" && ${#SUMMARY} -le 120 ]]; then
+                BULLET="${SUMMARY^}"
+              else
+                BULLET=$(strip_prefix "$subject")
+              fi
+              LINK=" ([#${PR_NUM}](https://github.com/${{ github.repository }}/pull/${PR_NUM}))"
+            else
+              BULLET=$(strip_prefix "$subject")
+              LINK=""
+            fi
+
+            if [[ "$subject" =~ ^feat ]]; then
+              FEAT_LINES+="- ${BULLET}${LINK}"$'\n'
+            elif [[ "$subject" =~ ^fix ]]; then
+              FIX_LINES+="- ${BULLET}${LINK}"$'\n'
+            elif [[ "$subject" =~ ^perf ]]; then
+              PERF_LINES+="- ${BULLET}${LINK}"$'\n'
+            fi
+          done <<< "$COMMITS"
+
+          # Assemble body
+          BODY="## Freed ${TAG}"$'\n\n'
+
+          if [[ -n "$FEAT_LINES" ]]; then
+            BODY+="### What's New"$'\n\n'"${FEAT_LINES}"$'\n'
+          fi
+          if [[ -n "$PERF_LINES" ]]; then
+            BODY+="### Performance"$'\n\n'"${PERF_LINES}"$'\n'
+          fi
+          if [[ -n "$FIX_LINES" ]]; then
+            BODY+="### Fixes"$'\n\n'"${FIX_LINES}"$'\n'
+          fi
+          if [[ -z "$FEAT_LINES" && -z "$FIX_LINES" && -z "$PERF_LINES" ]]; then
+            BODY+="### Fixes"$'\n\n'"- Bug fixes and improvements"$'\n\n'
+          fi
+
+          BODY+="### Downloads"$'\n\n'
+          BODY+="**macOS:** \`.dmg\` (Apple Silicon or Intel)  "$'\n'
+          BODY+="**Windows:** \`.exe\` (NSIS installer)  "$'\n'
+          BODY+="**Linux:** \`.AppImage\`  "$'\n\n'
+          BODY+="> macOS users may need to right-click → Open on first launch."
+
+          # Write to GITHUB_OUTPUT using heredoc to handle multiline
+          {
+            echo "release_body<<RELEASE_BODY_EOF"
+            echo "$BODY"
+            echo "RELEASE_BODY_EOF"
+          } >> "$GITHUB_OUTPUT"
+
   release:
+    needs: notes
     permissions:
       contents: write
 
@@ -131,16 +245,7 @@ jobs:
           tauriScript: npx tauri
           tagName: v__VERSION__
           releaseName: "Freed v__VERSION__"
-          releaseBody: |
-            ## Freed v__VERSION__
-
-            Download the appropriate installer for your platform below.
-
-            **macOS:** `.dmg` (Apple Silicon or Intel)
-            **Windows:** `.exe` (NSIS installer)
-            **Linux:** `.AppImage`
-
-            > **Note:** macOS users may need to right-click → Open on first launch until code signing is configured.
+          releaseBody: ${{ needs.notes.outputs.release_body }}
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}

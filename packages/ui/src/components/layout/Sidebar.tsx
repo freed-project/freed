@@ -359,7 +359,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       {/* Mobile overlay */}
       {open && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
+          className="fixed inset-0 bg-black/60 z-40 md:hidden"
           onClick={onClose}
         />
       )}
@@ -369,7 +369,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         className={`
           fixed inset-y-0 left-0 md:relative z-50 md:z-auto
           h-full
-          bg-[#0a0a0a]/95 md:bg-[#0f0f0f]/80 backdrop-blur-xl
+          bg-[#0a0a0a] md:bg-[#0f0f0f]
           border-r border-[rgba(255,255,255,0.08)]
           transform transition-transform duration-200 ease-in-out
           ${open ? "translate-x-0" : "-translate-x-full md:translate-x-0"}

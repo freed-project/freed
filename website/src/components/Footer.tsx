@@ -62,10 +62,10 @@ export default function Footer() {
               </li>
               <li>
                 <Link
-                  href="/updates"
+                  href="/blog"
                   className="text-text-secondary text-sm hover:text-text-primary transition-colors"
                 >
-                  Updates
+                  Blog
                 </Link>
               </li>
             </ul>
