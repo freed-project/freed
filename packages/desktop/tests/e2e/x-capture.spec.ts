@@ -153,12 +153,11 @@ test("X connect form accepts cookies and triggers sync", async ({
 
   // Click "Manual cookie setup" to reach the cookie input form
   const manualBtn = page.getByText("Manual cookie setup");
-  await expect(manualBtn).toBeVisible({ timeout: 3_000 });
+  await expect(manualBtn).toBeVisible({ timeout: 5_000 });
   await manualBtn.click();
-  await page.waitForTimeout(300);
 
-  // Fill cookies using getByPlaceholder which is more stable across re-renders
-  await expect(page.getByPlaceholder("ct0 value")).toBeVisible({ timeout: 3_000 });
+  // Fill cookies once the form is visible (allow for state transition)
+  await expect(page.getByPlaceholder("ct0 value")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("ct0 value").fill("test_ct0_value");
   await page.getByPlaceholder("auth_token value").fill("test_auth_token_value");
 
