@@ -161,12 +161,16 @@ test("X connect form accepts cookies and triggers sync", async ({
   await page.getByPlaceholder("ct0 value").fill("test_ct0_value");
   await page.getByPlaceholder("auth_token value").fill("test_auth_token_value");
 
-  // Click Connect
-  await page
+  // Wait for the Connect button to become enabled (both fields filled, React
+  // settled) before clicking. The button re-renders when either input changes
+  // because its `disabled` prop is derived from both state values. Using
+  // `toBeEnabled()` here ensures the DOM is stable before Playwright acts.
+  const connectBtn = page
     .locator("button")
     .filter({ hasText: /^Connect$/ })
-    .first()
-    .click();
+    .first();
+  await expect(connectBtn).toBeEnabled({ timeout: 5_000 });
+  await connectBtn.click();
 
   // After connecting, the "Connected" indicator should appear
   await expect(page.getByText("Connected", { exact: true })).toBeVisible({ timeout: 10_000 });
