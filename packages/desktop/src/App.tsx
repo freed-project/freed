@@ -316,7 +316,7 @@ function App() {
       {/* Post-restart confirmation — shown for 5s after a successful update relaunch */}
       {justUpdated && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 animate-slide-up pointer-events-none">
-          <div className="glass-card px-4 py-3 shadow-lg border border-[rgba(34,197,94,0.3)] flex items-center gap-2">
+          <div className="rounded-2xl bg-[var(--freed-surface)] px-4 py-3 shadow-lg border border-[rgba(34,197,94,0.3)] flex items-center gap-2">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
               <path d="M3 8l3.5 3.5L13 5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
