@@ -34,10 +34,18 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/}"
           VERSION="${TAG#v}"
 
-          # Find the previous tag to bound the commit range
-          PREV_TAG=$(git tag --sort=version:refname | grep -v "^${TAG}$" | tail -1)
+          # Find the previous *published* GitHub Release tag (not just any git tag).
+          # Using the previous git tag would silently drop all commits from failed
+          # build attempts that left unpublished tags between two good releases.
+          PREV_TAG=""
+          ALL_PUBLISHED=$(gh release list --limit 200 --json tagName,isDraft,isPrerelease \
+            --jq '.[] | select(.isDraft==false and .isPrerelease==false) | .tagName' | sort -V)
+          while IFS= read -r candidate; do
+            [[ "$candidate" == "$TAG" ]] && break
+            PREV_TAG="$candidate"
+          done <<< "$ALL_PUBLISHED"
 
-          # Collect commits between prev tag and this tag
+          # Collect commits between prev published release and this tag
           if [[ -n "$PREV_TAG" ]]; then
             COMMITS=$(git log "${PREV_TAG}..${TAG}" --format="%s" 2>/dev/null || true)
           else

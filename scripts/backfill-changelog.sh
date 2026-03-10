@@ -123,16 +123,20 @@ published = set(gh_run(["release", "list", "--limit", "200", "--json", "tagName"
 
 print(f"Found {len(all_tags)} tags, {len(published)} with GitHub Releases.\n")
 
-prev_tag = ""
+# We track the last *published* tag, not the last tag. This is the key: when a
+# build fails and leaves an unpublished tag, the next successful release should
+# span all the way back to the last good published release so that features
+# developed during the failed build attempts are not silently dropped.
+prev_published_tag = ""
 processed = 0
 for tag in all_tags:
     if tag not in published:
         print(f"⚠  {tag} — no GitHub Release, skipping")
-        prev_tag = tag
+        # Do NOT advance prev_published_tag here — that's the whole fix.
         continue
 
-    print(f"Processing {tag} (prev: {prev_tag or 'none'})...", end=" ", flush=True)
-    body = build_body(tag, prev_tag)
+    print(f"Processing {tag} (prev: {prev_published_tag or 'none'})...", end=" ", flush=True)
+    body = build_body(tag, prev_published_tag)
 
     if DRY_RUN:
         print("DRY RUN")
@@ -152,7 +156,7 @@ for tag in all_tags:
             print(f"✗  {proc.stderr.strip()}")
         time.sleep(0.5)   # be kind to the API
 
-    prev_tag = tag
+    prev_published_tag = tag
     processed += 1
 
 print(f"\nDone. {processed} releases {'previewed' if DRY_RUN else 'updated'}.")
