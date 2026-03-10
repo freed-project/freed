@@ -117,9 +117,14 @@ def build_body(tag, prev_tag):
 # All v* tags in version order
 all_tags = [t for t in git(["tag", "--sort=version:refname"]).splitlines() if t.startswith("v")]
 
-# Only tags that have a published GitHub Release
-published = set(gh_run(["release", "list", "--limit", "200", "--json", "tagName",
-                         "--jq", ".[].tagName"]).splitlines())
+# Only tags with a fully published (non-draft, non-prerelease) GitHub Release.
+# Draft releases are failed builds that never shipped to users -- they must not
+# be used as changelog boundaries or their features will be silently swallowed.
+published = set(gh_run([
+    "release", "list", "--limit", "200",
+    "--json", "tagName,isDraft,isPrerelease",
+    "--jq", '.[] | select(.isDraft==false and .isPrerelease==false) | .tagName',
+]).splitlines())
 
 print(f"Found {len(all_tags)} tags, {len(published)} with GitHub Releases.\n")
 
