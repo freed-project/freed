@@ -239,6 +239,24 @@ export function pruneArchivedItems(
 }
 
 /**
+ * Immediately delete all archived, non-saved items regardless of age.
+ * Use when the user explicitly requests "delete now" from the archive toolbar.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @returns Number of items deleted
+ */
+export function deleteAllArchivedItems(doc: FreedDoc): number {
+  let deleted = 0;
+  for (const [id, item] of Object.entries(doc.feedItems)) {
+    if (!item.userState.archived) continue;
+    if (item.userState.saved) continue;
+    delete doc.feedItems[id];
+    deleted++;
+  }
+  return deleted;
+}
+
+/**
  * Toggle bookmark status for a feed item
  *
  * @param doc - The Automerge document (mutable within A.change)

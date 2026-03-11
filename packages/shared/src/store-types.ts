@@ -73,6 +73,8 @@ export interface BaseAppState {
   toggleArchived: (id: string) => Promise<void>;
   /** Archive all read, non-saved items in the current view. */
   archiveAllReadUnsaved: (platform?: string, feedUrl?: string) => Promise<void>;
+  /** Immediately delete ALL archived, non-saved items regardless of age. */
+  deleteAllArchived: () => Promise<void>;
   /** Permanently remove a single feed item from the library. */
   removeItem: (id: string) => Promise<void>;
   /**

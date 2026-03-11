@@ -27,6 +27,7 @@ import {
   docRemoveFeedItem,
   docToggleArchived,
   docArchiveAllReadUnsaved,
+  docDeleteAllArchived,
   docPruneArchivedItems,
   docUpdatePreferences,
   docDeduplicateFeedItems,
@@ -297,6 +298,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   archiveAllReadUnsaved: async (platform, feedUrl) => {
     await docArchiveAllReadUnsaved(platform, feedUrl);
+  },
+
+  deleteAllArchived: async () => {
+    await docDeleteAllArchived();
   },
 
   removeItem: async (id) => {

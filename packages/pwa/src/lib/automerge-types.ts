@@ -50,6 +50,7 @@ export type WorkerRequest =
   | { reqId: number; type: "UPDATE_FEED_ITEM"; globalId: string; updates: Partial<FeedItem> }
   | { reqId: number; type: "ARCHIVE_ALL_READ_UNSAVED"; platform?: string; feedUrl?: string }
   | { reqId: number; type: "PRUNE_ARCHIVED_ITEMS"; maxAgeMs?: number }
+  | { reqId: number; type: "DELETE_ALL_ARCHIVED" }
   | { reqId: number; type: "ADD_RSS_FEED"; feed: RssFeed }
   | { reqId: number; type: "REMOVE_RSS_FEED"; url: string }
   | { reqId: number; type: "UPDATE_RSS_FEED"; url: string; updates: Partial<RssFeed> }
