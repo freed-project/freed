@@ -21,6 +21,9 @@ const DBX_PATH = `/Apps/Freed/${FILE_NAME}`;
 const DBX_FOLDER = "/Apps/Freed";
 const LONGPOLL_TIMEOUT_S = 60;
 const MAX_RETRIES = 3;
+/** Per-iteration hard timeout (server longpoll is 60 s + overhead). */
+const ITERATION_TIMEOUT_MS = 90_000;
+const HEARTBEAT_EVERY_N_ITERS = 10; // every 10 longpoll cycles ≈ 10 minutes
 
 interface DownloadResult {
   binary: Uint8Array | null;
@@ -122,16 +125,24 @@ export async function dropboxDeleteFile(token: string): Promise<void> {
 }
 
 /**
- * Dropbox longpoll loop — near-instant change notification.
+ * Dropbox longpoll loop -- near-instant change notification.
  * Blocks at the notify endpoint until the folder changes or timeout expires,
  * then fetches the diff and calls `onRemoteChange` when our file was updated.
  * Runs until `signal` is aborted.
+ *
+ * Each iteration is wrapped in a 90 s hard timeout (Dropbox's server-side
+ * longpoll is 60 s, so this covers the full round-trip plus overhead). The
+ * optional `onLog` callback lets the caller emit structured log messages
+ * without importing Tauri APIs from this platform-agnostic package.
  */
 export async function dropboxStartLongpollLoop(
   token: string,
   onRemoteChange: (binary: Uint8Array) => void,
   signal: AbortSignal,
+  onLog?: (level: "info" | "warn" | "error", msg: string) => void,
 ): Promise<void> {
+  const log = (level: "info" | "warn" | "error", msg: string) => onLog?.(level, msg);
+
   const listRes = await fetch(DBX_LIST_FOLDER, {
     method: "POST",
     headers: {
@@ -144,14 +155,25 @@ export async function dropboxStartLongpollLoop(
 
   let { cursor } = await listRes.json();
 
+  log("info", "[cloud/dropbox] longpoll loop started");
+  let iterCount = 0;
+
   while (!signal.aborted) {
+    iterCount++;
+    if (iterCount % HEARTBEAT_EVERY_N_ITERS === 0) {
+      log("info", `[cloud/dropbox] heartbeat iter=${iterCount}`);
+    }
+
     try {
+      // Per-iteration signal: aborts when the outer signal fires OR after 90 s.
+      const iterSignal = AbortSignal.any([signal, AbortSignal.timeout(ITERATION_TIMEOUT_MS)]);
+
       const pollRes = await fetch(DBX_LONGPOLL, {
         method: "POST",
-        // No Authorization header — per Dropbox spec, longpoll uses no auth.
+        // No Authorization header -- per Dropbox spec, longpoll uses no auth.
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cursor, timeout: LONGPOLL_TIMEOUT_S }),
-        signal,
+        signal: iterSignal,
       });
 
       if (!pollRes.ok) {
@@ -166,7 +188,7 @@ export async function dropboxStartLongpollLoop(
         continue;
       }
 
-      if (!changes) continue; // Timeout — loop again with same cursor.
+      if (!changes) continue; // Server-side timeout -- loop again with same cursor.
 
       const contRes = await fetch(DBX_LIST_FOLDER_CONTINUE, {
         method: "POST",
@@ -175,6 +197,7 @@ export async function dropboxStartLongpollLoop(
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ cursor }),
+        signal: iterSignal,
       });
       if (!contRes.ok) continue;
 
@@ -186,13 +209,22 @@ export async function dropboxStartLongpollLoop(
       );
 
       if (relevant) {
-        const binary = await dropboxDownloadLatest(token);
+        const binary = await dropboxDownloadLatest(token, iterSignal);
         if (binary) onRemoteChange(binary);
       }
     } catch (err) {
       if (signal.aborted) break;
-      console.error("[CloudSync/Dropbox] Longpoll error:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      const isTimeout = err instanceof Error && err.name === "TimeoutError";
+      if (isTimeout) {
+        log("warn", `[cloud/dropbox] longpoll iteration TIMEOUT iter=${iterCount}`);
+      } else {
+        log("warn", `[cloud/dropbox] longpoll error iter=${iterCount} err=${msg}`);
+        console.error("[CloudSync/Dropbox] Longpoll error:", err);
+      }
       await delay(5_000);
     }
   }
+
+  log("info", `[cloud/dropbox] longpoll loop stopped after ${iterCount} iterations`);
 }

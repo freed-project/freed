@@ -20,6 +20,9 @@ import {
   deleteCloudFile,
 } from "./lib/sync";
 import { clearLocalDoc } from "./lib/automerge";
+import { listen } from "@tauri-apps/api/event";
+import { log } from "./lib/logger";
+import { setLogTransport } from "@freed/ui/lib/debug-store";
 import { clearStoredCookies, storeCookies } from "./lib/x-auth";
 import { disconnectIg, storeIgAuthState } from "./lib/instagram-auth";
 import { disconnectFb, storeFbAuthState } from "./lib/fb-auth";
@@ -42,6 +45,10 @@ import { generateSampleFeeds, generateSampleItems } from "@freed/shared";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
+
+// Register the file-based log transport so addDebugEvent calls from ui/ are
+// also persisted to ~/Library/Logs/freed/freed.log via tauri-plugin-log.
+setLogTransport((level, msg) => log[level](msg));
 
 // ---------------------------------------------------------------------------
 // React Profiler — activated only under Playwright (VITE_TEST_TAURI=1)
@@ -82,6 +89,24 @@ function App() {
       stopContentFetcher();
     };
   }, [isInitialized]);
+
+  // Log OS sleep/wake transitions so the log file shows where overnight
+  // freezes begin. These events are emitted by Tauri on macOS suspend/resume.
+  useEffect(() => {
+    log.info("[app] desktop app started");
+
+    const cleanups: Array<() => void> = [];
+
+    listen("tauri://suspend", () => {
+      log.info("[app] system suspend (sleep)");
+    }).then((unlisten) => cleanups.push(unlisten));
+
+    listen("tauri://resume", () => {
+      log.info("[app] system resume (wake)");
+    }).then((unlisten) => cleanups.push(unlisten));
+
+    return () => cleanups.forEach((fn) => fn());
+  }, []);
 
   // --- Update system ---
 
