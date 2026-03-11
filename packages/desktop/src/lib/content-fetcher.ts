@@ -106,8 +106,10 @@ async function processNext(): Promise<void> {
     const content = extractContentBrowser(html, entry.url);
     const metadata = extractMetadataBrowser(html, entry.url);
 
-    // Write full HTML to the device content cache (Layer 2 -- NOT Automerge)
-    await contentCache.set(entry.globalId, html);
+    // Write Readability-extracted article HTML to device content cache.
+    // Intentionally NOT the raw page HTML -- that contains <style>, <script>,
+    // and other full-page elements that would leak into the app DOM.
+    await contentCache.set(entry.globalId, content.html);
 
     // Get current AI preferences from the store (worker keeps preferences in sync)
     const prefs = (useAppStore.getState().preferences as { ai?: AIPreferences })?.ai;
