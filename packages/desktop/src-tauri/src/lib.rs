@@ -762,6 +762,7 @@ fn gaussian_ms(mean: f64, std_dev: f64) -> u64 {
 /// This is a self-contained script with no external dependencies.
 /// It runs inside facebook.com's execution context.
 const FB_EXTRACT_SCRIPT: &str = include_str!("fb-extract.js");
+const FB_STORIES_EXTRACT_SCRIPT: &str = include_str!("fb-stories-extract.js");
 
 /// Show a visible WebView window navigated to facebook.com/login so the
 /// user can authenticate through the real Facebook login flow.
@@ -885,6 +886,218 @@ async fn fb_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
     Ok(true)
 }
 
+// ---------------------------------------------------------------------------
+// Story navigation helpers
+// ---------------------------------------------------------------------------
+
+/// Navigate through up to `max_frames` Facebook story frames, injecting the
+/// story extraction script after each frame becomes visible.
+///
+/// Clicks the first story card in the story tray carousel to enter the viewer,
+/// then advances through frames by clicking the right-side navigation area.
+/// Uses Gaussian delays between frames to mimic natural viewing pace.
+///
+/// Bails early if the story viewer closes (overlay no longer present) or
+/// if `max_frames` have been viewed.
+async fn scrape_fb_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
+    use rand::Rng;
+
+    println!("[FB] starting story scrape (max {} frames)", max_frames);
+
+    // Click the first story card at the top of the News Feed. Facebook renders
+    // story cards as a horizontal carousel above the feed. The first non-"Your Story"
+    // card is typically a friend's story.
+    let click_first_story = r#"
+        (function() {
+            // Story tray items: a[href*="/stories/"] links or cards with role="button"
+            var links = document.querySelectorAll('a[href*="/stories/"]');
+            for (var i = 0; i < links.length; i++) {
+                var href = links[i].href || '';
+                // Skip "your own story" (facebook.com/stories/me or /stories/create)
+                if (!href.includes('/stories/me') && !href.includes('/stories/create') && !href.includes('add_story')) {
+                    links[i].click();
+                    return true;
+                }
+            }
+            // Fallback: story ring elements (div with circular avatar in the tray)
+            var rings = document.querySelectorAll('[aria-label*="story"], [aria-label*="Story"]');
+            for (var j = 0; j < rings.length; j++) {
+                var label = rings[j].getAttribute('aria-label') || '';
+                if (!label.toLowerCase().includes('your story') && !label.toLowerCase().includes('add story')) {
+                    rings[j].click();
+                    return true;
+                }
+            }
+            return false;
+        })();
+    "#;
+
+    let clicked = wv.eval(click_first_story).is_ok();
+    if !clicked {
+        println!("[FB] story tray click failed, skipping story scrape");
+        return;
+    }
+
+    // Wait for story viewer to open
+    tokio::time::sleep(Duration::from_millis(gaussian_ms(2500.0, 400.0))).await;
+
+    for frame in 0..max_frames {
+        // Inject story extraction script
+        if let Err(e) = wv.eval(FB_STORIES_EXTRACT_SCRIPT) {
+            println!("[FB] story extract inject failed at frame {}: {}", frame, e);
+            break;
+        }
+
+        // Pause to let the user "view" this story frame (2-4s normally, ~8% chance of 6-8s)
+        let view_pause = if rand::thread_rng().gen_bool(0.08) {
+            gaussian_ms(7000.0, 1000.0)
+        } else {
+            gaussian_ms(3000.0, 700.0)
+        };
+        tokio::time::sleep(Duration::from_millis(view_pause)).await;
+
+        println!("[FB] story frame {} extracted", frame + 1);
+
+        // We can't get eval return values back from WebView, so we advance
+        // until we hit the frame cap or the injection fails.
+        if frame + 1 >= max_frames {
+            break;
+        }
+
+        // Click the "Next story" area — right side of the viewer
+        let next_js = r#"
+            (function() {
+                // Explicit next button
+                var next = document.querySelector('[aria-label="Next story"]') ||
+                           document.querySelector('[aria-label="Next"]') ||
+                           document.querySelector('[aria-label="next"]');
+                if (next) { next.click(); return; }
+                // Click the right 20% of the viewport (tap-to-advance area)
+                var x = Math.floor(window.innerWidth * 0.82);
+                var y = Math.floor(window.innerHeight * 0.5);
+                document.elementFromPoint(x, y)?.click();
+            })();
+        "#;
+        let _ = wv.eval(next_js);
+
+        // Brief pause after advancing to let the next frame load
+        tokio::time::sleep(Duration::from_millis(gaussian_ms(1200.0, 300.0))).await;
+    }
+
+    // Close the story viewer by pressing Escape or clicking the X button
+    let close_js = r#"
+        (function() {
+            var closeBtn = document.querySelector('[aria-label="Close"]') ||
+                           document.querySelector('[aria-label="close"]');
+            if (closeBtn) { closeBtn.click(); return; }
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        })();
+    "#;
+    let _ = wv.eval(close_js);
+    tokio::time::sleep(Duration::from_millis(800)).await;
+
+    println!("[FB] story scrape complete");
+}
+
+/// Navigate through up to `max_frames` Instagram story frames, injecting the
+/// story extraction script after each frame becomes visible.
+///
+/// Clicks the first story avatar in the Instagram stories tray (the horizontal
+/// row of circular avatars at the top of the Following feed), then advances
+/// through frames using the right-side click area.
+async fn scrape_ig_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
+    use rand::Rng;
+
+    println!("[IG] starting story scrape (max {} frames)", max_frames);
+
+    // Click the first friend's story avatar in the top tray.
+    // Instagram story trays are anchors linking to /stories/<username>/
+    let click_first_story = r#"
+        (function() {
+            var links = document.querySelectorAll('a[href*="/stories/"]');
+            for (var i = 0; i < links.length; i++) {
+                var href = links[i].href || '';
+                // Skip own story (highlight reels end with a numeric id, not /create/)
+                if (!href.includes('/stories/create') && !href.includes('highlight')) {
+                    links[i].click();
+                    return true;
+                }
+            }
+            // Fallback: canvas-based story ring buttons
+            var btns = document.querySelectorAll('button[aria-label*="story"], button[aria-label*="Story"]');
+            for (var j = 0; j < btns.length; j++) {
+                btns[j].click();
+                return true;
+            }
+            return false;
+        })();
+    "#;
+
+    let clicked = wv.eval(click_first_story).is_ok();
+    if !clicked {
+        println!("[IG] story tray click failed, skipping story scrape");
+        return;
+    }
+
+    // Wait for the story viewer overlay to open
+    tokio::time::sleep(Duration::from_millis(gaussian_ms(2200.0, 400.0))).await;
+
+    for frame in 0..max_frames {
+        // Inject story extraction script
+        if let Err(e) = wv.eval(IG_STORIES_EXTRACT_SCRIPT) {
+            println!("[IG] story extract inject failed at frame {}: {}", frame, e);
+            break;
+        }
+
+        // "View" pause: 2-4s normally, ~8% chance of 6-8s (lingering on a story)
+        let view_pause = if rand::thread_rng().gen_bool(0.08) {
+            gaussian_ms(7000.0, 1000.0)
+        } else {
+            gaussian_ms(3000.0, 600.0)
+        };
+        tokio::time::sleep(Duration::from_millis(view_pause)).await;
+
+        println!("[IG] story frame {} extracted", frame + 1);
+
+        if frame + 1 >= max_frames {
+            break;
+        }
+
+        // Advance to next story frame by clicking the right side of the viewer
+        let next_js = r#"
+            (function() {
+                // Explicit next button (Instagram uses SVG arrow buttons)
+                var next = document.querySelector('[aria-label="Next"]') ||
+                           document.querySelector('button[aria-label*="next"]') ||
+                           document.querySelector('button[aria-label*="Next"]');
+                if (next) { next.click(); return; }
+                // Click the right 80% x / 50% y of the viewport
+                var x = Math.floor(window.innerWidth * 0.80);
+                var y = Math.floor(window.innerHeight * 0.5);
+                var el = document.elementFromPoint(x, y);
+                if (el) el.click();
+            })();
+        "#;
+        let _ = wv.eval(next_js);
+
+        tokio::time::sleep(Duration::from_millis(gaussian_ms(1000.0, 250.0))).await;
+    }
+
+    // Close the story viewer
+    let close_js = r#"
+        (function() {
+            var closeBtn = document.querySelector('[aria-label="Close"]') ||
+                           document.querySelector('button[aria-label*="Close"]');
+            if (closeBtn) { closeBtn.click(); return; }
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        })();
+    "#;
+    let _ = wv.eval(close_js);
+    tokio::time::sleep(Duration::from_millis(800)).await;
+
+    println!("[IG] story scrape complete");
+}
+
 /// Trigger a feed scrape in the Facebook WebView.
 ///
 /// Navigates to facebook.com, waits for content to render, then injects
@@ -968,6 +1181,24 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
     "#).map_err(|e| e.to_string())?;
     tokio::time::sleep(Duration::from_millis(300)).await;
 
+    // Randomized ordering: ~50% stories-first, ~50% feed-first.
+    // ~15% chance to skip story scraping entirely (real users don't always check stories).
+    let skip_stories = { use rand::Rng; rand::thread_rng().gen_bool(0.15) };
+    let stories_first = !skip_stories && { use rand::Rng; rand::thread_rng().gen_bool(0.50) };
+    let story_frame_cap = { use rand::Rng; rand::thread_rng().gen_range(10usize..=30) };
+
+    if stories_first {
+        println!("[FB] coin flip: stories FIRST");
+        scrape_fb_stories(&wv, story_frame_cap).await;
+        // Scroll back to top after exiting story viewer so the feed loop starts fresh
+        let _ = wv.eval("window.scrollTo({ top: 0, behavior: 'instant' });");
+        tokio::time::sleep(Duration::from_millis(gaussian_ms(1500.0, 300.0))).await;
+    } else if skip_stories {
+        println!("[FB] skipping story scrape this session (~15% chance)");
+    } else {
+        println!("[FB] coin flip: feed FIRST, stories after initial passes");
+    }
+
     // Facebook virtualizes its feed: posts only exist in the DOM when
     // they're near the viewport, and are unmounted when scrolled away.
     // We must scroll incrementally, extracting at each position.
@@ -975,6 +1206,14 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         use rand::Rng;
         rand::thread_rng().gen_range(8usize..=18)
     };
+    // If doing feed-first, split the passes: 2-4 passes before stories, rest after.
+    let early_passes = if !stories_first && !skip_stories {
+        use rand::Rng;
+        rand::thread_rng().gen_range(2usize..=4)
+    } else {
+        num_passes // all passes in one go
+    };
+
     for i in 0..num_passes {
         // Keep window visible — WebKit throttles hidden windows, even off-screen ones.
         let _ = wv.show();
@@ -1021,6 +1260,17 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         tokio::time::sleep(Duration::from_millis(pause)).await;
 
         println!("[FB] pass {}/{}: scrolled +{}px", i + 1, num_passes, scroll_amount);
+
+        // Feed-first ordering: after early_passes, scroll back to top and scrape stories
+        if !stories_first && !skip_stories && i + 1 == early_passes {
+            println!("[FB] interleaving story scrape after {} feed passes", early_passes);
+            let _ = wv.eval("window.scrollTo({ top: 0, behavior: 'smooth' });");
+            tokio::time::sleep(Duration::from_millis(gaussian_ms(1800.0, 400.0))).await;
+            scrape_fb_stories(&wv, story_frame_cap).await;
+            // Return to feed position after story viewing
+            let _ = wv.eval("window.scrollTo({ top: 0, behavior: 'instant' });");
+            tokio::time::sleep(Duration::from_millis(gaussian_ms(1200.0, 300.0))).await;
+        }
     }
 
     wv.eval(FB_EXTRACT_SCRIPT)
@@ -1054,6 +1304,7 @@ async fn fb_disconnect(app: tauri::AppHandle) -> Result<(), String> {
 /// The extraction script injected into the Instagram WebView after page load.
 /// Reads posts from the rendered DOM and emits them via Tauri event IPC.
 const IG_EXTRACT_SCRIPT: &str = include_str!("ig-extract.js");
+const IG_STORIES_EXTRACT_SCRIPT: &str = include_str!("ig-stories-extract.js");
 
 /// Show a visible WebView window navigated to instagram.com/accounts/login
 /// so the user can authenticate through the real Instagram login flow.
@@ -1275,12 +1526,44 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
     let _ = wv.eval(r#"document.querySelector('a[href="/?variant=following"]')?.click();"#);
     tokio::time::sleep(Duration::from_millis(2000)).await;
 
+    // Randomized ordering: ~50% stories-first, ~50% feed-first.
+    // ~15% chance to skip story scraping entirely.
+    let skip_stories = { use rand::Rng; rand::thread_rng().gen_bool(0.15) };
+    let stories_first = !skip_stories && { use rand::Rng; rand::thread_rng().gen_bool(0.50) };
+    let story_frame_cap = { use rand::Rng; rand::thread_rng().gen_range(10usize..=30) };
+
+    if stories_first {
+        println!("[IG] coin flip: stories FIRST");
+        scrape_ig_stories(&wv, story_frame_cap).await;
+        // Navigate back to the following feed and scroll to top
+        let _ = wv.eval(r#"
+            (function() {
+                window.scrollTo({ top: 0, behavior: 'instant' });
+                var tab = document.querySelector('a[href="/?variant=following"]');
+                if (tab) tab.click();
+            })();
+        "#);
+        tokio::time::sleep(Duration::from_millis(gaussian_ms(1500.0, 300.0))).await;
+    } else if skip_stories {
+        println!("[IG] skipping story scrape this session (~15% chance)");
+    } else {
+        println!("[IG] coin flip: feed FIRST, stories after initial passes");
+    }
+
     // Instagram virtualizes its feed similarly to Facebook. Scroll
     // incrementally, extracting at each position.
     let num_passes = {
         use rand::Rng;
         rand::thread_rng().gen_range(7usize..=14)
     };
+    // Feed-first: scrape stories after the first 2-4 passes
+    let early_passes = if !stories_first && !skip_stories {
+        use rand::Rng;
+        rand::thread_rng().gen_range(2usize..=4)
+    } else {
+        num_passes
+    };
+
     for i in 0..num_passes {
         // Keep window visible — WebKit throttles hidden windows
         let _ = wv.show();
@@ -1344,6 +1627,27 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         tokio::time::sleep(Duration::from_millis(pause)).await;
 
         println!("[IG] pass {}/{}: scrolled +{}px", i + 1, num_passes, scroll_amount);
+
+        // Feed-first ordering: interleave story scrape after early_passes
+        if !stories_first && !skip_stories && i + 1 == early_passes {
+            println!("[IG] interleaving story scrape after {} feed passes", early_passes);
+            let _ = wv.eval(r#"
+                (function() {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                })();
+            "#);
+            tokio::time::sleep(Duration::from_millis(gaussian_ms(1800.0, 400.0))).await;
+            scrape_ig_stories(&wv, story_frame_cap).await;
+            // Return to feed
+            let _ = wv.eval(r#"
+                (function() {
+                    window.scrollTo({ top: 0, behavior: 'instant' });
+                    var tab = document.querySelector('a[href="/?variant=following"]');
+                    if (tab) tab.click();
+                })();
+            "#);
+            tokio::time::sleep(Duration::from_millis(gaussian_ms(1200.0, 300.0))).await;
+        }
     }
 
     wv.eval(IG_EXTRACT_SCRIPT)
