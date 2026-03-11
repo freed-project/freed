@@ -1,11 +1,9 @@
-[install]
-# Use exact versions for reproducibility
-exact = true
-
-[install.lockfile]
-# Save the lockfile
-save = true
-
-[run]
-# Enable hot reloading for development
-bun = true
+[test]
+# Exclude Playwright E2E specs from bun's test runner -- those collide with
+# @playwright/test's own runner and cause a "two versions" error.
+# Exclude desktop unit tests that use vitest-specific APIs (vi.hoisted,
+# vi.mock module interception) -- those run via `npm run test:unit` in CI.
+exclude = [
+  "**/*.spec.ts",
+  "packages/desktop/src/**/*.test.ts",
+]

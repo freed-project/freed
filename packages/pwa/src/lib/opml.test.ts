@@ -7,6 +7,15 @@
 import { describe, it, expect } from "vitest";
 import { parseOPML, generateOPML } from "@freed/shared";
 import type { RssFeed } from "@freed/shared";
+import { JSDOM } from "jsdom";
+
+// Bun's built-in DOMParser does not support `application/xml`. Shim it with
+// jsdom's implementation so these tests pass under both `bun test` and vitest.
+// Under vitest+jsdom the global DOMParser already handles XML; this is a no-op.
+if (typeof globalThis.DOMParser === "undefined") {
+  const { DOMParser: JsdomDOMParser } = new JSDOM().window;
+  (globalThis as Record<string, unknown>).DOMParser = JsdomDOMParser;
+}
 
 // =============================================================================
 // Test fixtures
