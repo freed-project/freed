@@ -183,6 +183,7 @@ export async function captureDomFeed(
 | 5.23 | CI/CD release pipeline (GH Actions)| Medium     |
 | 5.24 | macOS code signing + notarization  | High       |
 | 5.25 | Windows code signing               | Medium     |
+| 5.26 | Independent update server domain   | Medium     |
 
 ### Mobile (Tauri 2.0)
 
@@ -261,6 +262,7 @@ packages/desktop/
 - [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
 - [ ] macOS DMG is notarized (requires APPLE_CERTIFICATE secret)
 - [ ] Windows installer is code-signed (requires EV certificate)
+- [ ] Update server runs on a Freed-owned domain (not GitHub Releases)
 
 > **Deferred — Code Signing:**
 > macOS notarization and Windows code signing require secrets to be
@@ -271,6 +273,18 @@ packages/desktop/
 > Windows SmartScreen warnings will appear until an EV certificate is
 > obtained or enough installs build reputation. See `RELEASE-SECRETS.md`
 > for the full setup checklist.
+
+> **Planned — Independent Update Server (Task 5.26):**
+> The auto-updater currently points at GitHub Releases. If the repo is
+> taken down, transferred, or GitHub has a prolonged outage, every
+> installed copy of Freed loses the ability to update. To ensure project
+> continuity, we need a Freed-owned domain (e.g. `updates.freed.wtf`)
+> serving the Tauri update manifest and release artifacts. The CI/CD
+> pipeline would upload binaries to this endpoint in addition to (or
+> instead of) GitHub Releases, and `tauri.conf.json` would point the
+> updater at the Freed-controlled URL. A static file host behind
+> Cloudflare or a simple S3 bucket is sufficient; no custom server logic
+> required.
 
 ### Mobile
 
