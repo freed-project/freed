@@ -170,6 +170,16 @@ export interface PlatformConfig {
   };
 
   /**
+   * Google Contacts API integration.
+   * Provides a token accessor for the People API.
+   * When absent, Google Contacts import is unavailable in FriendsView.
+   */
+  googleContacts?: {
+    /** Return the current Google OAuth access token, or null when not authenticated. */
+    getToken: () => string | null;
+  };
+
+  /**
    * Present the platform's native contact picker and return the selected
    * contact's details for importing into a Friend record.
    *

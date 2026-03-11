@@ -525,7 +525,7 @@ export interface FriendSource {
  * Not a content source — carries contact info only.
  */
 export interface DeviceContact {
-  importedFrom: "macos" | "ios" | "android" | "web";
+  importedFrom: "macos" | "ios" | "android" | "web" | "google";
   name: string;
   phone?: string;
   email?: string;
@@ -648,6 +648,50 @@ export function createDefaultPreferences(): UserPreferences {
       extractTopics: false,
     },
   };
+}
+
+// =============================================================================
+// Google Contacts
+// =============================================================================
+
+/**
+ * A contact record from the Google People API.
+ */
+export interface GoogleContact {
+  resourceName: string;
+  etag?: string;
+  name: {
+    displayName?: string;
+    givenName?: string;
+    familyName?: string;
+    middleName?: string;
+  };
+  emails: Array<{ value: string; type?: string }>;
+  phones: Array<{ value: string; type?: string }>;
+  photos: Array<{ url: string; default?: boolean }>;
+  organizations: Array<{ name?: string; title?: string }>;
+  metadata?: { deleted?: boolean };
+}
+
+/**
+ * A pairing of a Google contact with a matched Friend or unlinked author.
+ */
+export interface ContactMatch {
+  contact: GoogleContact;
+  friend: Friend | null;
+  authorIds: string[];
+  confidence: "high" | "medium";
+}
+
+/**
+ * Persisted state for the Google Contacts sync cycle.
+ */
+export interface ContactSyncState {
+  syncToken: string | null;
+  lastSyncedAt: number | null;
+  cachedContacts: GoogleContact[];
+  pendingMatches: ContactMatch[];
+  dismissedMatches: Array<{ contactResourceName: string; friendIdOrAuthorId: string }>;
 }
 
 /**

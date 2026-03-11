@@ -215,7 +215,7 @@ export function FriendGraph({
     if (!canvas || !container) return;
 
     const W = container.clientWidth || 600;
-    const H = height ?? container.clientHeight || 500;
+    const H = height ?? (container.clientHeight || 500);
     canvas.width = W;
     canvas.height = H;
 

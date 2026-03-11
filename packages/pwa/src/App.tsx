@@ -129,6 +129,9 @@ function App() {
       // Web Contact Picker API — available on iOS/Android, absent on desktop browsers.
       // FriendEditor falls back to manual entry when this is undefined at runtime.
       pickContact: pickContactViaWebApi,
+      googleContacts: {
+        getToken: () => localStorage.getItem("freed_cloud_token_gdrive"),
+      },
     }),
     [checkForUpdates, handleFactoryReset],
   );

@@ -108,6 +108,15 @@ export interface BaseAppState {
   searchQuery: string;
   /** Update the full-text search query. Empty string clears the search. */
   setSearchQuery: (query: string) => void;
+
+  /** The currently active top-level view. */
+  activeView: "feed" | "friends";
+  /** Switch the top-level view. */
+  setActiveView: (view: "feed" | "friends") => void;
+  /** Number of unreviewed Google Contacts match suggestions. */
+  pendingMatchCount: number;
+  /** Update the pending match count (set by useContactSync). */
+  setPendingMatchCount: (count: number) => void;
 }
 
 /**

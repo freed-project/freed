@@ -79,6 +79,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeFilter: {},
   selectedItemId: null,
   searchQuery: "",
+  activeView: "feed",
+  pendingMatchCount: 0,
 
   // Initialize from Automerge worker
   initialize: async () => {
@@ -210,4 +212,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSyncing: (isSyncing) => set({ isSyncing }),
   setError: (error) => set({ error }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
+  setActiveView: (activeView) => set({ activeView }),
+  setPendingMatchCount: (pendingMatchCount) => set({ pendingMatchCount }),
 }));

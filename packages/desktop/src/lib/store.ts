@@ -127,6 +127,12 @@ interface AppState {
   setError: (error: string | null) => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
+
+  // View navigation
+  activeView: "feed" | "friends";
+  setActiveView: (view: "feed" | "friends") => void;
+  pendingMatchCount: number;
+  setPendingMatchCount: (count: number) => void;
 }
 
 /**
@@ -190,6 +196,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeFilter: {},
   selectedItemId: null,
   searchQuery: "",
+  activeView: "feed",
+  pendingMatchCount: 0,
 
   // Initialize from Automerge worker
   initialize: async () => {
@@ -356,4 +364,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSyncing: (isSyncing) => set({ isSyncing }),
   setError: (error) => set({ error }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
+  setActiveView: (activeView) => set({ activeView }),
+  setPendingMatchCount: (pendingMatchCount) => set({ pendingMatchCount }),
 }));

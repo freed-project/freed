@@ -275,6 +275,9 @@ function App() {
       },
       openUrl: (url: string) => { void shellOpen(url); },
       pickContact: pickContactViaTauri,
+      googleContacts: {
+        getToken: () => localStorage.getItem("freed_cloud_token_gdrive"),
+      },
     }),
     [checkForUpdates, applyUpdate, handleFactoryReset, seedSocialConnections],
   );

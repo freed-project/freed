@@ -7,7 +7,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema.ts",
-    "./opml": "./src/opml.ts"
+    "./opml": "./src/opml.ts",
+    "./google-contacts": "./src/google-contacts.ts",
+    "./contact-matching": "./src/contact-matching.ts"
   },
   "scripts": {
     "build": "tsc",
