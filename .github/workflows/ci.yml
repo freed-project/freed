@@ -27,9 +27,17 @@ jobs:
       - name: Type check
         run: bun run typecheck
 
-      - name: Run tests
+      - name: Run unit tests (bun -- shared + pwa)
         run: bun test
-        continue-on-error: true # Tests may not exist yet
+        continue-on-error: true
+
+      - name: Run unit tests (vitest -- pwa, requires jsdom)
+        run: npm run test:unit --workspace=packages/pwa
+        continue-on-error: true
+
+      - name: Run unit tests (vitest -- desktop, requires Tauri mocks)
+        run: npm run test:unit --workspace=packages/desktop
+        continue-on-error: true
 
   lint:
     runs-on: ubuntu-latest
