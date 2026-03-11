@@ -932,9 +932,14 @@ async fn scrape_fb_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
         })();
     "#;
 
-    let clicked = wv.eval(click_first_story).is_ok();
-    if !clicked {
-        println!("[FB] story tray click failed, skipping story scrape");
+    // eval() returns Ok(()) if the JS injection succeeded, regardless of
+    // whether the JS actually found a story to click. We can't retrieve
+    // JS return values from WebView. This guard only catches injection
+    // failures (e.g. WebView not ready); a missing story tray is handled
+    // gracefully by the frame loop emitting empty results.
+    let eval_ok = wv.eval(click_first_story).is_ok();
+    if !eval_ok {
+        println!("[FB] story tray eval injection failed, skipping story scrape");
         return;
     }
 
@@ -1033,9 +1038,14 @@ async fn scrape_ig_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
         })();
     "#;
 
-    let clicked = wv.eval(click_first_story).is_ok();
-    if !clicked {
-        println!("[IG] story tray click failed, skipping story scrape");
+    // eval() returns Ok(()) if the JS injection succeeded, regardless of
+    // whether the JS actually found a story to click. We can't retrieve
+    // JS return values from WebView. This guard only catches injection
+    // failures (e.g. WebView not ready); a missing story tray is handled
+    // gracefully by the frame loop emitting empty results.
+    let eval_ok = wv.eval(click_first_story).is_ok();
+    if !eval_ok {
+        println!("[IG] story tray eval injection failed, skipping story scrape");
         return;
     }
 

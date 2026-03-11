@@ -255,7 +255,6 @@
       shareCount: null,
       postType: "story",
       location: location.name,
-      locationUrl: location.url,
       hashtags: [],
       isShare: false,
       sharedFrom: null,
