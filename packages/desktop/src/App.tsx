@@ -23,6 +23,7 @@ import { clearLocalDoc } from "./lib/automerge";
 import { clearStoredCookies, storeCookies } from "./lib/x-auth";
 import { disconnectIg, storeIgAuthState } from "./lib/instagram-auth";
 import { disconnectFb, storeFbAuthState } from "./lib/fb-auth";
+import { disconnectLi, storeLiAuthState } from "./lib/li-auth";
 import { contentCache } from "./lib/content-cache";
 import { saveUrlInDesktop } from "./lib/save-url";
 import { importMarkdownFiles, exportLibrary } from "./lib/import-export";
@@ -34,6 +35,7 @@ import { FeedEmptyState } from "./components/FeedEmptyState";
 import { XSettingsSection } from "./components/XSettingsSection";
 import { FacebookSettingsSection } from "./components/FacebookSettingsSection";
 import { InstagramSettingsSection } from "./components/InstagramSettingsSection";
+import { LinkedInSettingsSection } from "./components/LinkedInSettingsSection";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
@@ -188,6 +190,7 @@ function App() {
     clearStoredCookies();
     await disconnectFb().catch(() => {});
     await disconnectIg().catch(() => {});
+    await disconnectLi().catch(() => {});
     for (const provider of providers) clearCloudProvider(provider);
     await clearLocalDoc();
     location.reload();
@@ -197,7 +200,7 @@ function App() {
   // credentials to localStorage (matching the real auth persistence format)
   // and updates Zustand state so the sidebar dots light up without a real login.
   const seedSocialConnections = useCallback(() => {
-    const { setXAuth, setFbAuth, setIgAuth } = useAppStore.getState();
+    const { setXAuth, setFbAuth, setIgAuth, setLiAuth } = useAppStore.getState();
     const now = Date.now();
 
     const xCookies = { ct0: "sample-ct0-token", authToken: "sample-auth-token" };
@@ -211,6 +214,10 @@ function App() {
     const igState = { isAuthenticated: true, lastCheckedAt: now };
     storeIgAuthState(igState);
     setIgAuth(igState);
+
+    const liState = { isAuthenticated: true, lastCheckedAt: now };
+    storeLiAuthState(liState);
+    setLiAuth(liState);
   }, []);
 
   // In dev mode, auto-seed sample data on first page load of each browser
@@ -245,6 +252,7 @@ function App() {
       XSettingsContent: XSettingsSection,
       FacebookSettingsContent: FacebookSettingsSection,
       InstagramSettingsContent: InstagramSettingsSection,
+      LinkedInSettingsContent: LinkedInSettingsSection,
       checkForUpdates,
       applyUpdate,
       factoryReset: handleFactoryReset,

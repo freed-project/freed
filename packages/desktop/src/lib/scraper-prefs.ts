@@ -9,6 +9,7 @@
 
 const IG_KEY = "ig_scraper_debug_window";
 const FB_KEY = "fb_scraper_debug_window";
+const LI_KEY = "li_scraper_debug_window";
 
 export const getIgScraperDebugWindow = (): boolean =>
   localStorage.getItem(IG_KEY) === "true";
@@ -29,5 +30,16 @@ export const setFbScraperDebugWindow = (v: boolean): void => {
     localStorage.setItem(FB_KEY, "true");
   } else {
     localStorage.removeItem(FB_KEY);
+  }
+};
+
+export const getLiScraperDebugWindow = (): boolean =>
+  localStorage.getItem(LI_KEY) === "true";
+
+export const setLiScraperDebugWindow = (v: boolean): void => {
+  if (v) {
+    localStorage.setItem(LI_KEY, "true");
+  } else {
+    localStorage.removeItem(LI_KEY);
   }
 };
