@@ -496,9 +496,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     const isVisible = visibleSections.some((s) => s.id === id);
     if (!isVisible) return null;
 
+    // SectionContent is called as a plain function (not as a JSX component)
+    // because it is defined inside SettingsDialog. If rendered as
+    // <SectionContent />, React would see a new component type on every
+    // SettingsDialog re-render and unmount/remount the entire subtree,
+    // destroying local state in nested components like XSettingsSection.
     return (
       <section data-section={id} className="pb-8 min-h-full flex flex-col">
-        <SectionContent id={id} />
+        {SectionContent({ id })}
       </section>
     );
   }
