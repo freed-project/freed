@@ -27,6 +27,10 @@ import { useAppStore } from "./store.js";
 import { summarize } from "./ai-summarizer.js";
 import { secureStorage } from "./secure-storage.js";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
+import { log } from "./logger.js";
+
+const FETCH_TIMEOUT_MS = 30_000;
+const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 export interface FetcherStatus {
   pending: number;
@@ -45,6 +49,7 @@ const failed = new Set<string>();
 let completed = 0;
 let running = false;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
+let heartbeatHandle: ReturnType<typeof setInterval> | null = null;
 let unsubscribeDoc: (() => void) | null = null;
 
 // Status subscribers
@@ -99,8 +104,15 @@ async function processNext(): Promise<void> {
   notifyStatus();
 
   try {
-    // Fetch HTML via Tauri IPC (bypasses CORS, uses native HTTP)
-    const html = await invoke<string>("fetch_url", { url: entry.url });
+    // Fetch HTML via Tauri IPC (bypasses CORS, uses native HTTP).
+    // Race against a 30s timeout so a stalled network request on a sleeping
+    // machine can't freeze the interval forever.
+    const html = await Promise.race([
+      invoke<string>("fetch_url", { url: entry.url }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("fetch_url TIMEOUT")), FETCH_TIMEOUT_MS),
+      ),
+    ]);
 
     // Extract structured content using browser-safe Readability
     const content = extractContentBrowser(html, entry.url);
@@ -148,9 +160,17 @@ async function processNext(): Promise<void> {
     completed++;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.warn(`[content-fetcher] Failed to fetch ${entry.url}:`, err);
-    failed.add(entry.globalId);
-    addDebugEvent("error", `[Fetcher] failed to fetch ${entry.url}: ${msg}`);
+    const isTimeout = msg === "fetch_url TIMEOUT";
+    if (isTimeout) {
+      log.warn(`[content-fetcher] fetch_url TIMEOUT url=${entry.url}`);
+      addDebugEvent("error", `[Fetcher] fetch_url TIMEOUT: ${entry.url}`);
+      // Re-enqueue so the item is retried next cycle rather than permanently failed.
+      queue.push(entry);
+    } else {
+      log.warn(`[content-fetcher] fetch failed url=${entry.url} err=${msg}`);
+      failed.add(entry.globalId);
+      addDebugEvent("error", `[Fetcher] failed to fetch ${entry.url}: ${msg}`);
+    }
   }
 
   notifyStatus();
@@ -172,14 +192,23 @@ export function start(): void {
     enqueue(state.items);
   });
 
+  log.info("[content-fetcher] started");
+
   // Process one item every 2 seconds -- polite to remote servers
   intervalHandle = setInterval(() => {
     processNext().catch((err) => {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error("[content-fetcher] Unexpected error:", err);
+      log.error(`[content-fetcher] unexpected error in processNext: ${msg}`);
       addDebugEvent("error", `[Fetcher] unexpected error in processNext: ${msg}`);
     });
   }, 2_000);
+
+  // Periodic heartbeat so logs show the fetcher is still alive overnight.
+  heartbeatHandle = setInterval(() => {
+    log.info(
+      `[content-fetcher] heartbeat items_queued=${queue.length} completed=${completed} failed=${failed.size}`,
+    );
+  }, HEARTBEAT_INTERVAL_MS);
 }
 
 /**
@@ -194,10 +223,17 @@ export function stop(): void {
     intervalHandle = null;
   }
 
+  if (heartbeatHandle !== null) {
+    clearInterval(heartbeatHandle);
+    heartbeatHandle = null;
+  }
+
   if (unsubscribeDoc) {
     unsubscribeDoc();
     unsubscribeDoc = null;
   }
+
+  log.info("[content-fetcher] stopped");
 }
 
 /** Get current fetcher status without subscribing */

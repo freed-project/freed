@@ -3,6 +3,7 @@
 //! Native desktop app that bundles capture, sync relay, and reader UI.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use log::{error, info, warn};
 use futures_util::{SinkExt, StreamExt};
 use rand::RngCore;
 use std::collections::HashSet;
@@ -82,7 +83,7 @@ fn advertise_mdns(port: u16) -> Option<mdns_sd::ServiceDaemon> {
     use mdns_sd::{ServiceDaemon, ServiceInfo};
 
     let daemon = ServiceDaemon::new()
-        .map_err(|e| eprintln!("[mDNS] Failed to create daemon: {}", e))
+        .map_err(|e| error!("[mDNS] Failed to create daemon: {}", e))
         .ok()?;
 
     let hostname = hostname::get()
@@ -106,15 +107,15 @@ fn advertise_mdns(port: u16) -> Option<mdns_sd::ServiceDaemon> {
         port,
         Some(properties),
     )
-    .map_err(|e| eprintln!("[mDNS] Failed to build ServiceInfo: {}", e))
+    .map_err(|e| error!("[mDNS] Failed to build ServiceInfo: {}", e))
     .ok()?;
 
     daemon
         .register(service)
-        .map_err(|e| eprintln!("[mDNS] Failed to register service: {}", e))
+        .map_err(|e| error!("[mDNS] Failed to register service: {}", e))
         .ok()?;
 
-    println!("[mDNS] Advertising _freed-sync._tcp.local on port {}", port);
+    info!("[mDNS] Advertising _freed-sync._tcp.local on port {}", port);
     Some(daemon)
 }
 
@@ -137,13 +138,13 @@ fn write_snapshot(snapshot_dir: &std::path::Path, doc_bytes: &[u8]) {
         .as_secs();
 
     if let Err(e) = std::fs::create_dir_all(snapshot_dir) {
-        eprintln!("[Snapshot] Failed to create dir: {}", e);
+        error!("[Snapshot] Failed to create dir: {}", e);
         return;
     }
 
     let path = snapshot_dir.join(format!("freed-{}.automerge", ts));
     if let Err(e) = std::fs::write(&path, doc_bytes) {
-        eprintln!("[Snapshot] Failed to write: {}", e);
+        error!("[Snapshot] Failed to write: {}", e);
         return;
     }
 
@@ -455,7 +456,7 @@ async fn reset_pairing_token(
     let new_token = generate_token();
     std::fs::write(data_dir.join("pairing-token"), &new_token).map_err(|e| e.to_string())?;
     *state.pairing_token.write().unwrap() = new_token.clone();
-    println!("[Sync] Pairing token rotated");
+    info!("[Sync] Pairing token rotated");
     Ok(new_token)
 }
 
@@ -624,7 +625,7 @@ async fn start_oauth_server(app: tauri::AppHandle) -> Result<u16, String> {
                 Ok(s) = rx  => s,
                 Ok(s) = rx6 => s,
                 else => {
-                    eprintln!("[OAuth] Both listeners timed out or errored");
+                    error!("[OAuth] Both listeners timed out or errored");
                     return;
                 }
             };
@@ -633,7 +634,7 @@ async fn start_oauth_server(app: tauri::AppHandle) -> Result<u16, String> {
     } else {
         tokio::spawn(async move {
             let Ok(stream) = rx.await else {
-                eprintln!("[OAuth] Server timed out or failed to accept connection");
+                error!("[OAuth] Server timed out or failed to accept connection");
                 return;
             };
             handle_oauth_stream(stream, app).await;
@@ -950,7 +951,7 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         }
     };
 
-    println!("[FB] scrape started (show_window={}), waiting for page load...", show_window);
+    info!("[FB] scrape started (show_window={}), waiting for page load...", show_window);
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(13000.0, 1500.0))).await;
 
@@ -1020,14 +1021,14 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         };
         tokio::time::sleep(Duration::from_millis(pause)).await;
 
-        println!("[FB] pass {}/{}: scrolled +{}px", i + 1, num_passes, scroll_amount);
+        info!("[FB] pass {}/{}: scrolled +{}px", i + 1, num_passes, scroll_amount);
     }
 
     wv.eval(FB_EXTRACT_SCRIPT)
         .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
 
     tokio::time::sleep(Duration::from_millis(500)).await;
-    println!("[FB] scrape complete, {} extraction passes emitted", num_passes + 1);
+    info!("[FB] scrape complete, {} extraction passes emitted", num_passes + 1);
 
     // Hide the window now that scraping is done. The window stays alive in the
     // background to preserve the authenticated session for the next scrape.
@@ -1114,13 +1115,13 @@ async fn ig_show_login(app: tauri::AppHandle, capture: tauri::State<'_, CaptureS
             // to manually click "Sync Now".
             let scrape_app = app_handle.clone();
             tauri::async_runtime::spawn(async move {
-                println!("[IG] login detected, auto-scraping...");
+                info!("[IG] login detected, auto-scraping...");
                 tokio::time::sleep(Duration::from_millis(gaussian_ms(4000.0, 800.0))).await;
                 let capture = scrape_app.state::<CaptureState>();
                 // Auto-scrapes never show the window -- user didn't request debug mode.
                 match ig_scrape_feed(scrape_app.clone(), capture, false).await {
-                    Ok(()) => println!("[IG] post-login auto-scrape complete"),
-                    Err(e) => println!("[IG] post-login auto-scrape error: {}", e),
+                    Ok(()) => info!("[IG] post-login auto-scrape complete"),
+                    Err(e) => info!("[IG] post-login auto-scrape error: {}", e),
                 }
             });
         }
@@ -1218,7 +1219,7 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
                 let _ = w.set_position(LogicalPosition::new(-20000.0_f64, -20000.0_f64));
             }
             let _ = w.show();
-            println!("[IG] reusing existing ig-scraper window (show_window={})", show_window);
+            info!("[IG] reusing existing ig-scraper window (show_window={})", show_window);
             w
         }
         None => {
@@ -1261,7 +1262,7 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         }
     };
 
-    println!("[IG] scrape started (show_window={}), waiting for feed to render...", show_window);
+    info!("[IG] scrape started (show_window={}), waiting for feed to render...", show_window);
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(9000.0, 1200.0))).await;
 
@@ -1269,7 +1270,7 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
     // Do NOT set_focus here — we don't want to yank focus from the user's
     // foreground app on every scrape pass.
     let _ = wv.show();
-    println!("[IG] window visible, proceeding with extraction");
+    info!("[IG] window visible, proceeding with extraction");
 
     // Belt-and-suspenders: click the Following tab if present
     let _ = wv.eval(r#"document.querySelector('a[href="/?variant=following"]')?.click();"#);
@@ -1343,14 +1344,14 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         };
         tokio::time::sleep(Duration::from_millis(pause)).await;
 
-        println!("[IG] pass {}/{}: scrolled +{}px", i + 1, num_passes, scroll_amount);
+        info!("[IG] pass {}/{}: scrolled +{}px", i + 1, num_passes, scroll_amount);
     }
 
     wv.eval(IG_EXTRACT_SCRIPT)
         .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
 
     tokio::time::sleep(Duration::from_millis(500)).await;
-    println!("[IG] scrape complete, {} extraction passes emitted", num_passes + 1);
+    info!("[IG] scrape complete, {} extraction passes emitted", num_passes + 1);
 
     // Hide the window now that scraping is done. The window stays alive in the
     // background to preserve the authenticated session for the next scrape.
@@ -1435,7 +1436,7 @@ async fn fb_like_post(app: tauri::AppHandle, url: String) -> Result<(), String> 
         })();
     "#).map_err(|e| e.to_string())?;
 
-    println!("[FB] fb_like_post: injected like click for {}", url);
+    info!("[FB] fb_like_post: injected like click for {}", url);
 
     tokio::time::sleep(Duration::from_millis(500)).await;
     Ok(())
@@ -1466,7 +1467,7 @@ async fn ig_like_post(app: tauri::AppHandle, url: String) -> Result<(), String> 
         })();
     "#).map_err(|e| e.to_string())?;
 
-    println!("[IG] ig_like_post: injected like click for {}", url);
+    info!("[IG] ig_like_post: injected like click for {}", url);
 
     tokio::time::sleep(Duration::from_millis(500)).await;
     Ok(())
@@ -1488,7 +1489,7 @@ async fn handle_connection(
     state: RelayState,
     app: tauri::AppHandle,
 ) {
-    println!("[Sync] New connection from: {}", addr);
+    info!("[Sync] New connection from: {}", addr);
 
     // Snapshot the token now — the StdRwLock guard is dropped here, so it is
     // never held across an .await point.
@@ -1513,7 +1514,7 @@ async fn handle_connection(
             if token_ok {
                 Ok(resp)
             } else {
-                eprintln!("[Sync] Rejected unauthorized connection from {}", addr);
+                error!("[Sync] Rejected unauthorized connection from {}", addr);
                 Err(
                     tokio_tungstenite::tungstenite::http::Response::builder()
                         .status(401)
@@ -1531,7 +1532,7 @@ async fn handle_connection(
         Err(e) => {
             // 401 rejections are normal; log everything else
             if !e.to_string().contains("HTTP error") {
-                eprintln!("[Sync] WebSocket handshake failed: {}", e);
+                error!("[Sync] WebSocket handshake failed: {}", e);
             }
             return;
         }
@@ -1544,14 +1545,14 @@ async fn handle_connection(
         let mut count = state.client_count.write().await;
         *count += 1;
         let new_count = *count;
-        println!("[Sync] Client connected. Total: {}", new_count);
+        info!("[Sync] Client connected. Total: {}", new_count);
         let _ = app.emit("sync-client-count", new_count);
     }
 
     // Push current doc to the new client immediately
     if let Some(doc) = state.current_doc.read().await.clone() {
         if let Err(e) = ws_sender.send(Message::Binary(doc.into())).await {
-            eprintln!("[Sync] Failed to send initial doc: {}", e);
+            error!("[Sync] Failed to send initial doc: {}", e);
         }
     }
 
@@ -1568,14 +1569,14 @@ async fn handle_connection(
                         let _ = state.broadcast_tx.send(bytes);
                     }
                     Some(Ok(Message::Close(_))) | None => {
-                        println!("[Sync] Client {} disconnected", addr);
+                        info!("[Sync] Client {} disconnected", addr);
                         break;
                     }
                     Some(Ok(Message::Ping(data))) => {
                         let _ = ws_sender.send(Message::Pong(data)).await;
                     }
                     Some(Err(e)) => {
-                        eprintln!("[Sync] Error from {}: {}", addr, e);
+                        error!("[Sync] Error from {}: {}", addr, e);
                         break;
                     }
                     _ => {}
@@ -1584,7 +1585,7 @@ async fn handle_connection(
             broadcast = broadcast_rx.recv() => {
                 if let Ok(doc) = broadcast {
                     if let Err(e) = ws_sender.send(Message::Binary(doc.into())).await {
-                        eprintln!("[Sync] Failed to send to {}: {}", addr, e);
+                        error!("[Sync] Failed to send to {}: {}", addr, e);
                         break;
                     }
                 }
@@ -1597,7 +1598,7 @@ async fn handle_connection(
         let mut count = state.client_count.write().await;
         *count = count.saturating_sub(1);
         let new_count = *count;
-        println!("[Sync] Client disconnected. Total: {}", new_count);
+        info!("[Sync] Client disconnected. Total: {}", new_count);
         let _ = app.emit("sync-client-count", new_count);
     }
 }
@@ -1608,12 +1609,12 @@ async fn start_sync_relay(state: RelayState, app: tauri::AppHandle) {
     let listener = match TcpListener::bind(&addr).await {
         Ok(l) => l,
         Err(e) => {
-            eprintln!("[Sync] Failed to bind to {}: {}", addr, e);
+            error!("[Sync] Failed to bind to {}: {}", addr, e);
             return;
         }
     };
 
-    println!("[Sync] Relay server listening on {}", addr);
+    info!("[Sync] Relay server listening on {}", addr);
 
     while let Ok((stream, addr)) = listener.accept().await {
         let state = state.clone();
@@ -1656,6 +1657,15 @@ pub fn run() {
     let relay_state_clone = relay_state.clone();
 
     tauri::Builder::default()
+        // Structured file-based logging. Rotates at 10 MB, keeps the last 5 files.
+        // Log location: ~/Library/Logs/freed/freed.log (macOS).
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .max_file_size(10 * 1024 * 1024)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
+                .build(),
+        )
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -1745,7 +1755,7 @@ pub fn run() {
                         .unwrap_or("");
 
                     if !error.is_empty() {
-                        println!("[FB] extraction error: {}", error);
+                        info!("[FB] extraction error: {}", error);
                         return;
                     }
 
@@ -1772,13 +1782,13 @@ pub fn run() {
                                 let strategy = post.get("strategy")
                                     .and_then(|s| s.as_str())
                                     .unwrap_or("?");
-                                println!("[FB]   #{}: [{}] {} — {:?}", total, strategy, author, text);
+                                info!("[FB]   #{}: [{}] {} — {:?}", total, strategy, author, text);
                             }
                         }
                     }
 
                     let total = fb_total_clone.load(Ordering::Relaxed);
-                    println!("[FB] pass @ scrollY={}: candidates={}, new={}, total_unique={}",
+                    info!("[FB] pass @ scrollY={}: candidates={}, new={}, total_unique={}",
                         scroll_y, candidates, new_count, total);
                 }
             });
@@ -1787,12 +1797,12 @@ pub fn run() {
                 let payload = event.payload();
                 if let Ok(val) = serde_json::from_str::<serde_json::Value>(payload) {
                     if let Ok(pretty) = serde_json::to_string_pretty(&val) {
-                        println!("[FB] diag:\n{}", pretty);
+                        info!("[FB] diag:\n{}", pretty);
                     } else {
-                        println!("[FB] diag: {}", payload);
+                        info!("[FB] diag: {}", payload);
                     }
                 } else {
-                    println!("[FB] diag: {}", payload);
+                    info!("[FB] diag: {}", payload);
                 }
             });
 
@@ -1803,7 +1813,7 @@ pub fn run() {
                     let size = val.get("size").and_then(|s| s.as_u64()).unwrap_or(0);
                     let status = val.get("status").and_then(|s| s.as_u64()).unwrap_or(0);
                     let preview = val.get("preview").and_then(|p| p.as_str()).unwrap_or("");
-                    println!("[FB-GQL] {} status={} size={} preview={:?}",
+                    info!("[FB-GQL] {} status={} size={} preview={:?}",
                         url, status, size, &preview[..preview.len().min(200)]);
                 }
             });
@@ -1829,7 +1839,7 @@ pub fn run() {
                         .unwrap_or("");
 
                     if !error.is_empty() {
-                        println!("[IG] extraction error: {}", error);
+                        info!("[IG] extraction error: {}", error);
                         return;
                     }
 
@@ -1853,7 +1863,7 @@ pub fn run() {
                                     .chars()
                                     .take(80)
                                     .collect::<String>();
-                                println!("[IG]   #{}: @{} — {:?}", total, author, text);
+                                info!("[IG]   #{}: @{} — {:?}", total, author, text);
                             }
                         }
                     }
@@ -1861,7 +1871,7 @@ pub fn run() {
                     let total = ig_total_clone.load(Ordering::Relaxed);
                     let strategy = val.get("strategy").and_then(|s| s.as_str()).unwrap_or("?");
                     let url = val.get("url").and_then(|u| u.as_str()).unwrap_or("?");
-                    println!("[IG] pass @ scrollY={}: candidates={}, new={}, total_unique={}, strategy={}, url={}",
+                    info!("[IG] pass @ scrollY={}: candidates={}, new={}, total_unique={}, strategy={}, url={}",
                         scroll_y, candidates, new_count, total, strategy, &url[..url.len().min(60)]);
                 }
             });
@@ -1883,15 +1893,15 @@ pub fn run() {
             if std::env::var("FB_AUTO_SCRAPE").unwrap_or_default() == "1" {
                 let auto_app = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    println!("[FB] auto-scrape enabled, waiting 8s for app init...");
+                    info!("[FB] auto-scrape enabled, waiting 8s for app init...");
                     tokio::time::sleep(Duration::from_secs(8)).await;
-                    println!("[FB] triggering auto-scrape now");
+                    info!("[FB] triggering auto-scrape now");
                     // Dev env var auto-scrape: show_window=true so the window is
                     // visible during development iteration.
                     let capture = auto_app.state::<CaptureState>();
                     match fb_scrape_feed(auto_app.clone(), capture, true).await {
-                        Ok(()) => println!("[FB] auto-scrape command returned OK"),
-                        Err(e) => println!("[FB] auto-scrape error: {}", e),
+                        Ok(()) => info!("[FB] auto-scrape command returned OK"),
+                        Err(e) => info!("[FB] auto-scrape error: {}", e),
                     }
                 });
             }
@@ -1901,15 +1911,15 @@ pub fn run() {
             if std::env::var("IG_AUTO_SCRAPE").unwrap_or_default() == "1" {
                 let auto_app = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    println!("[IG] auto-scrape enabled, waiting 8s for app init...");
+                    info!("[IG] auto-scrape enabled, waiting 8s for app init...");
                     tokio::time::sleep(Duration::from_secs(8)).await;
-                    println!("[IG] triggering auto-scrape now");
+                    info!("[IG] triggering auto-scrape now");
                     // Dev env var auto-scrape: show_window=true so the window is
                     // visible during development iteration.
                     let capture = auto_app.state::<CaptureState>();
                     match ig_scrape_feed(auto_app.clone(), capture, true).await {
-                        Ok(()) => println!("[IG] auto-scrape command returned OK"),
-                        Err(e) => println!("[IG] auto-scrape error: {}", e),
+                        Ok(()) => info!("[IG] auto-scrape command returned OK"),
+                        Err(e) => info!("[IG] auto-scrape error: {}", e),
                     }
                 });
             }

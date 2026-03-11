@@ -137,6 +137,23 @@ export const useDebugStore = create<DebugState>()((set) => ({
 }));
 
 // ---------------------------------------------------------------------------
+// Log transport
+//
+// Desktop registers a transport callback via setLogTransport() so that every
+// addDebugEvent call is also written to the platform log file. The ui package
+// cannot import Tauri APIs directly (platform-agnostic constraint), so the
+// transport is injected from the outside.
+// ---------------------------------------------------------------------------
+
+type LogTransport = (level: "debug" | "info" | "warn" | "error", msg: string) => void;
+let _logTransport: LogTransport | null = null;
+
+/** Register a platform-specific log transport. Call once at app startup. */
+export function setLogTransport(transport: LogTransport): void {
+  _logTransport = transport;
+}
+
+// ---------------------------------------------------------------------------
 // Convenience functions (usable outside React render context)
 // ---------------------------------------------------------------------------
 
@@ -146,6 +163,19 @@ export function addDebugEvent(
   bytes?: number,
 ): void {
   useDebugStore.getState().addEvent(kind, detail, bytes);
+
+  if (_logTransport) {
+    const level =
+      kind === "error" || kind === "merge_err"
+        ? "error"
+        : kind === "disconnected" || kind === "reconnecting" || kind === "connect_timeout"
+          ? "warn"
+          : "info";
+    const parts = [`[debug-event] kind=${kind}`];
+    if (detail) parts.push(`detail=${detail}`);
+    if (bytes !== undefined) parts.push(`bytes=${bytes}`);
+    _logTransport(level, parts.join(" "));
+  }
 }
 
 export function setDocSnapshot(snap: DocSnapshot): void {
