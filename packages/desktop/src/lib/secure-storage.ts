@@ -9,7 +9,7 @@
  * inside the Automerge doc. Only the raw API key strings live here.
  */
 
-import { Store } from "@tauri-apps/plugin-store";
+import { Store, load } from "@tauri-apps/plugin-store";
 
 type ApiKeyProvider = "openai" | "anthropic" | "gemini";
 
@@ -20,7 +20,7 @@ async function getStore(): Promise<Store> {
   if (!_store) {
     // "secure.json" is an encrypted JSON file stored in the Tauri app data dir.
     // The plugin handles encryption transparently.
-    _store = await Store.load("secure.json", { defaults: {}, autoSave: true });
+    _store = await load("secure.json", { defaults: {}, autoSave: true });
   }
   return _store;
 }
