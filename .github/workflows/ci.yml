@@ -27,15 +27,15 @@ jobs:
       - name: Type check
         run: bun run typecheck
 
-      - name: Run unit tests (bun -- shared + pwa)
-        run: bun test
-        continue-on-error: true
-
-      - name: Run unit tests (vitest -- pwa, requires jsdom)
+      # Run unit tests per-package with their configured runners.
+      # bun test at the root globs *.spec.ts (Playwright specs) which collides
+      # with @playwright/test's runner. pwa and desktop both use vitest so
+      # they get jsdom and vi.mock() support.
+      - name: Run unit tests (pwa)
         run: npm run test:unit --workspace=packages/pwa
         continue-on-error: true
 
-      - name: Run unit tests (vitest -- desktop, requires Tauri mocks)
+      - name: Run unit tests (desktop)
         run: npm run test:unit --workspace=packages/desktop
         continue-on-error: true
 
