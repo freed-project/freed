@@ -70,7 +70,7 @@ export function UpdateNotification({
 
   return (
     <div className="fixed bottom-4 right-4 z-50 max-w-sm animate-slide-up">
-      <div className="glass-card p-4 shadow-lg border border-[rgba(139,92,246,0.3)]">
+      <div className="rounded-2xl bg-[var(--freed-surface)] p-4 shadow-lg border border-[rgba(139,92,246,0.3)]">
         <div className="flex items-start gap-3">
           <div className="shrink-0 mt-0.5">
             <UpdateIcon phase={state.phase} />
