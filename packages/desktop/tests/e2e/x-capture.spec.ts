@@ -161,15 +161,22 @@ test("X connect form accepts cookies and triggers sync", async ({
   await page.getByPlaceholder("ct0 value").fill("test_ct0_value");
   await page.getByPlaceholder("auth_token value").fill("test_auth_token_value");
 
-  // Wait for the Connect button to become enabled (both fields filled, React
-  // settled) before clicking. The button re-renders when either input changes
-  // because its `disabled` prop is derived from both state values. Using
-  // `toBeEnabled()` here ensures the DOM is stable before Playwright acts.
-  const connectBtn = page
-    .locator("button")
-    .filter({ hasText: /^Connect$/ })
-    .first();
+  // Wait for the Connect button to become enabled. We target it by data-testid
+  // to avoid ambiguity, then wait for the CSS opacity transition to finish
+  // (disabled:opacity-40 → 1.0) before clicking. Playwright's stability check
+  // detects the opacity animation as "not stable", causing spurious retries.
+  const connectBtn = page.getByTestId("x-manual-connect");
   await expect(connectBtn).toBeEnabled({ timeout: 5_000 });
+  // Allow one animation frame for the transition to settle before acting.
+  await page.waitForFunction(
+    (sel) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) return false;
+      return getComputedStyle(el).opacity === "1" && !el.hasAttribute("disabled");
+    },
+    "[data-testid='x-manual-connect']",
+    { timeout: 3_000 },
+  );
   await connectBtn.click();
 
   // After connecting, the "Connected" indicator should appear
