@@ -16,7 +16,8 @@ import { useNewsletter } from "@/context/NewsletterContext";
 
 type SubmitState = "idle" | "loading" | "success" | "error";
 
-const RELEASE_BASE = "https://github.com/freed-project/freed/releases/latest/download";
+const RELEASE_BASE =
+  "https://github.com/freed-project/freed/releases/latest/download";
 
 type DownloadKey = "mac-arm" | "mac-intel" | "windows" | "linux";
 
@@ -51,8 +52,7 @@ function detectDownloadKey(): DownloadKey {
     // Apple GPU = Apple Silicon, Intel HD/Iris = Intel.
     try {
       const canvas = document.createElement("canvas");
-      const gl =
-        canvas.getContext("webgl2") || canvas.getContext("webgl");
+      const gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
       if (gl) {
         const dbg = gl.getExtension("WEBGL_debug_renderer_info");
         if (dbg) {
@@ -81,7 +81,11 @@ export default function NewsletterModal() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const arrowRef = useRef(null);
 
-  const { refs, floatingStyles, context: floatingCtx } = useFloating({
+  const {
+    refs,
+    floatingStyles,
+    context: floatingCtx,
+  } = useFloating({
     open: isTooltipOpen,
     onOpenChange: setIsTooltipOpen,
     placement: "top",
@@ -228,12 +232,47 @@ export default function NewsletterModal() {
                     {/* Early-build disclaimer */}
                     <div className="mb-6 px-4 py-3 rounded-xl border border-amber-500/30 bg-amber-500/5">
                       <p className="text-center text-xs sm:text-sm font-bold text-amber-400/90">
-                        ⚠️ Very early build. Nothing works yet!
+                        ⚠️ Very early build. Here be dragons!
                       </p>
-                      <p className="text-center text-xs text-amber-400/60 mt-1">
-                        Active development in progress. Expect a functional
-                        release within the next month or two.
+                      <p className="text-center text-xs text-amber-400/60 my-2">
+                        I'm shippping new builds{" "}
+                        <a href="/changelog" className="underline underline-offset-2 hover:text-amber-400/90 transition-colors">most every day</a>
+                        . Expect a
+                        functional release within the next month or two.
                       </p>
+                      {(selectedPlatform === "mac-arm" ||
+                        selectedPlatform === "mac-intel") && (
+                        <p className="text-center text-xs text-amber-400/60 mt-1">
+                          This macOS app isn't yet codesigned. If you're feeling
+                          brave, you'll need to run the following in your
+                          terminal to bypass Gatekeeper:{" "}
+                          <code className="font-mono bg-amber-500/10 px-1 py-0.5 rounded">
+                            xattr -cr /Applications/Freed.app
+                          </code>
+                        </p>
+                      )}
+                      {selectedPlatform === "windows" && (
+                        <p className="text-center text-xs text-amber-400/60 mt-1">
+                          Windows will probably block this installer since it's
+                          unsigned. Click{" "}
+                          <span className="text-amber-400/80 font-medium">
+                            More info
+                          </span>{" "}
+                          then{" "}
+                          <span className="text-amber-400/80 font-medium">
+                            Run anyway
+                          </span>{" "}
+                          to proceed.
+                        </p>
+                      )}
+                      {selectedPlatform === "linux" && (
+                        <p className="text-center text-xs text-amber-400/60 mt-1">
+                          Make the AppImage executable before running:{" "}
+                          <code className="font-mono bg-amber-500/10 px-1 py-0.5 rounded">
+                            chmod +x Freed-Linux-x64.AppImage
+                          </code>
+                        </p>
+                      )}
                     </div>
 
                     {/* --- Web App --- */}
