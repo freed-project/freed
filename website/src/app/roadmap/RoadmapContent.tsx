@@ -545,7 +545,7 @@ const phases: Phase[] = [
     number: 11,
     title: "OpenClaw + Omi 🦞",
     description:
-      "Headless capture for power users via OpenClaw CLI. Plus bidirectional Omi wearable integration: say \"Hey Freed\" to save a voice note, and your reading activity enriches Omi's memory.",
+      'Headless capture for power users via OpenClaw CLI. Plus bidirectional Omi wearable integration: say "Hey Freed" to save a voice note, and your reading activity enriches Omi\'s memory.',
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-11-OPENCLAW.md",
@@ -690,7 +690,7 @@ export default function RoadmapContent() {
           {/*  We build in daylight.*/}
           {/*</p>*/}
           <p className="text-text-muted text-sm sm:text-base">
-            Every commit, every decision, every pivot. All visible.
+            Every commit, decision, and pivot. Visible.
           </p>
         </motion.header>
 

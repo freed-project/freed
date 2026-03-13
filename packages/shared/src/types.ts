@@ -630,7 +630,7 @@ export function createDefaultPreferences(): UserPreferences {
         focusMode: false,
         focusIntensity: "normal",
         markReadOnScroll: true,
-        dualColumnMode: false,
+        dualColumnMode: true,
       },
       archivePruneDays: 30,
     },

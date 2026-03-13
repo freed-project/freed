@@ -108,7 +108,8 @@ export const FeedItem = memo(function FeedItem({
   const swipeProgress = Math.min(Math.abs(swipeX) / SWIPE_THRESHOLD, 1);
   const pastThreshold = swipeX < -SWIPE_THRESHOLD;
 
-  const enableSwipe = !compact && !!onArchive;
+  // Saved (bookmarked) items cannot be archived, so suppress the affordance.
+  const enableSwipe = !compact && !!onArchive && !item.userState.saved;
 
   // ── Story tile ─────────────────────────────────────────────────────────────
   // Stories get their own portrait-card layout regardless of compact/full mode.
@@ -385,7 +386,7 @@ export const FeedItem = memo(function FeedItem({
               </button>
             )}
 
-            {onArchive && (
+            {onArchive && !item.userState.saved && (
               <button
                 onClick={onArchive}
                 title="Archive"

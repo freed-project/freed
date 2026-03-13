@@ -321,6 +321,10 @@ export function generateSampleItems(): FeedItem[] {
       const age = (idx / 80) * 14 * DAY + rand() * DAY;
       const publishedAt = Math.round(now - age);
       const r = rand();
+      const isSaved = r > 0.85;
+      // Saved items can never be archived -- the ranges don't overlap here
+      // anyway (>0.85 vs <0.1), but guard explicitly to enforce the invariant.
+      const isArchived = !isSaved && r < 0.1;
 
       items.push({
         globalId: `sample-rss:${feed.slug}:${ai}`,
@@ -345,10 +349,10 @@ export function generateSampleItems(): FeedItem[] {
         },
         userState: {
           hidden: false,
-          saved: r > 0.85,
-          savedAt: r > 0.85 ? publishedAt + 120_000 : undefined,
-          archived: r < 0.1,
-          archivedAt: r < 0.1 ? publishedAt + 300_000 : undefined,
+          saved: isSaved,
+          savedAt: isSaved ? publishedAt + 120_000 : undefined,
+          archived: isArchived,
+          archivedAt: isArchived ? publishedAt + 300_000 : undefined,
           readAt: r < 0.3 ? publishedAt + 90_000 : undefined,
           tags: [],
         },
@@ -357,7 +361,7 @@ export function generateSampleItems(): FeedItem[] {
     }
   }
 
-  // 20 saved bookmarks
+  // 20 saved bookmarks -- always saved, never archived (saved wins).
   for (let si = 0; si < 20; si++) {
     const age = (si / 20) * 14 * DAY + rand() * DAY;
     const publishedAt = Math.round(now - age);
@@ -395,8 +399,8 @@ export function generateSampleItems(): FeedItem[] {
         hidden: false,
         saved: true,
         savedAt: publishedAt + 30_000,
-        archived: r < 0.15,
-        archivedAt: r < 0.15 ? publishedAt + 600_000 : undefined,
+        archived: false,
+        archivedAt: undefined,
         readAt: r < 0.4 ? publishedAt + 120_000 : undefined,
         tags: [],
       },
@@ -410,6 +414,8 @@ export function generateSampleItems(): FeedItem[] {
     const publishedAt = Math.round(now - age);
     const r = rand();
     const author = X_AUTHORS[xi % X_AUTHORS.length];
+    const isSaved = r > 0.85;
+    const isArchived = !isSaved && r < 0.1;
 
     items.push({
       globalId: `sample-x:${xi}`,
@@ -430,10 +436,10 @@ export function generateSampleItems(): FeedItem[] {
       },
       userState: {
         hidden: false,
-        saved: r > 0.85,
-        savedAt: r > 0.85 ? publishedAt + 10_000 : undefined,
-        archived: r < 0.1,
-        archivedAt: r < 0.1 ? publishedAt + 60_000 : undefined,
+        saved: isSaved,
+        savedAt: isSaved ? publishedAt + 10_000 : undefined,
+        archived: isArchived,
+        archivedAt: isArchived ? publishedAt + 60_000 : undefined,
         readAt: r < 0.5 ? publishedAt + 8_000 : undefined,
         tags: [],
       },
@@ -447,6 +453,8 @@ export function generateSampleItems(): FeedItem[] {
     const publishedAt = Math.round(now - age);
     const r = rand();
     const author = FACEBOOK_AUTHORS[fi % FACEBOOK_AUTHORS.length];
+    const isSaved = r > 0.85;
+    const isArchived = !isSaved && r < 0.1;
 
     items.push({
       globalId: `sample-facebook:${fi}`,
@@ -466,10 +474,10 @@ export function generateSampleItems(): FeedItem[] {
       },
       userState: {
         hidden: false,
-        saved: r > 0.85,
-        savedAt: r > 0.85 ? publishedAt + 10_000 : undefined,
-        archived: r < 0.1,
-        archivedAt: r < 0.1 ? publishedAt + 60_000 : undefined,
+        saved: isSaved,
+        savedAt: isSaved ? publishedAt + 10_000 : undefined,
+        archived: isArchived,
+        archivedAt: isArchived ? publishedAt + 60_000 : undefined,
         readAt: r < 0.5 ? publishedAt + 8_000 : undefined,
         tags: [],
       },
@@ -483,6 +491,8 @@ export function generateSampleItems(): FeedItem[] {
     const age = (ii / 10) * 7 * DAY + rand() * DAY;
     const publishedAt = Math.round(now - age);
     const r = rand();
+    const isSaved = r > 0.85;
+    const isArchived = !isSaved && r < 0.1;
 
     items.push({
       globalId: `sample-instagram:${ii}`,
@@ -502,10 +512,10 @@ export function generateSampleItems(): FeedItem[] {
       },
       userState: {
         hidden: false,
-        saved: r > 0.85,
-        savedAt: r > 0.85 ? publishedAt + 10_000 : undefined,
-        archived: r < 0.1,
-        archivedAt: r < 0.1 ? publishedAt + 60_000 : undefined,
+        saved: isSaved,
+        savedAt: isSaved ? publishedAt + 10_000 : undefined,
+        archived: isArchived,
+        archivedAt: isArchived ? publishedAt + 60_000 : undefined,
         readAt: r < 0.5 ? publishedAt + 8_000 : undefined,
         tags: [],
       },

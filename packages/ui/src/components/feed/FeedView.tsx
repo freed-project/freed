@@ -146,6 +146,13 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+/** Human-readable retention message for the archive toolbar. */
+function getRetentionLabel(pruneDays: number): string {
+  if (pruneDays === 0) return "Archived content is kept forever";
+  if (pruneDays === 1) return "Archived content deleted after 1 day";
+  return `Archived content deleted after ${pruneDays} days`;
+}
+
 /** Human-readable label for the scope currently active in the sidebar. */
 function getFilterLabel(filter: FilterOptions, feeds: Record<string, RssFeed>): string {
   if (filter.savedOnly) return "Saved";
@@ -166,6 +173,8 @@ export function FeedView() {
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const toggleLiked = useAppStore((s) => s.toggleLiked);
+  const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
+  const archivePruneDays = useAppStore((s) => s.preferences.display.archivePruneDays);
 
   const handleItemSave = useCallback(
     (item: FeedItem) => toggleSaved(item.globalId),
@@ -189,6 +198,30 @@ export function FeedView() {
       window.open(url, "_blank", "noopener,noreferrer");
     }
   }, [openUrl]);
+
+  // Archive toolbar confirm-to-delete state.
+  // First click arms the button; second click executes. Auto-resets after 3s.
+  const [deleteConfirmArmed, setDeleteConfirmArmed] = useState(false);
+  const deleteConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleDeleteArchivedClick = useCallback(() => {
+    if (!deleteConfirmArmed) {
+      setDeleteConfirmArmed(true);
+      deleteConfirmTimerRef.current = setTimeout(() => setDeleteConfirmArmed(false), 3000);
+      return;
+    }
+    if (deleteConfirmTimerRef.current) clearTimeout(deleteConfirmTimerRef.current);
+    setDeleteConfirmArmed(false);
+    void deleteAllArchived();
+  }, [deleteConfirmArmed, deleteAllArchived]);
+
+  // Reset confirm state whenever the archived view is left.
+  useEffect(() => {
+    if (!activeFilter.archivedOnly) {
+      if (deleteConfirmTimerRef.current) clearTimeout(deleteConfirmTimerRef.current);
+      setDeleteConfirmArmed(false);
+    }
+  }, [activeFilter.archivedOnly]);
 
   const [addFeedOpen, setAddFeedOpen] = useState(false);
 
@@ -299,25 +332,45 @@ export function FeedView() {
 
   if (showDualColumn) {
     return (
-      <div className="h-full flex overflow-hidden">
-        <CompactFeedPanel
-          items={filteredItems}
-          selectedId={selectedItem.globalId}
-          onItemClick={openItem}
-          width={panelWidth}
-        />
-        {/* Draggable column separator -- zero visible width, padding provides the hit area */}
-        <div
-          className="w-0 px-0.5 shrink-0 cursor-col-resize hover:bg-[#8b5cf6]/20 active:bg-[#8b5cf6]/30 transition-colors -mx-0.5 z-10"
-          onPointerDown={handleDragStart}
-          onPointerMove={handleDragMove}
-          onPointerUp={handleDragEnd}
-          onPointerCancel={handleDragEnd}
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize sidebar"
-        />
-        <ReaderView item={selectedItem} onClose={closeItem} dualColumn />
+      <div className="h-full flex flex-col overflow-hidden">
+        {/* Archive retention toolbar — only shown in the archived view */}
+        {activeFilter.archivedOnly && (
+          <div className="flex-shrink-0 px-4 py-2 border-b border-white/5 flex items-center justify-between gap-4">
+            <p className="text-xs text-[#52525b]">{getRetentionLabel(archivePruneDays ?? 30)}</p>
+            {(archivePruneDays ?? 30) > 0 && (
+              <button
+                onClick={handleDeleteArchivedClick}
+                className={`text-xs px-3 py-1 rounded-lg transition-colors border whitespace-nowrap ${
+                  deleteConfirmArmed
+                    ? "bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30"
+                    : "bg-white/5 text-[#71717a] border-transparent hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                {deleteConfirmArmed ? "Confirm delete?" : "Delete archived content now"}
+              </button>
+            )}
+          </div>
+        )}
+        <div className="flex-1 flex overflow-hidden">
+          <CompactFeedPanel
+            items={filteredItems}
+            selectedId={selectedItem.globalId}
+            onItemClick={openItem}
+            width={panelWidth}
+          />
+          {/* Draggable column separator -- zero visible width, padding provides the hit area */}
+          <div
+            className="w-0 px-0.5 shrink-0 cursor-col-resize hover:bg-[#8b5cf6]/20 active:bg-[#8b5cf6]/30 transition-colors -mx-0.5 z-10"
+            onPointerDown={handleDragStart}
+            onPointerMove={handleDragMove}
+            onPointerUp={handleDragEnd}
+            onPointerCancel={handleDragEnd}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize sidebar"
+          />
+          <ReaderView item={selectedItem} onClose={closeItem} dualColumn />
+        </div>
         <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
       </div>
     );
@@ -325,6 +378,25 @@ export function FeedView() {
 
   return (
     <div className="h-full flex flex-col">
+      {/* Archive retention toolbar — only shown in the archived view */}
+      {activeFilter.archivedOnly && (
+        <div className="flex-shrink-0 px-4 py-2 border-b border-white/5 flex items-center justify-between gap-4">
+          <p className="text-xs text-[#52525b]">{getRetentionLabel(archivePruneDays ?? 30)}</p>
+          {(archivePruneDays ?? 30) > 0 && (
+            <button
+              onClick={handleDeleteArchivedClick}
+              className={`text-xs px-3 py-1 rounded-lg transition-colors border whitespace-nowrap ${
+                deleteConfirmArmed
+                  ? "bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30"
+                  : "bg-white/5 text-[#71717a] border-transparent hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              {deleteConfirmArmed ? "Confirm delete?" : "Delete archived content now"}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Search results banner — only shown when actively searching */}
       {isSearching && (
         <div className="flex-shrink-0 px-4 py-2 border-b border-white/5 flex items-center justify-between">

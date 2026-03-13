@@ -496,9 +496,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     const isVisible = visibleSections.some((s) => s.id === id);
     if (!isVisible) return null;
 
+    // SectionContent is called as a plain function (not as a JSX component)
+    // because it is defined inside SettingsDialog. If rendered as
+    // <SectionContent />, React would see a new component type on every
+    // SettingsDialog re-render and unmount/remount the entire subtree,
+    // destroying local state in nested components like XSettingsSection.
     return (
       <section data-section={id} className="pb-8 min-h-full flex flex-col">
-        <SectionContent id={id} />
+        {SectionContent({ id })}
       </section>
     );
   }
@@ -548,6 +553,23 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   </div>
                 </div>
               )}
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm text-white">Delete archived content after</p>
+                  <p className="text-xs text-[#52525b] mt-0.5">Saved items are never deleted</p>
+                </div>
+                <select
+                  value={display.archivePruneDays ?? 30}
+                  onChange={(e) => handleDisplayChange({ archivePruneDays: Number(e.target.value) })}
+                  className="shrink-0 bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded-lg text-sm text-white px-3 py-1.5 focus:outline-none focus:border-[#8b5cf6]/50 cursor-pointer"
+                >
+                  <option value={3}>3 days</option>
+                  <option value={7}>7 days</option>
+                  <option value={30}>30 days</option>
+                  <option value={90}>90 days</option>
+                  <option value={0}>Never</option>
+                </select>
+              </div>
             </div>
           </>
         );

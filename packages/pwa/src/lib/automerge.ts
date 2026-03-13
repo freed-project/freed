@@ -263,6 +263,11 @@ export async function docPruneArchivedItems(maxAgeMs?: number): Promise<void> {
   return request({ reqId, type: "PRUNE_ARCHIVED_ITEMS", maxAgeMs });
 }
 
+export async function docDeleteAllArchived(): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "DELETE_ALL_ARCHIVED" });
+}
+
 export async function docAddRssFeed(feed: RssFeed): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "ADD_RSS_FEED", feed });

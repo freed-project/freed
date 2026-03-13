@@ -173,6 +173,8 @@ export function markAsRead(doc: FreedDoc, globalId: string): void {
 export function toggleArchived(doc: FreedDoc, globalId: string): void {
   const item = doc.feedItems[globalId];
   if (!item) return;
+  // Bookmarked items cannot be archived -- saved always wins.
+  if (item.userState.saved) return;
   if (item.userState.archived) {
     item.userState.archived = false;
     delete (item.userState as unknown as Record<string, unknown>).archivedAt;
@@ -239,6 +241,24 @@ export function pruneArchivedItems(
 }
 
 /**
+ * Immediately delete all archived, non-saved items regardless of age.
+ * Use when the user explicitly requests "delete now" from the archive toolbar.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @returns Number of items deleted
+ */
+export function deleteAllArchivedItems(doc: FreedDoc): number {
+  let deleted = 0;
+  for (const [id, item] of Object.entries(doc.feedItems)) {
+    if (!item.userState.archived) continue;
+    if (item.userState.saved) continue;
+    delete doc.feedItems[id];
+    deleted++;
+  }
+  return deleted;
+}
+
+/**
  * Toggle bookmark status for a feed item
  *
  * @param doc - The Automerge document (mutable within A.change)
@@ -250,6 +270,10 @@ export function toggleSaved(doc: FreedDoc, globalId: string): void {
     item.userState.saved = !item.userState.saved;
     if (item.userState.saved) {
       item.userState.savedAt = Date.now();
+      // Bookmarking wins -- clear any stale archive state so an item can
+      // never be both saved and archived at the same time.
+      item.userState.archived = false;
+      delete (item.userState as unknown as Record<string, unknown>).archivedAt;
     } else {
       // Automerge forbids assigning `undefined` — use delete instead
       delete (item.userState as unknown as Record<string, unknown>).savedAt;
