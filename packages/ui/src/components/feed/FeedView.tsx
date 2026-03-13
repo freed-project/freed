@@ -16,7 +16,7 @@ const MAX_PANEL_WIDTH = 500;
 const DEFAULT_PANEL_WIDTH = 150;
 const NARROW_THRESHOLD = 150;
 
-// Card geometry: each compact card is a square via aspect-square.
+// Card geometry: all cards are square (width × width), including story tiles.
 // Wrapper padding: px-2 (8px each side = 16px total), pb-2 (8px), first item gets pt-2 (8px).
 const CARD_H_PAD = 16;
 const CARD_V_GAP = 8;
@@ -41,6 +41,9 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   const cardHeight = width - CARD_H_PAD;
   const itemHeight = cardHeight + CARD_V_GAP;
   const firstItemHeight = itemHeight + CARD_V_GAP;
+  // Story tiles use the same square dimensions as regular cards in the sidebar.
+  const storyTileH = cardHeight;
+  const storyItemHeight = storyTileH + CARD_V_GAP;
 
   // Capture the top-visible item before the width change propagates to layout.
   // Runs during render (synchronously) so we can read the pre-update scroll state.
@@ -64,10 +67,19 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     prevWidthRef.current = width;
   }
 
+  const estimateItemSize = useCallback(
+    (index: number) => {
+      const isStory = items[index]?.contentType === "story";
+      const baseH = isStory ? storyItemHeight : itemHeight;
+      return index === 0 ? baseH + CARD_V_GAP : baseH;
+    },
+    [items, itemHeight, storyItemHeight],
+  );
+
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: (index) => (index === 0 ? firstItemHeight : itemHeight),
+    estimateSize: estimateItemSize,
     overscan: 3,
   });
 
@@ -79,10 +91,14 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
 
     virtualizer.measure();
 
-    const newStart =
-      anchor.index === 0
-        ? 0
-        : firstItemHeight + (anchor.index - 1) * itemHeight;
+    // Estimate scroll position based on item types (story vs regular).
+    let newStart = 0;
+    if (anchor.index > 0) {
+      newStart = firstItemHeight; // first item
+      for (let i = 1; i < anchor.index; i++) {
+        newStart += items[i]?.contentType === "story" ? storyItemHeight : itemHeight;
+      }
+    }
 
     const el = parentRef.current;
     if (el) el.scrollTop = newStart + anchor.offset;
@@ -134,6 +150,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
                   narrow={width < NARROW_THRESHOLD}
                   selected={item.globalId === selectedId}
                   onClick={() => onItemClick(item)}
+                  storyHeight={item.contentType === "story" ? storyTileH : undefined}
                 />
               </div>
             </div>

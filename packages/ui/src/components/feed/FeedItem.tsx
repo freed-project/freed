@@ -21,6 +21,12 @@ interface FeedItemProps {
   onLike?: (e: React.MouseEvent) => void;
   /** Opens comment URL in the browser. Pass the URL handler for your platform. */
   onOpenCommentUrl?: (url: string) => void;
+  /**
+   * Explicit pixel height for story tiles. FeedList computes this from the
+   * current container width so each tile fills its column at a 3:4 portrait
+   * ratio (capped at 288px). Defaults to 288 if omitted.
+   */
+  storyHeight?: number;
 }
 
 const cls = "w-3.5 h-3.5";
@@ -64,6 +70,7 @@ export const FeedItem = memo(function FeedItem({
   onArchive,
   onLike,
   onOpenCommentUrl,
+  storyHeight = 288,
 }: FeedItemProps) {
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
   const platformIcon = platformIcons[item.platform] ?? <span className="text-xs">📄</span>;
@@ -110,6 +117,127 @@ export const FeedItem = memo(function FeedItem({
 
   // Saved (bookmarked) items cannot be archived, so suppress the affordance.
   const enableSwipe = !compact && !!onArchive && !item.userState.saved;
+
+  // ── Story tile ─────────────────────────────────────────────────────────────
+  // Stories get their own portrait-card layout regardless of compact/full mode.
+  // The background image fills the card; author and meta are overlaid with
+  // gradient masks so they remain legible against any photo.
+
+  if (item.contentType === "story") {
+    const bg = item.content.mediaUrls[0];
+    const isIg = item.platform === "instagram";
+    const gradientFallback = isIg
+      ? "from-[#f9a825] via-[#e91e8c] to-[#9b4beb]"
+      : "from-[#1877f2] to-[#0a4bb5]";
+
+    return (
+      // Explicit JS-computed height so the tile fills its column at a 3:4
+      // portrait ratio regardless of container width, without any CSS tricks
+      // that interact poorly with max-height or aspect-ratio.
+      <div
+        className="relative overflow-hidden rounded-2xl cursor-pointer group select-none w-full"
+        style={{ height: storyHeight }}
+        onClick={onClick}
+        onMouseEnter={onMouseEnter}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === "Enter" && onClick?.()}
+      >
+        {/* Background — photo or platform gradient */}
+        {bg ? (
+          <img
+            src={bg}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+          />
+        ) : (
+          <div className={`absolute inset-0 bg-gradient-to-br ${gradientFallback}`} />
+        )}
+
+        {/* Top gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/65 via-black/10 to-black/55 pointer-events-none" />
+
+        {/* Author row */}
+        <div className="absolute top-0 left-0 right-0 p-3 flex items-center gap-2">
+          {item.author.avatarUrl ? (
+            <img
+              src={item.author.avatarUrl}
+              alt=""
+              className="w-7 h-7 rounded-full ring-2 ring-white/50 shrink-0 object-cover"
+            />
+          ) : (
+            <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${gradientFallback} flex items-center justify-center text-[11px] font-bold ring-2 ring-white/50 shrink-0`}>
+              {item.author.displayName[0]?.toUpperCase() ?? "?"}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <span className="text-[11px] font-semibold text-white drop-shadow truncate block leading-tight">
+              {item.author.displayName}
+            </span>
+            <span className="text-[10px] text-white/70 leading-none">{timeAgo}</span>
+          </div>
+          <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-[10px] text-white font-medium">
+            Story
+          </span>
+        </div>
+
+        {/* Bottom row — platform icon + caption + location */}
+        <div className="absolute bottom-0 left-0 right-0 p-3 flex items-end gap-2">
+          <div className="flex items-center gap-1.5 shrink-0 text-white/75">
+            {platformIcons[item.platform] ?? <span className="text-xs">📄</span>}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            {item.content.text && (
+              <p className="text-[11px] text-white/90 drop-shadow line-clamp-1 leading-tight mb-1">
+                {item.content.text}
+              </p>
+            )}
+            {item.location?.name && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-white/80 bg-black/35 backdrop-blur-sm rounded-full px-2 py-0.5">
+                <svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+                </svg>
+                {item.location.name}
+              </span>
+            )}
+          </div>
+
+          {/* Save / archive — visible on hover */}
+          {(onSave || onArchive) && (
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+              {onSave && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onSave(e); }}
+                  title={item.userState.saved ? "Remove bookmark" : "Bookmark"}
+                  className={`p-1.5 rounded-lg bg-black/35 backdrop-blur-sm transition-colors ${
+                    item.userState.saved ? "text-[#8b5cf6]" : "text-white/70 hover:text-[#8b5cf6]"
+                  }`}
+                >
+                  <svg className="w-3.5 h-3.5" fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                  </svg>
+                </button>
+              )}
+              {onArchive && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onArchive(e); }}
+                  title="Archive"
+                  className="p-1.5 rounded-lg bg-black/35 backdrop-blur-sm text-white/70 hover:text-green-400 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (compact) {
     return (
