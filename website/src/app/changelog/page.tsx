@@ -108,16 +108,18 @@ async function getReleases(): Promise<ParsedRelease[]> {
 
   const data = await res.json();
 
-  return (data as Array<{
-    id: number;
-    tag_name: string;
-    name: string;
-    body: string | null;
-    published_at: string;
-    html_url: string;
-    draft: boolean;
-    prerelease: boolean;
-  }>)
+  return (
+    data as Array<{
+      id: number;
+      tag_name: string;
+      name: string;
+      body: string | null;
+      published_at: string;
+      html_url: string;
+      draft: boolean;
+      prerelease: boolean;
+    }>
+  )
     .filter((r) => !r.draft && !r.prerelease)
     .map((r) => {
       const { features, fixes, performance, prNumbers } = parseReleaseBody(
@@ -136,8 +138,51 @@ async function getReleases(): Promise<ParsedRelease[]> {
     });
 }
 
+/**
+ * Derives the CalVer day key from a version string.
+ *
+ * Scheme: YY.M.DDBUILD where patch = (day × 100) + build_number
+ * e.g. "26.3.904" → day=9 → key "26.3.9"
+ *
+ * Using the version (not published_at) avoids UTC midnight edge cases where
+ * two same-day builds can have different UTC date strings.
+ */
+function versionDayKey(version: string): string {
+  const parts = version.split(".");
+  if (parts.length !== 3) return version;
+  const [yy, m, patch] = parts;
+  const day = Math.floor(Number(patch) / 100);
+  return `${yy}.${m}.${day}`;
+}
+
+function groupReleasesByDay(releases: ParsedRelease[]): ParsedRelease[] {
+  const byDay = new Map<string, ParsedRelease[]>();
+
+  for (const r of releases) {
+    const day = versionDayKey(r.version);
+    const group = byDay.get(day) ?? [];
+    group.push(r);
+    byDay.set(day, group);
+  }
+
+  // GitHub returns releases newest-first, so the first entry in each group
+  // is already the most recent build for that day.
+  return Array.from(byDay.values()).map((group) => {
+    const [head, ...rest] = group;
+    return {
+      ...head,
+      features: [...head.features, ...rest.flatMap((r) => r.features)],
+      fixes: [...head.fixes, ...rest.flatMap((r) => r.fixes)],
+      performance: [...head.performance, ...rest.flatMap((r) => r.performance)],
+      prNumbers: [
+        ...new Set([...head.prNumbers, ...rest.flatMap((r) => r.prNumbers)]),
+      ].sort((a, b) => a - b),
+    };
+  });
+}
+
 export default async function ChangelogPage() {
   const releases = await getReleases();
 
-  return <ChangelogContent releases={releases} />;
+  return <ChangelogContent releases={groupReleasesByDay(releases)} />;
 }
