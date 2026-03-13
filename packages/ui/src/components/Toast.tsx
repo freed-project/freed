@@ -50,10 +50,12 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
     setTimeout(onClose, 200);
   };
 
+  // bg-[#1a1a1f] is the opaque base; the colored ring stacks on top so the
+  // tint reads against the surface rather than bleeding through to content below.
   const bgColor = {
-    success: "bg-green-500/20 border-green-500/30",
-    error: "bg-red-500/20 border-red-500/30",
-    info: "bg-[#8b5cf6]/20 border-[#8b5cf6]/30",
+    success: "bg-[#1a1a1f] ring-1 ring-green-500/30 border-green-500/30",
+    error: "bg-[#1a1a1f] ring-1 ring-red-500/30 border-red-500/30",
+    info: "bg-[#1a1a1f] ring-1 ring-[#8b5cf6]/30 border-[#8b5cf6]/30",
   }[toast.type];
 
   const textColor = {
