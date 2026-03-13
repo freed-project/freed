@@ -21,6 +21,12 @@ interface FeedItemProps {
   onLike?: (e: React.MouseEvent) => void;
   /** Opens comment URL in the browser. Pass the URL handler for your platform. */
   onOpenCommentUrl?: (url: string) => void;
+  /**
+   * Explicit pixel height for story tiles. FeedList computes this from the
+   * current container width so each tile fills its column at a 3:4 portrait
+   * ratio (capped at 288px). Defaults to 288 if omitted.
+   */
+  storyHeight?: number;
 }
 
 const cls = "w-3.5 h-3.5";
@@ -64,6 +70,7 @@ export const FeedItem = memo(function FeedItem({
   onArchive,
   onLike,
   onOpenCommentUrl,
+  storyHeight = 288,
 }: FeedItemProps) {
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
   const platformIcon = platformIcons[item.platform] ?? <span className="text-xs">📄</span>;
@@ -124,10 +131,12 @@ export const FeedItem = memo(function FeedItem({
       : "from-[#1877f2] to-[#0a4bb5]";
 
     return (
+      // Explicit JS-computed height so the tile fills its column at a 3:4
+      // portrait ratio regardless of container width, without any CSS tricks
+      // that interact poorly with max-height or aspect-ratio.
       <div
-        className={`relative overflow-hidden rounded-2xl cursor-pointer group select-none ${
-          compact ? "h-48" : "h-72"
-        }`}
+        className="relative overflow-hidden rounded-2xl cursor-pointer group select-none w-full"
+        style={{ height: storyHeight }}
         onClick={onClick}
         onMouseEnter={onMouseEnter}
         role="button"

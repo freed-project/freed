@@ -3,7 +3,7 @@
 //! Native desktop app that bundles capture, sync relay, and reader UI.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use log::{error, info, warn};
+use log::{error, info};
 use futures_util::{SinkExt, StreamExt};
 use rand::RngCore;
 use std::collections::HashSet;
