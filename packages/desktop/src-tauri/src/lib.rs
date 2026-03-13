@@ -892,12 +892,12 @@ async fn fb_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
 /// the extraction script which reads the DOM and emits 'fb-feed-data'.
 ///
 /// `show_window` controls visibility during scraping:
-/// - `false` (default): window is positioned off-screen at (-20000, -20000) so
-///   WebKit renders at full speed without the window appearing on the user's desktop.
-/// - `true` (debug): window is centered and focused, matching the original behavior.
+/// - `false` (default): window is hidden via `hide()`. The RAF keepalive loop
+///   in webkit-mask.js keeps WKWebView JS timers running at full speed.
+/// - `true` (debug): window is centered and focused, visible on the user's desktop.
 #[tauri::command]
 async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, CaptureState>, show_window: bool) -> Result<(), String> {
-    use tauri::{LogicalPosition, WebviewWindowBuilder};
+    use tauri::WebviewWindowBuilder;
 
     let fb_feed_url = "https://www.facebook.com/";
 
@@ -908,10 +908,14 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
             if show_window {
                 let _ = w.center();
                 let _ = w.set_focus();
+                let _ = w.show();
             } else {
-                let _ = w.set_position(LogicalPosition::new(-20000.0_f64, -20000.0_f64));
+                // Truly hide the window so it doesn't appear on-screen, in
+                // Mission Control, or on secondary displays. The RAF keepalive
+                // loop in webkit-mask.js prevents WKWebView from throttling JS
+                // timers while the window is hidden.
+                let _ = w.hide();
             }
-            let _ = w.show();
             w
         }
         None => {
@@ -927,7 +931,6 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
             .initialization_script(include_str!("webkit-mask.js"))
             .title("Freed Facebook")
             .inner_size(1280.0, 900.0)
-            .visible(true)
             .on_navigation(move |url| {
                 let host = url.host_str().unwrap_or("");
                 let path = url.path();
@@ -942,9 +945,9 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
             });
 
             if show_window {
-                builder = builder.center();
+                builder = builder.center().visible(true);
             } else {
-                builder = builder.position(-20000.0, -20000.0);
+                builder = builder.visible(false);
             }
 
             builder.build().map_err(|e| e.to_string())?
@@ -977,8 +980,12 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         rand::thread_rng().gen_range(8usize..=18)
     };
     for i in 0..num_passes {
-        // Keep window visible — WebKit throttles hidden windows, even off-screen ones.
-        let _ = wv.show();
+        // Only show the window if the user has opted into the debug view.
+        // When show_window=false the window stays hidden; the RAF keepalive
+        // loop in webkit-mask.js prevents WKWebView from throttling timers.
+        if show_window {
+            let _ = wv.show();
+        }
 
         wv.eval(FB_EXTRACT_SCRIPT)
             .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
@@ -1198,27 +1205,31 @@ async fn ig_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
 /// the extraction script which reads the DOM and emits 'ig-feed-data'.
 ///
 /// `show_window` controls visibility during scraping:
-/// - `false` (default): window is positioned off-screen at (-20000, -20000) so
-///   WebKit renders at full speed without the window appearing on the user's desktop.
-/// - `true` (debug): window is centered and on-screen, matching the original behavior.
+/// - `false` (default): window is hidden via `hide()`. The RAF keepalive loop
+///   in webkit-mask.js keeps WKWebView JS timers running at full speed.
+/// - `true` (debug): window is centered and on-screen, visible on the user's desktop.
 #[tauri::command]
 async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, CaptureState>, show_window: bool) -> Result<(), String> {
-    use tauri::{LogicalPosition, WebviewWindowBuilder};
+    use tauri::WebviewWindowBuilder;
 
     let ig_feed_url = "https://www.instagram.com/?variant=following";
 
     let wv = match app.get_webview_window("ig-scraper") {
         Some(w) => {
-            // Window exists (user already logged in). Re-position then show.
+            // Window exists (user already logged in).
             // DO NOT re-navigate — that would fire the ig_show_login on_navigation
-            // callback which hides the window, causing WebKit to throttle rendering.
+            // callback which hides the window.
             if show_window {
                 let _ = w.center();
                 let _ = w.set_focus();
+                let _ = w.show();
             } else {
-                let _ = w.set_position(LogicalPosition::new(-20000.0_f64, -20000.0_f64));
+                // Truly hide the window so it doesn't appear on-screen, in
+                // Mission Control, or on secondary displays. The RAF keepalive
+                // loop in webkit-mask.js prevents WKWebView from throttling JS
+                // timers while the window is hidden.
+                let _ = w.hide();
             }
-            let _ = w.show();
             info!("[IG] reusing existing ig-scraper window (show_window={})", show_window);
             w
         }
@@ -1237,7 +1248,6 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
             .initialization_script(include_str!("webkit-mask.js"))
             .title("Freed Instagram")
             .inner_size(1280.0, 900.0)
-            .visible(true)
             .on_navigation(move |url| {
                 let path = url.path();
                 let host = url.host_str().unwrap_or("");
@@ -1253,9 +1263,9 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
             });
 
             if show_window {
-                builder = builder.center();
+                builder = builder.center().visible(true);
             } else {
-                builder = builder.position(-20000.0, -20000.0);
+                builder = builder.visible(false);
             }
 
             builder.build().map_err(|e| e.to_string())?
@@ -1266,11 +1276,7 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(9000.0, 1200.0))).await;
 
-    // Ensure window is still visible so WebKit doesn't throttle JS execution.
-    // Do NOT set_focus here — we don't want to yank focus from the user's
-    // foreground app on every scrape pass.
-    let _ = wv.show();
-    info!("[IG] window visible, proceeding with extraction");
+    info!("[IG] waiting for feed to render, proceeding with extraction");
 
     // Belt-and-suspenders: click the Following tab if present
     let _ = wv.eval(r#"document.querySelector('a[href="/?variant=following"]')?.click();"#);
@@ -1283,8 +1289,12 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         rand::thread_rng().gen_range(7usize..=14)
     };
     for i in 0..num_passes {
-        // Keep window visible — WebKit throttles hidden windows
-        let _ = wv.show();
+        // Only show the window if the user has opted into the debug view.
+        // When show_window=false the window stays hidden; the RAF keepalive
+        // loop in webkit-mask.js prevents WKWebView from throttling timers.
+        if show_window {
+            let _ = wv.show();
+        }
 
         wv.eval(IG_EXTRACT_SCRIPT)
             .map_err(|e| format!("Failed to inject extraction script: {}", e))?;

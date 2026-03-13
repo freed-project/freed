@@ -25,10 +25,14 @@ interface ProviderRowProps {
   icon: React.ReactNode;
   connected: boolean;
   detail: string;
+  /** Optional secondary line, e.g. last sync time or error notice */
+  subDetail?: string;
+  /** When true, subDetail is rendered in amber to signal an error */
+  subDetailError?: boolean;
   syncing: boolean;
 }
 
-function ProviderRow({ name, icon, connected, detail, syncing }: ProviderRowProps) {
+function ProviderRow({ name, icon, connected, detail, subDetail, subDetailError, syncing }: ProviderRowProps) {
   return (
     <div className="flex items-center gap-3 px-4 py-2.5">
       <span className="w-5 h-5 flex items-center justify-center text-[#71717a] flex-shrink-0">
@@ -37,6 +41,11 @@ function ProviderRow({ name, icon, connected, detail, syncing }: ProviderRowProp
       <div className="flex-1 min-w-0">
         <span className="text-xs text-[#a1a1aa] font-medium">{name}</span>
         <p className="text-[10px] text-[#52525b] truncate">{detail}</p>
+        {subDetail && (
+          <p className={`text-[10px] truncate ${subDetailError ? "text-amber-600" : "text-[#3f3f46]"}`}>
+            {subDetail}
+          </p>
+        )}
       </div>
       <span
         className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -224,6 +233,16 @@ export function DesktopSyncIndicator() {
                   ? `Connected, ${fbItemCount.toLocaleString()} items`
                   : "Not connected"
               }
+              subDetail={
+                fbAuth.isAuthenticated
+                  ? fbAuth.lastCaptureError
+                    ? "Last sync failed"
+                    : fbAuth.lastCapturedAt
+                      ? `Synced ${formatRelativeTime(fbAuth.lastCapturedAt)}`
+                      : undefined
+                  : undefined
+              }
+              subDetailError={!!fbAuth.lastCaptureError}
               syncing={isSyncing && fbAuth.isAuthenticated}
             />
             <ProviderRow
@@ -235,6 +254,16 @@ export function DesktopSyncIndicator() {
                   ? `Connected, ${igItemCount.toLocaleString()} items`
                   : "Not connected"
               }
+              subDetail={
+                igAuth.isAuthenticated
+                  ? igAuth.lastCaptureError
+                    ? "Last sync failed"
+                    : igAuth.lastCapturedAt
+                      ? `Synced ${formatRelativeTime(igAuth.lastCapturedAt)}`
+                      : undefined
+                  : undefined
+              }
+              subDetailError={!!igAuth.lastCaptureError}
               syncing={isSyncing && igAuth.isAuthenticated}
             />
           </div>

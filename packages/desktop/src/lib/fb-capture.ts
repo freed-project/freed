@@ -21,6 +21,7 @@ import {
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { getFbScraperDebugWindow } from "./scraper-prefs";
+import { storeFbAuthState } from "./fb-auth";
 
 // =============================================================================
 // Rate Limiting
@@ -200,6 +201,10 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       const detail = `[FB] sync failed at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
       store.setError(result.diag.errorMessage ?? result.diag.errorStage);
       addDebugEvent("error", detail);
+      // Persist error so the sync dropdown can show "Last sync failed"
+      const errState = { ...useAppStore.getState().fbAuth, lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed" };
+      store.setFbAuth(errState);
+      storeFbAuthState(errState);
       return result;
     }
 
@@ -217,6 +222,11 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
     } else {
       addDebugEvent("change", "[FB] sync complete: feed returned 0 posts");
     }
+
+    // Persist success timestamp so the sync dropdown shows "Synced X ago"
+    const successState = { ...useAppStore.getState().fbAuth, lastCapturedAt: Date.now(), lastCaptureError: undefined };
+    store.setFbAuth(successState);
+    storeFbAuthState(successState);
 
     return result;
   } catch (error) {
