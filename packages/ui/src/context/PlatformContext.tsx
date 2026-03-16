@@ -34,6 +34,15 @@ export const MACOS_TRAFFIC_LIGHT_INSET = 100;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AppStoreHook = <U>(selector: (state: any) => U) => U;
 
+/**
+ * Live state of an in-progress update download, surfaced in the Settings card.
+ * Only the phases that need UI treatment are included here -- idle/available
+ * are represented by `null` (no active download).
+ */
+export type UpdateDownloadProgress =
+  | { phase: "downloading"; percent: number }
+  | { phase: "error"; message: string };
+
 export interface PlatformConfig {
   /** Zustand store hook — both PWA and Desktop stores extend BaseAppState */
   store: AppStoreHook;
@@ -100,6 +109,12 @@ export interface PlatformConfig {
 
   /** Apply a detected update (PWA: reload, Desktop: handled by UpdateNotification). */
   applyUpdate?: () => void;
+
+  /**
+   * Live download progress when an update is being installed.
+   * Null when no download is active. Desktop only.
+   */
+  updateDownloadProgress?: UpdateDownloadProgress | null;
 
   /**
    * Fake-authenticate all social providers (X, Facebook, Instagram) for local

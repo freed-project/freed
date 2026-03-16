@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useCallback, useRef, useState, Profiler, type ProfilerOnRenderCallback } from "react";
 import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
-import { PlatformProvider, type PlatformConfig } from "@freed/ui/context";
+import { PlatformProvider, type PlatformConfig, type UpdateDownloadProgress } from "@freed/ui/context";
 import { UpdateNotification, type UpdateState } from "./components/UpdateNotification";
 import { CloudSyncNudge } from "./components/CloudSyncNudge";
 import { useAppStore } from "./lib/store";
@@ -299,8 +299,13 @@ function App() {
       },
       openUrl: (url: string) => { void shellOpen(url); },
       pickContact: pickContactViaTauri,
+      updateDownloadProgress: ((): UpdateDownloadProgress | null => {
+        if (updateState.phase === "downloading") return { phase: "downloading", percent: updateState.percent };
+        if (updateState.phase === "error") return { phase: "error", message: updateState.message };
+        return null;
+      })(),
     }),
-    [checkForUpdates, applyUpdate, handleFactoryReset, seedSocialConnections],
+    [checkForUpdates, applyUpdate, handleFactoryReset, seedSocialConnections, updateState],
   );
 
   if (error && !isInitialized) {
