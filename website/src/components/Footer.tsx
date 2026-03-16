@@ -115,7 +115,7 @@ export default function Footer() {
           </p>
           <p className="text-text-muted text-sm">
             Built for humans, not algorithms.
-            <br />
+            {/* <br />
             An{" "}
             <a
               href="https://AubreyFalconer.com"
@@ -125,7 +125,7 @@ export default function Footer() {
             >
               Aubrey Falconer
             </a>{" "}
-            project.
+            project. */}
           </p>
         </div>
       </div>
