@@ -75,7 +75,7 @@ export default function Footer() {
           <div>
             <h4 className="text-text-primary font-semibold mb-4">Resources</h4>
             <ul className="space-y-2">
-              <li>
+              {/* <li>
                 <a
                   href="https://github.com/freed-project/freed"
                   target="_blank"
@@ -94,7 +94,7 @@ export default function Footer() {
                 >
                   RSS Feed
                 </a>
-              </li>
+              </li> */}
               <li>
                 <Link
                   href="/privacy"
