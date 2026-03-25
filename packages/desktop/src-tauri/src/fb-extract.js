@@ -324,6 +324,53 @@
     return { id: null, url: null };
   }
 
+  function isSuggestedOrSponsored(el) {
+    if (el.querySelector('[data-testid="sponsored_label"]')) return true;
+    if (el.querySelector('[aria-label="Sponsored"]')) return true;
+
+    var fullText = (el.innerText || "").trim();
+    if (/suggested for you|people you may know|recommended for you|recommended/i.test(fullText)) {
+      return true;
+    }
+
+    var header = el.querySelector("h3, h4, header");
+    var headerScope = header || el;
+    var buttons = headerScope.querySelectorAll('div[role="button"], button, a[role="link"]');
+    for (var i = 0; i < buttons.length; i++) {
+      var label =
+        (buttons[i].getAttribute("aria-label") || "").trim() ||
+        (buttons[i].textContent || "").trim();
+      if (/^follow$|^follow back$/i.test(label)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function extractGroup(el) {
+    var links = el.querySelectorAll('a[href*="/groups/"]');
+    for (var i = 0; i < links.length; i++) {
+      var href = links[i].href || "";
+      var m = href.match(/facebook\.com\/groups\/([^/?]+)/);
+      if (!m) continue;
+
+      var name = (links[i].textContent || "").trim();
+      if (!name) {
+        var heading = links[i].closest("h3, h4");
+        name = (heading && heading.textContent ? heading.textContent : "").trim();
+      }
+      if (!name) name = m[1];
+
+      return {
+        id: m[1],
+        name: name,
+        url: href,
+      };
+    }
+    return null;
+  }
+
   // ── Main ────────────────────────────────────────────────────────────────
 
   try {
@@ -349,14 +396,13 @@
     for (var idx = 0; idx < postEls.length && posts.length < 50; idx++) {
       var el = postEls[idx];
 
-      // Skip ads
-      if (el.querySelector('[data-testid="sponsored_label"]')) continue;
-      if (el.querySelector('[aria-label="Sponsored"]')) continue;
+      if (isSuggestedOrSponsored(el)) continue;
 
       var author = extractAuthor(el);
       var text = extractText(el);
       var ts = extractTimestamp(el);
       var postRef = extractPostId(el);
+      var group = extractGroup(el);
 
       // Extract media
       var imgEls = el.querySelectorAll(
@@ -419,6 +465,7 @@
         hashtags: text ? extractHashtags(text) : [],
         isShare: false,
         sharedFrom: null,
+        group: group,
         strategy: strategy,
       });
     }

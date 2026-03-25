@@ -51,6 +51,7 @@ const handlers: Record<string, Handler> = {
   fb_hide_login: () => null,
   fb_check_auth: () => true,
   fb_scrape_feed: () => null,
+  fb_scrape_groups: () => [],
   fb_disconnect: () => null,
   ig_show_login: () => null,
   ig_hide_login: () => null,

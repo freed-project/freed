@@ -12,6 +12,7 @@ import type {
   RssFeed,
   UserPreferences,
   DocumentMeta,
+  FacebookCapturePreferences,
 } from "./types.js";
 import { createDefaultPreferences, createDefaultMeta } from "./types.js";
 
@@ -593,10 +594,54 @@ export function updatePreferences(
   doc: FreedDoc,
   updates: Partial<UserPreferences>
 ): void {
+  const fbCaptureUpdate = updates.fbCapture;
+  if (fbCaptureUpdate) {
+    applyFbCapturePreferenceUpdate(
+      doc.preferences as UserPreferences,
+      fbCaptureUpdate,
+    );
+    const { fbCapture: _fbCapture, ...remainingUpdates } = updates;
+    updates = remainingUpdates;
+  }
+
   deepMergeInto(
     doc.preferences as unknown as Record<string, unknown>,
     updates as unknown as Record<string, unknown>
   );
+}
+
+function replaceRecord<T>(
+  target: Record<string, T>,
+  source: Record<string, T>,
+): void {
+  for (const key of Object.keys(target)) {
+    delete target[key];
+  }
+  for (const [key, value] of Object.entries(source)) {
+    target[key] = value;
+  }
+}
+
+function applyFbCapturePreferenceUpdate(
+  preferences: UserPreferences,
+  updates: Partial<FacebookCapturePreferences>,
+): void {
+  if (!preferences.fbCapture) {
+    preferences.fbCapture = {
+      knownGroups: {},
+      excludedGroupIds: {},
+    };
+  }
+
+  if (updates.knownGroups) {
+    replaceRecord(preferences.fbCapture.knownGroups, updates.knownGroups);
+  }
+  if (updates.excludedGroupIds) {
+    replaceRecord(
+      preferences.fbCapture.excludedGroupIds,
+      updates.excludedGroupIds,
+    );
+  }
 }
 
 /**

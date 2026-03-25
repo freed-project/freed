@@ -20,6 +20,7 @@ import {
   deleteCloudFile,
 } from "./lib/sync";
 import { clearLocalDoc } from "./lib/automerge";
+import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { log } from "./lib/logger";
 import { setLogTransport } from "@freed/ui/lib/debug-store";
@@ -94,6 +95,7 @@ function App() {
   // freezes begin. These events are emitted by Tauri on macOS suspend/resume.
   useEffect(() => {
     log.info("[app] desktop app started");
+    if (!isTauri()) return;
 
     const cleanups: Array<() => void> = [];
 

@@ -118,6 +118,15 @@ export interface RssSourceInfo {
 }
 
 /**
+ * Facebook group metadata for captured group posts
+ */
+export interface FbGroupInfo {
+  id: string;
+  name: string;
+  url: string;
+}
+
+/**
  * Preserved article content for reader view
  * Used by capture-save and optionally by capture-rss for full articles
  *
@@ -270,6 +279,9 @@ export interface FeedItem {
   /** RSS-specific source info (optional) */
   rssSource?: RssSourceInfo;
 
+  /** Facebook group source info (optional) */
+  fbGroup?: FbGroupInfo;
+
   /** Preserved article content for reader view (optional) */
   preservedContent?: PreservedContent;
 
@@ -342,6 +354,17 @@ export interface XCapturePreferences {
 
   /** Include replies in capture */
   includeReplies: boolean;
+}
+
+/**
+ * Facebook capture preferences
+ */
+export interface FacebookCapturePreferences {
+  /** Joined groups discovered from the groups directory */
+  knownGroups: Record<string, FbGroupInfo>;
+
+  /** Groups to hide from future captures */
+  excludedGroupIds: Record<string, true>;
 }
 
 // =============================================================================
@@ -498,6 +521,7 @@ export interface UserPreferences {
   sync: SyncPreferences;
   display: DisplayPreferences;
   xCapture: XCapturePreferences;
+  fbCapture: FacebookCapturePreferences;
   /** AI summarization + topic extraction preferences (no API keys here) */
   ai: AIPreferences;
 }
@@ -640,6 +664,10 @@ export function createDefaultPreferences(): UserPreferences {
       blacklist: {},
       includeRetweets: true,
       includeReplies: false,
+    },
+    fbCapture: {
+      knownGroups: {},
+      excludedGroupIds: {},
     },
     ai: {
       provider: "none",

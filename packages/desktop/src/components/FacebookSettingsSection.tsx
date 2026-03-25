@@ -8,6 +8,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
+import type { FbGroupInfo } from "@freed/shared";
 import { useAppStore } from "../lib/store";
 import {
   showFbLogin,
@@ -15,7 +16,7 @@ import {
   disconnectFb,
   storeFbAuthState,
 } from "../lib/fb-auth";
-import { captureFbFeed } from "../lib/fb-capture";
+import { captureFbFeed, captureFbGroups } from "../lib/fb-capture";
 import type { FbSyncDiag } from "../lib/fb-capture";
 import {
   getFbScraperDebugWindow,
@@ -134,14 +135,23 @@ function Toggle({
 export function FacebookSettingsSection() {
   const fbAuth = useAppStore((s) => s.fbAuth);
   const setFbAuth = useAppStore((s) => s.setFbAuth);
+  const fbCapture = useAppStore((s) => s.preferences.fbCapture);
+  const updatePreferences = useAppStore((s) => s.updatePreferences);
   const isLoading = useAppStore((s) => s.isLoading);
   const storeError = useAppStore((s) => s.error);
   const setError = useAppStore((s) => s.setError);
 
   const [syncing, setSyncing] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [refreshingGroups, setRefreshingGroups] = useState(false);
   const [lastDiag, setLastDiag] = useState<FbSyncDiag | null>(null);
   const [debugWindow, setDebugWindow] = useState(() => getFbScraperDebugWindow());
+
+  const knownGroups = fbCapture?.knownGroups ?? {};
+  const excludedGroupIds = fbCapture?.excludedGroupIds ?? {};
+  const groups = Object.values(knownGroups).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
 
   // Auto-detect login success from the WebView's on_navigation callback
   useEffect(() => {
@@ -195,6 +205,55 @@ export function FacebookSettingsSection() {
       setSyncing(false);
     }
   }, []);
+
+  const setExcludedGroups = useCallback(
+    async (nextExcludedGroupIds: Record<string, true>) => {
+      await updatePreferences({
+        fbCapture: {
+          knownGroups,
+          excludedGroupIds: nextExcludedGroupIds,
+        },
+      });
+    },
+    [knownGroups, updatePreferences],
+  );
+
+  const handleToggleGroup = useCallback(
+    async (group: FbGroupInfo, included: boolean) => {
+      const nextExcluded = { ...excludedGroupIds };
+      if (included) {
+        delete nextExcluded[group.id];
+      } else {
+        nextExcluded[group.id] = true;
+      }
+      await setExcludedGroups(nextExcluded);
+    },
+    [excludedGroupIds, setExcludedGroups],
+  );
+
+  const handleSelectAllGroups = useCallback(async () => {
+    await setExcludedGroups({});
+  }, [setExcludedGroups]);
+
+  const handleDeselectAllGroups = useCallback(async () => {
+    const nextExcluded = groups.reduce<Record<string, true>>((acc, group) => {
+      acc[group.id] = true;
+      return acc;
+    }, {});
+    await setExcludedGroups(nextExcluded);
+  }, [groups, setExcludedGroups]);
+
+  const handleRefreshGroups = useCallback(async () => {
+    setRefreshingGroups(true);
+    setError(null);
+    try {
+      await captureFbGroups();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to refresh Facebook groups");
+    } finally {
+      setRefreshingGroups(false);
+    }
+  }, [setError]);
 
   const handleDisconnect = useCallback(async () => {
     try {
@@ -267,6 +326,57 @@ export function FacebookSettingsSection() {
         {statusLine}
 
         {lastDiag && <FbDiagPanel diag={lastDiag} />}
+
+        {groups.length > 0 && (
+          <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <p className="text-sm text-[#a1a1aa]">Groups</p>
+                <button
+                  type="button"
+                  onClick={handleRefreshGroups}
+                  disabled={refreshingGroups}
+                  className="text-xs text-[#71717a] hover:text-[#a1a1aa] disabled:opacity-50 transition-colors"
+                >
+                  {refreshingGroups ? "Refreshing..." : "Refresh"}
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { void handleSelectAllGroups(); }}
+                  className="text-xs text-[#71717a] hover:text-[#a1a1aa] transition-colors"
+                >
+                  Select all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void handleDeselectAllGroups(); }}
+                  className="text-xs text-[#71717a] hover:text-[#a1a1aa] transition-colors"
+                >
+                  Deselect all
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {groups.map((group) => {
+                const included = !excludedGroupIds[group.id];
+                return (
+                  <Toggle
+                    key={group.id}
+                    label={group.name}
+                    checked={included}
+                    onChange={(nextIncluded) => {
+                      void handleToggleGroup(group, nextIncluded);
+                    }}
+                    description={included ? "Included in future syncs" : "Hidden from future syncs"}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <details className="group">
           <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">

@@ -121,3 +121,140 @@ test("Facebook connect form accepts cookies and triggers sync", async ({
     page.getByText("Connected", { exact: true }),
   ).toBeVisible({ timeout: 5_000 });
 });
+
+test("Facebook sync excludes posts from filtered groups", async ({
+  app,
+  ipc,
+}) => {
+  await app.goto();
+  await app.waitForReady();
+
+  const { page } = app;
+
+  await ipc.setHandler("fb_scrape_feed", () => {
+    const listeners =
+      (window as unknown as Record<string, Array<(event: { payload: unknown }) => void>>)
+        .__TAURI_EVENT_LISTENERS__ ?? {};
+    const emit = (eventName: string, payload: unknown) => {
+      for (const listener of listeners[eventName] ?? []) {
+        listener({ payload });
+      }
+    };
+
+    setTimeout(() => {
+      emit("fb-feed-data", {
+        posts: [
+          {
+            id: "group-post-1",
+            url: "https://www.facebook.com/groups/excluded-group/posts/1",
+            authorName: "Alice Example",
+            authorProfileUrl: "https://www.facebook.com/alice.example",
+            authorAvatarUrl: null,
+            text: "This should be filtered out",
+            timestampSeconds: 1709640000,
+            timestampIso: null,
+            mediaUrls: [],
+            hasVideo: false,
+            likeCount: null,
+            commentCount: null,
+            shareCount: null,
+            postType: "post",
+            location: null,
+            hashtags: [],
+            isShare: false,
+            sharedFrom: null,
+            group: {
+              id: "excluded-group",
+              name: "Excluded Group",
+              url: "https://www.facebook.com/groups/excluded-group",
+            },
+          },
+          {
+            id: "feed-post-2",
+            url: "https://www.facebook.com/story.php?story_fbid=2&id=3",
+            authorName: "Bob Builder",
+            authorProfileUrl: "https://www.facebook.com/bob.builder",
+            authorAvatarUrl: null,
+            text: "This should stay visible",
+            timestampSeconds: 1709640001,
+            timestampIso: null,
+            mediaUrls: [],
+            hasVideo: false,
+            likeCount: null,
+            commentCount: null,
+            shareCount: null,
+            postType: "post",
+            location: null,
+            hashtags: [],
+            isShare: false,
+            sharedFrom: null,
+            group: null,
+          },
+        ],
+        extractedAt: Date.now(),
+        url: "https://www.facebook.com/",
+      });
+    }, 0);
+
+    return null;
+  });
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      setState: (updater: (state: {
+        fbAuth: { isAuthenticated: boolean };
+        preferences: {
+          fbCapture?: {
+            knownGroups: Record<string, { id: string; name: string; url: string }>;
+            excludedGroupIds: Record<string, true>;
+          };
+        };
+      }) => Partial<unknown>) => void;
+    };
+
+    store.setState((state) => ({
+      fbAuth: { ...state.fbAuth, isAuthenticated: true },
+      preferences: {
+        ...state.preferences,
+        fbCapture: {
+          knownGroups: {
+            "excluded-group": {
+              id: "excluded-group",
+              name: "Excluded Group",
+              url: "https://www.facebook.com/groups/excluded-group",
+            },
+          },
+          excludedGroupIds: {
+            "excluded-group": true,
+          },
+        },
+      },
+    }));
+  });
+
+  await expect(page.getByText("Connected", { exact: true })).toBeVisible({
+    timeout: 5_000,
+  });
+
+  await page.getByRole("button", { name: "Sync Now" }).click();
+
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => { items: Array<{ globalId: string }> };
+    };
+    return store.getState().items.some((item) => item.globalId === "fb:feed-post-2");
+  });
+
+  const itemIds = await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => { items: Array<{ globalId: string }> };
+    };
+    return store.getState().items.map((item) => item.globalId);
+  });
+
+  expect(itemIds).toContain("fb:feed-post-2");
+  expect(itemIds).not.toContain("fb:group-post-1");
+});
