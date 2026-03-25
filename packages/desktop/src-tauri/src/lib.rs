@@ -246,6 +246,7 @@ type RelayState = Arc<SyncRelayState>;
 struct CaptureState {
     fb_user_agent: std::sync::Mutex<String>,
     ig_user_agent: std::sync::Mutex<String>,
+    li_user_agent: std::sync::Mutex<String>,
     x_client: rquest::Client,
 }
 
@@ -262,6 +263,7 @@ impl CaptureState {
         Self {
             fb_user_agent: std::sync::Mutex::new(String::new()),
             ig_user_agent: std::sync::Mutex::new(String::new()),
+            li_user_agent: std::sync::Mutex::new(String::new()),
             x_client,
         }
     }
@@ -1914,6 +1916,325 @@ async fn ig_like_post(app: tauri::AppHandle, url: String) -> Result<(), String> 
 }
 
 // ---------------------------------------------------------------------------
+// Tauri commands — LinkedIn WebView scraper
+// ---------------------------------------------------------------------------
+
+/// The extraction script injected into the LinkedIn WebView after page load.
+/// Reads posts from the rendered DOM and emits them via Tauri event IPC.
+const LI_EXTRACT_SCRIPT: &str = include_str!("li-extract.js");
+
+/// Show a visible WebView window navigated to linkedin.com/login so the
+/// user can authenticate through the real LinkedIn login flow.
+///
+/// An `on_navigation` handler detects when the user completes login
+/// (URL leaves /login) and auto-hides the window + emits `li-auth-result`.
+#[tauri::command]
+async fn li_show_login(app: tauri::AppHandle, capture: tauri::State<'_, CaptureState>, user_agent: String) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+
+    if let Some(existing) = app.get_webview_window("li-scraper") {
+        existing.navigate("https://www.linkedin.com/login".parse().unwrap())
+            .map_err(|e| e.to_string())?;
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        *capture.li_user_agent.lock().unwrap() = user_agent;
+        return Ok(());
+    }
+
+    let app_handle = app.clone();
+    // Track whether we've already emitted the auth result (one-shot)
+    let auth_emitted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+    WebviewWindowBuilder::new(
+        &app,
+        "li-scraper",
+        tauri::WebviewUrl::External("https://www.linkedin.com/login".parse().unwrap()),
+    )
+    .user_agent(&user_agent)
+    .initialization_script(include_str!("webkit-mask.js"))
+    .title("Connect LinkedIn with Freed")
+    .inner_size(
+        460.0 + { use rand::Rng; rand::thread_rng().gen_range(-8.0f64..8.0) },
+        700.0 + { use rand::Rng; rand::thread_rng().gen_range(-10.0f64..10.0) },
+    )
+    .center()
+    .visible(true)
+    .on_navigation(move |url| {
+        let path = url.path();
+        let host = url.host_str().unwrap_or("");
+
+        // Detect successful login: navigated away from /login on linkedin.com.
+        // Only fire once — don't hide again on subsequent navigations during scraping.
+        if host.contains("linkedin.com")
+            && path != "/login"
+            && path != "/login/"
+            && path != "/uas/login"
+            && !auth_emitted.swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
+            if let Some(w) = app_handle.get_webview_window("li-scraper") {
+                let _ = w.hide();
+            }
+            let _ = app_handle.emit("li-auth-result", serde_json::json!({ "loggedIn": true }));
+
+        }
+
+        true
+    })
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    *capture.li_user_agent.lock().unwrap() = user_agent;
+
+    Ok(())
+}
+
+/// Hide the LinkedIn login window after successful authentication.
+#[tauri::command]
+async fn li_hide_login(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("li-scraper") {
+        w.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Check whether the LinkedIn WebView has an authenticated session.
+///
+/// Creates a hidden WebView if none exists, navigates to linkedin.com/feed,
+/// waits for the page to settle, then checks for the li_at session cookie.
+#[tauri::command]
+async fn li_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri::WebviewWindowBuilder;
+
+    let wv = match app.get_webview_window("li-scraper") {
+        Some(w) => {
+            w.navigate(
+                "https://www.linkedin.com/feed/".parse().unwrap(),
+            )
+            .map_err(|e| e.to_string())?;
+            w
+        }
+        None => {
+            WebviewWindowBuilder::new(
+                &app,
+                "li-scraper",
+                tauri::WebviewUrl::External(
+                    "https://www.linkedin.com/feed/".parse().unwrap(),
+                ),
+            )
+            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15")
+            .title("Freed LinkedIn")
+            .inner_size(460.0, 700.0)
+            .visible(false)
+            .build()
+            .map_err(|e| e.to_string())?
+        }
+    };
+
+    tokio::time::sleep(Duration::from_secs(6)).await;
+
+    wv.eval(
+        r#"
+        (function() {
+            try {
+                // LinkedIn uses li_at as its primary session cookie.
+                var loggedIn = document.cookie.indexOf('li_at=') !== -1;
+                // Secondary check: if we're on the feed page (not login), we're in.
+                if (!loggedIn) {
+                    loggedIn = window.location.pathname === '/feed/'
+                            || window.location.pathname === '/feed';
+                }
+                window.__TAURI__.event.emit('li-auth-result', { loggedIn: loggedIn });
+            } catch(e) {
+                window.__TAURI__.event.emit('li-auth-result', { loggedIn: false, error: e.message });
+            }
+        })();
+        "#,
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(true)
+}
+
+/// Trigger a feed scrape in the LinkedIn WebView.
+///
+/// Navigates to linkedin.com/feed, waits for content to render, then injects
+/// the extraction script which reads the DOM and emits 'li-feed-data'.
+/// Multiple extraction passes are run across scroll positions; the final pass
+/// emits with `done: true` to signal completion to the TypeScript layer.
+///
+/// `show_window` controls visibility:
+/// - `false` (default): window positioned off-screen at (-20000, -20000).
+/// - `true` (debug): window centered and focused.
+#[tauri::command]
+async fn li_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, CaptureState>, show_window: bool) -> Result<(), String> {
+    use tauri::{LogicalPosition, WebviewWindowBuilder};
+
+    let li_feed_url = "https://www.linkedin.com/feed/";
+
+    let wv = match app.get_webview_window("li-scraper") {
+        Some(w) => {
+            w.navigate(li_feed_url.parse().unwrap())
+                .map_err(|e| e.to_string())?;
+            if show_window {
+                let _ = w.center();
+                let _ = w.set_focus();
+            } else {
+                let _ = w.set_position(LogicalPosition::new(-20000.0_f64, -20000.0_f64));
+            }
+            let _ = w.show();
+            w
+        }
+        None => {
+            let app_handle = app.clone();
+            let mut builder = WebviewWindowBuilder::new(
+                &app,
+                "li-scraper",
+                tauri::WebviewUrl::External(
+                    li_feed_url.parse().unwrap(),
+                ),
+            )
+            .user_agent(&*capture.li_user_agent.lock().unwrap())
+            .initialization_script(include_str!("webkit-mask.js"))
+            .title("Freed LinkedIn")
+            .inner_size(1280.0, 900.0)
+            .visible(true)
+            .on_navigation(move |url| {
+                let host = url.host_str().unwrap_or("");
+                let path = url.path();
+                if host.contains("linkedin.com") && path != "/login" && path != "/login/" {
+                    let _ = app_handle.emit("li-auth-result",
+                        serde_json::json!({ "loggedIn": true }));
+                }
+                true
+            });
+
+            if show_window {
+                builder = builder.center();
+            } else {
+                builder = builder.position(-20000.0, -20000.0);
+            }
+
+            builder.build().map_err(|e| e.to_string())?
+        }
+    };
+
+    println!("[LI] scrape started (show_window={}), waiting for feed to render...", show_window);
+
+    // LinkedIn's feed takes slightly longer to hydrate than Facebook.
+    // Use a longer initial wait with more variance.
+    tokio::time::sleep(Duration::from_millis(gaussian_ms(12000.0, 2000.0))).await;
+
+    let _ = wv.show();
+    println!("[LI] window visible, proceeding with extraction");
+
+    // LinkedIn virtualizes its feed: scroll incrementally, extracting at each
+    // position. Fewer passes than FB (LinkedIn loads fewer posts per scroll).
+    let num_passes = {
+        use rand::Rng;
+        rand::thread_rng().gen_range(6usize..=12)
+    };
+
+    // Inject the extract script as a const so we can append done=true on last pass.
+    let inject_script = |wv: &tauri::WebviewWindow, is_done: bool| -> Result<(), String> {
+        wv.eval(LI_EXTRACT_SCRIPT)
+            .map_err(|e| format!("Failed to inject LI extraction script: {}", e))?;
+        if is_done {
+            // Emit a final marker so the TypeScript layer knows to finalize.
+            wv.eval(r#"
+                (function() {
+                    if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.emit) {
+                        window.__TAURI__.event.emit("li-feed-data", {
+                            posts: [], done: true, extractedAt: Date.now(),
+                            url: window.location.href, candidateCount: 0, scrollY: window.scrollY
+                        });
+                    }
+                })();
+            "#).ok();
+        }
+        Ok(())
+    };
+
+    for i in 0..num_passes {
+        let _ = wv.show();
+
+        let is_last = i + 1 == num_passes;
+        inject_script(&wv, is_last)?;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        let scroll_amount = {
+            use rand::Rng;
+            rand::thread_rng().gen_range(350u64..650)
+        };
+        // Use stepped scroll events so LinkedIn's React virtualizer fires.
+        let scroll_js = format!(
+            r#"(function() {{
+                var el = document.scrollingElement || document.documentElement || document.body;
+                var steps = 8;
+                var step = {amt} / steps;
+                var done = 0;
+                function tick() {{
+                    el.scrollTop += step;
+                    el.dispatchEvent(new Event('scroll', {{bubbles: true}}));
+                    window.dispatchEvent(new Event('scroll', {{bubbles: false}}));
+                    done++;
+                    if (done < steps) setTimeout(tick, 60);
+                }}
+                tick();
+            }})();"#,
+            amt = scroll_amount
+        );
+        wv.eval(&scroll_js).map_err(|e| e.to_string())?;
+
+        // Mouse movement.
+        let cx = 230 + { use rand::Rng; rand::thread_rng().gen_range(0i32..200) };
+        let cy = 350 + { use rand::Rng; rand::thread_rng().gen_range(0i32..200) };
+        let mouse_js = format!(
+            r#"(function(){{var x={cx},y={cy};[0,1,2].forEach(function(i){{setTimeout(function(){{document.dispatchEvent(new MouseEvent('mousemove',{{clientX:x+i*12,clientY:y+i*8,bubbles:true,cancelable:true}}));}},i*80);}});}})();"#,
+            cx = cx, cy = cy
+        );
+        let _ = wv.eval(&mouse_js);
+        tokio::time::sleep(Duration::from_millis(gaussian_ms(280.0, 60.0))).await;
+
+        // Occasional micro-backscroll (~12% probability).
+        if { use rand::Rng; rand::thread_rng().gen_bool(0.12) } {
+            let back = { use rand::Rng; rand::thread_rng().gen_range(80u64..200) };
+            let back_js = format!("window.scrollBy({{top: -{}, behavior: 'smooth'}});", back);
+            let _ = wv.eval(&back_js);
+            tokio::time::sleep(Duration::from_millis(gaussian_ms(600.0, 150.0))).await;
+        }
+
+        // Gaussian pause; longer pauses more common than FB (LinkedIn users scroll slower).
+        let pause = if { use rand::Rng; rand::thread_rng().gen_bool(0.30) } {
+            gaussian_ms(7000.0, 2000.0)
+        } else {
+            gaussian_ms(4000.0, 800.0)
+        };
+        tokio::time::sleep(Duration::from_millis(pause)).await;
+
+        println!("[LI] pass {}/{}: scrolled +{}px", i + 1, num_passes, scroll_amount);
+    }
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    println!("[LI] scrape complete, {} extraction passes emitted", num_passes);
+
+    // Hide the window after scraping. The window stays alive to preserve auth.
+    let _ = wv.hide();
+
+    Ok(())
+}
+
+/// Disconnect LinkedIn by clearing all browsing data in the scraper WebView.
+#[tauri::command]
+async fn li_disconnect(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(wv) = app.get_webview_window("li-scraper") {
+        wv.clear_all_browsing_data()
+            .map_err(|e| e.to_string())?;
+        let _ = wv.close();
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket relay
 // ---------------------------------------------------------------------------
 
@@ -2417,6 +2738,11 @@ pub fn run() {
             ig_visit_url,
             fb_like_post,
             ig_like_post,
+            li_show_login,
+            li_hide_login,
+            li_check_auth,
+            li_scrape_feed,
+            li_disconnect,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Freed");

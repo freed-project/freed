@@ -1,7 +1,18 @@
 import { memo, useRef, useState, type ReactNode } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { PLATFORM_LABELS, type FeedItem as FeedItemType } from "@freed/shared";
-import { RssIcon, FacebookIcon, InstagramIcon, YoutubeIcon, RedditIcon, GithubIcon, MastodonIcon, BookmarkIcon } from "../icons.js";
+import {
+  RssIcon,
+  FacebookIcon,
+  InstagramIcon,
+  YoutubeIcon,
+  RedditIcon,
+  GithubIcon,
+  MastodonIcon,
+  BookmarkIcon,
+  TrashIcon,
+  ExternalLinkIcon,
+} from "../icons.js";
 
 interface FeedItemProps {
   item: FeedItemType;
@@ -30,6 +41,7 @@ interface FeedItemProps {
 }
 
 const cls = "w-3.5 h-3.5";
+const SWIPE_THRESHOLD = 72;
 
 const platformIcons: Record<string, ReactNode> = {
   x: <span className="text-xs font-bold leading-none">𝕏</span>,
@@ -43,9 +55,43 @@ const platformIcons: Record<string, ReactNode> = {
   saved: <BookmarkIcon className={cls} />,
 };
 
-const SWIPE_THRESHOLD = 72;
-
-// ─── Like button helpers ─────────────────────────────────────────────────────
+const PLATFORM_REACTIONS: Partial<Record<FeedItemType["platform"], ReadonlyArray<{ emoji: string; label: string }>>> = {
+  facebook: [
+    { emoji: "👍", label: "Like" },
+    { emoji: "❤️", label: "Love" },
+    { emoji: "😂", label: "Haha" },
+    { emoji: "😮", label: "Wow" },
+    { emoji: "😢", label: "Sad" },
+    { emoji: "😡", label: "Angry" },
+  ],
+  linkedin: [
+    { emoji: "👍", label: "Like" },
+    { emoji: "🎉", label: "Celebrate" },
+    { emoji: "🤝", label: "Support" },
+    { emoji: "😂", label: "Funny" },
+    { emoji: "❤️", label: "Love" },
+    { emoji: "💡", label: "Insightful" },
+    { emoji: "🤔", label: "Curious" },
+  ],
+  github: [
+    { emoji: "👍", label: "+1" },
+    { emoji: "👎", label: "-1" },
+    { emoji: "😄", label: "Laugh" },
+    { emoji: "🎉", label: "Hooray" },
+    { emoji: "😕", label: "Confused" },
+    { emoji: "❤️", label: "Heart" },
+    { emoji: "🚀", label: "Rocket" },
+    { emoji: "👀", label: "Eyes" },
+  ],
+  youtube: [
+    { emoji: "👍", label: "Like" },
+    { emoji: "👎", label: "Dislike" },
+  ],
+  reddit: [
+    { emoji: "⬆️", label: "Upvote" },
+    { emoji: "⬇️", label: "Downvote" },
+  ],
+};
 
 function likeState(item: FeedItemType): "none" | "noted" | "synced" | "failed" {
   const us = item.userState;
@@ -55,7 +101,17 @@ function likeState(item: FeedItemType): "none" | "noted" | "synced" | "failed" {
   return "noted";
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+function formatEngagementCount(value: number | undefined): string | null {
+  if (value === undefined) return null;
+  return value.toLocaleString();
+}
+
+function getLikeLabel(item: FeedItemType, state: ReturnType<typeof likeState>): string {
+  if (state === "synced") return `Liked on ${PLATFORM_LABELS[item.platform] ?? item.platform}`;
+  if (state === "noted") return `Liked, syncing to ${PLATFORM_LABELS[item.platform] ?? item.platform}...`;
+  if (state === "failed") return `Could not sync to ${PLATFORM_LABELS[item.platform] ?? item.platform}`;
+  return "Like";
+}
 
 export const FeedItem = memo(function FeedItem({
   item,
@@ -74,8 +130,12 @@ export const FeedItem = memo(function FeedItem({
 }: FeedItemProps) {
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
   const platformIcon = platformIcons[item.platform] ?? <span className="text-xs">📄</span>;
+  const isRead = Boolean(item.userState.readAt);
+  const reactions = PLATFORM_REACTIONS[item.platform] ?? [];
+  const hasReactionPalette = reactions.length > 1;
+  const likeCount = formatEngagementCount(item.engagement?.likes);
+  const commentCount = formatEngagementCount(item.engagement?.comments);
 
-  // Swipe-to-archive state (mobile only, disabled in compact mode)
   const [swipeX, setSwipeX] = useState(0);
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
@@ -114,14 +174,7 @@ export const FeedItem = memo(function FeedItem({
 
   const swipeProgress = Math.min(Math.abs(swipeX) / SWIPE_THRESHOLD, 1);
   const pastThreshold = swipeX < -SWIPE_THRESHOLD;
-
-  // Saved (bookmarked) items cannot be archived, so suppress the affordance.
   const enableSwipe = !compact && !!onArchive && !item.userState.saved;
-
-  // ── Story tile ─────────────────────────────────────────────────────────────
-  // Stories get their own portrait-card layout regardless of compact/full mode.
-  // The background image fills the card; author and meta are overlaid with
-  // gradient masks so they remain legible against any photo.
 
   if (item.contentType === "story") {
     const bg = item.content.mediaUrls[0];
@@ -131,9 +184,6 @@ export const FeedItem = memo(function FeedItem({
       : "from-[#1877f2] to-[#0a4bb5]";
 
     return (
-      // Explicit JS-computed height so the tile fills its column at a 3:4
-      // portrait ratio regardless of container width, without any CSS tricks
-      // that interact poorly with max-height or aspect-ratio.
       <div
         className="relative overflow-hidden rounded-2xl cursor-pointer group select-none w-full"
         style={{ height: storyHeight }}
@@ -143,7 +193,6 @@ export const FeedItem = memo(function FeedItem({
         tabIndex={0}
         onKeyDown={(e) => e.key === "Enter" && onClick?.()}
       >
-        {/* Background — photo or platform gradient */}
         {bg ? (
           <img
             src={bg}
@@ -156,10 +205,8 @@ export const FeedItem = memo(function FeedItem({
           <div className={`absolute inset-0 bg-gradient-to-br ${gradientFallback}`} />
         )}
 
-        {/* Top gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-b from-black/65 via-black/10 to-black/55 pointer-events-none" />
 
-        {/* Author row */}
         <div className="absolute top-0 left-0 right-0 p-3 flex items-center gap-2">
           {item.author.avatarUrl ? (
             <img
@@ -183,7 +230,6 @@ export const FeedItem = memo(function FeedItem({
           </span>
         </div>
 
-        {/* Bottom row — platform icon + caption + location */}
         <div className="absolute bottom-0 left-0 right-0 p-3 flex items-end gap-2">
           <div className="flex items-center gap-1.5 shrink-0 text-white/75">
             {platformIcons[item.platform] ?? <span className="text-xs">📄</span>}
@@ -205,7 +251,6 @@ export const FeedItem = memo(function FeedItem({
             )}
           </div>
 
-          {/* Save / archive — visible on hover */}
           {(onSave || onArchive) && (
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
               {onSave && (
@@ -227,9 +272,7 @@ export const FeedItem = memo(function FeedItem({
                   title="Archive"
                   className="p-1.5 rounded-lg bg-black/35 backdrop-blur-sm text-white/70 hover:text-green-400 transition-colors"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+                  <TrashIcon className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
@@ -247,7 +290,7 @@ export const FeedItem = memo(function FeedItem({
             selected
               ? "border-l-2 border-l-[#8b5cf6] bg-[#8b5cf6]/10"
               : "hover:bg-white/5"
-          }`}
+          } ${isRead ? "grayscale opacity-60" : ""}`}
           onClick={onClick}
           onMouseEnter={onMouseEnter}
           role="button"
@@ -308,6 +351,9 @@ export const FeedItem = memo(function FeedItem({
     );
   }
 
+  const likeStatus = likeState(item);
+  const likeLabel = getLikeLabel(item, likeStatus);
+
   return (
     <div className="relative overflow-hidden rounded-2xl">
       {enableSwipe && swipeX < 0 && (
@@ -319,18 +365,15 @@ export const FeedItem = memo(function FeedItem({
           }}
           aria-hidden
         >
-          <svg
+          <TrashIcon
             className="w-5 h-5 text-green-400 transition-transform"
-            style={{ transform: `scale(${0.7 + swipeProgress * 0.3})`, opacity: swipeProgress }}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
+            style={{ transform: `scale(${0.7 + swipeProgress * 0.3})`, opacity: swipeProgress } as React.CSSProperties}
+          />
         </div>
       )}
 
       <article
-        className={`feed-card group cursor-pointer active:scale-[0.99] transition-transform ${focused ? "ring-2 ring-[#8b5cf6]/60 ring-inset" : ""}`}
+        className={`feed-card group cursor-pointer active:scale-[0.99] transition-transform ${focused ? "ring-2 ring-[#8b5cf6]/60 ring-inset" : ""} ${isRead ? "grayscale opacity-60" : ""}`}
         style={{
           transform: swipeX !== 0 ? `translateX(${swipeX}px)` : undefined,
           transition: swipeX === 0 ? "transform 0.25s ease" : undefined,
@@ -345,7 +388,6 @@ export const FeedItem = memo(function FeedItem({
         tabIndex={0}
         onKeyDown={(e) => e.key === "Enter" && onClick?.()}
       >
-        {/* Author row */}
         <div className="flex items-center gap-3 mb-3">
           {item.author.avatarUrl ? (
             <img
@@ -377,8 +419,72 @@ export const FeedItem = memo(function FeedItem({
             </div>
           </div>
 
-          {/* Action buttons — shown on hover (desktop) */}
-          <div className="flex items-center gap-0.5 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
+            {onLike && (
+              <div className="relative group/reactions">
+                {hasReactionPalette && (
+                  <div className="pointer-events-none absolute right-0 bottom-full mb-2 flex translate-y-1 rounded-xl border border-white/10 bg-[#18181b]/95 p-1 opacity-0 shadow-lg shadow-black/40 transition-all group-hover/reactions:pointer-events-auto group-hover/reactions:translate-y-0 group-hover/reactions:opacity-100 group-focus-within/reactions:pointer-events-auto group-focus-within/reactions:translate-y-0 group-focus-within/reactions:opacity-100">
+                    {reactions.map((reaction) => (
+                      <button
+                        key={reaction.label}
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onLike(e as unknown as React.MouseEvent); }}
+                        className="flex h-8 w-8 items-center justify-center rounded-lg text-base transition-transform hover:scale-110 hover:bg-white/10"
+                        title={reaction.label}
+                        aria-label={reaction.label}
+                      >
+                        <span aria-hidden="true">{reaction.emoji}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  onClick={(e) => { e.stopPropagation(); onLike(e); }}
+                  title={likeLabel}
+                  aria-label={likeLabel}
+                  className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 ${
+                    likeStatus === "synced"
+                      ? "text-red-400"
+                      : likeStatus === "noted"
+                      ? "text-amber-400"
+                      : likeStatus === "failed"
+                      ? "text-orange-400"
+                      : "text-[#52525b] hover:text-red-400"
+                  }`}
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={likeStatus !== "none" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                  </svg>
+                  {showEngagement && likeCount !== null && <span>{likeCount}</span>}
+                  {likeStatus === "noted" && (
+                    <svg className="w-2.5 h-2.5 animate-spin opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  )}
+                  {likeStatus === "failed" && (
+                    <svg className="w-2.5 h-2.5 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {onOpenCommentUrl && item.sourceUrl && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
+                title={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
+                aria-label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
+                className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-[#52525b] hover:text-[#a1a1aa] transition-colors opacity-0 group-hover:opacity-100"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                {showEngagement && commentCount !== null && <span>{commentCount}</span>}
+              </button>
+            )}
+
             {onSave && (
               <button
                 onClick={onSave}
@@ -401,9 +507,18 @@ export const FeedItem = memo(function FeedItem({
                 title="Archive"
                 className="p-1.5 rounded-lg transition-colors text-[#52525b] hover:text-green-400 opacity-0 group-hover:opacity-100"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
+                <TrashIcon className="w-4 h-4" />
+              </button>
+            )}
+
+            {onOpenCommentUrl && item.sourceUrl && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
+                title="Open"
+                aria-label="Open"
+                className="p-1.5 rounded-lg text-[#52525b] hover:text-[#a1a1aa] transition-colors opacity-0 group-hover:opacity-100"
+              >
+                <ExternalLinkIcon className="w-4 h-4" />
               </button>
             )}
           </div>
@@ -430,85 +545,6 @@ export const FeedItem = memo(function FeedItem({
               decoding="async"
               className="w-full h-48 sm:h-56 object-cover bg-white/5"
             />
-          </div>
-        )}
-
-        {/* Engagement counts — shown when opt-in flag is set */}
-        {showEngagement && item.engagement && (
-          <div className="mt-2 flex items-center gap-4 text-xs text-[#52525b]">
-            {item.engagement.likes !== undefined && (
-              <span title="Likes">♥ {item.engagement.likes.toLocaleString()}</span>
-            )}
-            {item.engagement.reposts !== undefined && (
-              <span title="Reposts">↺ {item.engagement.reposts.toLocaleString()}</span>
-            )}
-            {item.engagement.comments !== undefined && (
-              <span title="Comments">💬 {item.engagement.comments.toLocaleString()}</span>
-            )}
-          </div>
-        )}
-
-        {/* Social actions row — like button + comment link */}
-        {(onLike || (onOpenCommentUrl && item.sourceUrl)) && (
-          <div className="mt-2 flex items-center gap-2">
-            {onLike && (() => {
-              const state = likeState(item);
-              const label = state === "synced"
-                ? `Liked on ${PLATFORM_LABELS[item.platform] ?? item.platform}`
-                : state === "noted"
-                ? `Liked, syncing to ${PLATFORM_LABELS[item.platform] ?? item.platform}...`
-                : state === "failed"
-                ? `Could not sync to ${PLATFORM_LABELS[item.platform] ?? item.platform}`
-                : "Like";
-              return (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onLike(e); }}
-                  title={label}
-                  aria-label={label}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors ${
-                    state === "synced"
-                      ? "text-red-400"
-                      : state === "noted"
-                      ? "text-amber-400"
-                      : state === "failed"
-                      ? "text-orange-400"
-                      : "text-[#52525b] hover:text-red-400"
-                  }`}
-                >
-                  {/* Heart icon — filled when liked */}
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24"
-                    fill={state !== "none" ? "currentColor" : "none"}
-                    stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round"
-                      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                  </svg>
-                  {/* Pending sync indicator */}
-                  {state === "noted" && (
-                    <svg className="w-2.5 h-2.5 animate-spin opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                  )}
-                  {state === "failed" && (
-                    <svg className="w-2.5 h-2.5 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                  )}
-                </button>
-              );
-            })()}
-
-            {onOpenCommentUrl && item.sourceUrl && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
-                title={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
-                aria-label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
-                className="p-1.5 rounded-lg text-[#52525b] hover:text-[#a1a1aa] transition-colors"
-              >
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </button>
-            )}
           </div>
         )}
 
