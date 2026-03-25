@@ -1565,7 +1565,13 @@ async fn li_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
     use tauri::WebviewWindowBuilder;
 
     let wv = match app.get_webview_window("li-scraper") {
-        Some(w) => w,
+        Some(w) => {
+            w.navigate(
+                "https://www.linkedin.com/feed/".parse().unwrap(),
+            )
+            .map_err(|e| e.to_string())?;
+            w
+        }
         None => {
             WebviewWindowBuilder::new(
                 &app,
