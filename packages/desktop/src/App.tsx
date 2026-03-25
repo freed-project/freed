@@ -46,6 +46,7 @@ import { generateSampleFeeds, generateSampleItems } from "@freed/shared";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
+const IS_LOCAL_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1";
 
 // Register the desktop log transport so addDebugEvent calls from ui/ flow
 // through the native logger in both local preview and release builds.
@@ -129,6 +130,8 @@ function App() {
 
   // Poll for updates in the background every 30 minutes.
   useEffect(() => {
+    if (IS_LOCAL_PREVIEW) return;
+
     async function poll() {
       try {
         const update = await check();
@@ -150,6 +153,8 @@ function App() {
 
   // Manual check triggered from Settings panel.
   const checkForUpdates = useCallback(async (): Promise<string | null> => {
+    if (IS_LOCAL_PREVIEW) return null;
+
     const update = await check();
     if (update) {
       pendingUpdate.current = update;
@@ -271,8 +276,8 @@ function App() {
       XSettingsContent: XSettingsSection,
       FacebookSettingsContent: FacebookSettingsSection,
       InstagramSettingsContent: InstagramSettingsSection,
-      checkForUpdates,
-      applyUpdate,
+      checkForUpdates: IS_LOCAL_PREVIEW ? undefined : checkForUpdates,
+      applyUpdate: IS_LOCAL_PREVIEW ? undefined : applyUpdate,
       factoryReset: handleFactoryReset,
       seedSocialConnections,
       activeCloudProviderLabel: () => {
