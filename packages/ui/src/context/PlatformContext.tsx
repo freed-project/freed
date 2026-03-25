@@ -104,6 +104,12 @@ export interface PlatformConfig {
    */
   InstagramSettingsContent: ComponentType | null;
 
+  /**
+   * Content rendered in the Settings > Sources > LinkedIn section.
+   * When null, the LinkedIn section is omitted from settings entirely (e.g. PWA).
+   */
+  LinkedInSettingsContent: ComponentType | null;
+
   /** Manual update check. Returns version string if available, null if up-to-date. */
   checkForUpdates?: () => Promise<string | null>;
 

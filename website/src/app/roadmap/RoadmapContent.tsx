@@ -554,7 +554,7 @@ const phases: Phase[] = [
     number: 12,
     title: "Additional Platforms",
     description: "LinkedIn, TikTok, Threads, Bluesky, Reddit, YouTube.",
-    status: "upcoming",
+    status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-12-ADDITIONAL-PLATFORMS.md",
   },

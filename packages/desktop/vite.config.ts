@@ -44,6 +44,7 @@ export default defineConfig({
       '@freed/capture-save': src('capture-save'),
       '@freed/capture-facebook': src('capture-facebook'),
       '@freed/capture-instagram': src('capture-instagram'),
+      '@freed/capture-linkedin': src('capture-linkedin'),
       ...tauriMockAliases,
     },
   },

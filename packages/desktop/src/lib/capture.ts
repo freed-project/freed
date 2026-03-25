@@ -13,6 +13,7 @@ import { parseFeedXml, feedToFeedItems, feedToRssFeed } from "@freed/capture-rss
 import { captureXTimeline } from "./x-capture";
 import { captureFbFeed } from "./fb-capture";
 import { captureIgFeed } from "./instagram-capture";
+import { captureLiFeed } from "./li-capture";
 import { docBatchRefreshFeeds } from "./automerge";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
@@ -104,7 +105,7 @@ export async function refreshAllFeeds(): Promise<void> {
   const feeds = Object.values(store.feeds).filter((f) => f.enabled);
 
   // Skip only when there is truly nothing to do.
-  if (feeds.length === 0 && !store.xAuth.isAuthenticated && !store.fbAuth.isAuthenticated && !store.igAuth.isAuthenticated) return;
+  if (feeds.length === 0 && !store.xAuth.isAuthenticated && !store.fbAuth.isAuthenticated && !store.igAuth.isAuthenticated && !store.liAuth.isAuthenticated) return;
 
   store.setSyncing(true);
   store.setError(null);
@@ -246,6 +247,22 @@ export async function refreshAllFeeds(): Promise<void> {
         const msg = igError instanceof Error ? igError.message : "Instagram feed sync failed";
         console.error("[Refresh] Instagram feed failed:", igError);
         addDebugEvent("error", `[IG] feed sync threw: ${msg}`);
+        if (!useAppStore.getState().error) {
+          store.setError(msg);
+        }
+      }
+    }
+
+    // ── LinkedIn feed ─────────────────────────────────────────────────────────
+    // Independent of RSS, X, Facebook, and Instagram outcomes.
+    const { liAuth } = useAppStore.getState();
+    if (liAuth.isAuthenticated) {
+      try {
+        await captureLiFeed();
+      } catch (liError) {
+        const msg = liError instanceof Error ? liError.message : "LinkedIn feed sync failed";
+        console.error("[Refresh] LinkedIn feed failed:", liError);
+        addDebugEvent("error", `[LI] feed sync threw: ${msg}`);
         if (!useAppStore.getState().error) {
           store.setError(msg);
         }
