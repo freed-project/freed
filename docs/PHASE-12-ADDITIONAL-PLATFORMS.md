@@ -1,6 +1,6 @@
 # Phase 12: Additional Platforms
 
-> **Status:** Future  
+> **Status:** 🚧 In Progress
 > **Dependencies:** Phase 5 (Desktop App), Phase 7 (Facebook/Instagram patterns)
 
 ---
@@ -185,12 +185,12 @@ packages/capture-youtube/
 
 ## Tasks
 
-| Task  | Description                                | Complexity |
-| ----- | ------------------------------------------ | ---------- |
-| 12.1  | `@freed/capture-linkedin` package scaffold | Low        |
-| 12.2  | LinkedIn DOM selectors                     | High       |
-| 12.3  | LinkedIn session management                | High       |
-| 12.4  | `@freed/capture-tiktok` package scaffold   | Low        |
+| Task  | Description                                | Complexity | Status |
+| ----- | ------------------------------------------ | ---------- | ------ |
+| 12.1  | `@freed/capture-linkedin` package scaffold | Low        | ✓ Done |
+| 12.2  | LinkedIn DOM selectors                     | High       | ✓ Done |
+| 12.3  | LinkedIn session management                | High       | ✓ Done |
+| 12.4  | `@freed/capture-tiktok` package scaffold   | Low        |        |
 | 12.5  | TikTok capture strategy research           | High       |
 | 12.6  | `@freed/capture-threads` package scaffold  | Low        |
 | 12.7  | Threads capture (similar to Instagram)     | Medium     |
@@ -208,7 +208,7 @@ packages/capture-youtube/
 
 ## Success Criteria
 
-- [ ] LinkedIn feed posts captured to FeedItem
+- [x] LinkedIn feed posts captured to FeedItem
 - [ ] TikTok feed captured (video metadata at minimum)
 - [ ] Threads posts captured to FeedItem
 - [ ] Bluesky timeline captured via AT Protocol

@@ -92,4 +92,17 @@
       });
     }
   } catch (_e) {}
+
+  // ---------------------------------------------------------------------------
+  // 4. requestAnimationFrame keepalive — prevent WKWebView timer throttling
+  // ---------------------------------------------------------------------------
+  // When the scraper window is hidden via NSWindow orderOut (i.e. show_window=false),
+  // WKWebView throttles JS timers and pauses rAF callbacks at the native level.
+  // This loop keeps the rAF queue alive so setTimeout/setInterval/fetch continue
+  // firing at full rate even when the window is not visible on any display.
+  // Combined with the visibilityState override above, the page has no way to
+  // detect that it is running in a hidden window.
+  (function keepAlive() {
+    requestAnimationFrame(keepAlive);
+  })();
 })();

@@ -376,6 +376,7 @@ export function XSettingsSection() {
 
         <div className="flex gap-2">
           <button
+            data-testid="x-manual-connect"
             onClick={handleManualConnect}
             disabled={!ct0 || !authToken}
             className="flex-1 text-sm px-3 py-2 rounded-xl bg-[#8b5cf6]/15 text-[#8b5cf6] hover:bg-[#8b5cf6]/25 disabled:opacity-40 transition-colors"

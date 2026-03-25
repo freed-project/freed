@@ -1,10 +1,87 @@
-import { useRef, memo, useCallback, useEffect } from "react";
+import { useRef, memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useVirtualizer, useWindowVirtualizer } from "@tanstack/react-virtual";
 import { FeedItem } from "./FeedItem.js";
 import { FeedItemSkeleton } from "./FeedItemSkeleton.js";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
+
+// ── Story grouping ────────────────────────────────────────────────────────────
+
+const TILE_GAP = 8;   // gap-2 = 8px
+const MIN_TILE_W = 80; // minimum tile width before a column wraps
+const MAX_TILE_H = 288;
+// Tailwind max-w-2xl = 42rem = 672px. Story rows are wrapped in
+// "px-4 max-w-2xl mx-auto", so the usable tile area is at most 640px
+// regardless of how wide the scroll container actually is.
+const MAX_CONTENT_W = 672;
+
+/**
+ * Height-to-width ratio for story tiles based on column count.
+ *
+ * - 1 col: 4:3 portrait — big hero tile (height is almost always capped anyway)
+ * - 2 col: 2:3 landscape — two side-by-side tiles look better wide, not tall
+ * - 3 col: 4:3 portrait — narrow columns read better in portrait
+ */
+function storyHeightRatio(numCols: number): number {
+  return numCols === 2 ? 2 / 3 : 4 / 3;
+}
+
+type FeedRow =
+  | { type: "item"; item: FeedItemType; itemIndex: number }
+  | { type: "stories"; items: FeedItemType[]; itemIndices: number[]; numCols: number };
+
+/**
+ * Collapse consecutive story items into grid rows of up to `maxCols` wide,
+ * avoiding orphan single-item tail rows where possible.
+ *
+ * For maxCols=3:
+ *   N=1→[1]  N=2→[2]  N=3→[3]  N=4→[2,2]  N=5→[3,2]  N=7→[3,2,2]
+ */
+function buildRows(allItems: FeedItemType[], maxCols: number): FeedRow[] {
+  const cols = Math.max(1, maxCols);
+  const rows: FeedRow[] = [];
+  let i = 0;
+
+  while (i < allItems.length) {
+    if (allItems[i].contentType !== "story") {
+      rows.push({ type: "item", item: allItems[i], itemIndex: i });
+      i++;
+      continue;
+    }
+
+    // Collect the full run of consecutive stories.
+    const runStart = i;
+    while (i < allItems.length && allItems[i].contentType === "story") i++;
+    const runLength = i - runStart;
+
+    // Split the run into balanced rows of at most `cols` stories.
+    let offset = runStart;
+    let remaining = runLength;
+    while (remaining > 0) {
+      let rowSize: number;
+      if (remaining <= cols) {
+        rowSize = remaining;
+      } else if (cols > 1 && remaining % cols === 1) {
+        // Greedy fill would eventually leave a 1-item orphan row.
+        // If only cols+1 remain, split evenly. Otherwise keep filling.
+        rowSize = remaining === cols + 1 ? Math.ceil(remaining / 2) : cols;
+      } else {
+        rowSize = cols;
+      }
+      rows.push({
+        type: "stories",
+        items: allItems.slice(offset, offset + rowSize),
+        itemIndices: Array.from({ length: rowSize }, (_, k) => offset + k),
+        numCols: rowSize, // actual column count for this row's CSS grid
+      });
+      offset += rowSize;
+      remaining -= rowSize;
+    }
+  }
+
+  return rows;
+}
 
 const SKELETON_COUNT = 8;
 
@@ -91,6 +168,49 @@ const FeedItemRow = memo(function FeedItemRow({
   );
 });
 
+interface StoryGroupRowProps {
+  storyItems: FeedItemType[];
+  itemIndices: number[];
+  /** Number of equal-width CSS columns for this row's grid. */
+  numCols: number;
+  /** Explicit tile height in pixels (3:4 portrait ratio, capped at 288px). */
+  tileHeight: number;
+  showEngagement: boolean;
+  onItemClick?: (item: FeedItemType) => void;
+  onItemSave?: (item: FeedItemType) => void;
+  onItemArchive?: (item: FeedItemType) => void;
+}
+
+const StoryGroupRow = memo(function StoryGroupRow({
+  storyItems,
+  numCols,
+  tileHeight,
+  showEngagement,
+  onItemClick,
+  onItemSave,
+  onItemArchive,
+}: StoryGroupRowProps) {
+  return (
+    <div
+      className="grid gap-2"
+      style={{ gridTemplateColumns: `repeat(${numCols}, 1fr)` }}
+    >
+      {storyItems.map((item) => (
+        <FeedItem
+          key={item.globalId}
+          item={item}
+          onClick={() => onItemClick?.(item)}
+          focused={false}
+          showEngagement={showEngagement}
+          storyHeight={tileHeight}
+          onSave={onItemSave ? (e) => { e.stopPropagation(); onItemSave(item); } : undefined}
+          onArchive={onItemArchive ? (e) => { e.stopPropagation(); onItemArchive(item); } : undefined}
+        />
+      ))}
+    </div>
+  );
+});
+
 export function FeedList({
   items,
   onItemClick,
@@ -160,20 +280,80 @@ export function FeedList({
     [],
   );
 
-  // Both virtualizers are always constructed (rules of hooks). Only the active
-  // one's output is rendered. On mobile the element virtualizer has no scroll
-  // element (returns 0 items); on desktop the window virtualizer is idle.
+  // Track scroll container width so story group rows are sized correctly.
+  // 600 is a safe non-zero starting guess; the ResizeObserver corrects it
+  // after the first render.
+  const [containerWidth, setContainerWidth] = useState(600);
+
+  // We must set up the ResizeObserver AFTER the scroll container is in the DOM.
+  // `parentRef.current` is null during early-return paths (loading skeleton,
+  // empty state), so we use a polling-style layout effect that checks every
+  // render whether the ref is now available and, if so, starts observing.
+  // Once connected the observer fires on every resize (sidebar ↔ full-width).
+  useEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      setContainerWidth(entry.contentRect.width);
+    });
+    ro.observe(el);
+    // Fire once immediately so the width is captured before any scroll event.
+    setContainerWidth(el.getBoundingClientRect().width);
+    return () => ro.disconnect();
+  }); // intentionally no dep array — re-runs every render, but the RefObject
+      // only changes when the ref target mounts/unmounts so the observer is
+      // reconnected at most a handful of times.
+
+  // Max grid columns based on current container width (capped at 3).
+  // Inner width = containerWidth minus px-4 on each side (32px total).
+  const maxCols = useMemo(() => {
+    const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - 32, 0);
+    return Math.max(1, Math.min(3, Math.floor((inner + TILE_GAP) / (MIN_TILE_W + TILE_GAP))));
+  }, [containerWidth]);
+
+  // Preprocess items into virtual rows, collapsing consecutive stories into grids.
+  const rows = useMemo(() => buildRows(items, maxCols), [items, maxCols]);
+
+  // Map item index → row index for focusedIndex highlighting.
+  const itemIndexToRowIndex = useMemo(() => {
+    const map = new Map<number, number>();
+    rows.forEach((row, ri) => {
+      if (row.type === "item") {
+        map.set(row.itemIndex, ri);
+      } else {
+        row.itemIndices.forEach((ii) => map.set(ii, ri));
+      }
+    });
+    return map;
+  }, [rows]);
+
+  // Accurate per-row height estimate for the virtualizer.
+  // Story rows use the padding-bottom trick: height = min(tileWidth × 4/3, 288px).
+  // Keeping this in sync with the CSS prevents gaps/overlaps for off-screen rows.
+  const estimateRowSize = useCallback(
+    (index: number) => {
+      const row = rows[index];
+      if (!row || row.type !== "stories") return 220;
+      const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - 32, 0);
+      const nc = row.numCols;
+      const tileWidth = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
+      const tileHeight = Math.min(tileWidth * storyHeightRatio(nc), MAX_TILE_H);
+      return Math.round(tileHeight + 24); // +pb-6; story rows are always 1 CSS row tall
+    },
+    [rows, containerWidth],
+  );
+
   const elementVirtualizer = useVirtualizer({
-    count: isMobile ? 0 : items.length,
+    count: isMobile ? 0 : rows.length,
     getScrollElement: () => (isMobile ? null : parentRef.current),
-    estimateSize: () => 220,
+    estimateSize: estimateRowSize,
     overscan: 5,
     measureElement: (el) => el.getBoundingClientRect().height,
   });
 
   const windowVirtualizer = useWindowVirtualizer({
-    count: isMobile ? items.length : 0,
-    estimateSize: () => 220,
+    count: isMobile ? rows.length : 0,
+    estimateSize: estimateRowSize,
     overscan: 5,
     // Distance from window top to the list container. Accounts for the sticky
     // header so items are offset correctly as window.scrollY changes.
@@ -204,18 +384,22 @@ export function FeedList({
     const visibleNow = new Set<string>();
     for (const vi of vItems) {
       if (vi.start < vpBottom && vi.end > scrollTop) {
-        const item = items[vi.index];
-        if (!item || item.userState.readAt) continue;
-        visibleNow.add(item.globalId);
-        if (!readTimersRef.current.has(item.globalId)) {
-          const id = item.globalId;
-          readTimersRef.current.set(
-            id,
-            setTimeout(() => {
-              markAsRead(id);
-              readTimersRef.current.delete(id);
-            }, READ_DELAY_MS),
-          );
+        const row = rows[vi.index];
+        if (!row) continue;
+        const rowItems = row.type === "item" ? [row.item] : row.items;
+        for (const item of rowItems) {
+          if (item.userState.readAt) continue;
+          visibleNow.add(item.globalId);
+          if (!readTimersRef.current.has(item.globalId)) {
+            const id = item.globalId;
+            readTimersRef.current.set(
+              id,
+              setTimeout(() => {
+                markAsRead(id);
+                readTimersRef.current.delete(id);
+              }, READ_DELAY_MS),
+            );
+          }
         }
       }
     }
@@ -319,36 +503,59 @@ export function FeedList({
           style={{ height: windowVirtualizer.getTotalSize() }}
           className="relative w-full"
         >
-          {windowVirtualizer.getVirtualItems().map((virtualItem) => (
-            <div
-              key={virtualItem.key}
-              data-index={virtualItem.index}
-              ref={windowVirtualizer.measureElement}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                // Subtract scrollMargin so item positions are relative to the
-                // list container's top, not the window's origin.
-                transform: `translateY(${virtualItem.start - windowVirtualizer.options.scrollMargin}px)`,
-              }}
-            >
-              <div className={`px-3 pb-3 max-w-2xl mx-auto${virtualItem.index === 0 ? " pt-3" : ""}`}>
-                <FeedItemRow
-                  item={items[virtualItem.index]}
-                  index={virtualItem.index}
-                  focused={virtualItem.index === focusedIndex}
-                  showEngagement={showEngagementCounts}
-                  onItemClick={onItemClick}
-                  onFocusChange={onFocusChange}
-                  onItemSave={onItemSave}
-                  onItemLike={onItemLike}
-                  onOpenCommentUrl={onOpenCommentUrl}
-                />
+          {windowVirtualizer.getVirtualItems().map((virtualItem) => {
+            const row = rows[virtualItem.index];
+            if (!row) return null;
+            return (
+              <div
+                key={virtualItem.key}
+                data-index={virtualItem.index}
+                ref={windowVirtualizer.measureElement}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  // Subtract scrollMargin so item positions are relative to the
+                  // list container's top, not the window's origin.
+                  transform: `translateY(${virtualItem.start - windowVirtualizer.options.scrollMargin}px)`,
+                }}
+              >
+                <div className={`px-3 pb-3 max-w-2xl mx-auto${virtualItem.index === 0 ? " pt-3" : ""}`}>
+                  {row.type === "stories" ? (() => {
+                    const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - 32, 0);
+                    const nc = row.numCols;
+                    const tw = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
+                    const th = Math.round(Math.min(tw * storyHeightRatio(nc), MAX_TILE_H));
+                    return (
+                      <StoryGroupRow
+                        storyItems={row.items}
+                        itemIndices={row.itemIndices}
+                        numCols={nc}
+                        tileHeight={th}
+                        showEngagement={showEngagementCounts}
+                        onItemClick={onItemClick}
+                        onItemSave={onItemSave}
+                        onItemArchive={onItemArchive}
+                      />
+                    );
+                  })() : (
+                    <FeedItemRow
+                      item={row.item}
+                      index={row.itemIndex}
+                      focused={itemIndexToRowIndex.get(focusedIndex) === virtualItem.index}
+                      showEngagement={showEngagementCounts}
+                      onItemClick={onItemClick}
+                      onFocusChange={onFocusChange}
+                      onItemSave={onItemSave}
+                      onItemLike={onItemLike}
+                      onOpenCommentUrl={onOpenCommentUrl}
+                    />
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -364,35 +571,58 @@ export function FeedList({
         style={{ height: elementVirtualizer.getTotalSize() }}
         className="relative w-full"
       >
-        {elementVirtualizer.getVirtualItems().map((virtualItem) => (
-          <div
-            key={virtualItem.key}
-            data-index={virtualItem.index}
-            ref={elementVirtualizer.measureElement}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              width: "100%",
-              transform: `translateY(${virtualItem.start}px)`,
-            }}
-          >
-            <div className={`px-4 pb-4 max-w-2xl mx-auto${virtualItem.index === 0 ? " pt-4" : ""}`}>
-              <FeedItemRow
-                item={items[virtualItem.index]}
-                index={virtualItem.index}
-                focused={virtualItem.index === focusedIndex}
-                showEngagement={showEngagementCounts}
-                onItemClick={onItemClick}
-                onFocusChange={onFocusChange}
-                onItemSave={onItemSave}
-                onItemArchive={onItemArchive}
-                onItemLike={onItemLike}
-                onOpenCommentUrl={onOpenCommentUrl}
-              />
+        {elementVirtualizer.getVirtualItems().map((virtualItem) => {
+          const row = rows[virtualItem.index];
+          if (!row) return null;
+          return (
+            <div
+              key={virtualItem.key}
+              data-index={virtualItem.index}
+              ref={elementVirtualizer.measureElement}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${virtualItem.start}px)`,
+              }}
+            >
+              <div className={`px-4 max-w-2xl mx-auto${virtualItem.index === 0 ? " pt-4" : ""} ${row.type === "stories" ? "pb-6" : "pb-4"}`}>
+                {row.type === "stories" ? (() => {
+                  const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - 32, 0);
+                  const nc = row.numCols;
+                  const tw = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
+                  const th = Math.round(Math.min(tw * storyHeightRatio(nc), MAX_TILE_H));
+                  return (
+                    <StoryGroupRow
+                      storyItems={row.items}
+                      itemIndices={row.itemIndices}
+                      numCols={nc}
+                      tileHeight={th}
+                      showEngagement={showEngagementCounts}
+                      onItemClick={onItemClick}
+                      onItemSave={onItemSave}
+                      onItemArchive={onItemArchive}
+                    />
+                  );
+                })() : (
+                  <FeedItemRow
+                    item={row.item}
+                    index={row.itemIndex}
+                    focused={itemIndexToRowIndex.get(focusedIndex) === virtualItem.index}
+                    showEngagement={showEngagementCounts}
+                    onItemClick={onItemClick}
+                    onFocusChange={onFocusChange}
+                    onItemSave={onItemSave}
+                    onItemArchive={onItemArchive}
+                    onItemLike={onItemLike}
+                    onOpenCommentUrl={onOpenCommentUrl}
+                  />
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

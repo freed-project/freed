@@ -27,6 +27,7 @@ import {
   X_SECTION_META,
   FB_SECTION_META,
   IG_SECTION_META,
+  LI_SECTION_META,
   type SectionId,
   type SectionMeta,
 } from "../lib/settings-sections.js";
@@ -153,6 +154,11 @@ const ICONS: Record<SectionId, ReactNode> = {
       <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
     </svg>
   ),
+  linkedin: (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+    </svg>
+  ),
 };
 
 // ── Update check state ────────────────────────────────────────────────────────
@@ -172,12 +178,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     XSettingsContent,
     FacebookSettingsContent,
     InstagramSettingsContent,
+    LinkedInSettingsContent,
     checkForUpdates,
     applyUpdate,
     headerDragRegion,
     factoryReset,
     activeCloudProviderLabel,
     seedSocialConnections,
+    updateDownloadProgress,
   } = usePlatform();
   const preferences = useAppStore((s) => s.preferences);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
@@ -191,6 +199,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     ...(XSettingsContent ? [{ ...X_SECTION_META, icon: ICONS.x }] : []),
     ...(FacebookSettingsContent ? [{ ...FB_SECTION_META, icon: ICONS.facebook }] : []),
     ...(InstagramSettingsContent ? [{ ...IG_SECTION_META, icon: ICONS.instagram }] : []),
+    ...(LinkedInSettingsContent ? [{ ...LI_SECTION_META, icon: ICONS.linkedin }] : []),
     ...(checkForUpdates ? [{ ...UPDATES_SECTION_META, icon: ICONS.updates }] : []),
     ...(factoryReset ? [{ ...DANGER_SECTION_META, icon: ICONS.danger }] : []),
   ];
@@ -211,6 +220,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         ...(XSettingsContent ? [sectionById.x] : []),
         ...(FacebookSettingsContent ? [sectionById.facebook] : []),
         ...(InstagramSettingsContent ? [sectionById.instagram] : []),
+        ...(LinkedInSettingsContent ? [sectionById.linkedin] : []),
       ],
     },
     // sectionById.ai, // AI coming soon -- do not delete
@@ -496,9 +506,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     const isVisible = visibleSections.some((s) => s.id === id);
     if (!isVisible) return null;
 
+    // SectionContent is called as a plain function (not as a JSX component)
+    // because it is defined inside SettingsDialog. If rendered as
+    // <SectionContent />, React would see a new component type on every
+    // SettingsDialog re-render and unmount/remount the entire subtree,
+    // destroying local state in nested components like XSettingsSection.
     return (
       <section data-section={id} className="pb-8 min-h-full flex flex-col">
-        <SectionContent id={id} />
+        {SectionContent({ id })}
       </section>
     );
   }
@@ -548,6 +563,23 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   </div>
                 </div>
               )}
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm text-white">Delete archived content after</p>
+                  <p className="text-xs text-[#52525b] mt-0.5">Saved items are never deleted</p>
+                </div>
+                <select
+                  value={display.archivePruneDays ?? 30}
+                  onChange={(e) => handleDisplayChange({ archivePruneDays: Number(e.target.value) })}
+                  className="shrink-0 bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded-lg text-sm text-white px-3 py-1.5 focus:outline-none focus:border-[#8b5cf6]/50 cursor-pointer"
+                >
+                  <option value={3}>3 days</option>
+                  <option value={7}>7 days</option>
+                  <option value={30}>30 days</option>
+                  <option value={90}>90 days</option>
+                  <option value={0}>Never</option>
+                </select>
+              </div>
             </div>
           </>
         );
@@ -573,6 +605,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <>
             <SectionHeading label="Instagram" />
             <InstagramSettingsContent />
+          </>
+        ) : null;
+
+      case "linkedin":
+        return LinkedInSettingsContent ? (
+          <>
+            <SectionHeading label="LinkedIn" />
+            <LinkedInSettingsContent />
           </>
         ) : null;
 
@@ -617,7 +657,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 <div ref={checkButtonRef} className="flex items-center gap-3">
                   <button
                     onClick={handleCheckForUpdates}
-                    disabled={updateState.status === "checking"}
+                    disabled={updateState.status === "checking" || updateDownloadProgress?.phase === "downloading"}
                     className="text-sm px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#a1a1aa] hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {updateState.status === "checking" ? (
@@ -636,7 +676,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                       {applyUpdate && (
                         <button
                           onClick={applyUpdate}
-                          className="text-xs font-semibold px-2.5 py-1 rounded-md bg-[#8b5cf6] text-white hover:bg-[#7c3aed] transition-colors"
+                          disabled={updateDownloadProgress?.phase === "downloading"}
+                          className="text-xs font-semibold px-2.5 py-1 rounded-md bg-[#8b5cf6] text-white hover:bg-[#7c3aed] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {headerDragRegion ? "Install & Restart" : "Reload"}
                         </button>
@@ -647,6 +688,22 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                     <span className="text-xs text-red-400">Check failed</span>
                   )}
                 </div>
+              )}
+              {updateDownloadProgress?.phase === "downloading" && (
+                <div className="space-y-1.5">
+                  <p className="text-xs text-[#a1a1aa]">
+                    Downloading... {Math.round(updateDownloadProgress.percent)}%
+                  </p>
+                  <div className="h-1.5 rounded-full bg-[rgba(255,255,255,0.08)] overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-[var(--glow-blue)] to-[var(--glow-purple)] transition-[width] duration-300"
+                      style={{ width: `${updateDownloadProgress.percent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              {updateDownloadProgress?.phase === "error" && (
+                <p className="text-xs text-red-400">{updateDownloadProgress.message}</p>
               )}
             </div>
           </>
@@ -923,7 +980,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 <p className="text-sm text-[#52525b]">No settings match <span className="text-[#71717a]">"{search}"</span></p>
               </div>
             ) : (
-              allSections.map((section) => SectionBlock({ id: section.id }))
+              allSections.map((section) => (
+                <SectionBlock key={section.id} id={section.id} />
+              ))
             )}
 
             {/* Footer — mobile + narrow screens */}

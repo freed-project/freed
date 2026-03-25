@@ -27,6 +27,7 @@ import {
   toggleArchived,
   archiveAllReadUnsaved,
   pruneArchivedItems,
+  deleteAllArchivedItems,
   updatePreferences,
   updateLastSync,
   addFriend,
@@ -285,6 +286,11 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
       case "PRUNE_ARCHIVED_ITEMS":
         await applyChange((doc) => pruneArchivedItems(doc, req.maxAgeMs), "Prune archived items");
+        ack(req.reqId);
+        break;
+
+      case "DELETE_ALL_ARCHIVED":
+        await applyChange((doc) => deleteAllArchivedItems(doc), "Delete all archived items");
         ack(req.reqId);
         break;
 

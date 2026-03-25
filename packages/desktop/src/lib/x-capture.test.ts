@@ -11,8 +11,22 @@
  */
 
 import { describe, it, expect, vi } from "vitest";
-import { fetchXTimeline } from "./x-capture";
 import type { XCookies } from "./x-auth";
+
+vi.mock("./store", () => ({
+  useAppStore: {
+    getState: () => ({
+      items: [],
+      fbAuth: {},
+      setLoading: () => {},
+      setError: () => {},
+      setFbAuth: () => {},
+      addItems: async () => {},
+    }),
+  },
+}));
+
+const { fetchXTimeline } = await import("./x-capture");
 
 import timelineFixture from "./__fixtures__/x-timeline-response.json";
 import emptyInstructionsFixture from "./__fixtures__/x-empty-instructions.json";
@@ -93,6 +107,40 @@ describe("fetchXTimeline", () => {
 
       // fetchXTimeline doesn't touch the store — that's captureXTimeline's job
       expect(result.diag.itemsAdded).toBe(0);
+    });
+
+    it("skips promoted timeline entries", async () => {
+      const promotedOnly = {
+        data: {
+          home: {
+            home_timeline_urt: {
+              instructions: [
+                {
+                  type: "TimelineAddEntries",
+                  entries: [
+                    {
+                      entryId: "promoted-tweet-1",
+                      content: {
+                        itemContent: {
+                          tweet_results: {
+                            result: (timelineFixture as { data: { home: { home_timeline_urt: { instructions: Array<{ entries: Array<{ content: { itemContent: { tweet_results: { result: unknown } } } }> }> } } } }).data.home.home_timeline_urt.instructions[0].entries[0].content.itemContent.tweet_results.result,
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      };
+
+      const result = await fetchXTimeline(fakeCookies, requesterFor(promotedOnly));
+
+      expect(result.diag.instructionsFound).toBe(1);
+      expect(result.diag.tweetsExtracted).toBe(0);
+      expect(result.items).toHaveLength(0);
     });
   });
 
@@ -224,7 +272,8 @@ describe("fetchXTimeline", () => {
       const cookies: XCookies = { ct0: "my_ct0_value", authToken: "my_auth" };
       await fetchXTimeline(cookies, req);
 
-      const [, , headers] = req.mock.calls[0] as [string, string, Record<string, string>];
+      const [, , headerPairs] = req.mock.calls[0] as [string, string, Array<[string, string]>];
+      const headers = Object.fromEntries(headerPairs);
       expect(headers["x-csrf-token"]).toBe("my_ct0_value");
       expect(headers.cookie).toContain("ct0=my_ct0_value");
     });
@@ -234,7 +283,8 @@ describe("fetchXTimeline", () => {
       const cookies: XCookies = { ct0: "ct0_val", authToken: "auth_val" };
       await fetchXTimeline(cookies, req);
 
-      const [, , headers] = req.mock.calls[0] as [string, string, Record<string, string>];
+      const [, , headerPairs] = req.mock.calls[0] as [string, string, Array<[string, string]>];
+      const headers = Object.fromEntries(headerPairs);
       expect(headers.cookie).toContain("auth_token=auth_val");
     });
   });

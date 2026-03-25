@@ -20,7 +20,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { addDebugEvent, setDocSnapshot, registerDocAccessors } from "@freed/ui/lib/debug-store";
 import type { FeedItem, Friend, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
+import { log } from "./logger.js";
 export type { DocState } from "./automerge-types";
+
+/** Maximum time to wait for any single worker op before treating it as hung. */
+const WORKER_REQUEST_TIMEOUT_MS = 60_000;
 
 // ---------------------------------------------------------------------------
 // Worker lifecycle
@@ -50,12 +54,25 @@ const workerReady = new Promise<void>((resolve, reject) => {
 // ---------------------------------------------------------------------------
 
 let nextReqId = 1;
-const pending = new Map<number, { resolve: () => void; reject: (err: Error) => void }>();
+const pending = new Map<
+  number,
+  { resolve: () => void; reject: (err: Error) => void; timer: ReturnType<typeof setTimeout> }
+>();
 
 async function request(msg: WorkerRequest): Promise<void> {
   await workerReady;
   return new Promise((resolve, reject) => {
-    pending.set(msg.reqId, { resolve, reject });
+    const timer = setTimeout(() => {
+      if (!pending.has(msg.reqId)) return;
+      pending.delete(msg.reqId);
+      const opType = (msg as { type: string }).type;
+      const errMsg = `[automerge-worker] request TIMEOUT op=${opType} reqId=${msg.reqId}`;
+      log.error(errMsg);
+      addDebugEvent("error", errMsg);
+      reject(new Error(errMsg));
+    }, WORKER_REQUEST_TIMEOUT_MS);
+
+    pending.set(msg.reqId, { resolve, reject, timer });
     worker.postMessage(msg);
   });
 }
@@ -141,13 +158,16 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   // ACK
   const p = pending.get(msg.reqId);
   if (!p) return;
+  clearTimeout(p.timer);
   pending.delete(msg.reqId);
   if (msg.error) p.reject(new Error(msg.error));
   else p.resolve();
 };
 
 worker.onerror = (err) => {
-  console.error("[AutomergeWorker] Unhandled error:", err);
+  const msg = err instanceof Error ? err.message : String(err);
+  log.error(`[automerge-worker] unhandled error: ${msg}`);
+  addDebugEvent("error", `[AutomergeWorker] unhandled error: ${msg}`);
 };
 
 // ---------------------------------------------------------------------------
@@ -311,6 +331,11 @@ export async function docArchiveAllReadUnsaved(
 export async function docPruneArchivedItems(maxAgeMs?: number): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "PRUNE_ARCHIVED_ITEMS", maxAgeMs });
+}
+
+export async function docDeleteAllArchived(): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "DELETE_ALL_ARCHIVED" });
 }
 
 export async function docAddRssFeed(feed: RssFeed): Promise<void> {

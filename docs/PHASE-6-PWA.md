@@ -33,6 +33,7 @@ Mobile companion to the Desktop App—for on-the-go reading. Timeline-focused, m
 2. **Reading enhancements** — Focus mode, font options, theming
 3. **Custom ranking** — User-controlled weights, not engagement
 4. **Source filtering** — View by platform, author, or topic
+5. **Compact feed actions** — Header-level like, comment, save, archive, and open affordances keep cards scannable on small screens
 
 ---
 

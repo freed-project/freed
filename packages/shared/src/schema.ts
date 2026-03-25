@@ -12,6 +12,7 @@ import type {
   RssFeed,
   UserPreferences,
   DocumentMeta,
+  FacebookCapturePreferences,
 } from "./types.js";
 import { createDefaultPreferences, createDefaultMeta } from "./types.js";
 
@@ -173,6 +174,8 @@ export function markAsRead(doc: FreedDoc, globalId: string): void {
 export function toggleArchived(doc: FreedDoc, globalId: string): void {
   const item = doc.feedItems[globalId];
   if (!item) return;
+  // Bookmarked items cannot be archived -- saved always wins.
+  if (item.userState.saved) return;
   if (item.userState.archived) {
     item.userState.archived = false;
     delete (item.userState as unknown as Record<string, unknown>).archivedAt;
@@ -239,6 +242,24 @@ export function pruneArchivedItems(
 }
 
 /**
+ * Immediately delete all archived, non-saved items regardless of age.
+ * Use when the user explicitly requests "delete now" from the archive toolbar.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @returns Number of items deleted
+ */
+export function deleteAllArchivedItems(doc: FreedDoc): number {
+  let deleted = 0;
+  for (const [id, item] of Object.entries(doc.feedItems)) {
+    if (!item.userState.archived) continue;
+    if (item.userState.saved) continue;
+    delete doc.feedItems[id];
+    deleted++;
+  }
+  return deleted;
+}
+
+/**
  * Toggle bookmark status for a feed item
  *
  * @param doc - The Automerge document (mutable within A.change)
@@ -250,6 +271,10 @@ export function toggleSaved(doc: FreedDoc, globalId: string): void {
     item.userState.saved = !item.userState.saved;
     if (item.userState.saved) {
       item.userState.savedAt = Date.now();
+      // Bookmarking wins -- clear any stale archive state so an item can
+      // never be both saved and archived at the same time.
+      item.userState.archived = false;
+      delete (item.userState as unknown as Record<string, unknown>).archivedAt;
     } else {
       // Automerge forbids assigning `undefined` — use delete instead
       delete (item.userState as unknown as Record<string, unknown>).savedAt;
@@ -569,10 +594,54 @@ export function updatePreferences(
   doc: FreedDoc,
   updates: Partial<UserPreferences>
 ): void {
+  const fbCaptureUpdate = updates.fbCapture;
+  if (fbCaptureUpdate) {
+    applyFbCapturePreferenceUpdate(
+      doc.preferences as UserPreferences,
+      fbCaptureUpdate,
+    );
+    const { fbCapture: _fbCapture, ...remainingUpdates } = updates;
+    updates = remainingUpdates;
+  }
+
   deepMergeInto(
     doc.preferences as unknown as Record<string, unknown>,
     updates as unknown as Record<string, unknown>
   );
+}
+
+function replaceRecord<T>(
+  target: Record<string, T>,
+  source: Record<string, T>,
+): void {
+  for (const key of Object.keys(target)) {
+    delete target[key];
+  }
+  for (const [key, value] of Object.entries(source)) {
+    target[key] = value;
+  }
+}
+
+function applyFbCapturePreferenceUpdate(
+  preferences: UserPreferences,
+  updates: Partial<FacebookCapturePreferences>,
+): void {
+  if (!preferences.fbCapture) {
+    preferences.fbCapture = {
+      knownGroups: {},
+      excludedGroupIds: {},
+    };
+  }
+
+  if (updates.knownGroups) {
+    replaceRecord(preferences.fbCapture.knownGroups, updates.knownGroups);
+  }
+  if (updates.excludedGroupIds) {
+    replaceRecord(
+      preferences.fbCapture.excludedGroupIds,
+      updates.excludedGroupIds,
+    );
+  }
 }
 
 /**

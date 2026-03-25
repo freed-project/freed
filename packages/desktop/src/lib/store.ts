@@ -27,6 +27,7 @@ import {
   docRemoveFeedItem,
   docToggleArchived,
   docArchiveAllReadUnsaved,
+  docDeleteAllArchived,
   docPruneArchivedItems,
   docUpdatePreferences,
   docDeduplicateFeedItems,
@@ -47,6 +48,7 @@ import { loadStoredCookies, type XAuthState } from "./x-auth";
 let outboxTeardown: (() => void) | null = null;
 import { initFbAuth, type FbAuthState } from "./fb-auth";
 import { initIgAuth, type IgAuthState } from "./instagram-auth";
+import { initLiAuth, type LiAuthState } from "./li-auth";
 
 // App state interface
 interface AppState {
@@ -73,6 +75,8 @@ interface AppState {
   fbAuth: FbAuthState;
   // Instagram auth state
   igAuth: IgAuthState;
+  // LinkedIn auth state
+  liAuth: LiAuthState;
 
   // UI state
   isLoading: boolean;
@@ -118,6 +122,8 @@ interface AppState {
   setFbAuth: (auth: FbAuthState) => void;
   // Instagram auth actions
   setIgAuth: (auth: IgAuthState) => void;
+  // LinkedIn auth actions
+  setLiAuth: (auth: LiAuthState) => void;
 
   // UI actions (not persisted)
   setFilter: (filter: FilterOptions) => void;
@@ -189,6 +195,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   xAuth: { isAuthenticated: false },
   fbAuth: { isAuthenticated: false },
   igAuth: { isAuthenticated: false },
+  liAuth: { isAuthenticated: false },
   isLoading: true,
   isSyncing: false,
   isInitialized: false,
@@ -235,6 +242,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       const fbAuth = initFbAuth();
       const igAuth = initIgAuth();
+      const liAuth = initLiAuth();
 
       // Hydrate immediately from the initial DocState returned by the worker.
       set({
@@ -242,6 +250,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         xAuth,
         fbAuth,
         igAuth,
+        liAuth,
         isInitialized: true,
         isLoading: false,
       });
@@ -307,6 +316,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     await docArchiveAllReadUnsaved(platform, feedUrl);
   },
 
+  deleteAllArchived: async () => {
+    await docDeleteAllArchived();
+  },
+
   removeItem: async (id) => {
     await docRemoveFeedItem(id);
   },
@@ -356,6 +369,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setFbAuth: (auth) => set({ fbAuth: auth }),
   // Instagram auth actions
   setIgAuth: (auth) => set({ igAuth: auth }),
+  // LinkedIn auth actions
+  setLiAuth: (auth) => set({ liAuth: auth }),
 
   // UI actions
   setFilter: (filter) => set({ activeFilter: filter }),

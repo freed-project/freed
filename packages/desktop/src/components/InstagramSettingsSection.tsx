@@ -7,6 +7,7 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useAppStore } from "../lib/store";
 import {
@@ -145,6 +146,8 @@ export function InstagramSettingsSection() {
 
   // Auto-detect login success from the WebView's on_navigation callback
   useEffect(() => {
+    if (!isTauri()) return;
+
     const unlisten = listen<{ loggedIn: boolean }>("ig-auth-result", (event) => {
       if (event.payload.loggedIn) {
         const newState = { isAuthenticated: true, lastCheckedAt: Date.now() };

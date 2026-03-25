@@ -53,8 +53,10 @@ export async function saveUrlInDesktop(
   const now = Date.now();
   const globalId = `saved:${hashUrl(url)}`;
 
-  // Step 3: Write full HTML to device content cache (not Automerge)
-  await contentCache.set(globalId, html);
+  // Step 3: Write Readability-extracted article HTML to device content cache.
+  // Intentionally NOT the raw page HTML -- that contains <style>, <script>,
+  // and other full-page elements that would leak into the app DOM.
+  await contentCache.set(globalId, content.html);
 
   let hostname = url;
   try {

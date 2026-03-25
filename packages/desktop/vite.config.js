@@ -42,8 +42,11 @@ export default defineConfig({
         __APP_VERSION__: JSON.stringify(pkg.version),
     },
     resolve: {
-        alias: __assign({ '@freed/ui': src('ui'), '@freed/shared': src('shared'), '@freed/sync': src('sync'), '@freed/capture-rss': src('capture-rss'), '@freed/capture-x': src('capture-x'), '@freed/capture-save': src('capture-save'), '@freed/capture-facebook': src('capture-facebook'), '@freed/capture-instagram': src('capture-instagram') }, tauriMockAliases),
+        alias: __assign({ '@freed/ui': src('ui'), '@freed/shared': src('shared'), '@freed/sync': src('sync'), '@freed/capture-rss': src('capture-rss'), '@freed/capture-x': src('capture-x'), '@freed/capture-save': src('capture-save'), '@freed/capture-facebook': src('capture-facebook'), '@freed/capture-instagram': src('capture-instagram'), '@freed/capture-linkedin': src('capture-linkedin') }, tauriMockAliases),
     },
+    // vite-plugin-wasm must also be applied to the worker sub-bundle.
+    // Without this, Vite 7's worker pipeline processes automerge.worker.ts
+    // without WASM support and fails on the automerge_wasm_bg.wasm import.
     worker: {
         format: "es",
         plugins: function () { return [wasm(), topLevelAwait()]; },

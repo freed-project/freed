@@ -102,6 +102,7 @@ function App() {
       XSettingsContent: PwaXSettings,
       FacebookSettingsContent: null,
       InstagramSettingsContent: null,
+      LinkedInSettingsContent: null,
       checkForUpdates,
       applyUpdate: applyPwaUpdate,
       factoryReset: handleFactoryReset,

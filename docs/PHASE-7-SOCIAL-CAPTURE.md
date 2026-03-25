@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress — Facebook and Instagram integrated into Desktop via Tauri WebView scraping
+> **Status:** 🚧 In Progress — Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering and Facebook group controls
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -97,6 +97,10 @@ Self-contained JavaScript injected into the WebView's execution context. No exte
 
 - **Facebook** (`fb-extract.js`): Locates "Feed posts" h3, walks subtrees for post-sized blocks
 - **Instagram** (`ig-extract.js`): Queries `<article>` elements, extracts author/caption/media from semantic header/footer structure
+- **Facebook stories** (`fb-stories-extract.js`): Injected into the FB story viewer overlay. Extracts author, media, timestamp, location/check-in. Emits via `fb-feed-data` with `postType: "story"`.
+- **Instagram stories** (`ig-stories-extract.js`): Injected into the IG story viewer overlay. Extracts author handle (from URL + DOM), media URL, timestamp, location sticker. Emits via `ig-feed-data` with `postType: "story"`.
+
+Story scraping is interleaved with feed scraping in each session. A coin flip (~50%) determines whether stories are scraped before or after the initial feed passes. ~15% of sessions skip story scraping entirely (real users don't always check stories). Up to 30 story frames are captured per session.
 
 ---
 
@@ -132,10 +136,11 @@ const RATE_LIMITS = {
 | 7.8  | Rate limiting to avoid bans                 | ✓ Complete  |
 | 7.9  | Selector versioning strategy                | ✓ Complete  |
 | 7.10 | Location extraction (for Phase 8)           | ✓ Complete  |
-| 7.11 | Stories capture                             | Deferred    |
+| 7.11 | Stories capture (IG + FB)                   | 🚧 In Progress |
 | 7.12 | Social engagement write-back (like, seen)   | ✓ Complete  |
 | 7.13 | Outbox processor for cross-device sync      | ✓ Complete  |
 | 7.14 | Comment links (open on platform)            | ✓ Complete  |
+| 7.15 | Cross-platform dedup (IG/FB cross-posts)    | Not Started |
 
 ---
 
@@ -150,12 +155,15 @@ const RATE_LIMITS = {
 - [x] Instagram feed integrated into Desktop via Tauri WebView scraping
 - [x] Both platforms integrated into Desktop refreshAllFeeds()
 - [x] Settings UI for both platforms (login, check connection, sync, disconnect)
+- [x] Feed pollution filtering blocks promoted X entries and suggested FB/IG posts
+- [x] Facebook Settings includes per-group include/exclude controls for joined groups
 - [x] Empty states for both platforms in the feed view
 - [x] Source indicators in sidebar for both platforms
 - [x] Sync indicator panel shows both platforms
 - [ ] Facebook feed posts validated against real account (selector tuning)
 - [ ] Instagram feed posts validated against real account (selector tuning)
-- [ ] Stories captured (deferred)
+- [~] Stories captured — IG + FB story scraping integrated, with stable IG story IDs and selector tuning still needed
+- [ ] Cross-platform dedup (task 7.15): IG/FB cross-posted stories/posts create duplicate FeedItems because globalId is platform-prefixed (ig: vs fb:). The existing docDeduplicateFeedItems only deduplicates by linkPreview.url. A content-similarity pass is needed: match items by same Friend identity + similar text (first 120 chars) + timestamps within a few minutes.
 - [x] Like button with outbox pattern: intent recorded immediately, synced to platform async
 - [x] Two-state like UI: "noted" (amber) vs "memorialized" (red confirmed on platform)
 - [x] Seen-sync via WebView navigation (FB/IG) - best-effort, confirmed via seenSyncedAt

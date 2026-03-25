@@ -9,8 +9,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
-import { getDocBinary, mergeDoc, subscribe, setRelayClientCount } from "./automerge";
-import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import {
   gdriveUploadSafe,
   gdriveStartPollLoop,
@@ -22,12 +20,20 @@ import {
   dropboxDeleteFile,
   type CloudProvider,
 } from "@freed/sync/cloud";
+import { getDocBinary, mergeDoc, subscribe, setRelayClientCount } from "./automerge";
+import { addDebugEvent } from "@freed/ui/lib/debug-store";
+import { log } from "./logger.js";
+
+const FALLBACK_SYNC_PORT = import.meta.env.VITE_FREED_SYNC_PORT || "8765";
+const RELAY_POLL_TIMEOUT_MS = 5_000;
+const RELAY_HEARTBEAT_INTERVAL = 5; // log a heartbeat every N poll ticks (= 10 s)
 
 // Sync status
 let isServerRunning = false;
 let clientCount = 0;
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 let changeUnsubscribe: (() => void) | null = null;
+let relayPollTick = 0;
 
 // Status callbacks
 type StatusCallback = (status: SyncStatus) => void;
@@ -79,7 +85,7 @@ export async function getSyncUrl(): Promise<string> {
     const ip = await getLocalIP();
     // Fallback lacks a token — any connection using this URL will be
     // rejected by the relay, which is correct (pairing requires a QR scan).
-    return `ws://${ip}:8765`;
+    return `ws://${ip}:${FALLBACK_SYNC_PORT}`;
   }
 }
 
@@ -178,21 +184,64 @@ async function notifyStatus(): Promise<void> {
 }
 
 /**
- * Start polling for client count updates
+ * Start polling for client count updates.
+ *
+ * Each tick races against a 5s timeout. If the Tauri command hangs (e.g.
+ * after a sleep/wake cycle), the timeout fires, the poller logs a warning
+ * and restarts itself rather than accumulating stalled IPC calls.
  */
 function startPolling(): void {
   if (pollInterval) return;
+  relayPollTick = 0;
 
-  pollInterval = setInterval(async () => {
-    const newCount = await getClientCount();
-    if (newCount !== clientCount) {
-      clientCount = newCount;
-      // Keep automerge.ts in sync so broadcastToRelay() can skip the expensive
-      // Array.from() conversion when no PWA clients are connected.
-      setRelayClientCount(newCount);
-      await notifyStatus();
-    }
-  }, 2000);
+  function scheduleNextPoll() {
+    if (!pollInterval) return; // stopped
+
+    const handle = setTimeout(async () => {
+      if (!pollInterval) return;
+
+      relayPollTick++;
+      if (relayPollTick % RELAY_HEARTBEAT_INTERVAL === 0) {
+        log.info(`[sync] relay-poll heartbeat clients=${clientCount} tick=${relayPollTick}`);
+      }
+
+      let timedOut = false;
+      const newCount = await Promise.race([
+        getClientCount(),
+        new Promise<number>((resolve) =>
+          setTimeout(() => {
+            timedOut = true;
+            resolve(clientCount); // use last known value, don't stall
+          }, RELAY_POLL_TIMEOUT_MS),
+        ),
+      ]);
+
+      if (timedOut) {
+        log.warn("[sync] get_sync_client_count TIMEOUT -- relay IPC stalled");
+        addDebugEvent("error", "[Sync] relay poll TIMEOUT, restarting poller");
+        // Restart the interval so a stalled tick doesn't jam the queue.
+        stopPolling();
+        pollInterval = true as unknown as ReturnType<typeof setInterval>; // re-arm flag
+        scheduleNextPoll();
+        return;
+      }
+
+      if (newCount !== clientCount) {
+        clientCount = newCount;
+        setRelayClientCount(newCount);
+        await notifyStatus();
+      }
+
+      scheduleNextPoll();
+    }, 2_000);
+
+    // Store handle so stopPolling() can cancel the pending timer.
+    pollInterval = handle as unknown as ReturnType<typeof setInterval>;
+  }
+
+  // Arm the first tick.
+  pollInterval = true as unknown as ReturnType<typeof setInterval>;
+  scheduleNextPoll();
 }
 
 /**
@@ -200,7 +249,7 @@ function startPolling(): void {
  */
 function stopPolling(): void {
   if (pollInterval) {
-    clearInterval(pollInterval);
+    clearTimeout(pollInterval as unknown as ReturnType<typeof setTimeout>);
     pollInterval = null;
   }
 }
@@ -222,9 +271,8 @@ export async function startSync(): Promise<void> {
   // applyChange() the worker posts BROADCAST_REQUEST to the main thread which
   // calls invoke("broadcast_doc") directly. No subscriber needed here.
 
-  // Log sync URL
   const url = await getSyncUrl();
-  console.log("[Sync] Server running at:", url);
+  log.info(`[sync] relay server running at ${url}`);
 
   await notifyStatus();
 }
@@ -469,19 +517,26 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
     }
   };
 
+  const cloudLog = (level: "info" | "warn" | "error", msg: string) => {
+    log[level](msg);
+    if (level === "warn" || level === "error") {
+      addDebugEvent("error", msg);
+    }
+  };
+
   if (provider === "gdrive") {
-    gdriveStartPollLoop(token, onRemoteChange, signal).catch((err) => {
+    gdriveStartPollLoop(token, onRemoteChange, signal, cloudLog).catch((err) => {
       if (!signal.aborted) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error("[CloudSync/GDrive] Poll loop crashed:", err);
+        log.error(`[cloud/gdrive] poll loop crashed: ${msg}`);
         addDebugEvent("error", `[Cloud/gdrive] poll loop crashed: ${msg}`);
       }
     });
   } else {
-    dropboxStartLongpollLoop(token, onRemoteChange, signal).catch((err) => {
+    dropboxStartLongpollLoop(token, onRemoteChange, signal, cloudLog).catch((err) => {
       if (!signal.aborted) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error("[CloudSync/Dropbox] Longpoll loop crashed:", err);
+        log.error(`[cloud/dropbox] longpoll loop crashed: ${msg}`);
         addDebugEvent("error", `[Cloud/dropbox] longpoll loop crashed: ${msg}`);
       }
     });
@@ -576,4 +631,3 @@ export async function startAllCloudSyncs(): Promise<void> {
     });
   }
 }
-

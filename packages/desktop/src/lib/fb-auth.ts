@@ -14,6 +14,10 @@ export interface FbAuthState {
   isAuthenticated: boolean;
   /** Timestamp of last successful auth check */
   lastCheckedAt?: number;
+  /** Epoch ms of the last completed (successful) scrape */
+  lastCapturedAt?: number;
+  /** Error message from the last failed scrape; undefined when last scrape succeeded */
+  lastCaptureError?: string;
 }
 
 const FB_AUTH_KEY = "fb_auth_state";
@@ -91,7 +95,12 @@ export function initFbAuth(): FbAuthState {
   if (!stored) return { isAuthenticated: false };
   try {
     const parsed = JSON.parse(stored) as FbAuthState;
-    return { isAuthenticated: !!parsed.isAuthenticated, lastCheckedAt: parsed.lastCheckedAt };
+    return {
+      isAuthenticated: !!parsed.isAuthenticated,
+      lastCheckedAt: parsed.lastCheckedAt,
+      lastCapturedAt: parsed.lastCapturedAt,
+      lastCaptureError: parsed.lastCaptureError,
+    };
   } catch {
     return { isAuthenticated: false };
   }

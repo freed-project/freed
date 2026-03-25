@@ -44,9 +44,13 @@ export default defineConfig({
       '@freed/capture-save': src('capture-save'),
       '@freed/capture-facebook': src('capture-facebook'),
       '@freed/capture-instagram': src('capture-instagram'),
+      '@freed/capture-linkedin': src('capture-linkedin'),
       ...tauriMockAliases,
     },
   },
+  // vite-plugin-wasm must also be applied to the worker sub-bundle.
+  // Without this, Vite 7's worker pipeline processes automerge.worker.ts
+  // without WASM support and fails on the automerge_wasm_bg.wasm import.
   worker: {
     format: "es",
     plugins: () => [wasm(), topLevelAwait()],

@@ -16,7 +16,7 @@ const MAX_PANEL_WIDTH = 500;
 const DEFAULT_PANEL_WIDTH = 150;
 const NARROW_THRESHOLD = 150;
 
-// Card geometry: each compact card is a square via aspect-square.
+// Card geometry: all cards are square (width × width), including story tiles.
 // Wrapper padding: px-2 (8px each side = 16px total), pb-2 (8px), first item gets pt-2 (8px).
 const CARD_H_PAD = 16;
 const CARD_V_GAP = 8;
@@ -41,6 +41,9 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   const cardHeight = width - CARD_H_PAD;
   const itemHeight = cardHeight + CARD_V_GAP;
   const firstItemHeight = itemHeight + CARD_V_GAP;
+  // Story tiles use the same square dimensions as regular cards in the sidebar.
+  const storyTileH = cardHeight;
+  const storyItemHeight = storyTileH + CARD_V_GAP;
 
   // Capture the top-visible item before the width change propagates to layout.
   // Runs during render (synchronously) so we can read the pre-update scroll state.
@@ -64,10 +67,19 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     prevWidthRef.current = width;
   }
 
+  const estimateItemSize = useCallback(
+    (index: number) => {
+      const isStory = items[index]?.contentType === "story";
+      const baseH = isStory ? storyItemHeight : itemHeight;
+      return index === 0 ? baseH + CARD_V_GAP : baseH;
+    },
+    [items, itemHeight, storyItemHeight],
+  );
+
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: (index) => (index === 0 ? firstItemHeight : itemHeight),
+    estimateSize: estimateItemSize,
     overscan: 3,
   });
 
@@ -79,10 +91,14 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
 
     virtualizer.measure();
 
-    const newStart =
-      anchor.index === 0
-        ? 0
-        : firstItemHeight + (anchor.index - 1) * itemHeight;
+    // Estimate scroll position based on item types (story vs regular).
+    let newStart = 0;
+    if (anchor.index > 0) {
+      newStart = firstItemHeight; // first item
+      for (let i = 1; i < anchor.index; i++) {
+        newStart += items[i]?.contentType === "story" ? storyItemHeight : itemHeight;
+      }
+    }
 
     const el = parentRef.current;
     if (el) el.scrollTop = newStart + anchor.offset;
@@ -134,6 +150,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
                   narrow={width < NARROW_THRESHOLD}
                   selected={item.globalId === selectedId}
                   onClick={() => onItemClick(item)}
+                  storyHeight={item.contentType === "story" ? storyTileH : undefined}
                 />
               </div>
             </div>
@@ -145,6 +162,13 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
 });
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** Human-readable retention message for the archive toolbar. */
+function getRetentionLabel(pruneDays: number): string {
+  if (pruneDays === 0) return "Archived content is kept forever";
+  if (pruneDays === 1) return "Archived content deleted after 1 day";
+  return `Archived content deleted after ${pruneDays} days`;
+}
 
 /** Human-readable label for the scope currently active in the sidebar. */
 function getFilterLabel(filter: FilterOptions, feeds: Record<string, RssFeed>): string {
@@ -166,6 +190,8 @@ export function FeedView() {
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const toggleLiked = useAppStore((s) => s.toggleLiked);
+  const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
+  const archivePruneDays = useAppStore((s) => s.preferences.display.archivePruneDays);
 
   const handleItemSave = useCallback(
     (item: FeedItem) => toggleSaved(item.globalId),
@@ -189,6 +215,30 @@ export function FeedView() {
       window.open(url, "_blank", "noopener,noreferrer");
     }
   }, [openUrl]);
+
+  // Archive toolbar confirm-to-delete state.
+  // First click arms the button; second click executes. Auto-resets after 3s.
+  const [deleteConfirmArmed, setDeleteConfirmArmed] = useState(false);
+  const deleteConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleDeleteArchivedClick = useCallback(() => {
+    if (!deleteConfirmArmed) {
+      setDeleteConfirmArmed(true);
+      deleteConfirmTimerRef.current = setTimeout(() => setDeleteConfirmArmed(false), 3000);
+      return;
+    }
+    if (deleteConfirmTimerRef.current) clearTimeout(deleteConfirmTimerRef.current);
+    setDeleteConfirmArmed(false);
+    void deleteAllArchived();
+  }, [deleteConfirmArmed, deleteAllArchived]);
+
+  // Reset confirm state whenever the archived view is left.
+  useEffect(() => {
+    if (!activeFilter.archivedOnly) {
+      if (deleteConfirmTimerRef.current) clearTimeout(deleteConfirmTimerRef.current);
+      setDeleteConfirmArmed(false);
+    }
+  }, [activeFilter.archivedOnly]);
 
   const [addFeedOpen, setAddFeedOpen] = useState(false);
 
@@ -299,25 +349,45 @@ export function FeedView() {
 
   if (showDualColumn) {
     return (
-      <div className="h-full flex overflow-hidden">
-        <CompactFeedPanel
-          items={filteredItems}
-          selectedId={selectedItem.globalId}
-          onItemClick={openItem}
-          width={panelWidth}
-        />
-        {/* Draggable column separator -- zero visible width, padding provides the hit area */}
-        <div
-          className="w-0 px-0.5 shrink-0 cursor-col-resize hover:bg-[#8b5cf6]/20 active:bg-[#8b5cf6]/30 transition-colors -mx-0.5 z-10"
-          onPointerDown={handleDragStart}
-          onPointerMove={handleDragMove}
-          onPointerUp={handleDragEnd}
-          onPointerCancel={handleDragEnd}
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize sidebar"
-        />
-        <ReaderView item={selectedItem} onClose={closeItem} dualColumn />
+      <div className="h-full flex flex-col overflow-hidden">
+        {/* Archive retention toolbar — only shown in the archived view */}
+        {activeFilter.archivedOnly && (
+          <div className="flex-shrink-0 px-4 py-2 border-b border-white/5 flex items-center justify-between gap-4">
+            <p className="text-xs text-[#52525b]">{getRetentionLabel(archivePruneDays ?? 30)}</p>
+            {(archivePruneDays ?? 30) > 0 && (
+              <button
+                onClick={handleDeleteArchivedClick}
+                className={`text-xs px-3 py-1 rounded-lg transition-colors border whitespace-nowrap ${
+                  deleteConfirmArmed
+                    ? "bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30"
+                    : "bg-white/5 text-[#71717a] border-transparent hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                {deleteConfirmArmed ? "Confirm delete?" : "Delete archived content now"}
+              </button>
+            )}
+          </div>
+        )}
+        <div className="flex-1 flex overflow-hidden">
+          <CompactFeedPanel
+            items={filteredItems}
+            selectedId={selectedItem.globalId}
+            onItemClick={openItem}
+            width={panelWidth}
+          />
+          {/* Draggable column separator -- zero visible width, padding provides the hit area */}
+          <div
+            className="w-0 px-0.5 shrink-0 cursor-col-resize hover:bg-[#8b5cf6]/20 active:bg-[#8b5cf6]/30 transition-colors -mx-0.5 z-10"
+            onPointerDown={handleDragStart}
+            onPointerMove={handleDragMove}
+            onPointerUp={handleDragEnd}
+            onPointerCancel={handleDragEnd}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize sidebar"
+          />
+          <ReaderView item={selectedItem} onClose={closeItem} dualColumn onOpenUrl={handleOpenCommentUrl} />
+        </div>
         <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
       </div>
     );
@@ -325,6 +395,25 @@ export function FeedView() {
 
   return (
     <div className="h-full flex flex-col">
+      {/* Archive retention toolbar — only shown in the archived view */}
+      {activeFilter.archivedOnly && (
+        <div className="flex-shrink-0 px-4 py-2 border-b border-white/5 flex items-center justify-between gap-4">
+          <p className="text-xs text-[#52525b]">{getRetentionLabel(archivePruneDays ?? 30)}</p>
+          {(archivePruneDays ?? 30) > 0 && (
+            <button
+              onClick={handleDeleteArchivedClick}
+              className={`text-xs px-3 py-1 rounded-lg transition-colors border whitespace-nowrap ${
+                deleteConfirmArmed
+                  ? "bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30"
+                  : "bg-white/5 text-[#71717a] border-transparent hover:bg-white/10 hover:text-white"
+              }`}
+            >
+              {deleteConfirmArmed ? "Confirm delete?" : "Delete archived content now"}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Search results banner — only shown when actively searching */}
       {isSearching && (
         <div className="flex-shrink-0 px-4 py-2 border-b border-white/5 flex items-center justify-between">
@@ -360,7 +449,7 @@ export function FeedView() {
       />
 
       {selectedItem && (
-        <ReaderView item={selectedItem} onClose={closeItem} />
+        <ReaderView item={selectedItem} onClose={closeItem} onOpenUrl={handleOpenCommentUrl} />
       )}
 
       <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />

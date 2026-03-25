@@ -6,8 +6,8 @@ export default definePost(
     title: "Introducing Freed",
     description: "Your feeds, your way, on all your devices.",
     date: "2026-02-17",
-    author: "Aubrey Falconer",
-    authorUrl: "https://AubreyFalconer.com",
+    // author: "Aubrey Falconer",
+    // authorUrl: "https://AubreyFalconer.com",
     tags: ["announcement", "philosophy", "technical"],
   },
   <>
@@ -104,8 +104,11 @@ export default definePost(
         capture sources.
       </li>
       <li>
-        <strong>Share <span className="mx-2">🤍</span></strong> Pass along to a
-        friend who's complained about social media lately. We can win, together!
+        <strong>
+          Share <span className="mx-2">🤍</span>
+        </strong>{" "}
+        Pass along to a friend who's complained about social media lately. We
+        can win, together!
       </li>
     </ul>
 

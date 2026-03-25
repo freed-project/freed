@@ -21,6 +21,7 @@ import {
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { getIgScraperDebugWindow } from "./scraper-prefs";
+import { storeIgAuthState } from "./instagram-auth";
 
 // =============================================================================
 // Rate Limiting
@@ -197,6 +198,10 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
       const detail = `[IG] sync failed at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
       store.setError(result.diag.errorMessage ?? result.diag.errorStage);
       addDebugEvent("error", detail);
+      // Persist error so the sync dropdown can show "Last sync failed"
+      const errState = { ...useAppStore.getState().igAuth, lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed" };
+      store.setIgAuth(errState);
+      storeIgAuthState(errState);
       return result;
     }
 
@@ -214,6 +219,11 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
     } else {
       addDebugEvent("change", "[IG] sync complete: feed returned 0 posts");
     }
+
+    // Persist success timestamp so the sync dropdown shows "Synced X ago"
+    const successState = { ...useAppStore.getState().igAuth, lastCapturedAt: Date.now(), lastCaptureError: undefined };
+    store.setIgAuth(successState);
+    storeIgAuthState(successState);
 
     return result;
   } catch (error) {

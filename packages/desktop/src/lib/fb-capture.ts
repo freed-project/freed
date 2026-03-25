@@ -18,9 +18,11 @@ import {
   fbPostsToFeedItems,
   deduplicateFeedItems,
 } from "@freed/capture-facebook/browser";
+import type { FbGroupInfo, FeedItem } from "@freed/shared";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { getFbScraperDebugWindow } from "./scraper-prefs";
+import { storeFbAuthState } from "./fb-auth";
 
 // =============================================================================
 // Rate Limiting
@@ -58,6 +60,27 @@ export interface FbSyncDiag {
 export interface FbSyncResult {
   items: ReturnType<typeof fbPostsToFeedItems>;
   diag: FbSyncDiag;
+}
+
+function mergeKnownGroups(
+  existingGroups: Record<string, FbGroupInfo>,
+  groups: FbGroupInfo[],
+): Record<string, FbGroupInfo> {
+  const nextGroups = { ...existingGroups };
+  for (const group of groups) {
+    nextGroups[group.id] = group;
+  }
+  return nextGroups;
+}
+
+function filterExcludedGroups(
+  items: FeedItem[],
+  excludedGroupIds: Record<string, true>,
+): FeedItem[] {
+  return items.filter((item) => {
+    const groupId = item.fbGroup?.id;
+    return !groupId || !excludedGroupIds[groupId];
+  });
 }
 
 // =============================================================================
@@ -158,6 +181,34 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
   });
 }
 
+export async function captureFbGroups(): Promise<FbGroupInfo[]> {
+  const store = useAppStore.getState();
+  const groups = await invoke<FbGroupInfo[]>("fb_scrape_groups", {
+    showWindow: getFbScraperDebugWindow(),
+  });
+
+  if (groups.length === 0) return groups;
+
+  const nextKnownGroups = mergeKnownGroups(
+    store.preferences.fbCapture?.knownGroups ?? {},
+    groups,
+  );
+
+  await store.updatePreferences({
+    fbCapture: {
+      knownGroups: nextKnownGroups,
+      excludedGroupIds: store.preferences.fbCapture?.excludedGroupIds ?? {},
+    },
+  });
+
+  addDebugEvent(
+    "change",
+    `[FB] groups refreshed: ${groups.length.toLocaleString()} group${groups.length === 1 ? "" : "s"}`,
+  );
+
+  return groups;
+}
+
 // =============================================================================
 // Store Integration
 // =============================================================================
@@ -193,6 +244,14 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
   store.setError(null);
 
   try {
+    try {
+      await captureFbGroups();
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to refresh Facebook groups";
+      addDebugEvent("error", `[FB] group refresh failed: ${message}`);
+    }
+
     const result = await fetchFbFeed();
     recordScrape();
 
@@ -200,12 +259,19 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       const detail = `[FB] sync failed at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
       store.setError(result.diag.errorMessage ?? result.diag.errorStage);
       addDebugEvent("error", detail);
+      // Persist error so the sync dropdown can show "Last sync failed"
+      const errState = { ...useAppStore.getState().fbAuth, lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed" };
+      store.setFbAuth(errState);
+      storeFbAuthState(errState);
       return result;
     }
 
     if (result.items.length > 0) {
+      const excludedGroupIds =
+        useAppStore.getState().preferences.fbCapture?.excludedGroupIds ?? {};
+      const filteredItems = filterExcludedGroups(result.items, excludedGroupIds);
       const before = store.items.filter((i) => i.platform === "facebook").length;
-      await store.addItems(result.items);
+      await store.addItems(filteredItems);
       const after = useAppStore
         .getState()
         .items.filter((i) => i.platform === "facebook").length;
@@ -217,6 +283,11 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
     } else {
       addDebugEvent("change", "[FB] sync complete: feed returned 0 posts");
     }
+
+    // Persist success timestamp so the sync dropdown shows "Synced X ago"
+    const successState = { ...useAppStore.getState().fbAuth, lastCapturedAt: Date.now(), lastCaptureError: undefined };
+    store.setFbAuth(successState);
+    storeFbAuthState(successState);
 
     return result;
   } catch (error) {
