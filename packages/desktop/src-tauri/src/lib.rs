@@ -27,6 +27,16 @@ use tokio_tungstenite::{
 #[cfg(target_os = "macos")]
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
+const DEFAULT_SYNC_RELAY_PORT: u16 = 8765;
+
+fn sync_relay_port() -> u16 {
+    std::env::var("FREED_SYNC_PORT")
+        .ok()
+        .and_then(|raw| raw.parse::<u16>().ok())
+        .filter(|port| *port > 0)
+        .unwrap_or(DEFAULT_SYNC_RELAY_PORT)
+}
+
 // ---------------------------------------------------------------------------
 // Token management
 // ---------------------------------------------------------------------------
@@ -402,7 +412,7 @@ fn get_local_ip() -> Result<String, String> {
 /// rather than the Wi-Fi interface the phone is connected to.
 #[tauri::command]
 fn get_all_local_ips() -> Vec<serde_json::Value> {
-    let port = 8765u16;
+    let port = sync_relay_port();
     match local_ip_address::list_afinet_netifas() {
         Ok(ifaces) => ifaces
             .into_iter()
@@ -2076,7 +2086,7 @@ pub fn run() {
     let (broadcast_tx, _) = broadcast::channel::<Vec<u8>>(16);
 
     let relay_state = Arc::new(SyncRelayState {
-        port: 8765,
+        port: sync_relay_port(),
         broadcast_tx,
         current_doc: RwLock::new(None),
         client_count: RwLock::new(0),
@@ -2316,7 +2326,7 @@ pub fn run() {
             });
 
             // Start mDNS advertisement and keep the daemon alive.
-            let mdns_daemon = advertise_mdns(8765);
+            let mdns_daemon = advertise_mdns(relay_state_clone.port);
             app.manage(MdnsState(mdns_daemon));
 
             // Start the relay — token is already set, so new connections are

@@ -12,6 +12,13 @@ const env = {
   ...process.env,
   PATH: `${nodeBinDir}:${process.env.PATH ?? ""}`,
 };
+const tauriArgs = process.argv.slice(2);
+const isDevCommand = tauriArgs[0] === "dev";
+
+if (isDevCommand) {
+  env.FREED_SYNC_PORT = env.FREED_SYNC_PORT || "8766";
+  env.VITE_FREED_SYNC_PORT = env.VITE_FREED_SYNC_PORT || env.FREED_SYNC_PORT;
+}
 
 if (process.platform === "darwin") {
   try {
@@ -30,7 +37,7 @@ if (process.platform === "darwin") {
   }
 }
 
-const child = spawn(process.execPath, [tauriCli, ...process.argv.slice(2)], {
+const child = spawn(process.execPath, [tauriCli, ...tauriArgs], {
   cwd: packageDir,
   env,
   stdio: "inherit",
