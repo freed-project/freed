@@ -10,7 +10,7 @@
  *   - ContactSyncModal for reviewing Google Contacts matches
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import type { Friend, FriendSource, DeviceContact, ReachOutLog, ContactMatch, GoogleContact } from "@freed/shared";
 import { isInReconnectZone } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
@@ -24,13 +24,17 @@ import { UsersIcon } from "../icons.js";
 
 export function FriendsView() {
   const friends = useAppStore((s) => s.friends);
-  const feedItems = useAppStore((s) => {
-    const map: Record<string, (typeof s.items)[0]> = {};
-    for (const item of s.items) map[item.globalId] = item;
-    return map;
-  });
-  const storeFriends = useAppStore((s) => s);
+  const items = useAppStore((s) => s.items);
+  const addFriend = useAppStore((s) => s.addFriend);
+  const updateFriend = useAppStore((s) => s.updateFriend);
+  const removeFriend = useAppStore((s) => s.removeFriend);
+  const logReachOut = useAppStore((s) => s.logReachOut);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
+  const feedItems = useMemo(() => {
+    const map: Record<string, (typeof items)[number]> = {};
+    for (const item of items) map[item.globalId] = item;
+    return map;
+  }, [items]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editorTarget, setEditorTarget] = useState<Friend | null | "new">(null);
@@ -52,9 +56,9 @@ export function FriendsView() {
   const handleLogReachOut = useCallback(
     async (entry: ReachOutLog) => {
       if (!selectedId) return;
-      await storeFriends.logReachOut(selectedId, entry);
+      await logReachOut(selectedId, entry);
     },
-    [selectedId, storeFriends]
+    [logReachOut, selectedId]
   );
 
   const handleSave = useCallback(
@@ -64,7 +68,7 @@ export function FriendsView() {
     ) => {
       const now = Date.now();
       if (id) {
-        await storeFriends.updateFriend(id, { ...data, updatedAt: now });
+        await updateFriend(id, { ...data, updatedAt: now });
       } else {
         const friend: Friend = {
           id: crypto.randomUUID(),
@@ -72,20 +76,20 @@ export function FriendsView() {
           createdAt: now,
           updatedAt: now,
         };
-        await storeFriends.addFriend(friend);
+        await addFriend(friend);
       }
       setEditorTarget(null);
     },
-    [storeFriends]
+    [addFriend, updateFriend]
   );
 
   const handleDelete = useCallback(
     async (id: string) => {
-      await storeFriends.removeFriend(id);
+      await removeFriend(id);
       if (selectedId === id) setSelectedId(null);
       setEditorTarget(null);
     },
-    [storeFriends, selectedId]
+    [removeFriend, selectedId]
   );
 
   /**
@@ -118,7 +122,7 @@ export function FriendsView() {
 
       // Build FriendSource entries for any unlinked feed authors in the match.
       const newSources: FriendSource[] = authorIds.flatMap((authorId) => {
-        const item = storeFriends.items.find((i) => i.author.id === authorId);
+        const item = items.find((i) => i.author.id === authorId);
         if (!item) return [];
         return [{
           platform: item.platform,
@@ -132,13 +136,13 @@ export function FriendsView() {
       if (friend) {
         // Merge new sources into the existing friend's source list.
         const updatedSources = [...(friend.sources ?? []), ...newSources];
-        await storeFriends.updateFriend(friend.id, {
+        await updateFriend(friend.id, {
           contact: deviceContact,
           sources: updatedSources,
         });
       } else if (newSources.length > 0) {
         const now = Date.now();
-        await storeFriends.addFriend({
+        await addFriend({
           id: crypto.randomUUID(),
           name: contact.name.displayName ?? contact.name.givenName ?? "",
           sources: newSources,
@@ -158,7 +162,7 @@ export function FriendsView() {
         dismissMatch(contact.resourceName, id);
       }
     },
-    [storeFriends, dismissMatch]
+    [addFriend, dismissMatch, items, updateFriend]
   );
 
   /**
@@ -168,7 +172,7 @@ export function FriendsView() {
   const handleCreateFriend = useCallback(
     async (contact: GoogleContact) => {
       const now = Date.now();
-      await storeFriends.addFriend({
+      await addFriend({
         id: crypto.randomUUID(),
         name: contact.name.displayName ?? contact.name.givenName ?? "",
         sources: [],
@@ -185,7 +189,7 @@ export function FriendsView() {
         updatedAt: now,
       });
     },
-    [storeFriends]
+    [addFriend]
   );
 
   /** Open the contact sync modal, running a fresh sync first if Google is connected. */

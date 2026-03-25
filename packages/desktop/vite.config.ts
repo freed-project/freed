@@ -47,6 +47,10 @@ export default defineConfig({
       ...tauriMockAliases,
     },
   },
+  worker: {
+    format: "es",
+    plugins: () => [wasm(), topLevelAwait()],
+  },
   plugins: [wasm(), topLevelAwait(), react()],
 
   // Tauri development server.
