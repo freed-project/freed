@@ -48,8 +48,6 @@ export default defineConfig({
       ...tauriMockAliases,
     },
   },
-  plugins: [wasm(), topLevelAwait(), react()],
-
   // vite-plugin-wasm must also be applied to the worker sub-bundle.
   // Without this, Vite 7's worker pipeline processes automerge.worker.ts
   // without WASM support and fails on the automerge_wasm_bg.wasm import.
@@ -57,6 +55,7 @@ export default defineConfig({
     format: "es",
     plugins: () => [wasm(), topLevelAwait()],
   },
+  plugins: [wasm(), topLevelAwait(), react()],
 
   // Tauri development server.
   // strictPort is only enforced when running with the real Tauri binary (tauri:dev),

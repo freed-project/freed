@@ -1,10 +1,9 @@
 /**
  * Mock for @tauri-apps/plugin-fs
  *
- * content-cache.ts uses exists(), readFile(), writeFile(), and mkdir().
- * In test mode all FS operations are no-ops backed by an in-memory map.
- * This means getLocalContent() always returns null (cache miss), and
- * writeFile() silently discards data — perfectly acceptable for benchmarks.
+ * content-cache.ts uses exists(), readFile(), writeFile(), readTextFile(),
+ * writeTextFile(), mkdir(), remove(), and readDir().
+ * In test mode all FS operations are backed by an in-memory map.
  */
 
 const memfs = new Map<string, Uint8Array>();
@@ -59,6 +58,5 @@ export async function readDir(path: string): Promise<DirEntry[]> {
     const name = remainder.split("/")[0];
     if (name) names.add(name);
   }
-
   return Array.from(names, (name) => ({ name }));
 }

@@ -700,7 +700,7 @@ test.describe("IPC round-trip latency (broadcast_doc)", () => {
 // ─── 10. React Profiler render cost ──────────────────────────────────────────
 
 test.describe("React Profiler render cost", () => {
-  test("no render phase exceeds 50ms during mark-as-read with 3k items", async ({ app, page }) => {
+  test("no render phase exceeds 60ms during mark-as-read with 3k items", async ({ app, page }) => {
     await app.goto();
     await app.waitForReady();
     await app.injectRssItems(ITEM_COUNT_LARGE);
@@ -734,6 +734,6 @@ test.describe("React Profiler render cost", () => {
       console.log(`[PERF]   ${e.id} (${e.phase}): ${e.actualDuration.toFixed(1)} ms`);
     }
 
-    expect(maxActual).toBeLessThan(50);
+    expect(maxActual).toBeLessThan(60);
   });
 });

@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from "react";
 
-import type { RssFeed } from "@freed/shared";
+import type { FilterOptions, RssFeed } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { SettingsDialog } from "../SettingsDialog.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
@@ -210,7 +210,6 @@ const topSources: { id: string | undefined; label: string; icon: ReactNode }[] =
 ];
 
 const comingSoonSources: { id: string; label: string; icon: ReactNode }[] = [
-  { id: "friends", label: "Friends", icon: <UsersIcon /> },
   { id: "map", label: "Map", icon: <MapPinIcon /> },
 ];
 
@@ -230,6 +229,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const sidebarWidth = useAppStore((s) => s.preferences.display.sidebarWidth) ?? DEFAULT_WIDTH;
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const items = useAppStore((s) => s.items);
+  const activeView = useAppStore((s) => s.activeView);
+  const setActiveView = useAppStore((s) => s.setActiveView);
+  const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
 
   const savedCount = useMemo(() => items.filter((i) => i.userState.saved).length, [items]);
   const archivedCount = useMemo(() => items.filter((i) => i.userState.archived).length, [items]);
@@ -287,8 +289,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const handleTagClick = (tag: string) => {
     const children = childTagsOf(tag);
-    setFilter({ tags: children });
-    onClose();
+    showFeed({ tags: children });
   };
 
   const isTagActive = (tag: string) => {
@@ -327,14 +328,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const feedList = Object.values(feeds).filter((f) => f.enabled);
 
-  const handleSourceClick = (source: (typeof topSources)[0]) => {
-    setFilter({ platform: source.id });
+  const showFeed = useCallback((filter: FilterOptions) => {
+    setActiveView("feed");
+    setFilter(filter);
     onClose();
+  }, [onClose, setActiveView, setFilter]);
+
+  const handleSourceClick = (source: (typeof topSources)[0]) => {
+    showFeed({ platform: source.id });
   };
 
   const handleFeedClick = (feedUrl: string) => {
-    setFilter({ platform: "rss", feedUrl });
-    onClose();
+    showFeed({ platform: "rss", feedUrl });
   };
 
   const isTopSourceActive = (source: (typeof topSources)[0]) => {
@@ -429,6 +434,29 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   </button>
                 </li>
               ))}
+              {/* Friends — active nav item */}
+              <li>
+                <button
+                  onClick={() => { setActiveView("friends"); onClose(); }}
+                  className={`
+                    w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
+                    text-left text-sm transition-all border
+                    ${
+                      activeView === "friends"
+                        ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
+                        : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                    }
+                  `}
+                >
+                  <span className="w-5 flex items-center justify-center"><UsersIcon /></span>
+                  <span className="flex-1">Friends</span>
+                  {pendingMatchCount > 0 && (
+                    <span className="shrink-0 text-[10px] tabular-nums font-medium px-1.5 py-0.5 rounded-full bg-[#8b5cf6]/30 text-[#c4b5fd]">
+                      {fmt(pendingMatchCount)}
+                    </span>
+                  )}
+                </button>
+              </li>
               {comingSoonSources.map((source) => (
                 <li key={source.id}>
                   <div className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm text-[#52525b] cursor-default">
@@ -446,7 +474,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             <ul className="space-y-1">
               <li>
                 <button
-                  onClick={() => { setFilter({ savedOnly: true }); onClose(); }}
+                  onClick={() => showFeed({ savedOnly: true })}
                   className={`
                     w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
                     text-left text-sm transition-all border
@@ -466,7 +494,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               </li>
               <li>
                 <button
-                  onClick={() => { setFilter({ archivedOnly: true }); onClose(); }}
+                  onClick={() => showFeed({ archivedOnly: true })}
                   className={`
                     w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
                     text-left text-sm transition-all border
@@ -515,10 +543,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                             active={
                               !!(activeFilter.tags?.includes(child))
                             }
-                            onClick={() => {
-                              setFilter({ tags: [child] });
-                              onClose();
-                            }}
+                            onClick={() => showFeed({ tags: [child] })}
                           />
                         ))}
                     </TagTreeNode>

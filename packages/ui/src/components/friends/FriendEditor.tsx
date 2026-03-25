@@ -10,7 +10,7 @@
  */
 
 import { useState, useMemo } from "react";
-import type { Friend, FriendSource, DeviceContact, FeedItem, Platform } from "@freed/shared";
+import type { Friend, FriendSource, DeviceContact, Platform } from "@freed/shared";
 import { usePlatform, useAppStore } from "../../context/PlatformContext.js";
 import {
   FacebookIcon,

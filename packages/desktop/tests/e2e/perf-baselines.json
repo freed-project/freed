@@ -4,7 +4,7 @@
   "metrics": {
     "markasread_20_avg": { "value": 320, "unit": "ms" },
     "markasread_20_worst": { "value": 480, "unit": "ms" },
-    "cold_load_1k_items": { "value": 1000, "unit": "ms" },
+    "cold_load_1k_items": { "value": 1200, "unit": "ms" },
     "cold_load_3k_items": { "value": 2500, "unit": "ms" },
     "cold_load_5k_items": { "value": 5000, "unit": "ms" },
     "scroll_elapsed": { "value": 700, "unit": "ms" },

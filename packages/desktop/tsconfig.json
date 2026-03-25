@@ -16,6 +16,8 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
+      "@freed/capture-linkedin": ["../capture-linkedin/src/browser.ts"],
+      "@freed/capture-linkedin/*": ["../capture-linkedin/src/*"],
       "@freed/sync": ["../sync/src/index.ts"],
       "@freed/sync/*": ["../sync/src/*"]
     }

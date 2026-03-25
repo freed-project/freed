@@ -314,13 +314,16 @@ function App() {
       },
       openUrl: (url: string) => { void shellOpen(url); },
       pickContact: pickContactViaTauri,
+      googleContacts: {
+        getToken: () => localStorage.getItem("freed_cloud_token_gdrive"),
+      },
       updateDownloadProgress: ((): UpdateDownloadProgress | null => {
         if (updateState.phase === "downloading") return { phase: "downloading", percent: updateState.percent };
         if (updateState.phase === "error") return { phase: "error", message: updateState.message };
         return null;
       })(),
     }),
-    [checkForUpdates, applyUpdate, handleFactoryReset, seedSocialConnections, updateState],
+     [checkForUpdates, applyUpdate, handleFactoryReset, seedSocialConnections, updateState],
   );
 
   if (error && !isInitialized) {

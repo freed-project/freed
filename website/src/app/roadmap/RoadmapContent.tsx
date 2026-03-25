@@ -519,7 +519,7 @@ const phases: Phase[] = [
     title: "Friends + Social Graph",
     description:
       "A friend CRM with a force-directed social graph. Unify profiles across platforms into one identity per person, track relationship health, and get nudged when you've drifted from people you care about.",
-    status: "upcoming",
+    status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-8-FRIENDS.md",
   },
