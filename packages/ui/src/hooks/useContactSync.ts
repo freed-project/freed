@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { fetchGoogleContacts, mergeContactChanges } from "@freed/shared/google-contacts";
 import { matchContacts } from "@freed/shared/contact-matching";
 import type { ContactSyncState } from "@freed/shared";
@@ -45,11 +45,23 @@ export function useContactSync() {
   friendsRef.current = friends;
   itemsRef.current = items;
 
-  const syncStateRef = useRef<ContactSyncState>(loadSyncState());
+  const [syncState, setSyncState] = useState<ContactSyncState>(() => loadSyncState());
+  const syncStateRef = useRef(syncState);
+  syncStateRef.current = syncState;
+
+  useEffect(() => {
+    setPendingMatchCount(syncState.pendingMatches.length);
+  }, [setPendingMatchCount, syncState.pendingMatches.length]);
+
+  const commitSyncState = useCallback((nextState: ContactSyncState) => {
+    syncStateRef.current = nextState;
+    setSyncState(nextState);
+    saveSyncState(nextState);
+  }, []);
 
   const runSync = useCallback(async () => {
     const token = googleContacts?.getToken();
-    if (!token) return;
+    if (!token) return syncStateRef.current;
 
     try {
       const current = syncStateRef.current;
@@ -89,15 +101,15 @@ export function useContactSync() {
         dismissedMatches: current.dismissedMatches,
       };
 
-      syncStateRef.current = nextState;
-      saveSyncState(nextState);
-      setPendingMatchCount(pending.length);
+      commitSyncState(nextState);
+      return nextState;
     } catch (err) {
       console.warn("[useContactSync] sync failed:", err);
+      return syncStateRef.current;
     }
   // Only stable references in deps — googleContacts and setPendingMatchCount
   // are both stable across renders, so this callback never re-creates.
-  }, [googleContacts, setPendingMatchCount]);
+  }, [commitSyncState, googleContacts]);
 
   // 15-minute interval — stable because runSync is stable.
   useEffect(() => {
@@ -133,15 +145,14 @@ export function useContactSync() {
         dismissedMatches: dismissed,
         pendingMatches: remainingPending,
       };
-      syncStateRef.current = next;
-      saveSyncState(next);
-      setPendingMatchCount(remainingPending.length);
+      commitSyncState(next);
     },
-    [setPendingMatchCount]
+    [commitSyncState]
   );
 
   return {
     syncNow: runSync,
+    syncState,
     getSyncState: () => syncStateRef.current,
     dismissMatch,
   };

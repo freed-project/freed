@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from "react";
 
-import type { RssFeed } from "@freed/shared";
+import type { FilterOptions, RssFeed } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { SettingsDialog } from "../SettingsDialog.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
@@ -289,8 +289,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const handleTagClick = (tag: string) => {
     const children = childTagsOf(tag);
-    setFilter({ tags: children });
-    onClose();
+    showFeed({ tags: children });
   };
 
   const isTagActive = (tag: string) => {
@@ -329,14 +328,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const feedList = Object.values(feeds).filter((f) => f.enabled);
 
-  const handleSourceClick = (source: (typeof topSources)[0]) => {
-    setFilter({ platform: source.id });
+  const showFeed = useCallback((filter: FilterOptions) => {
+    setActiveView("feed");
+    setFilter(filter);
     onClose();
+  }, [onClose, setActiveView, setFilter]);
+
+  const handleSourceClick = (source: (typeof topSources)[0]) => {
+    showFeed({ platform: source.id });
   };
 
   const handleFeedClick = (feedUrl: string) => {
-    setFilter({ platform: "rss", feedUrl });
-    onClose();
+    showFeed({ platform: "rss", feedUrl });
   };
 
   const isTopSourceActive = (source: (typeof topSources)[0]) => {
@@ -471,7 +474,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             <ul className="space-y-1">
               <li>
                 <button
-                  onClick={() => { setFilter({ savedOnly: true }); onClose(); }}
+                  onClick={() => showFeed({ savedOnly: true })}
                   className={`
                     w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
                     text-left text-sm transition-all border
@@ -491,7 +494,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               </li>
               <li>
                 <button
-                  onClick={() => { setFilter({ archivedOnly: true }); onClose(); }}
+                  onClick={() => showFeed({ archivedOnly: true })}
                   className={`
                     w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
                     text-left text-sm transition-all border
@@ -540,10 +543,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                             active={
                               !!(activeFilter.tags?.includes(child))
                             }
-                            onClick={() => {
-                              setFilter({ tags: [child] });
-                              onClose();
-                            }}
+                            onClick={() => showFeed({ tags: [child] })}
                           />
                         ))}
                     </TagTreeNode>

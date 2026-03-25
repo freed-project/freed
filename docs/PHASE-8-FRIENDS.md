@@ -109,9 +109,10 @@ Default nudge intervals by care level:
 
 `PlatformContext.pickContact?()` is the injection point:
 
-- **Desktop**: Tauri `pick_contact` command (scaffolded — requires `objc2-contacts` crate + `com.apple.security.personal-information.addressbook` entitlement)
+- **Desktop**: Tauri `pick_contact` command (scaffolded, requires `objc2-contacts` crate + `com.apple.security.personal-information.addressbook` entitlement)
 - **PWA (iOS/Android)**: Web Contact Picker API (`navigator.contacts.select`)
-- **PWA (desktop browser)**: absent — `FriendEditor` falls back to manual form
+- **PWA (desktop browser)**: absent, `FriendEditor` falls back to manual form
+- **Google Contacts**: optional People API import in Friends view, with match suggestions, linking, skip, and create-Friend flows
 
 ---
 
@@ -190,7 +191,9 @@ Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare),
 | 8.15 | `MarkerElement.ts` — avatar markers | Low | Done |
 | 8.16 | Install `maplibre-gl` and wire Map nav entry | Low | Not Started |
 | 8.17 | Implement macOS `CNContactStore` Tauri command (objc2-contacts) | High | Not Started |
-| 8.18 | Wire Friends + Map to live sidebar navigation | Low | Not Started (gated on Phase 7) |
+| 8.18 | Wire Friends to live sidebar navigation | Low | Done |
+| 8.19 | Google Contacts import, matching, and Friend creation flow | Medium | Done |
+| 8.20 | Wire Map to live sidebar navigation | Low | Not Started |
 
 ---
 
@@ -205,14 +208,15 @@ Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare),
 - [x] Clicking a node opens a cross-platform timeline
 - [x] Reach-out can be logged and clears the Reconnect ring
 - [x] FriendEditor links social sources and imports contact info
-- [x] Friends + Map shown in Sidebar as "Coming Soon"
+- [x] Friends shown in Sidebar as a live navigation destination
+- [x] Google Contacts import suggests matches and can create Friends
 - [x] Location extraction from geo-tags and text patterns
 - [x] Nominatim geocoding with rate limiter
 - [x] Geocoding cache with TTL
 - [x] MapLibre `FriendMap` component scaffolded
 - [ ] `maplibre-gl` installed and map view live
 - [ ] macOS native contact picker (CNContactStore)
-- [ ] Friends + Map promoted to live sidebar navigation (after Phase 7 lands)
+- [ ] Map promoted to live sidebar navigation
 
 ---
 

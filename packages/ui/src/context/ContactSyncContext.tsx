@@ -10,8 +10,9 @@ import { createContext, useContext } from "react";
 import type { ContactSyncState } from "@freed/shared";
 
 export interface ContactSyncContextValue {
+  syncState: ContactSyncState;
   getSyncState: () => ContactSyncState;
-  syncNow: () => Promise<void>;
+  syncNow: () => Promise<ContactSyncState>;
   dismissMatch: (contactResourceName: string, friendIdOrAuthorId: string) => void;
 }
 

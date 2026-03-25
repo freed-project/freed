@@ -35,8 +35,9 @@ export function FriendsView() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editorTarget, setEditorTarget] = useState<Friend | null | "new">(null);
   const [showSyncModal, setShowSyncModal] = useState(false);
+  const [openingSyncModal, setOpeningSyncModal] = useState(false);
 
-  const { getSyncState, dismissMatch, syncNow } = useContactSyncContext();
+  const { syncState, dismissMatch, syncNow } = useContactSyncContext();
 
   const selectedFriend = selectedId ? friends[selectedId] : null;
 
@@ -189,8 +190,13 @@ export function FriendsView() {
 
   /** Open the contact sync modal, running a fresh sync first if Google is connected. */
   const handleOpenSyncModal = useCallback(async () => {
-    void syncNow();
-    setShowSyncModal(true);
+    setOpeningSyncModal(true);
+    try {
+      await syncNow();
+      setShowSyncModal(true);
+    } finally {
+      setOpeningSyncModal(false);
+    }
   }, [syncNow]);
 
   const friendList = Object.values(friends);
@@ -202,12 +208,13 @@ export function FriendsView() {
         <span className="text-sm font-medium text-text-primary">Friends</span>
         <button
           onClick={handleOpenSyncModal}
+          disabled={openingSyncModal}
           className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg border border-white/10 text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-colors"
         >
           <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden>
             <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM2 15v-1a4 4 0 014-4h.5" />
           </svg>
-          Import Contacts
+          {openingSyncModal ? "Syncing..." : "Import Contacts"}
           {pendingMatchCount > 0 && (
             <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded-full bg-[#8b5cf6]/30 text-[#c4b5fd]">
               {pendingMatchCount.toLocaleString()}
@@ -289,7 +296,7 @@ export function FriendsView() {
       {showSyncModal && (
         <ContactSyncModal
           onClose={() => setShowSyncModal(false)}
-          syncState={getSyncState()}
+          syncState={syncState}
           onLink={handleLink}
           onSkip={dismissMatch}
           onCreateFriend={handleCreateFriend}

@@ -73,6 +73,20 @@ test("main content area renders", async ({ app }) => {
   await expect(app.page.locator("main")).toBeVisible();
 });
 
+test("Friends view can return to the feed from sidebar navigation", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(1);
+
+  const { page } = app;
+
+  await page.getByRole("button", { name: "Friends" }).click();
+  await expect(page.getByText("No friends yet")).toBeVisible({ timeout: 5_000 });
+
+  await page.getByRole("button", { name: "All" }).click();
+  await expect(page.getByText("Article 0:", { exact: false })).toBeVisible({ timeout: 5_000 });
+});
+
 // ---------------------------------------------------------------------------
 // Settings panel
 // ---------------------------------------------------------------------------

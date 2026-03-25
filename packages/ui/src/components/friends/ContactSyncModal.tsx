@@ -8,7 +8,7 @@
  *   4. Already Linked (collapsed) — contacts already imported from Google
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { ContactSyncState, ContactMatch, GoogleContact } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
 
@@ -60,15 +60,16 @@ function ContactAvatar({ contact }: { contact: GoogleContact }) {
 
 function MatchRow({
   match,
+  matchedName,
   onLink,
   onSkip,
 }: {
   match: ContactMatch;
+  matchedName: string;
   onLink: (match: ContactMatch) => Promise<void>;
   onSkip: (contactResourceName: string, id: string) => void;
 }) {
   const [linking, setLinking] = useState(false);
-  const matchedName = match.friend?.name ?? match.authorIds[0] ?? "Unknown";
   const potentialIds = [
     ...(match.friend ? [match.friend.id] : []),
     ...match.authorIds,
@@ -208,9 +209,19 @@ export function ContactSyncModal({ onClose, syncState, onLink, onSkip, onCreateF
   const [showAllUnmatched, setShowAllUnmatched] = useState(false);
   const [linkingAll, setLinkingAll] = useState(false);
   const friends = useAppStore((s) => s.friends);
+  const items = useAppStore((s) => s.items);
 
   const highMatches = syncState.pendingMatches.filter(m => m.confidence === "high");
   const mediumMatches = syncState.pendingMatches.filter(m => m.confidence === "medium");
+  const authorDisplayNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const item of items) {
+      if (!names.has(item.author.id)) {
+        names.set(item.author.id, item.author.displayName || item.author.handle || item.author.id);
+      }
+    }
+    return names;
+  }, [items]);
 
   // Use nativeId for reliable linked/unmatched detection — name matching is
   // fragile (two contacts can share a display name).
@@ -317,6 +328,7 @@ export function ContactSyncModal({ onClose, syncState, onLink, onSkip, onCreateF
                   <MatchRow
                     key={match.contact.resourceName}
                     match={match}
+                    matchedName={match.friend?.name ?? authorDisplayNames.get(match.authorIds[0] ?? "") ?? "Unknown"}
                     onLink={onLink}
                     onSkip={onSkip}
                   />
@@ -334,6 +346,7 @@ export function ContactSyncModal({ onClose, syncState, onLink, onSkip, onCreateF
                   <MatchRow
                     key={match.contact.resourceName}
                     match={match}
+                    matchedName={match.friend?.name ?? authorDisplayNames.get(match.authorIds[0] ?? "") ?? "Unknown"}
                     onLink={onLink}
                     onSkip={onSkip}
                   />
