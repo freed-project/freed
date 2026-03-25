@@ -82,8 +82,8 @@ packages/desktop/
 | Window background | Tauri `vibrancy: "under-window"` (native blur)  |
 | Sidebar           | Translucent, CSS `backdrop-filter` on dark base |
 | Buttons           | CSS glass approximation, SwiftUI later          |
-| Cards             | Dark cards with subtle borders, content-first   |
-| Reader pane       | Clean typography, large hero images             |
+| Cards             | Dark cards with subtle borders, upper-right social actions, read-state dimming |
+| Reader pane       | Clean typography, large hero images, toolbar open action |
 
 ---
 

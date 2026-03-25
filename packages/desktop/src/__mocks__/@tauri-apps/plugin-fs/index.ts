@@ -8,6 +8,7 @@
  */
 
 const memfs = new Map<string, Uint8Array>();
+type DirEntry = { name?: string };
 
 export async function exists(path: string): Promise<boolean> {
   return memfs.has(path);
@@ -17,6 +18,11 @@ export async function readFile(path: string): Promise<Uint8Array> {
   const data = memfs.get(path);
   if (!data) throw new Error(`ENOENT: ${path}`);
   return data;
+}
+
+export async function readTextFile(path: string): Promise<string> {
+  const data = await readFile(path);
+  return new TextDecoder().decode(data);
 }
 
 export async function writeFile(
@@ -30,6 +36,10 @@ export async function writeFile(
   memfs.set(path, bytes);
 }
 
+export async function writeTextFile(path: string, contents: string): Promise<void> {
+  await writeFile(path, contents);
+}
+
 export async function mkdir(
   _path: string,
   _opts?: { recursive?: boolean },
@@ -37,4 +47,18 @@ export async function mkdir(
 
 export async function remove(_path: string): Promise<void> {
   memfs.delete(_path);
+}
+
+export async function readDir(path: string): Promise<DirEntry[]> {
+  const prefix = path.endsWith("/") ? path : `${path}/`;
+  const names = new Set<string>();
+
+  for (const key of memfs.keys()) {
+    if (!key.startsWith(prefix)) continue;
+    const remainder = key.slice(prefix.length);
+    const name = remainder.split("/")[0];
+    if (name) names.add(name);
+  }
+
+  return Array.from(names, (name) => ({ name }));
 }
