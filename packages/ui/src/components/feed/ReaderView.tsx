@@ -4,12 +4,14 @@ import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform, MACOS_TRAFFIC_LIGHT_INSET } from "../../context/PlatformContext.js";
 import { applyFocusMode, type FocusOptions } from "@freed/shared";
 import { Tooltip } from "../Tooltip.js";
+import { ExternalLinkIcon, TrashIcon } from "../icons.js";
 
 interface ReaderViewProps {
   item: FeedItemType;
   onClose: () => void;
   /** When true, renders inline as a flex child instead of a fixed overlay */
   dualColumn?: boolean;
+  onOpenUrl?: (url: string) => void;
 }
 
 /** Content source labels for the offline badge */
@@ -185,7 +187,7 @@ const HEADING_CLASSES: Record<number, string> = {
 
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
-export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProps) {
+export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: ReaderViewProps) {
   const { headerDragRegion, getLocalContent } = usePlatform();
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
@@ -475,11 +477,21 @@ export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProp
               style={headerDragRegion ? noDrag : undefined}
               aria-label={item.userState.archived ? "Unarchive" : "Archive"}
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
+              <TrashIcon className="w-5 h-5" />
             </button>
           </Tooltip>
+
+          {onOpenUrl && item.sourceUrl && (
+            <button
+              onClick={() => onOpenUrl(item.sourceUrl!)}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm text-[#71717a] hover:bg-white/10 hover:text-white transition-colors"
+              style={headerDragRegion ? noDrag : undefined}
+              aria-label="Open"
+            >
+              <ExternalLinkIcon className="w-4 h-4" />
+              <span>Open</span>
+            </button>
+          )}
 
           {/* Dual-column mode toggle (desktop only) */}
           <Tooltip label={dualColumn ? "Single column" : "Dual column"}>

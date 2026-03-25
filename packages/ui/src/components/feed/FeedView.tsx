@@ -386,7 +386,7 @@ export function FeedView() {
             aria-orientation="vertical"
             aria-label="Resize sidebar"
           />
-          <ReaderView item={selectedItem} onClose={closeItem} dualColumn />
+          <ReaderView item={selectedItem} onClose={closeItem} dualColumn onOpenUrl={handleOpenCommentUrl} />
         </div>
         <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
       </div>
@@ -449,7 +449,7 @@ export function FeedView() {
       />
 
       {selectedItem && (
-        <ReaderView item={selectedItem} onClose={closeItem} />
+        <ReaderView item={selectedItem} onClose={closeItem} onOpenUrl={handleOpenCommentUrl} />
       )}
 
       <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />

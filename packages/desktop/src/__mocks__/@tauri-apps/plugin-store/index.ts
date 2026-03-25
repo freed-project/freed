@@ -26,3 +26,10 @@ export class Store {
 
   async load(): Promise<void> {}
 }
+
+export async function load(
+  path: string,
+  _options?: { defaults?: Record<string, unknown>; autoSave?: boolean },
+): Promise<Store> {
+  return new Store(path);
+}
