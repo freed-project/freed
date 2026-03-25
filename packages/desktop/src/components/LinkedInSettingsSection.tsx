@@ -143,6 +143,19 @@ export function LinkedInSettingsSection() {
   const [lastDiag, setLastDiag] = useState<LiSyncDiag | null>(null);
   const [debugWindow, setDebugWindow] = useState(() => getLiScraperDebugWindow());
 
+  const runSync = useCallback(async () => {
+    setSyncing(true);
+    setLastDiag(null);
+    try {
+      const result = await captureLiFeed();
+      setLastDiag(result.diag);
+    } catch (err) {
+      console.error("LinkedIn feed capture failed:", err);
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
+
   // Auto-detect login success from the WebView's on_navigation callback
   useEffect(() => {
     const unlisten = listen<{ loggedIn: boolean }>("li-auth-result", (event) => {
@@ -150,10 +163,13 @@ export function LinkedInSettingsSection() {
         const newState = { isAuthenticated: true, lastCheckedAt: Date.now() };
         setLiAuth(newState);
         storeLiAuthState(newState);
+        if (!liAuth.isAuthenticated) {
+          void runSync();
+        }
       }
     });
     return () => { unlisten.then((fn) => fn()); };
-  }, [setLiAuth]);
+  }, [liAuth.isAuthenticated, runSync, setLiAuth]);
 
   const handleLogin = useCallback(async () => {
     setError(null);
@@ -182,19 +198,6 @@ export function LinkedInSettingsSection() {
       setChecking(false);
     }
   }, [setLiAuth, setError]);
-
-  const runSync = useCallback(async () => {
-    setSyncing(true);
-    setLastDiag(null);
-    try {
-      const result = await captureLiFeed();
-      setLastDiag(result.diag);
-    } catch (err) {
-      console.error("LinkedIn feed capture failed:", err);
-    } finally {
-      setSyncing(false);
-    }
-  }, []);
 
   const handleDisconnect = useCallback(async () => {
     try {
@@ -281,7 +284,7 @@ export function LinkedInSettingsSection() {
                 setDebugWindow(v);
                 setLiScraperDebugWindow(v);
               }}
-              description="Displays the LinkedIn browser window while syncing. Off by default -- the window runs off-screen so WebKit renders at full speed without interrupting you."
+              description="Displays the LinkedIn browser window while syncing. Off by default. The window runs off-screen so WebKit renders at full speed without interrupting you."
             />
           </div>
         </details>
@@ -300,8 +303,8 @@ export function LinkedInSettingsSection() {
     <div className="space-y-4">
       <p className="text-sm text-[#71717a] leading-relaxed">
         Pull your LinkedIn feed into Freed. Log in through a native browser
-        window — Freed reads your feed the same way you would, so your
-        account stays safe.
+        window. Freed reads your feed the same way you would, so your account
+        stays safe.
       </p>
       <div className="flex gap-2">
         <button

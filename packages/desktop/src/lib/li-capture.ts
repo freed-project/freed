@@ -147,6 +147,8 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
         );
 
         if (error) {
+          clearTimeout(timeout);
+          unlisten?.();
           diag.errorStage = "extract";
           diag.errorMessage = error;
           resolve({ items: [], diag });
@@ -219,7 +221,6 @@ export async function captureLiFeed(): Promise<LiSyncResult> {
 
   try {
     const result = await fetchLiFeed();
-    recordScrape();
 
     if (result.diag.errorStage) {
       const detail = `[LI] sync failed at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
@@ -227,6 +228,8 @@ export async function captureLiFeed(): Promise<LiSyncResult> {
       addDebugEvent("error", detail);
       return result;
     }
+
+    recordScrape();
 
     if (result.items.length > 0) {
       const before = store.items.filter((i) => i.platform === "linkedin").length;

@@ -1511,7 +1511,7 @@ async fn li_show_login(app: tauri::AppHandle, capture: tauri::State<'_, CaptureS
     )
     .user_agent(&user_agent)
     .initialization_script(include_str!("webkit-mask.js"))
-    .title("Connect LinkedIn — Freed")
+    .title("Connect LinkedIn with Freed")
     .inner_size(
         460.0 + { use rand::Rng; rand::thread_rng().gen_range(-8.0f64..8.0) },
         700.0 + { use rand::Rng; rand::thread_rng().gen_range(-10.0f64..10.0) },
@@ -1535,17 +1535,6 @@ async fn li_show_login(app: tauri::AppHandle, capture: tauri::State<'_, CaptureS
             }
             let _ = app_handle.emit("li-auth-result", serde_json::json!({ "loggedIn": true }));
 
-            // Auto-trigger a scrape shortly after login.
-            let scrape_app = app_handle.clone();
-            tauri::async_runtime::spawn(async move {
-                println!("[LI] login detected, auto-scraping...");
-                tokio::time::sleep(Duration::from_millis(gaussian_ms(5000.0, 1000.0))).await;
-                let capture = scrape_app.state::<CaptureState>();
-                match li_scrape_feed(scrape_app.clone(), capture, false).await {
-                    Ok(()) => println!("[LI] post-login auto-scrape complete"),
-                    Err(e) => println!("[LI] post-login auto-scrape error: {}", e),
-                }
-            });
         }
 
         true
