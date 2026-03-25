@@ -13,6 +13,34 @@ certain secrets to be configured in the GitHub repository settings.
 The corresponding **public key** is already embedded in
 `packages/desktop/src-tauri/tauri.conf.json` under `plugins.updater.pubkey`.
 
+## Required (for private source repo + Cloudflare R2 updates)
+
+Freed Desktop now expects signed updater artifacts to be mirrored into a public
+Cloudflare R2 bucket behind `updates.freed.wtf` so in-app update checks keep
+working after the source repo goes private.
+
+| Secret | Description |
+|--------|-------------|
+| `R2_ACCOUNT_ID` | Cloudflare account ID for the R2 API endpoint. |
+| `R2_ACCESS_KEY_ID` | R2 access key with write access to the updates bucket. |
+| `R2_SECRET_ACCESS_KEY` | Secret key paired with `R2_ACCESS_KEY_ID`. |
+| `R2_BUCKET_NAME` | Bucket name that serves the public updater files. |
+
+### Cloudflare R2 setup
+
+1. Create an R2 bucket for updater artifacts
+2. Expose it through a public custom domain at `updates.freed.wtf`
+3. Add the four R2 secrets above to the private source repo's GitHub Actions secrets
+4. Keep `packages/desktop/src-tauri/tauri.conf.json` pointed at:
+
+```text
+https://updates.freed.wtf/latest.json
+```
+
+The release workflow downloads the signed GitHub Release assets from the private
+repo, rewrites `latest.json` to point at `updates.freed.wtf`, then uploads the
+full artifact set to R2.
+
 ## macOS Code Signing + Notarization (deferred)
 
 Without these, macOS builds will run but produce unsigned DMGs. Users must
@@ -60,6 +88,7 @@ git push origin main --follow-tags
 ```
 
 This bumps versions, tags the commit, and pushes. The `v*` tag triggers the
-release workflow which builds all platforms and creates a **draft** GitHub
-Release. Review the draft, then click "Publish" to make it live. The in-app
-updater will pick it up automatically.
+release workflow which builds all platforms, creates a **draft** release in the
+private source repo, and mirrors updater artifacts to Cloudflare R2. Review the
+draft, then click "Publish" if needed. The in-app updater will read
+`latest.json` from `updates.freed.wtf` automatically.

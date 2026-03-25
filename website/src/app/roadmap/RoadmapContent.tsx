@@ -490,7 +490,7 @@ const phases: Phase[] = [
     number: 5,
     title: "Desktop & Mobile App",
     description:
-      "Native apps shipping for macOS (ARM + Intel), Windows, and Linux with signed auto-updates. Code signing deferred.",
+      "Native apps shipping for macOS (ARM + Intel), Windows, and Linux with signed auto-updates and a public artifact channel. Code signing deferred.",
     status: "current",
     priority: true,
     planLink:
