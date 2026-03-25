@@ -93,6 +93,9 @@ export interface RawFbPost {
 
   /** Original poster info if this is a share */
   sharedFrom: { name: string; url: string } | null;
+
+  /** Source group metadata if this post came from a Facebook group */
+  group?: { id: string; name: string; url: string } | null;
 }
 
 // =============================================================================

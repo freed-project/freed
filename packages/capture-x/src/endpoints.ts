@@ -221,7 +221,7 @@ export function getHomeLatestTimelineVariables(
 ): Record<string, unknown> {
   const variables: Record<string, unknown> = {
     count,
-    includePromotedContent: true,
+    includePromotedContent: false,
     latestControlAvailable: true,
   };
 

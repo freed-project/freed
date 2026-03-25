@@ -9,12 +9,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
-import { getDocBinary, mergeDoc, subscribe, setRelayClientCount } from "./automerge";
-import { addDebugEvent } from "@freed/ui/lib/debug-store";
-import { log } from "./logger.js";
-
-const RELAY_POLL_TIMEOUT_MS = 5_000;
-const RELAY_HEARTBEAT_INTERVAL = 5; // log a heartbeat every N poll ticks (= 10 s)
 import {
   gdriveUploadSafe,
   gdriveStartPollLoop,
@@ -26,6 +20,13 @@ import {
   dropboxDeleteFile,
   type CloudProvider,
 } from "@freed/sync/cloud";
+import { getDocBinary, mergeDoc, subscribe, setRelayClientCount } from "./automerge";
+import { addDebugEvent } from "@freed/ui/lib/debug-store";
+import { log } from "./logger.js";
+
+const FALLBACK_SYNC_PORT = import.meta.env.VITE_FREED_SYNC_PORT || "8765";
+const RELAY_POLL_TIMEOUT_MS = 5_000;
+const RELAY_HEARTBEAT_INTERVAL = 5; // log a heartbeat every N poll ticks (= 10 s)
 
 // Sync status
 let isServerRunning = false;
@@ -84,7 +85,7 @@ export async function getSyncUrl(): Promise<string> {
     const ip = await getLocalIP();
     // Fallback lacks a token — any connection using this URL will be
     // rejected by the relay, which is correct (pairing requires a QR scan).
-    return `ws://${ip}:8765`;
+    return `ws://${ip}:${FALLBACK_SYNC_PORT}`;
   }
 }
 
@@ -629,4 +630,3 @@ export async function startAllCloudSyncs(): Promise<void> {
     });
   }
 }
-

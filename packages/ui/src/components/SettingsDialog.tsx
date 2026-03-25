@@ -980,7 +980,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 <p className="text-sm text-[#52525b]">No settings match <span className="text-[#71717a]">"{search}"</span></p>
               </div>
             ) : (
-              allSections.map((section) => SectionBlock({ id: section.id }))
+              allSections.map((section) => (
+                <SectionBlock key={section.id} id={section.id} />
+              ))
             )}
 
             {/* Footer — mobile + narrow screens */}

@@ -247,6 +247,9 @@ export async function fetchXTimeline(
     if (instruction.type === "TimelineAddEntries" && instruction.entries) {
       diag.instructionsFound++;
       for (const entry of instruction.entries) {
+        if (entry.entryId?.startsWith("promoted-tweet-")) {
+          continue;
+        }
         const tweet = entry.content?.itemContent?.tweet_results?.result;
         if (
           tweet &&

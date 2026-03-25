@@ -23,12 +23,22 @@
         }
       : function () {};
 
+  function contentHash(a, b) {
+    var seed = (a || "") + "||" + (b || "");
+    var hash = 0;
+    for (var i = 0; i < seed.length; i++) {
+      hash = (hash << 5) - hash + seed.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash).toString(36);
+  }
+
   // ── Extract story ID from current URL ────────────────────────────────────
 
   function extractStoryId() {
     var href = window.location.href;
-    // /stories/username/123456789/
-    var m = href.match(/\/stories\/([^/]+)\/(\d+)/);
+    // /stories/username/<storyId>/
+    var m = href.match(/\/stories\/([^/]+)\/([^/?]+)/);
     if (m) return { username: m[1], storyId: m[2] };
     return { username: null, storyId: null };
   }
@@ -242,7 +252,7 @@
     // Build a stable ID: story-<storyId> or a hash of author+timestamp
     var storyId = urlInfo.storyId
       ? "story_" + urlInfo.storyId
-      : "story_" + (author.handle || "unknown") + "_" + Date.now();
+      : "story_" + contentHash(author.handle || "unknown", media.urls[0] || window.location.href);
 
     var post = {
       shortcode: storyId,

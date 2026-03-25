@@ -274,7 +274,7 @@
   function isSuggestedOrSponsored(article) {
     // "Suggested for you" / "Suggested Posts" label anywhere in article
     var fullText = (article.innerText || "");
-    if (/suggested for you/i.test(fullText) || /suggested posts/i.test(fullText)) {
+    if (/suggested|reels you might like/i.test(fullText)) {
       return true;
     }
 

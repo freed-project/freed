@@ -1,8 +1,9 @@
 /**
- * Structured file-based logger for Freed Desktop.
+ * Structured logger for Freed Desktop.
  *
- * Thin wrapper around @tauri-apps/plugin-log that writes to the platform log
- * file (~/Library/Logs/freed/freed.log on macOS, rotated at 10 MB in Rust).
+ * Thin wrapper around @tauri-apps/plugin-log. Release builds write to the
+ * platform log file. Local debug builds log to stdout so preview startup does
+ * not depend on filesystem permissions.
  *
  * In test mode (VITE_TEST_TAURI=1) the Tauri plugin is unavailable, so all
  * calls fall back to the corresponding console.* method.

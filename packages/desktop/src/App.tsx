@@ -20,6 +20,7 @@ import {
   deleteCloudFile,
 } from "./lib/sync";
 import { clearLocalDoc } from "./lib/automerge";
+import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { log } from "./lib/logger";
 import { setLogTransport } from "@freed/ui/lib/debug-store";
@@ -47,9 +48,10 @@ import { generateSampleFeeds, generateSampleItems } from "@freed/shared";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
+const IS_LOCAL_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1";
 
-// Register the file-based log transport so addDebugEvent calls from ui/ are
-// also persisted to ~/Library/Logs/freed/freed.log via tauri-plugin-log.
+// Register the desktop log transport so addDebugEvent calls from ui/ flow
+// through the native logger in both local preview and release builds.
 setLogTransport((level, msg) => log[level](msg));
 
 // ---------------------------------------------------------------------------
@@ -96,6 +98,7 @@ function App() {
   // freezes begin. These events are emitted by Tauri on macOS suspend/resume.
   useEffect(() => {
     log.info("[app] desktop app started");
+    if (!isTauri()) return;
 
     const cleanups: Array<() => void> = [];
 
@@ -129,6 +132,8 @@ function App() {
 
   // Poll for updates in the background every 30 minutes.
   useEffect(() => {
+    if (IS_LOCAL_PREVIEW) return;
+
     async function poll() {
       try {
         const update = await check();
@@ -150,6 +155,8 @@ function App() {
 
   // Manual check triggered from Settings panel.
   const checkForUpdates = useCallback(async (): Promise<string | null> => {
+    if (IS_LOCAL_PREVIEW) return null;
+
     const update = await check();
     if (update) {
       pendingUpdate.current = update;
@@ -277,8 +284,8 @@ function App() {
       FacebookSettingsContent: FacebookSettingsSection,
       InstagramSettingsContent: InstagramSettingsSection,
       LinkedInSettingsContent: LinkedInSettingsSection,
-      checkForUpdates,
-      applyUpdate,
+      checkForUpdates: IS_LOCAL_PREVIEW ? undefined : checkForUpdates,
+      applyUpdate: IS_LOCAL_PREVIEW ? undefined : applyUpdate,
       factoryReset: handleFactoryReset,
       seedSocialConnections,
       activeCloudProviderLabel: () => {

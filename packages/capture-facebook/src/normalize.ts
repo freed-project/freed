@@ -104,6 +104,15 @@ function buildEngagement(post: RawFbPost): Engagement | undefined {
   };
 }
 
+function buildFbGroup(post: RawFbPost): FeedItem["fbGroup"] | undefined {
+  if (!post.group) return undefined;
+  return {
+    id: post.group.id,
+    name: post.group.name,
+    url: post.group.url,
+  };
+}
+
 // =============================================================================
 // Main normalizer
 // =============================================================================
@@ -121,6 +130,7 @@ export function fbPostToFeedItem(post: RawFbPost): FeedItem | null {
   const content = buildContent(post);
   const engagement = buildEngagement(post);
   const location = buildLocation(post);
+  const fbGroup = buildFbGroup(post);
 
   const topics = post.hashtags.slice(0, 10);
 
@@ -137,6 +147,7 @@ export function fbPostToFeedItem(post: RawFbPost): FeedItem | null {
     content,
     ...(engagement !== undefined ? { engagement } : {}),
     ...(location !== undefined ? { location } : {}),
+    ...(fbGroup !== undefined ? { fbGroup } : {}),
     sourceUrl: post.url
       ?? (post.id ? `https://www.facebook.com/permalink.php?story_fbid=${post.id}` : undefined),
     topics,

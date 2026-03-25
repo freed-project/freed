@@ -27,6 +27,16 @@ use tokio_tungstenite::{
 #[cfg(target_os = "macos")]
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
+const DEFAULT_SYNC_RELAY_PORT: u16 = 8765;
+
+fn sync_relay_port() -> u16 {
+    std::env::var("FREED_SYNC_PORT")
+        .ok()
+        .and_then(|raw| raw.parse::<u16>().ok())
+        .filter(|port| *port > 0)
+        .unwrap_or(DEFAULT_SYNC_RELAY_PORT)
+}
+
 // ---------------------------------------------------------------------------
 // Token management
 // ---------------------------------------------------------------------------
@@ -404,7 +414,7 @@ fn get_local_ip() -> Result<String, String> {
 /// rather than the Wi-Fi interface the phone is connected to.
 #[tauri::command]
 fn get_all_local_ips() -> Vec<serde_json::Value> {
-    let port = 8765u16;
+    let port = sync_relay_port();
     match local_ip_address::list_afinet_netifas() {
         Ok(ifaces) => ifaces
             .into_iter()
@@ -765,7 +775,21 @@ fn gaussian_ms(mean: f64, std_dev: f64) -> u64 {
 /// This is a self-contained script with no external dependencies.
 /// It runs inside facebook.com's execution context.
 const FB_EXTRACT_SCRIPT: &str = include_str!("fb-extract.js");
+const FB_GROUPS_EXTRACT_SCRIPT: &str = include_str!("fb-groups-extract.js");
 const FB_STORIES_EXTRACT_SCRIPT: &str = include_str!("fb-stories-extract.js");
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct FbGroupInfoPayload {
+    id: String,
+    name: String,
+    url: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct FbGroupsDataPayload {
+    groups: Vec<FbGroupInfoPayload>,
+    error: Option<String>,
+}
 
 /// Show a visible WebView window navigated to facebook.com/login so the
 /// user can authenticate through the real Facebook login flow.
@@ -1304,6 +1328,98 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
     let _ = wv.hide();
 
     Ok(())
+}
+
+#[tauri::command]
+async fn fb_scrape_groups(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    show_window: bool,
+) -> Result<Vec<FbGroupInfoPayload>, String> {
+    use tauri::WebviewWindowBuilder;
+
+    let fb_groups_url = "https://www.facebook.com/groups/?category=joined";
+
+    let wv = match app.get_webview_window("fb-scraper") {
+        Some(w) => {
+            w.navigate(fb_groups_url.parse().unwrap())
+                .map_err(|e| e.to_string())?;
+            if show_window {
+                let _ = w.center();
+                let _ = w.set_focus();
+                let _ = w.show();
+            } else {
+                let _ = w.hide();
+            }
+            w
+        }
+        None => {
+            let app_handle = app.clone();
+            let mut builder = WebviewWindowBuilder::new(
+                &app,
+                "fb-scraper",
+                tauri::WebviewUrl::External(fb_groups_url.parse().unwrap()),
+            )
+            .user_agent(&*capture.fb_user_agent.lock().unwrap())
+            .initialization_script(include_str!("webkit-mask.js"))
+            .title("Freed Facebook")
+            .inner_size(1280.0, 900.0)
+            .on_navigation(move |url| {
+                let host = url.host_str().unwrap_or("");
+                let path = url.path();
+                if host.contains("facebook.com") && path != "/login" && path != "/login/" {
+                    if let Some(w) = app_handle.get_webview_window("fb-scraper") {
+                        let _ = w.hide();
+                    }
+                    let _ = app_handle.emit("fb-auth-result",
+                        serde_json::json!({ "loggedIn": true }));
+                }
+                true
+            });
+
+            if show_window {
+                builder = builder.center().visible(true);
+            } else {
+                builder = builder.visible(false);
+            }
+
+            builder.build().map_err(|e| e.to_string())?
+        }
+    };
+
+    tokio::time::sleep(Duration::from_millis(gaussian_ms(3500.0, 500.0))).await;
+
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<Vec<FbGroupInfoPayload>, String>>();
+    let tx = Arc::new(std::sync::Mutex::new(Some(tx)));
+    let listener_tx = tx.clone();
+    let listener_id = app.listen("fb-groups-data", move |event| {
+        let result = serde_json::from_str::<FbGroupsDataPayload>(event.payload())
+            .map_err(|err| err.to_string())
+            .and_then(|payload| {
+                if let Some(error) = payload.error {
+                    Err(error)
+                } else {
+                    Ok(payload.groups)
+                }
+            });
+
+        if let Some(sender) = listener_tx.lock().unwrap().take() {
+            let _ = sender.send(result);
+        }
+    });
+
+    wv.eval(FB_GROUPS_EXTRACT_SCRIPT)
+        .map_err(|e| format!("Failed to inject groups extraction script: {}", e))?;
+
+    let groups = match timeout(Duration::from_secs(10), rx).await {
+        Ok(Ok(result)) => result?,
+        Ok(Err(_)) => Err("Groups scrape channel closed".to_string())?,
+        Err(_) => Err("Groups scrape timed out after 10 seconds".to_string())?,
+    };
+
+    app.unlisten(listener_id);
+    let _ = wv.hide();
+    Ok(groups)
 }
 
 /// Disconnect Facebook by clearing all browsing data in the scraper WebView.
@@ -2291,7 +2407,7 @@ pub fn run() {
     let (broadcast_tx, _) = broadcast::channel::<Vec<u8>>(16);
 
     let relay_state = Arc::new(SyncRelayState {
-        port: 8765,
+        port: sync_relay_port(),
         broadcast_tx,
         current_doc: RwLock::new(None),
         client_count: RwLock::new(0),
@@ -2300,17 +2416,26 @@ pub fn run() {
     });
 
     let relay_state_clone = relay_state.clone();
+    let log_plugin = {
+        let builder = tauri_plugin_log::Builder::new()
+            .level(log::LevelFilter::Info)
+            .max_file_size(10 * 1024 * 1024)
+            .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll);
+
+        #[cfg(debug_assertions)]
+        let builder = builder.clear_targets().targets([
+            tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+            tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
+        ]);
+
+        builder.build()
+    };
 
     tauri::Builder::default()
-        // Structured file-based logging. Rotates at 10 MB, keeps the last 5 files.
-        // Log location: ~/Library/Logs/freed/freed.log (macOS).
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .level(log::LevelFilter::Info)
-                .max_file_size(10 * 1024 * 1024)
-                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
-                .build(),
-        )
+        // Debug builds log to stdout and the webview so local startup is not
+        // blocked by host filesystem permissions. Release builds keep
+        // structured rotating file logs in the OS log directory.
+        .plugin(log_plugin)
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -2522,7 +2647,7 @@ pub fn run() {
             });
 
             // Start mDNS advertisement and keep the daemon alive.
-            let mdns_daemon = advertise_mdns(8765);
+            let mdns_daemon = advertise_mdns(relay_state_clone.port);
             app.manage(MdnsState(mdns_daemon));
 
             // Start the relay — token is already set, so new connections are
@@ -2602,6 +2727,7 @@ pub fn run() {
             fb_hide_login,
             fb_check_auth,
             fb_scrape_feed,
+            fb_scrape_groups,
             fb_disconnect,
             ig_show_login,
             ig_hide_login,

@@ -509,7 +509,7 @@ const phases: Phase[] = [
     number: 7,
     title: "Facebook + Instagram",
     description:
-      "Facebook and Instagram integrated via Tauri WebView scraping.",
+      "Facebook and Instagram integrated via Tauri WebView scraping, with suggested-post filtering, hardened story capture, and Facebook group controls.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-7-SOCIAL-CAPTURE.md",

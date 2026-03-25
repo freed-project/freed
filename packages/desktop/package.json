@@ -4,17 +4,17 @@
   "version": "26.3.1300",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && node -e \"process.env.VERCEL||require('child_process').execSync('vite build',{stdio:'inherit'})\"",
-    "preview": "vite preview",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
-    "test:unit": "vitest run",
-    "test:unit:watch": "vitest",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui",
-    "test:e2e:debug": "playwright test --debug"
+    "dev": "node ../../node_modules/vite/bin/vite.js",
+    "build": "tsc -b && node -e \"process.env.VERCEL||require('child_process').execSync('node ../../node_modules/vite/bin/vite.js build',{stdio:'inherit'})\"",
+    "preview": "node ../../node_modules/vite/bin/vite.js preview",
+    "tauri": "node ./scripts/tauri-cli.mjs",
+    "tauri:dev": "node ./scripts/tauri-cli.mjs dev",
+    "tauri:build": "node ./scripts/tauri-cli.mjs build",
+    "test:unit": "node ../../node_modules/vitest/vitest.mjs run",
+    "test:unit:watch": "node ../../node_modules/vitest/vitest.mjs",
+    "test:e2e": "node ../../node_modules/playwright/cli.js test",
+    "test:e2e:ui": "node ../../node_modules/playwright/cli.js test --ui",
+    "test:e2e:debug": "node ../../node_modules/playwright/cli.js test --debug"
   },
   "dependencies": {
     "@freed/capture-rss": "*",

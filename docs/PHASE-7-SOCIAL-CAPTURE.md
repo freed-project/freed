@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress — Facebook and Instagram integrated into Desktop via Tauri WebView scraping
+> **Status:** 🚧 In Progress — Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering and Facebook group controls
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -155,12 +155,14 @@ const RATE_LIMITS = {
 - [x] Instagram feed integrated into Desktop via Tauri WebView scraping
 - [x] Both platforms integrated into Desktop refreshAllFeeds()
 - [x] Settings UI for both platforms (login, check connection, sync, disconnect)
+- [x] Feed pollution filtering blocks promoted X entries and suggested FB/IG posts
+- [x] Facebook Settings includes per-group include/exclude controls for joined groups
 - [x] Empty states for both platforms in the feed view
 - [x] Source indicators in sidebar for both platforms
 - [x] Sync indicator panel shows both platforms
 - [ ] Facebook feed posts validated against real account (selector tuning)
 - [ ] Instagram feed posts validated against real account (selector tuning)
-- [~] Stories captured — IG + FB story scraping integrated (selector tuning needed)
+- [~] Stories captured — IG + FB story scraping integrated, with stable IG story IDs and selector tuning still needed
 - [ ] Cross-platform dedup (task 7.15): IG/FB cross-posted stories/posts create duplicate FeedItems because globalId is platform-prefixed (ig: vs fb:). The existing docDeduplicateFeedItems only deduplicates by linkPreview.url. A content-similarity pass is needed: match items by same Friend identity + similar text (first 120 chars) + timestamps within a few minutes.
 - [x] Like button with outbox pattern: intent recorded immediately, synced to platform async
 - [x] Two-state like UI: "noted" (amber) vs "memorialized" (red confirmed on platform)
