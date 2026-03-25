@@ -9,6 +9,29 @@
 
 type Handler = (args: Record<string, unknown>) => unknown;
 
+type MockInternals = {
+  invoke?: <T = unknown>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
+  transformCallback?: (callback: unknown, once?: boolean) => number;
+  unregisterCallback?: (id: number) => void;
+  callbacks?: Record<number, unknown>;
+  metadata?: {
+    currentWindow: { label: string };
+    currentWebview: { label: string };
+  };
+  convertFileSrc?: (filePath: string, protocol?: string) => string;
+  plugins?: {
+    path: {
+      sep: string;
+      delimiter: string;
+    };
+  };
+};
+
+type PluginEventRecord = {
+  event: string;
+  callbackId: number;
+};
+
 /**
  * Route an HTTP request through the Vite dev server proxy so it can make
  * real network calls server-side, bypassing CORS. Mirrors what the Rust
@@ -68,6 +91,20 @@ const handlers: Record<string, Handler> = {
   args: Record<string, unknown> | undefined;
 }>;
 
+const callbackStore = (
+  (window as unknown as Record<string, unknown>).__TAURI_MOCK_CALLBACKS__ ??
+  ((window as unknown as Record<string, unknown>).__TAURI_MOCK_CALLBACKS__ = {})
+) as Record<number, unknown>;
+const pluginEventListeners = (
+  (window as unknown as Record<string, unknown>).__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__ ??
+  ((window as unknown as Record<string, unknown>).__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__ = {})
+) as Record<number, PluginEventRecord>;
+
+const tauriInternals = (
+  (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ ??
+  ((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {})
+) as MockInternals;
+
 export async function invoke<T = unknown>(
   cmd: string,
   args?: Record<string, unknown>,
@@ -87,6 +124,82 @@ export async function invoke<T = unknown>(
     )[cmd] ?? (() => null);
   return (await handler(args ?? {})) as T;
 }
+
+let nextCallbackId = 1;
+let nextPluginEventId = 1;
+
+tauriInternals.invoke = invoke;
+tauriInternals.transformCallback = (callback: unknown) => {
+  const id = nextCallbackId++;
+  callbackStore[id] = callback;
+  return id;
+};
+tauriInternals.unregisterCallback = (id: number) => {
+  delete callbackStore[id];
+};
+tauriInternals.callbacks = callbackStore;
+tauriInternals.metadata = tauriInternals.metadata ?? {
+  currentWindow: { label: "main" },
+  currentWebview: { label: "main" },
+};
+tauriInternals.convertFileSrc =
+  tauriInternals.convertFileSrc ?? ((filePath: string) => filePath);
+tauriInternals.plugins = tauriInternals.plugins ?? {
+  path: {
+    sep: "/",
+    delimiter: ":",
+  },
+};
+
+(window as unknown as Record<string, unknown>).__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+  unregisterListener(event: string, eventId: number) {
+    const record = pluginEventListeners[eventId];
+    if (record?.event === event) {
+      delete pluginEventListeners[eventId];
+    }
+  },
+};
+
+const baseInvoke = tauriInternals.invoke;
+tauriInternals.invoke = async <T = unknown>(
+  cmd: string,
+  args?: Record<string, unknown>,
+): Promise<T> => {
+  if (cmd === "plugin:event|listen") {
+    const eventId = nextPluginEventId++;
+    pluginEventListeners[eventId] = {
+      event: String(args?.event ?? ""),
+      callbackId: Number(args?.handler ?? 0),
+    };
+    return eventId as T;
+  }
+
+  if (cmd === "plugin:event|unlisten") {
+    const eventId = Number(args?.eventId ?? 0);
+    delete pluginEventListeners[eventId];
+    return null as T;
+  }
+
+  if (cmd === "plugin:event|emit" || cmd === "plugin:event|emit_to") {
+    const eventName = String(args?.event ?? "");
+    const payload = args?.payload;
+    for (const [eventId, record] of Object.entries(pluginEventListeners)) {
+      if (record.event !== eventName) continue;
+      const callback = callbackStore[record.callbackId] as
+        | ((event: { event: string; id: number; payload: unknown; windowLabel: string }) => void)
+        | undefined;
+      callback?.({
+        event: eventName,
+        id: Number(eventId),
+        payload,
+        windowLabel: "main",
+      });
+    }
+    return null as T;
+  }
+
+  return baseInvoke<T>(cmd, args);
+};
 
 export function isTauri(): boolean {
   return false;

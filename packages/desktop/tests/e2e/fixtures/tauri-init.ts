@@ -54,5 +54,72 @@ export function tauriInitScript(): string {
     };
     window.__TAURI_MOCK_INVOCATIONS__ = [];
     window.__TAURI_MOCK_OPENED_URLS__ = [];
+    window.__TAURI_MOCK_CALLBACKS__ = {};
+    window.__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__ = {};
+
+    var nextCallbackId = 1;
+    var nextPluginEventId = 1;
+    window.__TAURI_INTERNALS__ = window.__TAURI_INTERNALS__ || {};
+    window.__TAURI_EVENT_PLUGIN_INTERNALS__ = {
+      unregisterListener: function(event, eventId) {
+        var record = window.__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__[eventId];
+        if (record && record.event === event) {
+          delete window.__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__[eventId];
+        }
+      }
+    };
+    window.__TAURI_INTERNALS__.invoke = function(cmd, args) {
+      window.__TAURI_MOCK_INVOCATIONS__.push({ cmd: cmd, args: args });
+      if (cmd === 'plugin:event|listen') {
+        var eventId = nextPluginEventId++;
+        window.__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__[eventId] = {
+          event: String((args && args.event) || ''),
+          callbackId: Number((args && args.handler) || 0)
+        };
+        return Promise.resolve(eventId);
+      }
+      if (cmd === 'plugin:event|unlisten') {
+        delete window.__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__[Number((args && args.eventId) || 0)];
+        return Promise.resolve(null);
+      }
+      if (cmd === 'plugin:event|emit' || cmd === 'plugin:event|emit_to') {
+        var eventName = String((args && args.event) || '');
+        var payload = args && args.payload;
+        Object.keys(window.__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__).forEach(function(id) {
+          var record = window.__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__[id];
+          if (!record || record.event !== eventName) return;
+          var callback = window.__TAURI_MOCK_CALLBACKS__[record.callbackId];
+          if (typeof callback === 'function') {
+            callback({
+              event: eventName,
+              id: Number(id),
+              payload: payload,
+              windowLabel: 'main'
+            });
+          }
+        });
+        return Promise.resolve(null);
+      }
+      var handler = window.__TAURI_MOCK_HANDLERS__[cmd];
+      return Promise.resolve(handler ? handler(args || {}) : null);
+    };
+    window.__TAURI_INTERNALS__.transformCallback = function(callback) {
+      var id = nextCallbackId++;
+      window.__TAURI_MOCK_CALLBACKS__[id] = callback;
+      return id;
+    };
+    window.__TAURI_INTERNALS__.unregisterCallback = function(id) {
+      delete window.__TAURI_MOCK_CALLBACKS__[id];
+    };
+    window.__TAURI_INTERNALS__.callbacks = window.__TAURI_MOCK_CALLBACKS__;
+    window.__TAURI_INTERNALS__.metadata = window.__TAURI_INTERNALS__.metadata || {
+      currentWindow: { label: 'main' },
+      currentWebview: { label: 'main' }
+    };
+    window.__TAURI_INTERNALS__.convertFileSrc =
+      window.__TAURI_INTERNALS__.convertFileSrc || function(filePath) { return filePath; };
+    window.__TAURI_INTERNALS__.plugins = window.__TAURI_INTERNALS__.plugins || {
+      path: { sep: '/', delimiter: ':' }
+    };
   })();`;
 }
