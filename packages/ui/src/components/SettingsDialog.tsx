@@ -185,6 +185,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     factoryReset,
     activeCloudProviderLabel,
     seedSocialConnections,
+    updateDownloadProgress,
   } = usePlatform();
   const preferences = useAppStore((s) => s.preferences);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
@@ -505,9 +506,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     const isVisible = visibleSections.some((s) => s.id === id);
     if (!isVisible) return null;
 
+    // SectionContent is called as a plain function (not as a JSX component)
+    // because it is defined inside SettingsDialog. If rendered as
+    // <SectionContent />, React would see a new component type on every
+    // SettingsDialog re-render and unmount/remount the entire subtree,
+    // destroying local state in nested components like XSettingsSection.
     return (
       <section data-section={id} className="pb-8 min-h-full flex flex-col">
-        <SectionContent id={id} />
+        {SectionContent({ id })}
       </section>
     );
   }
@@ -557,6 +563,23 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   </div>
                 </div>
               )}
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm text-white">Delete archived content after</p>
+                  <p className="text-xs text-[#52525b] mt-0.5">Saved items are never deleted</p>
+                </div>
+                <select
+                  value={display.archivePruneDays ?? 30}
+                  onChange={(e) => handleDisplayChange({ archivePruneDays: Number(e.target.value) })}
+                  className="shrink-0 bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded-lg text-sm text-white px-3 py-1.5 focus:outline-none focus:border-[#8b5cf6]/50 cursor-pointer"
+                >
+                  <option value={3}>3 days</option>
+                  <option value={7}>7 days</option>
+                  <option value={30}>30 days</option>
+                  <option value={90}>90 days</option>
+                  <option value={0}>Never</option>
+                </select>
+              </div>
             </div>
           </>
         );
@@ -634,7 +657,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 <div ref={checkButtonRef} className="flex items-center gap-3">
                   <button
                     onClick={handleCheckForUpdates}
-                    disabled={updateState.status === "checking"}
+                    disabled={updateState.status === "checking" || updateDownloadProgress?.phase === "downloading"}
                     className="text-sm px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#a1a1aa] hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {updateState.status === "checking" ? (
@@ -653,7 +676,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                       {applyUpdate && (
                         <button
                           onClick={applyUpdate}
-                          className="text-xs font-semibold px-2.5 py-1 rounded-md bg-[#8b5cf6] text-white hover:bg-[#7c3aed] transition-colors"
+                          disabled={updateDownloadProgress?.phase === "downloading"}
+                          className="text-xs font-semibold px-2.5 py-1 rounded-md bg-[#8b5cf6] text-white hover:bg-[#7c3aed] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {headerDragRegion ? "Install & Restart" : "Reload"}
                         </button>
@@ -664,6 +688,22 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                     <span className="text-xs text-red-400">Check failed</span>
                   )}
                 </div>
+              )}
+              {updateDownloadProgress?.phase === "downloading" && (
+                <div className="space-y-1.5">
+                  <p className="text-xs text-[#a1a1aa]">
+                    Downloading... {Math.round(updateDownloadProgress.percent)}%
+                  </p>
+                  <div className="h-1.5 rounded-full bg-[rgba(255,255,255,0.08)] overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-[var(--glow-blue)] to-[var(--glow-purple)] transition-[width] duration-300"
+                      style={{ width: `${updateDownloadProgress.percent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              {updateDownloadProgress?.phase === "error" && (
+                <p className="text-xs text-red-400">{updateDownloadProgress.message}</p>
               )}
             </div>
           </>

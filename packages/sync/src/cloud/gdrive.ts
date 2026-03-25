@@ -17,6 +17,9 @@ const GDRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3/files";
 const GDRIVE_CHANGES = "https://www.googleapis.com/drive/v3/changes";
 const POLL_MS = 5_000;
 const MAX_RETRIES = 3;
+/** Per-iteration network timeout. Prevents a stalled fetch from freezing the loop. */
+const ITERATION_TIMEOUT_MS = 90_000;
+const HEARTBEAT_EVERY_N_ITERS = 120; // every 120 * 5 s = 10 minutes
 
 interface DownloadResult {
   binary: Uint8Array | null;
@@ -148,12 +151,20 @@ export async function gdriveDeleteFile(token: string): Promise<void> {
  * Poll the GDrive Changes API every 5 s.
  * Uses a server-side page-token cursor so only genuine changes trigger a
  * download. Runs until `signal` is aborted.
+ *
+ * Each iteration is wrapped in a 90 s timeout so a stalled network request
+ * on a sleeping machine cannot freeze the loop indefinitely. The optional
+ * `onLog` callback receives warn/info messages for file-based logging by
+ * the caller (packages/sync is platform-agnostic and cannot import Tauri).
  */
 export async function gdriveStartPollLoop(
   token: string,
   onRemoteChange: (binary: Uint8Array) => void,
   signal: AbortSignal,
+  onLog?: (level: "info" | "warn" | "error", msg: string) => void,
 ): Promise<void> {
+  const log = (level: "info" | "warn" | "error", msg: string) => onLog?.(level, msg);
+
   const startRes = await fetch(`${GDRIVE_CHANGES}/startPageToken`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -162,14 +173,26 @@ export async function gdriveStartPollLoop(
 
   const fileId = await ensureFile(token);
 
+  log("info", "[cloud/gdrive] poll loop started");
+  let iterCount = 0;
+
   while (!signal.aborted) {
     await delay(POLL_MS);
     if (signal.aborted) break;
 
+    iterCount++;
+    if (iterCount % HEARTBEAT_EVERY_N_ITERS === 0) {
+      log("info", `[cloud/gdrive] heartbeat iter=${iterCount}`);
+    }
+
     try {
+      // Combine the outer abort signal with a per-iteration timeout so a
+      // stalled GDrive fetch doesn't hold the loop open overnight.
+      const iterSignal = AbortSignal.any([signal, AbortSignal.timeout(ITERATION_TIMEOUT_MS)]);
+
       const changesRes = await fetch(
         `${GDRIVE_CHANGES}?pageToken=${cursor}&spaces=drive&fields=nextPageToken,newStartPageToken,changes(fileId)`,
-        { headers: { Authorization: `Bearer ${token}` } },
+        { headers: { Authorization: `Bearer ${token}` }, signal: iterSignal },
       );
       if (!changesRes.ok) continue;
 
@@ -181,11 +204,21 @@ export async function gdriveStartPollLoop(
       );
 
       if (changed) {
-        const binary = await gdriveDownloadLatest(token);
+        const binary = await gdriveDownloadLatest(token, iterSignal);
         if (binary) onRemoteChange(binary);
       }
     } catch (err) {
-      console.error("[CloudSync/GDrive] Poll error:", err);
+      if (signal.aborted) break;
+      const msg = err instanceof Error ? err.message : String(err);
+      const isTimeout = err instanceof Error && err.name === "TimeoutError";
+      if (isTimeout) {
+        log("warn", `[cloud/gdrive] poll iteration TIMEOUT iter=${iterCount}`);
+      } else {
+        log("warn", `[cloud/gdrive] poll error iter=${iterCount} err=${msg}`);
+        console.error("[CloudSync/GDrive] Poll error:", err);
+      }
     }
   }
+
+  log("info", `[cloud/gdrive] poll loop stopped after ${iterCount} iterations`);
 }

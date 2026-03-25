@@ -15,27 +15,175 @@ interface ReaderViewProps {
 /** Content source labels for the offline badge */
 type ContentSource = "cache" | "text" | "live" | null;
 
-/** Strip HTML tags, returning plain text for focus mode rendering */
-function htmlToText(html: string): string {
-  const div = document.createElement("div");
-  div.innerHTML = html;
-  return div.textContent ?? div.innerText ?? "";
+// ─── Structured content parser ───────────────────────────────────────────────
+//
+// Converts HTML into an array of typed content blocks using DOMParser. No HTML
+// is ever injected back into the DOM. We read data (textContent, src, alt) from
+// the parsed tree and render React elements ourselves. Secure by construction.
+
+type ContentBlock =
+  | { kind: "text"; content: string }
+  | { kind: "heading"; level: number; content: string }
+  | { kind: "image"; src: string; alt: string; caption?: string }
+  | { kind: "blockquote"; content: string }
+  | { kind: "code"; content: string }
+  | { kind: "list"; ordered: boolean; items: string[] };
+
+const BLOCK_TAGS = new Set([
+  "p", "div", "h1", "h2", "h3", "h4", "h5", "h6",
+  "blockquote", "pre", "ul", "ol", "figure", "section",
+  "article", "main", "header", "footer", "aside", "nav",
+]);
+
+function isAllowedImageSrc(src: string): boolean {
+  try {
+    const parsed = new URL(src, "https://placeholder.invalid");
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
-const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
+/** Parse HTML into structured content blocks via DOMParser. */
+function parseArticleBlocks(html: string): ContentBlock[] {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const blocks: ContentBlock[] = [];
 
-const PROSE_CLASSES = `
-  prose prose-invert prose-lg max-w-none
-  prose-headings:text-[#fafafa] prose-headings:font-semibold
-  prose-p:text-[#a1a1aa] prose-p:leading-relaxed
-  prose-a:text-[#8b5cf6] prose-a:no-underline hover:prose-a:underline
-  prose-strong:text-[#fafafa] prose-strong:font-semibold
-  prose-code:text-[#8b5cf6] prose-code:bg-white/5 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
-  prose-pre:bg-[#141414] prose-pre:border prose-pre:border-[rgba(255,255,255,0.08)] prose-pre:rounded-xl
-  prose-blockquote:border-l-[#8b5cf6] prose-blockquote:text-[#a1a1aa] prose-blockquote:bg-white/5 prose-blockquote:rounded-r-xl prose-blockquote:py-1
-  prose-img:rounded-xl prose-img:ring-1 prose-img:ring-white/5
-  prose-li:text-[#a1a1aa]
-`.trim();
+  function pushText(text: string | null | undefined): void {
+    const trimmed = text?.trim();
+    if (trimmed) blocks.push({ kind: "text", content: trimmed });
+  }
+
+  function pushImage(el: Element): void {
+    const src = el.getAttribute("src");
+    if (src && isAllowedImageSrc(src)) {
+      blocks.push({ kind: "image", src, alt: el.getAttribute("alt") ?? "" });
+    }
+  }
+
+  function processNode(node: Node): void {
+    if (node.nodeType === Node.TEXT_NODE) {
+      pushText(node.textContent);
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+    const el = node as Element;
+    const tag = el.tagName.toLowerCase();
+
+    if (/^h[1-6]$/.test(tag)) {
+      const text = el.textContent?.trim();
+      if (text) blocks.push({ kind: "heading", level: parseInt(tag[1]), content: text });
+      return;
+    }
+
+    if (tag === "img") { pushImage(el); return; }
+
+    if (tag === "picture") {
+      const img = el.querySelector("img");
+      if (img) pushImage(img);
+      return;
+    }
+
+    if (tag === "figure") {
+      const img = el.querySelector("img");
+      const caption = el.querySelector("figcaption");
+      if (img) {
+        const src = img.getAttribute("src");
+        if (src && isAllowedImageSrc(src)) {
+          blocks.push({
+            kind: "image",
+            src,
+            alt: img.getAttribute("alt") ?? "",
+            caption: caption?.textContent?.trim() || undefined,
+          });
+        }
+      } else {
+        for (const child of el.childNodes) processNode(child);
+      }
+      return;
+    }
+
+    if (tag === "blockquote") {
+      const text = el.textContent?.trim();
+      if (text) blocks.push({ kind: "blockquote", content: text });
+      return;
+    }
+
+    if (tag === "pre") {
+      const text = el.textContent?.trim();
+      if (text) blocks.push({ kind: "code", content: text });
+      return;
+    }
+
+    if (tag === "ul" || tag === "ol") {
+      const items = Array.from(el.querySelectorAll(":scope > li"))
+        .map((li) => li.textContent?.trim() ?? "")
+        .filter(Boolean);
+      if (items.length > 0) {
+        blocks.push({ kind: "list", ordered: tag === "ol", items });
+      }
+      return;
+    }
+
+    // Container elements: if they contain nested blocks, recurse; otherwise
+    // treat as a leaf paragraph and extract text + any embedded images.
+    if (tag === "p" || tag === "div" || tag === "section" ||
+        tag === "article" || tag === "main" || tag === "aside") {
+      const hasNestedBlocks = Array.from(el.children).some(
+        (c) => BLOCK_TAGS.has(c.tagName.toLowerCase()) || c.tagName.toLowerCase() === "img",
+      );
+
+      if (hasNestedBlocks) {
+        for (const child of el.childNodes) processNode(child);
+      } else {
+        pushText(el.textContent);
+      }
+      return;
+    }
+
+    // Inline elements (span, a, em, strong, etc.): recurse into children
+    for (const child of el.childNodes) processNode(child);
+  }
+
+  for (const child of doc.body.childNodes) processNode(child);
+
+  // Deduplicate consecutive identical text blocks (DOMParser artifact)
+  return blocks.filter((block, i) => {
+    if (block.kind !== "text") return true;
+    if (i === 0) return true;
+    const prev = blocks[i - 1];
+    return !(prev.kind === "text" && prev.content === block.content);
+  });
+}
+
+/** Convert plain text (preservedContent.text) to content blocks. */
+function textToBlocks(text: string): ContentBlock[] {
+  return text
+    .split(/\n\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((content) => ({ kind: "text" as const, content }));
+}
+
+/** Extract plain text from HTML for focus mode. Uses DOMParser (no execution). */
+function htmlToPlainText(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  return doc.body.textContent ?? "";
+}
+
+// ─── Heading size classes by level ───────────────────────────────────────────
+
+const HEADING_CLASSES: Record<number, string> = {
+  1: "text-2xl font-semibold text-[#fafafa] mt-8 mb-3",
+  2: "text-xl font-semibold text-[#fafafa] mt-8 mb-3",
+  3: "text-lg font-semibold text-[#fafafa] mt-6 mb-2",
+  4: "text-base font-semibold text-[#fafafa] mt-4 mb-2",
+  5: "text-base font-medium text-[#fafafa] mt-4 mb-2",
+  6: "text-sm font-medium text-[#fafafa] mt-4 mb-2",
+};
+
+const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
 export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProps) {
   const { headerDragRegion, getLocalContent } = usePlatform();
@@ -66,7 +214,6 @@ export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProp
 
       // Layer 1: Device-local content cache (desktop: Tauri FS, PWA: Cache API)
       if (getLocalContent) {
-        // Desktop path -- platform provides Tauri FS backed cache
         const cached = await getLocalContent(item.globalId);
         if (!cancelled && cached) {
           setHtml(cached);
@@ -75,7 +222,6 @@ export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProp
           return;
         }
       } else if (articleUrl && "caches" in window) {
-        // PWA path -- check the Workbox-managed Cache API
         try {
           const cache = await caches.open("freed-articles-v1");
           const cachedResponse = await cache.match(articleUrl);
@@ -96,14 +242,7 @@ export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProp
       // Layer 2: preservedContent.text -- always available for imported items
       if (item.preservedContent?.text) {
         if (!cancelled) {
-          // Render text as a simple HTML block for consistent styling
-          const escaped = item.preservedContent.text
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/\n\n+/g, "</p><p>")
-            .replace(/\n/g, "<br>");
-          setHtml(`<p>${escaped}</p>`);
+          setHtml(null);
           setContentSource("text");
           setIsLoading(false);
         }
@@ -137,7 +276,6 @@ export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProp
             }
           },
           () => {
-            // Fetch failed (CORS, network error, non-2xx) -- show feed preview text
             if (!cancelled) {
               setHtml(null);
               setContentSource(null);
@@ -147,7 +285,6 @@ export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProp
           },
         );
       } else {
-        // Offline and no cached content -- fall back to feed preview text
         if (!cancelled) {
           setHtml(null);
           setContentSource(null);
@@ -171,12 +308,9 @@ export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProp
 
   const handleToggleArchived = useCallback(() => {
     toggleArchived(item.globalId);
-    // Close the reader when archiving — item leaves the active feed
     if (!item.userState.archived) onClose();
   }, [toggleArchived, item.globalId, item.userState.archived, onClose]);
 
-  // Debounce the Automerge write so the local state (and re-render) happens
-  // immediately while the expensive hydrateFromDoc cycle is deferred 1 second.
   const prefTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const toggleFocus = useCallback(() => {
@@ -211,10 +345,19 @@ export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProp
     [item.publishedAt],
   );
 
-  // Always strip HTML regardless of source -- item.content.text from RSS feeds
-  // frequently contains markup, which would appear as raw brackets in focus mode.
+  // Parse content into structured blocks. HTML is parsed via DOMParser (no
+  // injection). Plain text is split into paragraphs. Either way, we render
+  // React elements, never raw HTML.
+  const articleBlocks = useMemo<ContentBlock[]>(() => {
+    if (html) return parseArticleBlocks(html);
+    const text = item.preservedContent?.text ?? item.content.text;
+    if (text) return textToBlocks(text);
+    return [];
+  }, [html, item.preservedContent?.text, item.content.text]);
+
+  // Plain text for focus mode rendering
   const plainText = useMemo(
-    () => htmlToText(html ?? item.content.text ?? ""),
+    () => htmlToPlainText(html ?? item.content.text ?? ""),
     [html, item.content.text],
   );
 
@@ -273,7 +416,6 @@ export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProp
             </Tooltip>
           )}
 
-          {/* Background caching spinner */}
           {isCaching && (
             <Tooltip label="Loading full article">
               <div className="w-4 h-4 border border-[#52525b] border-t-[#8b5cf6] rounded-full animate-spin" />
@@ -416,11 +558,8 @@ export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProp
           <div className="text-[#a1a1aa] text-lg leading-relaxed">
             <FocusText text={plainText ?? ""} options={focusOptions} />
           </div>
-        ) : html ? (
-          <div
-            className={PROSE_CLASSES}
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
+        ) : articleBlocks.length > 0 ? (
+          <ArticleContent blocks={articleBlocks} />
         ) : (
           <div className="text-[#a1a1aa] text-lg leading-relaxed">
             {item.content.text || (
@@ -452,38 +591,112 @@ export function ReaderView({ item, onClose, dualColumn = false }: ReaderViewProp
   );
 }
 
-/**
- * Renders text with focus mode bolding applied to word beginnings.
- *
- * Builds a single HTML string instead of mapping to individual React elements.
- * A 2 000-word article would otherwise produce ~4 000 React nodes, causing a
- * multi-second freeze on every toggle. One innerHTML assignment is orders of
- * magnitude faster.
- */
+// ─── Article content renderer ────────────────────────────────────────────────
+//
+// Renders structured content blocks as React elements. No HTML injection, no
+// dangerouslySetInnerHTML. Every element is a controlled React component.
+
+function ArticleContent({ blocks }: { blocks: ContentBlock[] }) {
+  return (
+    <div className="space-y-4">
+      {blocks.map((block, i) => {
+        switch (block.kind) {
+          case "text":
+            return (
+              <p key={i} className="text-[#a1a1aa] text-lg leading-relaxed">
+                {block.content}
+              </p>
+            );
+          case "heading": {
+            const Tag = `h${block.level}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
+            return (
+              <Tag key={i} className={HEADING_CLASSES[block.level] ?? HEADING_CLASSES[4]}>
+                {block.content}
+              </Tag>
+            );
+          }
+          case "image":
+            return (
+              <figure key={i}>
+                <img
+                  src={block.src}
+                  alt={block.alt}
+                  className="w-full rounded-xl bg-white/5 ring-1 ring-white/5"
+                  loading="lazy"
+                />
+                {block.caption && (
+                  <figcaption className="text-sm text-[#71717a] mt-2 text-center">
+                    {block.caption}
+                  </figcaption>
+                )}
+              </figure>
+            );
+          case "blockquote":
+            return (
+              <blockquote
+                key={i}
+                className="border-l-2 border-[#8b5cf6] pl-4 py-3 text-[#a1a1aa] bg-white/5 rounded-r-xl italic"
+              >
+                {block.content}
+              </blockquote>
+            );
+          case "code":
+            return (
+              <pre
+                key={i}
+                className="bg-[#141414] border border-[rgba(255,255,255,0.08)] rounded-xl p-4 overflow-x-auto"
+              >
+                <code className="text-[#8b5cf6] text-sm font-mono whitespace-pre-wrap">
+                  {block.content}
+                </code>
+              </pre>
+            );
+          case "list": {
+            const Tag = block.ordered ? "ol" : "ul";
+            return (
+              <Tag
+                key={i}
+                className={`text-[#a1a1aa] text-lg leading-relaxed pl-6 space-y-1 ${
+                  block.ordered ? "list-decimal" : "list-disc"
+                }`}
+              >
+                {block.items.map((text, j) => (
+                  <li key={j}>{text}</li>
+                ))}
+              </Tag>
+            );
+          }
+        }
+      })}
+    </div>
+  );
+}
+
+// ─── Focus text renderer ─────────────────────────────────────────────────────
+//
+// Renders text with focus-mode bolding on word beginnings. Each segment becomes
+// a React element (no dangerouslySetInnerHTML). The segments are memoized so
+// the element array is only rebuilt when text or options change.
+
 function FocusText({ text, options }: { text: string; options: FocusOptions }) {
-  const __html = useMemo(() => {
+  const elements = useMemo(() => {
     const segments = applyFocusMode(text, options);
-    return segments
-      .map((seg) => {
-        // Escape user content before injecting into HTML.
-        const escaped = seg.text
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;");
-        return seg.emphasis
-          ? `<strong class="text-[#fafafa] font-bold">${escaped}</strong>`
-          : escaped;
-      })
-      .join("");
+    return segments.map((seg, i) =>
+      seg.emphasis
+        ? <strong key={i} className="text-[#fafafa] font-bold">{seg.text}</strong>
+        : <span key={i}>{seg.text}</span>,
+    );
   }, [text, options]);
 
-  return <div dangerouslySetInnerHTML={{ __html }} />;
+  return <div>{elements}</div>;
 }
+
+// ─── Live fetch helper ───────────────────────────────────────────────────────
 
 /**
  * Live-fetch an article URL and cache it in the PWA Cache API.
- * Calls `onDone` with the extracted HTML on success, `onError` on any failure
- * (CORS block, non-2xx response, network error, or cancellation).
+ * The returned HTML is parsed into structured blocks at the rendering layer,
+ * never injected as raw HTML.
  */
 async function liveFetch(
   url: string,
@@ -501,14 +714,12 @@ async function liveFetch(
     const html = await resp.text();
     if (cancelled) return;
 
-    // Cache in the PWA Cache API for offline access
     if ("caches" in window) {
       try {
         const cache = await caches.open("freed-articles-v1");
         await cache.put(url, new Response(html, {
           headers: { "Content-Type": "text/html; charset=utf-8" },
         }));
-        // Also store by globalId for direct cache lookup
         await cache.put(`/content/${globalId}`, new Response(html, {
           headers: { "Content-Type": "text/html; charset=utf-8" },
         }));
@@ -519,7 +730,6 @@ async function liveFetch(
 
     onDone(html);
   } catch {
-    // Network error, CORS block, or any other exception
     onError?.();
   }
 }

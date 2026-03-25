@@ -11,6 +11,9 @@
 - **Before shipping any feature:** Verify that every exported function/class you added or touched is actually _called_ from an appropriate entry point. Exported-but-never-called code is a bug. Grep for each new export name to confirm it appears in a consumer.
 - **Platform copy:** Never write "for Mac", "for Windows", or "for desktop" in user-facing strings. The correct product name is "Freed Desktop". Use that.
 - **Async-before-await is synchronous:** Code before the first `await` in an `async` function runs synchronously in the caller's microtask even if the caller doesn't await. Never put O(n) work (e.g. `Array.from(largeUint8Array)`, `A.save()`, serialization) before an `await` in a `subscribe()` callback or any other fire-and-forget async call on a hot path.
+- **Vercel deployments -- always use `--scope aubreyfs-projects`:** The only permitted Vercel team for this project is `aubreyfs-projects` (personal account). Never run `vercel deploy`, `vercel link`, or any Vercel CLI command without the `--scope aubreyfs-projects` flag. Never use the `deploy_to_vercel` MCP tool -- it accepts no arguments and silently deploys to whatever team the CLI defaults to. Never run `vercel` from the repo root. The correct deploy commands are:
+  - Website: `vercel deploy website/ --scope aubreyfs-projects -y`
+  - PWA: `vercel deploy packages/pwa/ --scope aubreyfs-projects -y`
 
 ## Versioning
 
@@ -48,10 +51,12 @@ Run `./scripts/release.sh` with no args to auto-compute the next version.
 **Never work directly on `main`.** Always create a git worktree for feature work:
 
 ```bash
-git worktree add ../freed-<slug> -b <branch>
+./scripts/worktree-add.sh ../freed-<slug> -b <branch>
 # work in ../freed-<slug>/
 # remove when done: git worktree remove ../freed-<slug>
 ```
+
+`worktree-add.sh` is a drop-in replacement for `git worktree add` -- same args, same behavior, plus it runs `npm ci --prefer-offline` automatically so the new worktree has isolated `node_modules` and is ready to run immediately (~74s with a warm cache). Never use bare `git worktree add` directly.
 
 **Branch naming:** `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/` prefix followed by a short kebab-case description.
 

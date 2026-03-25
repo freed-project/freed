@@ -207,6 +207,60 @@ const INSTAGRAM_POSTS: string[] = [
   "New desk plant. It will outlive this codebase.",
 ];
 
+// ── Story pools ──────────────────────────────────────────────────────────────
+
+const IG_STORY_AUTHORS = [
+  { id: "sample-ig-sa-1", handle: "@maya.films", displayName: "Maya Films" },
+  { id: "sample-ig-sa-2", handle: "@lunchbreak.eats", displayName: "Lunchbreak Eats" },
+  { id: "sample-ig-sa-3", handle: "@the.alpine.life", displayName: "The Alpine Life" },
+  { id: "sample-ig-sa-4", handle: "@neon.workshop", displayName: "Neon Workshop" },
+  { id: "sample-ig-sa-5", handle: "@skyline.daily", displayName: "Skyline Daily" },
+  { id: "sample-ig-sa-6", handle: "@quiet.kitchen", displayName: "Quiet Kitchen" },
+  { id: "sample-ig-sa-7", handle: "@trailhead.co", displayName: "Trailhead Co" },
+  { id: "sample-ig-sa-8", handle: "@desksetup.wtf", displayName: "Desk Setup WTF" },
+];
+
+const FB_STORY_AUTHORS = [
+  { id: "sample-fb-sa-1", handle: "City Cycling Co.", displayName: "City Cycling Co." },
+  { id: "sample-fb-sa-2", handle: "Weekend Escapes", displayName: "Weekend Escapes" },
+  { id: "sample-fb-sa-3", handle: "Foodie Finds", displayName: "Foodie Finds" },
+  { id: "sample-fb-sa-4", handle: "Maker Collective", displayName: "Maker Collective" },
+  { id: "sample-fb-sa-5", handle: "Morning Commute", displayName: "Morning Commute" },
+  { id: "sample-fb-sa-6", handle: "Backyard Builds", displayName: "Backyard Builds" },
+  { id: "sample-fb-sa-7", handle: "The Late Shift", displayName: "The Late Shift" },
+];
+
+// Short captions for stories — most are null (photo-only), a few have text.
+const IG_STORY_CAPTIONS: (string | null)[] = [
+  null,
+  "golden hour 🌅",
+  null,
+  "today's vibe",
+  null,
+  null,
+  "3am energy",
+  null,
+];
+
+const FB_STORY_CAPTIONS: (string | null)[] = [
+  null,
+  "good morning 👋",
+  null,
+  null,
+  "finally out here",
+  null,
+  null,
+];
+
+// Optional location stickers — index matches the story index, null = no location.
+const IG_STORY_LOCATIONS: (string | null)[] = [
+  null, null, "Yosemite National Park", null, "Tokyo, Japan", null, null, "Brooklyn, NY",
+];
+
+const FB_STORY_LOCATIONS: (string | null)[] = [
+  "Portland, OR", null, null, null, "Joshua Tree", null, null,
+];
+
 // ── Deterministic pseudo-random ─────────────────────────────────────────────
 
 /** Simple seeded PRNG (mulberry32) for reproducible distributions. */
@@ -242,8 +296,12 @@ export function generateSampleFeeds(): RssFeed[] {
 }
 
 /**
- * Generate 130 sample feed items: 80 RSS articles (8 per feed) +
- * 20 saved bookmarks + 10 X posts + 10 Facebook posts + 10 Instagram posts.
+ * Generate 145 sample feed items: 80 RSS articles (8 per feed) +
+ * 20 saved bookmarks + 10 X posts + 10 Facebook posts + 10 Instagram posts +
+ * 8 Instagram stories + 7 Facebook stories.
+ *
+ * Stories use contentType:"story", portrait picsum images, and are spread
+ * across the last 22 hours (reflecting the ephemeral nature of real stories).
  * Items are spread across the last 14 days with varied user states (read,
  * saved, archived) to exercise all UI views. All IDs are deterministic so
  * repeated calls are idempotent against the Automerge duplicate guard.
@@ -263,6 +321,10 @@ export function generateSampleItems(): FeedItem[] {
       const age = (idx / 80) * 14 * DAY + rand() * DAY;
       const publishedAt = Math.round(now - age);
       const r = rand();
+      const isSaved = r > 0.85;
+      // Saved items can never be archived -- the ranges don't overlap here
+      // anyway (>0.85 vs <0.1), but guard explicitly to enforce the invariant.
+      const isArchived = !isSaved && r < 0.1;
 
       items.push({
         globalId: `sample-rss:${feed.slug}:${ai}`,
@@ -287,10 +349,10 @@ export function generateSampleItems(): FeedItem[] {
         },
         userState: {
           hidden: false,
-          saved: r > 0.85,
-          savedAt: r > 0.85 ? publishedAt + 120_000 : undefined,
-          archived: r < 0.1,
-          archivedAt: r < 0.1 ? publishedAt + 300_000 : undefined,
+          saved: isSaved,
+          savedAt: isSaved ? publishedAt + 120_000 : undefined,
+          archived: isArchived,
+          archivedAt: isArchived ? publishedAt + 300_000 : undefined,
           readAt: r < 0.3 ? publishedAt + 90_000 : undefined,
           tags: [],
         },
@@ -299,7 +361,7 @@ export function generateSampleItems(): FeedItem[] {
     }
   }
 
-  // 20 saved bookmarks
+  // 20 saved bookmarks -- always saved, never archived (saved wins).
   for (let si = 0; si < 20; si++) {
     const age = (si / 20) * 14 * DAY + rand() * DAY;
     const publishedAt = Math.round(now - age);
@@ -337,8 +399,8 @@ export function generateSampleItems(): FeedItem[] {
         hidden: false,
         saved: true,
         savedAt: publishedAt + 30_000,
-        archived: r < 0.15,
-        archivedAt: r < 0.15 ? publishedAt + 600_000 : undefined,
+        archived: false,
+        archivedAt: undefined,
         readAt: r < 0.4 ? publishedAt + 120_000 : undefined,
         tags: [],
       },
@@ -352,6 +414,8 @@ export function generateSampleItems(): FeedItem[] {
     const publishedAt = Math.round(now - age);
     const r = rand();
     const author = X_AUTHORS[xi % X_AUTHORS.length];
+    const isSaved = r > 0.85;
+    const isArchived = !isSaved && r < 0.1;
 
     items.push({
       globalId: `sample-x:${xi}`,
@@ -372,10 +436,10 @@ export function generateSampleItems(): FeedItem[] {
       },
       userState: {
         hidden: false,
-        saved: r > 0.85,
-        savedAt: r > 0.85 ? publishedAt + 10_000 : undefined,
-        archived: r < 0.1,
-        archivedAt: r < 0.1 ? publishedAt + 60_000 : undefined,
+        saved: isSaved,
+        savedAt: isSaved ? publishedAt + 10_000 : undefined,
+        archived: isArchived,
+        archivedAt: isArchived ? publishedAt + 60_000 : undefined,
         readAt: r < 0.5 ? publishedAt + 8_000 : undefined,
         tags: [],
       },
@@ -389,6 +453,8 @@ export function generateSampleItems(): FeedItem[] {
     const publishedAt = Math.round(now - age);
     const r = rand();
     const author = FACEBOOK_AUTHORS[fi % FACEBOOK_AUTHORS.length];
+    const isSaved = r > 0.85;
+    const isArchived = !isSaved && r < 0.1;
 
     items.push({
       globalId: `sample-facebook:${fi}`,
@@ -408,10 +474,10 @@ export function generateSampleItems(): FeedItem[] {
       },
       userState: {
         hidden: false,
-        saved: r > 0.85,
-        savedAt: r > 0.85 ? publishedAt + 10_000 : undefined,
-        archived: r < 0.1,
-        archivedAt: r < 0.1 ? publishedAt + 60_000 : undefined,
+        saved: isSaved,
+        savedAt: isSaved ? publishedAt + 10_000 : undefined,
+        archived: isArchived,
+        archivedAt: isArchived ? publishedAt + 60_000 : undefined,
         readAt: r < 0.5 ? publishedAt + 8_000 : undefined,
         tags: [],
       },
@@ -425,6 +491,8 @@ export function generateSampleItems(): FeedItem[] {
     const age = (ii / 10) * 7 * DAY + rand() * DAY;
     const publishedAt = Math.round(now - age);
     const r = rand();
+    const isSaved = r > 0.85;
+    const isArchived = !isSaved && r < 0.1;
 
     items.push({
       globalId: `sample-instagram:${ii}`,
@@ -444,14 +512,78 @@ export function generateSampleItems(): FeedItem[] {
       },
       userState: {
         hidden: false,
-        saved: r > 0.85,
-        savedAt: r > 0.85 ? publishedAt + 10_000 : undefined,
-        archived: r < 0.1,
-        archivedAt: r < 0.1 ? publishedAt + 60_000 : undefined,
+        saved: isSaved,
+        savedAt: isSaved ? publishedAt + 10_000 : undefined,
+        archived: isArchived,
+        archivedAt: isArchived ? publishedAt + 60_000 : undefined,
         readAt: r < 0.5 ? publishedAt + 8_000 : undefined,
         tags: [],
       },
       topics: pickTopics(rand, 120 + ii),
+    });
+  }
+
+  // 8 Instagram stories — ephemeral, spread over the last 22 hours.
+  // Portrait images use picsum.photos with deterministic seed strings.
+  const HOUR = 3_600_000;
+  for (let si = 0; si < 8; si++) {
+    const age = (si / 8) * 22 * HOUR + rand() * HOUR;
+    const publishedAt = Math.round(now - age);
+    const author = IG_STORY_AUTHORS[si % IG_STORY_AUTHORS.length];
+    const caption = IG_STORY_CAPTIONS[si] ?? undefined;
+    const locationName = IG_STORY_LOCATIONS[si] ?? undefined;
+
+    items.push({
+      globalId: `sample-ig-story:${si}`,
+      platform: "instagram",
+      contentType: "story",
+      capturedAt: publishedAt + 2_000,
+      publishedAt,
+      author,
+      content: {
+        text: caption,
+        mediaUrls: [`https://picsum.photos/seed/ig-story-${si}/600/900`],
+        mediaTypes: ["image"],
+      },
+      ...(locationName ? { location: { name: locationName, source: "sticker" } } : {}),
+      userState: {
+        hidden: false,
+        saved: false,
+        archived: false,
+        tags: [],
+      },
+      topics: pickTopics(rand, 130 + si),
+    });
+  }
+
+  // 7 Facebook stories — same ephemeral window.
+  for (let si = 0; si < 7; si++) {
+    const age = (si / 7) * 22 * HOUR + rand() * HOUR;
+    const publishedAt = Math.round(now - age);
+    const author = FB_STORY_AUTHORS[si % FB_STORY_AUTHORS.length];
+    const caption = FB_STORY_CAPTIONS[si] ?? undefined;
+    const locationName = FB_STORY_LOCATIONS[si] ?? undefined;
+
+    items.push({
+      globalId: `sample-fb-story:${si}`,
+      platform: "facebook",
+      contentType: "story",
+      capturedAt: publishedAt + 2_000,
+      publishedAt,
+      author,
+      content: {
+        text: caption,
+        mediaUrls: [`https://picsum.photos/seed/fb-story-${si}/600/900`],
+        mediaTypes: ["image"],
+      },
+      ...(locationName ? { location: { name: locationName, source: "check_in" } } : {}),
+      userState: {
+        hidden: false,
+        saved: false,
+        archived: false,
+        tags: [],
+      },
+      topics: pickTopics(rand, 138 + si),
     });
   }
 

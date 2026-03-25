@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useCallback, useRef, useState, Profiler, type ProfilerOnRenderCallback } from "react";
 import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
-import { PlatformProvider, type PlatformConfig } from "@freed/ui/context";
+import { PlatformProvider, type PlatformConfig, type UpdateDownloadProgress } from "@freed/ui/context";
 import { UpdateNotification, type UpdateState } from "./components/UpdateNotification";
 import { CloudSyncNudge } from "./components/CloudSyncNudge";
 import { useAppStore } from "./lib/store";
@@ -20,6 +20,9 @@ import {
   deleteCloudFile,
 } from "./lib/sync";
 import { clearLocalDoc } from "./lib/automerge";
+import { listen } from "@tauri-apps/api/event";
+import { log } from "./lib/logger";
+import { setLogTransport } from "@freed/ui/lib/debug-store";
 import { clearStoredCookies, storeCookies } from "./lib/x-auth";
 import { disconnectIg, storeIgAuthState } from "./lib/instagram-auth";
 import { disconnectFb, storeFbAuthState } from "./lib/fb-auth";
@@ -44,6 +47,10 @@ import { generateSampleFeeds, generateSampleItems } from "@freed/shared";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
+
+// Register the file-based log transport so addDebugEvent calls from ui/ are
+// also persisted to ~/Library/Logs/freed/freed.log via tauri-plugin-log.
+setLogTransport((level, msg) => log[level](msg));
 
 // ---------------------------------------------------------------------------
 // React Profiler — activated only under Playwright (VITE_TEST_TAURI=1)
@@ -84,6 +91,24 @@ function App() {
       stopContentFetcher();
     };
   }, [isInitialized]);
+
+  // Log OS sleep/wake transitions so the log file shows where overnight
+  // freezes begin. These events are emitted by Tauri on macOS suspend/resume.
+  useEffect(() => {
+    log.info("[app] desktop app started");
+
+    const cleanups: Array<() => void> = [];
+
+    listen("tauri://suspend", () => {
+      log.info("[app] system suspend (sleep)");
+    }).then((unlisten) => cleanups.push(unlisten));
+
+    listen("tauri://resume", () => {
+      log.info("[app] system resume (wake)");
+    }).then((unlisten) => cleanups.push(unlisten));
+
+    return () => cleanups.forEach((fn) => fn());
+  }, []);
 
   // --- Update system ---
 
@@ -223,19 +248,18 @@ function App() {
   // In dev mode, auto-seed sample data on first page load of each browser
   // session. sessionStorage guard prevents re-seeding on hot-reload while
   // still running fresh on every full browser open (e.g. new worktree test).
+  // Skip entirely under VITE_TEST_TAURI: E2E tests manage their own data
+  // setup, and the burst of addFeed/addItems state updates causes re-renders
+  // that detach DOM elements while Playwright is filling form fields.
   useEffect(() => {
-    if (!isInitialized || !import.meta.env.DEV) return;
+    if (!isInitialized || !import.meta.env.DEV || import.meta.env.VITE_TEST_TAURI === "1") return;
     if (sessionStorage.getItem("freed_dev_seeded")) return;
     sessionStorage.setItem("freed_dev_seeded", "1");
 
     const { addFeed, addItems } = useAppStore.getState();
     generateSampleFeeds().forEach((f) => addFeed(f));
     addItems(generateSampleItems());
-    // Skip social auth seeding in the Tauri mock E2E environment -- tests
-    // that verify the disconnected/connected states set auth explicitly.
-    if (!import.meta.env.VITE_TEST_TAURI) {
-      seedSocialConnections();
-    }
+    seedSocialConnections();
   }, [isInitialized, seedSocialConnections]);
 
   const platform: PlatformConfig = useMemo(
@@ -283,8 +307,13 @@ function App() {
       },
       openUrl: (url: string) => { void shellOpen(url); },
       pickContact: pickContactViaTauri,
+      updateDownloadProgress: ((): UpdateDownloadProgress | null => {
+        if (updateState.phase === "downloading") return { phase: "downloading", percent: updateState.percent };
+        if (updateState.phase === "error") return { phase: "error", message: updateState.message };
+        return null;
+      })(),
     }),
-    [checkForUpdates, applyUpdate, handleFactoryReset, seedSocialConnections],
+    [checkForUpdates, applyUpdate, handleFactoryReset, seedSocialConnections, updateState],
   );
 
   if (error && !isInitialized) {
@@ -324,7 +353,7 @@ function App() {
       {/* Post-restart confirmation — shown for 5s after a successful update relaunch */}
       {justUpdated && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 animate-slide-up pointer-events-none">
-          <div className="glass-card px-4 py-3 shadow-lg border border-[rgba(34,197,94,0.3)] flex items-center gap-2">
+          <div className="rounded-2xl bg-[var(--freed-surface)] px-4 py-3 shadow-lg border border-[rgba(34,197,94,0.3)] flex items-center gap-2">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
               <path d="M3 8l3.5 3.5L13 5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
