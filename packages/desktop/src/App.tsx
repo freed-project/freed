@@ -47,8 +47,8 @@ import { generateSampleFeeds, generateSampleItems } from "@freed/shared";
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
 
-// Register the file-based log transport so addDebugEvent calls from ui/ are
-// also persisted to ~/Library/Logs/freed/freed.log via tauri-plugin-log.
+// Register the desktop log transport so addDebugEvent calls from ui/ flow
+// through the native logger in both local preview and release builds.
 setLogTransport((level, msg) => log[level](msg));
 
 // ---------------------------------------------------------------------------

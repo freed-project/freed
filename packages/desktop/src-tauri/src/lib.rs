@@ -2085,17 +2085,26 @@ pub fn run() {
     });
 
     let relay_state_clone = relay_state.clone();
+    let log_plugin = {
+        let builder = tauri_plugin_log::Builder::new()
+            .level(log::LevelFilter::Info)
+            .max_file_size(10 * 1024 * 1024)
+            .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll);
+
+        #[cfg(debug_assertions)]
+        let builder = builder.clear_targets().targets([
+            tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+            tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
+        ]);
+
+        builder.build()
+    };
 
     tauri::Builder::default()
-        // Structured file-based logging. Rotates at 10 MB, keeps the last 5 files.
-        // Log location: ~/Library/Logs/freed/freed.log (macOS).
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .level(log::LevelFilter::Info)
-                .max_file_size(10 * 1024 * 1024)
-                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
-                .build(),
-        )
+        // Debug builds log to stdout and the webview so local startup is not
+        // blocked by host filesystem permissions. Release builds keep
+        // structured rotating file logs in the OS log directory.
+        .plugin(log_plugin)
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
