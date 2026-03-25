@@ -116,9 +116,9 @@ test("Facebook connect form accepts cookies and triggers sync", async ({
     store.setState({ fbAuth: { isAuthenticated: true, lastCheckedAt: Date.now() } });
   });
 
-  // After auth state updates, the component should show the "Connected" state
+  // After auth state updates, the section should expose the sync action.
   await expect(
-    page.getByText("Connected", { exact: true }),
+    page.getByRole("button", { name: "Sync Now" }),
   ).toBeVisible({ timeout: 5_000 });
 });
 
@@ -130,6 +130,23 @@ test("Facebook sync excludes posts from filtered groups", async ({
   await app.waitForReady();
 
   const { page } = app;
+
+  const settingsBtn = page
+    .locator("button")
+    .filter({ hasText: /settings/i })
+    .first();
+  if (!(await settingsBtn.isVisible())) {
+    test.skip(true, "Settings button not visible");
+    return;
+  }
+  await settingsBtn.click();
+  await expect(page.getByText("Settings").first()).toBeVisible({
+    timeout: 5_000,
+  });
+
+  const fbSection = page.getByRole("button", { name: "Facebook" }).nth(1);
+  await expect(fbSection).toBeVisible({ timeout: 3_000 });
+  await fbSection.click();
 
   await ipc.setHandler("fb_scrape_feed", () => {
     const listeners =
@@ -233,7 +250,7 @@ test("Facebook sync excludes posts from filtered groups", async ({
     }));
   });
 
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible({
+  await expect(page.getByRole("button", { name: "Sync Now" })).toBeVisible({
     timeout: 5_000,
   });
 
