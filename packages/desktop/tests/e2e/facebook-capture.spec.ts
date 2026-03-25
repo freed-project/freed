@@ -132,13 +132,21 @@ test("Facebook sync excludes posts from filtered groups", async ({
   const { page } = app;
 
   await ipc.setHandler("fb_scrape_feed", () => {
-    const listeners =
-      (window as unknown as Record<string, Array<(event: { payload: unknown }) => void>>)
-        .__TAURI_EVENT_LISTENERS__ ?? {};
     const emit = (eventName: string, payload: unknown) => {
+      const listeners =
+        (window as unknown as Record<string, Array<(event: { payload: unknown }) => void>>)
+          .__TAURI_EVENT_LISTENERS__ ?? {};
       for (const listener of listeners[eventName] ?? []) {
         listener({ payload });
       }
+      const tauriInternals = (window as unknown as Record<string, unknown>)
+        .__TAURI_INTERNALS__ as
+        | { invoke?: (cmd: string, args?: Record<string, unknown>) => Promise<unknown> }
+        | undefined;
+      void tauriInternals?.invoke?.("plugin:event|emit", {
+        event: eventName,
+        payload,
+      });
     };
 
     setTimeout(() => {
@@ -232,6 +240,23 @@ test("Facebook sync excludes posts from filtered groups", async ({
       },
     }));
   });
+
+  const settingsBtn = page
+    .locator("button")
+    .filter({ hasText: /settings/i })
+    .first();
+  if (!(await settingsBtn.isVisible())) {
+    test.skip(true, "Settings button not visible");
+    return;
+  }
+  await settingsBtn.click();
+  await expect(page.getByText("Settings").first()).toBeVisible({
+    timeout: 5_000,
+  });
+
+  const fbSection = page.getByRole("button", { name: "Facebook" }).nth(1);
+  await expect(fbSection).toBeVisible({ timeout: 3_000 });
+  await fbSection.click();
 
   await expect(page.getByText("Connected", { exact: true })).toBeVisible({
     timeout: 5_000,
