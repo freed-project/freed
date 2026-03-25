@@ -251,13 +251,13 @@ packages/desktop/
 - [x] QR code pairing works (token-authenticated; local SVG render, no third-party QR API)
 - [x] System tray shows sync status
 - [x] App runs in background after window close
-- [x] Auto-updater checks GitHub Releases and installs updates in-app
+- [x] Auto-updater checks a public release manifest and installs updates in-app
 - [x] CI/CD release pipeline builds for macOS (ARM + Intel), Windows, Linux on tag push
 - [x] App icons generated for all platforms
 - [x] macOS DMG builds (notarization deferred)
 - [x] Windows NSIS + MSI installers build
 - [x] Linux AppImage, .deb, .rpm all build
-- [x] All updater artifacts signed and uploaded to GitHub Releases
+- [x] All updater artifacts signed and mirrored to a public artifact host
 - [x] Desktop E2E test infrastructure bootstrapped (Playwright + VITE_TEST_TAURI=1 mock layer)
 - [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
 - [ ] macOS DMG is notarized (requires APPLE_CERTIFICATE secret)
@@ -274,17 +274,12 @@ packages/desktop/
 > obtained or enough installs build reputation. See `RELEASE-SECRETS.md`
 > for the full setup checklist.
 
-> **Planned — Independent Update Server (Task 5.26):**
-> The auto-updater currently points at GitHub Releases. If the repo is
-> taken down, transferred, or GitHub has a prolonged outage, every
-> installed copy of Freed loses the ability to update. To ensure project
-> continuity, we need a Freed-owned domain (e.g. `updates.freed.wtf`)
-> serving the Tauri update manifest and release artifacts. The CI/CD
-> pipeline would upload binaries to this endpoint in addition to (or
-> instead of) GitHub Releases, and `tauri.conf.json` would point the
-> updater at the Freed-controlled URL. A static file host behind
-> Cloudflare or a simple S3 bucket is sufficient; no custom server logic
-> required.
+> **Current — R2-Backed Update Host:**
+> The release workflow now rewrites `latest.json` and uploads signed
+> updater artifacts to a public Cloudflare R2 bucket behind
+> `updates.freed.wtf`. This keeps the source repo private while anonymous
+> clients still fetch updates. DNS, bucket policy, and secrets must exist
+> in production for Task 5.26 to be fully live.
 
 ### Mobile
 
