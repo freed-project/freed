@@ -9,7 +9,10 @@
  * colliding with real subscriptions and to prevent actual fetch attempts.
  */
 
-import type { FeedItem, RssFeed } from "./types.js";
+import type { FeedItem, Friend, RssFeed } from "./types.js";
+
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
 
 // ── Feed definitions ────────────────────────────────────────────────────────
 
@@ -173,6 +176,8 @@ const X_AUTHORS = [
   { id: "sample-x-1", handle: "@devposts", displayName: "Dev Posts" },
   { id: "sample-x-2", handle: "@nullpointer", displayName: "Null Pointer" },
   { id: "sample-x-3", handle: "@bytewatcher", displayName: "Byte Watcher" },
+  { id: "sample-x-4", handle: "@tessellated", displayName: "Tess Ellated" },
+  { id: "sample-x-5", handle: "@orbitmanual", displayName: "Orbit Manual" },
 ];
 
 const FACEBOOK_POSTS: string[] = [
@@ -192,6 +197,8 @@ const FACEBOOK_AUTHORS = [
   { id: "sample-fb-1", handle: "Engineering Thoughts", displayName: "Engineering Thoughts" },
   { id: "sample-fb-2", handle: "The Dev Desk", displayName: "The Dev Desk" },
   { id: "sample-fb-3", handle: "Ship It Culture", displayName: "Ship It Culture" },
+  { id: "sample-fb-4", handle: "Night Shift Notes", displayName: "Night Shift Notes" },
+  { id: "sample-fb-5", handle: "Field Notes Lab", displayName: "Field Notes Lab" },
 ];
 
 const INSTAGRAM_POSTS: string[] = [
@@ -205,6 +212,35 @@ const INSTAGRAM_POSTS: string[] = [
   "Documenting is an act of kindness for your future self.",
   "Pair programming session: we argued for 40 minutes and then agreed I was right.",
   "New desk plant. It will outlive this codebase.",
+];
+
+const INSTAGRAM_AUTHORS = [
+  { id: "sample-ig-1", handle: "@freed.desk", displayName: "Freed Desk" },
+  { id: "sample-ig-2", handle: "@circuit.garden", displayName: "Circuit Garden" },
+  { id: "sample-ig-3", handle: "@midnight.sprint", displayName: "Midnight Sprint" },
+  { id: "sample-ig-4", handle: "@between.trains", displayName: "Between Trains" },
+  { id: "sample-ig-5", handle: "@analog.workspace", displayName: "Analog Workspace" },
+];
+
+const LINKEDIN_POSTS: string[] = [
+  "Wrapped a customer research sprint with three clear product bets. The boring answer was the right answer.",
+  "A calm ops week is still a win. Stability is a feature, not an absence of ambition.",
+  "Hiring note: the best collaborators leave documents better than they found them.",
+  "Spent today turning a heroic workaround into a repeatable process. Much less cinematic, much more useful.",
+  "Presented the roadmap without twenty backup slides. Miraculously, everyone survived.",
+  "Quietly proud of the release notes this week. Clear writing saves real support time.",
+  "Visited a client team on-site and learned more in one hallway conversation than in six dashboards.",
+  "Product lesson of the month: if users export it every week, they probably want it on the main screen.",
+  "Closed the loop on a pilot program today. Small, steady adoption beats loud vanity metrics.",
+  "Teams move faster when status updates sound like people talking to each other instead of investor karaoke.",
+];
+
+const LINKEDIN_AUTHORS = [
+  { id: "sample-li-1", handle: "ada-lovelace-lab", displayName: "Ada Lovelace Lab" },
+  { id: "sample-li-2", handle: "field-ops-journal", displayName: "Field Ops Journal" },
+  { id: "sample-li-3", handle: "systems-and-sunlight", displayName: "Systems and Sunlight" },
+  { id: "sample-li-4", handle: "quiet-launches", displayName: "Quiet Launches" },
+  { id: "sample-li-5", handle: "network-state-notes", displayName: "Network State Notes" },
 ];
 
 // ── Story pools ──────────────────────────────────────────────────────────────
@@ -261,6 +297,64 @@ const FB_STORY_LOCATIONS: (string | null)[] = [
   "Portland, OR", null, null, null, "Joshua Tree", null, null,
 ];
 
+interface SampleFriendDef {
+  id: string;
+  name: string;
+  careLevel: Friend["careLevel"];
+  bio: string;
+  avatarUrl: string;
+  notes?: string;
+  sources: Friend["sources"];
+}
+
+export interface SampleDataOptions {
+  batchId?: string;
+  seed?: number;
+}
+
+const SAMPLE_FRIEND_PERSONAS: Array<{
+  slug: string;
+  name: string;
+  careLevel: Friend["careLevel"];
+  bio: string;
+  notes?: string;
+}> = [
+  { slug: "ada", name: "Ada Lovelace", careLevel: 5, bio: "Builds humane developer tools and posts from cafes with suspiciously good natural light.", notes: "Met through the local-first software crowd." },
+  { slug: "maya", name: "Maya Chen", careLevel: 4, bio: "Shoots film, hikes often, and treats location stickers like a sacred art form." },
+  { slug: "jules", name: "Jules Rivera", careLevel: 3, bio: "Runs a hardware lab, lives in airports, and still answers texts faster than email." },
+  { slug: "nina", name: "Nina Patel", careLevel: 4, bio: "Designer with a brutal eye for spacing and a soft spot for weird museums." },
+  { slug: "omar", name: "Omar Hassan", careLevel: 5, bio: "Travels with one backpack, three chargers, and too many field notes." },
+  { slug: "lena", name: "Lena Brooks", careLevel: 3, bio: "Makes espresso, prototypes interfaces, and disappears into bookstores." },
+  { slug: "marco", name: "Marco Silva", careLevel: 2, bio: "Half data viz nerd, half mountain weather goblin." },
+  { slug: "ivy", name: "Ivy Nguyen", careLevel: 4, bio: "Keeps a flawless train itinerary and posts exactly when the light is good." },
+  { slug: "sofia", name: "Sofia Alvarez", careLevel: 3, bio: "City walker, recipe hoarder, and defender of messy sketchbooks." },
+  { slug: "devon", name: "Devon Reed", careLevel: 2, bio: "Writes release notes like tiny poems and always has a charging cable." },
+  { slug: "ezra", name: "Ezra Kim", careLevel: 4, bio: "Hardware photographer with a suspicious number of Pelican cases." },
+  { slug: "rhea", name: "Rhea Banerjee", careLevel: 5, bio: "Builds community events and knows where to find the quiet table." },
+  { slug: "felix", name: "Felix Turner", careLevel: 3, bio: "Posts from bike lanes, coffee counters, and late-night train platforms." },
+  { slug: "talia", name: "Talia Morgan", careLevel: 4, bio: "Creative producer with a calendar full of impossible logistics." },
+  { slug: "kai", name: "Kai Okafor", careLevel: 3, bio: "Maps every trip, annotates everything, forgets nothing." },
+  { slug: "mira", name: "Mira Kostov", careLevel: 2, bio: "Architectural photographer who can find composition in a parking garage." },
+  { slug: "leo", name: "Leo Park", careLevel: 4, bio: "Moves between prototyping sessions and ramen shops at irresponsible speed." },
+  { slug: "piper", name: "Piper Shah", careLevel: 2, bio: "Collects studio playlists, analog cameras, and overcomplicated packing systems." },
+  { slug: "arden", name: "Arden Flores", careLevel: 3, bio: "Curates tiny adventures and writes long captions about weather." },
+  { slug: "bianca", name: "Bianca Rossi", careLevel: 5, bio: "Can turn a rough venue, a bad projector, and no sleep into a flawless event." },
+  { slug: "samir", name: "Samir Dutta", careLevel: 3, bio: "Field researcher with a camera roll full of signage and clouds." },
+  { slug: "hazel", name: "Hazel Cooper", careLevel: 4, bio: "Knows every corner bakery and somehow also every hidden coworking loft." },
+  { slug: "terry", name: "Terry Lin", careLevel: 2, bio: "Logistics brain, soft voice, excellent maps." },
+  { slug: "cleo", name: "Cleo March", careLevel: 3, bio: "Lives between demo days, ferry terminals, and improbably good sandwiches." },
+  { slug: "wes", name: "Wes Calder", careLevel: 4, bio: "Builds outdoor rigs, runs late, posts great photos anyway." },
+];
+
+const SAMPLE_SOCIAL_SOURCE_POOL: Friend["sources"] = [
+  ...INSTAGRAM_AUTHORS.map((author) => ({ platform: "instagram" as const, authorId: author.id, handle: author.handle, displayName: author.displayName })),
+  ...X_AUTHORS.map((author) => ({ platform: "x" as const, authorId: author.id, handle: author.handle, displayName: author.displayName })),
+  ...FACEBOOK_AUTHORS.map((author) => ({ platform: "facebook" as const, authorId: author.id, handle: author.handle, displayName: author.displayName })),
+  ...LINKEDIN_AUTHORS.map((author) => ({ platform: "linkedin" as const, authorId: author.id, handle: author.handle, displayName: author.displayName })),
+  ...IG_STORY_AUTHORS.map((author) => ({ platform: "instagram" as const, authorId: author.id, handle: author.handle, displayName: author.displayName })),
+  ...FB_STORY_AUTHORS.map((author) => ({ platform: "facebook" as const, authorId: author.id, handle: author.handle, displayName: author.displayName })),
+];
+
 // ── Deterministic pseudo-random ─────────────────────────────────────────────
 
 /** Simple seeded PRNG (mulberry32) for reproducible distributions. */
@@ -274,6 +368,73 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+function hashSeed(input: string): number {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = Math.imul(31, hash) + input.charCodeAt(i) | 0;
+  }
+  return hash;
+}
+
+function makeBatchId(): string {
+  return `batch-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function resolveSampleDataOptions(options?: SampleDataOptions): Required<SampleDataOptions> {
+  const batchId = options?.batchId ?? makeBatchId();
+  return {
+    batchId,
+    seed: options?.seed ?? hashSeed(batchId),
+  };
+}
+
+function rotateArray<T>(values: T[], offset: number): T[] {
+  if (values.length === 0) return [];
+  const normalizedOffset = ((offset % values.length) + values.length) % values.length;
+  return values.slice(normalizedOffset).concat(values.slice(0, normalizedOffset));
+}
+
+function namespaceId(batchId: string, value: string): string {
+  return `${batchId}:${value}`;
+}
+
+function buildSampleFriendDefs(options?: SampleDataOptions): SampleFriendDef[] {
+  const { batchId, seed } = resolveSampleDataOptions(options);
+  const socialSourcePool = rotateArray(
+    SAMPLE_SOCIAL_SOURCE_POOL,
+    seed % SAMPLE_SOCIAL_SOURCE_POOL.length
+  ).map((source) => ({
+    ...source,
+    authorId: namespaceId(batchId, source.authorId),
+  }));
+
+  return rotateArray(
+    SAMPLE_FRIEND_PERSONAS,
+    seed % SAMPLE_FRIEND_PERSONAS.length
+  ).map((persona, index) => {
+    const avatarUrl = `https://picsum.photos/seed/friend-${batchId}-${persona.slug}/128/128`;
+    const primarySource = socialSourcePool[index];
+    const secondarySource = index < 10
+      ? socialSourcePool[SAMPLE_FRIEND_PERSONAS.length + index]
+      : null;
+
+    return {
+      id: namespaceId(batchId, `sample-friend-${persona.slug}`),
+      name: persona.name,
+      careLevel: persona.careLevel,
+      bio: persona.bio,
+      avatarUrl,
+      ...(persona.notes ? { notes: persona.notes } : {}),
+      sources: [primarySource, secondarySource]
+        .filter((source): source is NonNullable<typeof source> => source !== null)
+        .map((source) => ({
+          ...source,
+          avatarUrl,
+        })),
+    };
+  });
+}
+
 // ── Generators ──────────────────────────────────────────────────────────────
 
 const SAMPLE_FEED_URL_PREFIX = "https://sample.freed.wtf/";
@@ -284,21 +445,61 @@ const SAMPLE_FEED_URL_PREFIX = "https://sample.freed.wtf/";
  * All URLs use the `sample.freed.wtf` prefix so they can never
  * collide with real feeds or trigger network fetches.
  */
-export function generateSampleFeeds(): RssFeed[] {
-  return FEED_DEFS.map((def) => ({
-    url: `${SAMPLE_FEED_URL_PREFIX}${def.slug}`,
-    title: `${def.title} (Sample)`,
+export function generateSampleFeeds(options?: SampleDataOptions): RssFeed[] {
+  const { batchId, seed } = resolveSampleDataOptions(options);
+  const batchLabel = batchId.slice(-4).toUpperCase();
+  return rotateArray(FEED_DEFS, seed % FEED_DEFS.length).map((def) => ({
+    url: `${SAMPLE_FEED_URL_PREFIX}${batchId}/${def.slug}`,
+    title: `${def.title} (Sample ${batchLabel})`,
     siteUrl: def.siteUrl,
     enabled: true,
     trackUnread: true,
-    folder: "Sample Feeds",
+    folder: `Sample Feeds ${batchLabel}`,
   }));
 }
 
+export function generateSampleFriends(options?: SampleDataOptions): Friend[] {
+  const { seed } = resolveSampleDataOptions(options);
+  const sampleFriendDefs = buildSampleFriendDefs(options);
+  const now = Date.now();
+  return sampleFriendDefs.map((friend, index) => ({
+    id: friend.id,
+    name: friend.name,
+    careLevel: friend.careLevel,
+    bio: friend.bio,
+    avatarUrl: friend.avatarUrl,
+    ...(friend.notes ? { notes: friend.notes } : {}),
+    tags: ["sample", "social"],
+    sources: friend.sources,
+    createdAt: now - (index + 1) * 7 * DAY - (seed % DAY),
+    updatedAt: now - index * DAY,
+    ...(index === 0
+      ? {
+          reachOutLog: [
+            { loggedAt: now - 2 * DAY, channel: "text", notes: "Swapped notes on map styling." },
+          ],
+        }
+      : {}),
+  }));
+}
+
+export function generateSampleLibraryData(options?: SampleDataOptions): {
+  feeds: RssFeed[];
+  items: FeedItem[];
+  friends: Friend[];
+} {
+  const resolvedOptions = resolveSampleDataOptions(options);
+  return {
+    feeds: generateSampleFeeds(resolvedOptions),
+    items: generateSampleItems(resolvedOptions),
+    friends: generateSampleFriends(resolvedOptions),
+  };
+}
+
 /**
- * Generate 145 sample feed items: 80 RSS articles (8 per feed) +
+ * Generate 155 sample feed items: 80 RSS articles (8 per feed) +
  * 20 saved bookmarks + 10 X posts + 10 Facebook posts + 10 Instagram posts +
- * 8 Instagram stories + 7 Facebook stories.
+ * 10 LinkedIn posts + 8 Instagram stories + 7 Facebook stories.
  *
  * Stories use contentType:"story", portrait picsum images, and are spread
  * across the last 22 hours (reflecting the ephemeral nature of real stories).
@@ -306,16 +507,76 @@ export function generateSampleFeeds(): RssFeed[] {
  * saved, archived) to exercise all UI views. All IDs are deterministic so
  * repeated calls are idempotent against the Automerge duplicate guard.
  */
-export function generateSampleItems(): FeedItem[] {
-  const rand = mulberry32(42);
+export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
+  const { batchId, seed } = resolveSampleDataOptions(options);
+  const rand = mulberry32(seed);
   const now = Date.now();
-  const DAY = 86_400_000;
   const items: FeedItem[] = [];
+  const feedDefs = rotateArray(FEED_DEFS, seed % FEED_DEFS.length);
+  const rssHeadlines = rotateArray(RSS_HEADLINES, seed % RSS_HEADLINES.length);
+  const savedHeadlines = rotateArray(SAVED_HEADLINES, seed % SAVED_HEADLINES.length);
+  const savedDomains = rotateArray(SAVED_DOMAINS, seed % SAVED_DOMAINS.length);
+  const xAuthors = rotateArray(X_AUTHORS, seed % X_AUTHORS.length).map((author) => ({
+    ...author,
+    id: namespaceId(batchId, author.id),
+  }));
+  const facebookAuthors = rotateArray(FACEBOOK_AUTHORS, seed % FACEBOOK_AUTHORS.length).map((author) => ({
+    ...author,
+    id: namespaceId(batchId, author.id),
+  }));
+  const instagramAuthors = rotateArray(INSTAGRAM_AUTHORS, seed % INSTAGRAM_AUTHORS.length).map((author) => ({
+    ...author,
+    id: namespaceId(batchId, author.id),
+  }));
+  const linkedInAuthors = rotateArray(LINKEDIN_AUTHORS, seed % LINKEDIN_AUTHORS.length).map((author) => ({
+    ...author,
+    id: namespaceId(batchId, author.id),
+  }));
+  const igStoryAuthors = rotateArray(IG_STORY_AUTHORS, seed % IG_STORY_AUTHORS.length).map((author) => ({
+    ...author,
+    id: namespaceId(batchId, author.id),
+  }));
+  const fbStoryAuthors = rotateArray(FB_STORY_AUTHORS, seed % FB_STORY_AUTHORS.length).map((author) => ({
+    ...author,
+    id: namespaceId(batchId, author.id),
+  }));
+  const xLocations = rotateArray(
+    ["Lisbon, Portugal", "Seoul, South Korea", "Reykjavik, Iceland", "Osaka, Japan", "Valencia, Spain"],
+    seed % 5
+  );
+  const facebookLocations = rotateArray(
+    ["Austin, TX", "Berlin, Germany", "Mexico City", "Portland, OR", "Copenhagen, Denmark"],
+    seed % 5
+  );
+  const instagramLocations = rotateArray(
+    [
+      { name: "Paris", coordinates: { lat: 48.8566, lng: 2.3522 } },
+      { name: "Kyoto, Japan", coordinates: { lat: 35.0116, lng: 135.7681 } },
+      { name: "Brooklyn, NY", coordinates: { lat: 40.6782, lng: -73.9442 } },
+      { name: "Milan, Italy", coordinates: { lat: 45.4642, lng: 9.19 } },
+      { name: "Taipei, Taiwan", coordinates: { lat: 25.033, lng: 121.5654 } },
+    ],
+    seed % 5
+  );
+  const linkedInLocations = rotateArray(
+    [
+      "London, UK",
+      "Singapore",
+      "New York, NY",
+      "Toronto, Canada",
+      "Amsterdam, Netherlands",
+    ],
+    seed % 5
+  );
+  const igStoryLocations = rotateArray(IG_STORY_LOCATIONS, seed % IG_STORY_LOCATIONS.length);
+  const fbStoryLocations = rotateArray(FB_STORY_LOCATIONS, seed % FB_STORY_LOCATIONS.length);
+  const igStoryCaptions = rotateArray(IG_STORY_CAPTIONS, seed % IG_STORY_CAPTIONS.length);
+  const fbStoryCaptions = rotateArray(FB_STORY_CAPTIONS, seed % FB_STORY_CAPTIONS.length);
 
   // 80 RSS articles: 8 per feed
-  for (let fi = 0; fi < FEED_DEFS.length; fi++) {
-    const feed = FEED_DEFS[fi];
-    const feedUrl = `${SAMPLE_FEED_URL_PREFIX}${feed.slug}`;
+  for (let fi = 0; fi < feedDefs.length; fi++) {
+    const feed = feedDefs[fi];
+    const feedUrl = `${SAMPLE_FEED_URL_PREFIX}${batchId}/${feed.slug}`;
     for (let ai = 0; ai < 8; ai++) {
       const idx = fi * 8 + ai;
       const age = (idx / 80) * 14 * DAY + rand() * DAY;
@@ -327,24 +588,24 @@ export function generateSampleItems(): FeedItem[] {
       const isArchived = !isSaved && r < 0.1;
 
       items.push({
-        globalId: `sample-rss:${feed.slug}:${ai}`,
+        globalId: namespaceId(batchId, `sample-rss:${feed.slug}:${ai}`),
         platform: "rss",
         contentType: "article",
         capturedAt: publishedAt + 60_000,
         publishedAt,
         author: {
-          id: `sample-${feed.slug}`,
+          id: namespaceId(batchId, `sample-${feed.slug}`),
           handle: feed.slug,
           displayName: feed.title,
         },
         content: {
-          text: RSS_HEADLINES[idx % RSS_HEADLINES.length],
+          text: rssHeadlines[idx % rssHeadlines.length],
           mediaUrls: [],
           mediaTypes: [],
         },
         rssSource: {
           feedUrl,
-          feedTitle: `${feed.title} (Sample)`,
+          feedTitle: `${feed.title} (Sample ${batchId.slice(-4).toUpperCase()})`,
           siteUrl: feed.siteUrl,
         },
         userState: {
@@ -365,32 +626,32 @@ export function generateSampleItems(): FeedItem[] {
   for (let si = 0; si < 20; si++) {
     const age = (si / 20) * 14 * DAY + rand() * DAY;
     const publishedAt = Math.round(now - age);
-    const domain = SAVED_DOMAINS[si % SAVED_DOMAINS.length];
+    const domain = savedDomains[si % savedDomains.length];
     const r = rand();
     const wordCount = 800 + Math.round(rand() * 3200);
 
     items.push({
-      globalId: `sample-saved:${si}`,
+      globalId: namespaceId(batchId, `sample-saved:${si}`),
       platform: "saved",
       contentType: "article",
       capturedAt: publishedAt + 30_000,
       publishedAt,
       author: {
-        id: `sample-saved-author-${si}`,
+        id: namespaceId(batchId, `sample-saved-author-${si}`),
         handle: domain,
         displayName: domain.split(".")[0],
       },
       content: {
-        text: SAVED_HEADLINES[si % SAVED_HEADLINES.length],
+        text: savedHeadlines[si % savedHeadlines.length],
         mediaUrls: [],
         mediaTypes: [],
         linkPreview: {
-          url: `https://${domain}/sample-article-${si}`,
-          title: SAVED_HEADLINES[si % SAVED_HEADLINES.length],
+          url: `https://${domain}/sample-article-${batchId}-${si}`,
+          title: savedHeadlines[si % savedHeadlines.length],
         },
       },
       preservedContent: {
-        text: SAVED_HEADLINES[si % SAVED_HEADLINES.length],
+        text: savedHeadlines[si % savedHeadlines.length],
         wordCount,
         readingTime: Math.ceil(wordCount / 250),
         preservedAt: publishedAt + 60_000,
@@ -413,12 +674,12 @@ export function generateSampleItems(): FeedItem[] {
     const age = (xi / 10) * 7 * DAY + rand() * DAY;
     const publishedAt = Math.round(now - age);
     const r = rand();
-    const author = X_AUTHORS[xi % X_AUTHORS.length];
+    const author = xAuthors[xi % xAuthors.length];
     const isSaved = r > 0.85;
     const isArchived = !isSaved && r < 0.1;
 
     items.push({
-      globalId: `sample-x:${xi}`,
+      globalId: namespaceId(batchId, `sample-x:${xi}`),
       platform: "x",
       contentType: "post",
       capturedAt: publishedAt + 5_000,
@@ -434,6 +695,14 @@ export function generateSampleItems(): FeedItem[] {
         reposts: Math.round(rand() * 400),
         comments: Math.round(rand() * 150),
       },
+      ...(xi % 2 === 0
+        ? {
+            location: {
+              name: xLocations[(xi / 2) % xLocations.length],
+              source: "text_extraction",
+            },
+          }
+        : {}),
       userState: {
         hidden: false,
         saved: isSaved,
@@ -452,12 +721,12 @@ export function generateSampleItems(): FeedItem[] {
     const age = (fi / 10) * 7 * DAY + rand() * DAY;
     const publishedAt = Math.round(now - age);
     const r = rand();
-    const author = FACEBOOK_AUTHORS[fi % FACEBOOK_AUTHORS.length];
+    const author = facebookAuthors[fi % facebookAuthors.length];
     const isSaved = r > 0.85;
     const isArchived = !isSaved && r < 0.1;
 
     items.push({
-      globalId: `sample-facebook:${fi}`,
+      globalId: namespaceId(batchId, `sample-facebook:${fi}`),
       platform: "facebook",
       contentType: "post",
       capturedAt: publishedAt + 5_000,
@@ -472,6 +741,14 @@ export function generateSampleItems(): FeedItem[] {
         likes: Math.round(rand() * 800),
         comments: Math.round(rand() * 60),
       },
+      ...(fi % 2 === 0
+        ? {
+            location: {
+              name: facebookLocations[(fi / 2) % facebookLocations.length],
+              source: "check_in",
+            },
+          }
+        : {}),
       userState: {
         hidden: false,
         saved: isSaved,
@@ -486,7 +763,6 @@ export function generateSampleItems(): FeedItem[] {
   }
 
   // 10 Instagram posts
-  const IG_AUTHOR = { id: "sample-ig-1", handle: "@freed.desk", displayName: "Freed Desk" };
   for (let ii = 0; ii < 10; ii++) {
     const age = (ii / 10) * 7 * DAY + rand() * DAY;
     const publishedAt = Math.round(now - age);
@@ -494,13 +770,14 @@ export function generateSampleItems(): FeedItem[] {
     const isSaved = r > 0.85;
     const isArchived = !isSaved && r < 0.1;
 
+    const author = instagramAuthors[ii % instagramAuthors.length];
     items.push({
-      globalId: `sample-instagram:${ii}`,
+      globalId: namespaceId(batchId, `sample-instagram:${ii}`),
       platform: "instagram",
       contentType: "post",
       capturedAt: publishedAt + 5_000,
       publishedAt,
-      author: IG_AUTHOR,
+      author,
       content: {
         text: INSTAGRAM_POSTS[ii % INSTAGRAM_POSTS.length],
         mediaUrls: [],
@@ -510,6 +787,15 @@ export function generateSampleItems(): FeedItem[] {
         likes: Math.round(rand() * 1500),
         comments: Math.round(rand() * 80),
       },
+      ...(ii % 2 === 0
+        ? {
+            location: {
+              name: instagramLocations[(ii / 2) % instagramLocations.length].name,
+              coordinates: instagramLocations[(ii / 2) % instagramLocations.length].coordinates,
+              source: "geo_tag",
+            },
+          }
+        : {}),
       userState: {
         hidden: false,
         saved: isSaved,
@@ -523,18 +809,63 @@ export function generateSampleItems(): FeedItem[] {
     });
   }
 
+  // 10 LinkedIn posts
+  for (let li = 0; li < 10; li++) {
+    const age = (li / 10) * 7 * DAY + rand() * DAY;
+    const publishedAt = Math.round(now - age);
+    const r = rand();
+    const isSaved = r > 0.88;
+    const isArchived = !isSaved && r < 0.08;
+    const author = linkedInAuthors[li % linkedInAuthors.length];
+
+    items.push({
+      globalId: namespaceId(batchId, `sample-linkedin:${li}`),
+      platform: "linkedin",
+      contentType: "post",
+      capturedAt: publishedAt + 5_000,
+      publishedAt,
+      author,
+      content: {
+        text: LINKEDIN_POSTS[li % LINKEDIN_POSTS.length],
+        mediaUrls: [],
+        mediaTypes: [],
+      },
+      engagement: {
+        likes: Math.round(rand() * 1_800),
+        comments: Math.round(rand() * 120),
+      },
+      ...(li % 2 === 0
+        ? {
+            location: {
+              name: linkedInLocations[(li / 2) % linkedInLocations.length],
+              source: "text_extraction",
+            },
+          }
+        : {}),
+      userState: {
+        hidden: false,
+        saved: isSaved,
+        savedAt: isSaved ? publishedAt + 10_000 : undefined,
+        archived: isArchived,
+        archivedAt: isArchived ? publishedAt + 60_000 : undefined,
+        readAt: r < 0.55 ? publishedAt + 8_000 : undefined,
+        tags: [],
+      },
+      topics: pickTopics(rand, 130 + li),
+    });
+  }
+
   // 8 Instagram stories — ephemeral, spread over the last 22 hours.
   // Portrait images use picsum.photos with deterministic seed strings.
-  const HOUR = 3_600_000;
   for (let si = 0; si < 8; si++) {
     const age = (si / 8) * 22 * HOUR + rand() * HOUR;
     const publishedAt = Math.round(now - age);
-    const author = IG_STORY_AUTHORS[si % IG_STORY_AUTHORS.length];
-    const caption = IG_STORY_CAPTIONS[si] ?? undefined;
-    const locationName = IG_STORY_LOCATIONS[si] ?? undefined;
+    const author = igStoryAuthors[si % igStoryAuthors.length];
+    const caption = igStoryCaptions[si] ?? undefined;
+    const locationName = igStoryLocations[si] ?? undefined;
 
     items.push({
-      globalId: `sample-ig-story:${si}`,
+      globalId: namespaceId(batchId, `sample-ig-story:${si}`),
       platform: "instagram",
       contentType: "story",
       capturedAt: publishedAt + 2_000,
@@ -542,7 +873,7 @@ export function generateSampleItems(): FeedItem[] {
       author,
       content: {
         text: caption,
-        mediaUrls: [`https://picsum.photos/seed/ig-story-${si}/600/900`],
+        mediaUrls: [`https://picsum.photos/seed/${batchId}-ig-story-${si}/600/900`],
         mediaTypes: ["image"],
       },
       ...(locationName ? { location: { name: locationName, source: "sticker" } } : {}),
@@ -552,7 +883,7 @@ export function generateSampleItems(): FeedItem[] {
         archived: false,
         tags: [],
       },
-      topics: pickTopics(rand, 130 + si),
+      topics: pickTopics(rand, 140 + si),
     });
   }
 
@@ -560,12 +891,12 @@ export function generateSampleItems(): FeedItem[] {
   for (let si = 0; si < 7; si++) {
     const age = (si / 7) * 22 * HOUR + rand() * HOUR;
     const publishedAt = Math.round(now - age);
-    const author = FB_STORY_AUTHORS[si % FB_STORY_AUTHORS.length];
-    const caption = FB_STORY_CAPTIONS[si] ?? undefined;
-    const locationName = FB_STORY_LOCATIONS[si] ?? undefined;
+    const author = fbStoryAuthors[si % fbStoryAuthors.length];
+    const caption = fbStoryCaptions[si] ?? undefined;
+    const locationName = fbStoryLocations[si] ?? undefined;
 
     items.push({
-      globalId: `sample-fb-story:${si}`,
+      globalId: namespaceId(batchId, `sample-fb-story:${si}`),
       platform: "facebook",
       contentType: "story",
       capturedAt: publishedAt + 2_000,
@@ -573,7 +904,7 @@ export function generateSampleItems(): FeedItem[] {
       author,
       content: {
         text: caption,
-        mediaUrls: [`https://picsum.photos/seed/fb-story-${si}/600/900`],
+        mediaUrls: [`https://picsum.photos/seed/${batchId}-fb-story-${si}/600/900`],
         mediaTypes: ["image"],
       },
       ...(locationName ? { location: { name: locationName, source: "check_in" } } : {}),
@@ -583,7 +914,7 @@ export function generateSampleItems(): FeedItem[] {
         archived: false,
         tags: [],
       },
-      topics: pickTopics(rand, 138 + si),
+      topics: pickTopics(rand, 148 + si),
     });
   }
 

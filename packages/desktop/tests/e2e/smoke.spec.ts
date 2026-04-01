@@ -102,6 +102,146 @@ test("Friends view can return to the feed from sidebar navigation", async ({ app
   await expect(page.getByText("Article 0:", { exact: false })).toBeVisible({ timeout: 5_000 });
 });
 
+test("Friends workspace keeps a visible sidebar and supports back navigation", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  const { page } = app;
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddFriend: (friend: unknown) => Promise<void>;
+      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            setActiveView: (view: string) => void;
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+
+    const now = Date.now();
+    await automerge.docAddFriend({
+      id: "friend-ada",
+      name: "Ada Lovelace",
+      careLevel: 5,
+      sources: [
+        { platform: "instagram", authorId: "ada-ig", handle: "ada", displayName: "Ada Lovelace" },
+      ],
+      reachOutLog: [{ loggedAt: now - 40 * 24 * 60 * 60_000, channel: "text" }],
+      createdAt: now,
+      updatedAt: now,
+    });
+    await automerge.docAddFeedItems([
+      {
+        globalId: "ig:ada:paris",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now - 60_000,
+        author: { id: "ada-ig", handle: "ada", displayName: "Ada Lovelace" },
+        content: { text: "Bonjour from Paris", mediaUrls: [], mediaTypes: [] },
+        location: {
+          name: "Paris",
+          coordinates: { lat: 48.8566, lng: 2.3522 },
+          source: "geo_tag",
+        },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+      },
+    ]);
+    await store?.getState().updatePreferences({
+      display: {
+        friendsSidebarWidth: 388,
+      },
+    });
+    store?.getState().setActiveView("friends");
+  });
+
+  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByPlaceholder("Search friends")).toBeVisible({ timeout: 5_000 });
+  await page.getByRole("button", { name: /Ada Lovelace/ }).click();
+  await expect(page.getByRole("button", { name: "Back to all friends" })).toBeVisible({ timeout: 5_000 });
+  await page.getByRole("button", { name: "Back to all friends" }).click();
+  await expect(page.getByPlaceholder("Search friends")).toBeVisible({ timeout: 5_000 });
+});
+
+test("Map view supports popup navigation into Friends and Feed", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+
+  const { page } = app;
+
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | { getState: () => { activeView: string } }
+      | undefined;
+    return store?.getState().activeView === "map";
+  }, { timeout: 5_000 });
+
+  await page.locator(".freed-map-marker").first().click();
+  await page.getByRole("button", { name: "Open Friend" }).click();
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | { getState: () => { activeView: string; selectedFriendId: string | null } }
+      | undefined;
+    const state = store?.getState();
+    return state?.activeView === "friends" && state.selectedFriendId === "friend-ada";
+  }, { timeout: 5_000 });
+  await expect(page.locator("main").getByText("Ada Lovelace").first()).toBeVisible({ timeout: 5_000 });
+
+  await page.getByRole("button", { name: "Map", exact: true }).click();
+  await page.locator(".freed-map-marker").first().click();
+  await page.getByRole("button", { name: "Open Post" }).click();
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | { getState: () => { activeView: string; selectedItemId: string | null } }
+      | undefined;
+    const state = store?.getState();
+    return state?.activeView === "feed" && state.selectedItemId === "ig:ada:paris";
+  }, { timeout: 5_000 });
+  await expect(page.getByRole("heading", { name: "Bonjour from Paris" })).toBeVisible({ timeout: 5_000 });
+});
+
+test("Friend detail last seen card opens the full Map view", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+
+  const { page } = app;
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | { getState: () => { setActiveView: (view: string) => void; setSelectedFriend: (id: string | null) => void } }
+      | undefined;
+    const state = store?.getState();
+    state?.setActiveView("friends");
+    state?.setSelectedFriend("friend-ada");
+  });
+
+  await expect(page.getByText("Last seen")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByRole("button", { name: /last seen paris/i })).toBeVisible({ timeout: 5_000 });
+  await page.getByRole("button", { name: /open map/i }).click();
+
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | { getState: () => { activeView: string; selectedFriendId: string | null } }
+      | undefined;
+    const state = store?.getState();
+    return state?.activeView === "map" && state.selectedFriendId === "friend-ada";
+  }, { timeout: 5_000 });
+  await expect(page.getByText("Focused on Ada Lovelace")).toBeVisible({ timeout: 5_000 });
+});
+
 // ---------------------------------------------------------------------------
 // Settings panel
 // ---------------------------------------------------------------------------

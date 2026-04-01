@@ -11,7 +11,7 @@ A friend CRM built on a force-directed social graph. Unify a person's blog RSS f
 
 Clicking a friend zooms in to show a chronological timeline of everything they've posted across all their linked social channels.
 
-The geo map from the original Phase 8 design is retained as sub-phase 8D, now powered by Friend identities so pins cluster by person rather than by platform.
+The geo map from the original Phase 8 design is retained as sub-phase 8D, now powered by Friend identities so pins cluster by person rather than by platform and render in Freed's dark purple visual language.
 
 ---
 
@@ -40,7 +40,7 @@ The geo map from the original Phase 8 design is retained as sub-phase 8D, now po
 ┌──────────────────────────────────────────────────────────────────┐
 │                     8D: Location / Map View                       │
 │  FeedItems → location extraction → Nominatim geocoding           │
-│  → cache (IndexedDB) → MapLibre markers (clustered by Friend)    │
+│  → cache (IndexedDB) → MapLibre markers (latest pin per Friend)  │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -163,12 +163,26 @@ Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare),
 ### Files
 
 - `packages/shared/src/location.ts` — `GeoLocation` type, `extractLocationFromItem()`
-- `packages/pwa/src/lib/geocoding.ts` — Nominatim integration with 1 req/s rate limiter
-- `packages/pwa/src/lib/geocoding-cache.ts` — IndexedDB cache (30-day TTL for hits, 7-day for misses)
-- `packages/pwa/src/components/map/FriendMap.tsx` — MapLibre GL JS component (lazy-imports maplibre-gl)
-- `packages/pwa/src/components/map/MarkerElement.ts` — avatar bubble HTMLElement for MapLibre markers
+- `packages/ui/src/lib/geocoding.ts` — Nominatim integration with 1 req/s rate limiter
+- `packages/ui/src/lib/geocoding-cache.ts` — IndexedDB cache (30-day TTL for hits, 7-day for misses)
+- `packages/ui/src/hooks/useResolvedLocations.ts` — shared async location resolution for map and friend detail
+- `packages/ui/src/components/map/MapView.tsx` — shared MapLibre map view for PWA and Freed Desktop
+- `packages/ui/src/components/map/MiniFriendMapCard.tsx` — friend detail last-seen mini map card
+- `packages/ui/src/components/map/MarkerElement.ts` — avatar bubble HTMLElement for MapLibre markers
+- `packages/ui/src/components/map/MapSurface.tsx` — shared dark map surface, glass popups, and fallback renderer
+- `packages/ui/src/lib/sample-library-seed.ts` — append-only sample batch seeding for friend-linked map previews
+- `packages/ui/src/components/layout/Sidebar.tsx` — live Friends and Map counts in the primary nav
+- `packages/ui/src/components/Toast.tsx` — shared success/error feedback for sample refresh and other cross-shell actions
 
-> `maplibre-gl` is not yet installed in `packages/pwa`. Add it with `npm install maplibre-gl --workspace=packages/pwa` before going live.
+`maplibre-gl` now lives in `@freed/ui` so both PWA and Freed Desktop use the same map runtime. The shared surface now uses a dark futuristic visual treatment so the full map and friend mini-map read like the same product.
+Sample data batches now append friend-linked LinkedIn posts too, so repeated populates keep expanding the social graph instead of reseeding the same tiny cast.
+Friends and Map now use the same shared content header pattern as the rest of the app, instead of shipping bespoke top bars that wander off into their own little kingdoms.
+Map popovers now include the time of each location update and behave like a sane interface, with only one popup open at a time.
+Friends now behaves like a proper workspace: the graph settles once and freezes, supports pan and zoom, and uses a permanent resizable right sidebar for reconnect, search, filters, overview, and selected-friend detail.
+Trackpad pinch zoom is now captured by the Friends graph itself, so zooming the workspace no longer zooms the whole browser window.
+Friend captions in the graph now use pill backgrounds and label-aware spacing, so names stay readable instead of collapsing into an overlapping word soup.
+Friend avatars now share the same lighter purple tint treatment across the Friends graph and map markers, with a user-configurable tint control in Settings.
+Map popovers now use a wider card layout and deliberately omit the old MapLibre tail, so place names and actions fit cleanly without the popup looking like a speech bubble from a cheaper app.
 
 ---
 
@@ -191,11 +205,11 @@ Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare),
 | 8.13 | Geocoding IndexedDB cache | Low | Done |
 | 8.14 | `FriendMap.tsx` — MapLibre component | High | Done |
 | 8.15 | `MarkerElement.ts` — avatar markers | Low | Done |
-| 8.16 | Install `maplibre-gl` and wire Map nav entry | Low | Not Started |
+| 8.16 | Install `maplibre-gl` and wire Map nav entry | Low | Done |
 | 8.17 | Implement macOS `CNContactStore` Tauri command (objc2-contacts) | High | Not Started |
 | 8.18 | Wire Friends to live sidebar navigation | Low | Done |
 | 8.19 | Google Contacts import, matching, and Friend creation flow | Medium | Done |
-| 8.20 | Wire Map to live sidebar navigation | Low | Not Started |
+| 8.20 | Wire Map to live sidebar navigation | Low | Done |
 
 ---
 
@@ -216,9 +230,13 @@ Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare),
 - [x] Nominatim geocoding with rate limiter
 - [x] Geocoding cache with TTL
 - [x] MapLibre `FriendMap` component scaffolded
-- [ ] `maplibre-gl` installed and map view live
+- [x] `maplibre-gl` installed and map view live in PWA and Freed Desktop
+- [x] Friend detail panel shows a last-seen mini map card when location history exists
+- [x] Shared map surface uses a dark futuristic theme across live and fallback rendering
+- [x] Sample data refresh rebuilds a 25-friend social graph with linked profiles and recent map activity
+- [x] Sidebar shows live counts for Friends and recent friend location updates on Map
 - [ ] macOS native contact picker (CNContactStore)
-- [ ] Map promoted to live sidebar navigation
+- [x] Map promoted to live sidebar navigation
 
 ---
 

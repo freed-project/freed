@@ -7,6 +7,7 @@ import { useAppStore } from "../../context/PlatformContext.js";
 import { FriendsView } from "../friends/FriendsView.js";
 import { useContactSync } from "../../hooks/useContactSync.js";
 import { ContactSyncContext } from "../../context/ContactSyncContext.js";
+import { MapView } from "../map/MapView.js";
 
 const DEFAULT_DEBUG_WIDTH = 320;
 const MIN_DEBUG_WIDTH = 280;
@@ -84,7 +85,11 @@ export function AppShell({ children }: AppShellProps) {
       <div className="flex-1 md:min-h-0 flex md:overflow-hidden">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <main className="flex-1 md:min-h-0 md:overflow-hidden">
-          {activeView === "friends" ? <FriendsView /> : children}
+          {activeView === "friends"
+            ? <FriendsView />
+            : activeView === "map"
+              ? <MapView />
+              : children}
         </main>
 
         {/* Desktop push drawer - always mounted so width can animate smoothly.

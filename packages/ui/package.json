@@ -17,6 +17,8 @@
     "./components/DebugPanel": "./src/components/DebugPanel.tsx",
     "./components/CloudProviderCard": "./src/components/CloudProviderCard.tsx",
     "./lib/debug-store": "./src/lib/debug-store.ts",
+    "./lib/map-navigation": "./src/lib/map-navigation.ts",
+    "./lib/sample-library-seed": "./src/lib/sample-library-seed.ts",
     "./lib/settings-store": "./src/lib/settings-store.ts",
     "./context": "./src/context/index.ts",
     "./components/friends": "./src/components/friends/index.ts"
@@ -31,6 +33,7 @@
     "@types/d3-force": "^3.0.10",
     "d3-force": "^3.0.0",
     "date-fns": "^4.1.0",
+    "maplibre-gl": "^5.11.0",
     "minisearch": "^7.2.0",
     "zustand": "^5.0.3"
   },

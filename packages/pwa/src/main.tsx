@@ -3,6 +3,16 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
+if (import.meta.env.DEV) {
+  Promise.all([import("./lib/store"), import("./lib/automerge")]).then(
+    ([store, automerge]) => {
+      const w = window as unknown as Record<string, unknown>
+      w.__FREED_STORE__ = store.useAppStore
+      w.__FREED_AUTOMERGE__ = automerge
+    },
+  )
+}
+
 // Keep viewport CSS variables in sync with the actual visible area.
 // --visual-viewport-height: area above the software keyboard (and address bar).
 //   Used to constrain overlay max-heights so content is never buried.
