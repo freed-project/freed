@@ -15,7 +15,7 @@ Expand capture to more platforms. Each platform gets its own capture layer packa
 
 ### `@freed/capture-linkedin`
 
-Professional network posts and articles.
+Professional network posts and articles, now fully surfaced in the desktop app.
 
 ```
 packages/capture-linkedin/
@@ -190,25 +190,29 @@ packages/capture-youtube/
 | 12.1  | `@freed/capture-linkedin` package scaffold | Low        | ✓ Done |
 | 12.2  | LinkedIn DOM selectors                     | High       | ✓ Done |
 | 12.3  | LinkedIn session management                | High       | ✓ Done |
-| 12.4  | `@freed/capture-tiktok` package scaffold   | Low        |        |
-| 12.5  | TikTok capture strategy research           | High       |
-| 12.6  | `@freed/capture-threads` package scaffold  | Low        |
-| 12.7  | Threads capture (similar to Instagram)     | Medium     |
-| 12.8  | `@freed/capture-bluesky` package scaffold  | Low        |
-| 12.9  | Bluesky AT Protocol client                 | Medium     |
-| 12.10 | Bluesky authentication flow                | Medium     |
-| 12.11 | `@freed/capture-reddit` package scaffold   | Low        |
-| 12.12 | Reddit OAuth setup                         | Medium     |
-| 12.13 | Reddit home feed capture                   | Medium     |
-| 12.14 | `@freed/capture-youtube` package scaffold  | Low        |
-| 12.15 | YouTube Data API integration               | Medium     |
-| 12.16 | YouTube subscriptions feed                 | Medium     |
+| 12.4  | LinkedIn desktop source integration        | Medium     | ✓ Done |
+| 12.5  | LinkedIn regression test coverage          | Medium     | ✓ Done |
+| 12.6  | `@freed/capture-tiktok` package scaffold   | Low        |        |
+| 12.7  | TikTok capture strategy research           | High       |
+| 12.8  | `@freed/capture-threads` package scaffold  | Low        |
+| 12.9  | Threads capture (similar to Instagram)     | Medium     |
+| 12.10 | `@freed/capture-bluesky` package scaffold  | Low        |
+| 12.11 | Bluesky AT Protocol client                 | Medium     |
+| 12.12 | Bluesky authentication flow                | Medium     |
+| 12.13 | `@freed/capture-reddit` package scaffold   | Low        |
+| 12.14 | Reddit OAuth setup                         | Medium     |
+| 12.15 | Reddit home feed capture                   | Medium     |
+| 12.16 | `@freed/capture-youtube` package scaffold  | Low        |
+| 12.17 | YouTube Data API integration               | Medium     |
+| 12.18 | YouTube subscriptions feed                 | Medium     |
 
 ---
 
 ## Success Criteria
 
 - [x] LinkedIn feed posts captured to FeedItem
+- [x] LinkedIn is visible in desktop Sources navigation and source status UI
+- [x] LinkedIn desktop flows have regression coverage in Playwright
 - [ ] TikTok feed captured (video metadata at minimum)
 - [ ] Threads posts captured to FeedItem
 - [ ] Bluesky timeline captured via AT Protocol

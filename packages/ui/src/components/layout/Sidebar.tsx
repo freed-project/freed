@@ -4,7 +4,12 @@ import type { FilterOptions, RssFeed } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { SettingsDialog } from "../SettingsDialog.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
-import { AllIcon, RssIcon, FacebookIcon, InstagramIcon, MapPinIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
+import { RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
+import {
+  COMING_SOON_SOURCE_ITEMS,
+  TOP_SOURCE_ITEMS,
+  type SourceNavigationItem,
+} from "../../lib/source-navigation.js";
 /** Compact number: 1234 → "1.2k", 1_200_000 → "1.2m". Trims trailing ".0". */
 function fmt(n: number): string {
   if (n >= 1_000_000) return `${+(n / 1_000_000).toFixed(1)}m`;
@@ -201,18 +206,6 @@ const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
 const DEFAULT_WIDTH = 256;
 
-const topSources: { id: string | undefined; label: string; icon: ReactNode }[] = [
-  { id: undefined, label: "All", icon: <AllIcon /> },
-  { id: "rss", label: "RSS", icon: <RssIcon /> },
-  { id: "x", label: "X", icon: <span className="text-sm font-bold leading-none">𝕏</span> },
-  { id: "facebook", label: "Facebook", icon: <FacebookIcon /> },
-  { id: "instagram", label: "Instagram", icon: <InstagramIcon /> },
-];
-
-const comingSoonSources: { id: string; label: string; icon: ReactNode }[] = [
-  { id: "map", label: "Map", icon: <MapPinIcon /> },
-];
-
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { SourceIndicator, headerDragRegion } = usePlatform();
   const activeFilter = useAppStore((s) => s.activeFilter);
@@ -334,7 +327,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     onClose();
   }, [onClose, setActiveView, setFilter]);
 
-  const handleSourceClick = (source: (typeof topSources)[0]) => {
+  const handleSourceClick = (source: SourceNavigationItem) => {
     showFeed({ platform: source.id });
   };
 
@@ -342,19 +335,19 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     showFeed({ platform: "rss", feedUrl });
   };
 
-  const isTopSourceActive = (source: (typeof topSources)[0]) => {
+  const isTopSourceActive = (source: SourceNavigationItem) => {
     if (activeFilter.feedUrl) return false;
     if (activeFilter.archivedOnly) return false;
     if (activeFilter.savedOnly) return false;
     return activeFilter.platform === source.id;
   };
 
-  const sourceUnreadCount = (source: (typeof topSources)[0]) =>
+  const sourceUnreadCount = (source: SourceNavigationItem) =>
     source.id === undefined
       ? totalUnreadCount
       : (unreadCountByPlatform[source.id] ?? 0);
 
-  const sourceTotalCount = (source: (typeof topSources)[0]) =>
+  const sourceTotalCount = (source: SourceNavigationItem) =>
     source.id === undefined
       ? totalItemCount
       : (itemCountByPlatform[source.id] ?? 0);
@@ -401,7 +394,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           {/* Sources */}
           <SidebarSection title="Sources">
             <ul className="space-y-1">
-              {topSources.map((source) => (
+              {TOP_SOURCE_ITEMS.map((source) => (
                 <li key={source.id ?? "all"}>
                   <button
                     onClick={() => handleSourceClick(source)}
@@ -457,7 +450,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   )}
                 </button>
               </li>
-              {comingSoonSources.map((source) => (
+              {COMING_SOON_SOURCE_ITEMS.map((source) => (
                 <li key={source.id}>
                   <div className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm text-[#52525b] cursor-default">
                     <span className="w-5 flex items-center justify-center opacity-50">{source.icon}</span>

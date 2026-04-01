@@ -47,6 +47,7 @@ function makeMetadata(overrides: Record<string, unknown> = {}) {
 
 function makeContent(overrides: Record<string, unknown> = {}) {
   return {
+    html: "<article><p>Hello world.</p></article>",
     text: "Hello world. This is the full article body.",
     author: "Jane Doe",
     wordCount: 8,
@@ -76,7 +77,10 @@ describe("saveUrlInDesktop", () => {
   it("writes HTML to the content cache under the item's globalId", async () => {
     const { saveUrlInDesktop } = await import("./save-url.js");
     const item = await saveUrlInDesktop(SAMPLE_URL);
-    expect(mockCacheSet).toHaveBeenCalledWith(item.globalId, SAMPLE_HTML);
+    expect(mockCacheSet).toHaveBeenCalledWith(
+      item.globalId,
+      "<article><p>Hello world.</p></article>",
+    );
   });
 
   it("persists the item to Automerge with saved=true and platform=saved", async () => {

@@ -1,7 +1,8 @@
 /**
  * DesktopSyncIndicator -- desktop-only header widget
  *
- * Shows a high-level overview of each sync provider (RSS, X, Facebook)
+ * Shows a high-level overview of each sync provider (RSS, X, Facebook,
+ * Instagram, LinkedIn)
  * rather than listing individual feeds.
  */
 
@@ -85,6 +86,12 @@ const IgIcon = () => (
   </svg>
 );
 
+const LiIcon = () => (
+  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+  </svg>
+);
+
 export function DesktopSyncIndicator() {
   const [panelOpen, setPanelOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -94,6 +101,7 @@ export function DesktopSyncIndicator() {
   const xAuth = useAppStore((s) => s.xAuth);
   const fbAuth = useAppStore((s) => s.fbAuth);
   const igAuth = useAppStore((s) => s.igAuth);
+  const liAuth = useAppStore((s) => s.liAuth);
   const items = useAppStore((s) => s.items);
 
   const feedList = useMemo(() => Object.values(feeds), [feeds]);
@@ -122,6 +130,10 @@ export function DesktopSyncIndicator() {
     () => items.filter((i) => i.platform === "instagram").length,
     [items],
   );
+  const liItemCount = useMemo(
+    () => items.filter((i) => i.platform === "linkedin").length,
+    [items],
+  );
 
   // Close panel on outside click
   useEffect(() => {
@@ -142,7 +154,7 @@ export function DesktopSyncIndicator() {
 
   const statusLabel = isSyncing
     ? "Syncing..."
-    : feedCount > 0 || xAuth.isAuthenticated || fbAuth.isAuthenticated || igAuth.isAuthenticated
+    : feedCount > 0 || xAuth.isAuthenticated || fbAuth.isAuthenticated || igAuth.isAuthenticated || liAuth.isAuthenticated
       ? "Synced"
       : "Ready";
 
@@ -150,7 +162,12 @@ export function DesktopSyncIndicator() {
     ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
     : "bg-white/5 text-[#71717a]";
 
-  const hasAnySources = feedCount > 0 || xAuth.isAuthenticated || fbAuth.isAuthenticated || igAuth.isAuthenticated;
+  const hasAnySources =
+    feedCount > 0 ||
+    xAuth.isAuthenticated ||
+    fbAuth.isAuthenticated ||
+    igAuth.isAuthenticated ||
+    liAuth.isAuthenticated;
 
   return (
     <div
@@ -265,6 +282,17 @@ export function DesktopSyncIndicator() {
               }
               subDetailError={!!igAuth.lastCaptureError}
               syncing={isSyncing && igAuth.isAuthenticated}
+            />
+            <ProviderRow
+              name="LinkedIn"
+              icon={<LiIcon />}
+              connected={liAuth.isAuthenticated}
+              detail={
+                liAuth.isAuthenticated
+                  ? `Connected, ${liItemCount.toLocaleString()} items`
+                  : "Not connected"
+              }
+              syncing={isSyncing && liAuth.isAuthenticated}
             />
           </div>
 
