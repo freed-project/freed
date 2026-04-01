@@ -37,26 +37,103 @@ fn sync_relay_port() -> u16 {
         .unwrap_or(DEFAULT_SYNC_RELAY_PORT)
 }
 
-const OFFSCREEN_WINDOW_X: f64 = -20_000.0;
-const OFFSCREEN_WINDOW_Y: f64 = -20_000.0;
+const BACKGROUND_SCRAPER_WINDOW_NAME: &str = "__freed_background_scraper__";
+const ENABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
+    (function() {
+        window.name = "__freed_background_scraper__";
+        if (typeof window.__FREED_SET_BACKGROUND_SCRAPER_CLOAK__ === "function") {
+            window.__FREED_SET_BACKGROUND_SCRAPER_CLOAK__(true);
+        }
+    })();
+"#;
+const DISABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
+    (function() {
+        window.name = "";
+        if (typeof window.__FREED_SET_BACKGROUND_SCRAPER_CLOAK__ === "function") {
+            window.__FREED_SET_BACKGROUND_SCRAPER_CLOAK__(false);
+        }
+    })();
+"#;
+const INITIALIZE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
+    (function() {
+        window.name = "__freed_background_scraper__";
+        if (typeof window.__FREED_SET_BACKGROUND_SCRAPER_CLOAK__ === "function") {
+            window.__FREED_SET_BACKGROUND_SCRAPER_CLOAK__(true);
+        }
+    })();
+"#;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum ScraperWindowMode {
+    Shown,
+    Cloaked,
+    Hidden,
+}
+
+impl ScraperWindowMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Shown => "shown",
+            Self::Cloaked => "cloaked",
+            Self::Hidden => "hidden",
+        }
+    }
+}
+
+fn set_background_scraper_window_cloak(
+    window: &tauri::WebviewWindow,
+    enabled: bool,
+) -> Result<(), String> {
+    window
+        .eval(if enabled {
+            ENABLE_BACKGROUND_SCRAPER_CLOAK_JS
+        } else {
+            DISABLE_BACKGROUND_SCRAPER_CLOAK_JS
+        })
+        .map_err(|e| e.to_string())
+}
 
 fn prepare_background_scraper_window(
     window: &tauri::WebviewWindow,
-    show_window: bool,
+    window_mode: ScraperWindowMode,
 ) -> Result<(), String> {
-    use tauri::LogicalPosition;
-
-    if show_window {
-        let _ = window.center();
-        let _ = window.show();
-        let _ = window.set_focus();
-        return Ok(());
+    match window_mode {
+        ScraperWindowMode::Shown => {
+            let _ = window.set_ignore_cursor_events(false);
+            let _ = window.set_always_on_bottom(false);
+            let _ = window.set_focusable(true);
+            let _ = window.set_decorations(true);
+            let _ = window.set_shadow(true);
+            let _ = window.set_skip_taskbar(false);
+            let _ = set_background_scraper_window_cloak(window, false);
+            let _ = window.center();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+        ScraperWindowMode::Cloaked => {
+            let _ = window.set_skip_taskbar(true);
+            let _ = window.set_visible_on_all_workspaces(false);
+            let _ = window.set_decorations(false);
+            let _ = window.set_shadow(false);
+            let _ = window.set_always_on_bottom(true);
+            let _ = window.set_focusable(false);
+            let _ = window.set_ignore_cursor_events(true);
+            let _ = set_background_scraper_window_cloak(window, true);
+            window.show().map_err(|e| e.to_string())?;
+        }
+        ScraperWindowMode::Hidden => {
+            let _ = window.set_skip_taskbar(true);
+            let _ = window.set_visible_on_all_workspaces(false);
+            let _ = window.set_decorations(false);
+            let _ = window.set_shadow(false);
+            let _ = window.set_always_on_bottom(true);
+            let _ = window.set_focusable(false);
+            let _ = window.set_ignore_cursor_events(true);
+            let _ = set_background_scraper_window_cloak(window, false);
+            let _ = window.hide();
+        }
     }
-
-    window
-        .set_position(LogicalPosition::new(OFFSCREEN_WINDOW_X, OFFSCREEN_WINDOW_Y))
-        .map_err(|e| e.to_string())?;
-    window.show().map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -1185,15 +1262,15 @@ async fn scrape_ig_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
 /// Navigates to facebook.com, waits for content to render, then injects
 /// the extraction script which reads the DOM and emits 'fb-feed-data'.
 ///
-/// `show_window` controls visibility during scraping:
-/// - `false` (default): window is moved off-screen but kept visible so
-///   WKWebView stays stable without background-throttling hacks.
-/// - `true` (debug): window is centered and focused, visible on the user's desktop.
+/// `window_mode` controls visibility during scraping:
+/// - `shown`: window is centered and visible during sync.
+/// - `cloaked`: window stays visible for WebKit but is transparent and click-through.
+/// - `hidden`: window is fully hidden, which is quieter but can be less reliable.
 #[tauri::command]
 async fn fb_scrape_feed(
     app: tauri::AppHandle,
     capture: tauri::State<'_, CaptureState>,
-    show_window: bool,
+    window_mode: ScraperWindowMode,
 ) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
 
@@ -1201,9 +1278,9 @@ async fn fb_scrape_feed(
 
     let wv = match app.get_webview_window("fb-scraper") {
         Some(w) => {
+            prepare_background_scraper_window(&w, window_mode)?;
             w.navigate(fb_feed_url.parse().unwrap())
                 .map_err(|e| e.to_string())?;
-            prepare_background_scraper_window(&w, show_window)?;
             w
         }
         None => {
@@ -1214,6 +1291,7 @@ async fn fb_scrape_feed(
                 tauri::WebviewUrl::External(fb_feed_url.parse().unwrap()),
             )
             .user_agent(&*capture.fb_user_agent.lock().unwrap())
+            .transparent(true)
             .initialization_script(include_str!("webkit-mask.js"))
             .title("Freed Facebook")
             .inner_size(1280.0, 900.0)
@@ -1221,21 +1299,33 @@ async fn fb_scrape_feed(
                 let host = url.host_str().unwrap_or("");
                 let path = url.path();
                 if host.contains("facebook.com") && path != "/login" && path != "/login/" {
-                    if let Some(w) = app_handle.get_webview_window("fb-scraper") {
-                        let _ = w.hide();
-                    }
                     let _ =
                         app_handle.emit("fb-auth-result", serde_json::json!({ "loggedIn": true }));
                 }
                 true
             });
 
-            if show_window {
+            if window_mode == ScraperWindowMode::Shown {
                 builder = builder.center().visible(true);
+            } else if window_mode == ScraperWindowMode::Cloaked {
+                builder = builder
+                    .focused(false)
+                    .focusable(false)
+                    .decorations(false)
+                    .always_on_bottom(true)
+                    .skip_taskbar(true)
+                    .shadow(false)
+                    .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_CLOAK_JS)
+                    .visible(true);
             } else {
                 builder = builder
-                    .position(OFFSCREEN_WINDOW_X, OFFSCREEN_WINDOW_Y)
-                    .visible(true);
+                    .focused(false)
+                    .focusable(false)
+                    .decorations(false)
+                    .always_on_bottom(true)
+                    .skip_taskbar(true)
+                    .shadow(false)
+                    .visible(false);
             }
 
             builder.build().map_err(|e| e.to_string())?
@@ -1243,8 +1333,8 @@ async fn fb_scrape_feed(
     };
 
     info!(
-        "[FB] scrape started (show_window={}), waiting for page load...",
-        show_window
+        "[FB] scrape started (window_mode={}), waiting for page load...",
+        window_mode.as_str()
     );
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(13000.0, 1500.0))).await;
@@ -1307,7 +1397,7 @@ async fn fb_scrape_feed(
     };
 
     for i in 0..num_passes {
-        prepare_background_scraper_window(&wv, show_window)?;
+        prepare_background_scraper_window(&wv, window_mode)?;
 
         wv.eval(FB_EXTRACT_SCRIPT)
             .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
@@ -1406,7 +1496,7 @@ async fn fb_scrape_feed(
 async fn fb_scrape_groups(
     app: tauri::AppHandle,
     capture: tauri::State<'_, CaptureState>,
-    show_window: bool,
+    window_mode: ScraperWindowMode,
 ) -> Result<Vec<FbGroupInfoPayload>, String> {
     use tauri::WebviewWindowBuilder;
 
@@ -1414,15 +1504,9 @@ async fn fb_scrape_groups(
 
     let wv = match app.get_webview_window("fb-scraper") {
         Some(w) => {
+            prepare_background_scraper_window(&w, window_mode)?;
             w.navigate(fb_groups_url.parse().unwrap())
                 .map_err(|e| e.to_string())?;
-            if show_window {
-                let _ = w.center();
-                let _ = w.set_focus();
-                let _ = w.show();
-            } else {
-                let _ = w.hide();
-            }
             w
         }
         None => {
@@ -1440,19 +1524,34 @@ async fn fb_scrape_groups(
                 let host = url.host_str().unwrap_or("");
                 let path = url.path();
                 if host.contains("facebook.com") && path != "/login" && path != "/login/" {
-                    if let Some(w) = app_handle.get_webview_window("fb-scraper") {
-                        let _ = w.hide();
-                    }
                     let _ =
                         app_handle.emit("fb-auth-result", serde_json::json!({ "loggedIn": true }));
                 }
                 true
             });
 
-            if show_window {
+            if window_mode == ScraperWindowMode::Shown {
                 builder = builder.center().visible(true);
+            } else if window_mode == ScraperWindowMode::Cloaked {
+                builder = builder
+                    .transparent(true)
+                    .focused(false)
+                    .focusable(false)
+                    .decorations(false)
+                    .always_on_bottom(true)
+                    .skip_taskbar(true)
+                    .shadow(false)
+                    .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_CLOAK_JS)
+                    .visible(true);
             } else {
-                builder = builder.visible(false);
+                builder = builder
+                    .focused(false)
+                    .focusable(false)
+                    .decorations(false)
+                    .always_on_bottom(true)
+                    .skip_taskbar(true)
+                    .shadow(false)
+                    .visible(false);
             }
 
             builder.build().map_err(|e| e.to_string())?
@@ -1586,8 +1685,15 @@ async fn ig_show_login(
                 info!("[IG] login detected, auto-scraping...");
                 tokio::time::sleep(Duration::from_millis(gaussian_ms(4000.0, 800.0))).await;
                 let capture = scrape_app.state::<CaptureState>();
-                // Auto-scrapes never show the window -- user didn't request debug mode.
-                match ig_scrape_feed(scrape_app.clone(), capture, false).await {
+                // Post-login auto-scrapes default to cloaked mode so they stay
+                // out of the way without reintroducing hidden-window stalls.
+                match ig_scrape_feed(
+                    scrape_app.clone(),
+                    capture,
+                    ScraperWindowMode::Cloaked,
+                )
+                .await
+                {
                     Ok(()) => info!("[IG] post-login auto-scrape complete"),
                     Err(e) => info!("[IG] post-login auto-scrape error: {}", e),
                 }
@@ -1665,15 +1771,15 @@ async fn ig_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
 /// Navigates to instagram.com, waits for content to render, then injects
 /// the extraction script which reads the DOM and emits 'ig-feed-data'.
 ///
-/// `show_window` controls visibility during scraping:
-/// - `false` (default): window is moved off-screen but kept visible so
-///   WKWebView stays stable without background-throttling hacks.
-/// - `true` (debug): window is centered and on-screen, visible on the user's desktop.
+/// `window_mode` controls visibility during scraping:
+/// - `shown`: window is centered and visible during sync.
+/// - `cloaked`: window stays visible for WebKit but is transparent and click-through.
+/// - `hidden`: window is fully hidden, which is quieter but can be less reliable.
 #[tauri::command]
 async fn ig_scrape_feed(
     app: tauri::AppHandle,
     capture: tauri::State<'_, CaptureState>,
-    show_window: bool,
+    window_mode: ScraperWindowMode,
 ) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
 
@@ -1682,17 +1788,17 @@ async fn ig_scrape_feed(
     let wv = match app.get_webview_window("ig-scraper") {
         Some(w) => {
             // Window exists (user already logged in).
-            // DO NOT re-navigate — that would fire the ig_show_login on_navigation
+            // DO NOT re-navigate - that would fire the ig_show_login on_navigation
             // callback which hides the window.
-            prepare_background_scraper_window(&w, show_window)?;
+            prepare_background_scraper_window(&w, window_mode)?;
             info!(
-                "[IG] reusing existing ig-scraper window (show_window={})",
-                show_window
+                "[IG] reusing existing ig-scraper window (window_mode={})",
+                window_mode.as_str()
             );
             w
         }
         None => {
-            // No existing window — create one. This path runs on first-ever scrape
+            // No existing window - create one. This path runs on first-ever scrape
             // (when the user hasn't gone through ig_show_login yet, e.g. auto-scrape).
             let app_handle = app.clone();
             let mut builder = WebviewWindowBuilder::new(
@@ -1701,6 +1807,7 @@ async fn ig_scrape_feed(
                 tauri::WebviewUrl::External(ig_feed_url.parse().unwrap()),
             )
             .user_agent(&*capture.ig_user_agent.lock().unwrap())
+            .transparent(true)
             .initialization_script(include_str!("webkit-mask.js"))
             .title("Freed Instagram")
             .inner_size(1280.0, 900.0)
@@ -1718,12 +1825,27 @@ async fn ig_scrape_feed(
                 true
             });
 
-            if show_window {
+            if window_mode == ScraperWindowMode::Shown {
                 builder = builder.center().visible(true);
+            } else if window_mode == ScraperWindowMode::Cloaked {
+                builder = builder
+                    .focused(false)
+                    .focusable(false)
+                    .decorations(false)
+                    .always_on_bottom(true)
+                    .skip_taskbar(true)
+                    .shadow(false)
+                    .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_CLOAK_JS)
+                    .visible(true);
             } else {
                 builder = builder
-                    .position(OFFSCREEN_WINDOW_X, OFFSCREEN_WINDOW_Y)
-                    .visible(true);
+                    .focused(false)
+                    .focusable(false)
+                    .decorations(false)
+                    .always_on_bottom(true)
+                    .skip_taskbar(true)
+                    .shadow(false)
+                    .visible(false);
             }
 
             builder.build().map_err(|e| e.to_string())?
@@ -1731,8 +1853,8 @@ async fn ig_scrape_feed(
     };
 
     info!(
-        "[IG] scrape started (show_window={}), waiting for feed to render...",
-        show_window
+        "[IG] scrape started (window_mode={}), waiting for feed to render...",
+        window_mode.as_str()
     );
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(9000.0, 1200.0))).await;
@@ -1783,7 +1905,7 @@ async fn ig_scrape_feed(
     };
 
     for i in 0..num_passes {
-        prepare_background_scraper_window(&wv, show_window)?;
+        prepare_background_scraper_window(&wv, window_mode)?;
 
         wv.eval(IG_EXTRACT_SCRIPT)
             .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
@@ -2176,30 +2298,25 @@ async fn li_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
 /// Multiple extraction passes are run across scroll positions; the final pass
 /// emits with `done: true` to signal completion to the TypeScript layer.
 ///
-/// `show_window` controls visibility:
-/// - `false` (default): window positioned off-screen at (-20000, -20000).
-/// - `true` (debug): window centered and focused.
+/// `window_mode` controls visibility during scraping:
+/// - `shown`: window is centered and visible during sync.
+/// - `cloaked`: window stays visible for WebKit but is transparent and click-through.
+/// - `hidden`: window is fully hidden, which is quieter but can be less reliable.
 #[tauri::command]
 async fn li_scrape_feed(
     app: tauri::AppHandle,
     capture: tauri::State<'_, CaptureState>,
-    show_window: bool,
+    window_mode: ScraperWindowMode,
 ) -> Result<(), String> {
-    use tauri::{LogicalPosition, WebviewWindowBuilder};
+    use tauri::WebviewWindowBuilder;
 
     let li_feed_url = "https://www.linkedin.com/feed/";
 
     let wv = match app.get_webview_window("li-scraper") {
         Some(w) => {
+            prepare_background_scraper_window(&w, window_mode)?;
             w.navigate(li_feed_url.parse().unwrap())
                 .map_err(|e| e.to_string())?;
-            if show_window {
-                let _ = w.center();
-                let _ = w.set_focus();
-            } else {
-                let _ = w.set_position(LogicalPosition::new(-20000.0_f64, -20000.0_f64));
-            }
-            let _ = w.show();
             w
         }
         None => {
@@ -2210,10 +2327,10 @@ async fn li_scrape_feed(
                 tauri::WebviewUrl::External(li_feed_url.parse().unwrap()),
             )
             .user_agent(&*capture.li_user_agent.lock().unwrap())
+            .transparent(true)
             .initialization_script(include_str!("webkit-mask.js"))
             .title("Freed LinkedIn")
             .inner_size(1280.0, 900.0)
-            .visible(true)
             .on_navigation(move |url| {
                 let host = url.host_str().unwrap_or("");
                 let path = url.path();
@@ -2224,10 +2341,27 @@ async fn li_scrape_feed(
                 true
             });
 
-            if show_window {
-                builder = builder.center();
+            if window_mode == ScraperWindowMode::Shown {
+                builder = builder.center().visible(true);
+            } else if window_mode == ScraperWindowMode::Cloaked {
+                builder = builder
+                    .focused(false)
+                    .focusable(false)
+                    .decorations(false)
+                    .always_on_bottom(true)
+                    .skip_taskbar(true)
+                    .shadow(false)
+                    .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_CLOAK_JS)
+                    .visible(true);
             } else {
-                builder = builder.position(-20000.0, -20000.0);
+                builder = builder
+                    .focused(false)
+                    .focusable(false)
+                    .decorations(false)
+                    .always_on_bottom(true)
+                    .skip_taskbar(true)
+                    .shadow(false)
+                    .visible(false);
             }
 
             builder.build().map_err(|e| e.to_string())?
@@ -2235,16 +2369,16 @@ async fn li_scrape_feed(
     };
 
     println!(
-        "[LI] scrape started (show_window={}), waiting for feed to render...",
-        show_window
+        "[LI] scrape started (window_mode={}), waiting for feed to render...",
+        window_mode.as_str()
     );
 
     // LinkedIn's feed takes slightly longer to hydrate than Facebook.
     // Use a longer initial wait with more variance.
     tokio::time::sleep(Duration::from_millis(gaussian_ms(12000.0, 2000.0))).await;
 
-    let _ = wv.show();
-    println!("[LI] window visible, proceeding with extraction");
+    prepare_background_scraper_window(&wv, window_mode)?;
+    println!("[LI] window prepared, proceeding with extraction");
 
     // LinkedIn virtualizes its feed: scroll incrementally, extracting at each
     // position. Fewer passes than FB (LinkedIn loads fewer posts per scroll).
@@ -2277,7 +2411,7 @@ async fn li_scrape_feed(
     };
 
     for i in 0..num_passes {
-        let _ = wv.show();
+        prepare_background_scraper_window(&wv, window_mode)?;
 
         let is_last = i + 1 == num_passes;
         inject_script(&wv, is_last)?;
@@ -2807,10 +2941,10 @@ pub fn run() {
                     info!("[FB] auto-scrape enabled, waiting 8s for app init...");
                     tokio::time::sleep(Duration::from_secs(8)).await;
                     info!("[FB] triggering auto-scrape now");
-                    // Dev env var auto-scrape: show_window=true so the window is
-                    // visible during development iteration.
+                    // Dev env var auto-scrape: keep the window shown during
+                    // development iteration.
                     let capture = auto_app.state::<CaptureState>();
-                    match fb_scrape_feed(auto_app.clone(), capture, true).await {
+                    match fb_scrape_feed(auto_app.clone(), capture, ScraperWindowMode::Shown).await {
                         Ok(()) => info!("[FB] auto-scrape command returned OK"),
                         Err(e) => info!("[FB] auto-scrape error: {}", e),
                     }
@@ -2825,10 +2959,10 @@ pub fn run() {
                     info!("[IG] auto-scrape enabled, waiting 8s for app init...");
                     tokio::time::sleep(Duration::from_secs(8)).await;
                     info!("[IG] triggering auto-scrape now");
-                    // Dev env var auto-scrape: show_window=true so the window is
-                    // visible during development iteration.
+                    // Dev env var auto-scrape: keep the window shown during
+                    // development iteration.
                     let capture = auto_app.state::<CaptureState>();
-                    match ig_scrape_feed(auto_app.clone(), capture, true).await {
+                    match ig_scrape_feed(auto_app.clone(), capture, ScraperWindowMode::Shown).await {
                         Ok(()) => info!("[IG] auto-scrape command returned OK"),
                         Err(e) => info!("[IG] auto-scrape error: {}", e),
                     }

@@ -510,7 +510,7 @@ const phases: Phase[] = [
     number: 7,
     title: "Facebook + Instagram",
     description:
-      "Facebook and Instagram integrated via Tauri WebView scraping, with suggested-post filtering, hardened story capture, and Facebook group controls.",
+      "Facebook and Instagram integrated via Tauri WebView scraping, with suggested-post filtering, hardened story capture, Facebook group controls, and per-source scraper window modes.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-7-SOCIAL-CAPTURE.md",
@@ -555,7 +555,7 @@ const phases: Phase[] = [
     number: 12,
     title: "Additional Platforms",
     description:
-      "LinkedIn is in. Next up: Mozi for social planning, then TikTok, Threads, Bluesky, Reddit, and YouTube.",
+      "LinkedIn is in, including matching desktop scraper window controls. Next up: Mozi for social planning, then TikTok, Threads, Bluesky, Reddit, and YouTube.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-12-ADDITIONAL-PLATFORMS.md",

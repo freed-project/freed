@@ -16,6 +16,64 @@
  */
 (function () {
   "use strict";
+  var CLOAK_WINDOW_NAME = "__freed_background_scraper__";
+  var CLOAK_STYLE_ID = "__freed_scraper_cloak__";
+  var cloakIntervalId = null;
+
+  function ensureCloakStyle() {
+    var root = document.documentElement;
+    if (!root) return;
+
+    var style = document.getElementById(CLOAK_STYLE_ID);
+    if (!style) {
+      style = document.createElement("style");
+      style.id = CLOAK_STYLE_ID;
+      style.textContent = "html, body { background: transparent !important; opacity: 0 !important; }";
+      (document.head || root).appendChild(style);
+    }
+
+    root.style.setProperty("background", "transparent", "important");
+    root.style.setProperty("opacity", "0", "important");
+    if (document.body) {
+      document.body.style.setProperty("background", "transparent", "important");
+      document.body.style.setProperty("opacity", "0", "important");
+    }
+  }
+
+  function clearCloakStyle() {
+    var root = document.documentElement;
+    var style = document.getElementById(CLOAK_STYLE_ID);
+    if (style && style.parentNode) {
+      style.parentNode.removeChild(style);
+    }
+
+    if (root) {
+      root.style.removeProperty("background");
+      root.style.removeProperty("opacity");
+    }
+    if (document.body) {
+      document.body.style.removeProperty("background");
+      document.body.style.removeProperty("opacity");
+    }
+  }
+
+  function setBackgroundScraperCloak(enabled) {
+    if (enabled) {
+      ensureCloakStyle();
+      if (cloakIntervalId === null) {
+        cloakIntervalId = window.setInterval(ensureCloakStyle, 500);
+      }
+      return;
+    }
+
+    if (cloakIntervalId !== null) {
+      window.clearInterval(cloakIntervalId);
+      cloakIntervalId = null;
+    }
+    clearCloakStyle();
+  }
+
+  window.__FREED_SET_BACKGROUND_SCRAPER_CLOAK__ = setBackgroundScraperCloak;
 
   // ---------------------------------------------------------------------------
   // 1. window.webkit.messageHandlers masking
@@ -92,5 +150,12 @@
       });
     }
   } catch (_e) {}
+
+  if (window.name === CLOAK_WINDOW_NAME) {
+    setBackgroundScraperCloak(true);
+    document.addEventListener("DOMContentLoaded", function () {
+      setBackgroundScraperCloak(true);
+    }, { once: true });
+  }
 
 })();

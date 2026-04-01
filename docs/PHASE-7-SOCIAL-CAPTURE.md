@@ -157,6 +157,7 @@ const RATE_LIMITS = {
 - [x] Settings UI for both platforms (login, check connection, sync, disconnect)
 - [x] Feed pollution filtering blocks promoted X entries and suggested FB/IG posts
 - [x] Facebook Settings includes per-group include/exclude controls for joined groups
+- [x] Desktop Sources settings expose per-source scraper window modes: shown, cloaked, hidden
 - [x] Empty states for both platforms in the feed view
 - [x] Source indicators in sidebar for both platforms
 - [x] Sync indicator panel shows both platforms

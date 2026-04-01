@@ -261,6 +261,7 @@ packages/capture-youtube/
 
 - [x] LinkedIn feed posts captured to FeedItem
 - [x] LinkedIn is visible in desktop Sources navigation and source status UI
+- [x] LinkedIn shares the Desktop scraper window modes: shown, cloaked, hidden
 - [x] LinkedIn desktop flows have regression coverage in Playwright
 - [ ] Mozi activity captured to FeedItem with plans, trips, attendance, or overlap-adjacent events
 - [ ] Mozi is visible in desktop Sources navigation and source status UI

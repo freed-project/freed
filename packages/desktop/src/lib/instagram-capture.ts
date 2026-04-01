@@ -1,7 +1,7 @@
 /**
  * Instagram capture service (WebView-based)
  *
- * Triggers the Rust backend to navigate a hidden Tauri WebView to
+ * Triggers the Rust backend to navigate a Tauri WebView to
  * instagram.com, wait for the page to render, then inject an extraction
  * script that reads posts from the DOM. The extracted data is sent back
  * via Tauri event IPC ('ig-feed-data').
@@ -20,7 +20,7 @@ import {
 } from "@freed/capture-instagram/browser";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
-import { getIgScraperDebugWindow } from "./scraper-prefs";
+import { getIgScraperWindowMode } from "./scraper-prefs";
 import { storeIgAuthState } from "./instagram-auth";
 
 // =============================================================================
@@ -65,7 +65,7 @@ export interface IgSyncResult {
 // =============================================================================
 
 /**
- * Trigger a scrape via the hidden WebView and wait for results.
+ * Trigger a scrape via the configured scraper window mode and wait for results.
  *
  * Flow:
  * 1. Register a listener for 'ig-feed-data' events
@@ -122,7 +122,7 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
       }
     });
 
-    await invoke("ig_scrape_feed", { showWindow: getIgScraperDebugWindow() });
+    await invoke("ig_scrape_feed", { windowMode: getIgScraperWindowMode() });
 
     // Brief wait for any in-flight events to arrive after invoke resolves
     await new Promise<void>((r) => setTimeout(r, 500));

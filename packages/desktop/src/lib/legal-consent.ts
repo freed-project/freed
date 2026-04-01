@@ -9,6 +9,7 @@ import {
   type ProviderRiskId,
 } from "@freed/shared";
 import { Store, load } from "@tauri-apps/plugin-store";
+import { log } from "./logger";
 
 const DESKTOP_BUNDLE_KEY = "legal.bundle.desktop";
 const PROVIDER_PREFIX = "legal.provider";
@@ -53,7 +54,11 @@ async function readRecord(key: string): Promise<LegalAcceptanceRecord | null> {
     const store = await getStore();
     return coerceLegalAcceptanceRecord(await store.get<unknown>(key));
   } catch (error) {
-    console.error("[legal] failed to read consent store, falling back", error);
+    log.error(
+      `[legal] failed to read consent store, falling back: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
     return readFallbackRecord(key);
   }
 }
@@ -68,7 +73,11 @@ async function writeRecord(
     const store = await getStore();
     await store.set(key, record);
   } catch (error) {
-    console.error("[legal] failed to write consent store, falling back", error);
+    log.error(
+      `[legal] failed to write consent store, falling back: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
     writeFallbackRecord(key, record);
   }
   return record;

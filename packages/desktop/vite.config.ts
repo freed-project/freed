@@ -30,6 +30,10 @@ const tauriMockAliases: Record<string, string> = process.env.VITE_TEST_TAURI
     }
   : {};
 
+const tauriMockExclude = process.env.VITE_TEST_TAURI
+  ? Object.keys(tauriMockAliases)
+  : [];
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
@@ -56,6 +60,9 @@ export default defineConfig({
     plugins: () => [wasm(), topLevelAwait()],
   },
   plugins: [wasm(), topLevelAwait(), react()],
+  optimizeDeps: {
+    exclude: tauriMockExclude,
+  },
 
   // Tauri development server.
   // strictPort is only enforced when running with the real Tauri binary (tauri:dev),
