@@ -79,7 +79,7 @@ export default function NewsletterModal() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const arrowRef = useRef(null);
+  const [arrowElement, setArrowElement] = useState<SVGSVGElement | null>(null);
 
   const {
     refs,
@@ -92,7 +92,7 @@ export default function NewsletterModal() {
     middleware: [
       offset(12),
       shift({ padding: 8 }),
-      arrow({ element: arrowRef }),
+      arrow({ element: arrowElement }),
     ],
   });
 
@@ -165,6 +165,18 @@ export default function NewsletterModal() {
 
   const currentDownload = DOWNLOADS[selectedPlatform];
   const downloadUrl = `${RELEASE_BASE}/${currentDownload.file}`;
+  const setTooltipReference = useCallback(
+    (node: HTMLDivElement | null) => {
+      refs.setReference(node);
+    },
+    [refs],
+  );
+  const setTooltipFloating = useCallback(
+    (node: HTMLDivElement | null) => {
+      refs.setFloating(node);
+    },
+    [refs],
+  );
 
   return (
     <AnimatePresence>
@@ -436,13 +448,13 @@ export default function NewsletterModal() {
                     {/* --- Newsletter (disabled — tooltip on hover) --- */}
                     <div
                       className="relative"
-                      ref={refs.setReference}
+                      ref={setTooltipReference}
                       {...getReferenceProps()}
                     >
                       <AnimatePresence>
                         {isTooltipOpen && (
                           <motion.div
-                            ref={refs.setFloating}
+                            ref={setTooltipFloating}
                             style={floatingStyles}
                             {...getFloatingProps()}
                             initial={{ opacity: 0 }}
@@ -455,7 +467,7 @@ export default function NewsletterModal() {
                               Email updates coming soon ✨
                             </span>
                             <FloatingArrow
-                              ref={arrowRef}
+                              ref={setArrowElement}
                               context={floatingCtx}
                               fill="#0a0a0a"
                               strokeWidth={1}
