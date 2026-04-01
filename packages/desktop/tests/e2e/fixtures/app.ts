@@ -55,6 +55,27 @@ export class AppFixture {
     return true;
   }
 
+  async acceptProviderRiskIfPresent(
+    provider: "x" | "facebook" | "instagram" | "linkedin",
+    timeout = 5_000,
+  ): Promise<boolean> {
+    const acceptButton = this.page.getByTestId(`provider-risk-accept-${provider}`);
+    const dialogVisible = await acceptButton.isVisible({ timeout }).catch(() => false);
+
+    if (!dialogVisible) return false;
+
+    const checkbox = this.page
+      .locator("div.fixed")
+      .filter({ has: acceptButton })
+      .getByRole("checkbox");
+
+    await checkbox.check();
+    await expect(acceptButton).toBeEnabled({ timeout });
+    await acceptButton.click();
+    await expect(acceptButton).toBeHidden({ timeout });
+    return true;
+  }
+
   /** Navigate to the app root and wait until the React tree fully initialises. */
   async goto(path = "/"): Promise<void> {
     await this.page.goto(path);
