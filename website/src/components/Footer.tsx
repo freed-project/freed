@@ -27,8 +27,8 @@ export default function Footer() {
               </span>
             </Link>
             <p className="text-text-secondary text-sm max-w-md">
-              Take back your feed. Freed is open-source software that puts you
-              in control of your social media experience.
+              Take back your feed. Freed is open-source software that helps you
+              read on your own terms.
             </p>
           </div>
 
@@ -97,10 +97,26 @@ export default function Footer() {
               </li> */}
               <li>
                 <Link
+                  href="/terms"
+                  className="text-text-secondary text-sm hover:text-text-primary transition-colors"
+                >
+                  Terms of Use
+                </Link>
+              </li>
+              <li>
+                <Link
                   href="/privacy"
                   className="text-text-secondary text-sm hover:text-text-primary transition-colors"
                 >
                   Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/eula"
+                  className="text-text-secondary text-sm hover:text-text-primary transition-colors"
+                >
+                  Desktop EULA
                 </Link>
               </li>
             </ul>

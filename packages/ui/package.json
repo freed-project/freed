@@ -12,6 +12,8 @@
     "./components/Toast": "./src/components/Toast.tsx",
     "./components/AddFeedDialog": "./src/components/AddFeedDialog.tsx",
     "./components/SettingsDialog": "./src/components/SettingsDialog.tsx",
+    "./components/legal/LegalGate": "./src/components/legal/LegalGate.tsx",
+    "./components/legal/ProviderRiskDialog": "./src/components/legal/ProviderRiskDialog.tsx",
     "./components/DebugPanel": "./src/components/DebugPanel.tsx",
     "./components/CloudProviderCard": "./src/components/CloudProviderCard.tsx",
     "./lib/debug-store": "./src/lib/debug-store.ts",

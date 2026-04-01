@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (v0.2.0 binaries shipping for all platforms, macOS signing and notarization live in releases)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -8,7 +8,9 @@
 
 ## Overview
 
-The universal liberation tool. Anyone can install this and escape algorithmic manipulation without technical setup. Packages all capture + sync + UI into native apps for **desktop (macOS, Windows, Linux)** and **mobile (iOS, Android)**.
+The universal liberation tool. Anyone can install this and escape algorithmic manipulation without technical setup. This phase packages capture, sync, and UI into Freed Desktop for direct distribution on macOS, Windows, and Linux.
+
+Large app store distribution is not part of the current strategy. The mobile reading surface lives in the PWA, and native mobile packaging stays explicitly out of the critical path.
 
 **Key architectural decisions:**
 
@@ -16,7 +18,8 @@ The universal liberation tool. Anyone can install this and escape algorithmic ma
 - **Shared React codebase** — `packages/pwa/` is embedded in WebView AND deployed standalone to app.freed.wtf
 - **X authentication via WebView** — User logs into X inside the app; cookies captured from WebView session
 - **Ranking runs here** — Desktop computes `priority` scores, syncs to PWA via Automerge
-- **Tauri 2.0 for mobile** — Same codebase targets iOS and Android via Tauri's mobile support
+- **Versioned legal gate** — Freed Desktop blocks startup side effects until the current legal bundle is accepted locally on-device
+- **Provider risk interstitials** — X, Facebook, Instagram, and LinkedIn require separate local consent before login or sync actions
 
 ---
 
@@ -184,60 +187,8 @@ export async function captureDomFeed(
 | 5.24 | macOS code signing + notarization  | High       |
 | 5.25 | Windows code signing               | Medium     |
 | 5.26 | Independent update server domain   | Medium     |
-
-### Mobile (Tauri 2.0)
-
-| Task | Description                      | Complexity |
-| ---- | -------------------------------- | ---------- |
-| 5.13 | iOS build configuration          | High       |
-| 5.14 | Android build configuration      | High       |
-| 5.15 | Mobile-responsive UI adjustments | Medium     |
-| 5.16 | iOS background refresh           | Medium     |
-| 5.17 | Android background service       | Medium     |
-| 5.18 | Push notification integration    | Medium     |
-| 5.19 | Apple Developer account setup    | Low        |
-| 5.20 | App Store submission             | High       |
-| 5.21 | Play Store submission            | Medium     |
-
----
-
-## Mobile Architecture
-
-Tauri 2.0 supports iOS and Android with the same React codebase.
-
-```
-packages/desktop/
-├── src/                      # Shared React UI
-├── src-tauri/
-│   ├── src/
-│   │   └── mobile.rs        # Mobile-specific Rust code
-│   ├── gen/
-│   │   ├── apple/           # Xcode project (generated)
-│   │   └── android/         # Android Studio project (generated)
-│   └── tauri.conf.json      # Mobile targets configured here
-```
-
-### Mobile Considerations
-
-| Platform | Consideration                                           |
-| -------- | ------------------------------------------------------- |
-| iOS      | Background App Refresh for periodic sync                |
-| iOS      | No Playwright—relies on Desktop for DOM capture         |
-| Android  | Foreground service for background sync                  |
-| Android  | No Playwright—relies on Desktop for DOM capture         |
-| Both     | Simplified capture (RSS only, no X API without Desktop) |
-| Both     | Primary use case: reading, not capturing                |
-
-### Mobile vs Desktop
-
-| Feature             | Desktop        | Mobile                |
-| ------------------- | -------------- | --------------------- |
-| X capture           | ✓ (API)        | ✗ (sync from Desktop) |
-| RSS capture         | ✓              | ✓ (limited)           |
-| DOM capture (FB/IG) | ✓ (Playwright) | ✗                     |
-| Local relay server  | ✓ (hosts)      | ✗ (connects)          |
-| Background sync     | ✓ (always)     | ✓ (periodic)          |
-| Offline reading     | ✓              | ✓                     |
+| 5.27 | First-run legal gate and local-only acceptance storage | Medium |
+| 5.28 | Provider-specific risk interstitials for social capture | Medium |
 
 ---
 
@@ -258,6 +209,9 @@ packages/desktop/
 - [x] Windows NSIS + MSI installers build
 - [x] Linux AppImage, .deb, .rpm all build
 - [x] All updater artifacts signed and uploaded to GitHub Releases
+- [x] First launch is blocked behind a local-only legal clickwrap gate
+- [x] Provider-specific capture flows require additional local risk consent
+- [x] Legal acceptance stays outside synced Automerge state
 - [x] Desktop E2E test infrastructure bootstrapped (Playwright + VITE_TEST_TAURI=1 mock layer)
 - [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
 - [x] macOS DMG is notarized in CI releases

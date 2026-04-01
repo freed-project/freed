@@ -19,7 +19,7 @@ export default function PrivacyContent() {
               <span className="gradient-text">Privacy Policy</span>
             </h1>
             <p className="text-text-secondary text-lg sm:text-xl">
-              Effective March 2, 2026
+              Effective March 31, 2026
             </p>
           </header>
 
@@ -34,10 +34,9 @@ export default function PrivacyContent() {
               The short version
             </h2>
             <p className="text-text-secondary text-sm sm:text-base leading-relaxed mb-0">
-              Freed collects nothing about you. Your social media data lives on
+              Freed does not collect your data or spy on you. Everything lives on
               your device. We have no database of users, no analytics pipeline,
-              no ad network, no investors to appease with engagement metrics. If
-              you skip the rest of this page, that sentence is all you need.
+              no ad network, and no investors to appease with engagement metrics.
             </p>
           </motion.div>
 
@@ -49,7 +48,7 @@ export default function PrivacyContent() {
                 This Website (freed.wtf)
               </h2>
               <p>
-                This marketing site is a static Next.js application hosted on
+                This marketing site is a simple webapp hosted on an industry-standard platform known as
                 Vercel. Like any web host, Vercel's infrastructure logs standard
                 HTTP request metadata (your IP address, browser user-agent,
                 timestamp, and the URL requested) as part of their CDN
@@ -71,6 +70,12 @@ export default function PrivacyContent() {
                 to. If you subscribe to release notifications, your email
                 address is stored via our newsletter provider solely for that
                 purpose and nothing else.
+              </p>
+              <p>
+                If you accept the download clickwrap, the website stores a small
+                local record in your browser showing which legal bundle version
+                you accepted and when. That record stays in your browser. We do
+                not receive it.
               </p>
             </section>
 
@@ -141,6 +146,22 @@ export default function PrivacyContent() {
               </p>
             </section>
 
+            <section>
+              <h2 className="text-2xl font-bold text-text-primary mb-4">
+                Legal Consent Records
+              </h2>
+              <p>
+                Freed stores clickwrap acceptance locally on each device or
+                browser where you accept it. The record contains a legal bundle
+                version, a timestamp, and the consent surface that was accepted.
+              </p>
+              <p>
+                Desktop provider warnings for X, Facebook, Instagram, and
+                LinkedIn are also stored locally on that device. These records
+                are not synced through Automerge and are not transmitted to us.
+              </p>
+            </section>
+
             {/* 4. Open Source */}
             <section>
               <h2 className="text-2xl font-bold text-text-primary mb-4">
@@ -178,6 +199,12 @@ export default function PrivacyContent() {
                 act of accessing it is governed by each platform's relationship
                 with you, not with us.
               </p>
+              <p>
+                If you use a third-party AI provider, cloud storage provider,
+                or platform login flow, their privacy policies and terms govern
+                that interaction. Freed does not claim otherwise, and it does
+                not act as a proxy that hides those relationships.
+              </p>
             </section>
 
             {/* 6. Children */}
@@ -200,16 +227,15 @@ export default function PrivacyContent() {
                 Changes to This Policy
               </h2>
               <p>
-                If we ever change anything material here (which would require
-                us to build infrastructure we currently don't have), we'll
-                update the effective date at the top and post a note in the{" "}
+                If we make a material change to this policy, we'll update the
+                effective date at the top and post a note in the{" "}
                 <Link
                   href="/updates"
                   className="text-text-primary underline hover:no-underline transition-colors"
                 >
                   Updates
                 </Link>{" "}
-                section. The full history of changes is visible in the{" "}
+                section. You can also see the full change history in the{" "}
                 <a
                   href="https://github.com/freed-project/freed"
                   target="_blank"
@@ -236,7 +262,7 @@ export default function PrivacyContent() {
                   className="text-text-primary underline hover:no-underline transition-colors"
                 >
                   GitHub
-                </a                >
+                </a>
                 . We'd rather have a public conversation about our privacy
                 posture than a private one; transparency is kind of the whole
                 point.

@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useCallback, useRef, useState, Profiler, type ProfilerOnRenderCallback } from "react";
 import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
+import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { PlatformProvider, type PlatformConfig, type UpdateDownloadProgress } from "@freed/ui/context";
 import { UpdateNotification, type UpdateState } from "./components/UpdateNotification";
 import { CloudSyncNudge } from "./components/CloudSyncNudge";
 import { useAppStore } from "./lib/store";
 import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } from "./lib/capture";
 import { startRssPoller, stopRssPoller } from "./lib/rss-poller";
-import { relaunch } from "@tauri-apps/plugin-process";
+import { exit, relaunch } from "@tauri-apps/plugin-process";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
 import {
   startSync,
@@ -43,8 +44,10 @@ import { LinkedInSettingsSection } from "./components/LinkedInSettingsSection";
 import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
+import { DesktopLegalSettingsSection } from "./components/DesktopLegalSettingsSection";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { generateSampleFeeds, generateSampleItems } from "@freed/shared";
+import { acceptDesktopBundle, hasAcceptedDesktopBundle } from "./lib/legal-consent";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
@@ -73,13 +76,23 @@ function App() {
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
   const error = useAppStore((state) => state.error);
+  const [legalResolved, setLegalResolved] = useState(false);
+  const [legalAccepted, setLegalAccepted] = useState(false);
 
   useEffect(() => {
+    void hasAcceptedDesktopBundle().then((accepted) => {
+      setLegalAccepted(accepted);
+      setLegalResolved(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!legalAccepted) return;
     initialize();
-  }, [initialize]);
+  }, [initialize, legalAccepted]);
 
   useEffect(() => {
-    if (!isInitialized) return;
+    if (!legalAccepted || !isInitialized) return;
     startRssPoller();
     // Wire the LAN relay change subscription + client-count polling.
     startSync();
@@ -92,11 +105,12 @@ function App() {
       stopSync();
       stopContentFetcher();
     };
-  }, [isInitialized]);
+  }, [isInitialized, legalAccepted]);
 
   // Log OS sleep/wake transitions so the log file shows where overnight
   // freezes begin. These events are emitted by Tauri on macOS suspend/resume.
   useEffect(() => {
+    if (!legalAccepted) return;
     log.info("[app] desktop app started");
     if (!isTauri()) return;
 
@@ -111,7 +125,7 @@ function App() {
     }).then((unlisten) => cleanups.push(unlisten));
 
     return () => cleanups.forEach((fn) => fn());
-  }, []);
+  }, [legalAccepted]);
 
   // --- Update system ---
 
@@ -132,7 +146,7 @@ function App() {
 
   // Poll for updates in the background every 30 minutes.
   useEffect(() => {
-    if (IS_LOCAL_PREVIEW) return;
+    if (!legalAccepted || IS_LOCAL_PREVIEW) return;
 
     async function poll() {
       try {
@@ -151,7 +165,7 @@ function App() {
       clearTimeout(initial);
       clearInterval(interval);
     };
-  }, []);
+  }, [legalAccepted]);
 
   // Manual check triggered from Settings panel.
   const checkForUpdates = useCallback(async (): Promise<string | null> => {
@@ -279,6 +293,7 @@ function App() {
       SourceIndicator: XSourceIndicator,
       HeaderSyncIndicator: DesktopSyncIndicator,
       SettingsExtraSections: MobileSyncTab,
+      LegalSettingsContent: DesktopLegalSettingsSection,
       FeedEmptyState: FeedEmptyState,
       XSettingsContent: XSettingsSection,
       FacebookSettingsContent: FacebookSettingsSection,
@@ -325,6 +340,31 @@ function App() {
     }),
      [checkForUpdates, applyUpdate, handleFactoryReset, seedSocialConnections, updateState],
   );
+
+  if (!legalResolved) {
+    return <div className="h-screen bg-transparent" />;
+  }
+
+  if (!legalAccepted) {
+    return (
+      <LegalGate
+        productName="Freed Desktop"
+        includeEula
+        acceptLabel="Agree and open Freed Desktop"
+        declineLabel="Quit"
+        openUrl={(url: string) => {
+          void shellOpen(url);
+        }}
+        onAccept={async () => {
+          await acceptDesktopBundle();
+          setLegalAccepted(true);
+        }}
+        onDecline={async () => {
+          await exit(0);
+        }}
+      />
+    );
+  }
 
   if (error && !isInitialized) {
     return (

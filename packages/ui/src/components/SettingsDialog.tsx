@@ -102,6 +102,12 @@ const ICON_SOURCES = (
 );
 
 const ICONS: Record<SectionId, ReactNode> = {
+  legal: (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3l7.5 3v6c0 5.25-3.34 9.922-7.5 11.25C7.84 21.922 4.5 17.25 4.5 12V6L12 3z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 12.75l1.5 1.5 3-3.75" />
+    </svg>
+  ),
   reading: (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
@@ -175,6 +181,7 @@ type UpdateCheckState =
 export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const {
     SettingsExtraSections,
+    LegalSettingsContent,
     XSettingsContent,
     FacebookSettingsContent,
     InstagramSettingsContent,
@@ -208,6 +215,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   // Re-use the Section objects already defined in allSections so keywords stay in sync.
   const sectionById = Object.fromEntries(allSections.map((s) => [s.id, s])) as Record<SectionId, Section>;
   const navStructure: NavStructureItem[] = [
+    sectionById.legal,
     sectionById.sync,
     sectionById.reading,
     {
@@ -326,7 +334,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     : allSections;
 
   // ── Scrollspy ────────────────────────────────────────────────────────────
-  const [activeSection, setActiveSection] = useState<SectionId>("sync");
+  const [activeSection, setActiveSection] = useState<SectionId>("legal");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Keep a ref in sync with updateState.status so scroll/visibility callbacks
@@ -520,6 +528,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   function SectionContent({ id }: { id: SectionId }) {
     switch (id) {
+      case "legal":
+        return (
+          <>
+            <SectionHeading label="Legal" />
+            {LegalSettingsContent ? <LegalSettingsContent /> : null}
+          </>
+        );
+
       case "reading":
         return (
           <>

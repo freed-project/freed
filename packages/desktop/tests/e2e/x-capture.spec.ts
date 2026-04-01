@@ -178,6 +178,7 @@ test("X connect form accepts cookies and triggers sync", async ({
     { timeout: 3_000 },
   );
   await connectBtn.click();
+  await app.acceptProviderRiskIfPresent("x");
 
   // After connecting, the "Connected" indicator should appear
   await expect(page.getByText("Connected", { exact: true })).toBeVisible({ timeout: 10_000 });

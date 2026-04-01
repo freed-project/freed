@@ -115,6 +115,7 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 - Manifesto page
 - Roadmap page
 - Updates/blog with RSS feed
+- QR concept gallery page for fullscreen presentation links
 
 **Features:**
 
@@ -122,10 +123,13 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 - Newsletter signup (Brevo via Next.js Route Handler)
 - Auto-generated sitemap.xml
 - RSS/Atom feed generation at build time
+- Public legal pages for Terms of Use, Privacy, and Desktop EULA
+- Versioned website clickwrap in the download modal for Terms of Use and Privacy before opening the PWA or downloading Freed Desktop
 - Mobile-responsive design
 - Glassmorphic dark theme
 - Full accessibility support (skip links, ARIA labels, focus states)
 - `prefers-reduced-motion` support
+- Public `/qr` gallery with five poster-style QR concepts for `freed.wtf`
 
 **Remaining Work:**
 
@@ -210,6 +214,7 @@ Two Vercel projects, both auto-deploy on push to `main` with preview deploys on 
 | 1.7  | Add newsletter signup with Next.js Edge Route Handler (Brevo) | ✓      |
 | 1.8  | Add Roadmap and Updates pages                | ✓      |
 | 1.9  | Generate RSS feed at build time              | ✓      |
+| 1.10 | Add public legal docs and versioned website clickwrap | ✓ |
 
 ---
 
