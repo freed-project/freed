@@ -19,6 +19,7 @@ export { BottomSheet } from "./components/BottomSheet.js";
 export { PullToRefresh } from "./components/PullToRefresh.js";
 export { ToastContainer, useToastStore, toast } from "./components/Toast.js";
 export type { ToastType } from "./components/Toast.js";
+export { SettingsToggle } from "./components/SettingsToggle.js";
 export { AddFeedDialog } from "./components/AddFeedDialog.js";
 export { SettingsDialog } from "./components/SettingsDialog.js";
 export { LegalGate } from "./components/legal/LegalGate.js";

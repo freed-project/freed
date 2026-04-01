@@ -9,6 +9,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { SettingsToggle } from "@freed/ui/components/SettingsToggle";
 import type { FbGroupInfo } from "@freed/shared";
 import { useAppStore } from "../lib/store";
 import {
@@ -331,7 +332,7 @@ export function FacebookSettingsSection() {
               {groups.map((group) => {
                 const included = !excludedGroupIds[group.id];
                 return (
-                  <Toggle
+                  <SettingsToggle
                     key={group.id}
                     label={group.name}
                     checked={included}

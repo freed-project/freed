@@ -12,6 +12,7 @@
 import { useState, useEffect, useCallback } from "react";
 import type { AIPreferences } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
+import { SettingsToggle } from "../SettingsToggle.js";
 
 const DEFAULT_MODELS: Record<string, string> = {
   none: "",
@@ -239,13 +240,13 @@ export function AISection() {
       {/* Toggles */}
       {ai.provider !== "none" && (
         <div className="space-y-3 pt-1">
-          <Toggle
+          <SettingsToggle
             label="Auto-summarize new saves"
             description="Summarize articles as they are cached. May incur API costs with cloud providers."
             checked={ai.autoSummarize}
             onChange={(v) => update({ autoSummarize: v })}
           />
-          <Toggle
+          <SettingsToggle
             label="Extract topics for ranking"
             description="Use AI to extract topics that feed the priority ranking algorithm."
             checked={ai.extractTopics}
@@ -254,36 +255,5 @@ export function AISection() {
         </div>
       )}
     </div>
-  );
-}
-
-function Toggle({
-  label,
-  description,
-  checked,
-  onChange,
-}: {
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <label className="flex items-start gap-3 cursor-pointer group">
-      <div className="relative shrink-0 mt-0.5">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-          className="sr-only peer"
-        />
-        <div className="w-8 h-4.5 bg-[#27272a] rounded-full peer peer-checked:bg-[#8b5cf6] transition-colors" />
-        <div className="absolute top-0.5 left-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform peer-checked:translate-x-3.5" />
-      </div>
-      <div>
-        <p className="text-sm text-[#a1a1aa] group-hover:text-[#fafafa] transition-colors">{label}</p>
-        <p className="text-xs text-[#52525b] mt-0.5">{description}</p>
-      </div>
-    </label>
   );
 }

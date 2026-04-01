@@ -10,6 +10,7 @@
     "./components/BottomSheet": "./src/components/BottomSheet.tsx",
     "./components/PullToRefresh": "./src/components/PullToRefresh.tsx",
     "./components/Toast": "./src/components/Toast.tsx",
+    "./components/SettingsToggle": "./src/components/SettingsToggle.tsx",
     "./components/AddFeedDialog": "./src/components/AddFeedDialog.tsx",
     "./components/SettingsDialog": "./src/components/SettingsDialog.tsx",
     "./components/legal/LegalGate": "./src/components/legal/LegalGate.tsx",
