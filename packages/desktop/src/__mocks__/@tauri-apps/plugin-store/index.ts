@@ -33,6 +33,14 @@ function persistStoreData(path: string, mem: Map<string, unknown>): void {
   }
 }
 
+function shouldThrow(): boolean {
+  try {
+    return window.localStorage.getItem("__TAURI_MOCK_STORE_THROW__") === "1";
+  } catch {
+    return false;
+  }
+}
+
 export class Store {
   private readonly path: string;
   private mem: Map<string, unknown>;
@@ -72,5 +80,8 @@ export async function load(
   path: string,
   _options?: { defaults?: Record<string, unknown>; autoSave?: boolean },
 ): Promise<Store> {
+  if (shouldThrow()) {
+    throw new Error("mock plugin-store failure");
+  }
   return new Store(path);
 }

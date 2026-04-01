@@ -80,10 +80,21 @@ function App() {
   const [legalAccepted, setLegalAccepted] = useState(false);
 
   useEffect(() => {
-    void hasAcceptedDesktopBundle().then((accepted) => {
-      setLegalAccepted(accepted);
-      setLegalResolved(true);
-    });
+    void hasAcceptedDesktopBundle()
+      .then((accepted) => {
+        setLegalAccepted(accepted);
+      })
+      .catch((error) => {
+        log.error(
+          `[legal] failed to resolve desktop bundle consent: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        setLegalAccepted(false);
+      })
+      .finally(() => {
+        setLegalResolved(true);
+      });
   }, []);
 
   useEffect(() => {
@@ -342,7 +353,13 @@ function App() {
   );
 
   if (!legalResolved) {
-    return <div className="h-screen bg-transparent" />;
+    return (
+      <div className="h-screen flex items-center justify-center bg-transparent">
+        <div className="rounded-2xl border border-white/10 bg-[rgba(10,10,10,0.72)] px-5 py-4 text-sm text-white/80 shadow-2xl shadow-black/60 backdrop-blur-xl">
+          Opening Freed Desktop...
+        </div>
+      </div>
+    );
   }
 
   if (!legalAccepted) {
