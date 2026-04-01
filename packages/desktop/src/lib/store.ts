@@ -46,6 +46,7 @@ import {
 import { buildPlatformActionsRegistry } from "./platform-actions";
 import { startOutboxProcessor } from "./outbox";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
+import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
 
 let outboxTeardown: (() => void) | null = null;
 import { initFbAuth, type FbAuthState } from "./fb-auth";
@@ -306,6 +307,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Run cleanup migrations in the background via worker.
       void runStartupMigrations(docState.preferences.display.archivePruneDays ?? 30);
     } catch (error) {
+      recordRuntimeError({ source: "desktop:initialize", error, fatal: false });
+      recordBugReportEvent("desktop:initialize", "error", "Initialization failed");
       set({
         error: error instanceof Error ? error.message : "Failed to initialize",
         isLoading: false,

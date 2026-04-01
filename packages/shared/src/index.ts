@@ -33,6 +33,7 @@ export * from "./sample-data";
 // Re-export legal metadata and acceptance helpers (browser-safe, no deps)
 export * from "./legal";
 export * from "./legal-storage";
+export * from "./bug-report";
 
 // Note: schema.js is NOT re-exported here because it imports Automerge
 // which uses WebAssembly and requires special bundler configuration.

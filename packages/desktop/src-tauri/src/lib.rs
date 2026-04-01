@@ -796,6 +796,50 @@ fn list_snapshots(app: tauri::AppHandle) -> Vec<String> {
     entries
 }
 
+#[tauri::command]
+fn get_recent_logs(app: tauri::AppHandle, limit: Option<usize>) -> Result<Vec<String>, String> {
+    let limit = limit.unwrap_or(120).clamp(1, 1_000);
+    let log_dir = match app.path().app_log_dir() {
+        Ok(dir) => dir,
+        Err(_) => return Ok(vec![]),
+    };
+
+    let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(&log_dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .collect();
+
+    files.sort_by_key(|path| {
+        std::fs::metadata(path)
+            .and_then(|meta| meta.modified())
+            .ok()
+    });
+    files.reverse();
+
+    let mut lines = Vec::new();
+    for path in files {
+        let Ok(contents) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        for line in contents.lines().rev() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            lines.push(line.to_string());
+            if lines.len() >= limit {
+                lines.reverse();
+                return Ok(lines);
+            }
+        }
+    }
+
+    lines.reverse();
+    Ok(lines)
+}
+
 // ---------------------------------------------------------------------------
 // Tauri commands — OAuth localhost server
 // ---------------------------------------------------------------------------
@@ -3235,6 +3279,7 @@ pub fn run() {
             close_x_login_window,
             get_mdns_active,
             list_snapshots,
+            get_recent_logs,
             start_oauth_server,
             pick_contact,
             fb_show_login,

@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { installConsoleBugReportCapture, installGlobalBugReportCapture } from '@freed/ui/lib/bug-report'
 
 if (import.meta.env.DEV) {
   Promise.all([import("./lib/store"), import("./lib/automerge")]).then(
@@ -33,6 +34,9 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('scroll', syncVisualViewport)
 }
 syncVisualViewport()
+
+installGlobalBugReportCapture('pwa')
+installConsoleBugReportCapture('pwa')
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

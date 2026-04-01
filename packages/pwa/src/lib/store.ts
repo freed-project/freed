@@ -10,6 +10,7 @@
 import { create } from "zustand";
 import { createDefaultPreferences } from "@freed/shared";
 import type { BaseAppState, Friend, ReachOutLog, RemoveFeedOptions } from "@freed/shared";
+import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
 import {
   initDoc,
   subscribe,
@@ -123,6 +124,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
       }
     } catch (error) {
+      recordRuntimeError({ source: "pwa:initialize", error, fatal: false });
+      recordBugReportEvent("pwa:initialize", "error", "Initialization failed");
       set({
         error: error instanceof Error ? error.message : "Failed to initialize",
         isLoading: false,

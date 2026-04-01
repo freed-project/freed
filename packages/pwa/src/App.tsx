@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { AppShell } from "@freed/ui/components/layout";
+import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
 import { FeedView } from "@freed/ui/components/feed";
 import { GoogleContactsSection } from "@freed/ui/components/settings/GoogleContactsSection";
+import { FatalErrorScreen } from "@freed/ui/components/FatalErrorScreen";
 import { ToastContainer } from "@freed/ui/components/Toast";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { OAuthCallback } from "./components/OAuthCallback";
@@ -32,6 +34,8 @@ import { PwaLegalSettingsSection } from "./components/PwaLegalSettingsSection";
 import { initiateGDriveOAuth } from "./components/SyncConnectDialog";
 import { acceptPwaBundle, hasAcceptedPwaBundle } from "./lib/legal-consent";
 import { useBrowserNavigationHistory } from "./lib/navigation-history";
+import { pwaBugReporting } from "./lib/bug-report";
+import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
 
 function App() {
   // Intercept OAuth callback before rendering the main app.
@@ -45,6 +49,7 @@ function App() {
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
   const [legalResolved, setLegalResolved] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
+  const fatalError = useFatalRuntimeError();
 
   useBrowserNavigationHistory(legalAccepted);
 
@@ -161,6 +166,7 @@ function App() {
         connect: initiateGDriveOAuth,
       },
       openUrl: (url: string) => { window.open(url, "_blank", "noopener,noreferrer"); },
+      bugReporting: pwaBugReporting,
     }),
     [checkForUpdates, handleFactoryReset],
   );
@@ -188,51 +194,64 @@ function App() {
 
   if (error && !isInitialized) {
     return (
-      <div className="h-screen flex items-center justify-center bg-freed-black">
-        <div className="text-center max-w-md p-6">
-          <p className="text-red-400 mb-4">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="btn-primary"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
+      <PlatformProvider value={platform}>
+        <FatalErrorScreen
+          error={{ message: error }}
+          productName="Freed"
+          onRetry={() => window.location.reload()}
+        />
+      </PlatformProvider>
+    );
+  }
+
+  if (fatalError) {
+    return (
+      <PlatformProvider value={platform}>
+        <FatalErrorScreen
+          error={fatalError}
+          productName="Freed"
+          onRetry={() => {
+            clearFatalRuntimeError();
+            window.location.reload();
+          }}
+        />
+      </PlatformProvider>
     );
   }
 
   return (
     <PlatformProvider value={platform}>
-      <AppShell>
-        <FeedView />
-      </AppShell>
-      <ToastContainer />
-      {showUpdateBanner && (
-        <div className="fixed bottom-4 right-4 z-50 max-w-sm animate-slide-up">
-          <div className="bg-[#141414] border border-[rgba(139,92,246,0.3)] rounded-xl p-4 shadow-lg flex items-center gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white">New version available</p>
-              <p className="text-xs text-[#71717a] mt-0.5">Reload to apply the update.</p>
+      <BugReportBoundary>
+        <AppShell>
+          <FeedView />
+        </AppShell>
+        <ToastContainer />
+        {showUpdateBanner && (
+          <div className="fixed bottom-4 right-4 z-50 max-w-sm animate-slide-up">
+            <div className="bg-[#141414] border border-[rgba(139,92,246,0.3)] rounded-xl p-4 shadow-lg flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white">New version available</p>
+                <p className="text-xs text-[#71717a] mt-0.5">Reload to apply the update.</p>
+              </div>
+              <button
+                onClick={applyPwaUpdate}
+                className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-md bg-[#8b5cf6] text-white hover:bg-[#7c3aed] transition-colors"
+              >
+                Reload
+              </button>
+              <button
+                onClick={() => setShowUpdateBanner(false)}
+                className="shrink-0 text-[#71717a] hover:text-white transition-colors"
+                aria-label="Dismiss"
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </button>
             </div>
-            <button
-              onClick={applyPwaUpdate}
-              className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-md bg-[#8b5cf6] text-white hover:bg-[#7c3aed] transition-colors"
-            >
-              Reload
-            </button>
-            <button
-              onClick={() => setShowUpdateBanner(false)}
-              className="shrink-0 text-[#71717a] hover:text-white transition-colors"
-              aria-label="Dismiss"
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-            </button>
           </div>
-        </div>
-      )}
+        )}
+      </BugReportBoundary>
     </PlatformProvider>
   );
 }

@@ -23,6 +23,7 @@
     "@tanstack/react-virtual": "^3.13.6",
     "date-fns": "^4.1.0",
     "jsqr": "^1.4.0",
+    "jszip": "^3.10.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.1.1",
