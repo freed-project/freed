@@ -279,40 +279,24 @@ export default function NewsletterModal() {
                       </p>
                     </div>
 
-                    <div className="mb-6 px-4 py-4 rounded-xl border border-red-500/25 bg-red-500/6">
-                      <p className="text-center text-sm font-semibold text-red-300">
-                        Freed is experimental software.
+                    {/* Release warning */}
+                    <div className="mb-6 px-4 py-4 rounded-xl border border-amber-500/30 bg-amber-500/5">
+                      <p className="text-center text-sm font-semibold text-amber-300">
+                        ⚠️ Early experimental build
                       </p>
-                      <p className="text-center text-xs text-red-100/70 mt-2 leading-relaxed">
-                        Some features can break, lock you out, or get your social accounts throttled
-                        or banned. Read the legal docs before you proceed.
+                      <p className="text-center text-xs text-amber-100/70 mt-2 leading-relaxed">
+                        Some features can break, lock you out, or get your social
+                        accounts throttled or banned. I'm shipping new builds{" "}
+                        <a
+                          href="/changelog"
+                          className="underline underline-offset-2 hover:text-amber-200 transition-colors"
+                        >
+                          most every day
+                        </a>
+                        . Expect rough edges while we harden the release.
                       </p>
-                    </div>
-
-                    {/* Early-build disclaimer */}
-                    <div className="mb-6 px-4 py-3 rounded-xl border border-amber-500/30 bg-amber-500/5">
-                      <p className="text-center text-xs sm:text-sm font-bold text-amber-400/90">
-                        ⚠️ Very early build. Here be dragons!
-                      </p>
-                      <p className="text-center text-xs text-amber-400/60 my-2">
-                        I'm shipping new builds{" "}
-                        <a href="/changelog" className="underline underline-offset-2 hover:text-amber-400/90 transition-colors">most every day</a>
-                        . Expect a
-                        functional release within the next month or two.
-                      </p>
-                      {(selectedPlatform === "mac-arm" ||
-                        selectedPlatform === "mac-intel") && (
-                        <p className="text-center text-xs text-amber-400/60 mt-1">
-                          This macOS app isn't yet codesigned. If you're feeling
-                          brave, you'll need to run the following in your
-                          terminal to bypass Gatekeeper:{" "}
-                          <code className="font-mono bg-amber-500/10 px-1 py-0.5 rounded">
-                            xattr -cr /Applications/Freed.app
-                          </code>
-                        </p>
-                      )}
                       {selectedPlatform === "windows" && (
-                        <p className="text-center text-xs text-amber-400/60 mt-1">
+                        <p className="text-center text-xs text-amber-400/70 mt-3">
                           Windows will probably block this installer since it's
                           unsigned. Click{" "}
                           <span className="text-amber-400/80 font-medium">
@@ -326,7 +310,7 @@ export default function NewsletterModal() {
                         </p>
                       )}
                       {selectedPlatform === "linux" && (
-                        <p className="text-center text-xs text-amber-400/60 mt-1">
+                        <p className="text-center text-xs text-amber-400/70 mt-3">
                           Make the AppImage executable before running:{" "}
                           <code className="font-mono bg-amber-500/10 px-1 py-0.5 rounded">
                             chmod +x Freed-Linux-x64.AppImage

@@ -491,7 +491,7 @@ const phases: Phase[] = [
     number: 5,
     title: "Desktop & Mobile App",
     description:
-      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, first-run legal gating, and provider risk interstitials. Code signing deferred.",
+      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, first-run legal gating, provider risk interstitials, and signed macOS releases.",
     status: "current",
     priority: true,
     planLink:

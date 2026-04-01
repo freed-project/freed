@@ -119,10 +119,10 @@ jobs:
           fi
 
           BODY+="### Downloads"$'\n\n'
-          BODY+="**macOS:** \`.dmg\` (Apple Silicon or Intel)  "$'\n'
+          BODY+="**macOS:** \`.dmg\` (Apple Silicon or Intel, signed + notarized)  "$'\n'
           BODY+="**Windows:** \`.exe\` (NSIS installer)  "$'\n'
           BODY+="**Linux:** \`.AppImage\`  "$'\n\n'
-          BODY+="> macOS users may need to right-click → Open on first launch."
+          BODY+="> macOS downloads are signed and notarized for normal Gatekeeper installation."
 
           # Write to GITHUB_OUTPUT using heredoc to handle multiline
           {
@@ -217,9 +217,30 @@ jobs:
           npm run build -w @freed/sync
           npm run build -w @freed/capture-rss
 
-      # macOS code signing (only runs if secrets are configured)
+      - name: Validate Apple signing secrets
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+        run: |
+          missing=()
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_TEAM_ID APPLE_ID APPLE_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "Missing required macOS signing/notarization secrets: ${missing[*]}"
+            exit 1
+          fi
+
       - name: Import Apple signing certificate
-        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE != ''
+        if: runner.os == 'macOS'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -244,6 +265,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_PROVIDER_SHORT_NAME: ${{ secrets.APPLE_PROVIDER_SHORT_NAME }}
           # Public OAuth client IDs — no secret needed for desktop PKCE flows
           VITE_DROPBOX_CLIENT_ID: yaqbppqya009gky
           VITE_GDRIVE_DESKTOP_CLIENT_ID: 304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com
