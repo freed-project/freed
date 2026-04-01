@@ -34,10 +34,9 @@ export default function PrivacyContent() {
               The short version
             </h2>
             <p className="text-text-secondary text-sm sm:text-base leading-relaxed mb-0">
-              Freed collects nothing about you. Your social media data lives on
+              Freed does not collect your data or spy on you. Everything lives on
               your device. We have no database of users, no analytics pipeline,
-              no ad network, no investors to appease with engagement metrics. If
-              you skip the rest of this page, that sentence is all you need.
+              no ad network, and no investors to appease with engagement metrics.
             </p>
           </motion.div>
 
@@ -49,7 +48,7 @@ export default function PrivacyContent() {
                 This Website (freed.wtf)
               </h2>
               <p>
-                This marketing site is a static Next.js application hosted on
+                This marketing site is a simple webapp hosted on an industry-standard platform known as
                 Vercel. Like any web host, Vercel's infrastructure logs standard
                 HTTP request metadata (your IP address, browser user-agent,
                 timestamp, and the URL requested) as part of their CDN
@@ -228,16 +227,15 @@ export default function PrivacyContent() {
                 Changes to This Policy
               </h2>
               <p>
-                If we ever change anything material here (which would require
-                us to build infrastructure we currently don't have), we'll
-                update the effective date at the top and post a note in the{" "}
+                If we make a material change to this policy, we'll update the
+                effective date at the top and post a note in the{" "}
                 <Link
                   href="/updates"
                   className="text-text-primary underline hover:no-underline transition-colors"
                 >
                   Updates
                 </Link>{" "}
-                section. The full history of changes is visible in the{" "}
+                section. You can also see the full change history in the{" "}
                 <a
                   href="https://github.com/freed-project/freed"
                   target="_blank"

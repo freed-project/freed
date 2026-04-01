@@ -4,7 +4,7 @@ import { LegalPage } from "@/components/LegalPage";
 export const metadata: Metadata = {
   title: "Terms of Use",
   description:
-    "Terms of Use for Freed, the website and PWA. Covers experimental use, account risk, and local-first software disclaimers.",
+    "Terms of Use for Freed, the website and web app. Covers experimental use, account risk, and local-first software disclaimers.",
 };
 
 export default function TermsPage() {
@@ -15,7 +15,7 @@ export default function TermsPage() {
       intro={
         <>
           <p>
-            These Terms of Use apply to the Freed website and PWA. Freed is experimental software.
+            These Terms of Use apply to the Freed website and web app. Freed is experimental software.
             If you use it, you are agreeing to use it at your own risk and to stay responsible for
             the accounts, data, and platforms you choose to connect.
           </p>
@@ -32,8 +32,8 @@ export default function TermsPage() {
                 syncing service, and not an agent acting on your behalf on our servers.
               </p>
               <p>
-                The website provides downloads, documentation, and the PWA. The PWA runs in your browser
-                or installed web app context on your device.
+                The website provides downloads, documentation, and the web app. The web app runs in your browser
+                or as an installed web app on your device.
               </p>
             </>
           ),
@@ -51,9 +51,14 @@ export default function TermsPage() {
           ),
         },
         {
-          title: "3. Third-Party Platform Risk",
+          title: "3. Experimental and Account Risk",
           content: (
             <>
+              <p>
+                Freed is built for user control in ecosystems that do not always welcome it.
+                Some features are intentionally sharp-edged. If you use them, you are joining
+                the experiment with your eyes open.
+              </p>
               <p>
                 If you use Freed with third-party services, you remain responsible for your relationship
                 with those services. Their terms, rules, rate limits, fraud systems, and account enforcement
@@ -63,6 +68,10 @@ export default function TermsPage() {
                 Using Freed can trigger rate limits, forced logouts, password resets, temporary locks,
                 or permanent account bans. Do not use Freed with any account if losing access to that account
                 would create unacceptable personal, financial, or professional harm.
+              </p>
+              <p>
+                Do not use high-risk features with employer, client, newsroom, school, government,
+                activist, or regulated accounts unless you are prepared for potential fallout.
               </p>
             </>
           ),

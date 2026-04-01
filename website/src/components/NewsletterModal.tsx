@@ -346,28 +346,12 @@ export default function NewsletterModal() {
                           {LEGAL_DOCS.terms.label}
                         </a>
                         <a
-                          href={LEGAL_DOCS.eula.path}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="underline underline-offset-2 hover:text-text-primary transition-colors"
-                        >
-                          {LEGAL_DOCS.eula.label}
-                        </a>
-                        <a
                           href={LEGAL_DOCS.privacy.path}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="underline underline-offset-2 hover:text-text-primary transition-colors"
                         >
                           {LEGAL_DOCS.privacy.label}
-                        </a>
-                        <a
-                          href={LEGAL_DOCS["experimental-risk"].path}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="underline underline-offset-2 hover:text-text-primary transition-colors"
-                        >
-                          {LEGAL_DOCS["experimental-risk"].label}
                         </a>
                       </div>
                       {acceptedBundle ? (
@@ -387,9 +371,9 @@ export default function NewsletterModal() {
                             className="mt-0.5 h-4 w-4 rounded border-freed-border bg-freed-surface text-glow-purple focus:ring-glow-purple"
                           />
                           <span>
-                            I have read and agree to the Terms of Use, Desktop EULA, Privacy Policy,
-                            and Experimental Risk Addendum. I understand that Freed can have rough edges
-                            and can trigger account restrictions or permanent bans from third-party platforms.
+                            I have read and agree to the Terms of Use and Privacy Policy.
+                            I understand that Freed can have rough edges and that the desktop app
+                            will present additional license and risk terms on first launch.
                           </span>
                         </label>
                       )}

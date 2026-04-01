@@ -1,4 +1,4 @@
-export type LegalDocId = "terms" | "eula" | "privacy" | "experimental-risk";
+export type LegalDocId = "terms" | "eula" | "privacy";
 
 export type ProviderRiskId = "x" | "facebook" | "instagram" | "linkedin";
 
@@ -31,27 +31,21 @@ export const LEGAL_DOCS: Record<LegalDocId, LegalDocMeta> = {
     path: "/terms",
     url: "https://freed.wtf/terms",
   },
-  eula: {
-    id: "eula",
-    label: "Desktop EULA",
-    path: "/eula",
-    url: "https://freed.wtf/eula",
-  },
   privacy: {
     id: "privacy",
     label: "Privacy Policy",
     path: "/privacy",
     url: "https://freed.wtf/privacy",
   },
-  "experimental-risk": {
-    id: "experimental-risk",
-    label: "Experimental Risk Addendum",
-    path: "/experimental-risk",
-    url: "https://freed.wtf/experimental-risk",
+  eula: {
+    id: "eula",
+    label: "Desktop EULA",
+    path: "/eula",
+    url: "https://freed.wtf/eula",
   },
 };
 
-export const LEGAL_BUNDLE_VERSION = "2026-03-31";
+export const LEGAL_BUNDLE_VERSION = "2026-03-31.1";
 
 export const PROVIDER_RISK_VERSIONS: Record<ProviderRiskId, string> = {
   x: "2026-03-31-x",

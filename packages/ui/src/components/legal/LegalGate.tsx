@@ -52,8 +52,9 @@ export function LegalGate({
   const [submitting, setSubmitting] = useState(false);
 
   const documentList = useMemo(() => {
-    const docs = [LEGAL_DOCS.terms, LEGAL_DOCS.privacy, LEGAL_DOCS["experimental-risk"]];
-    if (includeEula) docs.splice(1, 0, LEGAL_DOCS.eula);
+    const docs = [LEGAL_DOCS.terms];
+    docs.push(LEGAL_DOCS.privacy);
+    if (includeEula) docs.push(LEGAL_DOCS.eula);
     return docs;
   }, [includeEula]);
 
@@ -132,18 +133,17 @@ export function LegalGate({
               <span className="text-sm text-[#e4e4e7] leading-relaxed">
                 I have read and agree to the{" "}
                 <LegalLink href={LEGAL_DOCS.terms.url} label={LEGAL_DOCS.terms.label} openUrl={openUrl} />,{" "}
+                <LegalLink href={LEGAL_DOCS.privacy.url} label={LEGAL_DOCS.privacy.label} openUrl={openUrl} />
                 {includeEula ? (
                   <>
-                    <LegalLink href={LEGAL_DOCS.eula.url} label={LEGAL_DOCS.eula.label} openUrl={openUrl} />,{" "}
+                    , and{" "}
+                    <LegalLink href={LEGAL_DOCS.eula.url} label={LEGAL_DOCS.eula.label} openUrl={openUrl} />
+                    .
                   </>
-                ) : null}
-                <LegalLink href={LEGAL_DOCS.privacy.url} label={LEGAL_DOCS.privacy.label} openUrl={openUrl} />, and{" "}
-                <LegalLink
-                  href={LEGAL_DOCS["experimental-risk"].url}
-                  label={LEGAL_DOCS["experimental-risk"].label}
-                  openUrl={openUrl}
-                />
-                . I understand that some features can damage or terminate my access to third-party accounts.
+                ) : (
+                  "."
+                )}
+                I understand that some features can damage or terminate my access to third-party accounts.
               </span>
             </label>
 
