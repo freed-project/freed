@@ -190,6 +190,73 @@ test("Friends view can return to the feed from sidebar navigation", async ({ app
   await expect(page.getByText("Article 0:", { exact: false })).toBeVisible({ timeout: 5_000 });
 });
 
+test("desktop navigation history supports Cmd+[ and Cmd+] across views", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(1);
+
+  const { page } = app;
+
+  await page.getByRole("button", { name: "Friends" }).click();
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { activeView: string } }
+      | undefined;
+    return store?.getState().activeView === "friends";
+  }, { timeout: 5_000 });
+
+  await page.keyboard.press("Meta+[");
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { activeView: string } }
+      | undefined;
+    return store?.getState().activeView === "feed";
+  }, { timeout: 5_000 });
+
+  await page.keyboard.press("Meta+]");
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { activeView: string } }
+      | undefined;
+    return store?.getState().activeView === "friends";
+  }, { timeout: 5_000 });
+});
+
+test("desktop reader history supports Cmd+[ and Cmd+] for open items", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(1);
+
+  const { page } = app;
+  await page.getByText("Article 0:", { exact: false }).click();
+
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { selectedItemId: string | null } }
+      | undefined;
+    return store?.getState().selectedItemId !== null;
+  }, { timeout: 5_000 });
+  await expect(page.getByLabel("Back")).toBeVisible({ timeout: 5_000 });
+
+  await page.keyboard.press("Meta+[");
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { selectedItemId: string | null } }
+      | undefined;
+    return store?.getState().selectedItemId === null;
+  }, { timeout: 5_000 });
+  await expect(page.getByLabel("Back")).toHaveCount(0);
+
+  await page.keyboard.press("Meta+]");
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { selectedItemId: string | null } }
+      | undefined;
+    return store?.getState().selectedItemId !== null;
+  }, { timeout: 5_000 });
+  await expect(page.getByLabel("Back")).toBeVisible({ timeout: 5_000 });
+});
+
 test("Friends workspace keeps a visible sidebar and supports back navigation", async ({ app }) => {
   await app.goto();
   await app.waitForReady();

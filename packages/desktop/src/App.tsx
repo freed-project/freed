@@ -62,6 +62,7 @@ import { clearProviderPause, forgetRssFeedHealth, initProviderHealth } from "./l
 import { getDesktopSourceStatus } from "./lib/source-status";
 import { clearContactSyncState } from "./lib/contact-sync-storage";
 import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
+import { useDesktopNavigationHistory } from "./lib/navigation-history";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
@@ -92,6 +93,8 @@ function App() {
   const error = useAppStore((state) => state.error);
   const [legalResolved, setLegalResolved] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
+
+  useDesktopNavigationHistory(legalAccepted);
 
   useEffect(() => {
     void hasAcceptedDesktopBundle()

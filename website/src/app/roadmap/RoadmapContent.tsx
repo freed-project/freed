@@ -491,7 +491,7 @@ const phases: Phase[] = [
     number: 5,
     title: "Desktop & Mobile App",
     description:
-      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, first-run legal gating, provider risk interstitials, local snapshot rollback for disaster recovery, a provider health dashboard, failing-feed unsubscribe tools, and reviewed cumulative release headings.",
+      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, first-run legal gating, provider risk interstitials, browser-style back and forward shortcuts, local snapshot rollback for disaster recovery, a provider health dashboard, failing-feed unsubscribe tools, and reviewed cumulative release headings.",
     status: "current",
     priority: true,
     planLink:
@@ -501,7 +501,7 @@ const phases: Phase[] = [
     number: 6,
     title: "PWA Reader",
     description:
-      "Primary mobile surface with first-run legal gating. Read your feed anywhere, synced to Freed Desktop.",
+      "Primary mobile surface with first-run legal gating and URL-backed view state, so browser back and forward move through filters and open reading context naturally.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-6-PWA.md",

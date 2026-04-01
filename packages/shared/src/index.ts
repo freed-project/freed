@@ -18,6 +18,7 @@ export * from "./focus-text";
 
 // Re-export store types (browser-safe, no deps)
 export * from "./store-types";
+export * from "./navigation-state";
 
 // Re-export friends identity resolution and CRM utilities (browser-safe, no deps)
 export * from "./friends";
