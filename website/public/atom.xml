@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://freed.wtf</id>
-    <title>Freed Updates</title>
-    <updated>2026-02-03T04:58:41.176Z</updated>
+    <title>Freed Blog</title>
+    <updated>2026-04-01T04:33:24.787Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <author>
         <name>The Freed Team</name>
@@ -10,7 +10,7 @@
     </author>
     <link rel="alternate" href="https://freed.wtf"/>
     <link rel="self" href="https://freed.wtf/atom.xml"/>
-    <subtitle>Progress updates, technical deep-dives, and philosophical rants about the attention economy. From the team building Freed.</subtitle>
+    <subtitle>Progress reports, technical deep-dives, and philosophical rants about the attention economy. From the team building Freed.</subtitle>
     <logo>https://freed.wtf/favicon.svg</logo>
     <icon>https://freed.wtf/favicon.svg</icon>
     <rights>All rights reserved 2026, Freed Project</rights>

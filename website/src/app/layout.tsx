@@ -1,10 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope, Space_Grotesk } from "next/font/google";
 import { NewsletterProvider } from "@/context/NewsletterContext";
-import Navigation from "@/components/Navigation";
-import Footer from "@/components/Footer";
-import NewsletterModal from "@/components/NewsletterModal";
-import BackgroundGradients from "@/components/BackgroundGradients";
+import SiteShell from "@/components/SiteShell";
 import "../index.css";
 
 const manrope = Manrope({
@@ -103,19 +100,7 @@ export default function RootLayout({
             Skip to main content
           </a>
 
-          <div className="flex flex-col overflow-hidden relative">
-            {/* Background gradients + noise texture (single composited element) */}
-            <BackgroundGradients />
-
-            <Navigation />
-
-            <main id="main-content" className="flex-grow relative z-10">
-              {children}
-            </main>
-
-            <Footer />
-          </div>
-          <NewsletterModal />
+          <SiteShell>{children}</SiteShell>
         </NewsletterProvider>
       </body>
     </html>
