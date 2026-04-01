@@ -519,7 +519,7 @@ const phases: Phase[] = [
     number: 8,
     title: "Friends + Social Graph",
     description:
-      "A friend CRM with a force-directed social graph. Unify profiles across platforms into one identity per person, track relationship health, and get nudged when you've drifted from people you care about.",
+      "A friend CRM with a force-directed social graph. Unify profiles across platforms into one identity per person, track relationship health, and grow the map into a time-aware view of where friends were, are, and plan to be.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-8-FRIENDS.md",
@@ -554,7 +554,8 @@ const phases: Phase[] = [
   {
     number: 12,
     title: "Additional Platforms",
-    description: "LinkedIn complete. TikTok, Threads, Bluesky, Reddit, YouTube next.",
+    description:
+      "LinkedIn is in. Next up: Mozi for social planning, then TikTok, Threads, Bluesky, Reddit, and YouTube.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-12-ADDITIONAL-PLATFORMS.md",
