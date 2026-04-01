@@ -20,7 +20,7 @@ export type Platform =
   | "github" // GitHub (via Atom)
   | "facebook" // Facebook (DOM capture)
   | "instagram" // Instagram (DOM capture)
-  | "linkedin" // LinkedIn (DOM capture, future)
+  | "linkedin" // LinkedIn (DOM capture)
   | "saved"; // Manually saved URLs (bookmarks)
 
 /** User-facing display names for each platform. */

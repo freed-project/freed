@@ -5,6 +5,7 @@ import {
   RssIcon,
   FacebookIcon,
   InstagramIcon,
+  LinkedInIcon,
   YoutubeIcon,
   RedditIcon,
   GithubIcon,
@@ -52,6 +53,7 @@ const platformIcons: Record<string, ReactNode> = {
   github: <GithubIcon className={cls} />,
   facebook: <FacebookIcon className={cls} />,
   instagram: <InstagramIcon className={cls} />,
+  linkedin: <LinkedInIcon className={cls} />,
   saved: <BookmarkIcon className={cls} />,
 };
 

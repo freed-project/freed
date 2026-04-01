@@ -51,6 +51,11 @@ export function tauriInitScript(): string {
       ig_check_auth: () => true,
       ig_scrape_feed: () => null,
       ig_disconnect: () => null,
+      li_show_login: () => null,
+      li_hide_login: () => null,
+      li_check_auth: () => true,
+      li_scrape_feed: () => null,
+      li_disconnect: () => null,
     };
     window.__TAURI_MOCK_INVOCATIONS__ = [];
     window.__TAURI_MOCK_OPENED_URLS__ = [];
