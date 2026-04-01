@@ -329,6 +329,15 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         ack(req.reqId);
         break;
 
+      case "ADD_FRIENDS":
+        await applyChange((doc) => {
+          for (const friend of req.friends) {
+            addFriend(doc, friend);
+          }
+        }, `Add ${req.friends.length} friends`);
+        ack(req.reqId);
+        break;
+
       case "UPDATE_FRIEND":
         await applyChange((doc) => updateFriend(doc, req.friendId, req.updates as Partial<Friend>), "Update friend");
         ack(req.reqId);

@@ -4,16 +4,16 @@
   "version": "26.4.105",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "node ../../node_modules/vite/bin/vite.js",
+    "build": "tsc -b && node ../../node_modules/vite/bin/vite.js build",
     "lint": "eslint .",
-    "preview": "vite preview",
+    "preview": "node ../../node_modules/vite/bin/vite.js preview",
     "typecheck": "tsc --noEmit",
-    "test": "playwright test",
+    "test": "node ../../node_modules/playwright/cli.js test",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
-    "test:ui": "playwright test --ui",
-    "test:headed": "playwright test --headed"
+    "test:ui": "node ../../node_modules/playwright/cli.js test --ui",
+    "test:headed": "node ../../node_modules/playwright/cli.js test --headed"
   },
   "dependencies": {
     "@automerge/automerge": "^2.2.8",

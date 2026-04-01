@@ -1,26 +1,140 @@
-/**
- * FriendsView — force-directed social graph + CRM.
- *
- * Layout:
- *   - Toolbar with "Import Contacts" button (Google Contacts sync)
- *   - Full-canvas force graph (FriendGraph)
- *   - Reconnect ring overlay (ReconnectRing)
- *   - Slide-in detail panel when a friend node is selected (FriendDetailPanel)
- *   - FriendEditor modal for create / edit
- *   - ContactSyncModal for reviewing Google Contacts matches
- */
-
-import { useState, useCallback, useMemo } from "react";
-import type { Friend, FriendSource, DeviceContact, ReachOutLog, ContactMatch, GoogleContact } from "@freed/shared";
-import { isInReconnectZone } from "@freed/shared";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import type {
+  ContactMatch,
+  DeviceContact,
+  FeedItem,
+  Friend,
+  FriendSource,
+  GoogleContact,
+  ReachOutLog,
+} from "@freed/shared";
+import { formatDistanceToNow } from "date-fns";
+import { DEFAULT_FRIEND_AVATAR_TINT, isInReconnectZone } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useContactSyncContext } from "../../context/ContactSyncContext.js";
+import { useIsMobile } from "../../hooks/useIsMobile.js";
+import type { FriendGraphHandle } from "./FriendGraph.js";
+import { FriendAvatar } from "./FriendAvatar.js";
 import { FriendGraph } from "./FriendGraph.js";
-import { ReconnectRing } from "./ReconnectRing.js";
 import { FriendDetailPanel } from "./FriendDetailPanel.js";
 import { FriendEditor } from "./FriendEditor.js";
 import { ContactSyncModal } from "./ContactSyncModal.js";
-import { UsersIcon } from "../icons.js";
+import { UsersIcon, MapPinIcon } from "../icons.js";
+import { ContentHeader } from "../layout/ContentHeader.js";
+import {
+  buildFriendOverviewEntries,
+  filterAndSortFriendOverview,
+  type FriendOverviewEntry,
+  type FriendOverviewFilter,
+  type FriendOverviewSort,
+} from "../../lib/friends-workspace.js";
+import { resolveFriendAvatarUrl } from "../../lib/friend-avatar.js";
+
+const DEFAULT_SIDEBAR_WIDTH = 360;
+const MIN_SIDEBAR_WIDTH = 280;
+const MAX_SIDEBAR_WIDTH = 520;
+
+const FILTER_OPTIONS: Array<{ id: FriendOverviewFilter; label: string }> = [
+  { id: "need_outreach", label: "Need outreach" },
+  { id: "no_contact", label: "No contact logged" },
+  { id: "close_friends", label: "Close friends" },
+  { id: "recently_active", label: "Recently active" },
+  { id: "has_location", label: "Has location" },
+];
+
+const SORT_OPTIONS: Array<{ id: FriendOverviewSort; label: string }> = [
+  { id: "recent_activity", label: "Recent activity" },
+  { id: "care_level", label: "Care level" },
+  { id: "last_contact", label: "Last contact" },
+  { id: "name", label: "Name" },
+];
+
+const BUTTON_CHROME =
+  "rounded-lg border border-[#6f56a8]/20 bg-[linear-gradient(180deg,rgba(52,33,76,0.2),rgba(15,14,22,0.88))] px-3 py-1.5 text-xs text-[#b8afcc] transition-colors hover:border-[#8b5cf6]/24 hover:bg-[linear-gradient(180deg,rgba(73,42,112,0.34),rgba(19,17,27,0.94))] hover:text-white";
+
+function CareDots({ level }: { level: 1 | 2 | 3 | 4 | 5 }) {
+  return (
+    <div className="flex items-center gap-1">
+      {[1, 2, 3, 4, 5].map((value) => (
+        <span
+          key={value}
+          className={`h-1.5 w-1.5 rounded-full ${value <= level ? "bg-[#8b5cf6]" : "bg-[#2a2538]"}`}
+        />
+      ))}
+    </div>
+  );
+}
+
+function FriendListRow({
+  entry,
+  selected,
+  onSelect,
+}: {
+  entry: FriendOverviewEntry;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const lastPost = entry.lastPostAt
+    ? formatDistanceToNow(entry.lastPostAt, { addSuffix: true })
+    : "No posts yet";
+  const lastContact = entry.lastContactAt
+    ? formatDistanceToNow(entry.lastContactAt, { addSuffix: true })
+    : "Never contacted";
+  const avatarUrl = resolveFriendAvatarUrl(
+    entry.friend,
+    entry.items.map((item) => item.author.avatarUrl)
+  );
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`w-full rounded-2xl border p-3 text-left transition-colors ${
+        selected
+          ? "border-[#8b5cf6]/28 bg-[linear-gradient(180deg,rgba(91,33,182,0.14),rgba(20,16,28,0.88))] shadow-[0_18px_40px_rgba(17,12,29,0.28)]"
+          : "border-[#8b5cf6]/10 bg-[linear-gradient(180deg,rgba(19,17,27,0.96),rgba(12,11,18,0.98))] hover:border-[#8b5cf6]/18 hover:bg-[linear-gradient(180deg,rgba(31,24,46,0.96),rgba(14,12,20,0.98))]"
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <FriendAvatar
+          name={entry.friend.name}
+          avatarUrl={avatarUrl}
+          size={40}
+        />
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <p className="truncate text-sm font-medium text-white">{entry.friend.name}</p>
+            <CareDots level={entry.friend.careLevel} />
+          </div>
+          {entry.friend.bio && (
+            <p className="mt-1 line-clamp-2 text-xs text-[#71717a]">{entry.friend.bio}</p>
+          )}
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[#8a8a93]">
+            <span>{lastPost}</span>
+            <span className="text-[#342d44]">•</span>
+            <span>{lastContact}</span>
+            {entry.hasLocation && (
+              <>
+                <span className="text-[#342d44]">•</span>
+                <span className="inline-flex items-center gap-1 text-[#c4b5fd]">
+                  <MapPinIcon className="h-3 w-3" />
+                  Has location
+                </span>
+              </>
+            )}
+            {entry.needsOutreach && (
+              <>
+                <span className="text-[#342d44]">•</span>
+                <span className="text-[#fbbf24]">Needs outreach</span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
 
 export function FriendsView() {
   const friends = useAppStore((s) => s.friends);
@@ -29,29 +143,75 @@ export function FriendsView() {
   const updateFriend = useAppStore((s) => s.updateFriend);
   const removeFriend = useAppStore((s) => s.removeFriend);
   const logReachOut = useAppStore((s) => s.logReachOut);
+  const selectedFriendId = useAppStore((s) => s.selectedFriendId);
+  const setSelectedFriend = useAppStore((s) => s.setSelectedFriend);
+  const setActiveView = useAppStore((s) => s.setActiveView);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
-  const feedItems = useMemo(() => {
-    const map: Record<string, (typeof items)[number]> = {};
-    for (const item of items) map[item.globalId] = item;
-    return map;
-  }, [items]);
+  const savedSidebarWidth = useAppStore((s) => s.preferences.display.friendsSidebarWidth) ?? DEFAULT_SIDEBAR_WIDTH;
+  const avatarTint = useAppStore((s) => s.preferences.display.friendAvatarTint) ?? DEFAULT_FRIEND_AVATAR_TINT;
+  const updatePreferences = useAppStore((s) => s.updatePreferences);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editorTarget, setEditorTarget] = useState<Friend | null | "new">(null);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [openingSyncModal, setOpeningSyncModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilters, setActiveFilters] = useState<Set<FriendOverviewFilter>>(new Set());
+  const [sortBy, setSortBy] = useState<FriendOverviewSort>("recent_activity");
+  const [dragWidth, setDragWidth] = useState<number | null>(null);
+
+  const graphRef = useRef<FriendGraphHandle>(null);
+  const isDraggingSidebar = useRef(false);
+  const isMobile = useIsMobile();
 
   const { syncState, dismissMatch, syncNow } = useContactSyncContext();
 
-  const selectedFriend = selectedId ? friends[selectedId] : null;
+  const feedItems = useMemo(() => {
+    const map: Record<string, FeedItem> = {};
+    for (const item of items) map[item.globalId] = item;
+    return map;
+  }, [items]);
 
-  const reconnectCount = Object.values(friends).filter((f) =>
-    isInReconnectZone(f)
-  ).length;
+  const friendList = useMemo(() => Object.values(friends), [friends]);
+  const selectedFriend = selectedId ? friends[selectedId] ?? null : null;
 
-  const handleSelectFriend = useCallback((friend: Friend) => {
-    setSelectedId((prev) => (prev === friend.id ? null : friend.id));
-  }, []);
+  useEffect(() => {
+    if (selectedFriendId && friends[selectedFriendId]) {
+      setSelectedId(selectedFriendId);
+      return;
+    }
+    if (selectedFriendId === null) {
+      setSelectedId(null);
+    }
+  }, [friends, selectedFriendId]);
+
+  const reconnectCount = useMemo(
+    () => Object.values(friends).filter((friend) => isInReconnectZone(friend)).length,
+    [friends]
+  );
+
+  const overviewEntries = useMemo(
+    () => buildFriendOverviewEntries(friends, feedItems),
+    [feedItems, friends]
+  );
+  const filteredOverviewEntries = useMemo(
+    () => filterAndSortFriendOverview(overviewEntries, searchQuery, activeFilters, sortBy),
+    [activeFilters, overviewEntries, searchQuery, sortBy]
+  );
+
+  const sidebarWidth = dragWidth ?? savedSidebarWidth;
+  const handleSelectFriend = useCallback((friend: Friend, focusGraph: boolean = false) => {
+    setSelectedId(friend.id);
+    setSelectedFriend(friend.id);
+    if (focusGraph) {
+      graphRef.current?.focusFriend(friend.id);
+    }
+  }, [setSelectedFriend]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedId(null);
+    setSelectedFriend(null);
+  }, [setSelectedFriend]);
 
   const handleLogReachOut = useCallback(
     async (entry: ReachOutLog) => {
@@ -70,13 +230,12 @@ export function FriendsView() {
       if (id) {
         await updateFriend(id, { ...data, updatedAt: now });
       } else {
-        const friend: Friend = {
+        await addFriend({
           id: crypto.randomUUID(),
           ...data,
           createdAt: now,
           updatedAt: now,
-        };
-        await addFriend(friend);
+        });
       }
       setEditorTarget(null);
     },
@@ -86,25 +245,14 @@ export function FriendsView() {
   const handleDelete = useCallback(
     async (id: string) => {
       await removeFriend(id);
-      if (selectedId === id) setSelectedId(null);
+      if (selectedId === id) {
+        handleClearSelection();
+      }
       setEditorTarget(null);
     },
-    [removeFriend, selectedId]
+    [handleClearSelection, removeFriend, selectedId]
   );
 
-  /**
-   * Link a Google contact match to the store.
-   *
-   * If an existing Friend is matched:
-   *   - Update their `contact` field with the Google contact data.
-   *   - Add any matched unlinked authors as new FriendSource entries.
-   *
-   * If only unlinked feed authors are matched (no existing Friend):
-   *   - Create a new Friend with the contact info and those sources.
-   *
-   * In both cases, dismiss all potential IDs for this contact to clear the
-   * match from the pending queue.
-   */
   const handleLink = useCallback(
     async (match: ContactMatch) => {
       const { contact, friend, authorIds } = match;
@@ -114,15 +262,12 @@ export function FriendsView() {
         name: contact.name.displayName ?? contact.name.givenName ?? "",
         phone: contact.phones[0]?.value,
         email: contact.emails[0]?.value,
-        // Store resourceName as nativeId for reliable re-identification on
-        // future syncs (name matching alone is ambiguous).
         nativeId: contact.resourceName,
         importedAt: Date.now(),
       };
 
-      // Build FriendSource entries for any unlinked feed authors in the match.
       const newSources: FriendSource[] = authorIds.flatMap((authorId) => {
-        const item = items.find((i) => i.author.id === authorId);
+        const item = items.find((candidate) => candidate.author.id === authorId);
         if (!item) return [];
         return [{
           platform: item.platform,
@@ -134,11 +279,9 @@ export function FriendsView() {
       });
 
       if (friend) {
-        // Merge new sources into the existing friend's source list.
-        const updatedSources = [...(friend.sources ?? []), ...newSources];
         await updateFriend(friend.id, {
           contact: deviceContact,
-          sources: updatedSources,
+          sources: [...(friend.sources ?? []), ...newSources],
         });
       } else if (newSources.length > 0) {
         const now = Date.now();
@@ -153,22 +296,14 @@ export function FriendsView() {
         });
       }
 
-      // Dismiss all potential IDs to clear this contact from the pending queue.
-      const allIds = [
-        ...(friend ? [friend.id] : []),
-        ...authorIds,
-      ];
-      for (const id of allIds) {
-        dismissMatch(contact.resourceName, id);
+      const dismissIds = [...(friend ? [friend.id] : []), ...authorIds];
+      for (const dismissId of dismissIds) {
+        dismissMatch(contact.resourceName, dismissId);
       }
     },
     [addFriend, dismissMatch, items, updateFriend]
   );
 
-  /**
-   * Create a new Friend from an unmatched Google contact (no social feed match).
-   * The Friend starts with no linked sources; the user can add them later.
-   */
   const handleCreateFriend = useCallback(
     async (contact: GoogleContact) => {
       const now = Date.now();
@@ -192,7 +327,6 @@ export function FriendsView() {
     [addFriend]
   );
 
-  /** Open the contact sync modal, running a fresh sync first if Google is connected. */
   const handleOpenSyncModal = useCallback(async () => {
     setOpeningSyncModal(true);
     try {
@@ -203,48 +337,242 @@ export function FriendsView() {
     }
   }, [syncNow]);
 
-  const friendList = Object.values(friends);
+  const toggleFilter = useCallback((filter: FriendOverviewFilter) => {
+    setActiveFilters((current) => {
+      const next = new Set(current);
+      if (next.has(filter)) {
+        next.delete(filter);
+      } else {
+        next.add(filter);
+      }
+      return next;
+    });
+  }, []);
 
-  return (
-    <div className="flex flex-col h-full relative overflow-hidden">
-      {/* Toolbar */}
-      <div className="shrink-0 flex items-center justify-between px-4 py-2 border-b border-white/[0.06] bg-[#0f0f0f]">
-        <span className="text-sm font-medium text-text-primary">Friends</span>
-        <button
-          onClick={handleOpenSyncModal}
-          disabled={openingSyncModal}
-          className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg border border-white/10 text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-colors"
-        >
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5" aria-hidden>
-            <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM2 15v-1a4 4 0 014-4h.5" />
-          </svg>
-          {openingSyncModal ? "Syncing..." : "Import Contacts"}
-          {pendingMatchCount > 0 && (
-            <span className="text-[10px] tabular-nums font-semibold px-1.5 py-0.5 rounded-full bg-[#8b5cf6]/30 text-[#c4b5fd]">
-              {pendingMatchCount.toLocaleString()}
-            </span>
-          )}
-        </button>
+  const handleSidebarDragStart = useCallback((event: React.MouseEvent) => {
+    if (isMobile) return;
+    event.preventDefault();
+    isDraggingSidebar.current = true;
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+
+    const onMove = (moveEvent: MouseEvent) => {
+      if (!isDraggingSidebar.current) return;
+      const next = Math.min(
+        MAX_SIDEBAR_WIDTH,
+        Math.max(MIN_SIDEBAR_WIDTH, startWidth - (moveEvent.clientX - startX))
+      );
+      setDragWidth(next);
+    };
+    const onUp = (upEvent: MouseEvent) => {
+      isDraggingSidebar.current = false;
+      const finalWidth = Math.min(
+        MAX_SIDEBAR_WIDTH,
+        Math.max(MIN_SIDEBAR_WIDTH, startWidth - (upEvent.clientX - startX))
+      );
+      setDragWidth(null);
+      void updatePreferences({ display: { friendsSidebarWidth: finalWidth } } as Parameters<typeof updatePreferences>[0]);
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [isMobile, sidebarWidth, updatePreferences]);
+
+  const renderOverviewSidebar = () => (
+    <div className="flex h-full flex-col bg-[#0f0f0f]">
+      <div className="border-b border-[#8b5cf6]/10 bg-[linear-gradient(180deg,rgba(51,33,76,0.16),rgba(15,14,22,0.94))] px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-white">Friends</h2>
+            <p className="mt-1 text-xs text-[#71717a]">
+              {friendList.length.toLocaleString()} total, {reconnectCount.toLocaleString()} due to reconnect
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleOpenSyncModal}
+              disabled={openingSyncModal}
+              className={BUTTON_CHROME}
+            >
+              {openingSyncModal ? "Syncing..." : "Import Contacts"}
+              {pendingMatchCount > 0 && (
+                <span className="ml-2 rounded-full bg-[#8b5cf6]/30 px-1.5 py-0.5 text-[10px] font-semibold text-[#c4b5fd]">
+                  {pendingMatchCount.toLocaleString()}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditorTarget("new")}
+              className="rounded-lg bg-[#8b5cf6] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#7c3aed]"
+            >
+              Add friend
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-3">
+          <div className="relative">
+            <svg className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#52525b]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search friends"
+              className="w-full rounded-xl border border-[#8b5cf6]/14 bg-[linear-gradient(180deg,rgba(17,15,25,0.94),rgba(12,11,18,0.98))] py-2 pl-9 pr-3 text-sm text-white placeholder:text-[#5d566f] focus:border-[#8b5cf6]/34 focus:outline-none"
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Graph + detail panel */}
-      <div className="flex-1 flex relative overflow-hidden">
-        <div className="flex-1 relative">
-          <ReconnectRing count={reconnectCount} />
+      <div className="border-b border-[#8b5cf6]/10 bg-[linear-gradient(180deg,rgba(24,20,34,0.98),rgba(15,14,22,0.98))] px-4 py-3">
+        <div className="rounded-2xl border border-[#f59e0b]/18 bg-[linear-gradient(180deg,rgba(70,44,8,0.14),rgba(29,22,10,0.46))] p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#fbbf24]">Reconnect</p>
+              <p className="mt-1 text-sm font-medium text-white">
+                {reconnectCount.toLocaleString()} friend{reconnectCount === 1 ? "" : "s"} waiting on a follow-up
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveFilters(new Set(["need_outreach"]));
+                setSortBy("last_contact");
+              }}
+              className="rounded-lg border border-[#f59e0b]/20 px-3 py-1.5 text-xs text-[#fcd34d] transition-colors hover:bg-[#f59e0b]/10"
+            >
+              Review
+            </button>
+          </div>
+        </div>
 
+        <div className="mt-3 flex flex-wrap gap-2">
+          {FILTER_OPTIONS.map((filter) => (
+            <button
+              key={filter.id}
+              type="button"
+              onClick={() => toggleFilter(filter.id)}
+              className={`rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
+                activeFilters.has(filter.id)
+                  ? "border-[#8b5cf6]/24 bg-[linear-gradient(180deg,rgba(91,33,182,0.18),rgba(31,18,53,0.72))] text-[#d8b4fe]"
+                  : "border-[#8b5cf6]/10 bg-[linear-gradient(180deg,rgba(19,17,27,0.92),rgba(12,11,18,0.98))] text-[#8a8a93] hover:border-[#8b5cf6]/18 hover:text-white"
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <p className="text-xs text-[#71717a]">
+            Showing {filteredOverviewEntries.length.toLocaleString()} of {friendList.length.toLocaleString()}
+          </p>
+          <select
+            value={sortBy}
+            onChange={(event) => setSortBy(event.target.value as FriendOverviewSort)}
+            className="rounded-lg border border-[#8b5cf6]/14 bg-[linear-gradient(180deg,rgba(19,17,27,0.92),rgba(12,11,18,0.98))] px-2.5 py-1.5 text-xs text-white focus:border-[#8b5cf6]/34 focus:outline-none"
+          >
+            {SORT_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>
+                Sort: {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        {filteredOverviewEntries.length === 0 ? (
+          <div className="rounded-2xl border border-[#8b5cf6]/10 bg-[linear-gradient(180deg,rgba(19,17,27,0.96),rgba(12,11,18,0.98))] px-4 py-6 text-center">
+            <p className="text-sm font-medium text-white">No friends match those filters</p>
+            <p className="mt-1 text-xs text-[#71717a]">Try clearing a filter or changing the search query.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filteredOverviewEntries.map((entry) => (
+              <FriendListRow
+                key={entry.friend.id}
+                entry={entry}
+                selected={entry.friend.id === selectedId}
+                onSelect={() => handleSelectFriend(entry.friend, true)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderSelectedSidebar = () => (
+    <div className="flex h-full flex-col bg-[#0f0f0f]">
+      <div className="flex items-center justify-between gap-3 border-b border-[#8b5cf6]/10 bg-[linear-gradient(180deg,rgba(51,33,76,0.16),rgba(15,14,22,0.94))] px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={handleClearSelection}
+            className="rounded-lg border border-[#6f56a8]/20 bg-[linear-gradient(180deg,rgba(52,33,76,0.2),rgba(15,14,22,0.88))] p-1.5 text-[#b8afcc] transition-colors hover:border-[#8b5cf6]/24 hover:bg-[linear-gradient(180deg,rgba(73,42,112,0.34),rgba(19,17,27,0.94))] hover:text-white"
+            aria-label="Back to all friends"
+          >
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4 w-4" aria-hidden>
+              <path d="M12.5 4.5L7 10l5.5 5.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-semibold text-white">{selectedFriend?.name}</h2>
+            <p className="mt-1 text-xs text-[#71717a]">Back to all friends</p>
+          </div>
+        </div>
+
+        {selectedFriend && (
+          <button
+            type="button"
+            onClick={() => setEditorTarget(selectedFriend)}
+            className={BUTTON_CHROME}
+          >
+            Edit
+          </button>
+        )}
+      </div>
+
+      {selectedFriend && (
+        <FriendDetailPanel
+          friend={selectedFriend}
+          feedItems={feedItems}
+          onLogReachOut={handleLogReachOut}
+          onOpenMap={() => {
+            setSelectedFriend(selectedFriend.id);
+            setActiveView("map");
+          }}
+        />
+      )}
+    </div>
+  );
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden bg-[#0b0b0d]">
+      <ContentHeader title="Friends" />
+
+      <div className={`flex min-h-0 flex-1 ${isMobile ? "flex-col" : "flex-row"}`}>
+        <div className="relative min-h-0 min-w-0 flex-1">
           {friendList.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full gap-4 text-center px-6">
-              <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center">
-                <UsersIcon className="w-8 h-8 text-text-secondary" />
-              </div>
+            <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[linear-gradient(180deg,rgba(91,33,182,0.12),rgba(17,17,24,0.36))]">
+                  <UsersIcon className="h-8 w-8 text-[#71717a]" />
+                </div>
               <div>
-                <p className="text-text-primary font-medium">No friends yet</p>
-                <p className="text-text-secondary text-sm mt-1 max-w-xs">
+                <p className="font-medium text-white">No friends yet</p>
+                <p className="mt-1 max-w-xs text-sm text-[#71717a]">
                   Add friends to see their posts across all social channels in one place.
                 </p>
               </div>
               <button
-                className="px-4 py-2 text-sm font-medium bg-[#8b5cf6] hover:bg-[#7c3aed] text-white rounded-lg transition-colors"
+                className="rounded-lg bg-[#8b5cf6] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#7c3aed]"
                 onClick={() => setEditorTarget("new")}
               >
                 Add your first friend
@@ -252,41 +580,35 @@ export function FriendsView() {
             </div>
           ) : (
             <FriendGraph
+              ref={graphRef}
               friends={friendList}
               feedItems={feedItems}
-              onSelectFriend={handleSelectFriend}
+              onSelectFriend={(friend) => handleSelectFriend(friend, false)}
               selectedFriendId={selectedId}
+              avatarTint={avatarTint}
             />
-          )}
-
-          {friendList.length > 0 && (
-            <button
-              className="absolute bottom-6 right-6 flex items-center gap-2 px-4 py-2.5 bg-[#8b5cf6] hover:bg-[#7c3aed] text-white text-sm font-medium rounded-full shadow-lg shadow-[#8b5cf6]/30 transition-colors"
-              onClick={() => setEditorTarget("new")}
-              aria-label="Add friend"
-            >
-              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-4 h-4" aria-hidden>
-                <path d="M10 4v12M4 10h12" />
-              </svg>
-              Add friend
-            </button>
           )}
         </div>
 
-        {selectedFriend && (
-          <div className="w-80 shrink-0 border-l border-white/10 overflow-hidden">
-            <FriendDetailPanel
-              friend={selectedFriend}
-              feedItems={feedItems}
-              onClose={() => setSelectedId(null)}
-              onEdit={() => setEditorTarget(selectedFriend)}
-              onLogReachOut={handleLogReachOut}
-            />
-          </div>
+        {!isMobile && (
+          <div
+            className="w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-[#8b5cf6]/24 active:bg-[#8b5cf6]/34"
+            onMouseDown={handleSidebarDragStart}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize friends sidebar"
+          />
         )}
+
+        <aside
+          data-testid="friends-sidebar"
+          className={`${isMobile ? "h-[46dvh] w-full border-t" : "shrink-0 border-l"} border-[#8b5cf6]/10 bg-[linear-gradient(180deg,rgba(15,14,22,0.98),rgba(11,10,16,0.98))] overflow-hidden`}
+          style={isMobile ? undefined : { width: `${sidebarWidth}px` }}
+        >
+          {selectedFriend ? renderSelectedSidebar() : renderOverviewSidebar()}
+        </aside>
       </div>
 
-      {/* Friend editor modal */}
       {editorTarget !== null && (
         <FriendEditor
           existing={editorTarget === "new" ? null : editorTarget}
@@ -296,7 +618,6 @@ export function FriendsView() {
         />
       )}
 
-      {/* Contact sync modal */}
       {showSyncModal && (
         <ContactSyncModal
           onClose={() => setShowSyncModal(false)}

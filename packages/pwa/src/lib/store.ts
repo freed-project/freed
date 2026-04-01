@@ -30,6 +30,7 @@ import {
   docPruneArchivedItems,
   docUpdatePreferences,
   docAddFriend,
+  docAddFriends,
   docUpdateFriend,
   docRemoveFriend,
   docLogReachOut,
@@ -79,6 +80,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   error: null,
   activeFilter: {},
   selectedItemId: null,
+  selectedFriendId: null,
   searchQuery: "",
   activeView: "feed",
   pendingMatchCount: 0,
@@ -190,6 +192,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     await docAddFriend(friend);
   },
 
+  addFriends: async (friends: Friend[]) => {
+    await docAddFriends(friends);
+  },
+
   updateFriend: async (id: string, updates: Partial<Friend>) => {
     await docUpdateFriend(id, updates);
   },
@@ -213,6 +219,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // UI actions
   setFilter: (filter) => set({ activeFilter: filter }),
   setSelectedItem: (id) => set({ selectedItemId: id }),
+  setSelectedFriend: (id) => set({ selectedFriendId: id }),
   setLoading: (isLoading) => set({ isLoading }),
   setSyncing: (isSyncing) => set({ isSyncing }),
   setError: (error) => set({ error }),

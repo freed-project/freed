@@ -376,6 +376,11 @@ export async function docAddFriend(friend: Friend): Promise<void> {
   return request({ reqId, type: "ADD_FRIEND", friend });
 }
 
+export async function docAddFriends(friends: Friend[]): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "ADD_FRIENDS", friends });
+}
+
 export async function docUpdateFriend(
   friendId: string,
   updates: Partial<Friend>,

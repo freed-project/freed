@@ -112,7 +112,7 @@ export function ToastContainer() {
   if (toasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-20 sm:bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-80 z-50 space-y-2">
+    <div className="fixed bottom-20 sm:bottom-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-80 z-[400] space-y-2">
       {toasts.map((t) => (
         <ToastItem key={t.id} toast={t} onClose={() => removeToast(t.id)} />
       ))}

@@ -9,17 +9,15 @@
  * "pushes" to that section's content with a back button (iOS-style).
  */
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { DEFAULT_FRIEND_AVATAR_TINT } from "@freed/shared";
+import { createFriendAvatarPalette } from "../lib/friend-avatar-style.js";
 import { createPortal } from "react-dom";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
 import { useDebugStore } from "../lib/debug-store.js";
 import { useSettingsStore } from "../lib/settings-store.js";
+import { refreshSampleLibraryData } from "../lib/sample-library-seed.js";
+import { toast } from "./Toast.js";
 import {
   BASE_SECTION_METAS,
   UPDATES_SECTION_META,
@@ -31,9 +29,12 @@ import {
   type SectionId,
   type SectionMeta,
 } from "../lib/settings-sections.js";
-import { generateSampleFeeds, generateSampleItems } from "@freed/shared";
 import { FeedsSection } from "./settings/FeedsSection.js";
 import { SavedSection } from "./settings/SavedSection.js";
+
+const SAMPLE_SEED_FEED_COUNT = 10;
+const SAMPLE_SEED_ITEM_COUNT = 155;
+const SAMPLE_SEED_FRIEND_COUNT = 25;
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Section extends SectionMeta {
@@ -238,6 +239,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // ── Preferences state ────────────────────────────────────────────────────
   const [display, setDisplay] = useState(() => preferences.display);
+  const friendAvatarTint = display.friendAvatarTint ?? DEFAULT_FRIEND_AVATAR_TINT;
+  const friendAvatarPalette = createFriendAvatarPalette(friendAvatarTint);
 
   const handleDisplayChange = useCallback(
     (update: Partial<typeof display>) => {
@@ -289,6 +292,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [deleteFromCloud, setDeleteFromCloud] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [showSampleSeedConfirm, setShowSampleSeedConfirm] = useState(false);
 
   const handleReset = useCallback(async () => {
     if (!factoryReset) return;
@@ -304,24 +308,57 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   // ── Seed sample data ───────────────────────────────────────────────────────
   const [seeding, setSeeding] = useState(false);
   const [seedDone, setSeedDone] = useState(false);
+  const initialize = useAppStore((s) => s.initialize);
+  const isInitialized = useAppStore((s) => s.isInitialized);
+  const items = useAppStore((s) => s.items);
+  const feeds = useAppStore((s) => s.feeds);
+  const friends = useAppStore((s) => s.friends);
   const addFeed = useAppStore((s) => s.addFeed);
   const addItems = useAppStore((s) => s.addItems);
+  const addFriends = useAppStore((s) => s.addFriends);
+  const existingFeedCount = Object.keys(feeds).length;
+  const existingFriendCount = Object.keys(friends).length;
+  const existingItemCount = items.length;
+  const hasExistingLibraryData =
+    existingFeedCount > 0 || existingFriendCount > 0 || existingItemCount > 0;
 
   const handleSeedSampleData = useCallback(async () => {
     setSeeding(true);
+    toast.info("Populating sample data...");
     try {
-      const feeds = generateSampleFeeds();
-      const items = generateSampleItems();
-      for (const feed of feeds) {
-        await addFeed(feed);
-      }
-      await addItems(items);
-      seedSocialConnections?.();
+      await refreshSampleLibraryData({
+        initialize,
+        isInitialized,
+        addFeed,
+        addItems,
+        addFriends,
+        seedSocialConnections,
+      });
       setSeedDone(true);
+      toast.success(
+        `Sample data added: ${SAMPLE_SEED_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SEED_ITEM_COUNT.toLocaleString()} items, and ${SAMPLE_SEED_FRIEND_COUNT.toLocaleString()} friends.`
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to populate sample data");
     } finally {
       setSeeding(false);
     }
-  }, [addFeed, addItems, seedSocialConnections]);
+  }, [
+    addFeed,
+    addFriends,
+    addItems,
+    initialize,
+    isInitialized,
+    seedSocialConnections,
+  ]);
+
+  const requestSeedSampleData = useCallback(() => {
+    if (hasExistingLibraryData) {
+      setShowSampleSeedConfirm(true);
+      return;
+    }
+    void handleSeedSampleData();
+  }, [handleSeedSampleData, hasExistingLibraryData]);
 
   // ── Search ────────────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
@@ -553,6 +590,39 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 onChange={(v) => handleDisplayChange({ showEngagementCounts: v })}
                 description="Show likes, reposts, and views on posts"
               />
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm text-white">Friend avatar tint</p>
+                  <p className="mt-0.5 text-xs text-[#52525b]">
+                    Shared across the Friends graph and map markers
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div
+                    className="h-9 w-9 rounded-full border shadow-[0_10px_22px_rgba(2,6,23,0.28)]"
+                    style={{
+                      borderColor: friendAvatarPalette.borderStrong,
+                      background: `radial-gradient(circle at 30% 28%, ${friendAvatarPalette.gradientStart}, ${friendAvatarPalette.gradientMid} 34%, ${friendAvatarPalette.gradientEnd} 100%)`,
+                      boxShadow: `0 0 0 1px ${friendAvatarPalette.borderSoft}, 0 0 18px ${friendAvatarPalette.glow}, 0 10px 22px rgba(2,6,23,0.28)`,
+                    }}
+                    aria-hidden="true"
+                  />
+                  <input
+                    type="color"
+                    value={friendAvatarTint}
+                    onChange={(event) => handleDisplayChange({ friendAvatarTint: event.target.value })}
+                    className="h-9 w-11 cursor-pointer rounded-lg border border-[#8b5cf6]/16 bg-[#18181b] p-1"
+                    aria-label="Friend avatar tint"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleDisplayChange({ friendAvatarTint: DEFAULT_FRIEND_AVATAR_TINT })}
+                    className="rounded-lg border border-[#8b5cf6]/16 bg-[linear-gradient(180deg,rgba(91,33,182,0.08),rgba(17,17,24,0.38))] px-3 py-1.5 text-xs text-[#b4b0c8] transition-colors hover:border-[#8b5cf6]/28 hover:text-white"
+                  >
+                    Reset
+                  </button>
+                </div>
+              </div>
               <Toggle
                 label="Focus mode"
                 checked={display.reading.focusMode}
@@ -744,18 +814,18 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 <span className="text-[10px] font-mono text-[#52525b] shrink-0 ml-3">⌘⇧D</span>
               </button>
               <button
-                onClick={handleSeedSampleData}
-                disabled={seeding || seedDone}
+                onClick={requestSeedSampleData}
+                disabled={seeding}
                 className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/10 hover:border-amber-500/20 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div>
                   <p className="text-sm text-amber-400">
-                    {seedDone ? "Sample data populated" : seeding ? "Populating\u2026" : "Populate sample data"}
+                    {seedDone ? "Add more sample data" : seeding ? "Populating\u2026" : "Populate sample data"}
                   </p>
                   <p className="text-xs text-amber-400/50 mt-0.5">
                     {seedDone
-                      ? "10 feeds, 130 items, and social connections added"
-                      : "Adds 10 RSS feeds, 130 items, and X/Facebook/Instagram connections"}
+                      ? `Adds another ${SAMPLE_SEED_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SEED_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SEED_FRIEND_COUNT.toLocaleString()} friends, and map-ready social activity`
+                      : `Adds ${SAMPLE_SEED_FEED_COUNT.toLocaleString()} RSS feeds, ${SAMPLE_SEED_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SEED_FRIEND_COUNT.toLocaleString()} friends, and location-linked social data`}
                   </p>
                 </div>
                 {seedDone ? (
@@ -1073,6 +1143,61 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 ) : (
                   "Reset Device"
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSampleSeedConfirm && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-black/60">
+          <div className="w-full max-w-md bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded-2xl p-6 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 4h.01m-7.938 4h15.876c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L2.33 17c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-white">Populate sample data into a non-empty library?</p>
+                <p className="text-xs text-[#71717a] mt-0.5">
+                  This app already contains data. Sample content will be appended to what is already here, which can make the feed, map, and friends views noisy.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-amber-500/15 bg-amber-500/5 px-4 py-3 mb-5">
+              <p className="text-xs text-amber-200/85 leading-5">
+                Existing library contents detected:
+                {" "}
+                {existingFeedCount.toLocaleString()} feeds,
+                {" "}
+                {existingItemCount.toLocaleString()} items,
+                {" "}
+                {existingFriendCount.toLocaleString()} friends.
+              </p>
+              <p className="text-xs text-amber-200/65 mt-2 leading-5">
+                Continue only if you intend to append a fresh sample batch on this device.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowSampleSeedConfirm(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-white/10 text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSampleSeedConfirm(false);
+                  void handleSeedSampleData();
+                }}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-amber-500/15 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 transition-colors"
+              >
+                Populate anyway
               </button>
             </div>
           </div>

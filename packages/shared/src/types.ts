@@ -489,6 +489,8 @@ export interface ReadingEnhancements {
 /**
  * Display preferences
  */
+export const DEFAULT_FRIEND_AVATAR_TINT = "#b79cff";
+
 export interface DisplayPreferences {
   /** Items per page */
   itemsPerPage: number;
@@ -504,6 +506,12 @@ export interface DisplayPreferences {
 
   /** Sidebar width in pixels (default: 256, min: 180, max: 480) */
   sidebarWidth?: number;
+
+  /** Friends workspace sidebar width in pixels (default: 360, min: 280, max: 520) */
+  friendsSidebarWidth?: number;
+
+  /** Shared tint used for friend avatars in Friends and Map views */
+  friendAvatarTint?: string;
 
   /** Debug panel width in pixels (default: 320, min: 280, max: 600) */
   debugPanelWidth?: number;
@@ -656,6 +664,7 @@ export function createDefaultPreferences(): UserPreferences {
         markReadOnScroll: true,
         dualColumnMode: true,
       },
+      friendAvatarTint: DEFAULT_FRIEND_AVATAR_TINT,
       archivePruneDays: 30,
     },
     xCapture: {

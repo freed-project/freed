@@ -2,6 +2,7 @@ import { useEffect, useMemo, useCallback, useRef, useState, Profiler, type Profi
 import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
+import { ToastContainer } from "@freed/ui/components/Toast";
 import { PlatformProvider, type PlatformConfig, type UpdateDownloadProgress } from "@freed/ui/context";
 import { UpdateNotification, type UpdateState } from "./components/UpdateNotification";
 import { CloudSyncNudge } from "./components/CloudSyncNudge";
@@ -45,8 +46,8 @@ import { XSourceIndicator } from "./components/XSourceIndicator";
 import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
 import { DesktopLegalSettingsSection } from "./components/DesktopLegalSettingsSection";
+import { refreshSampleLibraryData } from "@freed/ui/lib/sample-library-seed";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { generateSampleFeeds, generateSampleItems } from "@freed/shared";
 import { acceptDesktopBundle, hasAcceptedDesktopBundle } from "./lib/legal-consent";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
@@ -288,10 +289,10 @@ function App() {
     if (sessionStorage.getItem("freed_dev_seeded")) return;
     sessionStorage.setItem("freed_dev_seeded", "1");
 
-    const { addFeed, addItems } = useAppStore.getState();
-    generateSampleFeeds().forEach((f) => addFeed(f));
-    addItems(generateSampleItems());
-    seedSocialConnections();
+    void refreshSampleLibraryData({
+      ...useAppStore.getState(),
+      seedSocialConnections,
+    });
   }, [isInitialized, seedSocialConnections]);
 
   const platform: PlatformConfig = useMemo(
@@ -416,6 +417,7 @@ function App() {
 
       {/* Toast nudge — shown every launch while no cloud provider is connected */}
       <CloudSyncNudge />
+      <ToastContainer />
 
       {/* Post-restart confirmation — shown for 5s after a successful update relaunch */}
       {justUpdated && (

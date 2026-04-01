@@ -60,6 +60,7 @@ export interface BaseAppState {
   error: string | null;
   activeFilter: FilterOptions;
   selectedItemId: string | null;
+  selectedFriendId: string | null;
 
   // Initialization
   initialize: () => Promise<void>;
@@ -93,6 +94,7 @@ export interface BaseAppState {
 
   // Friend actions
   addFriend: (friend: Friend) => Promise<void>;
+  addFriends: (friends: Friend[]) => Promise<void>;
   updateFriend: (id: string, updates: Partial<Friend>) => Promise<void>;
   removeFriend: (id: string) => Promise<void>;
   logReachOut: (id: string, entry: ReachOutLog) => Promise<void>;
@@ -103,6 +105,7 @@ export interface BaseAppState {
   // UI actions
   setFilter: (filter: FilterOptions) => void;
   setSelectedItem: (id: string | null) => void;
+  setSelectedFriend: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
   setSyncing: (syncing: boolean) => void;
   setError: (error: string | null) => void;
@@ -112,9 +115,9 @@ export interface BaseAppState {
   setSearchQuery: (query: string) => void;
 
   /** The currently active top-level view. */
-  activeView: "feed" | "friends";
+  activeView: "feed" | "friends" | "map";
   /** Switch the top-level view. */
-  setActiveView: (view: "feed" | "friends") => void;
+  setActiveView: (view: "feed" | "friends" | "map") => void;
   /** Number of unreviewed Google Contacts match suggestions. */
   pendingMatchCount: number;
   /** Update the pending match count (set by useContactSync). */

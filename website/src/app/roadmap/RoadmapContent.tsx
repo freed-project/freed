@@ -519,7 +519,7 @@ const phases: Phase[] = [
     number: 8,
     title: "Friends + Social Graph",
     description:
-      "A friend CRM with a force-directed social graph. Unify profiles across platforms into one identity per person, track relationship health, and grow the map into a time-aware view of where friends were, are, and plan to be.",
+      "A friend CRM with a stable pan-and-zoom graph workspace, a permanent resizable reconnect sidebar, shared purple avatar styling across Friends and Map, and a dark map that shows each friend's latest known location with time-aware popovers. Unify profiles across platforms into one identity per person, track relationship health, and keep growing the map into a richer view of where friends were, are, and plan to be.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-8-FRIENDS.md",

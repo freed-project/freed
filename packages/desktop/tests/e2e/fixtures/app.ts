@@ -164,6 +164,89 @@ export class AppFixture {
       { timeout: 30_000 },
     );
   }
+
+  async seedFriendLocation(): Promise<void> {
+    await this.page.evaluate(async () => {
+      const w = window as Record<string, unknown>;
+      const automerge = w.__FREED_AUTOMERGE__ as {
+        docAddFriend: (friend: unknown) => Promise<void>;
+        docAddFeedItems: (items: unknown[]) => Promise<void>;
+      };
+      const store = w.__FREED_STORE__ as {
+        getState: () => {
+          friends: Record<string, unknown>;
+          items: unknown[];
+          setActiveView: (view: string) => void;
+          setSelectedFriend: (id: string | null) => void;
+        };
+      };
+
+      const now = Date.now();
+      await automerge.docAddFriend({
+        id: "friend-ada",
+        name: "Ada Lovelace",
+        sources: [
+          {
+            platform: "instagram",
+            authorId: "ada-ig",
+            handle: "ada",
+            displayName: "Ada Lovelace",
+          },
+        ],
+        careLevel: 4,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await automerge.docAddFeedItems([
+        {
+          globalId: "ig:ada:paris",
+          platform: "instagram",
+          contentType: "post",
+          capturedAt: now,
+          publishedAt: now - 60_000,
+          author: {
+            id: "ada-ig",
+            handle: "ada",
+            displayName: "Ada Lovelace",
+          },
+          content: {
+            text: "Bonjour from Paris",
+            mediaUrls: [],
+            mediaTypes: [],
+          },
+          location: {
+            name: "Paris",
+            coordinates: { lat: 48.8566, lng: 2.3522 },
+            source: "geo_tag",
+          },
+          userState: {
+            hidden: false,
+            saved: false,
+            archived: false,
+            tags: [],
+          },
+          topics: [],
+        },
+      ]);
+
+      await new Promise<void>((resolve, reject) => {
+        const startedAt = Date.now();
+        const interval = window.setInterval(() => {
+          const state = store.getState();
+          if (state.friends["friend-ada"] && state.items.length > 0) {
+            clearInterval(interval);
+            resolve();
+            return;
+          }
+          if (Date.now() - startedAt > 5_000) {
+            clearInterval(interval);
+            reject(new Error("seed timeout"));
+          }
+        }, 50);
+      });
+    });
+  }
 }
 
 export async function acceptLegalGate(page: Page, timeout = 5_000): Promise<boolean> {

@@ -58,6 +58,7 @@ export type WorkerRequest =
   | { reqId: number; type: "UPDATE_PREFERENCES"; updates: Partial<UserPreferences> }
   | { reqId: number; type: "UPDATE_LAST_SYNC" }
   | { reqId: number; type: "ADD_FRIEND"; friend: Friend }
+  | { reqId: number; type: "ADD_FRIENDS"; friends: Friend[] }
   | { reqId: number; type: "UPDATE_FRIEND"; friendId: string; updates: Partial<Friend> }
   | { reqId: number; type: "REMOVE_FRIEND"; friendId: string }
   | { reqId: number; type: "LOG_REACH_OUT"; friendId: string; entry: ReachOutLog }

@@ -1,5 +1,5 @@
 /**
- * Friend detail panel — slide-in side panel shown when a friend node is clicked.
+ * Friend detail panel content rendered inside the Friends sidebar.
  *
  * Shows:
  *   - Identity card (avatar, name, care level, linked handles, contact info)
@@ -14,6 +14,7 @@ import { feedItemsForFriend, lastPostAt, lastReachOutAt } from "@freed/shared";
 import {
   FacebookIcon,
   InstagramIcon,
+  LinkedInIcon,
   RssIcon,
   UsersIcon,
   YoutubeIcon,
@@ -23,6 +24,9 @@ import {
   BookmarkIcon,
 } from "../icons.js";
 import type { ReactNode } from "react";
+import { MiniFriendMapCard } from "../map/MiniFriendMapCard.js";
+import { FriendAvatar } from "./FriendAvatar.js";
+import { resolveFriendAvatarUrl } from "../../lib/friend-avatar.js";
 
 // ---------------------------------------------------------------------------
 // Platform icon map
@@ -38,6 +42,7 @@ const platformIcons: Record<string, ReactNode> = {
   github: <GithubIcon className={cls} />,
   facebook: <FacebookIcon className={cls} />,
   instagram: <InstagramIcon className={cls} />,
+  linkedin: <LinkedInIcon className={cls} />,
   saved: <BookmarkIcon className={cls} />,
 };
 
@@ -56,7 +61,7 @@ function CareStars({ level }: { level: 1 | 2 | 3 | 4 | 5 }) {
         <svg
           key={i}
           viewBox="0 0 12 12"
-          className={`w-3 h-3 ${i <= level ? "text-amber-400" : "text-white/15"}`}
+          className={`w-3 h-3 ${i <= level ? "text-amber-400" : "text-[#2a2538]"}`}
           fill="currentColor"
           aria-hidden
         >
@@ -83,7 +88,7 @@ function TimelineItem({
 
   return (
     <button
-      className="w-full text-left px-4 py-3 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0 group"
+      className="group w-full border-b border-[#8b5cf6]/8 px-4 py-3 text-left transition-colors hover:bg-[#8b5cf6]/6 last:border-0"
       onClick={onClick}
     >
       <div className="flex items-start gap-2">
@@ -128,7 +133,7 @@ function ReachOutPopover({ onLog, onCancel }: ReachOutPopoverProps) {
   const [notes, setNotes] = useState("");
 
   return (
-    <div className="px-4 py-3 bg-[#1a1a1a] border border-white/10 rounded-xl mx-4 mb-4 shadow-lg">
+    <div className="mx-4 mb-4 rounded-xl border border-[#8b5cf6]/14 bg-[linear-gradient(180deg,rgba(31,24,46,0.9),rgba(17,17,24,0.98))] px-4 py-3 shadow-lg">
       <p className="text-sm font-medium text-text-primary mb-3">Log a reach-out</p>
       <div className="flex flex-wrap gap-1.5 mb-3">
         {CHANNELS.map((c) => (
@@ -137,7 +142,7 @@ function ReachOutPopover({ onLog, onCancel }: ReachOutPopoverProps) {
             className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
               channel === c.id
                 ? "border-[#8b5cf6] bg-[#8b5cf6]/20 text-[#c4b5fd]"
-                : "border-white/15 text-text-secondary hover:border-white/30"
+                : "border-[#8b5cf6]/12 text-text-secondary hover:border-[#8b5cf6]/24"
             }`}
             onClick={() => setChannel(c.id)}
           >
@@ -146,7 +151,7 @@ function ReachOutPopover({ onLog, onCancel }: ReachOutPopoverProps) {
         ))}
       </div>
       <textarea
-        className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary resize-none focus:outline-none focus:border-[#8b5cf6]/60 mb-3"
+        className="mb-3 w-full rounded-lg border border-[#8b5cf6]/14 bg-[linear-gradient(180deg,rgba(17,15,25,0.94),rgba(12,11,18,0.98))] px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary resize-none focus:border-[#8b5cf6]/40 focus:outline-none"
         placeholder="Optional note..."
         rows={2}
         value={notes}
@@ -183,17 +188,15 @@ function ReachOutPopover({ onLog, onCancel }: ReachOutPopoverProps) {
 interface FriendDetailPanelProps {
   friend: Friend;
   feedItems: Record<string, FeedItem>;
-  onClose: () => void;
-  onEdit: () => void;
   onLogReachOut: (entry: ReachOutLog) => void;
+  onOpenMap: () => void;
 }
 
 export function FriendDetailPanel({
   friend,
   feedItems,
-  onClose,
-  onEdit,
   onLogReachOut,
+  onOpenMap,
 }: FriendDetailPanelProps) {
   const [showReachOut, setShowReachOut] = useState(false);
 
@@ -203,7 +206,10 @@ export function FriendDetailPanel({
 
   const lastPost = lastPostAt(feedItems, friend);
   const lastContact = lastReachOutAt(friend);
-  const avatarUrl = friend.avatarUrl ?? friend.sources[0]?.avatarUrl;
+  const avatarUrl = resolveFriendAvatarUrl(
+    friend,
+    items.map((item) => item.author.avatarUrl)
+  );
 
   const handleLogReachOut = (entry: ReachOutLog) => {
     onLogReachOut(entry);
@@ -211,44 +217,16 @@ export function FriendDetailPanel({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#0f0f0f] border-l border-white/10">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-white/10 shrink-0">
-        <button
-          onClick={onClose}
-          className="text-text-secondary hover:text-text-primary transition-colors p-1 -ml-1 rounded-md"
-          aria-label="Close panel"
-        >
-          <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4" aria-hidden>
-            <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-          </svg>
-        </button>
-        <span className="text-sm font-medium text-text-primary flex-1 truncate">
-          {friend.name}
-        </span>
-        <button
-          onClick={onEdit}
-          className="text-xs text-text-secondary hover:text-text-primary transition-colors px-2 py-1 rounded-md hover:bg-white/5"
-        >
-          Edit
-        </button>
-      </div>
-
+    <div className="flex h-full flex-col bg-[#0f0f0f]">
       {/* Identity card */}
-      <div className="px-4 py-4 border-b border-white/10 shrink-0">
+      <div className="shrink-0 border-b border-[#8b5cf6]/10 bg-[linear-gradient(180deg,rgba(24,20,34,0.98),rgba(15,14,22,0.98))] px-4 py-4">
         <div className="flex items-start gap-3">
           {/* Avatar */}
-          {avatarUrl ? (
-            <img
-              src={avatarUrl}
-              alt=""
-              className="w-14 h-14 rounded-full ring-1 ring-white/10 shrink-0"
-            />
-          ) : (
-            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#3b82f6] to-[#8b5cf6] flex items-center justify-center text-xl font-bold shrink-0">
-              {friend.name[0]?.toUpperCase()}
-            </div>
-          )}
+          <FriendAvatar
+            name={friend.name}
+            avatarUrl={avatarUrl}
+            size={56}
+          />
 
           <div className="min-w-0 flex-1">
             <p className="text-base font-semibold text-text-primary truncate">
@@ -272,7 +250,7 @@ export function FriendDetailPanel({
                 href={src.profileUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-xs text-text-secondary hover:text-text-primary hover:border-white/20 transition-colors"
+                className="inline-flex items-center gap-1 rounded-full border border-[#8b5cf6]/12 bg-[linear-gradient(180deg,rgba(19,17,27,0.92),rgba(12,11,18,0.98))] px-2 py-0.5 text-xs text-text-secondary transition-colors hover:border-[#8b5cf6]/22 hover:text-text-primary"
                 title={src.displayName ?? src.handle}
               >
                 {platformIcons[src.platform]}
@@ -327,10 +305,16 @@ export function FriendDetailPanel({
               : "never"}
           </span>
         </div>
+
+        <MiniFriendMapCard
+          friend={friend}
+          feedItems={items}
+          onOpenMap={onOpenMap}
+        />
       </div>
 
       {/* Reach out button / popover */}
-      <div className="px-4 py-3 border-b border-white/10 shrink-0">
+      <div className="shrink-0 border-b border-[#8b5cf6]/10 bg-[linear-gradient(180deg,rgba(19,17,27,0.96),rgba(12,11,18,0.98))] px-4 py-3">
         {showReachOut ? (
           <ReachOutPopover
             onLog={handleLogReachOut}

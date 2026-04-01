@@ -1,0 +1,71 @@
+import { DEFAULT_FRIEND_AVATAR_TINT } from "@freed/shared";
+import { useAppStore } from "../../context/PlatformContext.js";
+import { initialsForName } from "../../lib/friend-avatar.js";
+import { createFriendAvatarPalette } from "../../lib/friend-avatar-style.js";
+
+interface FriendAvatarProps {
+  name: string;
+  avatarUrl?: string | null;
+  size: number;
+  className?: string;
+}
+
+export function FriendAvatar({
+  name,
+  avatarUrl,
+  size,
+  className = "",
+}: FriendAvatarProps) {
+  const avatarTint = useAppStore((state) => state.preferences.display.friendAvatarTint) ?? DEFAULT_FRIEND_AVATAR_TINT;
+  const palette = createFriendAvatarPalette(avatarTint);
+  const initials = initialsForName(name);
+
+  return (
+    <div
+      className={`relative shrink-0 overflow-hidden rounded-full ${className}`.trim()}
+      data-avatar-url={avatarUrl ?? ""}
+      data-avatar-name={name}
+      style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        border: `1px solid ${palette.borderStrong}`,
+        boxShadow: `0 0 0 1px ${palette.borderSoft}, 0 0 18px ${palette.glowSoft}, 0 10px 22px rgba(2,6,23,0.24)`,
+        background: `radial-gradient(circle at 30% 28%, ${palette.gradientStart}, ${palette.gradientMid} 34%, ${palette.gradientEnd} 100%)`,
+      }}
+    >
+      {avatarUrl ? (
+        <>
+          <img
+            src={avatarUrl}
+            alt=""
+            className="h-full w-full object-cover"
+            style={{
+              filter: "saturate(0.9) contrast(1.02) brightness(0.92)",
+            }}
+          />
+          <div
+            className="pointer-events-none absolute inset-0 rounded-full"
+            style={{ background: palette.imageOverlay }}
+          />
+          <div
+            className="pointer-events-none absolute inset-[4px] rounded-full"
+            style={{
+              border: `1px solid ${palette.ring}`,
+              background: `radial-gradient(circle at 30% 30%, ${palette.imageHighlight}, rgba(255,255,255,0) 65%)`,
+            }}
+          />
+        </>
+      ) : (
+        <div
+          className="flex h-full w-full items-center justify-center font-semibold text-white"
+          style={{
+            textShadow: `0 0 14px ${palette.initialsShadow}`,
+            fontSize: `${Math.max(14, Math.round(size * 0.38))}px`,
+          }}
+        >
+          {initials}
+        </div>
+      )}
+    </div>
+  );
+}

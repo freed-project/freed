@@ -4,6 +4,7 @@ import { FeedList } from "./FeedList.js";
 import { ReaderView } from "./ReaderView.js";
 import { FeedItem as FeedItemCard } from "./FeedItem.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
+import { ContentHeader } from "../layout/ContentHeader.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
@@ -186,6 +187,8 @@ export function FeedView() {
   const feeds = useAppStore((s) => s.feeds);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
+  const selectedItemId = useAppStore((s) => s.selectedItemId);
+  const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const markAsRead = useAppStore((s) => s.markAsRead);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
@@ -247,13 +250,15 @@ export function FeedView() {
   const { filteredItems, isSearching, resultCount } = useSearchResults(items, searchQuery, activeFilter);
 
   const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds), [activeFilter, feeds]);
+  const feedSubtitle = isSearching
+    ? `${resultCount.toLocaleString()} result${resultCount === 1 ? "" : "s"} in ${scopeLabel}`
+    : `${filteredItems.length.toLocaleString()} item${filteredItems.length === 1 ? "" : "s"}`;
 
   const dualColumnMode = useAppStore((s) => s.preferences.display.reading.dualColumnMode);
 
   // Store only the ID so the rendered item stays in sync with the store.
   // Holding the full FeedItem in state would freeze userState (saved, archived,
   // tags) at the moment the user clicked, making toolbar toggles appear broken.
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const selectedItem = useMemo(
     () => (selectedItemId ? filteredItems.find((i) => i.globalId === selectedItemId) ?? null : null),
     [filteredItems, selectedItemId],
@@ -262,15 +267,15 @@ export function FeedView() {
 
   const openItem = useCallback(
     (item: FeedItem) => {
-      setSelectedItemId(item.globalId);
+      setSelectedItem(item.globalId);
       markAsRead(item.globalId);
     },
-    [markAsRead],
+    [markAsRead, setSelectedItem],
   );
 
   const closeItem = useCallback(() => {
-    setSelectedItemId(null);
-  }, []);
+    setSelectedItem(null);
+  }, [setSelectedItem]);
 
   // Keyboard navigation: j/k to move, Enter/o to open, Escape to close.
   // The HTMLInputElement guard means j/k won't fire while the search bar is focused.
@@ -350,6 +355,7 @@ export function FeedView() {
   if (showDualColumn) {
     return (
       <div className="h-full flex flex-col overflow-hidden">
+        <ContentHeader title={scopeLabel} subtitle={feedSubtitle} />
         {/* Archive retention toolbar — only shown in the archived view */}
         {activeFilter.archivedOnly && (
           <div className="flex-shrink-0 px-4 py-2 border-b border-white/5 flex items-center justify-between gap-4">
@@ -395,6 +401,7 @@ export function FeedView() {
 
   return (
     <div className="h-full flex flex-col">
+      <ContentHeader title={scopeLabel} subtitle={feedSubtitle} />
       {/* Archive retention toolbar — only shown in the archived view */}
       {activeFilter.archivedOnly && (
         <div className="flex-shrink-0 px-4 py-2 border-b border-white/5 flex items-center justify-between gap-4">

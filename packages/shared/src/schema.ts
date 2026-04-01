@@ -443,11 +443,14 @@ export function removeAllFeeds(doc: FreedDoc, includeItems: boolean): void {
 /**
  * Add a friend to the document
  *
+ * Strips any `undefined` values before writing, matching the feed and RSS
+ * helpers and avoiding Automerge errors on optional friend fields.
+ *
  * @param doc - The Automerge document (mutable within A.change)
  * @param friend - The friend to add
  */
 export function addFriend(doc: FreedDoc, friend: Friend): void {
-  doc.friends[friend.id] = friend;
+  doc.friends[friend.id] = stripUndefined(friend);
 }
 
 /**

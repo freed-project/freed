@@ -1,321 +1,593 @@
-/**
- * Force-directed graph of Friend nodes rendered on a <canvas>.
- *
- * Layout engine: d3-force (no SVG, no wrapper lib).
- * Animation: requestAnimationFrame loop driven by the simulation's tick events.
- *
- * Visual encoding:
- *  - Node radius: baseRadius(careLevel) * log2(recentPostCount + 2), capped at 48px
- *  - Node opacity: full if posted today, fading to 50% for 30+ day silence
- *  - Pulse ring: amber if isDue && careLevel >= 4 (pulled toward ReconnectRing zone)
- *  - Avatar: drawn as clipped circular image or initials fallback
- */
-
-import { useEffect, useRef, useCallback } from "react";
-import * as d3 from "d3-force";
-import type { Friend, FeedItem } from "@freed/shared";
 import {
-  nodeRadius,
-  nodeOpacity,
-  isInReconnectZone,
-  feedItemsForFriend,
-} from "@freed/shared";
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { FeedItem, Friend } from "@freed/shared";
+import {
+  buildFrozenFriendGraphLayout,
+  createLayoutSignature,
+  fitTransformToNodes,
+  FRIEND_GRAPH_DEFAULT_TRANSFORM,
+  type FriendLayoutNode,
+  type ViewTransform,
+} from "../../lib/friends-graph-layout.js";
+import {
+  createFriendAvatarPalette,
+  type FriendAvatarPalette,
+} from "../../lib/friend-avatar-style.js";
+import { initialsForName } from "../../lib/friend-avatar.js";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface FriendNode extends d3.SimulationNodeDatum {
-  friend: Friend;
-  radius: number;
-  opacity: number;
-  inReconnectZone: boolean;
-  avatarImg: HTMLImageElement | null;
+export interface FriendGraphHandle {
+  fitAll: () => void;
+  focusFriend: (friendId: string) => void;
 }
 
 interface FriendGraphProps {
   friends: Friend[];
   feedItems: Record<string, FeedItem>;
-  /** Canvas height in px. Defaults to filling the container. */
-  height?: number;
   onSelectFriend: (friend: Friend) => void;
   selectedFriendId?: string | null;
-  /** y-coordinate (canvas space) where the Reconnect zone gravity target sits */
-  reconnectZoneY?: number;
+  avatarTint?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Avatar image cache — persisted between renders inside the module
-// ---------------------------------------------------------------------------
+interface DragState {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  originX: number;
+  originY: number;
+  moved: boolean;
+}
+
+const LABEL_OFFSET_Y = 12;
+const LABEL_PILL_HEIGHT = 20;
+const LABEL_PILL_RADIUS = 10;
+const MIN_SCALE = 0.45;
+const MAX_SCALE = 2.4;
+const FIT_PADDING = 72;
+const DEFAULT_HEIGHT = 560;
+const CONTROL_BASE =
+  "inline-flex items-center gap-2 rounded-lg border border-white/10 bg-[#121212]/88 px-3 py-1.5 text-xs text-[#a1a1aa] transition-colors hover:border-[#8b5cf6]/30 hover:text-white";
 
 const avatarCache = new Map<string, HTMLImageElement | null>();
 
 function loadAvatar(url: string): HTMLImageElement | null {
-  if (avatarCache.has(url)) return avatarCache.get(url)!;
+  if (avatarCache.has(url)) return avatarCache.get(url) ?? null;
   const img = new Image();
   img.crossOrigin = "anonymous";
-  avatarCache.set(url, null); // optimistic: null until loaded
-  img.onload = () => {
-    avatarCache.set(url, img);
-  };
+  avatarCache.set(url, null);
+  img.onload = () => avatarCache.set(url, img);
   img.src = url;
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Drawing helpers
-// ---------------------------------------------------------------------------
+function clampScale(scale: number): number {
+  return Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+}
+
+function graphBounds(nodes: FriendLayoutNode[]) {
+  return {
+    left: Math.min(...nodes.map((node) => Math.min((node.x ?? 0) - node.radius, (node.x ?? 0) - node.labelWidth / 2))),
+    right: Math.max(...nodes.map((node) => Math.max((node.x ?? 0) + node.radius, (node.x ?? 0) + node.labelWidth / 2))),
+    top: Math.min(...nodes.map((node) => (node.y ?? 0) - node.radius)),
+    bottom: Math.max(...nodes.map((node) => (node.y ?? 0) + node.radius + LABEL_OFFSET_Y + LABEL_PILL_HEIGHT + 8)),
+  };
+}
+
+function drawRoundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number
+): void {
+  const clampedRadius = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + clampedRadius, y);
+  ctx.lineTo(x + width - clampedRadius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + clampedRadius);
+  ctx.lineTo(x + width, y + height - clampedRadius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - clampedRadius, y + height);
+  ctx.lineTo(x + clampedRadius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - clampedRadius);
+  ctx.lineTo(x, y + clampedRadius);
+  ctx.quadraticCurveTo(x, y, x + clampedRadius, y);
+  ctx.closePath();
+}
+
+function applyViewportClamp(transform: ViewTransform, nodes: FriendLayoutNode[], width: number, height: number): ViewTransform {
+  if (nodes.length === 0) return transform;
+
+  const bounds = graphBounds(nodes);
+  const scaledWidth = (bounds.right - bounds.left) * transform.scale;
+  const scaledHeight = (bounds.bottom - bounds.top) * transform.scale;
+
+  if (scaledWidth <= width - FIT_PADDING * 0.5) {
+    transform.x = width / 2 - ((bounds.left + bounds.right) / 2) * transform.scale;
+  }
+
+  if (scaledHeight <= height - FIT_PADDING * 0.5) {
+    transform.y = height / 2 - ((bounds.top + bounds.bottom) / 2) * transform.scale;
+  }
+
+  return transform;
+}
 
 function drawNode(
   ctx: CanvasRenderingContext2D,
-  node: FriendNode,
+  node: FriendLayoutNode,
   selected: boolean,
-  now: number
+  now: number,
+  avatarPalette: FriendAvatarPalette
 ): void {
   const x = node.x ?? 0;
   const y = node.y ?? 0;
-  const r = node.radius;
+  const radius = node.radius;
 
   ctx.save();
-  ctx.globalAlpha = node.opacity;
 
-  // Reconnect zone amber glow
   if (node.inReconnectZone) {
-    ctx.shadowColor = "rgba(251,191,36,0.8)";
-    ctx.shadowBlur = 16;
+    ctx.shadowColor = "rgba(251,191,36,0.34)";
+    ctx.shadowBlur = 18;
   }
 
-  // Selection ring
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(15,15,20,0.96)";
+  ctx.fill();
+  ctx.restore();
+
   if (selected) {
+    ctx.save();
     ctx.beginPath();
-    ctx.arc(x, y, r + 4, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(139,92,246,0.9)";
+    ctx.arc(x, y, radius + 6, 0, Math.PI * 2);
+    ctx.strokeStyle = avatarPalette.selectionOuterStroke;
     ctx.lineWidth = 2.5;
     ctx.stroke();
+    ctx.restore();
   }
 
-  // Clip to circle
+  ctx.save();
   ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
   ctx.clip();
 
-  // Avatar or gradient fallback
-  const img = node.avatarImg;
-  if (img && img.complete && img.naturalWidth > 0) {
-    ctx.drawImage(img, x - r, y - r, r * 2, r * 2);
+  const avatarUrl = node.avatarUrl;
+  const avatarImg = avatarUrl ? (node.avatarImg ?? loadAvatar(avatarUrl)) : null;
+  if (avatarImg && avatarImg.complete && avatarImg.naturalWidth > 0) {
+    ctx.globalAlpha = node.opacity;
+    ctx.drawImage(avatarImg, x - radius, y - radius, radius * 2, radius * 2);
+    const imageOverlay = ctx.createRadialGradient(x - radius * 0.18, y - radius * 0.24, 0, x, y, radius);
+    imageOverlay.addColorStop(0, avatarPalette.imageHighlight);
+    imageOverlay.addColorStop(0.5, "rgba(0,0,0,0)");
+    imageOverlay.addColorStop(1, avatarPalette.imageShadow);
+    ctx.fillStyle = imageOverlay;
+    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+    node.avatarImg = avatarImg;
   } else {
-    // Gradient fallback using care level hue
-    const hue = 200 + node.friend.careLevel * 20;
-    const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
-    grad.addColorStop(0, `hsl(${hue}, 70%, 55%)`);
-    grad.addColorStop(1, `hsl(${hue + 40}, 60%, 35%)`);
-    ctx.fillStyle = grad;
-    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    const gradient = ctx.createRadialGradient(x - radius * 0.25, y - radius * 0.3, 0, x, y, radius);
+    gradient.addColorStop(0, avatarPalette.gradientStart);
+    gradient.addColorStop(0.38, avatarPalette.gradientMid);
+    gradient.addColorStop(1, avatarPalette.gradientEnd);
+    ctx.globalAlpha = node.opacity;
+    ctx.fillStyle = gradient;
+    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
 
-    // Initials
-    const initials = node.friend.name
-      .split(" ")
-      .slice(0, 2)
-      .map((w) => w[0]?.toUpperCase() ?? "")
-      .join("");
     ctx.restore();
     ctx.save();
     ctx.globalAlpha = node.opacity;
     ctx.fillStyle = "rgba(255,255,255,0.92)";
-    ctx.font = `bold ${Math.max(10, r * 0.55)}px system-ui, sans-serif`;
+    ctx.font = `600 ${Math.max(10, radius * 0.52)}px system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(initials, x, y);
+    ctx.shadowColor = avatarPalette.initialsShadow;
+    ctx.shadowBlur = 12;
+    ctx.fillText(initialsForName(node.friend.name), x, y);
   }
-
   ctx.restore();
 
-  // Pulse ring for recent posts (last 24h) — drawn outside clip
-  const items = feedItemsForFriend({} as Record<string, FeedItem>, node.friend);
-  void items; // unused here — opacity already encodes recency
-  if (node.opacity === 1.0) {
-    const pulse = 0.5 + 0.5 * Math.sin(now / 800);
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.strokeStyle = selected ? avatarPalette.selectionStroke : avatarPalette.borderSoft;
+  ctx.lineWidth = selected ? 2 : 1.25;
+  ctx.stroke();
+  ctx.restore();
+
+  if (node.opacity >= 0.98) {
+    const pulse = 0.48 + 0.52 * Math.sin(now / 760);
     ctx.save();
-    ctx.globalAlpha = 0.35 * pulse;
+    ctx.globalAlpha = 0.26 * pulse;
     ctx.beginPath();
-    ctx.arc(x, y, r + 5, 0, Math.PI * 2);
-    ctx.strokeStyle = node.inReconnectZone ? "#f59e0b" : "#8b5cf6";
+    ctx.arc(x, y, radius + 8, 0, Math.PI * 2);
+    ctx.strokeStyle = node.inReconnectZone ? "rgba(251,191,36,0.9)" : avatarPalette.selectionOuterStroke;
     ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.restore();
   }
 
-  // Name label below node
   ctx.save();
-  ctx.globalAlpha = Math.min(node.opacity + 0.15, 1);
-  ctx.fillStyle = "rgba(255,255,255,0.85)";
-  ctx.font = `${Math.max(9, r * 0.38)}px system-ui, sans-serif`;
+  ctx.globalAlpha = 0.92;
+  const labelY = y + radius + LABEL_OFFSET_Y;
+  const labelX = x - node.labelWidth / 2;
+  ctx.shadowColor = selected ? "rgba(91,33,182,0.32)" : "rgba(0,0,0,0.28)";
+  ctx.shadowBlur = 10;
+  drawRoundedRect(
+    ctx,
+    labelX,
+    labelY - 2,
+    node.labelWidth,
+    LABEL_PILL_HEIGHT,
+    LABEL_PILL_RADIUS
+  );
+  const labelFill = ctx.createLinearGradient(labelX, labelY, labelX, labelY + LABEL_PILL_HEIGHT);
+  labelFill.addColorStop(0, selected ? "rgba(41,17,71,0.96)" : "rgba(24,17,32,0.94)");
+  labelFill.addColorStop(1, selected ? "rgba(30,13,54,0.98)" : "rgba(15,15,20,0.96)");
+  ctx.fillStyle = labelFill;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = selected ? avatarPalette.labelBorder : "rgba(255,255,255,0.08)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.font = `${Math.max(11, radius * 0.36)}px system-ui, sans-serif`;
   ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  const label =
-    node.friend.name.length > 14
-      ? node.friend.name.slice(0, 13) + "…"
-      : node.friend.name;
-  ctx.fillText(label, x, y + r + 4);
+  ctx.textBaseline = "middle";
+  ctx.fillText(node.label, x, labelY + LABEL_PILL_HEIGHT / 2 - 1);
   ctx.restore();
 }
 
-// ---------------------------------------------------------------------------
-// Component
-// ---------------------------------------------------------------------------
-
-export function FriendGraph({
-  friends,
-  feedItems,
-  height,
-  onSelectFriend,
-  selectedFriendId,
-  reconnectZoneY,
-}: FriendGraphProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(function FriendGraph(
+  {
+    friends,
+    feedItems,
+    onSelectFriend,
+    selectedFriendId,
+    avatarTint,
+  },
+  ref
+) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const simRef = useRef<d3.Simulation<FriendNode, never> | null>(null);
-  const nodesRef = useRef<FriendNode[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const nodesRef = useRef<FriendLayoutNode[]>([]);
+  const transformRef = useRef<ViewTransform>({ ...FRIEND_GRAPH_DEFAULT_TRANSFORM });
+  const dragStateRef = useRef<DragState | null>(null);
+  const layoutSignatureRef = useRef<string>("");
   const rafRef = useRef<number>(0);
+  const previousPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const [viewportVersion, setViewportVersion] = useState(0);
+  const [canvasSize, setCanvasSize] = useState({ width: 900, height: DEFAULT_HEIGHT });
+  const [isInteracting, setIsInteracting] = useState(false);
+  const avatarPalette = useMemo(
+    () => createFriendAvatarPalette(avatarTint),
+    [avatarTint]
+  );
 
-  // Build node list from friends, preserving existing x/y to avoid jitter
-  const syncNodes = useCallback(() => {
-    const now = Date.now();
-    const existingById = new Map(
-      nodesRef.current.map((n) => [n.friend.id, n])
-    );
+  const layoutSignature = useMemo(
+    () => createLayoutSignature(friends, feedItems),
+    [feedItems, friends]
+  );
 
-    nodesRef.current = friends.map((friend) => {
-      const existing = existingById.get(friend.id);
-      const r = nodeRadius(friend, feedItems);
-      const op = nodeOpacity(friend, feedItems, now);
-      const inZone = isInReconnectZone(friend, now);
-      const avatarUrl = friend.avatarUrl ?? friend.sources[0]?.avatarUrl;
-      const avatarImg = avatarUrl ? loadAvatar(avatarUrl) : null;
-
-      return {
-        friend,
-        radius: r,
-        opacity: op,
-        inReconnectZone: inZone,
-        avatarImg,
-        // Preserve position if node already existed
-        x: existing?.x,
-        y: existing?.y,
-        vx: existing?.vx ?? 0,
-        vy: existing?.vy ?? 0,
-      };
-    });
-  }, [friends, feedItems]);
-
-  // Setup / rebuild simulation when friends change
-  useEffect(() => {
-    const canvas = canvasRef.current;
+  const updateCanvasSize = useCallback(() => {
     const container = containerRef.current;
-    if (!canvas || !container) return;
+    const canvas = canvasRef.current;
+    if (!container || !canvas) return;
 
-    const W = container.clientWidth || 600;
-    const H = height ?? (container.clientHeight || 500);
-    canvas.width = W;
-    canvas.height = H;
+    const width = Math.max(320, container.clientWidth);
+    const height = Math.max(320, container.clientHeight || DEFAULT_HEIGHT);
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.round(width * ratio);
+    canvas.height = Math.round(height * ratio);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    const ctx = canvas.getContext("2d");
+    ctx?.setTransform(ratio, 0, 0, ratio, 0, 0);
+    setCanvasSize({ width, height });
+  }, []);
 
-    syncNodes();
-    const nodes = nodesRef.current;
+  const drawGraph = useCallback((now: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const ratio = window.devicePixelRatio || 1;
 
-    if (simRef.current) simRef.current.stop();
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const RECONNECT_Y = reconnectZoneY ?? H * 0.18;
+    const transform = transformRef.current;
+    ctx.save();
+    ctx.translate(transform.x, transform.y);
+    ctx.scale(transform.scale, transform.scale);
+    for (const node of nodesRef.current) {
+      drawNode(ctx, node, node.friend.id === selectedFriendId, now, avatarPalette);
+    }
+    ctx.restore();
+  }, [avatarPalette, selectedFriendId]);
 
-    simRef.current = d3
-      .forceSimulation<FriendNode>(nodes)
-      .force("center", d3.forceCenter(W / 2, H / 2).strength(0.05))
-      .force(
-        "collide",
-        d3
-          .forceCollide<FriendNode>((n) => n.radius + 8)
-          .strength(0.85)
-          .iterations(2)
-      )
-      .force("charge", d3.forceManyBody<FriendNode>().strength(-80))
-      // Pull reconnect-zone friends toward the top
-      .force(
-        "reconnect",
-        d3
-          .forceY<FriendNode>(RECONNECT_Y)
-          .strength((n) => (n.inReconnectZone ? 0.12 : 0))
-      )
-      .alphaDecay(0.02)
-      .velocityDecay(0.4)
-      .on("tick", () => {
-        // Update avatar cache hits — images may have loaded since last tick
-        for (const node of nodes) {
-          const url = node.friend.avatarUrl ?? node.friend.sources[0]?.avatarUrl;
-          if (url && !node.avatarImg) {
-            node.avatarImg = avatarCache.get(url) ?? null;
-          }
-        }
-      });
+  const scheduleDraw = useCallback(() => {
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame((now) => {
+      drawGraph(now);
+    });
+  }, [drawGraph]);
 
-    return () => {
-      simRef.current?.stop();
-      cancelAnimationFrame(rafRef.current);
+  const fitAll = useCallback(() => {
+    if (nodesRef.current.length === 0) return;
+    transformRef.current = fitTransformToNodes(
+      nodesRef.current,
+      canvasSize.width,
+      canvasSize.height,
+      FIT_PADDING
+    );
+    setViewportVersion((version) => version + 1);
+    scheduleDraw();
+  }, [canvasSize.height, canvasSize.width, scheduleDraw]);
+
+  const focusFriend = useCallback((friendId: string) => {
+    const node = nodesRef.current.find((candidate) => candidate.friend.id === friendId);
+    if (!node) return;
+    const scale = transformRef.current.scale;
+    transformRef.current = {
+      x: canvasSize.width / 2 - (node.x ?? 0) * scale,
+      y: canvasSize.height / 2 - (node.y ?? 0) * scale,
+      scale,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [friends, feedItems, height, reconnectZoneY]);
+    setViewportVersion((version) => version + 1);
+    scheduleDraw();
+  }, [canvasSize.height, canvasSize.width, scheduleDraw]);
 
-  // RAF draw loop — runs independently of simulation restarts
+  useImperativeHandle(ref, () => ({
+    fitAll,
+    focusFriend,
+  }), [fitAll, focusFriend]);
+
+  useEffect(() => {
+    updateCanvasSize();
+    const resizeObserver = new ResizeObserver(() => {
+      updateCanvasSize();
+    });
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+    window.addEventListener("resize", updateCanvasSize);
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateCanvasSize);
+    };
+  }, [updateCanvasSize]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    function draw(now: number) {
-      const ctx = canvas!.getContext("2d");
-      if (!ctx) return;
-
-      ctx.clearRect(0, 0, canvas!.width, canvas!.height);
-
-      for (const node of nodesRef.current) {
-        drawNode(ctx, node, node.friend.id === selectedFriendId, now);
+    const suppressBrowserViewportZoom = (event: Event) => {
+      if (event.cancelable) {
+        event.preventDefault();
       }
+    };
 
-      rafRef.current = requestAnimationFrame(draw);
+    const suppressWheelScroll = (event: WheelEvent) => {
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+    };
+
+    canvas.addEventListener("wheel", suppressWheelScroll, { passive: false });
+    canvas.addEventListener("gesturestart", suppressBrowserViewportZoom, { passive: false });
+    canvas.addEventListener("gesturechange", suppressBrowserViewportZoom, { passive: false });
+    canvas.addEventListener("gestureend", suppressBrowserViewportZoom, { passive: false });
+
+    return () => {
+      canvas.removeEventListener("wheel", suppressWheelScroll);
+      canvas.removeEventListener("gesturestart", suppressBrowserViewportZoom);
+      canvas.removeEventListener("gesturechange", suppressBrowserViewportZoom);
+      canvas.removeEventListener("gestureend", suppressBrowserViewportZoom);
+    };
+  }, []);
+
+  useEffect(() => {
+    const shouldRebuild = layoutSignatureRef.current !== layoutSignature
+      || nodesRef.current.length === 0;
+    if (!shouldRebuild) {
+      scheduleDraw();
+      return;
     }
 
-    rafRef.current = requestAnimationFrame(draw);
+    nodesRef.current = buildFrozenFriendGraphLayout(
+      friends,
+      feedItems,
+      canvasSize.width,
+      canvasSize.height,
+      previousPositionsRef.current
+    );
+    previousPositionsRef.current = new Map(
+      nodesRef.current.map((node) => [node.friend.id, { x: node.x ?? 0, y: node.y ?? 0 }])
+    );
+    layoutSignatureRef.current = layoutSignature;
+
+    if (viewportVersion === 0) {
+      transformRef.current = fitTransformToNodes(
+        nodesRef.current,
+        canvasSize.width,
+        canvasSize.height,
+        FIT_PADDING
+      );
+    } else {
+      transformRef.current = applyViewportClamp(
+        transformRef.current,
+        nodesRef.current,
+        canvasSize.width,
+        canvasSize.height
+      );
+    }
+    scheduleDraw();
+  }, [canvasSize.height, canvasSize.width, feedItems, friends, layoutSignature, scheduleDraw, viewportVersion]);
+
+  useEffect(() => {
+    scheduleDraw();
     return () => cancelAnimationFrame(rafRef.current);
-  }, [selectedFriendId]);
+  }, [scheduleDraw]);
 
-  // Hit-test on click — find topmost node under cursor
-  const handleClick = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
-      const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+  const viewportToWorld = useCallback((clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+    const transform = transformRef.current;
+    return {
+      x: (localX - transform.x) / transform.scale,
+      y: (localY - transform.y) / transform.scale,
+    };
+  }, []);
 
-      let hit: FriendNode | null = null;
-      for (const node of nodesRef.current) {
-        const dx = (node.x ?? 0) - mx;
-        const dy = (node.y ?? 0) - my;
-        if (dx * dx + dy * dy <= node.radius * node.radius) {
-          hit = node;
-        }
+  const findHitNode = useCallback((clientX: number, clientY: number) => {
+    const point = viewportToWorld(clientX, clientY);
+    for (let index = nodesRef.current.length - 1; index >= 0; index -= 1) {
+      const node = nodesRef.current[index];
+      const dx = (node.x ?? 0) - point.x;
+      const dy = (node.y ?? 0) - point.y;
+      if (dx * dx + dy * dy <= node.radius * node.radius) {
+        return node;
       }
-      if (hit) onSelectFriend(hit.friend);
-    },
-    [onSelectFriend]
-  );
+    }
+    return null;
+  }, [viewportToWorld]);
+
+  const zoomAtPoint = useCallback((clientX: number, clientY: number, nextScale: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+    const current = transformRef.current;
+    const scale = clampScale(nextScale);
+    const worldX = (localX - current.x) / current.scale;
+    const worldY = (localY - current.y) / current.scale;
+    transformRef.current = {
+      scale,
+      x: localX - worldX * scale,
+      y: localY - worldY * scale,
+    };
+    setViewportVersion((version) => version + 1);
+    scheduleDraw();
+  }, [scheduleDraw]);
+
+  const handleWheel = useCallback((event: React.WheelEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
+    if (event.ctrlKey || event.metaKey) {
+      const delta = Math.exp(-event.deltaY * 0.0025);
+      zoomAtPoint(event.clientX, event.clientY, transformRef.current.scale * delta);
+      return;
+    }
+
+    transformRef.current = {
+      ...transformRef.current,
+      x: transformRef.current.x - event.deltaX,
+      y: transformRef.current.y - event.deltaY,
+    };
+    setViewportVersion((version) => version + 1);
+    scheduleDraw();
+  }, [scheduleDraw, zoomAtPoint]);
+
+  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.setPointerCapture(event.pointerId);
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: transformRef.current.x,
+      originY: transformRef.current.y,
+      moved: false,
+    };
+    setIsInteracting(true);
+  }, []);
+
+  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    const drag = dragStateRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
+      drag.moved = true;
+    }
+    transformRef.current = {
+      ...transformRef.current,
+      x: drag.originX + deltaX,
+      y: drag.originY + deltaY,
+    };
+    setViewportVersion((version) => version + 1);
+    scheduleDraw();
+  }, [scheduleDraw]);
+
+  const handlePointerUp = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    const drag = dragStateRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const moved = drag.moved;
+    dragStateRef.current = null;
+    setIsInteracting(false);
+    if (moved) return;
+
+    const hit = findHitNode(event.clientX, event.clientY);
+    if (hit) {
+      onSelectFriend(hit.friend);
+    }
+  }, [findHitNode, onSelectFriend]);
+
+  const handlePointerLeave = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    const drag = dragStateRef.current;
+    if (drag && drag.pointerId === event.pointerId) {
+      dragStateRef.current = null;
+      setIsInteracting(false);
+    }
+  }, []);
+
+  const handleDoubleClick = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
+    const hit = findHitNode(event.clientX, event.clientY);
+    if (hit) {
+      focusFriend(hit.friend.id);
+    } else {
+      fitAll();
+    }
+  }, [findHitNode, fitAll, focusFriend]);
 
   return (
-    <div ref={containerRef} className="w-full h-full relative">
+    <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-[#0d0d10]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(91,33,182,0.12),rgba(13,13,16,0)_32%)]" />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.08] [background-image:linear-gradient(rgba(167,139,250,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(167,139,250,0.08)_1px,transparent_1px)] [background-size:96px_96px]" />
+
+      <div className="absolute left-4 top-4 z-10 flex items-center gap-2">
+        <button
+          type="button"
+          className={CONTROL_BASE}
+          onClick={fitAll}
+        >
+          Fit all
+        </button>
+      </div>
+
       <canvas
         ref={canvasRef}
-        className="w-full h-full"
-        style={{ height: height ?? "100%" }}
-        onClick={handleClick}
+        className={`h-full w-full touch-none ${isInteracting ? "cursor-grabbing" : "cursor-grab"}`}
+        data-testid="friend-graph-canvas"
+        data-view-scale={transformRef.current.scale.toFixed(4)}
+        onWheel={handleWheel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerLeave}
+        onDoubleClick={handleDoubleClick}
         aria-label="Friends social graph"
       />
     </div>
   );
-}
+});

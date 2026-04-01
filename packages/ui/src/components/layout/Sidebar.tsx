@@ -1,20 +1,18 @@
 import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from "react";
 
-import type { FilterOptions, RssFeed } from "@freed/shared";
+import { countFriendsWithRecentLocationUpdates, type FilterOptions, type RssFeed } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { SettingsDialog } from "../SettingsDialog.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
-import { RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
-import {
-  COMING_SOON_SOURCE_ITEMS,
-  TOP_SOURCE_ITEMS,
-  type SourceNavigationItem,
-} from "../../lib/source-navigation.js";
-/** Compact number: 1234 → "1.2k", 1_200_000 → "1.2m". Trims trailing ".0". */
+import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
+import { TOP_SOURCE_ITEMS, type SourceNavigationItem } from "../../lib/source-navigation.js";
+
+const compactNumberFormatter = new Intl.NumberFormat(undefined, {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
 function fmt(n: number): string {
-  if (n >= 1_000_000) return `${+(n / 1_000_000).toFixed(1)}m`;
-  if (n >= 1_000) return `${+(n / 1_000).toFixed(1)}k`;
-  return String(n);
+  return compactNumberFormatter.format(n);
 }
 
 interface SidebarProps {
@@ -205,12 +203,15 @@ function FeedContextMenu({
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
 const DEFAULT_WIDTH = 256;
-
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { SourceIndicator, headerDragRegion } = usePlatform();
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
+  const setSelectedItem = useAppStore((s) => s.setSelectedItem);
+  const setSelectedFriend = useAppStore((s) => s.setSelectedFriend);
+  const setSearchQuery = useAppStore((s) => s.setSearchQuery);
   const feeds = useAppStore((s) => s.feeds);
+  const friends = useAppStore((s) => s.friends);
   const feedUnreadCounts = useAppStore((s) => s.feedUnreadCounts);
   const feedTotalCounts = useAppStore((s) => s.feedTotalCounts);
   const renameFeed = useAppStore((s) => s.renameFeed);
@@ -228,6 +229,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const savedCount = useMemo(() => items.filter((i) => i.userState.saved).length, [items]);
   const archivedCount = useMemo(() => items.filter((i) => i.userState.archived).length, [items]);
+  const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
+  const mapFriendCount = useMemo(
+    () => countFriendsWithRecentLocationUpdates(items, friends),
+    [friends, items]
+  );
 
   const { open: showSettings, openDefault: openSettings, close: closeSettings } = useSettingsStore();
   const [dragWidth, setDragWidth] = useState<number | null>(null);
@@ -285,7 +291,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     showFeed({ tags: children });
   };
 
+  const isFeedView = activeView === "feed";
+
   const isTagActive = (tag: string) => {
+    if (!isFeedView) return false;
     const active = activeFilter.tags;
     if (!active || active.length === 0) return false;
     return childTagsOf(tag).some((t) => active.includes(t));
@@ -323,9 +332,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const showFeed = useCallback((filter: FilterOptions) => {
     setActiveView("feed");
+    setSelectedFriend(null);
+    setSelectedItem(null);
     setFilter(filter);
     onClose();
-  }, [onClose, setActiveView, setFilter]);
+  }, [onClose, setActiveView, setFilter, setSelectedFriend, setSelectedItem]);
 
   const handleSourceClick = (source: SourceNavigationItem) => {
     showFeed({ platform: source.id });
@@ -336,6 +347,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   };
 
   const isTopSourceActive = (source: SourceNavigationItem) => {
+    if (!isFeedView) return false;
     if (activeFilter.feedUrl) return false;
     if (activeFilter.archivedOnly) return false;
     if (activeFilter.savedOnly) return false;
@@ -430,7 +442,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               {/* Friends — active nav item */}
               <li>
                 <button
-                  onClick={() => { setActiveView("friends"); onClose(); }}
+                  onClick={() => {
+                    setActiveView("friends");
+                    setSelectedFriend(null);
+                    setSelectedItem(null);
+                    onClose();
+                  }}
                   className={`
                     w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
                     text-left text-sm transition-all border
@@ -448,17 +465,49 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                       {fmt(pendingMatchCount)}
                     </span>
                   )}
+                  {friendCount > 0 && (
+                    <span
+                      className={`shrink-0 text-[10px] tabular-nums ${
+                        activeView === "friends" ? "text-[#c4b5fd]" : "text-[#52525b]"
+                      }`}
+                    >
+                      {fmt(friendCount)}
+                    </span>
+                  )}
                 </button>
               </li>
-              {COMING_SOON_SOURCE_ITEMS.map((source) => (
-                <li key={source.id}>
-                  <div className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm text-[#52525b] cursor-default">
-                    <span className="w-5 flex items-center justify-center opacity-50">{source.icon}</span>
-                    <span className="flex-1">{source.label}</span>
-                    <span className="text-[10px] uppercase tracking-wider bg-white/5 px-1.5 py-0.5 rounded">soon</span>
-                  </div>
-                </li>
-              ))}
+              <li>
+                <button
+                  onClick={() => {
+                    setActiveView("map");
+                    setSelectedFriend(null);
+                    setSelectedItem(null);
+                    setSearchQuery("");
+                    onClose();
+                  }}
+                  className={`
+                    w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
+                    text-left text-sm transition-all border
+                    ${
+                      activeView === "map"
+                        ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
+                        : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                    }
+                  `}
+                >
+                  <span className="w-5 flex items-center justify-center"><MapPinIcon /></span>
+                  <span className="flex-1">Map</span>
+                  {mapFriendCount > 0 && (
+                    <span
+                      className={`shrink-0 text-[10px] tabular-nums ${
+                        activeView === "map" ? "text-[#c4b5fd]" : "text-[#52525b]"
+                      }`}
+                    >
+                      {fmt(mapFriendCount)}
+                    </span>
+                  )}
+                </button>
+              </li>
             </ul>
           </SidebarSection>
 
@@ -472,7 +521,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
                     text-left text-sm transition-all border
                     ${
-                      activeFilter.savedOnly
+                      isFeedView && activeFilter.savedOnly
                         ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
                         : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
                     }
@@ -492,7 +541,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
                     text-left text-sm transition-all border
                     ${
-                      activeFilter.archivedOnly
+                      isFeedView && activeFilter.archivedOnly
                         ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
                         : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
                     }
@@ -534,7 +583,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                             tag={child}
                             label={child.slice(top.length + 1)}
                             active={
-                              !!(activeFilter.tags?.includes(child))
+                              isFeedView && !!(activeFilter.tags?.includes(child))
                             }
                             onClick={() => showFeed({ tags: [child] })}
                           />
@@ -553,7 +602,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 {feedList.map((feed) => {
                   const unread = feedUnreadCounts[feed.url] ?? 0;
                   const total = feedTotalCounts[feed.url] ?? 0;
-                  const isActive = activeFilter.feedUrl === feed.url;
+                  const isActive = isFeedView && activeFilter.feedUrl === feed.url;
                   const menuOpen = openMenuFeedUrl === feed.url;
                   return (
                     <li

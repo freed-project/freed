@@ -33,6 +33,7 @@ import {
   docDeduplicateFeedItems,
   docHealUntitledFeedTitles,
   docAddFriend,
+  docAddFriends,
   docUpdateFriend,
   docRemoveFriend,
   docLogReachOut,
@@ -85,6 +86,7 @@ interface AppState {
   error: string | null;
   activeFilter: FilterOptions;
   selectedItemId: string | null;
+  selectedFriendId: string | null;
 
   // Initialization
   initialize: () => Promise<void>;
@@ -109,6 +111,7 @@ interface AppState {
 
   // Friend actions (persisted to Automerge)
   addFriend: (friend: Friend) => Promise<void>;
+  addFriends: (friends: Friend[]) => Promise<void>;
   updateFriend: (id: string, updates: Partial<Friend>) => Promise<void>;
   removeFriend: (id: string) => Promise<void>;
   logReachOut: (id: string, entry: ReachOutLog) => Promise<void>;
@@ -128,6 +131,7 @@ interface AppState {
   // UI actions (not persisted)
   setFilter: (filter: FilterOptions) => void;
   setSelectedItem: (id: string | null) => void;
+  setSelectedFriend: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
   setSyncing: (syncing: boolean) => void;
   setError: (error: string | null) => void;
@@ -135,8 +139,8 @@ interface AppState {
   setSearchQuery: (query: string) => void;
 
   // View navigation
-  activeView: "feed" | "friends";
-  setActiveView: (view: "feed" | "friends") => void;
+  activeView: "feed" | "friends" | "map";
+  setActiveView: (view: "feed" | "friends" | "map") => void;
   pendingMatchCount: number;
   setPendingMatchCount: (count: number) => void;
 }
@@ -202,6 +206,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   error: null,
   activeFilter: {},
   selectedItemId: null,
+  selectedFriendId: null,
   searchQuery: "",
   activeView: "feed",
   pendingMatchCount: 0,
@@ -346,6 +351,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     await docAddFriend(friend);
   },
 
+  addFriends: async (friends: Friend[]) => {
+    await docAddFriends(friends);
+  },
+
   updateFriend: async (id: string, updates: Partial<Friend>) => {
     await docUpdateFriend(id, updates);
   },
@@ -375,6 +384,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // UI actions
   setFilter: (filter) => set({ activeFilter: filter }),
   setSelectedItem: (id) => set({ selectedItemId: id }),
+  setSelectedFriend: (id) => set({ selectedFriendId: id }),
   setLoading: (isLoading) => set({ isLoading }),
   setSyncing: (isSyncing) => set({ isSyncing }),
   setError: (error) => set({ error }),
