@@ -9,8 +9,16 @@
  * always assert on stable, visible elements. Avoid timing-sensitive assertions.
  */
 
+import type { Page } from "@playwright/test";
 import { test, expect, acceptLegalGate } from "./fixtures/app";
 import { tauriInitScript } from "./fixtures/tauri-init";
+
+async function dismissCloudSyncNudgeIfPresent(page: Page) {
+  const dismissButton = page.getByRole("button", { name: "Dismiss", exact: true });
+  if (await dismissButton.isVisible().catch(() => false)) {
+    await dismissButton.click();
+  }
+}
 
 // ---------------------------------------------------------------------------
 // App initialization
@@ -172,10 +180,11 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
   await app.goto();
   await app.waitForReady();
   await app.seedFriendLocation();
+  await dismissCloudSyncNudgeIfPresent(app.page);
 
   const { page } = app;
 
-  await page.getByRole("button", { name: "Map", exact: true }).click();
+  await page.getByRole("button", { name: /^Map\b/ }).click();
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
@@ -196,7 +205,7 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
   }, { timeout: 5_000 });
   await expect(page.locator("main").getByText("Ada Lovelace").first()).toBeVisible({ timeout: 5_000 });
 
-  await page.getByRole("button", { name: "Map", exact: true }).click();
+  await page.getByRole("button", { name: /^Map\b/ }).click();
   await page.locator(".freed-map-marker").first().click();
   await page.getByRole("button", { name: "Open Post" }).click();
   await page.waitForFunction(() => {
@@ -214,19 +223,26 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
   await app.goto();
   await app.waitForReady();
   await app.seedFriendLocation();
+  await dismissCloudSyncNudgeIfPresent(app.page);
 
   const { page } = app;
 
   await page.evaluate(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
-      | { getState: () => { setActiveView: (view: string) => void; setSelectedFriend: (id: string | null) => void } }
+      | { getState: () => { updatePreferences: (patch: { display: { friendsSidebarWidth: number } }) => Promise<void> } }
       | undefined;
     const state = store?.getState();
-    state?.setActiveView("friends");
-    state?.setSelectedFriend("friend-ada");
+    return state?.updatePreferences({
+      display: {
+        friendsSidebarWidth: 388,
+      },
+    });
   });
 
+  await page.getByRole("button", { name: /^Friends\b/ }).click();
+  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
+  await page.getByRole("button", { name: /Ada Lovelace/ }).click();
   await expect(page.getByText("Last seen")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByRole("button", { name: /last seen paris/i })).toBeVisible({ timeout: 5_000 });
   await page.getByRole("button", { name: /open map/i }).click();
@@ -239,7 +255,7 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
     const state = store?.getState();
     return state?.activeView === "map" && state.selectedFriendId === "friend-ada";
   }, { timeout: 5_000 });
-  await expect(page.getByText("Focused on Ada Lovelace")).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('.freed-map-marker[aria-label="Ada Lovelace"]')).toBeVisible({ timeout: 5_000 });
 });
 
 // ---------------------------------------------------------------------------

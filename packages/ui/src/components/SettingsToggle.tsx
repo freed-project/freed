@@ -14,21 +14,29 @@ export function SettingsToggle({
   description,
 }: SettingsToggleProps) {
   return (
-    <label className="flex items-start gap-3 cursor-pointer group">
-      <div className="relative shrink-0 mt-0.5">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(event) => onChange(event.target.checked)}
-          className="sr-only peer"
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className="flex w-full items-start gap-3 text-left group"
+    >
+      <div
+        className={`relative mt-0.5 h-4.5 w-8 shrink-0 rounded-full transition-colors ${
+          checked ? "bg-[#8b5cf6]" : "bg-[#27272a]"
+        }`}
+      >
+        <div
+          className={`absolute top-0.5 left-0.5 h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+            checked ? "translate-x-3.5" : "translate-x-0"
+          }`}
         />
-        <div className="w-8 h-4.5 bg-[#27272a] rounded-full peer peer-checked:bg-[#8b5cf6] transition-colors" />
-        <div className="absolute top-0.5 left-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-transform peer-checked:translate-x-3.5" />
       </div>
-      <div>
+      <div className="min-w-0">
         <p className="text-sm text-[#a1a1aa] group-hover:text-[#fafafa] transition-colors">{label}</p>
         {description ? <p className="text-xs text-[#52525b] mt-0.5">{description}</p> : null}
       </div>
-    </label>
+    </button>
   );
 }
