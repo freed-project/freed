@@ -3,15 +3,15 @@
 //! Native desktop app that bundles capture, sync relay, and reader UI.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use log::{error, info};
 use futures_util::{SinkExt, StreamExt};
+use log::{error, info};
 use rand::RngCore;
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock as StdRwLock};
-use tauri::{Emitter, Listener, Manager};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{Emitter, Listener, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, RwLock};
@@ -35,6 +35,44 @@ fn sync_relay_port() -> u16 {
         .and_then(|raw| raw.parse::<u16>().ok())
         .filter(|port| *port > 0)
         .unwrap_or(DEFAULT_SYNC_RELAY_PORT)
+}
+
+const OFFSCREEN_WINDOW_X: f64 = -20_000.0;
+const OFFSCREEN_WINDOW_Y: f64 = -20_000.0;
+
+fn prepare_background_scraper_window(
+    window: &tauri::WebviewWindow,
+    show_window: bool,
+) -> Result<(), String> {
+    use tauri::LogicalPosition;
+
+    if show_window {
+        let _ = window.center();
+        let _ = window.show();
+        let _ = window.set_focus();
+        return Ok(());
+    }
+
+    window
+        .set_position(LogicalPosition::new(OFFSCREEN_WINDOW_X, OFFSCREEN_WINDOW_Y))
+        .map_err(|e| e.to_string())?;
+    window.show().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+async fn restore_scraper_feed(
+    window: &tauri::WebviewWindow,
+    feed_url: &str,
+    platform: &str,
+) -> Result<(), String> {
+    window
+        .navigate(feed_url.parse().map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    info!("[{}] restoring feed after story viewer", platform);
+    tokio::time::sleep(Duration::from_millis(gaussian_ms(6500.0, 900.0))).await;
+    let _ = window.eval("window.scrollTo({ top: 0, behavior: 'instant' });");
+    tokio::time::sleep(Duration::from_millis(gaussian_ms(1200.0, 250.0))).await;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -461,10 +499,7 @@ async fn reset_pairing_token(
     app: tauri::AppHandle,
     state: tauri::State<'_, RelayState>,
 ) -> Result<String, String> {
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?;
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let new_token = generate_token();
     std::fs::write(data_dir.join("pairing-token"), &new_token).map_err(|e| e.to_string())?;
     *state.pairing_token.write().unwrap() = new_token.clone();
@@ -570,7 +605,10 @@ async fn handle_oauth_stream(stream: TcpStream, app: tauri::AppHandle) {
         }
     }
 
-    let _ = app.emit("cloud-oauth-code", serde_json::json!({ "code": code, "state": state }));
+    let _ = app.emit(
+        "cloud-oauth-code",
+        serde_json::json!({ "code": code, "state": state }),
+    );
 
     let body = "<html><body style='font-family:sans-serif;text-align:center;padding:4rem'>\
         <h2>Connected to Freed</h2>\
@@ -596,7 +634,6 @@ async fn handle_oauth_stream(stream: TcpStream, app: tauri::AppHandle) {
 /// the server down. Times out after 5 minutes of waiting.
 #[tauri::command]
 async fn start_oauth_server(app: tauri::AppHandle) -> Result<u16, String> {
-
     // Bind to IPv4 loopback first to get a port, then also bind IPv6 loopback
     // on the same port so that browsers which resolve localhost → ::1 (common
     // on macOS) can still reach the callback server.
@@ -614,10 +651,7 @@ async fn start_oauth_server(app: tauri::AppHandle) -> Result<u16, String> {
     // the other task is dropped once the oneshot fires.
     let (tx, rx) = tokio::sync::oneshot::channel::<TcpStream>();
 
-    async fn accept_one(
-        listener: TcpListener,
-        tx: tokio::sync::oneshot::Sender<TcpStream>,
-    ) {
+    async fn accept_one(listener: TcpListener, tx: tokio::sync::oneshot::Sender<TcpStream>) {
         let accept = timeout(Duration::from_secs(300), listener.accept()).await;
         if let Ok(Ok((stream, _))) = accept {
             let _ = tx.send(stream);
@@ -800,11 +834,16 @@ struct FbGroupsDataPayload {
 /// An `on_navigation` handler detects when the user completes login
 /// (URL leaves /login) and auto-hides the window + emits `fb-auth-result`.
 #[tauri::command]
-async fn fb_show_login(app: tauri::AppHandle, capture: tauri::State<'_, CaptureState>, user_agent: String) -> Result<(), String> {
+async fn fb_show_login(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    user_agent: String,
+) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
 
     if let Some(existing) = app.get_webview_window("fb-scraper") {
-        existing.navigate("https://www.facebook.com/login".parse().unwrap())
+        existing
+            .navigate("https://www.facebook.com/login".parse().unwrap())
             .map_err(|e| e.to_string())?;
         let _ = existing.show();
         let _ = existing.set_focus();
@@ -824,8 +863,14 @@ async fn fb_show_login(app: tauri::AppHandle, capture: tauri::State<'_, CaptureS
     .initialization_script(include_str!("webkit-mask.js"))
     .title("Connect Facebook — Freed")
     .inner_size(
-        460.0 + { use rand::Rng; rand::thread_rng().gen_range(-8.0f64..8.0) },
-        700.0 + { use rand::Rng; rand::thread_rng().gen_range(-10.0f64..10.0) },
+        460.0 + {
+            use rand::Rng;
+            rand::thread_rng().gen_range(-8.0f64..8.0)
+        },
+        700.0 + {
+            use rand::Rng;
+            rand::thread_rng().gen_range(-10.0f64..10.0)
+        },
     )
     .center()
     .visible(true)
@@ -1141,11 +1186,15 @@ async fn scrape_ig_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
 /// the extraction script which reads the DOM and emits 'fb-feed-data'.
 ///
 /// `show_window` controls visibility during scraping:
-/// - `false` (default): window is hidden via `hide()`. The RAF keepalive loop
-///   in webkit-mask.js keeps WKWebView JS timers running at full speed.
+/// - `false` (default): window is moved off-screen but kept visible so
+///   WKWebView stays stable without background-throttling hacks.
 /// - `true` (debug): window is centered and focused, visible on the user's desktop.
 #[tauri::command]
-async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, CaptureState>, show_window: bool) -> Result<(), String> {
+async fn fb_scrape_feed(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    show_window: bool,
+) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
 
     let fb_feed_url = "https://www.facebook.com/";
@@ -1154,17 +1203,7 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         Some(w) => {
             w.navigate(fb_feed_url.parse().unwrap())
                 .map_err(|e| e.to_string())?;
-            if show_window {
-                let _ = w.center();
-                let _ = w.set_focus();
-                let _ = w.show();
-            } else {
-                // Truly hide the window so it doesn't appear on-screen, in
-                // Mission Control, or on secondary displays. The RAF keepalive
-                // loop in webkit-mask.js prevents WKWebView from throttling JS
-                // timers while the window is hidden.
-                let _ = w.hide();
-            }
+            prepare_background_scraper_window(&w, show_window)?;
             w
         }
         None => {
@@ -1172,9 +1211,7 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
             let mut builder = WebviewWindowBuilder::new(
                 &app,
                 "fb-scraper",
-                tauri::WebviewUrl::External(
-                    fb_feed_url.parse().unwrap(),
-                ),
+                tauri::WebviewUrl::External(fb_feed_url.parse().unwrap()),
             )
             .user_agent(&*capture.fb_user_agent.lock().unwrap())
             .initialization_script(include_str!("webkit-mask.js"))
@@ -1187,8 +1224,8 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
                     if let Some(w) = app_handle.get_webview_window("fb-scraper") {
                         let _ = w.hide();
                     }
-                    let _ = app_handle.emit("fb-auth-result",
-                        serde_json::json!({ "loggedIn": true }));
+                    let _ =
+                        app_handle.emit("fb-auth-result", serde_json::json!({ "loggedIn": true }));
                 }
                 true
             });
@@ -1196,18 +1233,24 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
             if show_window {
                 builder = builder.center().visible(true);
             } else {
-                builder = builder.visible(false);
+                builder = builder
+                    .position(OFFSCREEN_WINDOW_X, OFFSCREEN_WINDOW_Y)
+                    .visible(true);
             }
 
             builder.build().map_err(|e| e.to_string())?
         }
     };
 
-    info!("[FB] scrape started (show_window={}), waiting for page load...", show_window);
+    info!(
+        "[FB] scrape started (show_window={}), waiting for page load...",
+        show_window
+    );
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(13000.0, 1500.0))).await;
 
-    wv.eval(r#"
+    wv.eval(
+        r#"
         (function() {
             if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.emit) {
                 window.__TAURI__.event.emit('fb-diag', {
@@ -1218,21 +1261,30 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
                 });
             }
         })();
-    "#).map_err(|e| e.to_string())?;
+    "#,
+    )
+    .map_err(|e| e.to_string())?;
     tokio::time::sleep(Duration::from_millis(300)).await;
 
     // Randomized ordering: ~50% stories-first, ~50% feed-first.
     // ~15% chance to skip story scraping entirely (real users don't always check stories).
-    let skip_stories = { use rand::Rng; rand::thread_rng().gen_bool(0.15) };
-    let stories_first = !skip_stories && { use rand::Rng; rand::thread_rng().gen_bool(0.50) };
-    let story_frame_cap = { use rand::Rng; rand::thread_rng().gen_range(10usize..=30) };
+    let skip_stories = {
+        use rand::Rng;
+        rand::thread_rng().gen_bool(0.15)
+    };
+    let stories_first = !skip_stories && {
+        use rand::Rng;
+        rand::thread_rng().gen_bool(0.50)
+    };
+    let story_frame_cap = {
+        use rand::Rng;
+        rand::thread_rng().gen_range(4usize..=8)
+    };
 
     if stories_first {
         println!("[FB] coin flip: stories FIRST");
         scrape_fb_stories(&wv, story_frame_cap).await;
-        // Scroll back to top after exiting story viewer so the feed loop starts fresh
-        let _ = wv.eval("window.scrollTo({ top: 0, behavior: 'instant' });");
-        tokio::time::sleep(Duration::from_millis(gaussian_ms(1500.0, 300.0))).await;
+        restore_scraper_feed(&wv, fb_feed_url, "FB").await?;
     } else if skip_stories {
         println!("[FB] skipping story scrape this session (~15% chance)");
     } else {
@@ -1255,12 +1307,7 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
     };
 
     for i in 0..num_passes {
-        // Only show the window if the user has opted into the debug view.
-        // When show_window=false the window stays hidden; the RAF keepalive
-        // loop in webkit-mask.js prevents WKWebView from throttling timers.
-        if show_window {
-            let _ = wv.show();
-        }
+        prepare_background_scraper_window(&wv, show_window)?;
 
         wv.eval(FB_EXTRACT_SCRIPT)
             .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
@@ -1278,42 +1325,64 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         wv.eval(&scroll_js).map_err(|e| e.to_string())?;
 
         // Inject mouse movement before scrolling (mimics real user pointer activity).
-        let cx = 230 + { use rand::Rng; rand::thread_rng().gen_range(0i32..200) };
-        let cy = 350 + { use rand::Rng; rand::thread_rng().gen_range(0i32..200) };
+        let cx = 230 + {
+            use rand::Rng;
+            rand::thread_rng().gen_range(0i32..200)
+        };
+        let cy = 350 + {
+            use rand::Rng;
+            rand::thread_rng().gen_range(0i32..200)
+        };
         let mouse_js = format!(
             r#"(function(){{var x={cx},y={cy};[0,1,2].forEach(function(i){{setTimeout(function(){{document.dispatchEvent(new MouseEvent('mousemove',{{clientX:x+i*12,clientY:y+i*8,bubbles:true,cancelable:true}}));}},i*80);}});}})();"#,
-            cx = cx, cy = cy
+            cx = cx,
+            cy = cy
         );
         let _ = wv.eval(&mouse_js);
         tokio::time::sleep(Duration::from_millis(gaussian_ms(280.0, 60.0))).await;
 
         // Occasional micro-backscroll (~12% probability) simulates re-reading.
-        if { use rand::Rng; rand::thread_rng().gen_bool(0.12) } {
-            let back = { use rand::Rng; rand::thread_rng().gen_range(80u64..250) };
+        if {
+            use rand::Rng;
+            rand::thread_rng().gen_bool(0.12)
+        } {
+            let back = {
+                use rand::Rng;
+                rand::thread_rng().gen_range(80u64..250)
+            };
             let back_js = format!("window.scrollBy({{top: -{}, behavior: 'smooth'}});", back);
             let _ = wv.eval(&back_js);
             tokio::time::sleep(Duration::from_millis(gaussian_ms(600.0, 150.0))).await;
         }
 
         // Gaussian pause between scroll passes; ~25% chance of a longer "reading" pause.
-        let pause = if { use rand::Rng; rand::thread_rng().gen_bool(0.25) } {
+        let pause = if {
+            use rand::Rng;
+            rand::thread_rng().gen_bool(0.25)
+        } {
             gaussian_ms(6000.0, 1500.0)
         } else {
             gaussian_ms(2750.0, 600.0)
         };
         tokio::time::sleep(Duration::from_millis(pause)).await;
 
-        info!("[FB] pass {}/{}: scrolled +{}px", i + 1, num_passes, scroll_amount);
+        info!(
+            "[FB] pass {}/{}: scrolled +{}px",
+            i + 1,
+            num_passes,
+            scroll_amount
+        );
 
         // Feed-first ordering: after early_passes, scroll back to top and scrape stories
         if !stories_first && !skip_stories && i + 1 == early_passes {
-            info!("[FB] interleaving story scrape after {} feed passes", early_passes);
+            info!(
+                "[FB] interleaving story scrape after {} feed passes",
+                early_passes
+            );
             let _ = wv.eval("window.scrollTo({ top: 0, behavior: 'smooth' });");
             tokio::time::sleep(Duration::from_millis(gaussian_ms(1800.0, 400.0))).await;
             scrape_fb_stories(&wv, story_frame_cap).await;
-            // Return to feed position after story viewing
-            let _ = wv.eval("window.scrollTo({ top: 0, behavior: 'instant' });");
-            tokio::time::sleep(Duration::from_millis(gaussian_ms(1200.0, 300.0))).await;
+            restore_scraper_feed(&wv, fb_feed_url, "FB").await?;
         }
     }
 
@@ -1321,7 +1390,10 @@ async fn fb_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
 
     tokio::time::sleep(Duration::from_millis(500)).await;
-    info!("[FB] scrape complete, {} extraction passes emitted", num_passes + 1);
+    info!(
+        "[FB] scrape complete, {} extraction passes emitted",
+        num_passes + 1
+    );
 
     // Hide the window now that scraping is done. The window stays alive in the
     // background to preserve the authenticated session for the next scrape.
@@ -1371,8 +1443,8 @@ async fn fb_scrape_groups(
                     if let Some(w) = app_handle.get_webview_window("fb-scraper") {
                         let _ = w.hide();
                     }
-                    let _ = app_handle.emit("fb-auth-result",
-                        serde_json::json!({ "loggedIn": true }));
+                    let _ =
+                        app_handle.emit("fb-auth-result", serde_json::json!({ "loggedIn": true }));
                 }
                 true
             });
@@ -1426,8 +1498,7 @@ async fn fb_scrape_groups(
 #[tauri::command]
 async fn fb_disconnect(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(wv) = app.get_webview_window("fb-scraper") {
-        wv.clear_all_browsing_data()
-            .map_err(|e| e.to_string())?;
+        wv.clear_all_browsing_data().map_err(|e| e.to_string())?;
         let _ = wv.close();
     }
     Ok(())
@@ -1449,11 +1520,16 @@ const IG_STORIES_EXTRACT_SCRIPT: &str = include_str!("ig-stories-extract.js");
 /// (URL leaves /accounts/login) and auto-hides the window + emits
 /// `ig-auth-result`.
 #[tauri::command]
-async fn ig_show_login(app: tauri::AppHandle, capture: tauri::State<'_, CaptureState>, user_agent: String) -> Result<(), String> {
+async fn ig_show_login(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    user_agent: String,
+) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
 
     if let Some(existing) = app.get_webview_window("ig-scraper") {
-        existing.navigate("https://www.instagram.com/accounts/login/".parse().unwrap())
+        existing
+            .navigate("https://www.instagram.com/accounts/login/".parse().unwrap())
             .map_err(|e| e.to_string())?;
         let _ = existing.show();
         let _ = existing.set_focus();
@@ -1474,8 +1550,14 @@ async fn ig_show_login(app: tauri::AppHandle, capture: tauri::State<'_, CaptureS
     .initialization_script(include_str!("webkit-mask.js"))
     .title("Connect Instagram — Freed")
     .inner_size(
-        460.0 + { use rand::Rng; rand::thread_rng().gen_range(-8.0f64..8.0) },
-        700.0 + { use rand::Rng; rand::thread_rng().gen_range(-10.0f64..10.0) },
+        460.0 + {
+            use rand::Rng;
+            rand::thread_rng().gen_range(-8.0f64..8.0)
+        },
+        700.0 + {
+            use rand::Rng;
+            rand::thread_rng().gen_range(-10.0f64..10.0)
+        },
     )
     .center()
     .visible(true)
@@ -1584,11 +1666,15 @@ async fn ig_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
 /// the extraction script which reads the DOM and emits 'ig-feed-data'.
 ///
 /// `show_window` controls visibility during scraping:
-/// - `false` (default): window is hidden via `hide()`. The RAF keepalive loop
-///   in webkit-mask.js keeps WKWebView JS timers running at full speed.
+/// - `false` (default): window is moved off-screen but kept visible so
+///   WKWebView stays stable without background-throttling hacks.
 /// - `true` (debug): window is centered and on-screen, visible on the user's desktop.
 #[tauri::command]
-async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, CaptureState>, show_window: bool) -> Result<(), String> {
+async fn ig_scrape_feed(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    show_window: bool,
+) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
 
     let ig_feed_url = "https://www.instagram.com/?variant=following";
@@ -1598,18 +1684,11 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
             // Window exists (user already logged in).
             // DO NOT re-navigate — that would fire the ig_show_login on_navigation
             // callback which hides the window.
-            if show_window {
-                let _ = w.center();
-                let _ = w.set_focus();
-                let _ = w.show();
-            } else {
-                // Truly hide the window so it doesn't appear on-screen, in
-                // Mission Control, or on secondary displays. The RAF keepalive
-                // loop in webkit-mask.js prevents WKWebView from throttling JS
-                // timers while the window is hidden.
-                let _ = w.hide();
-            }
-            info!("[IG] reusing existing ig-scraper window (show_window={})", show_window);
+            prepare_background_scraper_window(&w, show_window)?;
+            info!(
+                "[IG] reusing existing ig-scraper window (show_window={})",
+                show_window
+            );
             w
         }
         None => {
@@ -1619,9 +1698,7 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
             let mut builder = WebviewWindowBuilder::new(
                 &app,
                 "ig-scraper",
-                tauri::WebviewUrl::External(
-                    ig_feed_url.parse().unwrap(),
-                ),
+                tauri::WebviewUrl::External(ig_feed_url.parse().unwrap()),
             )
             .user_agent(&*capture.ig_user_agent.lock().unwrap())
             .initialization_script(include_str!("webkit-mask.js"))
@@ -1635,8 +1712,8 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
                 {
                     // Still on login — do nothing
                 } else if host.contains("instagram.com") {
-                    let _ = app_handle.emit("ig-auth-result",
-                        serde_json::json!({ "loggedIn": true }));
+                    let _ =
+                        app_handle.emit("ig-auth-result", serde_json::json!({ "loggedIn": true }));
                 }
                 true
             });
@@ -1644,14 +1721,19 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
             if show_window {
                 builder = builder.center().visible(true);
             } else {
-                builder = builder.visible(false);
+                builder = builder
+                    .position(OFFSCREEN_WINDOW_X, OFFSCREEN_WINDOW_Y)
+                    .visible(true);
             }
 
             builder.build().map_err(|e| e.to_string())?
         }
     };
 
-    info!("[IG] scrape started (show_window={}), waiting for feed to render...", show_window);
+    info!(
+        "[IG] scrape started (show_window={}), waiting for feed to render...",
+        show_window
+    );
 
     tokio::time::sleep(Duration::from_millis(gaussian_ms(9000.0, 1200.0))).await;
 
@@ -1663,22 +1745,23 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
 
     // Randomized ordering: ~50% stories-first, ~50% feed-first.
     // ~15% chance to skip story scraping entirely.
-    let skip_stories = { use rand::Rng; rand::thread_rng().gen_bool(0.15) };
-    let stories_first = !skip_stories && { use rand::Rng; rand::thread_rng().gen_bool(0.50) };
-    let story_frame_cap = { use rand::Rng; rand::thread_rng().gen_range(10usize..=30) };
+    let skip_stories = {
+        use rand::Rng;
+        rand::thread_rng().gen_bool(0.15)
+    };
+    let stories_first = !skip_stories && {
+        use rand::Rng;
+        rand::thread_rng().gen_bool(0.50)
+    };
+    let story_frame_cap = {
+        use rand::Rng;
+        rand::thread_rng().gen_range(4usize..=8)
+    };
 
     if stories_first {
         println!("[IG] coin flip: stories FIRST");
         scrape_ig_stories(&wv, story_frame_cap).await;
-        // Navigate back to the following feed and scroll to top
-        let _ = wv.eval(r#"
-            (function() {
-                window.scrollTo({ top: 0, behavior: 'instant' });
-                var tab = document.querySelector('a[href="/?variant=following"]');
-                if (tab) tab.click();
-            })();
-        "#);
-        tokio::time::sleep(Duration::from_millis(gaussian_ms(1500.0, 300.0))).await;
+        restore_scraper_feed(&wv, ig_feed_url, "IG").await?;
     } else if skip_stories {
         println!("[IG] skipping story scrape this session (~15% chance)");
     } else {
@@ -1700,12 +1783,7 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
     };
 
     for i in 0..num_passes {
-        // Only show the window if the user has opted into the debug view.
-        // When show_window=false the window stays hidden; the RAF keepalive
-        // loop in webkit-mask.js prevents WKWebView from throttling timers.
-        if show_window {
-            let _ = wv.show();
-        }
+        prepare_background_scraper_window(&wv, show_window)?;
 
         wv.eval(IG_EXTRACT_SCRIPT)
             .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
@@ -1740,52 +1818,70 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         wv.eval(&scroll_js).map_err(|e| e.to_string())?;
 
         // Mouse movement before scroll.
-        let cx = 230 + { use rand::Rng; rand::thread_rng().gen_range(0i32..200) };
-        let cy = 350 + { use rand::Rng; rand::thread_rng().gen_range(0i32..200) };
+        let cx = 230 + {
+            use rand::Rng;
+            rand::thread_rng().gen_range(0i32..200)
+        };
+        let cy = 350 + {
+            use rand::Rng;
+            rand::thread_rng().gen_range(0i32..200)
+        };
         let mouse_js = format!(
             r#"(function(){{var x={cx},y={cy};[0,1,2].forEach(function(i){{setTimeout(function(){{document.dispatchEvent(new MouseEvent('mousemove',{{clientX:x+i*12,clientY:y+i*8,bubbles:true,cancelable:true}}));}},i*80);}});}})();"#,
-            cx = cx, cy = cy
+            cx = cx,
+            cy = cy
         );
         let _ = wv.eval(&mouse_js);
         tokio::time::sleep(Duration::from_millis(gaussian_ms(280.0, 60.0))).await;
 
         // Micro-backscroll ~12% of the time.
-        if { use rand::Rng; rand::thread_rng().gen_bool(0.12) } {
-            let back = { use rand::Rng; rand::thread_rng().gen_range(80u64..250) };
+        if {
+            use rand::Rng;
+            rand::thread_rng().gen_bool(0.12)
+        } {
+            let back = {
+                use rand::Rng;
+                rand::thread_rng().gen_range(80u64..250)
+            };
             let back_js = format!("window.scrollTop -= {};", back);
             let _ = wv.eval(&back_js);
             tokio::time::sleep(Duration::from_millis(gaussian_ms(600.0, 150.0))).await;
         }
 
         // Gaussian pause; ~25% chance of longer "reading" pause.
-        let pause = if { use rand::Rng; rand::thread_rng().gen_bool(0.25) } {
+        let pause = if {
+            use rand::Rng;
+            rand::thread_rng().gen_bool(0.25)
+        } {
             gaussian_ms(5500.0, 1500.0)
         } else {
             gaussian_ms(4500.0, 700.0)
         };
         tokio::time::sleep(Duration::from_millis(pause)).await;
 
-        info!("[IG] pass {}/{}: scrolled +{}px", i + 1, num_passes, scroll_amount);
+        info!(
+            "[IG] pass {}/{}: scrolled +{}px",
+            i + 1,
+            num_passes,
+            scroll_amount
+        );
 
         // Feed-first ordering: interleave story scrape after early_passes
         if !stories_first && !skip_stories && i + 1 == early_passes {
-            info!("[IG] interleaving story scrape after {} feed passes", early_passes);
-            let _ = wv.eval(r#"
+            info!(
+                "[IG] interleaving story scrape after {} feed passes",
+                early_passes
+            );
+            let _ = wv.eval(
+                r#"
                 (function() {
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                 })();
-            "#);
+            "#,
+            );
             tokio::time::sleep(Duration::from_millis(gaussian_ms(1800.0, 400.0))).await;
             scrape_ig_stories(&wv, story_frame_cap).await;
-            // Return to feed
-            let _ = wv.eval(r#"
-                (function() {
-                    window.scrollTo({ top: 0, behavior: 'instant' });
-                    var tab = document.querySelector('a[href="/?variant=following"]');
-                    if (tab) tab.click();
-                })();
-            "#);
-            tokio::time::sleep(Duration::from_millis(gaussian_ms(1200.0, 300.0))).await;
+            restore_scraper_feed(&wv, ig_feed_url, "IG").await?;
         }
     }
 
@@ -1793,7 +1889,10 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
 
     tokio::time::sleep(Duration::from_millis(500)).await;
-    info!("[IG] scrape complete, {} extraction passes emitted", num_passes + 1);
+    info!(
+        "[IG] scrape complete, {} extraction passes emitted",
+        num_passes + 1
+    );
 
     // Hide the window now that scraping is done. The window stays alive in the
     // background to preserve the authenticated session for the next scrape.
@@ -1806,8 +1905,7 @@ async fn ig_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
 #[tauri::command]
 async fn ig_disconnect(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(wv) = app.get_webview_window("ig-scraper") {
-        wv.clear_all_browsing_data()
-            .map_err(|e| e.to_string())?;
+        wv.clear_all_browsing_data().map_err(|e| e.to_string())?;
         let _ = wv.close();
     }
     Ok(())
@@ -1869,14 +1967,17 @@ async fn fb_like_post(app: tauri::AppHandle, url: String) -> Result<(), String> 
 
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    wv.eval(r#"
+    wv.eval(
+        r#"
         (function() {
             var btn = document.querySelector('[aria-label="Like"]')
                    || document.querySelector('[data-testid="like_button"]')
                    || document.querySelector('div[role="button"][aria-label*="Like"]');
             if (btn) { btn.click(); }
         })();
-    "#).map_err(|e| e.to_string())?;
+    "#,
+    )
+    .map_err(|e| e.to_string())?;
 
     info!("[FB] fb_like_post: injected like click for {}", url);
 
@@ -1899,7 +2000,8 @@ async fn ig_like_post(app: tauri::AppHandle, url: String) -> Result<(), String> 
 
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    wv.eval(r#"
+    wv.eval(
+        r#"
         (function() {
             var btn = document.querySelector('[aria-label="Like"]')
                    || (document.querySelector('svg[aria-label="Like"]') || {}).closest
@@ -1907,7 +2009,9 @@ async fn ig_like_post(app: tauri::AppHandle, url: String) -> Result<(), String> 
                    || document.querySelector('button[type="button"][aria-label*="Like"]');
             if (btn) { btn.click(); }
         })();
-    "#).map_err(|e| e.to_string())?;
+    "#,
+    )
+    .map_err(|e| e.to_string())?;
 
     info!("[IG] ig_like_post: injected like click for {}", url);
 
@@ -1929,11 +2033,16 @@ const LI_EXTRACT_SCRIPT: &str = include_str!("li-extract.js");
 /// An `on_navigation` handler detects when the user completes login
 /// (URL leaves /login) and auto-hides the window + emits `li-auth-result`.
 #[tauri::command]
-async fn li_show_login(app: tauri::AppHandle, capture: tauri::State<'_, CaptureState>, user_agent: String) -> Result<(), String> {
+async fn li_show_login(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    user_agent: String,
+) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
 
     if let Some(existing) = app.get_webview_window("li-scraper") {
-        existing.navigate("https://www.linkedin.com/login".parse().unwrap())
+        existing
+            .navigate("https://www.linkedin.com/login".parse().unwrap())
             .map_err(|e| e.to_string())?;
         let _ = existing.show();
         let _ = existing.set_focus();
@@ -1954,8 +2063,14 @@ async fn li_show_login(app: tauri::AppHandle, capture: tauri::State<'_, CaptureS
     .initialization_script(include_str!("webkit-mask.js"))
     .title("Connect LinkedIn with Freed")
     .inner_size(
-        460.0 + { use rand::Rng; rand::thread_rng().gen_range(-8.0f64..8.0) },
-        700.0 + { use rand::Rng; rand::thread_rng().gen_range(-10.0f64..10.0) },
+        460.0 + {
+            use rand::Rng;
+            rand::thread_rng().gen_range(-8.0f64..8.0)
+        },
+        700.0 + {
+            use rand::Rng;
+            rand::thread_rng().gen_range(-10.0f64..10.0)
+        },
     )
     .center()
     .visible(true)
@@ -1975,7 +2090,6 @@ async fn li_show_login(app: tauri::AppHandle, capture: tauri::State<'_, CaptureS
                 let _ = w.hide();
             }
             let _ = app_handle.emit("li-auth-result", serde_json::json!({ "loggedIn": true }));
-
         }
 
         true
@@ -2066,7 +2180,11 @@ async fn li_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
 /// - `false` (default): window positioned off-screen at (-20000, -20000).
 /// - `true` (debug): window centered and focused.
 #[tauri::command]
-async fn li_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, CaptureState>, show_window: bool) -> Result<(), String> {
+async fn li_scrape_feed(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    show_window: bool,
+) -> Result<(), String> {
     use tauri::{LogicalPosition, WebviewWindowBuilder};
 
     let li_feed_url = "https://www.linkedin.com/feed/";
@@ -2089,9 +2207,7 @@ async fn li_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
             let mut builder = WebviewWindowBuilder::new(
                 &app,
                 "li-scraper",
-                tauri::WebviewUrl::External(
-                    li_feed_url.parse().unwrap(),
-                ),
+                tauri::WebviewUrl::External(li_feed_url.parse().unwrap()),
             )
             .user_agent(&*capture.li_user_agent.lock().unwrap())
             .initialization_script(include_str!("webkit-mask.js"))
@@ -2102,8 +2218,8 @@ async fn li_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
                 let host = url.host_str().unwrap_or("");
                 let path = url.path();
                 if host.contains("linkedin.com") && path != "/login" && path != "/login/" {
-                    let _ = app_handle.emit("li-auth-result",
-                        serde_json::json!({ "loggedIn": true }));
+                    let _ =
+                        app_handle.emit("li-auth-result", serde_json::json!({ "loggedIn": true }));
                 }
                 true
             });
@@ -2118,7 +2234,10 @@ async fn li_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         }
     };
 
-    println!("[LI] scrape started (show_window={}), waiting for feed to render...", show_window);
+    println!(
+        "[LI] scrape started (show_window={}), waiting for feed to render...",
+        show_window
+    );
 
     // LinkedIn's feed takes slightly longer to hydrate than Facebook.
     // Use a longer initial wait with more variance.
@@ -2140,7 +2259,8 @@ async fn li_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
             .map_err(|e| format!("Failed to inject LI extraction script: {}", e))?;
         if is_done {
             // Emit a final marker so the TypeScript layer knows to finalize.
-            wv.eval(r#"
+            wv.eval(
+                r#"
                 (function() {
                     if (window.__TAURI__ && window.__TAURI__.event && window.__TAURI__.event.emit) {
                         window.__TAURI__.event.emit("li-feed-data", {
@@ -2149,7 +2269,9 @@ async fn li_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
                         });
                     }
                 })();
-            "#).ok();
+            "#,
+            )
+            .ok();
         }
         Ok(())
     };
@@ -2186,36 +2308,60 @@ async fn li_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
         wv.eval(&scroll_js).map_err(|e| e.to_string())?;
 
         // Mouse movement.
-        let cx = 230 + { use rand::Rng; rand::thread_rng().gen_range(0i32..200) };
-        let cy = 350 + { use rand::Rng; rand::thread_rng().gen_range(0i32..200) };
+        let cx = 230 + {
+            use rand::Rng;
+            rand::thread_rng().gen_range(0i32..200)
+        };
+        let cy = 350 + {
+            use rand::Rng;
+            rand::thread_rng().gen_range(0i32..200)
+        };
         let mouse_js = format!(
             r#"(function(){{var x={cx},y={cy};[0,1,2].forEach(function(i){{setTimeout(function(){{document.dispatchEvent(new MouseEvent('mousemove',{{clientX:x+i*12,clientY:y+i*8,bubbles:true,cancelable:true}}));}},i*80);}});}})();"#,
-            cx = cx, cy = cy
+            cx = cx,
+            cy = cy
         );
         let _ = wv.eval(&mouse_js);
         tokio::time::sleep(Duration::from_millis(gaussian_ms(280.0, 60.0))).await;
 
         // Occasional micro-backscroll (~12% probability).
-        if { use rand::Rng; rand::thread_rng().gen_bool(0.12) } {
-            let back = { use rand::Rng; rand::thread_rng().gen_range(80u64..200) };
+        if {
+            use rand::Rng;
+            rand::thread_rng().gen_bool(0.12)
+        } {
+            let back = {
+                use rand::Rng;
+                rand::thread_rng().gen_range(80u64..200)
+            };
             let back_js = format!("window.scrollBy({{top: -{}, behavior: 'smooth'}});", back);
             let _ = wv.eval(&back_js);
             tokio::time::sleep(Duration::from_millis(gaussian_ms(600.0, 150.0))).await;
         }
 
         // Gaussian pause; longer pauses more common than FB (LinkedIn users scroll slower).
-        let pause = if { use rand::Rng; rand::thread_rng().gen_bool(0.30) } {
+        let pause = if {
+            use rand::Rng;
+            rand::thread_rng().gen_bool(0.30)
+        } {
             gaussian_ms(7000.0, 2000.0)
         } else {
             gaussian_ms(4000.0, 800.0)
         };
         tokio::time::sleep(Duration::from_millis(pause)).await;
 
-        println!("[LI] pass {}/{}: scrolled +{}px", i + 1, num_passes, scroll_amount);
+        println!(
+            "[LI] pass {}/{}: scrolled +{}px",
+            i + 1,
+            num_passes,
+            scroll_amount
+        );
     }
 
     tokio::time::sleep(Duration::from_millis(500)).await;
-    println!("[LI] scrape complete, {} extraction passes emitted", num_passes);
+    println!(
+        "[LI] scrape complete, {} extraction passes emitted",
+        num_passes
+    );
 
     // Hide the window after scraping. The window stays alive to preserve auth.
     let _ = wv.hide();
@@ -2227,8 +2373,7 @@ async fn li_scrape_feed(app: tauri::AppHandle, capture: tauri::State<'_, Capture
 #[tauri::command]
 async fn li_disconnect(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(wv) = app.get_webview_window("li-scraper") {
-        wv.clear_all_browsing_data()
-            .map_err(|e| e.to_string())?;
+        wv.clear_all_browsing_data().map_err(|e| e.to_string())?;
         let _ = wv.close();
     }
     Ok(())
@@ -2276,14 +2421,10 @@ async fn handle_connection(
                 Ok(resp)
             } else {
                 error!("[Sync] Rejected unauthorized connection from {}", addr);
-                Err(
-                    tokio_tungstenite::tungstenite::http::Response::builder()
-                        .status(401)
-                        .body(Some(
-                            "Unauthorized: rescan the QR code to pair".to_owned(),
-                        ))
-                        .unwrap(),
-                )
+                Err(tokio_tungstenite::tungstenite::http::Response::builder()
+                    .status(401)
+                    .body(Some("Unauthorized: rescan the QR code to pair".to_owned()))
+                    .unwrap())
             }
         },
     )
