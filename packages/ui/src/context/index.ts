@@ -3,6 +3,7 @@ export {
   usePlatform,
   useAppStore,
   MACOS_TRAFFIC_LIGHT_INSET,
+  type ContactSyncActions,
   type PlatformConfig,
   type SidebarSourceStatusSummary,
   type SyncProviderSectionProps,

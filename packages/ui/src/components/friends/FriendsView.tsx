@@ -1,13 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import type {
-  ContactMatch,
-  DeviceContact,
-  FeedItem,
-  Friend,
-  FriendSource,
-  GoogleContact,
-  ReachOutLog,
-} from "@freed/shared";
+import type { FeedItem, Friend, ReachOutLog } from "@freed/shared";
 import { formatDistanceToNow } from "date-fns";
 import { DEFAULT_FRIEND_AVATAR_TINT, isInReconnectZone } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
@@ -18,7 +10,6 @@ import { FriendAvatar } from "./FriendAvatar.js";
 import { FriendGraph } from "./FriendGraph.js";
 import { FriendDetailPanel } from "./FriendDetailPanel.js";
 import { FriendEditor } from "./FriendEditor.js";
-import { ContactSyncModal } from "./ContactSyncModal.js";
 import { UsersIcon, MapPinIcon } from "../icons.js";
 import { ContentHeader } from "../layout/ContentHeader.js";
 import {
@@ -153,7 +144,6 @@ export function FriendsView() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editorTarget, setEditorTarget] = useState<Friend | null | "new">(null);
-  const [showSyncModal, setShowSyncModal] = useState(false);
   const [openingSyncModal, setOpeningSyncModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilters, setActiveFilters] = useState<Set<FriendOverviewFilter>>(new Set());
@@ -164,7 +154,7 @@ export function FriendsView() {
   const isDraggingSidebar = useRef(false);
   const isMobile = useIsMobile();
 
-  const { syncState, dismissMatch, syncNow } = useContactSyncContext();
+  const { openReview } = useContactSyncContext();
 
   const feedItems = useMemo(() => {
     const map: Record<string, FeedItem> = {};
@@ -253,89 +243,14 @@ export function FriendsView() {
     [handleClearSelection, removeFriend, selectedId]
   );
 
-  const handleLink = useCallback(
-    async (match: ContactMatch) => {
-      const { contact, friend, authorIds } = match;
-
-      const deviceContact: DeviceContact = {
-        importedFrom: "google",
-        name: contact.name.displayName ?? contact.name.givenName ?? "",
-        phone: contact.phones[0]?.value,
-        email: contact.emails[0]?.value,
-        nativeId: contact.resourceName,
-        importedAt: Date.now(),
-      };
-
-      const newSources: FriendSource[] = authorIds.flatMap((authorId) => {
-        const item = items.find((candidate) => candidate.author.id === authorId);
-        if (!item) return [];
-        return [{
-          platform: item.platform,
-          authorId: item.author.id,
-          handle: item.author.handle,
-          displayName: item.author.displayName,
-          avatarUrl: item.author.avatarUrl,
-        }];
-      });
-
-      if (friend) {
-        await updateFriend(friend.id, {
-          contact: deviceContact,
-          sources: [...(friend.sources ?? []), ...newSources],
-        });
-      } else if (newSources.length > 0) {
-        const now = Date.now();
-        await addFriend({
-          id: crypto.randomUUID(),
-          name: contact.name.displayName ?? contact.name.givenName ?? "",
-          sources: newSources,
-          contact: deviceContact,
-          careLevel: 3,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-
-      const dismissIds = [...(friend ? [friend.id] : []), ...authorIds];
-      for (const dismissId of dismissIds) {
-        dismissMatch(contact.resourceName, dismissId);
-      }
-    },
-    [addFriend, dismissMatch, items, updateFriend]
-  );
-
-  const handleCreateFriend = useCallback(
-    async (contact: GoogleContact) => {
-      const now = Date.now();
-      await addFriend({
-        id: crypto.randomUUID(),
-        name: contact.name.displayName ?? contact.name.givenName ?? "",
-        sources: [],
-        contact: {
-          importedFrom: "google",
-          name: contact.name.displayName ?? contact.name.givenName ?? "",
-          phone: contact.phones[0]?.value,
-          email: contact.emails[0]?.value,
-          nativeId: contact.resourceName,
-          importedAt: now,
-        },
-        careLevel: 3,
-        createdAt: now,
-        updatedAt: now,
-      });
-    },
-    [addFriend]
-  );
-
   const handleOpenSyncModal = useCallback(async () => {
     setOpeningSyncModal(true);
     try {
-      await syncNow();
-      setShowSyncModal(true);
+      await openReview();
     } finally {
       setOpeningSyncModal(false);
     }
-  }, [syncNow]);
+  }, [openReview]);
 
   const toggleFilter = useCallback((filter: FriendOverviewFilter) => {
     setActiveFilters((current) => {
@@ -615,16 +530,6 @@ export function FriendsView() {
           onSave={handleSave}
           onDelete={editorTarget !== "new" ? handleDelete : undefined}
           onCancel={() => setEditorTarget(null)}
-        />
-      )}
-
-      {showSyncModal && (
-        <ContactSyncModal
-          onClose={() => setShowSyncModal(false)}
-          syncState={syncState}
-          onLink={handleLink}
-          onSkip={dismissMatch}
-          onCreateFriend={handleCreateFriend}
         />
       )}
     </div>

@@ -27,6 +27,7 @@ import {
   BASE_SECTION_METAS,
   UPDATES_SECTION_META,
   DANGER_SECTION_META,
+  GOOGLE_CONTACTS_SECTION_META,
   X_SECTION_META,
   FB_SECTION_META,
   IG_SECTION_META,
@@ -209,6 +210,13 @@ const ICONS: Record<SectionId, ReactNode> = {
       <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
     </svg>
   ),
+  googleContacts: (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a4 4 0 10-6 3.465V17a1 1 0 001 1h4a1 1 0 001-1v-2.535A4 4 0 0015 11z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20h6" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18 8h3M3 8h3M16.95 3.05l2.12-2.12M4.93 5.17L2.81 3.05" />
+    </svg>
+  ),
 };
 
 // ── Update check state ────────────────────────────────────────────────────────
@@ -230,6 +238,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     FacebookSettingsContent,
     InstagramSettingsContent,
     LinkedInSettingsContent,
+    GoogleContactsSettingsContent,
     checkForUpdates,
     applyUpdate,
     headerDragRegion,
@@ -251,6 +260,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     ...(FacebookSettingsContent ? [{ ...FB_SECTION_META, icon: ICONS.facebook }] : []),
     ...(InstagramSettingsContent ? [{ ...IG_SECTION_META, icon: ICONS.instagram }] : []),
     ...(LinkedInSettingsContent ? [{ ...LI_SECTION_META, icon: ICONS.linkedin }] : []),
+    ...(GoogleContactsSettingsContent ? [{ ...GOOGLE_CONTACTS_SECTION_META, icon: ICONS.googleContacts }] : []),
     ...(checkForUpdates ? [{ ...UPDATES_SECTION_META, icon: ICONS.updates }] : []),
     ...(factoryReset ? [{ ...DANGER_SECTION_META, icon: ICONS.danger }] : []),
   ];
@@ -273,6 +283,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         ...(FacebookSettingsContent ? [sectionById.facebook] : []),
         ...(InstagramSettingsContent ? [sectionById.instagram] : []),
         ...(LinkedInSettingsContent ? [sectionById.linkedin] : []),
+        ...(GoogleContactsSettingsContent ? [sectionById.googleContacts] : []),
       ],
     },
     // sectionById.ai, // AI coming soon -- do not delete
@@ -764,6 +775,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <>
             <SectionHeading label="LinkedIn" />
             <LinkedInSettingsContent surface="settings" />
+          </>
+        ) : null;
+
+      case "googleContacts":
+        return GoogleContactsSettingsContent ? (
+          <>
+            <SectionHeading label="Google Contacts" />
+            <GoogleContactsSettingsContent />
           </>
         ) : null;
 

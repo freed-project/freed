@@ -1,12 +1,23 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { fetchGoogleContacts, mergeContactChanges } from "@freed/shared/google-contacts";
-import { matchContacts } from "@freed/shared/contact-matching";
 import {
   CONTACT_SYNC_STORAGE_KEY,
   createEmptyContactSyncState,
   parseContactSyncState,
+  type ContactMatch,
   type ContactSyncState,
 } from "@freed/shared";
+import {
+  fetchGoogleContacts,
+  mergeContactChanges,
+  type GoogleContactsResult,
+} from "@freed/shared/google-contacts";
+import {
+  buildFriendSourcesFromAuthorIds,
+  createDeviceContactFromGoogleContact,
+  mergeFriendSources,
+  shouldAutoProcessMatch,
+} from "@freed/shared/google-contacts-automation";
+import { matchContacts } from "@freed/shared/contact-matching";
 import { usePlatform } from "../context/PlatformContext.js";
 
 const SYNC_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
@@ -22,24 +33,50 @@ function loadSyncState(): ContactSyncState {
 function saveSyncState(state: ContactSyncState): void {
   try {
     localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, JSON.stringify(state));
-  } catch { /* ignore storage errors */ }
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function getPotentialIds(match: ContactMatch): string[] {
+  return [
+    ...(match.friend ? [match.friend.id] : []),
+    ...match.authorIds,
+  ];
+}
+
+function withError(
+  current: ContactSyncState,
+  code: ContactSyncState["lastErrorCode"],
+  message: string,
+): ContactSyncState {
+  return {
+    ...current,
+    authStatus: code === "missing_token" || code === "auth"
+      ? "reconnect_required"
+      : current.authStatus,
+    syncStatus: "error",
+    lastErrorCode: code,
+    lastErrorMessage: message,
+    autoLinkedCount: 0,
+    autoCreatedCount: 0,
+  };
 }
 
 export function useContactSync() {
   const { store, googleContacts } = usePlatform();
 
   // Read live values for use in the sync callback. We store them in refs so
-  // that runSync's useCallback deps stay stable. If we captured friends/items
-  // directly in the dep array, every feed or friend update would recreate
-  // runSync and reset the 15-minute setInterval.
+  // that runSync's deps stay stable and the interval does not reset on every
+  // feed or friend update.
   const friends = store((s) => s.friends);
   const items = store((s) => s.items);
+  const addFriend = store((s) => s.addFriend);
+  const updateFriend = store((s) => s.updateFriend);
   const setPendingMatchCount = store((s) => s.setPendingMatchCount);
 
   const friendsRef = useRef(friends);
   const itemsRef = useRef(items);
-  // Assign synchronously so the refs are always current by the time any async
-  // code reads them, even without an extra useEffect round-trip.
   friendsRef.current = friends;
   itemsRef.current = items;
 
@@ -57,95 +94,173 @@ export function useContactSync() {
     saveSyncState(nextState);
   }, []);
 
+  const autoProcessMatches = useCallback(async (matches: ContactMatch[]) => {
+    let autoLinkedCount = 0;
+    let autoCreatedCount = 0;
+
+    for (const match of matches) {
+      const now = Date.now();
+      const contact = createDeviceContactFromGoogleContact(match.contact, now);
+      const newSources = buildFriendSourcesFromAuthorIds(itemsRef.current, match.authorIds);
+
+      if (match.friend) {
+        await updateFriend(match.friend.id, {
+          contact,
+          sources: mergeFriendSources(match.friend.sources ?? [], newSources),
+          updatedAt: now,
+        });
+        autoLinkedCount += 1;
+        continue;
+      }
+
+      if (newSources.length === 0) continue;
+
+      await addFriend({
+        id: crypto.randomUUID(),
+        name: contact.name,
+        sources: newSources,
+        contact,
+        careLevel: 3,
+        createdAt: now,
+        updatedAt: now,
+      });
+      autoCreatedCount += 1;
+    }
+
+    return { autoLinkedCount, autoCreatedCount };
+  }, [addFriend, updateFriend]);
+
   const runSync = useCallback(async () => {
-    const token = googleContacts?.getToken();
-    if (!token) return syncStateRef.current;
+    const current = syncStateRef.current;
+    const token = googleContacts?.getToken() ?? null;
+
+    if (!token) {
+      const nextState = withError(
+        current,
+        "missing_token",
+        "Reconnect Google to sync contacts.",
+      );
+      commitSyncState(nextState);
+      return nextState;
+    }
+
+    const startingState: ContactSyncState = {
+      ...current,
+      authStatus: "connected",
+      syncStatus: "syncing",
+      lastErrorCode: undefined,
+      lastErrorMessage: undefined,
+      autoLinkedCount: 0,
+      autoCreatedCount: 0,
+    };
+    commitSyncState(startingState);
 
     try {
-      const current = syncStateRef.current;
-      const result = await fetchGoogleContacts(token, current.syncToken);
+      const result: GoogleContactsResult = await fetchGoogleContacts(token, current.syncToken);
       const merged = mergeContactChanges(
         current.cachedContacts,
         result.contacts,
-        result.deleted
+        result.deleted,
       );
 
-      // Read from refs so we always get the latest store values without
-      // taking them as useCallback deps (which would reset the interval).
       const allMatches = matchContacts(merged, friendsRef.current, itemsRef.current);
+      const autoMatches = allMatches.filter(shouldAutoProcessMatch);
+      const { autoLinkedCount, autoCreatedCount } = await autoProcessMatches(autoMatches);
 
       const dismissedSet = new Set(
         current.dismissedMatches.map(
-          (d) => `${d.contactResourceName}:${d.friendIdOrAuthorId}`
-        )
+          (entry) => `${entry.contactResourceName}:${entry.friendIdOrAuthorId}`,
+        ),
       );
 
-      const pending = allMatches.filter((m) => {
-        if (!m.friend && m.authorIds.length === 0) return false;
-        const potentialIds = [
-          ...(m.friend ? [m.friend.id] : []),
-          ...m.authorIds,
-        ];
+      const pendingMatches = allMatches.filter((match) => {
+        if (shouldAutoProcessMatch(match)) return false;
+        const potentialIds = getPotentialIds(match);
+        if (potentialIds.length === 0) return false;
         return potentialIds.some(
-          (id) => !dismissedSet.has(`${m.contact.resourceName}:${id}`)
+          (id) => !dismissedSet.has(`${match.contact.resourceName}:${id}`),
         );
       });
 
       const nextState: ContactSyncState = {
+        authStatus: "connected",
+        syncStatus: "idle",
         syncToken: result.nextSyncToken,
         lastSyncedAt: Date.now(),
         cachedContacts: merged,
-        pendingMatches: pending,
+        pendingMatches,
         dismissedMatches: current.dismissedMatches,
+        autoLinkedCount,
+        autoCreatedCount,
       };
 
       commitSyncState(nextState);
       return nextState;
     } catch (err) {
-      console.warn("[useContactSync] sync failed:", err);
-      return syncStateRef.current;
+      const message = err instanceof Error ? err.message : "Google Contacts sync failed.";
+      const status = typeof err === "object" && err !== null && "status" in err
+        ? (err as { status?: number }).status
+        : undefined;
+      const code = status === 401 || status === 403 ? "auth" : "network";
+      const nextState = withError(current, code, message);
+      commitSyncState(nextState);
+      return nextState;
     }
-  // Only stable references in deps. googleContacts and setPendingMatchCount
-  // are both stable across renders, so this callback never re-creates.
-  }, [commitSyncState, googleContacts]);
+  }, [autoProcessMatches, commitSyncState, googleContacts]);
 
-  // 15-minute interval. Stable because runSync is stable.
   useEffect(() => {
-    const id = setInterval(runSync, SYNC_INTERVAL_MS);
+    if (!googleContacts) return undefined;
+    const id = setInterval(() => {
+      if (googleContacts.getToken()) {
+        void runSync();
+      }
+    }, SYNC_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [runSync]);
+  }, [googleContacts, runSync]);
 
-  // Re-sync immediately when the user returns to the app.
   useEffect(() => {
-    window.addEventListener("focus", runSync);
-    return () => window.removeEventListener("focus", runSync);
-  }, [runSync]);
+    if (!googleContacts) return undefined;
+    const onFocus = () => {
+      if (googleContacts.getToken()) {
+        void runSync();
+      } else {
+        const current = syncStateRef.current;
+        if (current.authStatus !== "reconnect_required" || current.syncStatus !== "error") {
+          commitSyncState(
+            withError(current, "missing_token", "Reconnect Google to sync contacts."),
+          );
+        }
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [commitSyncState, googleContacts, runSync]);
 
   const dismissMatch = useCallback(
     (contactResourceName: string, friendIdOrAuthorId: string) => {
       const current = syncStateRef.current;
-      const dismissed = [
+      const dismissedMatches = [
         ...current.dismissedMatches,
         { contactResourceName, friendIdOrAuthorId },
       ];
       const dismissedSet = new Set(
-        dismissed.map(d => `${d.contactResourceName}:${d.friendIdOrAuthorId}`)
+        dismissedMatches.map(
+          (entry) => `${entry.contactResourceName}:${entry.friendIdOrAuthorId}`,
+        ),
       );
-      const remainingPending = current.pendingMatches.filter((m) => {
-        const potentials = [
-          ...(m.friend ? [m.friend.id] : []),
-          ...m.authorIds,
-        ];
-        return potentials.some(id => !dismissedSet.has(`${m.contact.resourceName}:${id}`));
+      const pendingMatches = current.pendingMatches.filter((match) => {
+        const potentialIds = getPotentialIds(match);
+        return potentialIds.some(
+          (id) => !dismissedSet.has(`${match.contact.resourceName}:${id}`),
+        );
       });
-      const next: ContactSyncState = {
+      commitSyncState({
         ...current,
-        dismissedMatches: dismissed,
-        pendingMatches: remainingPending,
-      };
-      commitSyncState(next);
+        dismissedMatches,
+        pendingMatches,
+      });
     },
-    [commitSyncState]
+    [commitSyncState],
   );
 
   return {
