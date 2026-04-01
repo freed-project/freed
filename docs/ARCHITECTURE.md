@@ -114,7 +114,7 @@ Freed is a privacy-first, local-first system for capturing social media content 
 ```typescript
 interface FeedItem {
   globalId: string; // "platform:itemId" e.g., "x:1234567890"
-  platform: "x" | "facebook" | "instagram";
+  platform: "x" | "facebook" | "instagram" | "mozi";
   contentType: "post" | "story";
   capturedAt: number; // Unix timestamp
   publishedAt: number;
@@ -151,6 +151,16 @@ interface FeedItem {
     placeId?: string;
     source: "geo_tag" | "check_in" | "sticker" | "text_extraction";
     confidence: number; // 0-1
+  };
+
+  // Planned schema evolution for future-aware sources such as Mozi.
+  // Historical feeds can omit this. Planning-oriented items can attach
+  // a time window so the map and Friend views can reason about upcoming travel,
+  // event attendance, and in-town overlaps without inventing source-specific types.
+  timeRange?: {
+    startsAt: number;
+    endsAt?: number;
+    kind: "event" | "travel" | "overlap";
   };
 
   userState: {
@@ -218,6 +228,16 @@ interface FriendLocation {
 }
 ```
 
+### Planned time-aware location model
+
+The current location model is historical-first, but future planning sources require one more layer: location plus time. The intended direction is a generic optional `timeRange` on `FeedItem`, not a Mozi-only schema branch. That keeps the data model reusable for any future source that exposes travel windows, event attendance, or planned presence in a place.
+
+Important distinction:
+
+- Canonical captured items are stored in the Automerge document
+- Overlap views are derived at read time by comparing Friend-linked items with intersecting place and time windows
+- Derived overlaps should not be persisted as if they were source-authored records
+
 ---
 
 ## Platform Capture Strategies
@@ -270,6 +290,17 @@ interface FriendLocation {
 - Author info in post header
 - Works on both feed and individual posts
 
+### Mozi
+
+**Difficulty:** High (authenticated planning app, future-oriented data)
+
+**Planned approach:**
+
+- Desktop WebView-authenticated capture against `app.mozi.app`
+- Prefer structured payloads or embedded page data over brittle DOM scraping
+- Fall back to DOM extraction for visible trip, event, and overlap details the payload does not provide
+- Normalize planning activity into standard `FeedItem` records with optional location and time window metadata
+
 ---
 
 ## Stories Capture
@@ -301,6 +332,7 @@ Stories are ephemeral (24h lifespan) and appear in carousels.
 1. **Explicit Geo-Tags** (1.0) — Platform-provided structured data
 2. **Location Stickers** (0.9) — Visual elements on stories
 3. **Text Extraction** (0.5-0.8) — Regex patterns
+4. **Planning Windows** (planned) — Source-provided place plus start/end windows from future-aware apps
 
 ### Text Extraction Patterns
 
@@ -343,6 +375,17 @@ async function geocode(placeName: string): Promise<Coordinates | null> {
   return null;
 }
 ```
+
+### Planned map playback and overlap derivation
+
+Map rendering is evolving from "show where someone posted from" to "show where someone was, is, or plans to be." The model is:
+
+- `location` provides the place signal
+- `timeRange` provides the relevant time window when a source has one
+- the map filters markers against a selected timeline position or window
+- overlap badges and Friend-level overlap summaries are computed from captured items at read time
+
+This keeps the storage layer simple while still supporting future-aware social planning.
 
 ---
 
