@@ -144,6 +144,7 @@ describe("folderTagsFromRelativePath", () => {
 describe("importMarkdownFiles", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mockAllItemIds.reset();
     Object.keys(docStore).forEach((k) => delete docStore[k]);
 
     // Restore implementations cleared by resetAllMocks()
@@ -157,6 +158,8 @@ describe("importMarkdownFiles", () => {
           }
           onChunk?.(Math.floor(i / CHUNK) + 1, total);
         }
+        const allItemIds = mockAllItemIds.get();
+        allItemIds.splice(0, allItemIds.length, ...Object.keys(docStore));
       },
     );
     mockCacheSet.mockResolvedValue(undefined);
