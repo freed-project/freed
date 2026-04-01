@@ -105,18 +105,18 @@ export default function Footer() {
               </li>
               <li>
                 <Link
-                  href="/eula"
-                  className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                >
-                  Desktop EULA
-                </Link>
-              </li>
-              <li>
-                <Link
                   href="/privacy"
                   className="text-text-secondary text-sm hover:text-text-primary transition-colors"
                 >
                   Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/eula"
+                  className="text-text-secondary text-sm hover:text-text-primary transition-colors"
+                >
+                  Desktop EULA
                 </Link>
               </li>
             </ul>

@@ -53,8 +53,8 @@ export function LegalGate({
 
   const documentList = useMemo(() => {
     const docs = [LEGAL_DOCS.terms];
-    if (includeEula) docs.push(LEGAL_DOCS.eula);
     docs.push(LEGAL_DOCS.privacy);
+    if (includeEula) docs.push(LEGAL_DOCS.eula);
     return docs;
   }, [includeEula]);
 
@@ -133,12 +133,16 @@ export function LegalGate({
               <span className="text-sm text-[#e4e4e7] leading-relaxed">
                 I have read and agree to the{" "}
                 <LegalLink href={LEGAL_DOCS.terms.url} label={LEGAL_DOCS.terms.label} openUrl={openUrl} />,{" "}
+                <LegalLink href={LEGAL_DOCS.privacy.url} label={LEGAL_DOCS.privacy.label} openUrl={openUrl} />
                 {includeEula ? (
                   <>
-                    <LegalLink href={LEGAL_DOCS.eula.url} label={LEGAL_DOCS.eula.label} openUrl={openUrl} />,{" "}
+                    , and{" "}
+                    <LegalLink href={LEGAL_DOCS.eula.url} label={LEGAL_DOCS.eula.label} openUrl={openUrl} />
+                    .
                   </>
-                ) : null}
-                <LegalLink href={LEGAL_DOCS.privacy.url} label={LEGAL_DOCS.privacy.label} openUrl={openUrl} />.
+                ) : (
+                  "."
+                )}
                 I understand that some features can damage or terminate my access to third-party accounts.
               </span>
             </label>

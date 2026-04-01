@@ -123,7 +123,7 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 - Newsletter signup (Brevo via Next.js Route Handler)
 - Auto-generated sitemap.xml
 - RSS/Atom feed generation at build time
-- Public legal pages for Terms of Use, Desktop EULA, and Privacy
+- Public legal pages for Terms of Use, Privacy, and Desktop EULA
 - Versioned website clickwrap in the download modal for Terms of Use and Privacy before opening the PWA or downloading Freed Desktop
 - Mobile-responsive design
 - Glassmorphic dark theme

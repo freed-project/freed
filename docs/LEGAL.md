@@ -39,8 +39,8 @@ If the copy starts sounding like a stealth scraper brochure, rewrite it.
 The public legal stack consists of:
 
 - Terms of Use for the website and PWA
-- Desktop EULA
 - Privacy Policy
+- Desktop EULA
 
 These documents are versioned and linked from:
 

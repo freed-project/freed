@@ -31,17 +31,17 @@ export const LEGAL_DOCS: Record<LegalDocId, LegalDocMeta> = {
     path: "/terms",
     url: "https://freed.wtf/terms",
   },
-  eula: {
-    id: "eula",
-    label: "Desktop EULA",
-    path: "/eula",
-    url: "https://freed.wtf/eula",
-  },
   privacy: {
     id: "privacy",
     label: "Privacy Policy",
     path: "/privacy",
     url: "https://freed.wtf/privacy",
+  },
+  eula: {
+    id: "eula",
+    label: "Desktop EULA",
+    path: "/eula",
+    url: "https://freed.wtf/eula",
   },
 };
 

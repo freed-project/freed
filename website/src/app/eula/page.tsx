@@ -58,7 +58,7 @@ export default function EulaPage() {
               </p>
               <p>
                 Do not use high-risk features with employer, client, school, newsroom, government,
-                activist, or regulated accounts unless you accept the full risk yourself.
+                activist, or regulated accounts unless you are prepared for potential fallout.
               </p>
             </>
           ),
