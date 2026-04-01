@@ -51,6 +51,21 @@ test("accepted legal consent persists across reloads on the same device", async 
   await app.waitForReady();
 });
 
+test("store failures fall back to the legal gate instead of a blank window", async ({
+  app,
+}) => {
+  await app.page.addInitScript(() => {
+    window.localStorage.setItem("__TAURI_MOCK_STORE_THROW__", "1");
+  });
+
+  await app.goto();
+
+  await expect(app.page.getByTestId("legal-gate-accept")).toBeVisible({
+    timeout: 5_000,
+  });
+  await expect(app.page.locator("main")).toBeHidden();
+});
+
 test("X risky connection flows require provider consent", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
