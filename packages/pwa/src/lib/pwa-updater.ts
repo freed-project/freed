@@ -8,17 +8,20 @@
  * and runs a background interval so long-running sessions are not skipped.
  */
 
+import { registerSW } from "virtual:pwa-register";
+
 const POLL_INTERVAL_MS = 60 * 60 * 1_000; // 1 hour
 
 type UpdateListener = (available: boolean) => void;
 
 let updateAvailable = false;
 const listeners = new Set<UpdateListener>();
+let updaterInitialized = false;
+let intervalId: ReturnType<typeof setInterval> | null = null;
 
 // Injected by main.tsx after registerSW(); used to send SKIP_WAITING + reload.
 let updateSWFn: ((reload: boolean) => void) | null = null;
 
-/** Called from main.tsx to store the updateSW handle returned by registerSW(). */
 export function setUpdateSwCallback(fn: (reload: boolean) => void) {
   updateSWFn = fn;
 }
@@ -112,8 +115,30 @@ export function applyPwaUpdate() {
  * Call once from main.tsx. Fire-and-forget: errors are swallowed so a
  * failed network check never propagates to the app.
  */
-export function startPeriodicUpdateCheck(): void {
-  setInterval(() => {
-    checkForPwaUpdate().catch(() => {});
-  }, POLL_INTERVAL_MS);
+export function initPwaUpdater(): () => void {
+  if (!updaterInitialized) {
+    updaterInitialized = true;
+    const updateSW = registerSW({
+      onNeedRefresh() {
+        notifyUpdateAvailable();
+      },
+      onOfflineReady() {
+        console.log("[PWA] App ready for offline use");
+      },
+    });
+    setUpdateSwCallback(updateSW);
+  }
+
+  if (!intervalId) {
+    intervalId = setInterval(() => {
+      checkForPwaUpdate().catch(() => {});
+    }, POLL_INTERVAL_MS);
+  }
+
+  return () => {
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+  };
 }

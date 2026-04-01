@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
 import { ToastContainer } from "@freed/ui/components/Toast";
+import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { OAuthCallback } from "./components/OAuthCallback";
 import { PlatformProvider, type PlatformConfig } from "@freed/ui/context";
 import { useAppStore } from "./lib/store";
@@ -20,12 +21,14 @@ import {
   deleteCloudFile,
 } from "./lib/sync";
 import { clearLocalDoc, docAddStubItem } from "./lib/automerge";
-import { checkForPwaUpdate, applyPwaUpdate, onUpdateAvailable } from "./lib/pwa-updater";
+import { checkForPwaUpdate, applyPwaUpdate, initPwaUpdater, onUpdateAvailable } from "./lib/pwa-updater";
 import { pickContactViaWebApi } from "./lib/contacts";
 import { SyncIndicator } from "./components/layout/SyncIndicator";
 import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
 import { PwaSyncSettings } from "./components/PwaSyncSettings";
 import { PwaXSettings } from "./components/PwaXSettings";
+import { PwaLegalSettingsSection } from "./components/PwaLegalSettingsSection";
+import { acceptPwaBundle, hasAcceptedPwaBundle } from "./lib/legal-consent";
 
 function App() {
   // Intercept OAuth callback before rendering the main app.
@@ -37,12 +40,21 @@ function App() {
   const error = useAppStore((state) => state.error);
   const setSyncConnected = useAppStore((state) => state.setSyncConnected);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
+  const [legalResolved, setLegalResolved] = useState(false);
+  const [legalAccepted, setLegalAccepted] = useState(false);
 
   useEffect(() => {
+    setLegalAccepted(hasAcceptedPwaBundle());
+    setLegalResolved(true);
+  }, []);
+
+  useEffect(() => {
+    if (!legalAccepted) return;
     initialize();
-  }, [initialize]);
+  }, [initialize, legalAccepted]);
 
   useEffect(() => {
+    if (!legalAccepted) return;
     const unsubscribe = onStatusChange((connected) => {
       setSyncConnected(connected);
     });
@@ -68,11 +80,17 @@ function App() {
       unsubscribe();
       disconnect();
     };
-  }, [setSyncConnected]);
+  }, [legalAccepted, setSyncConnected]);
 
   useEffect(() => {
-    return onUpdateAvailable(() => setShowUpdateBanner(true));
-  }, []);
+    if (!legalAccepted) return;
+    const stopPolling = initPwaUpdater();
+    const unsubscribe = onUpdateAvailable(() => setShowUpdateBanner(true));
+    return () => {
+      unsubscribe();
+      stopPolling();
+    };
+  }, [legalAccepted]);
 
   const checkForUpdates = useCallback(() => checkForPwaUpdate(), []);
 
@@ -98,6 +116,7 @@ function App() {
       SourceIndicator: null,
       HeaderSyncIndicator: SyncIndicator,
       SettingsExtraSections: PwaSyncSettings,
+      LegalSettingsContent: PwaLegalSettingsSection,
       FeedEmptyState: PwaFeedEmptyState,
       XSettingsContent: PwaXSettings,
       FacebookSettingsContent: null,
@@ -133,9 +152,31 @@ function App() {
       googleContacts: {
         getToken: () => localStorage.getItem("freed_cloud_token_gdrive"),
       },
+      openUrl: (url: string) => { window.open(url, "_blank", "noopener,noreferrer"); },
     }),
     [checkForUpdates, handleFactoryReset],
   );
+
+  if (!legalResolved) {
+    return <div className="h-screen bg-[#121212]" />;
+  }
+
+  if (!legalAccepted) {
+    return (
+      <LegalGate
+        productName="Freed"
+        acceptLabel="Agree and open Freed"
+        declineLabel="Leave"
+        onAccept={() => {
+          acceptPwaBundle();
+          setLegalAccepted(true);
+        }}
+        onDecline={() => {
+          window.location.assign("https://freed.wtf");
+        }}
+      />
+    );
+  }
 
   if (error && !isInitialized) {
     return (

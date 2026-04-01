@@ -21,6 +21,7 @@ import {
   getLiScraperDebugWindow,
   setLiScraperDebugWindow,
 } from "../lib/scraper-prefs";
+import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
 
 // =============================================================================
 // Diagnostic Panel
@@ -142,6 +143,7 @@ export function LinkedInSettingsSection() {
   const [checking, setChecking] = useState(false);
   const [lastDiag, setLastDiag] = useState<LiSyncDiag | null>(null);
   const [debugWindow, setDebugWindow] = useState(() => getLiScraperDebugWindow());
+  const { confirm, dialog } = useProviderRiskGate("linkedin");
 
   const runSync = useCallback(async () => {
     setSyncing(true);
@@ -172,32 +174,36 @@ export function LinkedInSettingsSection() {
   }, [liAuth.isAuthenticated, runSync, setLiAuth]);
 
   const handleLogin = useCallback(async () => {
-    setError(null);
-    try {
-      await showLiLogin();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to open login window");
-    }
-  }, [setError]);
+    await confirm(async () => {
+      setError(null);
+      try {
+        await showLiLogin();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to open login window");
+      }
+    });
+  }, [confirm, setError]);
 
   const handleCheckAuth = useCallback(async () => {
-    setChecking(true);
-    setError(null);
-    try {
-      const loggedIn = await checkLiAuth();
-      const newState = { isAuthenticated: loggedIn, lastCheckedAt: Date.now() };
-      setLiAuth(newState);
-      storeLiAuthState(newState);
+    await confirm(async () => {
+      setChecking(true);
+      setError(null);
+      try {
+        const loggedIn = await checkLiAuth();
+        const newState = { isAuthenticated: loggedIn, lastCheckedAt: Date.now() };
+        setLiAuth(newState);
+        storeLiAuthState(newState);
 
-      if (!loggedIn) {
-        setError("Not logged in. Please log in through the LinkedIn window first.");
+        if (!loggedIn) {
+          setError("Not logged in. Please log in through the LinkedIn window first.");
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Auth check failed");
+      } finally {
+        setChecking(false);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Auth check failed");
-    } finally {
-      setChecking(false);
-    }
-  }, [setLiAuth, setError]);
+    });
+  }, [confirm, setLiAuth, setError]);
 
   const handleDisconnect = useCallback(async () => {
     try {
@@ -237,6 +243,7 @@ export function LinkedInSettingsSection() {
     })();
 
     return (
+      <>
       <div className="space-y-4">
         <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
           <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
@@ -245,7 +252,9 @@ export function LinkedInSettingsSection() {
 
         <div className="flex gap-2">
           <button
-            onClick={runSync}
+            onClick={() => {
+              void confirm(runSync);
+            }}
             disabled={syncing || isLoading}
             className="flex-1 text-sm px-3 py-2 rounded-xl bg-[#8b5cf6]/15 text-[#8b5cf6] hover:bg-[#8b5cf6]/25 disabled:opacity-50 transition-colors"
           >
@@ -294,12 +303,15 @@ export function LinkedInSettingsSection() {
           Your traffic looks identical to normal browsing.
         </p>
       </div>
+      {dialog}
+      </>
     );
   }
 
   // ── Disconnected state ───────────────────────────────────────────────────
 
   return (
+    <>
     <div className="space-y-4">
       <p className="text-sm text-[#71717a] leading-relaxed">
         Pull your LinkedIn feed into Freed. Log in through a native browser
@@ -322,5 +334,7 @@ export function LinkedInSettingsSection() {
         </button>
       </div>
     </div>
+    {dialog}
+    </>
   );
 }

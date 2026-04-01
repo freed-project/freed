@@ -6,6 +6,7 @@
  */
 
 export type SectionId =
+  | "legal"
   | "reading"
   | "feeds"
   | "saved"
@@ -27,6 +28,11 @@ export interface SectionMeta {
 
 /** Sections always present, regardless of platform capabilities. */
 export const BASE_SECTION_METAS: readonly SectionMeta[] = [
+  {
+    id: "legal",
+    label: "Legal",
+    keywords: ["terms", "privacy", "eula", "consent", "agreement", "risk", "experimental"],
+  },
   {
     id: "sync",
     label: "Sync",

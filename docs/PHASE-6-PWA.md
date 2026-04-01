@@ -1,13 +1,13 @@
 # Phase 6: PWA Reader
 
-> **Status:** ✅ Core Complete (offline image cache + homescreen install testing pending)
+> **Status:** ✅ Core Complete (first-run legal gate shipped, offline image cache + homescreen install testing pending)
 > **Dependencies:** Phase 4 (Sync Layer), Phase 5 (Desktop App)
 
 ---
 
 ## Overview
 
-Mobile companion to the Desktop App—for on-the-go reading. Timeline-focused, minimal chrome, content-first design.
+Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minimal chrome, content-first design. This is the primary mobile distribution surface, and it now enforces a first-run legal gate before sync or update side effects begin.
 
 **Key architectural decisions:**
 
@@ -15,6 +15,7 @@ Mobile companion to the Desktop App—for on-the-go reading. Timeline-focused, m
 - **Thin client** — Displays pre-computed rankings from Desktop/OpenClaw, minimal local computation
 - **Light saves** — Can save URLs with metadata extraction (og tags); full article extraction requires Desktop
 - **Offline-first** — Service worker caches feed data and images for offline reading
+- **Versioned first-run consent** — PWA startup is blocked until the current legal bundle is accepted locally in the browser
 
 ---
 
@@ -206,6 +207,7 @@ export function filterByAuthor(
 | 6.11 | PWA manifest + service worker          | Medium     |
 | 6.12 | Offline support + image caching        | High       |
 | 6.13 | Add to homescreen prompt               | Low        |
+| 6.14 | First-run legal gate with local-only acceptance storage | Low |
 
 ---
 
@@ -230,6 +232,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Ranking weights affect item order
 - [x] Platform/author filters work (sidebar filter by platform/feed)
 - [x] RSS subscription management functional (add/remove/OPML import-export)
+- [x] First launch is blocked behind a local-only legal clickwrap gate
 - [ ] PWA installable on mobile (add to homescreen) — manifest exists, needs testing
 - [ ] Offline access works (service worker + image cache) — SW registered, image cache pending
 

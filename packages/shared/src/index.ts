@@ -5,28 +5,32 @@
  */
 
 // Re-export all types
-export * from "./types.js";
+export * from "./types";
 
 // Re-export ranking algorithm (browser-safe, no Automerge)
-export * from "./ranking.js";
+export * from "./ranking";
 
 // Re-export OPML utilities (browser-safe, no Automerge)
-export * from "./opml.js";
+export * from "./opml";
 
 // Re-export focus text utilities (browser-safe, no deps)
-export * from "./focus-text.js";
+export * from "./focus-text";
 
 // Re-export store types (browser-safe, no deps)
-export * from "./store-types.js";
+export * from "./store-types";
 
 // Re-export friends identity resolution and CRM utilities (browser-safe, no deps)
-export * from "./friends.js";
+export * from "./friends";
 
 // Re-export location extraction utilities (browser-safe, no deps)
-export * from "./location.js";
+export * from "./location";
 
 // Re-export sample data generators (browser-safe, no deps)
-export * from "./sample-data.js";
+export * from "./sample-data";
+
+// Re-export legal metadata and acceptance helpers (browser-safe, no deps)
+export * from "./legal";
+export * from "./legal-storage";
 
 // Note: schema.js is NOT re-exported here because it imports Automerge
 // which uses WebAssembly and requires special bundler configuration.

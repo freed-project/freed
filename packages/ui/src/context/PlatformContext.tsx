@@ -83,6 +83,9 @@ export interface PlatformConfig {
   /** Rendered after built-in settings sections (e.g. Mobile Sync tab) */
   SettingsExtraSections: ComponentType | null;
 
+  /** Rendered inside Settings > Legal for local consent details. */
+  LegalSettingsContent: ComponentType | null;
+
   /** Replaces default "All caught up" empty state when feeds exist but no items */
   FeedEmptyState: ComponentType | null;
 

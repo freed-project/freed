@@ -1,0 +1,54 @@
+import type { ReactNode } from "react";
+
+interface LegalPageSection {
+  title: string;
+  content: ReactNode;
+}
+
+interface LegalPageProps {
+  title: string;
+  effectiveDate: string;
+  intro: ReactNode;
+  sections: LegalPageSection[];
+}
+
+export function LegalPage({
+  title,
+  effectiveDate,
+  intro,
+  sections,
+}: LegalPageProps) {
+  return (
+    <section className="py-24 sm:py-32 px-4 sm:px-6 md:px-12 lg:px-8">
+      <div className="max-w-3xl mx-auto">
+        <article className="prose prose-invert prose-base sm:prose-lg">
+          <header className="text-center mb-10 sm:mb-16">
+            <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
+              <span className="gradient-text">{title}</span>
+            </h1>
+            <p className="text-text-secondary text-lg sm:text-xl">
+              Effective {effectiveDate}
+            </p>
+          </header>
+
+          <div className="glass-card p-6 sm:p-8 mb-12 border border-freed-border">
+            <div className="text-text-secondary text-sm sm:text-base leading-relaxed">
+              {intro}
+            </div>
+          </div>
+
+          <div className="space-y-10 text-text-secondary">
+            {sections.map((section) => (
+              <section key={section.title}>
+                <h2 className="text-2xl font-bold text-text-primary mb-4">
+                  {section.title}
+                </h2>
+                <div>{section.content}</div>
+              </section>
+            ))}
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}

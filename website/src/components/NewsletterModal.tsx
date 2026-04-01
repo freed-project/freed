@@ -12,7 +12,13 @@ import {
   arrow,
   FloatingArrow,
 } from "@floating-ui/react";
+import { LEGAL_BUNDLE_VERSION, LEGAL_DOCS } from "@freed/shared/legal";
 import { useNewsletter } from "@/context/NewsletterContext";
+import {
+  acceptWebsiteBundle,
+  getWebsiteBundleAcceptance,
+  hasAcceptedWebsiteBundle,
+} from "@/lib/legal-consent";
 
 type SubmitState = "idle" | "loading" | "success" | "error";
 
@@ -78,8 +84,10 @@ export default function NewsletterModal() {
     useState<DownloadKey>("mac-arm");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [acceptedBundle, setAcceptedBundle] = useState(false);
+  const [legalChecked, setLegalChecked] = useState(false);
   const [arrowElement, setArrowElement] = useState<SVGSVGElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const {
     refs,
@@ -96,6 +104,20 @@ export default function NewsletterModal() {
     ],
   });
 
+  const setTooltipReference = useCallback(
+    (node: HTMLDivElement | null) => {
+      refs.setReference(node);
+    },
+    [refs],
+  );
+
+  const setTooltipFloating = useCallback(
+    (node: HTMLDivElement | null) => {
+      refs.setFloating(node);
+    },
+    [refs],
+  );
+
   const clientPoint = useClientPoint(floatingCtx);
   const hover = useHover(floatingCtx);
   const { getReferenceProps, getFloatingProps } = useInteractions([
@@ -105,7 +127,14 @@ export default function NewsletterModal() {
 
   useEffect(() => {
     setSelectedPlatform(detectDownloadKey());
+    setAcceptedBundle(hasAcceptedWebsiteBundle());
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setAcceptedBundle(hasAcceptedWebsiteBundle());
+    setLegalChecked(false);
+  }, [isOpen]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -165,18 +194,27 @@ export default function NewsletterModal() {
 
   const currentDownload = DOWNLOADS[selectedPlatform];
   const downloadUrl = `${RELEASE_BASE}/${currentDownload.file}`;
-  const setTooltipReference = useCallback(
-    (node: HTMLDivElement | null) => {
-      refs.setReference(node);
-    },
-    [refs],
-  );
-  const setTooltipFloating = useCallback(
-    (node: HTMLDivElement | null) => {
-      refs.setFloating(node);
-    },
-    [refs],
-  );
+  const canProceed = acceptedBundle || legalChecked;
+  const storedAcceptance = getWebsiteBundleAcceptance();
+
+  const ensureAccepted = useCallback(() => {
+    if (acceptedBundle) return true;
+    if (!legalChecked) return false;
+    const record = acceptWebsiteBundle();
+    setAcceptedBundle(!!record);
+    setLegalChecked(false);
+    return !!record;
+  }, [acceptedBundle, legalChecked]);
+
+  const handleOpenWebApp = useCallback(() => {
+    if (!ensureAccepted()) return;
+    window.open("https://app.freed.wtf", "_blank", "noopener,noreferrer");
+  }, [ensureAccepted]);
+
+  const handleDownload = useCallback(() => {
+    if (!ensureAccepted()) return;
+    window.open(downloadUrl, "_blank", "noopener,noreferrer");
+  }, [downloadUrl, ensureAccepted]);
 
   return (
     <AnimatePresence>
@@ -241,13 +279,23 @@ export default function NewsletterModal() {
                       </p>
                     </div>
 
+                    <div className="mb-6 px-4 py-4 rounded-xl border border-red-500/25 bg-red-500/6">
+                      <p className="text-center text-sm font-semibold text-red-300">
+                        Freed is experimental software.
+                      </p>
+                      <p className="text-center text-xs text-red-100/70 mt-2 leading-relaxed">
+                        Some features can break, lock you out, or get your social accounts throttled
+                        or banned. Read the legal docs before you proceed.
+                      </p>
+                    </div>
+
                     {/* Early-build disclaimer */}
                     <div className="mb-6 px-4 py-3 rounded-xl border border-amber-500/30 bg-amber-500/5">
                       <p className="text-center text-xs sm:text-sm font-bold text-amber-400/90">
                         ⚠️ Very early build. Here be dragons!
                       </p>
                       <p className="text-center text-xs text-amber-400/60 my-2">
-                        I'm shippping new builds{" "}
+                        I'm shipping new builds{" "}
                         <a href="/changelog" className="underline underline-offset-2 hover:text-amber-400/90 transition-colors">most every day</a>
                         . Expect a
                         functional release within the next month or two.
@@ -287,12 +335,73 @@ export default function NewsletterModal() {
                       )}
                     </div>
 
+                    <div className="mb-6 rounded-xl border border-freed-border bg-freed-surface/30 p-4">
+                      <div className="flex flex-wrap justify-center gap-x-3 gap-y-2 text-xs sm:text-sm text-text-secondary">
+                        <a
+                          href={LEGAL_DOCS.terms.path}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline underline-offset-2 hover:text-text-primary transition-colors"
+                        >
+                          {LEGAL_DOCS.terms.label}
+                        </a>
+                        <a
+                          href={LEGAL_DOCS.eula.path}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline underline-offset-2 hover:text-text-primary transition-colors"
+                        >
+                          {LEGAL_DOCS.eula.label}
+                        </a>
+                        <a
+                          href={LEGAL_DOCS.privacy.path}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline underline-offset-2 hover:text-text-primary transition-colors"
+                        >
+                          {LEGAL_DOCS.privacy.label}
+                        </a>
+                        <a
+                          href={LEGAL_DOCS["experimental-risk"].path}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline underline-offset-2 hover:text-text-primary transition-colors"
+                        >
+                          {LEGAL_DOCS["experimental-risk"].label}
+                        </a>
+                      </div>
+                      {acceptedBundle ? (
+                        <p className="mt-3 text-xs text-center text-green-300/80">
+                          This browser already accepted legal bundle {LEGAL_BUNDLE_VERSION}
+                          {storedAcceptance?.acceptedAt
+                            ? ` on ${new Date(storedAcceptance.acceptedAt).toLocaleString()}`
+                            : ""}
+                          .
+                        </p>
+                      ) : (
+                        <label className="mt-3 flex items-start gap-3 text-xs sm:text-sm text-text-secondary cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={legalChecked}
+                            onChange={(event) => setLegalChecked(event.target.checked)}
+                            className="mt-0.5 h-4 w-4 rounded border-freed-border bg-freed-surface text-glow-purple focus:ring-glow-purple"
+                          />
+                          <span>
+                            I have read and agree to the Terms of Use, Desktop EULA, Privacy Policy,
+                            and Experimental Risk Addendum. I understand that Freed can have rough edges
+                            and can trigger account restrictions or permanent bans from third-party platforms.
+                          </span>
+                        </label>
+                      )}
+                    </div>
+
                     {/* --- Web App --- */}
-                    <a
-                      href="https://app.freed.wtf"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="group flex items-center gap-4 p-4 rounded-xl border border-freed-border hover:border-glow-purple/40 bg-freed-surface/40 hover:bg-freed-surface/70 transition-all mb-3"
+                    <button
+                      type="button"
+                      onClick={handleOpenWebApp}
+                      disabled={!canProceed}
+                      data-testid="website-legal-open-web-app"
+                      className="group w-full flex items-center gap-4 p-4 rounded-xl border border-freed-border hover:border-glow-purple/40 bg-freed-surface/40 hover:bg-freed-surface/70 transition-all mb-3 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <div className="shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-glow-blue to-glow-purple flex items-center justify-center">
                         <svg
@@ -330,14 +439,17 @@ export default function NewsletterModal() {
                           d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"
                         />
                       </svg>
-                    </a>
+                    </button>
 
                     {/* --- Desktop Download with platform dropdown --- */}
                     <div className="relative mb-8" ref={dropdownRef}>
                       <div className="flex items-center rounded-xl border border-freed-border hover:border-glow-purple/40 bg-freed-surface/40 hover:bg-freed-surface/70 transition-all">
-                        <a
-                          href={downloadUrl}
-                          className="group flex items-center gap-4 p-4 flex-1 min-w-0"
+                        <button
+                          type="button"
+                          onClick={handleDownload}
+                          disabled={!canProceed}
+                          data-testid="website-legal-download"
+                          className="group flex items-center gap-4 p-4 flex-1 min-w-0 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <div className="shrink-0 w-10 h-10 rounded-lg bg-freed-surface border border-freed-border flex items-center justify-center">
                             <svg
@@ -362,7 +474,7 @@ export default function NewsletterModal() {
                               Runs in background to subscribe &amp; monitor
                             </p>
                           </div>
-                        </a>
+                        </button>
                         <button
                           onClick={() => setDropdownOpen((o) => !o)}
                           aria-label="Choose a different platform"

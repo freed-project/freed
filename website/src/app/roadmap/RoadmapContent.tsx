@@ -454,7 +454,8 @@ const phases: Phase[] = [
   {
     number: 1,
     title: "Foundation",
-    description: "Marketing site, QR gallery, monorepo, Automerge schema, CI/CD.",
+    description:
+      "Marketing site, QR gallery, monorepo, Automerge schema, CI/CD, and public legal docs with download clickwrap.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-1-FOUNDATION.md",
@@ -490,7 +491,7 @@ const phases: Phase[] = [
     number: 5,
     title: "Desktop & Mobile App",
     description:
-      "Native apps shipping for macOS (ARM + Intel), Windows, and Linux with signed auto-updates. Code signing deferred.",
+      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, first-run legal gating, and provider risk interstitials. Code signing deferred.",
     status: "current",
     priority: true,
     planLink:
@@ -500,7 +501,7 @@ const phases: Phase[] = [
     number: 6,
     title: "PWA Reader",
     description:
-      "Mobile companion app. Read your feed anywhere, synced to your desktop.",
+      "Primary mobile surface with first-run legal gating. Read your feed anywhere, synced to Freed Desktop.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-6-PWA.md",

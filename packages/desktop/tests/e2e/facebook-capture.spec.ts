@@ -263,6 +263,7 @@ test("Facebook sync excludes posts from filtered groups", async ({
   });
 
   await page.getByRole("button", { name: "Sync Now" }).click();
+  await app.acceptProviderRiskIfPresent("facebook");
 
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
