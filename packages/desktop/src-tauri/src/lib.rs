@@ -66,7 +66,7 @@ async fn restore_scraper_feed(
     platform: &str,
 ) -> Result<(), String> {
     window
-        .navigate(feed_url.parse().map_err(|e| e.to_string())?)
+        .navigate(feed_url.parse::<url::Url>().map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
     info!("[{}] restoring feed after story viewer", platform);
     tokio::time::sleep(Duration::from_millis(gaussian_ms(6500.0, 900.0))).await;
