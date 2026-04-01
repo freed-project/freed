@@ -59,6 +59,8 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { acceptDesktopBundle, hasAcceptedDesktopBundle } from "./lib/legal-consent";
 import { clearProviderPause, forgetRssFeedHealth, initProviderHealth } from "./lib/provider-health";
 import { getDesktopSourceStatus } from "./lib/source-status";
+import { clearContactSyncState } from "./lib/contact-sync-storage";
+import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
@@ -121,11 +123,13 @@ function App() {
     startSync();
     // Resume cloud sync loops for any previously authenticated providers.
     startAllCloudSyncs();
+    void startSnapshotManager();
     // Start background content fetcher -- processes article HTML fetch queue.
     startContentFetcher();
     return () => {
       stopRssPoller();
       stopSync();
+      stopSnapshotManager();
       stopContentFetcher();
     };
   }, [isInitialized, legalAccepted]);
@@ -261,6 +265,8 @@ function App() {
     await disconnectIg().catch(() => {});
     await disconnectLi().catch(() => {});
     for (const provider of providers) clearCloudProvider(provider);
+    clearContactSyncState();
+    await clearSnapshots();
     await clearLocalDoc();
     location.reload();
   }, []);

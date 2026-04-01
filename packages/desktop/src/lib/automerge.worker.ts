@@ -259,6 +259,13 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         ack(req.reqId);
         break;
 
+      case "REPLACE_DOC":
+        currentDoc = A.load<FreedDoc>(req.binary);
+        await storage.save(req.binary);
+        await saveAndBroadcast();
+        ack(req.reqId);
+        break;
+
       case "MERGE_DOC": {
         if (!currentDoc) throw new Error("Document not initialized");
         const beforeCount = Object.keys(currentDoc.feedItems ?? {}).length;

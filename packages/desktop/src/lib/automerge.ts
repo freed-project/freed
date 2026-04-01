@@ -258,6 +258,11 @@ export async function clearLocalDoc(): Promise<void> {
   return request({ reqId, type: "CLEAR_LOCAL" });
 }
 
+export async function replaceLocalDoc(binary: Uint8Array): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "REPLACE_DOC", binary });
+}
+
 // ---------------------------------------------------------------------------
 // Document mutations
 // ---------------------------------------------------------------------------

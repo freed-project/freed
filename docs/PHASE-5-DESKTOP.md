@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, local snapshot restore shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -193,6 +193,7 @@ export async function captureDomFeed(
 | 5.28 | Provider-specific risk interstitials for social capture | Medium |
 | 5.29 | Reviewed AI-assisted release notes and cumulative daily changelog cards | Medium |
 | 5.30 | Provider health dashboard, charts, and unsubscribe flow | Medium |
+| 5.31 | Rotating local database snapshots + restore UI | Medium |
 
 ---
 
@@ -216,6 +217,7 @@ export async function captureDomFeed(
 - [x] First launch is blocked behind a local-only legal clickwrap gate
 - [x] Provider-specific capture flows require additional local risk consent
 - [x] Legal acceptance stays outside synced Automerge state
+- [x] Freed Desktop keeps rotating local database snapshots with a restore flow in Settings
 - [x] Desktop E2E test infrastructure bootstrapped (Playwright + VITE_TEST_TAURI=1 mock layer)
 - [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
 - [x] macOS DMG is notarized in CI releases
@@ -259,7 +261,10 @@ export async function captureDomFeed(
 > required Apple secrets are present. The release workflow now fails fast
 > instead of silently shipping an unsigned macOS artifact. Windows
 > SmartScreen warnings will still appear until an EV certificate is
-> obtained or enough installs build reputation. Release notes now use a
+> obtained or enough installs build reputation. Desktop now also writes
+> rotating local Automerge snapshots, including Google contact match state,
+> so catastrophic local corruption can be rolled back from Settings.
+> Release notes now use a
 > checked-in review gate: `./scripts/release.sh` prepares draft notes and
 > daily editorial memory, then `./scripts/release-publish.sh` tags only after
 > the reviewed release artifact passes validation and is approved. The latest

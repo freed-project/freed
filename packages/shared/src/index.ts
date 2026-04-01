@@ -21,6 +21,7 @@ export * from "./store-types";
 
 // Re-export friends identity resolution and CRM utilities (browser-safe, no deps)
 export * from "./friends";
+export * from "./contact-sync-state";
 
 // Re-export location extraction utilities (browser-safe, no deps)
 export * from "./location";

@@ -1,10 +1,10 @@
 /**
- * MobileSyncTab — desktop-only settings section
+ * MobileSyncTab, desktop-only settings section
  *
  * Three tabs:
- *   1. Cloud Sync — manage Google Drive / Dropbox connections
- *   2. Scan QR — QR code for LAN pairing (rendered locally)
- *   3. Manual — copyable IP + pairing token for manual entry
+ *   1. Cloud Sync, manage Google Drive / Dropbox connections
+ *   2. Scan QR, QR code for LAN pairing (rendered locally)
+ *   3. Manual, copyable IP + pairing token for manual entry
  *
  * If a VPN or multiple network interfaces are detected, an interface
  * picker lets the user regenerate the QR with the correct IP.
@@ -23,6 +23,7 @@ import {
 } from "../lib/sync";
 import { useCloudProviders } from "../hooks/useCloudProviders";
 import { CloudProviderCard } from "./CloudProviderCard";
+import { DesktopSnapshotsSection } from "./DesktopSnapshotsSection";
 
 /** Parse the LAN IP from a ws://ip:port?t=token URL. */
 function parseIp(url: string): string {
@@ -130,12 +131,13 @@ export function MobileSyncTab() {
   const token = parseToken(syncUrl);
 
   return (
-    <section id="mobile-sync-section">
+    <>
+      <section id="mobile-sync-section">
       <h3 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-4">
         Mobile Sync
       </h3>
 
-      {/* Tab selector — Cloud first, then QR, then Manual */}
+      {/* Tab selector, Cloud first, then QR, then Manual */}
       <div className="flex gap-1.5 mb-5 p-1 bg-white/5 rounded-xl">
         {(["cloud", "qr", "manual"] as Tab[]).map((tab) => (
           <button
@@ -171,7 +173,7 @@ export function MobileSyncTab() {
         </div>
       )}
 
-      {/* QR Code tab — rendered locally, never sent to a third party */}
+      {/* QR Code tab, rendered locally, never sent to a third party */}
       {activeTab === "qr" && (
         <>
         <div className="flex flex-col items-center p-4 bg-white/5 rounded-xl border border-[rgba(255,255,255,0.08)] mb-4">
@@ -292,7 +294,7 @@ export function MobileSyncTab() {
           </div>
         </div>
 
-        {/* Full URL — for power users or browser-based paste */}
+        {/* Full URL, for power users or browser-based paste */}
         <div>
           <label className="block text-xs text-[#71717a] mb-1.5">
             Full URL{" "}
@@ -329,7 +331,7 @@ export function MobileSyncTab() {
               />
               <span className="text-sm">Connected devices</span>
             </div>
-            <span className="text-sm font-medium text-[#a1a1aa]">{clientCount}</span>
+            <span className="text-sm font-medium text-[#a1a1aa]">{clientCount.toLocaleString()}</span>
           </div>
 
           <div className="p-3 bg-white/5 rounded-xl border border-[rgba(255,255,255,0.08)]">
@@ -343,7 +345,7 @@ export function MobileSyncTab() {
               disabled={resetting}
               className="w-full px-3 py-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {resetting ? "Rotating…" : "Reset Pairing Token"}
+              {resetting ? "Rotating..." : "Reset Pairing Token"}
             </button>
           </div>
 
@@ -364,6 +366,8 @@ export function MobileSyncTab() {
           )}
         </>
       )}
-    </section>
+      </section>
+      <DesktopSnapshotsSection />
+    </>
   );
 }
