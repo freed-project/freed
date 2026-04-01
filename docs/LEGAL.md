@@ -41,7 +41,6 @@ The public legal stack consists of:
 - Terms of Use for the website and PWA
 - Desktop EULA
 - Privacy Policy
-- Experimental Risk Addendum
 
 These documents are versioned and linked from:
 
@@ -57,9 +56,9 @@ Freed relies on conspicuous notice plus affirmative assent.
 
 Current implementation:
 
-- Website download modal requires unchecked-by-default clickwrap before opening the PWA or downloading Freed Desktop
+- Website download modal requires unchecked-by-default clickwrap for the Terms of Use and Privacy Policy before opening the PWA or downloading Freed Desktop
 - PWA first launch is blocked behind a full-screen legal gate
-- Freed Desktop first launch is blocked behind a full-screen legal gate
+- Freed Desktop first launch is blocked behind a full-screen legal gate that includes the Desktop EULA
 - X, Facebook, Instagram, and LinkedIn flows require separate provider-specific risk consent before login or sync actions
 
 Acceptance records are stored locally only.

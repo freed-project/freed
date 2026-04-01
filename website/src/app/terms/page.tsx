@@ -51,9 +51,14 @@ export default function TermsPage() {
           ),
         },
         {
-          title: "3. Third-Party Platform Risk",
+          title: "3. Experimental and Account Risk",
           content: (
             <>
+              <p>
+                Freed is built for user control in ecosystems that do not always welcome it.
+                Some features are intentionally sharp-edged. If you use them, you are joining
+                the experiment with your eyes open.
+              </p>
               <p>
                 If you use Freed with third-party services, you remain responsible for your relationship
                 with those services. Their terms, rules, rate limits, fraud systems, and account enforcement
@@ -63,6 +68,10 @@ export default function TermsPage() {
                 Using Freed can trigger rate limits, forced logouts, password resets, temporary locks,
                 or permanent account bans. Do not use Freed with any account if losing access to that account
                 would create unacceptable personal, financial, or professional harm.
+              </p>
+              <p>
+                Do not use high-risk features with employer, client, newsroom, school, government,
+                activist, or regulated accounts unless you are fully prepared for the fallout.
               </p>
             </>
           ),

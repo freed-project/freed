@@ -4,7 +4,7 @@ import { LegalPage } from "@/components/LegalPage";
 export const metadata: Metadata = {
   title: "Desktop EULA",
   description:
-    "End User License Agreement for Freed Desktop. Covers the device-local app license, risks, and limitations.",
+    "End User License Agreement for Freed Desktop. Covers the device-local app license, high-risk features, and limitations.",
 };
 
 export default function EulaPage() {
@@ -51,6 +51,14 @@ export default function EulaPage() {
                 Some desktop-only integrations, especially social capture and provider-specific login flows,
                 are high-risk features. They can cause account restrictions, forced logouts, CAPTCHAs,
                 password resets, or permanent bans by third-party providers.
+              </p>
+              <p>
+                Freed does not claim these features are undetectable, compliant with every provider policy,
+                or safe for every account. If losing access would materially hurt you, do not use them.
+              </p>
+              <p>
+                Do not use high-risk features with employer, client, school, newsroom, government,
+                activist, or regulated accounts unless you accept the full risk yourself.
               </p>
             </>
           ),

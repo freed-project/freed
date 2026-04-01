@@ -113,14 +113,6 @@ export default function Footer() {
               </li>
               <li>
                 <Link
-                  href="/experimental-risk"
-                  className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                >
-                  Experimental Risk
-                </Link>
-              </li>
-              <li>
-                <Link
                   href="/privacy"
                   className="text-text-secondary text-sm hover:text-text-primary transition-colors"
                 >

@@ -81,10 +81,10 @@ export function ProviderRiskDialog({
             Review the{" "}
             <button
               type="button"
-              onClick={() => openLegalUrl(LEGAL_DOCS["experimental-risk"].url, openUrl)}
+              onClick={() => openLegalUrl(LEGAL_DOCS.eula.url, openUrl)}
               className="text-[#c4b5fd] hover:text-white underline underline-offset-2 transition-colors"
             >
-              Experimental Risk Addendum
+              Desktop EULA
             </button>{" "}
             and{" "}
             <button
