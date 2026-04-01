@@ -243,12 +243,8 @@ export default function NewsletterModal() {
                       {(selectedPlatform === "mac-arm" ||
                         selectedPlatform === "mac-intel") && (
                         <p className="text-center text-xs text-amber-400/60 mt-1">
-                          This macOS app isn't yet codesigned. If you're feeling
-                          brave, you'll need to run the following in your
-                          terminal to bypass Gatekeeper:{" "}
-                          <code className="font-mono bg-amber-500/10 px-1 py-0.5 rounded">
-                            xattr -cr /Applications/Freed.app
-                          </code>
+                          The macOS build is signed and notarized, so it should
+                          install normally through Gatekeeper.
                         </p>
                       )}
                       {selectedPlatform === "windows" && (

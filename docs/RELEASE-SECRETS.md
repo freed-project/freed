@@ -13,10 +13,11 @@ certain secrets to be configured in the GitHub repository settings.
 The corresponding **public key** is already embedded in
 `packages/desktop/src-tauri/tauri.conf.json` under `plugins.updater.pubkey`.
 
-## macOS Code Signing + Notarization (deferred)
+## macOS Code Signing + Notarization
 
-Without these, macOS builds will run but produce unsigned DMGs. Users must
-right-click -> Open or run `xattr -cr Freed.app` to bypass Gatekeeper.
+These are required for macOS release builds. The release workflow now fails
+on macOS if any required Apple secret is missing so we never publish an
+unsigned DMG by accident.
 
 | Secret | Description |
 |--------|-------------|
@@ -26,6 +27,7 @@ right-click -> Open or run `xattr -cr Freed.app` to bypass Gatekeeper.
 | `APPLE_TEAM_ID` | 10-character Apple Team ID |
 | `APPLE_ID` | Apple ID email for notarization |
 | `APPLE_PASSWORD` | App-specific password for notarization (generate at appleid.apple.com) |
+| `APPLE_PROVIDER_SHORT_NAME` | Optional. Required only if the Apple ID belongs to multiple provider teams |
 
 ### How to export the certificate
 
@@ -34,6 +36,11 @@ right-click -> Open or run `xattr -cr Freed.app` to bypass Gatekeeper.
 3. Right-click -> Export Items -> save as `.p12`
 4. Base64-encode: `base64 -i certificate.p12 | pbcopy`
 5. Paste into the `APPLE_CERTIFICATE` secret
+
+### Notes
+
+- `APPLE_SIGNING_IDENTITY` is recommended for explicitness, but Tauri can infer it from `APPLE_CERTIFICATE` if needed.
+- `APPLE_PROVIDER_SHORT_NAME` is only needed when the Apple ID has access to multiple providers during notarization.
 
 ## Windows Code Signing (deferred)
 

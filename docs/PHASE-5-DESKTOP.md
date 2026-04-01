@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (v0.2.0 binaries shipping for all platforms, code signing deferred)
+> **Status:** 🚧 In Progress (v0.2.0 binaries shipping for all platforms, macOS signing and notarization live in releases)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -254,23 +254,21 @@ packages/desktop/
 - [x] Auto-updater checks GitHub Releases and installs updates in-app
 - [x] CI/CD release pipeline builds for macOS (ARM + Intel), Windows, Linux on tag push
 - [x] App icons generated for all platforms
-- [x] macOS DMG builds (notarization deferred)
+- [x] macOS DMG builds
 - [x] Windows NSIS + MSI installers build
 - [x] Linux AppImage, .deb, .rpm all build
 - [x] All updater artifacts signed and uploaded to GitHub Releases
 - [x] Desktop E2E test infrastructure bootstrapped (Playwright + VITE_TEST_TAURI=1 mock layer)
 - [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
-- [ ] macOS DMG is notarized (requires APPLE_CERTIFICATE secret)
+- [x] macOS DMG is notarized in CI releases
 - [ ] Windows installer is code-signed (requires EV certificate)
 - [ ] Update server runs on a Freed-owned domain (not GitHub Releases)
 
-> **Deferred — Code Signing:**
-> macOS notarization and Windows code signing require secrets to be
-> configured in GitHub Actions. An Apple Developer certificate has been
-> obtained but needs to be exported and added to GitHub secrets before
-> Gatekeeper will allow unsigned-download installs. Until then, macOS
-> users must bypass Gatekeeper via `xattr -cr Freed.app`.
-> Windows SmartScreen warnings will appear until an EV certificate is
+> **Current state:**
+> macOS release builds are signed and notarized in GitHub Actions when the
+> required Apple secrets are present. The release workflow now fails fast
+> instead of silently shipping an unsigned macOS artifact. Windows
+> SmartScreen warnings will still appear until an EV certificate is
 > obtained or enough installs build reputation. See `RELEASE-SECRETS.md`
 > for the full setup checklist.
 
