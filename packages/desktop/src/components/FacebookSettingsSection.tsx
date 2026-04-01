@@ -23,6 +23,7 @@ import {
   getFbScraperDebugWindow,
   setFbScraperDebugWindow,
 } from "../lib/scraper-prefs";
+import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
 
 // =============================================================================
 // Diagnostic Panel
@@ -147,6 +148,7 @@ export function FacebookSettingsSection() {
   const [refreshingGroups, setRefreshingGroups] = useState(false);
   const [lastDiag, setLastDiag] = useState<FbSyncDiag | null>(null);
   const [debugWindow, setDebugWindow] = useState(() => getFbScraperDebugWindow());
+  const { confirm, dialog } = useProviderRiskGate("facebook");
 
   const knownGroups = fbCapture?.knownGroups ?? {};
   const excludedGroupIds = fbCapture?.excludedGroupIds ?? {};
@@ -169,32 +171,36 @@ export function FacebookSettingsSection() {
   }, [setFbAuth]);
 
   const handleLogin = useCallback(async () => {
-    setError(null);
-    try {
-      await showFbLogin();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to open login window");
-    }
-  }, [setError]);
+    await confirm(async () => {
+      setError(null);
+      try {
+        await showFbLogin();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to open login window");
+      }
+    });
+  }, [confirm, setError]);
 
   const handleCheckAuth = useCallback(async () => {
-    setChecking(true);
-    setError(null);
-    try {
-      const loggedIn = await checkFbAuth();
-      const newState = { isAuthenticated: loggedIn, lastCheckedAt: Date.now() };
-      setFbAuth(newState);
-      storeFbAuthState(newState);
+    await confirm(async () => {
+      setChecking(true);
+      setError(null);
+      try {
+        const loggedIn = await checkFbAuth();
+        const newState = { isAuthenticated: loggedIn, lastCheckedAt: Date.now() };
+        setFbAuth(newState);
+        storeFbAuthState(newState);
 
-      if (!loggedIn) {
-        setError("Not logged in. Please log in through the Facebook window first.");
+        if (!loggedIn) {
+          setError("Not logged in. Please log in through the Facebook window first.");
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Auth check failed");
+      } finally {
+        setChecking(false);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Auth check failed");
-    } finally {
-      setChecking(false);
-    }
-  }, [setFbAuth, setError]);
+    });
+  }, [confirm, setFbAuth, setError]);
 
   const runSync = useCallback(async () => {
     setSyncing(true);
@@ -296,6 +302,7 @@ export function FacebookSettingsSection() {
     })();
 
     return (
+      <>
       <div className="space-y-4">
         <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
           <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
@@ -304,7 +311,9 @@ export function FacebookSettingsSection() {
 
         <div className="flex gap-2">
           <button
-            onClick={runSync}
+            onClick={() => {
+              void confirm(runSync);
+            }}
             disabled={syncing || isLoading}
             className="flex-1 text-sm px-3 py-2 rounded-xl bg-[#8b5cf6]/15 text-[#8b5cf6] hover:bg-[#8b5cf6]/25 disabled:opacity-50 transition-colors"
           >
@@ -404,12 +413,15 @@ export function FacebookSettingsSection() {
           Your traffic looks identical to normal browsing.
         </p>
       </div>
+      {dialog}
+      </>
     );
   }
 
   // ── Disconnected state ───────────────────────────────────────────────────
 
   return (
+    <>
     <div className="space-y-4">
       <p className="text-sm text-[#71717a] leading-relaxed">
         Pull your Facebook feed into Freed. Log in through a native browser
@@ -432,5 +444,7 @@ export function FacebookSettingsSection() {
         </button>
       </div>
     </div>
+    {dialog}
+    </>
   );
 }

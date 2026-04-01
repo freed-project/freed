@@ -39,6 +39,7 @@ declare module "@tauri-apps/api/path" {
 
 declare module "@tauri-apps/plugin-process" {
   export function relaunch(): Promise<never>;
+  export function exit(code?: number): Promise<void>;
 }
 
 declare module "@tauri-apps/plugin-shell" {

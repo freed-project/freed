@@ -9,7 +9,7 @@
  * always assert on stable, visible elements. Avoid timing-sensitive assertions.
  */
 
-import { test, expect } from "./fixtures/app";
+import { test, expect, acceptLegalGate } from "./fixtures/app";
 import { tauriInitScript } from "./fixtures/tauri-init";
 
 // ---------------------------------------------------------------------------
@@ -25,6 +25,7 @@ test("app loads and renders without crashing", async ({ app }) => {
 test("page title is set", async ({ page }) => {
   await page.addInitScript(tauriInitScript());
   await page.goto("/");
+  await acceptLegalGate(page);
   await expect(page.locator("main")).toBeVisible({ timeout: 15_000 });
   // Vite / React Router sets this after hydration. Assert it's not blank.
   await expect(page).toHaveTitle(/.+/);
@@ -39,6 +40,7 @@ test("no console errors on startup", async ({ page }) => {
   });
 
   await page.goto("/");
+  await acceptLegalGate(page);
   await expect(page.locator("main")).toBeVisible({ timeout: 15_000 });
 
   // Filter out known benign messages from third-party scripts / WASM.

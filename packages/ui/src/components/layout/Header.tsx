@@ -15,6 +15,7 @@ import {
   X_SECTION_META,
   FB_SECTION_META,
   IG_SECTION_META,
+  LI_SECTION_META,
   type SectionMeta,
 } from "../../lib/settings-sections.js";
 
@@ -68,6 +69,7 @@ export function Header({ onMenuClick }: HeaderProps) {
     XSettingsContent,
     FacebookSettingsContent,
     InstagramSettingsContent,
+    LinkedInSettingsContent,
   } = usePlatform();
 
   const openSettingsTo = useSettingsStore((s) => s.openTo);
@@ -167,11 +169,20 @@ export function Header({ onMenuClick }: HeaderProps) {
       ...(XSettingsContent ? [X_SECTION_META] : []),
       ...(FacebookSettingsContent ? [FB_SECTION_META] : []),
       ...(InstagramSettingsContent ? [IG_SECTION_META] : []),
+      ...(LinkedInSettingsContent ? [LI_SECTION_META] : []),
       ...(checkForUpdates ? [UPDATES_SECTION_META] : []),
       ...(factoryReset ? [DANGER_SECTION_META] : []),
     ];
     return buildSettingsActions(sections, openSettingsTo);
-  }, [checkForUpdates, factoryReset, XSettingsContent, FacebookSettingsContent, InstagramSettingsContent, openSettingsTo]);
+  }, [
+    checkForUpdates,
+    factoryReset,
+    XSettingsContent,
+    FacebookSettingsContent,
+    InstagramSettingsContent,
+    LinkedInSettingsContent,
+    openSettingsTo,
+  ]);
 
   const filteredActions = useMemo(() => {
     const q = inputValue.toLowerCase().trim();

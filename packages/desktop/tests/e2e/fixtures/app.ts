@@ -39,6 +39,22 @@ interface MockFeedItem {
 export class AppFixture {
   constructor(public readonly page: Page) {}
 
+  async acceptLegalGateIfPresent(timeout = 5_000): Promise<boolean> {
+    const acceptButton = this.page.getByTestId("legal-gate-accept");
+    const gateVisible = await acceptButton.isVisible({ timeout }).catch(() => false);
+
+    if (!gateVisible) return false;
+
+    const checkbox = this.page.getByRole("checkbox");
+    await checkbox.check();
+    await expect(acceptButton).toBeEnabled({ timeout });
+    await acceptButton.evaluate((element) => {
+      (element as HTMLButtonElement).click();
+    });
+    await expect(this.page.locator("main")).toBeVisible({ timeout });
+    return true;
+  }
+
   /** Navigate to the app root and wait until the React tree fully initialises. */
   async goto(path = "/"): Promise<void> {
     await this.page.goto(path);
@@ -50,6 +66,7 @@ export class AppFixture {
    * empty Automerge doc.
    */
   async waitForReady(timeout = 15_000): Promise<void> {
+    await this.acceptLegalGateIfPresent();
     await this.page.waitForFunction(
       () => {
         const w = window as Record<string, unknown>;
@@ -126,6 +143,11 @@ export class AppFixture {
       { timeout: 30_000 },
     );
   }
+}
+
+export async function acceptLegalGate(page: Page, timeout = 5_000): Promise<boolean> {
+  const app = new AppFixture(page);
+  return app.acceptLegalGateIfPresent(timeout);
 }
 
 // ─── IpcFixture ───────────────────────────────────────────────────────────────

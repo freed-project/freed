@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@floating-ui/react": "^0.27.17",
+    "@freed/shared": "*",
     "@radix-ui/react-tooltip": "^1.2.8",
     "feed": "^5.2.0",
     "framer-motion": "^12.29.0",

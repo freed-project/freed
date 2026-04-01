@@ -1,7 +1,5 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { registerSW } from 'virtual:pwa-register'
-import { notifyUpdateAvailable, setUpdateSwCallback, startPeriodicUpdateCheck } from './lib/pwa-updater'
 import './index.css'
 import App from './App.tsx'
 
@@ -25,21 +23,6 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('scroll', syncVisualViewport)
 }
 syncVisualViewport()
-
-const updateSW = registerSW({
-  onNeedRefresh() {
-    notifyUpdateAvailable()
-  },
-  onOfflineReady() {
-    console.log('[PWA] App ready for offline use')
-  },
-})
-setUpdateSwCallback(updateSW)
-
-// Poll for updates every hour so long-running PWA sessions (e.g. phone
-// added to Home Screen and left open all day) pick up new deployments
-// without requiring the user to manually check in Settings.
-startPeriodicUpdateCheck()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

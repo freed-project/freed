@@ -12,6 +12,7 @@ import { useAppStore } from "../lib/store";
 import { connectX, loadStoredCookies, disconnectX } from "../lib/x-auth";
 import { captureXTimeline } from "../lib/x-capture";
 import type { XSyncDiag } from "../lib/x-capture";
+import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
 
 // =============================================================================
 // Types
@@ -179,6 +180,7 @@ export function XSettingsSection() {
   const [ct0, setCt0] = useState("");
   const [authToken, setAuthToken] = useState("");
   const [formError, setFormError] = useState("");
+  const { confirm, dialog } = useProviderRiskGate("x");
 
   const runSync = async (cookies: Parameters<typeof captureXTimeline>[0]) => {
     setSyncing(true);
@@ -208,12 +210,14 @@ export function XSettingsSection() {
   const poller = useXLoginPoller(finishLogin);
 
   const handleSignIn = async () => {
-    try {
-      await invoke("open_x_login_window");
-      poller.start();
-    } catch (err) {
-      console.error("Failed to open X login window:", err);
-    }
+    await confirm(async () => {
+      try {
+        await invoke("open_x_login_window");
+        poller.start();
+      } catch (err) {
+        console.error("Failed to open X login window:", err);
+      }
+    });
   };
 
   const handleCancelLogin = async () => {
@@ -223,25 +227,29 @@ export function XSettingsSection() {
 
   // Manual cookie entry handlers
   const handleManualConnect = async () => {
-    setFormError("");
-    setError(null);
-    const cookies = connectX(ct0, authToken);
-    if (!cookies) {
-      setFormError("Both ct0 and auth_token are required.");
-      return;
-    }
-    setXAuth({ isAuthenticated: true, cookies });
-    setShowManual(false);
-    setCt0("");
-    setAuthToken("");
-    await runSync(cookies);
+    await confirm(async () => {
+      setFormError("");
+      setError(null);
+      const cookies = connectX(ct0, authToken);
+      if (!cookies) {
+        setFormError("Both ct0 and auth_token are required.");
+        return;
+      }
+      setXAuth({ isAuthenticated: true, cookies });
+      setShowManual(false);
+      setCt0("");
+      setAuthToken("");
+      await runSync(cookies);
+    });
   };
 
   const handleSync = async () => {
-    const cookies = loadStoredCookies();
-    if (!cookies) return;
-    setError(null);
-    await runSync(cookies);
+    await confirm(async () => {
+      const cookies = loadStoredCookies();
+      if (!cookies) return;
+      setError(null);
+      await runSync(cookies);
+    });
   };
 
   const handleDisconnect = () => {
@@ -274,6 +282,7 @@ export function XSettingsSection() {
     })();
 
     return (
+      <>
       <div className="space-y-4">
         <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
           <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
@@ -313,12 +322,15 @@ export function XSettingsSection() {
           Cookies expire periodically, reconnect when sync stops working.
         </p>
       </div>
+      {dialog}
+      </>
     );
   }
 
   // ----- Login pending (window open, waiting for credentials) -----
   if (poller.polling) {
     return (
+      <>
       <div className="space-y-4">
         <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
           <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
@@ -337,12 +349,15 @@ export function XSettingsSection() {
           Cancel
         </button>
       </div>
+      {dialog}
+      </>
     );
   }
 
   // ----- Manual cookie entry (fallback) -----
   if (showManual) {
     return (
+      <>
       <div className="space-y-4">
         <div className="p-3 rounded-xl bg-white/5 text-xs text-[#a1a1aa] leading-relaxed space-y-2">
           <p className="font-medium text-white">How to get your cookies:</p>
@@ -391,11 +406,14 @@ export function XSettingsSection() {
           </button>
         </div>
       </div>
+      {dialog}
+      </>
     );
   }
 
   // ----- Default: not connected -----
   return (
+    <>
     <div className="space-y-4">
       <p className="text-sm text-[#71717a] leading-relaxed">
         Pull your home timeline into Freed. Sign in with your X account
@@ -414,5 +432,7 @@ export function XSettingsSection() {
         Manual cookie setup
       </button>
     </div>
+    {dialog}
+    </>
   );
 }

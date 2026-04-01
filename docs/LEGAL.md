@@ -1,208 +1,153 @@
-# Freed Legal Framework
+# Freed Legal and Risk Posture
 
-## Overview
+## Purpose
 
-Freed is open-source software that runs entirely in the user's browser. We have no servers, collect no data, and operate similarly to ad blockers and other browser customization tools.
+This document describes the product and operational posture we are actually shipping.
 
----
+It is not a substitute for counsel. It is the working map for how Freed reduces risk through product design, distribution choices, consent, and scope control.
 
-## Legal Posture
+## Current Distribution Model
 
-### What Freed Does
+Freed ships through:
 
-- Runs as a browser extension in the user's own authenticated session
-- Reads DOM content that the user already has access to
-- Stores all captured data locally on the user's device
-- Provides a unified view of the user's own social media content
+- Direct desktop downloads from `freed.wtf`
+- The PWA at `app.freed.wtf`
 
-### What Freed Does NOT Do
+Freed does not assume distribution through major mobile or desktop app stores. That is deliberate. The app store path creates a second battlefield around review policies, platform authorization demands, and compliance claims that are not required for the current product strategy.
 
-- Operate servers that scrape platforms
-- Collect, aggregate, or sell user data
-- Circumvent authentication or access controls
-- Bypass technical protection measures (DMCA 1201)
-- Access data the user isn't already authorized to see
+## Core Product Claims
 
----
+Freed should consistently describe itself as:
 
-## Relevant Legal Precedents
+- Local-first software
+- Experimental software
+- User-controlled software
+- A reading and organization tool that may also connect to third-party services at the user's direction
 
-### Van Buren v. United States (2021)
+Freed should not describe itself as:
 
-The U.S. Supreme Court narrowed the Computer Fraud and Abuse Act (CFAA), ruling that violating a website's terms of service while having authorized access does not constitute a federal crime. This is significant because users of Freed have authorized access to their own social media accounts.
+- Safe for any account
+- Undetectable
+- Guaranteed compliant with third-party terms
+- Protected from bans, lockouts, or other enforcement
+- A managed service acting on the user's behalf on Freed-operated servers
 
-### hiQ Labs v. LinkedIn (2022)
+If the copy starts sounding like a stealth scraper brochure, rewrite it.
 
-The 9th Circuit Court of Appeals affirmed that scraping publicly available data does not violate the CFAA. Freed's position is even stronger because users are accessing their own private data from their own authenticated sessions.
+## Public Legal Surface
 
----
+The public legal stack consists of:
 
-## Terms of Service Considerations
+- Terms of Use for the website and PWA
+- Desktop EULA
+- Privacy Policy
+- Experimental Risk Addendum
 
-Most social media platforms prohibit automated data collection in their Terms of Service. However:
+These documents are versioned and linked from:
 
-1. **ToS violations are civil matters**, not criminal
-2. **Van Buren** clarified that ToS violations with authorized access aren't CFAA violations
-3. **Freed operates client-side**, similar to:
-   - Ad blockers (uBlock Origin, AdBlock Plus)
-   - Feed customizers (Social Fixer)
-   - Browser developer tools
-   - User scripts (Greasemonkey, Tampermonkey)
+- The site footer
+- The website download modal
+- The PWA first-run gate
+- The Freed Desktop first-run gate
+- The Legal section in settings
 
-These tools have existed for years without legal extinction, despite modifying how users interact with platforms.
+## Clickwrap and Consent
 
----
+Freed relies on conspicuous notice plus affirmative assent.
 
-## Privacy Principles
+Current implementation:
 
-### Local-First Architecture
+- Website download modal requires unchecked-by-default clickwrap before opening the PWA or downloading Freed Desktop
+- PWA first launch is blocked behind a full-screen legal gate
+- Freed Desktop first launch is blocked behind a full-screen legal gate
+- X, Facebook, Instagram, and LinkedIn flows require separate provider-specific risk consent before login or sync actions
 
-All data captured by Freed stays on the user's device:
+Acceptance records are stored locally only.
 
-- Stored in browser's IndexedDB
-- Never transmitted to any server we operate
-- We have no servers to transmit to
+We do not centralize assent logs. That is a values choice and a product constraint. The app stores:
 
-### Zero Telemetry
+- document or provider version
+- acceptance timestamp
+- local surface where assent happened
 
-Freed contains no analytics, tracking, or phone-home functionality:
+No legal acceptance state is synced through Automerge or cloud backup. One device accepting terms must not silently bless another device.
 
-- No usage statistics
-- No error reporting to us
-- No feature flags or remote configuration
-- Fully air-gapped from any backend
+## Risk Allocation Strategy
 
-### User-Controlled Sync
+Freed reduces founder and operator exposure by making the user cross a real, explicit boundary before risky behavior begins.
 
-If users choose to back up their data:
+The product must make these facts plain:
 
-- Backup goes to the user's own cloud storage (Google Drive, iCloud, Dropbox)
-- Data is encrypted with a user-provided passphrase
-- We never see, touch, or have access to the encrypted backup
+- Freed is experimental
+- third-party services may retaliate
+- the user decides whether to connect any account
+- the user is responsible for the accounts and services they choose to use
+- high-risk features should not be used with employer, client, school, newsroom, government, activist, or regulated accounts unless the user accepts that fallout personally
 
-### Open Source Transparency
+This is not about theatrical warning copy. It is about reducing confusion, avoiding misrepresentation, and creating a hard-to-miss consent moment before harm can happen.
 
-Every line of Freed's code is public:
+## Product Safeguards
 
-- MIT licensed
-- Auditable by anyone
-- No hidden functionality
+The software should continue to enforce the following defaults:
 
----
+- risky features start disabled
+- first-run legal gate blocks startup side effects
+- provider consent is separate from general product consent
+- consent changes are versioned, so material risk changes force reacceptance
+- consent stays local to the device or browser
+- settings expose the current accepted versions and legal documents
 
-## Risk Assessment
+This keeps the contract surface honest and avoids surprise activation of risky behavior.
 
-### Cease & Desist Letters
+## Privacy Posture
 
-**Risk Level:** Low to Medium
+Freed remains local-first.
 
-Platforms may send C&D letters to open-source projects. However:
+That means:
 
-- Freed is a tool, not a service
-- Individual developers are rarely worth legal pursuit
-- No commercial activity to seek damages from
-- Community and potential EFF interest as defense
+- no central backend for sync or capture
+- no telemetry for legal acceptance
+- no synced legal state
+- no hidden remote flags that silently change legal or risk behavior
 
-### Actual Lawsuits
+If a future feature requires server-side state, it must be reviewed against this document before shipping. Quietly adding backend behavior that changes the privacy or legal story would be an own goal of biblical proportions.
 
-**Risk Level:** Very Low
+## Third-Party Platform Posture
 
-Platforms focus legal resources on:
+Freed should assume that some providers will dislike or prohibit automated or semi-automated behavior. The product response is not to promise safety. The product response is to:
 
-- Commercial data brokers
-- Large-scale scraping operations
-- Political manipulation campaigns
-- AI training data companies
+- make the risk explicit
+- require provider-specific consent
+- avoid public copy that brags about bypassing detection
+- avoid documentation that reads like an evasion manual
 
-An open-source browser extension with no monetization is noise in their threat model.
+Internal and public docs should describe capabilities in neutral terms. Do not celebrate stealth, evasion, or ban avoidance. Those phrases are how tomorrow's opposing counsel buys lunch.
 
-### Criminal Prosecution
+## What This Document Does Not Claim
 
-**Risk Level:** Essentially Zero
+This document does not claim:
 
-Post-Van Buren, accessing data from your own authenticated session is not a federal crime, regardless of ToS violations.
+- that Freed is lawful in every jurisdiction or under every platform contract
+- that local-only architecture eliminates all risk
+- that user clickwrap is a magic shield
+- that users cannot still blame the product when things go sideways
 
----
+It does claim that Freed is better protected when:
 
-## Mitigations
+- risk is clearly disclosed
+- assent is unavoidable
+- claims are restrained
+- risky flows are separately gated
+- sensitive state stays local
 
-### Technical
+## Practical Rules for Future Changes
 
-- All data stays local
-- No server infrastructure
-- No data aggregation
-- Open source for transparency
+Before shipping a feature that changes risk, check these questions:
 
-### Legal
+1. Does it add a new third-party provider or a materially different enforcement risk?
+2. Does it need its own provider risk version?
+3. Does the first-run or provider-specific consent copy need updating?
+4. Does the Privacy Policy need to describe new local or cloud data handling?
+5. Does any public copy now overclaim safety, compliance, or stealth?
 
-- Clear documentation of privacy-first design
-- Terms of Use disclaiming responsibility for ToS compliance
-- No commercial entity or monetization
-- Individual hobby project status
-
-### Communication
-
-- Frame Freed as user empowerment, not platform attack
-- Emphasize privacy and digital dignity
-- Avoid antagonistic publicity
-- Build community goodwill
-
----
-
-## For Users
-
-### Your Responsibility
-
-By using Freed, you acknowledge:
-
-- You may be violating platform Terms of Service
-- Platforms could theoretically suspend your account
-- Freed is provided "as is" without warranty
-- You use Freed at your own discretion
-
-### Our Commitment
-
-We commit to:
-
-- Never collecting your data
-- Maintaining open-source transparency
-- Respecting your privacy absolutely
-- Building tools for user empowerment
-
----
-
-## License
-
-Freed is released under the MIT License:
-
-```
-MIT License
-
-Copyright (c) 2026 Freed Contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
----
-
-## Contact
-
-For legal inquiries, contact: [TBD]
-
-For general questions, open an issue on GitHub.
+If the answer to any of those is yes, update the legal docs and the gate copy in the same change set.
