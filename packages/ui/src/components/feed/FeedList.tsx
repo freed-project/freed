@@ -2,6 +2,13 @@ import { useRef, memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useVirtualizer, useWindowVirtualizer } from "@tanstack/react-virtual";
 import { FeedItem } from "./FeedItem.js";
 import { FeedItemSkeleton } from "./FeedItemSkeleton.js";
+import {
+  collectUnreadIdsFromRows as collectUnreadIdsFromReadRows,
+  getNewlyPassedRowEnd,
+  getRemainingUnreadIds,
+  hasReachedListBottom,
+  type ReadTrackRow,
+} from "./read-on-scroll.js";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
@@ -251,33 +258,9 @@ export function FeedList({
   const showEngagementCounts = useAppStore(
     (s) => s.preferences.display.showEngagementCounts,
   );
-  const markAsRead = useAppStore((s) => s.markAsRead);
+  const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
   const markReadOnScroll = useAppStore(
     (s) => s.preferences.display.reading.markReadOnScroll,
-  );
-
-  // Per-item timers for the "mark read after 1 s in viewport" behaviour.
-  // Each entry maps a globalId to its pending setTimeout handle.
-  const READ_DELAY_MS = 1000;
-  const readTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
-    new Map(),
-  );
-
-  // Clear all pending timers when the items array identity changes (filter or
-  // search switch) so timers from a previous view don't fire into a new one.
-  const prevItemsRef = useRef(items);
-  if (prevItemsRef.current !== items) {
-    prevItemsRef.current = items;
-    for (const t of readTimersRef.current.values()) clearTimeout(t);
-    readTimersRef.current.clear();
-  }
-
-  // Cleanup on unmount.
-  useEffect(
-    () => () => {
-      for (const t of readTimersRef.current.values()) clearTimeout(t);
-    },
-    [],
   );
 
   // Track scroll container width so story group rows are sized correctly.
@@ -360,11 +343,57 @@ export function FeedList({
     scrollMargin: windowListRef.current?.offsetTop ?? 0,
   });
 
-  // Mark items as read after they have been continuously visible for
-  // READ_DELAY_MS. On each virtualizer scroll tick we compute the true pixel
-  // viewport, start a timer for every unread item inside it, and cancel timers
-  // for items that have left. The setTimeout fires markAsRead independently of
-  // the render cycle, so it works even after the user stops scrolling.
+  const listKey = useMemo(
+    () => JSON.stringify({ activeFilter, searchQuery: searchQuery.trim() }),
+    [activeFilter, searchQuery],
+  );
+  const maxPassedRowIndexRef = useRef(-1);
+  const listSessionRef = useRef({
+    key: listKey,
+    items,
+    reachedBottom: false,
+  });
+
+  const flushReadIds = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    void markItemsAsRead(ids);
+  }, [markItemsAsRead]);
+
+  const collectUnreadIdsFromRows = useCallback((startIndex: number, endIndex: number) => {
+    return collectUnreadIdsFromReadRows(
+      rows as Array<ReadTrackRow<FeedItemType>>,
+      startIndex,
+      endIndex,
+    );
+  }, [rows]);
+
+  const finalizeListSession = useCallback((session: { items: FeedItemType[]; reachedBottom: boolean }) => {
+    if (!markReadOnScroll || !session.reachedBottom) return;
+    flushReadIds(getRemainingUnreadIds(session.items));
+  }, [flushReadIds, markReadOnScroll]);
+
+  useEffect(() => {
+    const session = listSessionRef.current;
+    if (session.key !== listKey) {
+      finalizeListSession(session);
+      listSessionRef.current = {
+        key: listKey,
+        items,
+        reachedBottom: false,
+      };
+      maxPassedRowIndexRef.current = -1;
+      return;
+    }
+    session.items = items;
+  }, [finalizeListSession, items, listKey]);
+
+  useEffect(() => {
+    return () => {
+      finalizeListSession(listSessionRef.current);
+    };
+  }, [finalizeListSession]);
+
+  // Mark rows as read once the viewport has fully scrolled past them.
   useEffect(() => {
     if (!markReadOnScroll) return;
 
@@ -380,38 +409,37 @@ export function FeedList({
       ? window.innerHeight
       : (parentRef.current?.clientHeight ?? 0);
     const vpBottom = scrollTop + vpHeight;
+    const totalSize = isMobile
+      ? windowVirtualizer.getTotalSize()
+      : elementVirtualizer.getTotalSize();
 
-    const visibleNow = new Set<string>();
-    for (const vi of vItems) {
-      if (vi.start < vpBottom && vi.end > scrollTop) {
-        const row = rows[vi.index];
-        if (!row) continue;
-        const rowItems = row.type === "item" ? [row.item] : row.items;
-        for (const item of rowItems) {
-          if (item.userState.readAt) continue;
-          visibleNow.add(item.globalId);
-          if (!readTimersRef.current.has(item.globalId)) {
-            const id = item.globalId;
-            readTimersRef.current.set(
-              id,
-              setTimeout(() => {
-                markAsRead(id);
-                readTimersRef.current.delete(id);
-              }, READ_DELAY_MS),
-            );
-          }
-        }
-      }
+    const newlyPassedEnd = getNewlyPassedRowEnd(
+      vItems,
+      scrollTop,
+      rows.length,
+      maxPassedRowIndexRef.current,
+    );
+    if (newlyPassedEnd !== null) {
+      const unreadIds = collectUnreadIdsFromRows(
+        maxPassedRowIndexRef.current + 1,
+        newlyPassedEnd,
+      );
+      maxPassedRowIndexRef.current = newlyPassedEnd;
+      flushReadIds(unreadIds);
     }
 
-    // Cancel timers for items that left the viewport before the delay elapsed.
-    for (const [id, timer] of readTimersRef.current) {
-      if (!visibleNow.has(id)) {
-        clearTimeout(timer);
-        readTimersRef.current.delete(id);
-      }
+    if (hasReachedListBottom(rows.length, vpBottom, totalSize)) {
+      listSessionRef.current.reachedBottom = true;
     }
-  });
+  }, [
+    collectUnreadIdsFromRows,
+    elementVirtualizer,
+    flushReadIds,
+    isMobile,
+    markReadOnScroll,
+    rows,
+    windowVirtualizer,
+  ]);
 
   // Show shimmer placeholders while the doc is loading from IndexedDB.
   // Once isLoading flips false, items will populate and we drop into the

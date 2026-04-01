@@ -68,6 +68,7 @@ export interface BaseAppState {
   addItems: (items: FeedItem[]) => Promise<void>;
   updateItem: (id: string, update: Partial<FeedItem>) => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
+  markItemsAsRead: (ids: string[]) => Promise<void>;
   markAllAsRead: (platform?: string) => Promise<void>;
   toggleSaved: (id: string) => Promise<void>;
   toggleArchived: (id: string) => Promise<void>;

@@ -290,6 +290,12 @@ export async function docMarkAsRead(globalId: string): Promise<void> {
   return request({ reqId, type: "MARK_AS_READ", globalId });
 }
 
+export async function docMarkItemsAsRead(globalIds: string[]): Promise<void> {
+  if (globalIds.length === 0) return;
+  const reqId = nextReqId++;
+  return request({ reqId, type: "MARK_ITEMS_AS_READ", globalIds });
+}
+
 export async function docMarkAllAsRead(platform?: string): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "MARK_ALL_AS_READ", platform });

@@ -20,6 +20,7 @@ import {
   docUpdateRssFeed,
   docUpdateFeedItem,
   docMarkAsRead,
+  docMarkItemsAsRead,
   docMarkAllAsRead,
   docToggleSaved,
   docRemoveFeedItem,
@@ -138,6 +139,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   markAsRead: async (id) => {
     await docMarkAsRead(id);
+  },
+
+  markItemsAsRead: async (ids) => {
+    await docMarkItemsAsRead(ids);
   },
 
   markAllAsRead: async (platform) => {

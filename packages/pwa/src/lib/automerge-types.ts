@@ -38,6 +38,7 @@ export interface DocState {
 export type WorkerRequest =
   | { reqId: number; type: "INIT" }
   | { reqId: number; type: "MARK_AS_READ"; globalId: string }
+  | { reqId: number; type: "MARK_ITEMS_AS_READ"; globalIds: string[] }
   | { reqId: number; type: "MARK_ALL_AS_READ"; platform?: string }
   | { reqId: number; type: "TOGGLE_SAVED"; globalId: string }
   | { reqId: number; type: "TOGGLE_ARCHIVED"; globalId: string }
