@@ -12,7 +12,7 @@ import {
   arrow,
   FloatingArrow,
 } from "@floating-ui/react";
-import { LEGAL_BUNDLE_VERSION, LEGAL_DOCS } from "@freed/shared";
+import { LEGAL_BUNDLE_VERSION, LEGAL_DOCS } from "@freed/shared/legal";
 import { useNewsletter } from "@/context/NewsletterContext";
 import {
   acceptWebsiteBundle,
@@ -86,8 +86,8 @@ export default function NewsletterModal() {
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
   const [acceptedBundle, setAcceptedBundle] = useState(false);
   const [legalChecked, setLegalChecked] = useState(false);
+  const [arrowElement, setArrowElement] = useState<SVGSVGElement | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const arrowRef = useRef(null);
 
   const {
     refs,
@@ -100,9 +100,23 @@ export default function NewsletterModal() {
     middleware: [
       offset(12),
       shift({ padding: 8 }),
-      arrow({ element: arrowRef }),
+      arrow({ element: arrowElement }),
     ],
   });
+
+  const setTooltipReference = useCallback(
+    (node: HTMLDivElement | null) => {
+      refs.setReference(node);
+    },
+    [refs],
+  );
+
+  const setTooltipFloating = useCallback(
+    (node: HTMLDivElement | null) => {
+      refs.setFloating(node);
+    },
+    [refs],
+  );
 
   const clientPoint = useClientPoint(floatingCtx);
   const hover = useHover(floatingCtx);
@@ -546,13 +560,13 @@ export default function NewsletterModal() {
                     {/* --- Newsletter (disabled — tooltip on hover) --- */}
                     <div
                       className="relative"
-                      ref={refs.setReference}
+                      ref={setTooltipReference}
                       {...getReferenceProps()}
                     >
                       <AnimatePresence>
                         {isTooltipOpen && (
                           <motion.div
-                            ref={refs.setFloating}
+                            ref={setTooltipFloating}
                             style={floatingStyles}
                             {...getFloatingProps()}
                             initial={{ opacity: 0 }}
@@ -565,7 +579,7 @@ export default function NewsletterModal() {
                               Email updates coming soon ✨
                             </span>
                             <FloatingArrow
-                              ref={arrowRef}
+                              ref={setArrowElement}
                               context={floatingCtx}
                               fill="#0a0a0a"
                               strokeWidth={1}

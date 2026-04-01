@@ -3,10 +3,12 @@
 import {
   LEGAL_BUNDLE_VERSION,
   isAcceptanceCurrent,
+  type LegalAcceptanceRecord,
+} from "@freed/shared/legal";
+import {
   readAcceptanceFromStorage,
   writeAcceptanceToStorage,
-  type LegalAcceptanceRecord,
-} from "@freed/shared";
+} from "@freed/shared/legal-storage";
 
 const WEBSITE_BUNDLE_KEY = "freed.legal.website.bundle";
 

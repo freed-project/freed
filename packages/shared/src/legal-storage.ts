@@ -3,7 +3,7 @@ import {
   createAcceptanceRecord,
   type LegalAcceptanceRecord,
   type LegalSurface,
-} from "./legal.js";
+} from "./legal";
 
 export interface StorageReader {
   getItem(key: string): string | null;
