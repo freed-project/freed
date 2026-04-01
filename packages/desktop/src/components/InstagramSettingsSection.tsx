@@ -19,10 +19,11 @@ import {
 import { captureIgFeed } from "../lib/instagram-capture";
 import type { IgSyncDiag } from "../lib/instagram-capture";
 import {
-  getIgScraperDebugWindow,
-  setIgScraperDebugWindow,
+  getIgScraperWindowMode,
+  setIgScraperWindowMode,
 } from "../lib/scraper-prefs";
 import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
+import { ScraperWindowModeControl } from "./ScraperWindowModeControl";
 
 // =============================================================================
 // Diagnostic Panel
@@ -88,51 +89,6 @@ function IgDiagPanel({ diag }: { diag: IgSyncDiag }) {
   );
 }
 
-// =============================================================================
-// Toggle
-// =============================================================================
-
-function Toggle({
-  label,
-  checked,
-  onChange,
-  description,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  description?: string;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <div>
-        <p className="text-sm text-[#a1a1aa]">{label}</p>
-        {description && (
-          <p className="text-xs text-[#52525b] mt-0.5">{description}</p>
-        )}
-      </div>
-      <button
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className={`relative shrink-0 w-9 h-5 rounded-full transition-colors ${
-          checked ? "bg-[#8b5cf6]" : "bg-white/10"
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-            checked ? "translate-x-4" : "translate-x-0"
-          }`}
-        />
-      </button>
-    </div>
-  );
-}
-
-// =============================================================================
-// Main Component
-// =============================================================================
-
 export function InstagramSettingsSection() {
   const igAuth = useAppStore((s) => s.igAuth);
   const setIgAuth = useAppStore((s) => s.setIgAuth);
@@ -143,7 +99,7 @@ export function InstagramSettingsSection() {
   const [syncing, setSyncing] = useState(false);
   const [checking, setChecking] = useState(false);
   const [lastDiag, setLastDiag] = useState<IgSyncDiag | null>(null);
-  const [debugWindow, setDebugWindow] = useState(() => getIgScraperDebugWindow());
+  const [windowMode, setWindowMode] = useState(() => getIgScraperWindowMode());
   const { confirm, dialog } = useProviderRiskGate("instagram");
 
   // Auto-detect login success from the WebView's on_navigation callback
@@ -286,14 +242,13 @@ export function InstagramSettingsSection() {
             Advanced
           </summary>
           <div className="mt-3 pl-3 border-l border-white/10">
-            <Toggle
-              label="Show scraper window"
-              checked={debugWindow}
-              onChange={(v) => {
-                setDebugWindow(v);
-                setIgScraperDebugWindow(v);
+            <ScraperWindowModeControl
+              sourceLabel="Instagram"
+              mode={windowMode}
+              onChange={(nextMode) => {
+                setWindowMode(nextMode);
+                setIgScraperWindowMode(nextMode);
               }}
-              description="Displays the Instagram browser window while syncing. Off by default -- the window runs off-screen so WebKit renders at full speed without interrupting you."
             />
           </div>
         </details>

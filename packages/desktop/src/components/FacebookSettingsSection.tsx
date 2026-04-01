@@ -20,10 +20,11 @@ import {
 import { captureFbFeed, captureFbGroups } from "../lib/fb-capture";
 import type { FbSyncDiag } from "../lib/fb-capture";
 import {
-  getFbScraperDebugWindow,
-  setFbScraperDebugWindow,
+  getFbScraperWindowMode,
+  setFbScraperWindowMode,
 } from "../lib/scraper-prefs";
 import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
+import { ScraperWindowModeControl } from "./ScraperWindowModeControl";
 
 // =============================================================================
 // Diagnostic Panel
@@ -89,51 +90,6 @@ function FbDiagPanel({ diag }: { diag: FbSyncDiag }) {
   );
 }
 
-// =============================================================================
-// Toggle
-// =============================================================================
-
-function Toggle({
-  label,
-  checked,
-  onChange,
-  description,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  description?: string;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <div>
-        <p className="text-sm text-[#a1a1aa]">{label}</p>
-        {description && (
-          <p className="text-xs text-[#52525b] mt-0.5">{description}</p>
-        )}
-      </div>
-      <button
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className={`relative shrink-0 w-9 h-5 rounded-full transition-colors ${
-          checked ? "bg-[#8b5cf6]" : "bg-white/10"
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-            checked ? "translate-x-4" : "translate-x-0"
-          }`}
-        />
-      </button>
-    </div>
-  );
-}
-
-// =============================================================================
-// Main Component
-// =============================================================================
-
 export function FacebookSettingsSection() {
   const fbAuth = useAppStore((s) => s.fbAuth);
   const setFbAuth = useAppStore((s) => s.setFbAuth);
@@ -147,7 +103,7 @@ export function FacebookSettingsSection() {
   const [checking, setChecking] = useState(false);
   const [refreshingGroups, setRefreshingGroups] = useState(false);
   const [lastDiag, setLastDiag] = useState<FbSyncDiag | null>(null);
-  const [debugWindow, setDebugWindow] = useState(() => getFbScraperDebugWindow());
+  const [windowMode, setWindowMode] = useState(() => getFbScraperWindowMode());
   const { confirm, dialog } = useProviderRiskGate("facebook");
 
   const knownGroups = fbCapture?.knownGroups ?? {};
@@ -396,14 +352,13 @@ export function FacebookSettingsSection() {
             Advanced
           </summary>
           <div className="mt-3 pl-3 border-l border-white/10">
-            <Toggle
-              label="Show scraper window"
-              checked={debugWindow}
-              onChange={(v) => {
-                setDebugWindow(v);
-                setFbScraperDebugWindow(v);
+            <ScraperWindowModeControl
+              sourceLabel="Facebook"
+              mode={windowMode}
+              onChange={(nextMode) => {
+                setWindowMode(nextMode);
+                setFbScraperWindowMode(nextMode);
               }}
-              description="Displays the Facebook browser window while syncing. Off by default -- the window runs off-screen so WebKit renders at full speed without interrupting you."
             />
           </div>
         </details>

@@ -18,10 +18,11 @@ import {
 import { captureLiFeed } from "../lib/li-capture";
 import type { LiSyncDiag } from "../lib/li-capture";
 import {
-  getLiScraperDebugWindow,
-  setLiScraperDebugWindow,
+  getLiScraperWindowMode,
+  setLiScraperWindowMode,
 } from "../lib/scraper-prefs";
 import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
+import { ScraperWindowModeControl } from "./ScraperWindowModeControl";
 
 // =============================================================================
 // Diagnostic Panel
@@ -87,51 +88,6 @@ function LiDiagPanel({ diag }: { diag: LiSyncDiag }) {
   );
 }
 
-// =============================================================================
-// Toggle
-// =============================================================================
-
-function Toggle({
-  label,
-  checked,
-  onChange,
-  description,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  description?: string;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <div>
-        <p className="text-sm text-[#a1a1aa]">{label}</p>
-        {description && (
-          <p className="text-xs text-[#52525b] mt-0.5">{description}</p>
-        )}
-      </div>
-      <button
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className={`relative shrink-0 w-9 h-5 rounded-full transition-colors ${
-          checked ? "bg-[#8b5cf6]" : "bg-white/10"
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-            checked ? "translate-x-4" : "translate-x-0"
-          }`}
-        />
-      </button>
-    </div>
-  );
-}
-
-// =============================================================================
-// Main Component
-// =============================================================================
-
 export function LinkedInSettingsSection() {
   const liAuth = useAppStore((s) => s.liAuth);
   const setLiAuth = useAppStore((s) => s.setLiAuth);
@@ -142,7 +98,7 @@ export function LinkedInSettingsSection() {
   const [syncing, setSyncing] = useState(false);
   const [checking, setChecking] = useState(false);
   const [lastDiag, setLastDiag] = useState<LiSyncDiag | null>(null);
-  const [debugWindow, setDebugWindow] = useState(() => getLiScraperDebugWindow());
+  const [windowMode, setWindowMode] = useState(() => getLiScraperWindowMode());
   const { confirm, dialog } = useProviderRiskGate("linkedin");
 
   const runSync = useCallback(async () => {
@@ -286,14 +242,13 @@ export function LinkedInSettingsSection() {
             Advanced
           </summary>
           <div className="mt-3 pl-3 border-l border-white/10">
-            <Toggle
-              label="Show scraper window"
-              checked={debugWindow}
-              onChange={(v) => {
-                setDebugWindow(v);
-                setLiScraperDebugWindow(v);
+            <ScraperWindowModeControl
+              sourceLabel="LinkedIn"
+              mode={windowMode}
+              onChange={(nextMode) => {
+                setWindowMode(nextMode);
+                setLiScraperWindowMode(nextMode);
               }}
-              description="Displays the LinkedIn browser window while syncing. Off by default. The window runs off-screen so WebKit renders at full speed without interrupting you."
             />
           </div>
         </details>

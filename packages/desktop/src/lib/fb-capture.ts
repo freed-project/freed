@@ -1,7 +1,7 @@
 /**
  * Facebook capture service (WebView-based)
  *
- * Triggers the Rust backend to navigate a hidden Tauri WebView to
+ * Triggers the Rust backend to navigate a Tauri WebView to
  * facebook.com, wait for the page to render, then inject an extraction
  * script that reads posts from the DOM. The extracted data is sent back
  * via Tauri event IPC ('fb-feed-data').
@@ -21,7 +21,7 @@ import {
 import type { FbGroupInfo, FeedItem } from "@freed/shared";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
-import { getFbScraperDebugWindow } from "./scraper-prefs";
+import { getFbScraperWindowMode } from "./scraper-prefs";
 import { storeFbAuthState } from "./fb-auth";
 
 // =============================================================================
@@ -88,7 +88,7 @@ function filterExcludedGroups(
 // =============================================================================
 
 /**
- * Trigger a scrape via the hidden WebView and wait for results.
+ * Trigger a scrape via the configured scraper window mode and wait for results.
  *
  * Flow:
  * 1. Register a listener for 'fb-feed-data' events
@@ -171,7 +171,7 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
     });
 
     // Trigger the Rust command
-    invoke("fb_scrape_feed", { showWindow: getFbScraperDebugWindow() }).catch((err) => {
+    invoke("fb_scrape_feed", { windowMode: getFbScraperWindowMode() }).catch((err) => {
       clearTimeout(timeout);
       unlisten?.();
       diag.errorStage = "invoke";
@@ -184,7 +184,7 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
 export async function captureFbGroups(): Promise<FbGroupInfo[]> {
   const store = useAppStore.getState();
   const groups = await invoke<FbGroupInfo[]>("fb_scrape_groups", {
-    showWindow: getFbScraperDebugWindow(),
+    windowMode: getFbScraperWindowMode(),
   });
 
   if (groups.length === 0) return groups;

@@ -1,45 +1,63 @@
 /**
- * Per-platform scraper debug preferences.
+ * Per-platform scraper window preferences.
  *
- * These are device-local flags that control whether the scraper WebView
- * window is shown on-screen (debug mode) or positioned off-screen during
- * feed extraction. They are stored in localStorage and intentionally NOT
- * synced via Automerge -- debug flags belong to the local machine only.
+ * These are device-local settings that control how each scraper WebView runs
+ * during feed extraction. They live in localStorage and are intentionally not
+ * synced, because window behavior is specific to the current machine.
  */
+
+export type ScraperWindowMode = "shown" | "cloaked" | "hidden";
+
+const DEFAULT_SCRAPER_WINDOW_MODE: ScraperWindowMode = "cloaked";
 
 const IG_KEY = "ig_scraper_debug_window";
 const FB_KEY = "fb_scraper_debug_window";
 const LI_KEY = "li_scraper_debug_window";
 
-export const getIgScraperDebugWindow = (): boolean =>
-  localStorage.getItem(IG_KEY) === "true";
-
-export const setIgScraperDebugWindow = (v: boolean): void => {
-  if (v) {
-    localStorage.setItem(IG_KEY, "true");
-  } else {
-    localStorage.removeItem(IG_KEY);
+function readMode(key: string): ScraperWindowMode {
+  const stored = localStorage.getItem(key);
+  if (stored === "shown" || stored === "cloaked" || stored === "hidden") {
+    return stored;
   }
-};
 
-export const getFbScraperDebugWindow = (): boolean =>
-  localStorage.getItem(FB_KEY) === "true";
-
-export const setFbScraperDebugWindow = (v: boolean): void => {
-  if (v) {
-    localStorage.setItem(FB_KEY, "true");
-  } else {
-    localStorage.removeItem(FB_KEY);
+  // Legacy migration: the old boolean flag only supported "shown" vs the
+  // default background mode. Any non-true legacy value falls back to cloaked.
+  if (stored === "true") {
+    return "shown";
   }
-};
 
-export const getLiScraperDebugWindow = (): boolean =>
-  localStorage.getItem(LI_KEY) === "true";
+  return DEFAULT_SCRAPER_WINDOW_MODE;
+}
 
-export const setLiScraperDebugWindow = (v: boolean): void => {
-  if (v) {
-    localStorage.setItem(LI_KEY, "true");
-  } else {
-    localStorage.removeItem(LI_KEY);
+function writeMode(key: string, mode: ScraperWindowMode): void {
+  if (mode === DEFAULT_SCRAPER_WINDOW_MODE) {
+    localStorage.removeItem(key);
+    return;
   }
-};
+
+  localStorage.setItem(key, mode);
+}
+
+export function getFbScraperWindowMode(): ScraperWindowMode {
+  return readMode(FB_KEY);
+}
+
+export function setFbScraperWindowMode(mode: ScraperWindowMode): void {
+  writeMode(FB_KEY, mode);
+}
+
+export function getIgScraperWindowMode(): ScraperWindowMode {
+  return readMode(IG_KEY);
+}
+
+export function setIgScraperWindowMode(mode: ScraperWindowMode): void {
+  writeMode(IG_KEY, mode);
+}
+
+export function getLiScraperWindowMode(): ScraperWindowMode {
+  return readMode(LI_KEY);
+}
+
+export function setLiScraperWindowMode(mode: ScraperWindowMode): void {
+  writeMode(LI_KEY, mode);
+}

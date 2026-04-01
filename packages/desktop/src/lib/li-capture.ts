@@ -1,7 +1,7 @@
 /**
  * LinkedIn capture service (WebView-based)
  *
- * Triggers the Rust backend to navigate a hidden Tauri WebView to
+ * Triggers the Rust backend to navigate a Tauri WebView to
  * linkedin.com/feed, wait for the page to render, then inject an extraction
  * script that reads posts from the DOM. The extracted data is sent back
  * via Tauri event IPC ('li-feed-data').
@@ -16,7 +16,7 @@ import {
 } from "@freed/capture-linkedin/browser";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
-import { getLiScraperDebugWindow } from "./scraper-prefs";
+import { getLiScraperWindowMode } from "./scraper-prefs";
 
 // =============================================================================
 // Rate Limiting
@@ -61,7 +61,7 @@ export interface LiSyncResult {
 // =============================================================================
 
 /**
- * Trigger a scrape via the hidden WebView and wait for results.
+ * Trigger a scrape via the configured scraper window mode and wait for results.
  *
  * Flow:
  * 1. Register a listener for 'li-feed-data' events
@@ -173,7 +173,7 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
     });
 
     // Trigger the Rust command
-    invoke("li_scrape_feed", { showWindow: getLiScraperDebugWindow() }).catch(
+    invoke("li_scrape_feed", { windowMode: getLiScraperWindowMode() }).catch(
       (err) => {
         clearTimeout(timeout);
         unlisten?.();
