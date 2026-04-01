@@ -115,6 +115,7 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 - Manifesto page
 - Roadmap page
 - Updates/blog with RSS feed
+- QR concept gallery page for fullscreen presentation links
 
 **Features:**
 
@@ -128,6 +129,7 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 - Glassmorphic dark theme
 - Full accessibility support (skip links, ARIA labels, focus states)
 - `prefers-reduced-motion` support
+- Public `/qr` gallery with five poster-style QR concepts for `freed.wtf`
 
 **Remaining Work:**
 

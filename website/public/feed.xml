@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0">
     <channel>
-        <title>Freed Updates</title>
+        <title>Freed Blog</title>
         <link>https://freed.wtf</link>
-        <description>Progress updates, technical deep-dives, and philosophical rants about the attention economy. From the team building Freed.</description>
-        <lastBuildDate>Tue, 03 Feb 2026 04:58:41 GMT</lastBuildDate>
+        <description>Progress reports, technical deep-dives, and philosophical rants about the attention economy. From the team building Freed.</description>
+        <lastBuildDate>Wed, 01 Apr 2026 04:33:24 GMT</lastBuildDate>
         <docs>https://validator.w3.org/feed/docs/rss2.html</docs>
         <generator>https://github.com/jpmonette/feed</generator>
         <language>en</language>
         <image>
-            <title>Freed Updates</title>
+            <title>Freed Blog</title>
             <url>https://freed.wtf/favicon.svg</url>
             <link>https://freed.wtf</link>
         </image>

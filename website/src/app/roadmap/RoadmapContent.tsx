@@ -455,7 +455,7 @@ const phases: Phase[] = [
     number: 1,
     title: "Foundation",
     description:
-      "Marketing site, monorepo, Automerge schema, CI/CD, and public legal docs with download clickwrap.",
+      "Marketing site, QR gallery, monorepo, Automerge schema, CI/CD, and public legal docs with download clickwrap.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-1-FOUNDATION.md",
