@@ -37,6 +37,50 @@ packages/capture-linkedin/
 
 ---
 
+### `@freed/capture-mozi`
+
+Private social planning network focused on trips, being-in-town windows, event attendance, and overlap signals.
+
+```
+packages/capture-mozi/
+├── src/
+│   ├── index.ts
+│   ├── extractor.ts      # Structured payload capture from authenticated WebView
+│   ├── selectors.ts      # DOM fallback selectors for visible cards and details
+│   ├── normalize.ts      # Mozi activity -> FeedItem
+│   └── types.ts
+├── package.json
+└── tsconfig.json
+```
+
+**Approach:**
+
+- Desktop-only authenticated source via Tauri WebView against `app.mozi.app`
+- Prefer structured network payloads or embedded page data when available
+- Fall back to DOM extraction only for fields the payload does not expose
+- Normalize plans, trips, event attendance, and other visible planning activity into unified `FeedItem` records
+
+**Why it matters:**
+
+- Mozi is not a generic content feed or an RSS source
+- The value is future-aware social planning data, not passive scrolling
+- Captured items should eventually power Friend identity, time-aware map playback, and derived overlap views
+
+**Desktop integration target:**
+
+- Sources settings section with login, auth check, disconnect, and sync actions
+- Sidebar source presence and source status indicator
+- Sync status panel parity with LinkedIn
+- Feed filtering parity with other desktop-authenticated sources
+
+**Challenges:**
+
+- Authenticated phone-based flow may require more brittle session handling than cookie-only providers
+- The most useful items are future-dated, which means downstream consumers need time-window semantics
+- Some overlap value is derived from multiple captured items and should not be persisted as canonical source content
+
+---
+
 ### `@freed/capture-tiktok`
 
 Short-form video feed.
@@ -192,19 +236,24 @@ packages/capture-youtube/
 | 12.3  | LinkedIn session management                | High       | ✓ Done |
 | 12.4  | LinkedIn desktop source integration        | Medium     | ✓ Done |
 | 12.5  | LinkedIn regression test coverage          | Medium     | ✓ Done |
-| 12.6  | `@freed/capture-tiktok` package scaffold   | Low        |        |
-| 12.7  | TikTok capture strategy research           | High       |
-| 12.8  | `@freed/capture-threads` package scaffold  | Low        |
-| 12.9  | Threads capture (similar to Instagram)     | Medium     |
-| 12.10 | `@freed/capture-bluesky` package scaffold  | Low        |
-| 12.11 | Bluesky AT Protocol client                 | Medium     |
-| 12.12 | Bluesky authentication flow                | Medium     |
-| 12.13 | `@freed/capture-reddit` package scaffold   | Low        |
-| 12.14 | Reddit OAuth setup                         | Medium     |
-| 12.15 | Reddit home feed capture                   | Medium     |
-| 12.16 | `@freed/capture-youtube` package scaffold  | Low        |
-| 12.17 | YouTube Data API integration               | Medium     |
-| 12.18 | YouTube subscriptions feed                 | Medium     |
+| 12.6  | `@freed/capture-mozi` package scaffold     | Low        |        |
+| 12.7  | Mozi auth and session flow research        | High       |        |
+| 12.8  | Mozi extraction strategy: payload first    | High       |        |
+| 12.9  | Mozi desktop source integration            | Medium     |        |
+| 12.10 | Mozi regression test coverage              | Medium     |        |
+| 12.11 | `@freed/capture-tiktok` package scaffold   | Low        |        |
+| 12.12 | TikTok capture strategy research           | High       |        |
+| 12.13 | `@freed/capture-threads` package scaffold  | Low        |        |
+| 12.14 | Threads capture (similar to Instagram)     | Medium     |        |
+| 12.15 | `@freed/capture-bluesky` package scaffold  | Low        |        |
+| 12.16 | Bluesky AT Protocol client                 | Medium     |        |
+| 12.17 | Bluesky authentication flow                | Medium     |        |
+| 12.18 | `@freed/capture-reddit` package scaffold   | Low        |        |
+| 12.19 | Reddit OAuth setup                         | Medium     |        |
+| 12.20 | Reddit home feed capture                   | Medium     |        |
+| 12.21 | `@freed/capture-youtube` package scaffold  | Low        |        |
+| 12.22 | YouTube Data API integration               | Medium     |        |
+| 12.23 | YouTube subscriptions feed                 | Medium     |        |
 
 ---
 
@@ -213,6 +262,9 @@ packages/capture-youtube/
 - [x] LinkedIn feed posts captured to FeedItem
 - [x] LinkedIn is visible in desktop Sources navigation and source status UI
 - [x] LinkedIn desktop flows have regression coverage in Playwright
+- [ ] Mozi activity captured to FeedItem with plans, trips, attendance, or overlap-adjacent events
+- [ ] Mozi is visible in desktop Sources navigation and source status UI
+- [ ] Mozi desktop flows have regression coverage in Playwright
 - [ ] TikTok feed captured (video metadata at minimum)
 - [ ] Threads posts captured to FeedItem
 - [ ] Bluesky timeline captured via AT Protocol
@@ -220,19 +272,21 @@ packages/capture-youtube/
 - [ ] YouTube subscriptions captured (beyond RSS)
 - [ ] Each platform handles its own rate limiting
 - [ ] Selector/API maintenance strategy per platform
+- [ ] Planning-oriented sources can surface future-dated activity without being forced through RSS assumptions
 
 ---
 
 ## Platform Comparison
 
-| Platform | Method      | Auth Required | API Quality | Difficulty |
-| -------- | ----------- | ------------- | ----------- | ---------- |
-| LinkedIn | DOM scrape  | Cookies       | N/A         | Very High  |
-| TikTok   | TBD         | TBD           | Limited     | Very High  |
-| Threads  | DOM scrape  | Cookies       | N/A         | High       |
-| Bluesky  | AT Protocol | App password  | Excellent   | Low        |
-| Reddit   | OAuth API   | OAuth         | Good        | Medium     |
-| YouTube  | Data API    | OAuth         | Good        | Medium     |
+| Platform | Method                | Auth Required | API Quality           | Difficulty | Primary Value |
+| -------- | --------------------- | ------------- | --------------------- | ---------- | ------------- |
+| LinkedIn | DOM scrape            | Cookies       | N/A                   | Very High  | Professional posts |
+| Mozi     | WebView payload + DOM | Phone session | Unknown / likely none | High       | Social planning, trips, overlaps |
+| TikTok   | TBD                   | TBD           | Limited               | Very High  | Short-form video feed |
+| Threads  | DOM scrape            | Cookies       | N/A                   | High       | Social posts |
+| Bluesky  | AT Protocol           | App password  | Excellent             | Low        | Timeline capture |
+| Reddit   | OAuth API             | OAuth         | Good                  | Medium     | Home feed beyond RSS |
+| YouTube  | Data API              | OAuth         | Good                  | Medium     | Subscriptions beyond RSS |
 
 ---
 
@@ -243,3 +297,5 @@ packages/capture-youtube/
 - Consider community contributions for selector maintenance
 - Bluesky is the most promising due to open protocol
 - API-based platforms (Bluesky, Reddit, YouTube) are more stable than DOM scraping
+- Mozi should be treated as a planning source, not squeezed into the RSS mental model
+- Mozi overlap views should be derived from captured items at read time, not stored as source-authored canonical records

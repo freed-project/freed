@@ -13,6 +13,8 @@ Clicking a friend zooms in to show a chronological timeline of everything they'v
 
 The geo map from the original Phase 8 design is retained as sub-phase 8D, now powered by Friend identities so pins cluster by person rather than by platform and render in Freed's dark purple visual language.
 
+This phase also becomes the home for future-aware social planning. Historical post locations still matter, but the map and friend timeline now need to handle future-dated place windows from sources like Mozi, plus derived overlap views when multiple friends are in the same place at the same time.
+
 ---
 
 ## Architecture
@@ -38,9 +40,10 @@ The geo map from the original Phase 8 design is retained as sub-phase 8D, now po
            │
            ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│                     8D: Location / Map View                       │
-│  FeedItems → location extraction → Nominatim geocoding           │
-│  → cache (IndexedDB) → MapLibre markers (latest pin per Friend)  │
+│                 8D: Location / Time-Aware Map View               │
+│  FeedItems + time windows → location extraction → Nominatim      │
+│  geocoding → cache → MapLibre markers (latest pin per Friend)    │
+│  → timeline scrubber → derived overlap views                     │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -153,12 +156,31 @@ Default nudge intervals by care level:
 ## 8D: Location / Map View
 
 ```
-FeedItems → extractLocationFromItem() → geocode() (Nominatim) → cache → MapLibre markers
+FeedItems → extractLocationFromItem() + optional time window → geocode() (Nominatim) → cache → MapLibre markers → timeline scrubber → derived overlap views
 ```
 
-Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare), text patterns ("📍 Paris"), **and IG/FB story location stickers** (Phase 7.11).
+Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare), text patterns ("📍 Paris"), **and IG/FB story location stickers** (Phase 7.11). Planned future sources such as Mozi add another class of signal: place windows that may sit in the future instead of the past.
 
 > **Note:** Stories cross-posted from Instagram to Facebook (or vice versa) currently create two separate FeedItems with different `globalId` prefixes (`ig:` vs `fb:`), which can produce duplicate map pins for the same location event. Phase 7.15 (cross-platform dedup) will address this by matching items with the same Friend identity + similar text + timestamps within a few minutes.
+
+### Planned time model
+
+- Historical posts still render as point-in-time events
+- Future-aware sources can attach a start and optional end time to a location-bearing item
+- The map defaults to `Now` but should be able to scrub backward and forward in time
+- Marker visibility is filtered by the selected time or time window, not just by "latest post wins"
+
+### Planned overlap model
+
+- Overlaps are derived at read time when multiple Friend-linked items share a place cluster and intersecting time windows
+- Overlaps are not persisted as canonical source content
+- Map popups and Friend detail surfaces can render overlaps as computed views on top of captured items
+
+### Planned source expansion
+
+- Mozi is the first explicit planning-oriented source for this phase
+- Mozi-backed friend/location events should participate in identity matching the same way Instagram, Facebook, and X items do
+- The map and timeline should not special-case Mozi in the long run. They should consume generic location-plus-time signals from any source
 
 ### Files
 
@@ -210,6 +232,10 @@ Map popovers now use a wider card layout and deliberately omit the old MapLibre 
 | 8.18 | Wire Friends to live sidebar navigation | Low | Done |
 | 8.19 | Google Contacts import, matching, and Friend creation flow | Medium | Done |
 | 8.20 | Wire Map to live sidebar navigation | Low | Done |
+| 8.21 | Add future-aware map filtering for location-bearing items | Medium | Not Started |
+| 8.22 | Add map timeline scrubber for past and future playback | Medium | Not Started |
+| 8.23 | Render derived overlap states in map and Friend detail surfaces | Medium | Not Started |
+| 8.24 | Support Mozi-backed friend/location events in identity and map flows | Medium | Not Started |
 
 ---
 
@@ -237,6 +263,10 @@ Map popovers now use a wider card layout and deliberately omit the old MapLibre 
 - [x] Sidebar shows live counts for Friends and recent friend location updates on Map
 - [ ] macOS native contact picker (CNContactStore)
 - [x] Map promoted to live sidebar navigation
+- [ ] Future-aware map filtering supports past, current, and future location windows
+- [ ] Timeline scrubbing works across historical posts and future planning items
+- [ ] Overlaps render as derived read-time views, not persisted source records
+- [ ] Mozi-backed friend/location events appear in Friend identity and map flows
 
 ---
 
