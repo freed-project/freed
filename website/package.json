@@ -8,7 +8,8 @@
   },
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build && npm run generate-feed",
+    "build": "npm run generate-changelog && next build && npm run generate-feed",
+    "generate-changelog": "npx tsx scripts/generate-changelog.ts",
     "start": "next start",
     "generate-feed": "npx tsx scripts/generate-feed.ts",
     "lint": "next lint"

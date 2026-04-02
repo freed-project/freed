@@ -2,7 +2,7 @@
 
 import { motion, useInView } from "framer-motion";
 import { useRef } from "react";
-import type { ParsedRelease } from "./page";
+import type { ParsedRelease } from "@/content/changelog";
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
