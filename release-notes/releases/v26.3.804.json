@@ -1,0 +1,52 @@
+{
+  "tag": "v26.3.804",
+  "version": "26.3.804",
+  "dayKey": "26.3.8",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:44:43.071Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.703",
+    "compareRef": "v26.3.804",
+    "prNumbers": [
+      113,
+      114,
+      115,
+      116,
+      117
+    ],
+    "commitSubjects": [
+      "release: v26.3.804",
+      "fix: restore tracing dependency versions and tighten release script",
+      "release: v26.3.803",
+      "fix: resolve TypeScript compile errors blocking release build (#117)",
+      "release: v26.3.802",
+      "fix: E2E social capture tests and post-migration perf baselines (#116)",
+      "release: v26.3.801",
+      "fix: remove accidentally committed node_modules symlinks and tsbuildinfo",
+      "release: v26.3.800",
+      "feat: add performance debug panel, FPS monitor, and perf benchmarking infrastructure (#115)",
+      "feat: seed X/Facebook/Instagram sample data and auto-seed in dev mode (#114)",
+      "refactor: update Sidebar and XSourceIndicator components for improved UI and functionality",
+      "docs: update freed-build-feature instructions to specify port management for PWA preview",
+      "docs: update Phase 7 with social engagement tasks and success criteria",
+      "feat: social engagement via outbox pattern (like, seen-sync, comment links) (#113)"
+    ]
+  },
+  "release": {
+    "summary": "Add performance debug panel, FPS monitor, and perf benchmarking infrastructure",
+    "whatsNew": [
+      "Add performance debug panel, FPS monitor, and perf benchmarking infrastructure",
+      "Sidebar purple dots, dev auto-seed, and social sample data",
+      "Social engagement via outbox pattern (like, seen-sync, comment links)"
+    ],
+    "fixes": [
+      "Restore tracing dependency versions and tighten release script",
+      "Fixed with double cast: window as unknown as Record<string, unknown>",
+      "E2E social capture tests and post-migration perf baselines"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.804\n\nAdd performance debug panel, FPS monitor, and perf benchmarking infrastructure\n\n### What's New\n\n- Add performance debug panel, FPS monitor, and perf benchmarking infrastructure\n- Sidebar purple dots, dev auto-seed, and social sample data\n- Social engagement via outbox pattern (like, seen-sync, comment links)\n\n### Fixes\n\n- Restore tracing dependency versions and tighten release script\n- Fixed with double cast: window as unknown as Record<string, unknown>\n- E2E social capture tests and post-migration perf baselines\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

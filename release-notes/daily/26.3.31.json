@@ -1,0 +1,21 @@
+{
+  "dayKey": "26.3.31",
+  "date": "2026-03-31",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [],
+  "editorialNotes": [],
+  "rollup": {
+    "summary": "Add legal consent gates across surfaces",
+    "whatsNew": [
+      "Add legal consent gates across surfaces",
+      "Finalize qr landing page experience"
+    ],
+    "fixes": [],
+    "performance": []
+  },
+  "updatedAt": "2026-04-02T02:45:14.001Z"
+}

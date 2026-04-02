@@ -1,0 +1,48 @@
+{
+  "tag": "v26.3.1001",
+  "version": "26.3.1001",
+  "dayKey": "26.3.10",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:44:57.799Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.1000",
+    "compareRef": "v26.3.1001",
+    "prNumbers": [
+      128,
+      132,
+      134,
+      137,
+      138,
+      139,
+      140
+    ],
+    "commitSubjects": [
+      "release: v26.3.1001",
+      "fix: prevent SectionContent from remounting on every SettingsDialog render (#140)",
+      "fix: resolve all desktop TypeScript errors (#139)",
+      "release: v26.3.1000",
+      "chore: clean up stale build artifacts and minor text fixes",
+      "feat: bookmarked items cannot be archived (#138)",
+      "chore: add Vercel scope guardrails to prevent accidental org deployments (#137)",
+      "fix: use opaque surface background on update toast (#128)",
+      "feat: archive toolbar with delete action and retention settings (#134)",
+      "fix: apply vite-plugin-wasm to worker bundle, stabilize X connect test (#132)"
+    ]
+  },
+  "release": {
+    "summary": "Bookmarked items cannot be archived",
+    "whatsNew": [
+      "Bookmarked items cannot be archived",
+      "Archive toolbar with delete action and retention settings"
+    ],
+    "fixes": [
+      "Resolve all desktop TypeScript errors",
+      "Clean up stale build artifacts and minor text fixes",
+      "Add Vercel scope guardrails to prevent accidental org deployments"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.1001\n\nBookmarked items cannot be archived\n\n### What's New\n\n- Bookmarked items cannot be archived\n- Archive toolbar with delete action and retention settings\n\n### Fixes\n\n- Resolve all desktop TypeScript errors\n- Clean up stale build artifacts and minor text fixes\n- Add Vercel scope guardrails to prevent accidental org deployments\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

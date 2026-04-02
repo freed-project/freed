@@ -1,0 +1,38 @@
+{
+  "tag": "v26.3.904",
+  "version": "26.3.904",
+  "dayKey": "26.3.9",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:44:49.973Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.903",
+    "compareRef": "v26.3.904",
+    "prNumbers": [
+      123,
+      124,
+      125,
+      126
+    ],
+    "commitSubjects": [
+      "release: v26.3.904",
+      "chore: sync package-lock.json after skills/ directory removal (#126)",
+      "fix: exclude draft releases from changelog commit boundary (#125)",
+      "fix: use previous published release as changelog commit boundary (#124)",
+      "feat: scraper debug window toggle for Instagram and Facebook (#123)"
+    ]
+  },
+  "release": {
+    "summary": "Scraper debug window toggle for Instagram and Facebook",
+    "whatsNew": [
+      "Scraper debug window toggle for Instagram and Facebook"
+    ],
+    "fixes": [
+      "Exclude draft releases from changelog commit boundary",
+      "Use previous published release as changelog commit boundary"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.904\n\nScraper debug window toggle for Instagram and Facebook\n\n### What's New\n\n- Scraper debug window toggle for Instagram and Facebook\n\n### Fixes\n\n- Exclude draft releases from changelog commit boundary\n- Use previous published release as changelog commit boundary\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

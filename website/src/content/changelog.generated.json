@@ -3,32 +3,27 @@
     "version": "26.4.108",
     "tagName": "v26.4.108",
     "date": "2026-04-02T01:45:29Z",
+    "summary": "Native macOS code signing for effortless installs",
     "features": [
       {
         "text": "Native macOS code signing for effortless installs"
       },
       {
-        "text": "Shared Friends map with friend-linked popovers and last-seen cards"
+        "text": "Add macOS codesigning to release pipeline"
       },
       {
-        "text": "Versioned legal consent gates across the website, PWA, and Freed Desktop"
-      },
-      {
-        "text": "Final Night Billboard QR poster route"
+        "text": "Pass the Apple signing and notarization environment variables through to tauri-action"
       }
     ],
     "fixes": [
       {
-        "text": "Desktop startup no longer gets stranded on a blank window during consent bootstrap"
+        "text": "Recycle social scraper webviews after each run"
       },
       {
-        "text": "Background scraper windows stay stable without flashing on screen"
+        "text": "Preserve same-day changelog details"
       },
       {
-        "text": "LinkedIn is now a first-class Freed Desktop source with sidebar and sync status support"
-      },
-      {
-        "text": "Shared settings toggles and scraper window modes cleaned up cross-surface desktop controls"
+        "text": "Snapshot website changelog releases"
       }
     ],
     "performance": [],
@@ -57,21 +52,19 @@
       "26.4.102",
       "26.4.101",
       "26.4.100"
-    ],
-    "summary": "Native macOS code signing lands alongside the new Friends map and stronger desktop startup reliability."
+    ]
   },
   {
     "version": "26.3.3100",
     "tagName": "v26.3.3100",
     "date": "2026-04-01T05:12:01Z",
+    "summary": "Add legal consent gates across surfaces",
     "features": [
       {
-        "text": "Adds a versioned legal consent system across the website, PWA, and Freed Desktop",
-        "prNumber": 150
+        "text": "Add legal consent gates across surfaces"
       },
       {
-        "text": "Finalizes the /qr route as a no-nav poster experience with the final Night Billboard design and updated roadmap/docs markers",
-        "prNumber": 151
+        "text": "Finalize qr landing page experience"
       }
     ],
     "fixes": [],
@@ -83,42 +76,30 @@
     ],
     "builds": [
       "26.3.3100"
-    ],
-    "summary": ""
+    ]
   },
   {
     "version": "26.3.2402",
     "tagName": "v26.3.2402",
     "date": "2026-03-25T04:11:35Z",
+    "summary": "Activate Friends view and add Google Contacts sync",
     "features": [
       {
-        "text": "Friends view is now live",
-        "prNumber": 133
+        "text": "Activate Friends view and add Google Contacts sync"
       },
       {
-        "text": "Adds @freed/capture-linkedin package with types (RawLiPost), DOM selectors, normalizer (RawLiPost → FeedItem), and rate-limiter (30 min base + 6 min jitter)",
-        "prNumber": 131
+        "text": "Add LinkedIn feed capture via WebView scraper"
       },
       {
-        "text": "Move full-card like, comment, save, archive, and open actions into the author-row action cluster",
-        "prNumber": 147
-      },
-      {
-        "text": "Adds a UpdateDownloadProgress type to PlatformConfig and exports it from @freed/ui/context",
-        "prNumber": 145
+        "text": "Overhaul feed card and reader actions"
       }
     ],
     "fixes": [
       {
-        "text": "Align the Facebook E2E flow with the current settings navigation before asserting connected state",
-        "prNumber": 148
+        "text": "Repair desktop e2e tauri event mocks"
       },
       {
-        "text": "Filter promoted or suggested feed pollution from X, Facebook, and Instagram",
-        "prNumber": 146
-      },
-      {
-        "text": "Further footer updates"
+        "text": "Filter polluted social feed items and add Facebook group filters"
       },
       {
         "text": "Adjust footer text formatting"
@@ -137,17 +118,16 @@
     "builds": [
       "26.3.2402",
       "26.3.2400"
-    ],
-    "summary": ""
+    ]
   },
   {
     "version": "26.3.1300",
     "tagName": "v26.3.1300",
     "date": "2026-03-13T14:44:55Z",
+    "summary": "Each scrape session randomly orders stories vs",
     "features": [
       {
-        "text": "Adds story scraping for Instagram and Facebook as part of the existing feed scrape session, feeding Phase 8D's friend location map with story location stickers",
-        "prNumber": 136
+        "text": "Each scrape session randomly orders stories vs"
       }
     ],
     "fixes": [],
@@ -158,23 +138,21 @@
     ],
     "builds": [
       "26.3.1300"
-    ],
-    "summary": ""
+    ]
   },
   {
     "version": "26.3.1200",
     "tagName": "v26.3.1200",
     "date": "2026-03-13T03:50:50Z",
+    "summary": "Most recent build for the day is used as the card header",
     "features": [
       {
-        "text": "Adds groupReleasesByDay() to the changelog server component that collapses all releases sharing the same CalVer day into a single card",
-        "prNumber": 143
+        "text": "Most recent build for the day is used as the card header"
       }
     ],
     "fixes": [
       {
-        "text": "Root cause: Scraper windows placed at (-20000, -20000) are still real macOS windows",
-        "prNumber": 144
+        "text": "Hide FB/IG scraper windows instead of moving them off-screen"
       }
     ],
     "performance": [],
@@ -185,23 +163,21 @@
     ],
     "builds": [
       "26.3.1200"
-    ],
-    "summary": ""
+    ]
   },
   {
     "version": "26.3.1101",
     "tagName": "v26.3.1101",
     "date": "2026-03-11T20:13:18Z",
+    "summary": "Add structured file logging and overnight-freeze timeout guards",
     "features": [
       {
-        "text": "Structured file logging via tauri-plugin-log: all Rust println!/eprintln!",
-        "prNumber": 141
+        "text": "Add structured file logging and overnight-freeze timeout guards"
       }
     ],
     "fixes": [
       {
-        "text": "OPML test DOMParser shim: bun test runs opml.test.ts but Bun's built-in DOMParser does not support application/xml",
-        "prNumber": 142
+        "text": "Clean CI test failures and automate PWA release deployment"
       }
     ],
     "performance": [],
@@ -213,66 +189,33 @@
     "builds": [
       "26.3.1101",
       "26.3.1100"
-    ],
-    "summary": ""
+    ]
   },
   {
     "version": "26.3.1002",
     "tagName": "v26.3.1002",
     "date": "2026-03-11T06:10:34Z",
-    "summary": "",
+    "summary": "Default reader view to dual-column mode",
     "features": [
       {
-        "text": "ToggleArchived now returns early when an item is saved -- bookmarked always wins, so the action is a no-op",
-        "prNumber": 138
+        "text": "Default reader view to dual-column mode"
       },
       {
-        "text": "Adds a sticky info toolbar to the top of the Archived view showing the current retention period (e.g",
-        "prNumber": 134
+        "text": "Add per-platform install warnings to download modal"
       },
       {
-        "text": "Changes the dualColumnMode preference default from false to true in the shared schema",
-        "prNumber": 135
-      },
-      {
-        "text": "MacOS: explains the app isn't codesigned and shows the xattr -cr /Applications/Freed.app Gatekeeper workaround",
-        "prNumber": 129
+        "text": "Bookmarked items cannot be archived"
       }
     ],
     "fixes": [
       {
-        "text": "SectionContent was defined as a nested function component inside SettingsDialog",
-        "prNumber": 140
-      },
-      {
-        "text": "Changed the index signature to any (matching vite's own signature) so import.meta.env.DEV, VITE_TEST_TAURI, etc",
-        "prNumber": 139
-      },
-      {
         "text": "Clean up stale build artifacts and minor text fixes"
-      },
-      {
-        "text": "Adds a rule to AGENTS.md requiring --scope aubreyfs-projects on every vercel deploy and vercel link invocation",
-        "prNumber": 137
-      },
-      {
-        "text": "UpdateNotification was using glass-card whose --bg-card is rgba(255,255,255,0.03) -- basically invisible when floated over colored content",
-        "prNumber": 128
-      },
-      {
-        "text": "Vite WASM (Vercel build fix): Vite 7 builds web workers through a separate pipeline that does not inherit top-level plugins",
-        "prNumber": 132
       },
       {
         "text": "Add worktree-add.sh wrapper for automatic node_modules setup"
       },
       {
-        "text": "Security fix: content-fetcher.ts and save-url.ts cached raw full-page HTML instead of the Readability-extracted article body",
-        "prNumber": 130
-      },
-      {
-        "text": "## What",
-        "prNumber": 127
+        "text": "Eliminate HTML injection in ReaderView, cache Readability output"
       }
     ],
     "performance": [],
@@ -300,47 +243,27 @@
     "version": "26.3.904",
     "tagName": "v26.3.904",
     "date": "2026-03-10T01:01:55Z",
+    "summary": "Scraper debug window toggle for Instagram and Facebook",
     "features": [
       {
-        "text": "Add per-platform \"Show scraper window\" debug toggles to the Instagram and Facebook settings sections (under a collapsible \"Advanced\" section, visible when",
-        "prNumber": 123
+        "text": "Scraper debug window toggle for Instagram and Facebook"
       },
       {
-        "text": "FB/IG macOS WebViews get Safari UAs; X always gets Chrome",
-        "prNumber": 119
+        "text": "Anti-detection hardening for social media capture"
       },
       {
-        "text": "Subtitle: \"Even death stars have an exhaust vent.\" Fetches GitHub Releases API with 1hr ISR so it auto-updates when new builds ship",
-        "prNumber": 118
+        "text": "Changelog page, remove frosted glass, fix update banner"
       }
     ],
     "fixes": [
       {
-        "text": "Syncs package-lock.json to reflect the removal of the skills/ directory",
-        "prNumber": 126
+        "text": "Exclude draft releases from changelog commit boundary"
       },
       {
-        "text": "The backfill script fetched all GitHub releases (including drafts) when building the boundary set, causing draft releases from failed builds to be used as",
-        "prNumber": 125
+        "text": "Use previous published release as changelog commit boundary"
       },
       {
-        "text": "Fixes changelog entries silently dropping features developed during failed build attempts",
-        "prNumber": 124
-      },
-      {
-        "text": "Rquest (used for X API requests) links BoringSSL statically as its TLS implementation",
-        "prNumber": 122
-      },
-      {
-        "text": "UA selection for Facebook happens in fb-auth.ts at connect time (showFbLogin calls selectPlatformUA)",
-        "prNumber": 121
-      },
-      {
-        "text": "The anti-detection hardening PR (#119) stripped packages/capture-x/package.json down to just a typecheck script (no build) since the package now only exports",
-        "prNumber": 120
-      },
-      {
-        "text": "Hide scraper window after FB scrape, stop stealing focus on IG scrape"
+        "text": "Switch reqwest and tauri-plugin-updater to rustls-tls"
       }
     ],
     "performance": [],
@@ -359,25 +282,22 @@
     "builds": [
       "26.3.904",
       "26.3.903"
-    ],
-    "summary": ""
+    ]
   },
   {
     "version": "26.3.804",
     "tagName": "v26.3.804",
     "date": "2026-03-09T03:27:30Z",
+    "summary": "Add performance debug panel, FPS monitor, and perf benchmarking infrastructure",
     "features": [
       {
-        "text": "Adds a live FPS monitor (rAF-based) visible in the debug panel's new Performance tab, with sparkline, p95 frame time, dropped frame count, and long-task",
-        "prNumber": 115
+        "text": "Add performance debug panel, FPS monitor, and perf benchmarking infrastructure"
       },
       {
-        "text": "Connection indicator dots in the sidebar are now small, subtle purple dots (6px, bg-[#8b5cf6]/50) instead of large green ones, and sit just right of the label",
-        "prNumber": 114
+        "text": "Sidebar purple dots, dev auto-seed, and social sample data"
       },
       {
-        "text": "Outbox pattern for platform write-back: User intent (like, mark-read) is recorded in Automerge immediately on any device",
-        "prNumber": 113
+        "text": "Social engagement via outbox pattern (like, seen-sync, comment links)"
       }
     ],
     "fixes": [
@@ -385,18 +305,10 @@
         "text": "Restore tracing dependency versions and tighten release script"
       },
       {
-        "text": "Two TypeScript compile errors blocking the v26.3.802 release build on all four platforms",
-        "prNumber": 117
+        "text": "Fixed with double cast: window as unknown as Record<string, unknown>"
       },
       {
-        "text": "Caused all social settings tests to see the connected state instead of the disconnected state they assert on",
-        "prNumber": 116
-      },
-      {
-        "text": "Remove accidentally committed node_modules symlinks and tsbuildinfo"
-      },
-      {
-        "text": "Update Sidebar and XSourceIndicator components for improved UI and functionality"
+        "text": "E2E social capture tests and post-migration perf baselines"
       }
     ],
     "performance": [],
@@ -410,72 +322,33 @@
     ],
     "builds": [
       "26.3.804"
-    ],
-    "summary": ""
+    ]
   },
   {
     "version": "26.3.703",
     "tagName": "v26.3.703",
     "date": "2026-03-08T05:30:11Z",
+    "summary": "Scrapes only the \"Following\" feed (?variant=following) with defensive DOM filtering to exclude suggested,",
     "features": [
       {
-        "text": "Adds full Instagram feed capture using the same WebView-based architecture as the existing Facebook integration",
-        "prNumber": 111
+        "text": "Scrapes only the \"Following\" feed (?variant=following) with defensive DOM filtering to exclude suggested,"
       },
       {
         "text": "Add freed-ship-build command"
       },
       {
-        "text": "Scroll to top on source change: FeedList now resets scroll position when activeFilter changes, so switching sources in the sidebar always starts at the top",
-        "prNumber": 108
-      },
-      {
-        "text": "Replaces the single-item ReaderThumbnail left panel with a full virtualized feed list of square compact cards that mirror the main feed",
-        "prNumber": 107
-      },
-      {
-        "text": "X scraper fix: Updated stale GraphQL query IDs, corrected timeline response parsing to handle the data wrapper, added proper user-agent header",
-        "prNumber": 106
-      },
-      {
-        "text": "Replaces the manual cookie-pasting flow (DevTools > Application > Cookies) with a native WebView login window at x.com",
-        "prNumber": 105
-      },
-      {
-        "text": "Adds \"Populate sample data\" button in Settings > Danger Zone that seeds 10 RSS feeds and 100 items (80 RSS, 20 bookmarks) for regression testing",
-        "prNumber": 104
-      },
-      {
-        "text": "Add freed-build-feature command documentation"
-      },
-      {
-        "text": "Adds a two-column reader layout: clicking a card in dual-column mode shows a compact thumbnail on the left (author, title, preview, hero image) and the full",
-        "prNumber": 102
-      },
-      {
-        "text": "Injects window.__TAURI_INTERNALS__ via page.addInitScript() before page load, so the full React app boots in plain Chromium without a running Tauri binary",
-        "prNumber": 98
+        "text": "UI polish bundle - tooltips, hover states, scroll reset, save fix, sidebar counts"
       }
     ],
     "fixes": [
       {
-        "text": "Prefixes the unused state parameter with _ in recordSuccess() in packages/capture-instagram/src/rate-limit.ts",
-        "prNumber": 112
+        "text": "Prefix unused state param in capture-instagram rate-limit"
       },
       {
-        "text": "} }) broke",
-        "prNumber": 110
+        "text": "Desktop build errors in x-capture and fb-capture"
       },
       {
-        "text": "TimelineResponse had a redundant data wrapper that conflicted with XApiResponse<T> which already provides the data envelope",
-        "prNumber": 109
-      },
-      {
-        "text": "Archive cache invalidation: Added archivedCount to the sort cache key in the desktop store's hydrateFromDoc",
-        "prNumber": 103
-      },
-      {
-        "text": "Merge: keep v26.3.601 over concurrent version bump"
+        "text": "Archive cache staleness + scroll-read visibility model"
       }
     ],
     "performance": [],
@@ -497,13 +370,13 @@
     "builds": [
       "26.3.703",
       "26.3.702"
-    ],
-    "summary": ""
+    ]
   },
   {
     "version": "26.3.601",
     "tagName": "v26.3.601",
     "date": "2026-03-06T22:40:26Z",
+    "summary": "Double-cast window through unknown to satisfy strict TS in mock files",
     "features": [],
     "fixes": [
       {
@@ -512,8 +385,7 @@
     ],
     "performance": [
       {
-        "text": "Bootstrap desktop E2E Playwright test suite (Chromium, no native Tauri binary required) with comprehensive performance benchmarks across cold load, scroll,",
-        "prNumber": 101
+        "text": "Fix focus mode showing raw HTML brackets from RSS feed descriptions"
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.601",
@@ -522,61 +394,22 @@
     ],
     "builds": [
       "26.3.601"
-    ],
-    "summary": ""
+    ]
   },
   {
     "version": "26.3.504",
     "tagName": "v26.3.504",
     "date": "2026-03-05T18:19:48Z",
+    "summary": "Add X sync pipeline instrumentation and integration tests",
     "features": [
       {
-        "text": "Replaces the silent \"All caught up\" failure with a per-stage diagnostic panel in Settings > Sources > X that shows bytes received, instructions found, tweets",
-        "prNumber": 96
+        "text": "Add X sync pipeline instrumentation and integration tests"
       },
       {
-        "text": "Adds X settings page to the PWA under Settings > Sources > X, showing synced post count + last sync time when X content is present, and a download CTA when",
-        "prNumber": 83
+        "text": "Add PWA X settings page and fix duplicate search clear button"
       },
       {
-        "text": "X connection/disconnect/sync is now a dedicated page under Settings > Sources > X, alongside Feeds and Saved Content",
-        "prNumber": 80
-      },
-      {
-        "text": "All 5 GraphQL query IDs were stale - updated to current values from [TwitterInternalAPIDocument](https://github.com/fa0311/TwitterInternalAPIDocument)",
-        "prNumber": 79
-      },
-      {
-        "text": "Search bar now fills the full header center region (no max-w cap) with reduced contrast: transparent background, subtle white/6 border, soft focus ring",
-        "prNumber": 77
-      },
-      {
-        "text": "Adds a Mark read on scroll toggle to the reader settings section (default: on)",
-        "prNumber": 78
-      },
-      {
-        "text": "Replaces the narrow SettingsPanel bottom sheet with a full two-column SettingsDialog",
-        "prNumber": 75
-      },
-      {
-        "text": "+ New dropdown: Replaced the \\+ Add Feed\\ button in the top bar with a \\+ New\\ dropdown containing \\RSS Feed\\ (existing \\AddFeedDialog\\) and \\Saved Content\\",
-        "prNumber": 59
-      },
-      {
-        "text": "Adds a persistent search bar to the header that queries every FeedItem field (body text, link headlines, author name/handle, feed title, preserved article text",
-        "prNumber": 58
-      },
-      {
-        "text": "Expands Phase 8 from a single geo-map stub into a full Friend CRM with four sub-phases: identity layer, force-directed social graph, friend detail panel with",
-        "prNumber": 57
-      },
-      {
-        "text": "Fix broken Archived view: showArchived was renamed to archivedOnly with correct filter semantics",
-        "prNumber": 56
-      },
-      {
-        "text": "Rewrote manifesto with four named sections (Problem, Pact, Solution, Believe), shorter sentences, empowering \"Freed on your side\" framing, and updated Go",
-        "prNumber": 50
+        "text": "Move X connection to Settings > Sources > X page"
       }
     ],
     "fixes": [
@@ -584,121 +417,15 @@
         "text": "Update Header component layout and spacing"
       },
       {
-        "text": "X 422 GRAPHQL_VALIDATION_FAILED: The HomeLatestTimeline endpoint expects GET with variables/features as URL query params, not POST with a JSON body",
-        "prNumber": 97
+        "text": "Center feed cards to match skeleton layout"
       },
       {
-        "text": "Feed cards were left-aligned on wide viewports because mx-auto has no effect on absolutely-positioned elements with left: 0 pinned",
-        "prNumber": 95
-      },
-      {
-        "text": "Packages/desktop/src-tauri/.cargo/config.toml had target-dir = \"/Users/aubreyfalconer/.cargo/freed-target\"",
-        "prNumber": 94
-      },
-      {
-        "text": "Six pre-existing TypeScript errors were blocking the Release Desktop App workflow on all platforms",
-        "prNumber": 93
-      },
-      {
-        "text": "FollowingEntry.content in types.ts was missing value?: string and cursorType?: \"Top\" | \"Bottom\"",
-        "prNumber": 92
-      },
-      {
-        "text": "AddRssFeed, updateRssFeed, and updateFeedItem in schema.ts now call stripUndefined before writing to the Automerge proxy",
-        "prNumber": 91
-      },
-      {
-        "text": "Sidebar section header buttons (SOURCES, LIBRARY, FEEDS) were rendering at 32px while source/feed items were 34px",
-        "prNumber": 89
-      },
-      {
-        "text": "Automerge's CRDT proxy throws on any undefined assignment since it's not a valid JSON value -- this was the root cause of the crash seen during bulk import",
-        "prNumber": 87
-      },
-      {
-        "text": "Header: search hidden on mobile, right padding reduced to pr-1 to visually balance the logo margin, sync button outline removed",
-        "prNumber": 86
-      },
-      {
-        "text": "Verified via browser automation: gap-2 (8px) left only ~3px of visual clearance between the FREED logo and the search input border",
-        "prNumber": 85
-      },
-      {
-        "text": "Removes asymmetric legacy offsets (-ml-2, ml-1 md:ml-0, px-3 on search wrapper) so every gap in the toolbar row comes from a single source: the container's",
-        "prNumber": 84
-      },
-      {
-        "text": "CSS @import order bug — both pwa/src/index.css and desktop/src/index.css placed @import \"../../ui/src/index.css\" after the @tailwind directives",
-        "prNumber": 82
-      },
-      {
-        "text": "Replaced the activeSection === \"updates\" auto-check trigger with a dedicated IntersectionObserver on the \"Check for updates\" button container",
-        "prNumber": 81
-      },
-      {
-        "text": "Enhance Ulysses Mode and Manifesto content for clarity and impact"
-      },
-      {
-        "text": "Creates packages/ui/src/index.css as the single source of truth for all design-system global classes",
-        "prNumber": 76
-      },
-      {
-        "text": "Init flash (both platforms): isLoading now starts as true in both stores",
-        "prNumber": 74
-      },
-      {
-        "text": "Window.__TAURI__.core.invoke is not typed with generics in the Tauri v2 type declarations, causing TS2558: Expected 0 type arguments, but got 1 and five",
-        "prNumber": 73
-      },
-      {
-        "text": "Capture-save/package.json: Switched exports from gitignored dist/.js files to src/.ts source directly",
-        "prNumber": 72
-      },
-      {
-        "text": "| File | Change | |------|--------| | \\src/lib/pwa-updater.ts\\ | Added \\startPeriodicUpdateCheck()\\ -- fires \\checkForPwaUpdate()\\ every hour | |",
-        "prNumber": 71
-      },
-      {
-        "text": "Add worktree cleanup script and squash-merge guardrails to AGENTS.md"
-      },
-      {
-        "text": "Update lockfile after installing plugin-fs and plugin-store"
-      },
-      {
-        "text": "Catch up all worktree branches to main"
-      },
-      {
-        "text": "Tighten intro post, manifesto, and CONTRIBUTING copy"
-      },
-      {
-        "text": "On mobile (< 768px), html/body now allow document-level scrolling instead of being overflow: hidden. Desktop behavior unchanged",
-        "prNumber": 48
-      },
-      {
-        "text": "Adds an isActive helper that matches both exact paths and sub-routes (e.g. /updates stays active on /updates/introducing-freed)",
-        "prNumber": 52
-      },
-      {
-        "text": "Added \\target=\"_blank\" rel=\"noopener noreferrer\"\\ to Star the repo, Try the PWA, and Contribute links in the introducing-freed post",
-        "prNumber": 51
-      },
-      {
-        "text": "Rewrote manifesto for punch and empowerment: tighter prose, \"we\" framing throughout, sections consolidated to single paragraphs, removed self-referential",
-        "prNumber": 49
+        "text": "Stop Automerge undefined writes from crashing RSS and X sync"
       }
     ],
     "performance": [
       {
-        "text": "Every third-party article URL CORS-blocks in the browser, so the spinner never stopped",
-        "prNumber": 100
-      },
-      {
-        "text": "Removes the full-screen black spinner on startup. The app shell and skeleton feed cards appear immediately on first paint",
-        "prNumber": 90
-      },
-      {
-        "text": "## Problem",
-        "prNumber": 55
+        "text": "Fix feed reader lockup and move PWA Automerge to a Web Worker"
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.504",
@@ -745,91 +472,33 @@
       "26.3.504",
       "26.3.503",
       "26.3.502"
-    ],
-    "summary": ""
+    ]
   },
   {
     "version": "26.3.303",
     "tagName": "v26.3.303",
     "date": "2026-03-04T00:57:10Z",
+    "summary": "Replace emoji sidebar icons with white SVG icons",
     "features": [
       {
-        "text": "All icons use currentColor so they inherit the parent text color automatically",
-        "prNumber": 46
+        "text": "Replace emoji sidebar icons with white SVG icons"
       },
       {
-        "text": "Bulk Unsubscribe (Feeds > Manage tab): \"Remove all N feeds…\" button with a confirmation dialog",
-        "prNumber": 39
+        "text": "Improved UX flow and visual polish in the SyncConnectDialog component in the PWA"
       },
       {
-        "text": "Enables RSS feed subscription from the PWA — user enters a URL, a stub entry is written to the Automerge CRDT doc, and the desktop poller heals it (title, icon",
-        "prNumber": 38
-      },
-      {
-        "text": "Improved UX flow and visual polish in the SyncConnectDialog component in the PWA",
-        "prNumber": 35
-      },
-      {
-        "text": "Adds a /privacy route to the marketing website with a full privacy policy page",
-        "prNumber": 32
+        "text": "Add privacy policy page"
       }
     ],
     "fixes": [
       {
-        "text": "PWA updates were silently broken: skipWaiting: true in the Workbox config caused new service workers to skip the waiting phase entirely, so onNeedRefresh",
-        "prNumber": 47
+        "text": "Fix update detection and move HTTPS warning before QR/manual forms"
       },
       {
-        "text": "The existing network-based heal in refreshAllFeeds continues to run and upgrades hostname titles to real XML <title> values",
-        "prNumber": 45
+        "text": "Startup feed-name healing, toolbar height, window drag"
       },
       {
-        "text": "The Tauri OAuth callback server now races both IPv4 and IPv6 loopback listeners so macOS browsers that resolve \\localhost\\ → \\::1\\ still complete the flow",
-        "prNumber": 44
-      },
-      {
-        "text": "Root cause: PWA's SyncConnectDialog had bespoke inline cloud provider buttons labelled \"Connect Dropbox\" / \"Connect Google Drive\"",
-        "prNumber": 43
-      },
-      {
-        "text": "## What",
-        "prNumber": 42
-      },
-      {
-        "text": "## Problem",
-        "prNumber": 41
-      },
-      {
-        "text": "Data-tauri-drag-region must be present on every element Tauri should treat as a drag target — CSS attribute inheritance does not apply to HTML attributes",
-        "prNumber": 40
-      },
-      {
-        "text": "Update Cargo.lock"
-      },
-      {
-        "text": "Remove unused CloudProvider import from MobileSyncTab"
-      },
-      {
-        "text": "Add OAuth client IDs to release workflow, adjust traffic light position"
-      },
-      {
-        "text": "The fix from last night had two silent failure modes that left feeds stuck as \"Untitled Feed\" even after a successful sync",
-        "prNumber": 37
-      },
-      {
-        "text": "Rewrites the Google OAuth proxy API route as a Node.js Lambda (req/res style) to fix Cloudflare Edge blocking oauth2.googleapis.com",
-        "prNumber": 36
-      },
-      {
-        "text": "Unread count in toolbar header now formats via toLocaleString() (e.g. 1,234 in en-US)",
-        "prNumber": 34
-      },
-      {
-        "text": "On sync, desktop app now re-fetches live XML to recover missing feed titles that were previously stored as untitled",
-        "prNumber": 31
-      },
-      {
-        "text": "Establish squash-merge policy across AGENTS.md and CONTRIBUTING.md"
+        "text": "Fix OAuth redirect URI, Google Drive client secret, and offline status"
       }
     ],
     "performance": [],
@@ -856,32 +525,22 @@
       "26.3.303",
       "26.3.302",
       "26.3.300"
-    ],
-    "summary": ""
+    ]
   },
   {
     "version": "26.3.200",
     "tagName": "v26.3.200",
     "date": "2026-03-03T15:54:05Z",
+    "summary": "Cloud Sync is now the default tab when the Connect to Desktop dialog opens (was Manual)",
     "features": [
       {
-        "text": "Cloud Sync is now the default tab when the Connect to Desktop dialog opens (was Manual)",
-        "prNumber": 27
+        "text": "Cloud Sync is now the default tab when the Connect to Desktop dialog opens (was Manual)"
       },
       {
-        "text": "Adds /privacy to the marketing site at freed.wtf/privacy",
-        "prNumber": 16
+        "text": "Sync section explains user-owned cloud storage + passphrase encryption"
       },
       {
         "text": "MDNS discovery, cloud file sync + desktop cloud sync"
-      },
-      {
-        "text": "| File | Change | |---|---| | packages/pwa/src/lib/debug-store.ts | New — Zustand store, 16 event kinds, window.__freed escape hatch | |",
-        "prNumber": 8
-      },
-      {
-        "text": "Relay now rejects any WebSocket connection that doesn't present a valid ?t=<token> in the upgrade URI — so only devices that physically scanned the QR code",
-        "prNumber": 6
       }
     ],
     "fixes": [
@@ -893,54 +552,6 @@
       },
       {
         "text": "Inline parseCookieString, switch x-auth to /browser imports"
-      },
-      {
-        "text": "Add browser-safe subpath export to isolate Node-only code"
-      },
-      {
-        "text": "Add sideEffects:false to enable Rollup tree-shaking"
-      },
-      {
-        "text": "Remove stale .data wrapper on TimelineResponse"
-      },
-      {
-        "text": "Build capture-rss and capture-x before desktop release"
-      },
-      {
-        "text": "Mark cloud sync complete — GDrive + Dropbox OAuth confirmed on production"
-      },
-      {
-        "text": "Rewrite Google OAuth proxy as Node.js Lambda (req/res style)"
-      },
-      {
-        "text": "Bypass service worker for API routes; add catch to OAuth exchange"
-      },
-      {
-        "text": "Comprehensive audit and cleanup of logical systems the desktop was reimplementing inline rather than consuming from the existing shared packages",
-        "prNumber": 13
-      },
-      {
-        "text": "## Root Cause",
-        "prNumber": 12
-      },
-      {
-        "text": "Desktop (sm+): replaces the full-screen modal overlay with a 320px push drawer that slides in from the right edge; <main> shrinks naturally via flex layout",
-        "prNumber": 11
-      },
-      {
-        "text": "Format unread count in the Header toolbar button with toLocaleString() so US users see 2,401 instead of 2401",
-        "prNumber": 10
-      },
-      {
-        "text": "Introduces packages/ui as a new platform-agnostic React UI layer (@freed/ui), replacing the architectural violation where @freed/desktop imported components",
-        "prNumber": 7
-      },
-      {
-        "text": "Adds a ## Git Workflow section to AGENTS.md codifying the worktree pattern, branch naming convention, Conventional Commits table, and squash-merge",
-        "prNumber": 9
-      },
-      {
-        "text": "Update freed-desktop version to 26.3.104 in Cargo.lock"
       }
     ],
     "performance": [],
@@ -959,13 +570,13 @@
     ],
     "builds": [
       "26.3.200"
-    ],
-    "summary": ""
+    ]
   },
   {
     "version": "26.3.104",
     "tagName": "v26.3.104",
     "date": "2026-03-02T05:30:02Z",
+    "summary": "Move X connect UI from sidebar into feed blank state",
     "features": [
       {
         "text": "Move X connect UI from sidebar into feed blank state"
@@ -975,102 +586,22 @@
       },
       {
         "text": "Sync button opens status popover instead of immediate refresh"
-      },
-      {
-        "text": "PR adds a cross-platform update system, fixes the CalVer versioning scheme, and delivers a batch of UI polish fixes",
-        "prNumber": 4
-      },
-      {
-        "text": "UI polish — settings cleanup, sync unification, sidebar refinements"
-      },
-      {
-        "text": "UI overhaul — unified header, draggable sidebar, modal consistency"
-      },
-      {
-        "text": "Add early-build disclaimer and clarify app vs desktop roles"
-      },
-      {
-        "text": "Deep-linkable /get modal, restore tooltip, disable subscribe"
-      },
-      {
-        "text": "Direct platform downloads with override dropdown"
-      },
-      {
-        "text": "Redesign Get Freed modal with app links and downloads"
       }
     ],
     "fixes": [
       {
-        "text": "Rename sidebar-scroll → minimal-scroll, apply to feed content area"
-      },
-      {
-        "text": "Deduplicate historical feed items and add link-URL secondary dedup index"
-      },
-      {
-        "text": "Parse <guid>/<id> for stable dedup keys, guard docAddFeedItem against clobbering"
+        "text": "Rename sidebar-scroll to minimal-scroll, apply to feed content area"
       },
       {
         "text": "Hide logo in desktop mobile-layout to clear macOS traffic lights"
       },
       {
         "text": "Add top padding to first card in feed list"
-      },
-      {
-        "text": "Reader toolbar full-width layout and macOS inset constant"
-      },
-      {
-        "text": "RSS feed persistence: Automerge v2 rejects undefined property values during A.change()",
-        "prNumber": 5
-      },
-      {
-        "text": "Fix tab strip alignment in AddFeedDialog"
-      },
-      {
-        "text": "Fix hero vertical centering and desktop text alignment"
-      },
-      {
-        "text": "Fix iOS keyboard occlusion and bottom viewport gap"
-      },
-      {
-        "text": "IPhone safe-area gaps, desktop sync→settings, traffic light alignment"
-      },
-      {
-        "text": "Auto-publish release after all builds complete"
-      },
-      {
-        "text": "Full iPhone mobile compatibility"
-      },
-      {
-        "text": "Read version from package.json instead of npm_package_version"
-      },
-      {
-        "text": "Newsletter modal subscribe button scrunched on mobile"
-      },
-      {
-        "text": "Use case/esac instead of bash 4 associative arrays"
-      },
-      {
-        "text": "Include PWA sources in desktop Tailwind content scan"
-      },
-      {
-        "text": "Use YY.M.D CalVer to stay within MSI 255 major version limit"
-      },
-      {
-        "text": "Revert \"release: v2026.3.1\""
-      },
-      {
-        "text": "Update release.sh for CalVer and PWA version lockstep"
-      },
-      {
-        "text": "Unify PWA and Desktop UI components via PlatformContext"
       }
     ],
     "performance": [
       {
         "text": "Lazy-load images, drop backdrop-filter blur, add scroll gutter"
-      },
-      {
-        "text": "Eliminate redundant re-renders on feed list scroll"
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.104",
@@ -1084,14 +615,13 @@
       "26.3.102",
       "26.3.101",
       "26.3.100"
-    ],
-    "summary": ""
+    ]
   },
   {
     "version": "0.2.0",
     "tagName": "v0.2.0",
     "date": "2026-03-02T01:16:53Z",
-    "summary": "",
+    "summary": "Auto-update system, release pipeline, and distribution",
     "features": [
       {
         "text": "Auto-update system, release pipeline, and distribution"
@@ -1101,78 +631,6 @@
       },
       {
         "text": "Add sandbox settings to settings.local.json"
-      },
-      {
-        "text": "Add @freed/capture-facebook and @freed/capture-instagram packages"
-      },
-      {
-        "text": "Mark all as read + unread count in desktop header"
-      },
-      {
-        "text": "Feed management tab, improved empty state, fix unused import"
-      },
-      {
-        "text": "Per-feed RSS sidebar with unread counts in desktop app"
-      },
-      {
-        "text": "Per-feed RSS sidebar with unread counts and feed URL filtering"
-      },
-      {
-        "text": "Focus mode (bionic reading) in desktop ReaderView"
-      },
-      {
-        "text": "Expand desktop SettingsPanel with ranking weights and display prefs"
-      },
-      {
-        "text": "Keyboard navigation in desktop app FeedView"
-      },
-      {
-        "text": "Mark all as read + unread count in PWA header"
-      },
-      {
-        "text": "Keyboard navigation (j/k/Enter), mark-as-read on open, roadmap fix"
-      },
-      {
-        "text": "Background RSS polling + fix desktop TypeScript errors"
-      },
-      {
-        "text": "Settings panel with ranking sliders, compact mode, engagement counts"
-      },
-      {
-        "text": "Add QR scanner to SyncConnectDialog"
-      },
-      {
-        "text": "Virtual scrolling, focus mode, service worker, system tray, content"
-      },
-      {
-        "text": "OPML import/export, PWA reader-only architecture, Vite 7 WASM fix"
-      },
-      {
-        "text": "Add dynamic background gradients and iOS Safari fixes"
-      },
-      {
-        "text": "Make architecture diagram responsive with larger mobile icons"
-      },
-      {
-        "text": "Redesign roadmap page with animated architecture diagram"
-      },
-      {
-        "text": "Add pull-to-refresh and toast notifications"
-      },
-      {
-        "text": "Add settings panel and sync connection dialog"
-      },
-      {
-        "text": "Add WebSocket sync relay server in Rust"
-      },
-      {
-        "text": "Add Automerge persistence and sync client"
-      },
-      {
-        "text": "Add X/Twitter capture integration"
-      },
-      {
-        "text": "Add Automerge persistence and native RSS fetching"
       }
     ],
     "fixes": [
@@ -1184,375 +642,6 @@
       },
       {
         "text": "Resolve WASM patch, signing key, and macOS codesign issues"
-      },
-      {
-        "text": "Switch from bun to npm and drop empty signing password"
-      },
-      {
-        "text": "Revert(website): restore original CTA buttons"
-      },
-      {
-        "text": "Correct NSIS installMode location and Windows tsc resolution"
-      },
-      {
-        "text": "Resolve release workflow build failures"
-      },
-      {
-        "text": "Layout overhaul — viewport fill, internal scroll, sidebar polish"
-      },
-      {
-        "text": "Sidebar feeds list scrolls internally, app fills viewport"
-      },
-      {
-        "text": "Update button text and comment out motion paragraph"
-      },
-      {
-        "text": "Clarify doc update rule in AGENTS.md"
-      },
-      {
-        "text": "Tighten and simplify AGENTS.md formatting"
-      },
-      {
-        "text": "Tighten doc update rule in AGENTS.md"
-      },
-      {
-        "text": "Correct double-cast in toggleSaved to satisfy TypeScript strict checks"
-      },
-      {
-        "text": "Sync pipeline, X capture wiring, save quick action on cards"
-      },
-      {
-        "text": "Wire onAddFeed and hasFeedsSubscribed props from FeedView"
-      },
-      {
-        "text": "Update local Claude settings"
-      },
-      {
-        "text": "Replace GitHub Pages with Vercel deployment"
-      },
-      {
-        "text": "Unify duplicated code between desktop and PWA"
-      },
-      {
-        "text": "Simplify BackgroundGradients with single-element composite"
-      },
-      {
-        "text": "FREED > FREEDme"
-      },
-      {
-        "text": "Simplify layout and remove iOS Safari workarounds"
-      },
-      {
-        "text": "Enhance iOS Safari compatibility with background adjustments"
-      },
-      {
-        "text": "IOS Safari viewport height with svh/dvh cascade"
-      },
-      {
-        "text": "Move safe area handling to layout wrapper"
-      },
-      {
-        "text": "IOS Safari safe area support + remove parallax"
-      },
-      {
-        "text": "Restore html/body background for iOS Safari compatibility"
-      },
-      {
-        "text": "Honest copy and interaction affordances"
-      },
-      {
-        "text": "IOS Safari bottom bar floats over page gradients"
-      },
-      {
-        "text": "Allow iOS Safari bottom bar to float over page gradients"
-      },
-      {
-        "text": "Update mobile navigation border visibility"
-      },
-      {
-        "text": "Update descriptions in HowItWorks component for clarity"
-      },
-      {
-        "text": "Refactor nav underline for horizontal-only animation"
-      },
-      {
-        "text": "Remove test PNG files"
-      },
-      {
-        "text": "Polish navigation with animated underline and tooltip tail"
-      },
-      {
-        "text": "Reduce curvature of PWA connector line in architecture diagram"
-      },
-      {
-        "text": "Hide hub label on mobile in architecture diagram"
-      },
-      {
-        "text": "Fix noise texture DPR scaling and tone down gradient colors"
-      },
-      {
-        "text": "Balance and increase whitespace on updates page"
-      },
-      {
-        "text": "Increase background gradient vibrancy and ensure above-fold color"
-      },
-      {
-        "text": "Update HowItWorks for desktop-first architecture"
-      },
-      {
-        "text": "Polish updates page UI and copy"
-      },
-      {
-        "text": "Add iOS Safari safe area support for edge-to-edge display"
-      },
-      {
-        "text": "Update feature icons with cleaner designs"
-      },
-      {
-        "text": "Change phase card hover to zoom instead of slide"
-      },
-      {
-        "text": "Use Floating UI for cursor-following tooltip"
-      },
-      {
-        "text": "Make mobile menu background solid to match navbar"
-      },
-      {
-        "text": "Improve footer mobile layout with more padding and centered text"
-      },
-      {
-        "text": "Add IntelliJ run configurations"
-      },
-      {
-        "text": "Center connector dots between HowItWorks cards"
-      },
-      {
-        "text": "Make navbar opaque on mobile for iOS Safari chrome match"
-      },
-      {
-        "text": "Update branding language across documentation and website to replace \"engagement metrics\" with \"algos\""
-      },
-      {
-        "text": "Add Vercel artifacts to gitignore"
-      },
-      {
-        "text": "Set correct output directory for Next.js build"
-      },
-      {
-        "text": "Explicitly set nextjs framework in vercel.json"
-      },
-      {
-        "text": "Remove GitHub Pages 404.html that breaks Vercel routing"
-      },
-      {
-        "text": "Enhance footer link hover effect"
-      },
-      {
-        "text": "Standardize branding to title case \"Freed\" except logo"
-      },
-      {
-        "text": "Apply formatting to docs and package CSS"
-      },
-      {
-        "text": "Consolidate app directory into src/app"
-      },
-      {
-        "text": "Update typography: Manrope body, Space Grotesk logo"
-      },
-      {
-        "text": "Ignore playwright-mcp debug artifacts"
-      },
-      {
-        "text": "Sync documentation with updated formatting guidelines for all task lists and example code."
-      },
-      {
-        "text": "Rewrite AGENTS.md for signal density"
-      },
-      {
-        "text": "Align with marketing site design system"
-      },
-      {
-        "text": "Add AGENTS.md and update Phase 1 status with remaining TODOs"
-      },
-      {
-        "text": "Switch to pnpm for Vercel builds"
-      },
-      {
-        "text": "Add Linux native binaries as optional deps for Vercel"
-      },
-      {
-        "text": "Fix newsletter docs: Vercel Edge Function, not Cloudflare Worker"
-      },
-      {
-        "text": "Add standalone package-lock.json for Vercel build"
-      },
-      {
-        "text": "Fix Vercel build: regenerate lockfile and add engines field"
-      },
-      {
-        "text": "Add desktop app, PWA, sync layer, and capture packages"
-      },
-      {
-        "text": "Switch newsletter infrastructure to Vercel Edge Functions"
-      },
-      {
-        "text": "Add Phase 1 & 2 implementation plans"
-      },
-      {
-        "text": "Add Roadmap and Updates pages with RSS feed"
-      },
-      {
-        "text": "Codify architectural decisions across phase docs"
-      },
-      {
-        "text": "Restore emojis to features list"
-      },
-      {
-        "text": "Split Phase 0-2 into Phase 1 (Foundation) and Phase 2 (Capture Skills)"
-      },
-      {
-        "text": "Simplify features section to bullet list"
-      },
-      {
-        "text": "Simplify architecture diagram in README"
-      },
-      {
-        "text": "Add Phase 11 for OpenClaw integration, renumber phases"
-      },
-      {
-        "text": "Add Phase 11 for additional platforms, clarify capture layers"
-      },
-      {
-        "text": "Streamline roadmap to high-level navigation document"
-      },
-      {
-        "text": "Make cloud encryption optional enhancement in Phase 4"
-      },
-      {
-        "text": "Split execution plan into individual phase documents"
-      },
-      {
-        "text": "Reprioritize phases: Desktop App is top priority"
-      },
-      {
-        "text": "Restructure roadmap phases"
-      },
-      {
-        "text": "Simplify sync architecture, add Phase 5 Desktop App"
-      },
-      {
-        "text": "Refactor type definitions and improve formatting in capture-x skill"
-      },
-      {
-        "text": "- Update README formatting for better readability and consistency - Change \"Coming Soon\" and \"Planned\" sections to italic for uniformity"
-      },
-      {
-        "text": "Restore emojis to README and add planned platform roadmap"
-      },
-      {
-        "text": "Update README with current architecture and implementation"
-      },
-      {
-        "text": "Add X capture modes: mirror, whitelist, mirror_blacklist"
-      },
-      {
-        "text": "Update TODO roadmap: correct spacing in PWA features section"
-      },
-      {
-        "text": "Update roadmap: fix diagram alignment, mark Phase 1-2 complete"
-      },
-      {
-        "text": "Add package-lock.json for reproducible builds"
-      },
-      {
-        "text": "Add capture-rss OpenClaw skill"
-      },
-      {
-        "text": "Add @freed/capture-rss: RSS/Atom feed capture"
-      },
-      {
-        "text": "Add capture-x OpenClaw skill"
-      },
-      {
-        "text": "Add @freed/capture-x: X/Twitter GraphQL capture"
-      },
-      {
-        "text": "Add CI workflow for package builds and linting"
-      },
-      {
-        "text": "Add @freed/shared: core types and Automerge schema"
-      },
-      {
-        "text": "Initialize monorepo with npm workspaces"
-      },
-      {
-        "text": "Add unified master roadmap for FREED architecture"
-      },
-      {
-        "text": "Update hero copy and trim WTF phrases"
-      },
-      {
-        "text": "UI polish: layout constraints, icons, and animation refinements"
-      },
-      {
-        "text": "Refactor particle animation: physics simulation with cleaner code"
-      },
-      {
-        "text": "Enlarge hero animation on desktop: wider layout, larger animation column"
-      },
-      {
-        "text": "Increase hero animation size to max-w-4xl"
-      },
-      {
-        "text": "Redesign hero animation with spiral particle effect"
-      },
-      {
-        "text": "Remove Reddit logo from animation"
-      },
-      {
-        "text": "Stationary logos with slow spin, particles from fixed positions"
-      },
-      {
-        "text": "Position social logos outside the dashed ring"
-      },
-      {
-        "text": "Spiral particles emerge from platform logos"
-      },
-      {
-        "text": "Remove TikTok/Threads, slow random rotation, larger ring"
-      },
-      {
-        "text": "Restore working radar animation with all platforms"
-      },
-      {
-        "text": "Enhanced hero radar animation with spirals"
-      },
-      {
-        "text": "Add rotating hero text: Feed/Life/Mind"
-      },
-      {
-        "text": "Scroll to top on page navigation"
-      },
-      {
-        "text": "Hide scroll indicator on tablet layout"
-      },
-      {
-        "text": "Fix GitHub links to point to repo"
-      },
-      {
-        "text": "Fix TypeScript type import for ReactNode"
-      },
-      {
-        "text": "Add email newsletter signup modal"
-      },
-      {
-        "text": "Deploy to GitHub Pages with custom domain"
-      },
-      {
-        "text": "Add responsive design for mobile and tablet"
-      },
-      {
-        "text": "Initial commit: FREED marketing site and documentation"
       }
     ],
     "performance": [

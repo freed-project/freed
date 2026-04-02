@@ -1,0 +1,45 @@
+{
+  "tag": "v26.3.300",
+  "version": "26.3.300",
+  "dayKey": "26.3.3",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:43:54.943Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.200",
+    "compareRef": "v26.3.300",
+    "prNumbers": [
+      31,
+      32,
+      34,
+      35,
+      36
+    ],
+    "commitSubjects": [
+      "release: v26.3.300",
+      "fix(pwa/api): rewrite Google OAuth proxy as Node.js Lambda (#36)",
+      "feat(pwa): polish SyncConnectDialog UX (#35)",
+      "fix(header): locale-aware unread count formatting + agent number formatting rule (#34)",
+      "feat(website): add privacy policy page (#32)",
+      "fix(desktop): heal untitled feed titles from live XML on sync (#31)",
+      "Merge branch 'main' of github.com:freed-project/freed",
+      "docs: add crash recovery note to phase 10, expand phase 11 with Omi integration (#30)",
+      "chore: establish squash-merge policy across AGENTS.md and CONTRIBUTING.md"
+    ]
+  },
+  "release": {
+    "summary": "Improved UX flow and visual polish in the SyncConnectDialog component in the PWA",
+    "whatsNew": [
+      "Improved UX flow and visual polish in the SyncConnectDialog component in the PWA",
+      "Add privacy policy page"
+    ],
+    "fixes": [
+      "Rewrites the Google OAuth proxy API route as a Node",
+      "Locale-aware unread count formatting and number formatting rule",
+      "Heal untitled feed titles from live XML on sync"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.300\n\nImproved UX flow and visual polish in the SyncConnectDialog component in the PWA\n\n### What's New\n\n- Improved UX flow and visual polish in the SyncConnectDialog component in the PWA\n- Add privacy policy page\n\n### Fixes\n\n- Rewrites the Google OAuth proxy API route as a Node\n- Locale-aware unread count formatting and number formatting rule\n- Heal untitled feed titles from live XML on sync\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

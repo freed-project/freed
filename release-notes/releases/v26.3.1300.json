@@ -1,0 +1,29 @@
+{
+  "tag": "v26.3.1300",
+  "version": "26.3.1300",
+  "dayKey": "26.3.13",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:45:06.790Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.1200",
+    "compareRef": "v26.3.1300",
+    "prNumbers": [
+      136
+    ],
+    "commitSubjects": [
+      "release: v26.3.1300",
+      "feat: add IG/FB story scraping interleaved with feed scrolling (#136)"
+    ]
+  },
+  "release": {
+    "summary": "Each scrape session randomly orders stories vs",
+    "whatsNew": [
+      "Each scrape session randomly orders stories vs"
+    ],
+    "fixes": [],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.1300\n\nEach scrape session randomly orders stories vs\n\n### What's New\n\n- Each scrape session randomly orders stories vs\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

@@ -1,0 +1,33 @@
+{
+  "tag": "v26.3.2402",
+  "version": "26.3.2402",
+  "dayKey": "26.3.24",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:45:11.777Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.2400",
+    "compareRef": "v26.3.2402",
+    "prNumbers": [
+      133,
+      148
+    ],
+    "commitSubjects": [
+      "release: v26.3.2402",
+      "feat: activate Friends view and add Google Contacts sync (#133)",
+      "fix: repair desktop e2e tauri event mocks (#148)"
+    ]
+  },
+  "release": {
+    "summary": "Activate Friends view and add Google Contacts sync",
+    "whatsNew": [
+      "Activate Friends view and add Google Contacts sync"
+    ],
+    "fixes": [
+      "Repair desktop e2e tauri event mocks"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.2402\n\nActivate Friends view and add Google Contacts sync\n\n### What's New\n\n- Activate Friends view and add Google Contacts sync\n\n### Fixes\n\n- Repair desktop e2e tauri event mocks\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

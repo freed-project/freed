@@ -1,0 +1,65 @@
+{
+  "tag": "v26.3.200",
+  "version": "26.3.200",
+  "dayKey": "26.3.2",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:43:51.690Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.104",
+    "compareRef": "v26.3.200",
+    "prNumbers": [
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      16,
+      27
+    ],
+    "commitSubjects": [
+      "fix(capture-rss): cast rdf.channel before spread in browser.ts",
+      "fix(capture-rss): add browser entry with fast-xml-parser parseFeedXml",
+      "feat(pwa): polish SyncConnectDialog UX (#27)",
+      "fix(desktop): inline parseCookieString, switch x-auth to /browser imports",
+      "fix(capture-x): add browser-safe subpath export to isolate Node-only code",
+      "fix(capture-x): add sideEffects:false to enable Rollup tree-shaking",
+      "fix(desktop): remove stale .data wrapper on TimelineResponse",
+      "release: v26.3.200",
+      "fix(ci): build capture-rss and capture-x before desktop release",
+      "docs(phase-4): mark cloud sync complete — GDrive + Dropbox OAuth confirmed on production",
+      "fix(pwa/api): rewrite Google OAuth proxy as Node.js Lambda (req/res style)",
+      "fix(pwa): bypass service worker for API routes; add catch to OAuth exchange",
+      "feat(website): add privacy policy page (#16)",
+      "feat: mDNS discovery, cloud file sync + desktop cloud sync",
+      "refactor: eliminate cross-package code duplication (#13)",
+      "fix(desktop): heal untitled feed titles from live XML on sync (#12)",
+      "style(debug): convert DebugPanel to right-edge push drawer on desktop (#11)",
+      "fix(header): locale-aware unread count formatting + agent number formatting rule (#10)",
+      "feat(debug): comprehensive sync debug mode + QR connection diagnostics (#8)",
+      "refactor: extract @freed/ui — break pwa/desktop coupling (#7)",
+      "chore: establish squash-merge policy across AGENTS.md and CONTRIBUTING.md (#9)",
+      "feat(sync): secure desktop ↔ mobile pairing with 256-bit token (#6)",
+      "chore: update freed-desktop version to 26.3.104 in Cargo.lock"
+    ]
+  },
+  "release": {
+    "summary": "Cloud Sync is now the default tab when the Connect to Desktop dialog opens (was Manual)",
+    "whatsNew": [
+      "Cloud Sync is now the default tab when the Connect to Desktop dialog opens (was Manual)",
+      "Sync section explains user-owned cloud storage + passphrase encryption",
+      "MDNS discovery, cloud file sync + desktop cloud sync"
+    ],
+    "fixes": [
+      "Cast rdf.channel before spread in browser.ts",
+      "Add browser entry with fast-xml-parser parseFeedXml",
+      "Inline parseCookieString, switch x-auth to /browser imports"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.200\n\nCloud Sync is now the default tab when the Connect to Desktop dialog opens (was Manual)\n\n### What's New\n\n- Cloud Sync is now the default tab when the Connect to Desktop dialog opens (was Manual)\n- Sync section explains user-owned cloud storage + passphrase encryption\n- MDNS discovery, cloud file sync + desktop cloud sync\n\n### Fixes\n\n- Cast rdf.channel before spread in browser.ts\n- Add browser entry with fast-xml-parser parseFeedXml\n- Inline parseCookieString, switch x-auth to /browser imports\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

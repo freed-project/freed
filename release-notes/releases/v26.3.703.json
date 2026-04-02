@@ -1,0 +1,33 @@
+{
+  "tag": "v26.3.703",
+  "version": "26.3.703",
+  "dayKey": "26.3.7",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:44:39.050Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.702",
+    "compareRef": "v26.3.703",
+    "prNumbers": [
+      111,
+      112
+    ],
+    "commitSubjects": [
+      "fix: prefix unused state param in capture-instagram rate-limit (#112)",
+      "release: v26.3.703",
+      "feat: add Instagram integration via Tauri WebView scraping (#111)"
+    ]
+  },
+  "release": {
+    "summary": "Scrapes only the \"Following\" feed (?variant=following) with defensive DOM filtering to exclude suggested,",
+    "whatsNew": [
+      "Scrapes only the \"Following\" feed (?variant=following) with defensive DOM filtering to exclude suggested,"
+    ],
+    "fixes": [
+      "Prefix unused state param in capture-instagram rate-limit"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.703\n\nScrapes only the \"Following\" feed (?variant=following) with defensive DOM filtering to exclude suggested,\n\n### What's New\n\n- Scrapes only the \"Following\" feed (?variant=following) with defensive DOM filtering to exclude suggested,\n\n### Fixes\n\n- Prefix unused state param in capture-instagram rate-limit\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

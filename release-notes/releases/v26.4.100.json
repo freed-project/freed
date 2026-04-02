@@ -1,0 +1,27 @@
+{
+  "tag": "v26.4.100",
+  "version": "26.4.100",
+  "dayKey": "26.4.1",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:45:15.347Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.3100",
+    "compareRef": "v26.4.100",
+    "prNumbers": [],
+    "commitSubjects": [
+      "release: v26.4.100",
+      "feat: add macOS codesigning to release pipeline"
+    ]
+  },
+  "release": {
+    "summary": "Add macOS codesigning to release pipeline",
+    "whatsNew": [
+      "Add macOS codesigning to release pipeline"
+    ],
+    "fixes": [],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.100\n\nAdd macOS codesigning to release pipeline\n\n### What's New\n\n- Add macOS codesigning to release pipeline\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

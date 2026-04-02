@@ -1,0 +1,34 @@
+{
+  "tag": "v26.3.103",
+  "version": "26.3.103",
+  "dayKey": "26.3.1",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:43:44.352Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.102",
+    "compareRef": "v26.3.103",
+    "prNumbers": [
+      5
+    ],
+    "commitSubjects": [
+      "release: v26.3.103",
+      "fix: RSS feed persistence, platform capability honesty, desktop UI polish (#5)",
+      "fix(pwa): fix tab strip alignment in AddFeedDialog",
+      "fix(website): fix hero vertical centering and desktop text alignment",
+      "fix(pwa): fix iOS keyboard occlusion and bottom viewport gap"
+    ]
+  },
+  "release": {
+    "summary": "RSS feed persistence, platform capability honesty, desktop UI polish",
+    "whatsNew": [],
+    "fixes": [
+      "RSS feed persistence, platform capability honesty, desktop UI polish",
+      "Fix tab strip alignment in AddFeedDialog",
+      "Fix hero vertical centering and desktop text alignment"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.103\n\nRSS feed persistence, platform capability honesty, desktop UI polish\n\n### Fixes\n\n- RSS feed persistence, platform capability honesty, desktop UI polish\n- Fix tab strip alignment in AddFeedDialog\n- Fix hero vertical centering and desktop text alignment\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

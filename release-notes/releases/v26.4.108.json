@@ -1,0 +1,35 @@
+{
+  "tag": "v26.4.108",
+  "version": "26.4.108",
+  "dayKey": "26.4.1",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:45:29.639Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.4.107",
+    "compareRef": "v26.4.108",
+    "prNumbers": [
+      167,
+      168,
+      169
+    ],
+    "commitSubjects": [
+      "release: v26.4.108",
+      "fix: recycle social scraper webviews after each run (#169)",
+      "fix: preserve same-day changelog details (#168)",
+      "fix: snapshot website changelog releases (#167)"
+    ]
+  },
+  "release": {
+    "summary": "Recycle social scraper webviews after each run",
+    "whatsNew": [],
+    "fixes": [
+      "Recycle social scraper webviews after each run",
+      "Preserve same-day changelog details",
+      "Snapshot website changelog releases"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.108\n\nRecycle social scraper webviews after each run\n\n### Fixes\n\n- Recycle social scraper webviews after each run\n- Preserve same-day changelog details\n- Snapshot website changelog releases\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

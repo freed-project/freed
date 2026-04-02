@@ -1,0 +1,43 @@
+{
+  "tag": "v26.3.504",
+  "version": "26.3.504",
+  "dayKey": "26.3.5",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:44:26.721Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.503",
+    "compareRef": "v26.3.504",
+    "prNumbers": [
+      95,
+      96,
+      97,
+      100
+    ],
+    "commitSubjects": [
+      "release: v26.3.504",
+      "Merge branch 'main' of github.com:freed-project/freed",
+      "style: update Header component layout and spacing",
+      "perf: fix feed reader lockup and move PWA Automerge to a Web Worker (#100)",
+      "docs: document desktop E2E Playwright testing workflow in AGENTS.md (#99)",
+      "fix: switch X API to GET, update feature flags, grant fs caps (#97)",
+      "feat: add X sync pipeline instrumentation and integration tests (#96)",
+      "fix: center feed cards to match skeleton layout (#95)"
+    ]
+  },
+  "release": {
+    "summary": "Add X sync pipeline instrumentation and integration tests",
+    "whatsNew": [
+      "Add X sync pipeline instrumentation and integration tests"
+    ],
+    "fixes": [
+      "Update Header component layout and spacing",
+      "Center feed cards to match skeleton layout"
+    ],
+    "performance": [
+      "Fix feed reader lockup and move PWA Automerge to a Web Worker"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.504\n\nAdd X sync pipeline instrumentation and integration tests\n\n### What's New\n\n- Add X sync pipeline instrumentation and integration tests\n\n### Performance\n\n- Fix feed reader lockup and move PWA Automerge to a Web Worker\n\n### Fixes\n\n- Update Header component layout and spacing\n- Center feed cards to match skeleton layout\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

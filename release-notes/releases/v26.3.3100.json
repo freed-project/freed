@@ -1,0 +1,32 @@
+{
+  "tag": "v26.3.3100",
+  "version": "26.3.3100",
+  "dayKey": "26.3.31",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:45:14.000Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.2402",
+    "compareRef": "v26.3.3100",
+    "prNumbers": [
+      150,
+      151
+    ],
+    "commitSubjects": [
+      "release: v26.3.3100",
+      "[codex] feat: add legal consent gates across surfaces (#150)",
+      "feat: finalize qr landing page experience (#151)"
+    ]
+  },
+  "release": {
+    "summary": "Add legal consent gates across surfaces",
+    "whatsNew": [
+      "Add legal consent gates across surfaces",
+      "Finalize qr landing page experience"
+    ],
+    "fixes": [],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.3100\n\nAdd legal consent gates across surfaces\n\n### What's New\n\n- Add legal consent gates across surfaces\n- Finalize qr landing page experience\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

@@ -1,0 +1,22 @@
+{
+  "dayKey": "26.3.6",
+  "date": "2026-03-06",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [],
+  "editorialNotes": [],
+  "rollup": {
+    "summary": "Double-cast window through unknown to satisfy strict TS in mock files",
+    "whatsNew": [],
+    "fixes": [
+      "Double-cast window through unknown to satisfy strict TS in mock files"
+    ],
+    "performance": [
+      "Fix focus mode showing raw HTML brackets from RSS feed descriptions"
+    ]
+  },
+  "updatedAt": "2026-04-02T02:44:28.470Z"
+}

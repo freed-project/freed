@@ -1,0 +1,58 @@
+{
+  "tag": "v26.3.702",
+  "version": "26.3.702",
+  "dayKey": "26.3.7",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:44:35.765Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.601",
+    "compareRef": "v26.3.702",
+    "prNumbers": [
+      98,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+      110
+    ],
+    "commitSubjects": [
+      "release: v26.3.702",
+      "fix: desktop build errors in x-capture and fb-capture (#110)",
+      "feat: add freed-ship-build command",
+      "release: v26.3.701",
+      "fix: remove redundant data wrapper from TimelineResponse type (#109)",
+      "release: v26.3.700",
+      "feat: UI polish bundle - tooltips, hover states, scroll reset, save fix, sidebar counts (#108)",
+      "feat: overhaul dual-column split view (#107)",
+      "feat: add X and Facebook scrapers with Tauri WebView capture (#106)",
+      "feat: replace manual cookie entry with native X login window (#105)",
+      "feat: add sample data seeding + fix PWA build and Automerge worker (#104)",
+      "feat: add freed-build-feature command documentation",
+      "feat: add dual-column reading mode (#102)",
+      "fix: archive cache staleness + scroll-read visibility model (#103)",
+      "merge: keep v26.3.601 over concurrent version bump",
+      "feat: add Playwright e2e smoke test infrastructure for desktop (#98)"
+    ]
+  },
+  "release": {
+    "summary": "Add freed-ship-build command",
+    "whatsNew": [
+      "Add freed-ship-build command",
+      "UI polish bundle - tooltips, hover states, scroll reset, save fix, sidebar counts",
+      "Overhaul dual-column split view"
+    ],
+    "fixes": [
+      "Desktop build errors in x-capture and fb-capture",
+      "Archive cache staleness + scroll-read visibility model",
+      "Merge: keep v26.3.601 over concurrent version bump"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.702\n\nAdd freed-ship-build command\n\n### What's New\n\n- Add freed-ship-build command\n- UI polish bundle - tooltips, hover states, scroll reset, save fix, sidebar counts\n- Overhaul dual-column split view\n\n### Fixes\n\n- Desktop build errors in x-capture and fb-capture\n- Archive cache staleness + scroll-read visibility model\n- Merge: keep v26.3.601 over concurrent version bump\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

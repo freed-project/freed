@@ -1,0 +1,29 @@
+{
+  "tag": "v26.3.1101",
+  "version": "26.3.1101",
+  "dayKey": "26.3.11",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:45:02.470Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.1100",
+    "compareRef": "v26.3.1101",
+    "prNumbers": [
+      142
+    ],
+    "commitSubjects": [
+      "release: v26.3.1101",
+      "fix: clean CI test failures and automate PWA release deployment (#142)"
+    ]
+  },
+  "release": {
+    "summary": "Clean CI test failures and automate PWA release deployment",
+    "whatsNew": [],
+    "fixes": [
+      "Clean CI test failures and automate PWA release deployment"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.1101\n\nClean CI test failures and automate PWA release deployment\n\n### Fixes\n\n- Clean CI test failures and automate PWA release deployment\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

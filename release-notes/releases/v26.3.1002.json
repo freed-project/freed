@@ -1,0 +1,24 @@
+{
+  "tag": "v26.3.1002",
+  "version": "26.3.1002",
+  "dayKey": "26.3.10",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:44:58.996Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.1001",
+    "compareRef": "v26.3.1002",
+    "prNumbers": [],
+    "commitSubjects": [
+      "release: v26.3.1002"
+    ]
+  },
+  "release": {
+    "summary": "",
+    "whatsNew": [],
+    "fixes": [],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.1002\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

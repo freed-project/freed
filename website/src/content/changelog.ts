@@ -25,15 +25,53 @@ interface GitHubRelease {
   prerelease: boolean;
 }
 
-function filterGenericItems(items: ReleaseItem[]): ReleaseItem[] {
-  if (items.length <= 1) {
-    return items;
+const SECTION_LIMITS = {
+  features: 3,
+  fixes: 3,
+  performance: 1,
+} as const;
+
+function normalizeReleaseText(text: string): string {
+  return text
+    .replace(/[—–]/g, ", ")
+    .replace(/→/g, " to ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isLowSignalReleaseText(text: string): boolean {
+  const normalized = normalizeReleaseText(text).toLowerCase();
+
+  if (!normalized) {
+    return true;
   }
 
-  return items.filter((item) => {
-    const text = item.text.trim().toLowerCase();
-    return text !== "bug fixes and improvements" && text !== "bug fixes and improvements.";
-  });
+  if (
+    normalized === "bug fixes and improvements" ||
+    normalized === "bug fixes and improvements." ||
+    normalized.startsWith("no behavior change") ||
+    normalized.startsWith("prerequisite cleanup") ||
+    normalized.startsWith("minor text fixes") ||
+    normalized.startsWith("further ") ||
+    normalized.startsWith("this was ") ||
+    normalized.startsWith("this is ") ||
+    normalized.startsWith("this change ") ||
+    normalized.startsWith("the primary reason ")
+  ) {
+    return true;
+  }
+
+  return /\b(api returned errors|blocked the release|internal cleanup|package-lock\.json|tsconfig|App\.tsx|SettingsDialog|tsc\b|docaddfeeditem|followingentry\.content|fs caps|dedup index|chrome default "peanuts"|api to get)\b/i.test(
+    normalized,
+  );
+}
+
+function filterGenericItems(items: ReleaseItem[]): ReleaseItem[] {
+  return items.filter((item) => !isLowSignalReleaseText(item.text));
+}
+
+function limitItems(items: ReleaseItem[], limit: number): ReleaseItem[] {
+  return items.slice(0, limit);
 }
 
 function dedupeItems(items: ReleaseItem[]): ReleaseItem[] {
@@ -91,6 +129,8 @@ export function parseReleaseBody(body: string): {
         .replace(/\*\*([^*]+)\*\*/g, "$1")
         .replace(/\*([^*]+)\*/g, "$1")
         .replace(/`([^`]+)`/g, "$1")
+        .replace(/[—–]/g, ", ")
+        .replace(/→/g, " to ")
         .trim();
 
       const prMatch = text.match(/\(#(\d+)\)$/) ?? text.match(/#(\d+)$/);
@@ -100,7 +140,7 @@ export function parseReleaseBody(body: string): {
         .replace(/\s*#\d+$/, "")
         .trim();
 
-      return { text: cleanText, prNumber };
+      return { text: normalizeReleaseText(cleanText), prNumber };
     });
 
     if (heading.includes("new") || heading.includes("feat")) {
@@ -179,10 +219,17 @@ export function groupReleasesByDay(releases: ParsedRelease[]): ParsedRelease[] {
     return {
       ...head,
       summary: head.summary ?? "",
-      features: dedupeItems(allReleases.flatMap((release) => release.features)),
-      fixes: dedupeItems(allReleases.flatMap((release) => release.fixes)),
-      performance: dedupeItems(
-        allReleases.flatMap((release) => release.performance),
+      features: limitItems(
+        dedupeItems(allReleases.flatMap((release) => release.features)),
+        SECTION_LIMITS.features,
+      ),
+      fixes: limitItems(
+        dedupeItems(allReleases.flatMap((release) => release.fixes)),
+        SECTION_LIMITS.fixes,
+      ),
+      performance: limitItems(
+        dedupeItems(allReleases.flatMap((release) => release.performance)),
+        SECTION_LIMITS.performance,
       ),
       prNumbers: [
         ...new Set(allReleases.flatMap((release) => release.prNumbers)),
