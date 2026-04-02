@@ -48,6 +48,12 @@ export interface PlatformConfig {
   store: AppStoreHook;
 
   /**
+   * Controls whether feed cards eagerly render remote media previews.
+   * Desktop can force reader-only mode to reduce WebKit renderer pressure.
+   */
+  feedMediaPreviews?: "inline" | "reader-only";
+
+  /**
    * Register + fetch a feed by URL.
    * Only available on platforms that can fetch RSS (desktop).
    * When absent, feed-add UI is hidden.
