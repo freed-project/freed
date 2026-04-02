@@ -1,4 +1,4 @@
-interface ReleaseItem {
+export interface ReleaseItem {
   text: string;
   prNumber?: number;
 }
@@ -12,10 +12,10 @@ export interface ParsedRelease {
   performance: ReleaseItem[];
   htmlUrl: string;
   prNumbers: number[];
+  builds: string[];
 }
 
 interface GitHubRelease {
-  id: number;
   tag_name: string;
   body: string | null;
   published_at: string;
@@ -24,7 +24,27 @@ interface GitHubRelease {
   prerelease: boolean;
 }
 
-function parseReleaseBody(body: string): {
+function dedupeItems(items: ReleaseItem[]): ReleaseItem[] {
+  const deduped = new Map<string, ReleaseItem>();
+
+  for (const item of items) {
+    const key = item.text.toLowerCase();
+    const existing = deduped.get(key);
+
+    if (!existing) {
+      deduped.set(key, item);
+      continue;
+    }
+
+    if (!existing.prNumber && item.prNumber) {
+      deduped.set(key, item);
+    }
+  }
+
+  return Array.from(deduped.values());
+}
+
+export function parseReleaseBody(body: string): {
   features: ReleaseItem[];
   fixes: ReleaseItem[];
   performance: ReleaseItem[];
@@ -35,10 +55,11 @@ function parseReleaseBody(body: string): {
   const performance: ReleaseItem[] = [];
   const prNumbers: number[] = [];
 
+  const normalizedBody = body.replace(/\r\n/g, "\n");
   const sectionRegex = /###\s+(.+?)\n([\s\S]*?)(?=\n###|\n##|$)/g;
   let match: RegExpExecArray | null;
 
-  while ((match = sectionRegex.exec(body)) !== null) {
+  while ((match = sectionRegex.exec(normalizedBody)) !== null) {
     const heading = match[1].trim().toLowerCase();
     const content = match[2];
 
@@ -47,7 +68,7 @@ function parseReleaseBody(body: string): {
       .map((line) => line.trim())
       .filter((line) => line.startsWith("- "));
 
-    const items: ReleaseItem[] = lines.map((line) => {
+    const items = lines.map((line) => {
       const text = line
         .replace(/^- /, "")
         .replace(/\[#(\d+)\]\([^)]+\)/g, (_, num: string) => {
@@ -86,50 +107,11 @@ function parseReleaseBody(body: string): {
   }
 
   return {
-    features,
-    fixes,
-    performance,
+    features: dedupeItems(features),
+    fixes: dedupeItems(fixes),
+    performance: dedupeItems(performance),
     prNumbers: [...new Set(prNumbers)].sort((a, b) => a - b),
   };
-}
-
-function versionDayKey(version: string): string {
-  const parts = version.split(".");
-  if (parts.length !== 3) return version;
-
-  const [yy, month, patch] = parts;
-  const day = Math.floor(Number(patch) / 100);
-  return `${yy}.${month}.${day}`;
-}
-
-export function groupReleasesByDay(releases: ParsedRelease[]): ParsedRelease[] {
-  const byDay = new Map<string, ParsedRelease[]>();
-
-  for (const release of releases) {
-    const day = versionDayKey(release.version);
-    const group = byDay.get(day) ?? [];
-    group.push(release);
-    byDay.set(day, group);
-  }
-
-  return Array.from(byDay.values()).map((group) => {
-    const [head, ...rest] = group;
-    return {
-      ...head,
-      features: [...head.features, ...rest.flatMap((release) => release.features)],
-      fixes: [...head.fixes, ...rest.flatMap((release) => release.fixes)],
-      performance: [
-        ...head.performance,
-        ...rest.flatMap((release) => release.performance),
-      ],
-      prNumbers: [
-        ...new Set([
-          ...head.prNumbers,
-          ...rest.flatMap((release) => release.prNumbers),
-        ]),
-      ].sort((a, b) => a - b),
-    };
-  });
 }
 
 export function normalizeGitHubReleases(
@@ -151,6 +133,47 @@ export function normalizeGitHubReleases(
         performance,
         htmlUrl: release.html_url,
         prNumbers,
+        builds: [release.tag_name.replace(/^v/, "")],
       };
     });
+}
+
+function versionDayKey(version: string): string {
+  const parts = version.split(".");
+  if (parts.length !== 3) {
+    return version;
+  }
+
+  const [yy, month, patch] = parts;
+  const day = Math.floor(Number(patch) / 100);
+  return `${yy}.${month}.${day}`;
+}
+
+export function groupReleasesByDay(releases: ParsedRelease[]): ParsedRelease[] {
+  const byDay = new Map<string, ParsedRelease[]>();
+
+  for (const release of releases) {
+    const day = versionDayKey(release.version);
+    const group = byDay.get(day) ?? [];
+    group.push(release);
+    byDay.set(day, group);
+  }
+
+  return Array.from(byDay.values()).map((group) => {
+    const [head, ...rest] = group;
+    const allReleases = [head, ...rest];
+
+    return {
+      ...head,
+      features: dedupeItems(allReleases.flatMap((release) => release.features)),
+      fixes: dedupeItems(allReleases.flatMap((release) => release.fixes)),
+      performance: dedupeItems(
+        allReleases.flatMap((release) => release.performance),
+      ),
+      prNumbers: [
+        ...new Set(allReleases.flatMap((release) => release.prNumbers)),
+      ].sort((a, b) => a - b),
+      builds: allReleases.map((release) => release.version),
+    };
+  });
 }
