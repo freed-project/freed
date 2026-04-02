@@ -1,5 +1,5 @@
 import { execFileSync } from "child_process";
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
   groupReleasesByDay,
@@ -7,12 +7,16 @@ import {
   parseReleaseBody,
   type ParsedRelease,
   type ReleaseItem,
+  versionDayKey,
 } from "../src/content/changelog";
 
 const OUTPUT_PATH = join(
   process.cwd(),
   "src/content/changelog.generated.json",
 );
+const RELEASE_NOTES_ROOT = join(process.cwd(), "..", "release-notes");
+const RELEASE_NOTES_RELEASES_DIR = join(RELEASE_NOTES_ROOT, "releases");
+const RELEASE_NOTES_DAILY_DIR = join(RELEASE_NOTES_ROOT, "daily");
 const authToken = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
 const API_HEADERS: Record<string, string> = {
   Accept: "application/vnd.github+json",
@@ -32,7 +36,34 @@ interface GitHubRelease {
   prerelease: boolean;
 }
 
-const prDetailsCache = new Map<number, string[]>();
+interface LocalReleaseArtifact {
+  tag: string;
+  version: string;
+  dayKey: string;
+  approved?: boolean;
+  generatedAt?: string | null;
+  source?: {
+    prNumbers?: number[];
+  };
+  release?: {
+    summary?: string;
+    whatsNew?: string[];
+    fixes?: string[];
+    performance?: string[];
+  };
+}
+
+interface LocalDailyArtifact {
+  dayKey: string;
+  rollup?: {
+    summary?: string;
+    whatsNew?: string[];
+    fixes?: string[];
+    performance?: string[];
+  };
+}
+
+const prSummaryCache = new Map<number, string>();
 
 function dedupeItems(items: ReleaseItem[]): ReleaseItem[] {
   const deduped = new Map<string, ReleaseItem>();
@@ -47,6 +78,14 @@ function dedupeItems(items: ReleaseItem[]): ReleaseItem[] {
   }
 
   return Array.from(deduped.values());
+}
+
+function toReleaseItems(items: string[] | undefined): ReleaseItem[] {
+  return dedupeItems(
+    (items ?? [])
+      .filter((item) => typeof item === "string" && item.trim().length > 0)
+      .map((text) => ({ text: text.trim() })),
+  );
 }
 
 function normalizeBodyText(body: string): string {
@@ -193,8 +232,56 @@ function ensureTagsAvailable() {
   }
 }
 
-async function fetchPrDetails(prNumber: number): Promise<string[]> {
-  const cached = prDetailsCache.get(prNumber);
+function shortenSummary(text: string, maxLength = 160): string {
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  const sentence = text
+    .split(/(?<=[.!?])\s+/)
+    .find((part) => part.length <= maxLength);
+  if (sentence) {
+    return sentence;
+  }
+
+  const trimmed = text.slice(0, maxLength).trimEnd();
+  const lastBreak = Math.max(
+    trimmed.lastIndexOf(","),
+    trimmed.lastIndexOf(";"),
+    trimmed.lastIndexOf(" "),
+  );
+
+  if (lastBreak > 80) {
+    return trimmed.slice(0, lastBreak).trimEnd();
+  }
+
+  return trimmed;
+}
+
+function normalizeSummaryText(text: string): string {
+  const normalized = text
+    .replace(/^This\s+/i, "")
+    .replace(/\s+/g, " ")
+    .replace(/[.]$/, "")
+    .trim();
+
+  if (!normalized) {
+    return normalized;
+  }
+
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function summarizePrDetails(details: string[], fallback: string): string {
+  const summary = details.find((detail) => detail.length > 0) ?? fallback;
+  return normalizeSummaryText(shortenSummary(summary));
+}
+
+async function fetchPrSummary(
+  prNumber: number,
+  fallback: string,
+): Promise<string> {
+  const cached = prSummaryCache.get(prNumber);
   if (cached) {
     return cached;
   }
@@ -212,14 +299,18 @@ async function fetchPrDetails(prNumber: number): Promise<string[]> {
   for (const section of preferredSections) {
     const details = parseDetails(extractSection(body, section));
     if (details.length > 0) {
-      prDetailsCache.set(prNumber, details);
-      return details;
+      const summary = summarizePrDetails(details, fallback);
+      prSummaryCache.set(prNumber, summary);
+      return summary;
     }
   }
 
-  const fallback = parseDetails(normalizeBodyText(body).split("\n"));
-  prDetailsCache.set(prNumber, fallback);
-  return fallback;
+  const summary = summarizePrDetails(
+    parseDetails(normalizeBodyText(body).split("\n")),
+    fallback,
+  );
+  prSummaryCache.set(prNumber, summary);
+  return summary;
 }
 
 function fallbackRelease(release: GitHubRelease): ParsedRelease {
@@ -231,6 +322,7 @@ function fallbackRelease(release: GitHubRelease): ParsedRelease {
     version: release.tag_name.replace(/^v/, ""),
     tagName: release.tag_name,
     date: release.published_at,
+    summary: "",
     features,
     fixes,
     performance,
@@ -271,17 +363,15 @@ async function buildRelease(
       const kind = commitKind(subject);
       const prMatch = subject.match(/\(#(\d+)\)$/);
       const prNumber = prMatch ? Number(prMatch[1]) : undefined;
+      const fallback = stripPrefix(subject);
 
       let items: ReleaseItem[];
       if (prNumber) {
         prNumbers.add(prNumber);
-        const details = await fetchPrDetails(prNumber);
-        items =
-          details.length > 0
-            ? details.map((text) => ({ text, prNumber }))
-            : [{ text: stripPrefix(subject), prNumber }];
+        const summary = await fetchPrSummary(prNumber, fallback);
+        items = [{ text: summary, prNumber }];
       } else {
-        items = [{ text: stripPrefix(subject) }];
+        items = [{ text: fallback }];
       }
 
       if (kind === "feat") {
@@ -317,6 +407,102 @@ async function buildRelease(
   }
 }
 
+function readLocalReleaseArtifacts(): Map<string, LocalReleaseArtifact> {
+  const artifacts = new Map<string, LocalReleaseArtifact>();
+
+  if (!existsSync(RELEASE_NOTES_RELEASES_DIR)) {
+    return artifacts;
+  }
+
+  for (const file of readdirSync(RELEASE_NOTES_RELEASES_DIR)) {
+    if (!file.endsWith(".json")) {
+      continue;
+    }
+
+    const artifact = JSON.parse(
+      readFileSync(join(RELEASE_NOTES_RELEASES_DIR, file), "utf8"),
+    ) as LocalReleaseArtifact;
+    if (artifact?.tag) {
+      artifacts.set(artifact.tag, artifact);
+    }
+  }
+
+  return artifacts;
+}
+
+function readLocalDailyArtifacts(): Map<string, LocalDailyArtifact> {
+  const artifacts = new Map<string, LocalDailyArtifact>();
+
+  if (!existsSync(RELEASE_NOTES_DAILY_DIR)) {
+    return artifacts;
+  }
+
+  for (const file of readdirSync(RELEASE_NOTES_DAILY_DIR)) {
+    if (!file.endsWith(".json")) {
+      continue;
+    }
+
+    const artifact = JSON.parse(
+      readFileSync(join(RELEASE_NOTES_DAILY_DIR, file), "utf8"),
+    ) as LocalDailyArtifact;
+    if (artifact?.dayKey) {
+      artifacts.set(artifact.dayKey, artifact);
+    }
+  }
+
+  return artifacts;
+}
+
+function releaseFromLocalArtifact(
+  artifact: LocalReleaseArtifact,
+  release: GitHubRelease,
+): ParsedRelease {
+  return {
+    version: artifact.version || release.tag_name.replace(/^v/, ""),
+    tagName: release.tag_name,
+    date: release.published_at,
+    summary: artifact.release?.summary?.trim() || "",
+    features: toReleaseItems(artifact.release?.whatsNew),
+    fixes: toReleaseItems(artifact.release?.fixes),
+    performance: toReleaseItems(artifact.release?.performance),
+    htmlUrl: release.html_url,
+    prNumbers: [...new Set(artifact.source?.prNumbers ?? [])].sort((a, b) => a - b),
+    builds: [release.tag_name.replace(/^v/, "")],
+  };
+}
+
+function applyDailyRollups(
+  releases: ParsedRelease[],
+  dailyArtifacts: Map<string, LocalDailyArtifact>,
+): ParsedRelease[] {
+  return releases.map((release) => {
+    const daily = dailyArtifacts.get(versionDayKey(release.version));
+    const rollup = daily?.rollup;
+
+    if (!rollup) {
+      return release;
+    }
+
+    const hasRollupContent =
+      Boolean(rollup.summary?.trim()) ||
+      (rollup.whatsNew?.length ?? 0) > 0 ||
+      (rollup.fixes?.length ?? 0) > 0 ||
+      (rollup.performance?.length ?? 0) > 0;
+
+    if (!hasRollupContent) {
+      return release;
+    }
+
+    return {
+      ...release,
+      summary: rollup.summary?.trim() || release.summary || "",
+      features: toReleaseItems(rollup.whatsNew),
+      fixes: toReleaseItems(rollup.fixes),
+      performance: toReleaseItems(rollup.performance),
+    };
+  });
+}
+
 async function fetchChangelog(): Promise<ParsedRelease[]> {
   ensureTagsAvailable();
 
@@ -325,6 +511,8 @@ async function fetchChangelog(): Promise<ParsedRelease[]> {
   );
   const publishedReleases = normalizeGitHubReleases(releases);
   const releaseMap = new Map(releases.map((release) => [release.tag_name, release]));
+  const localReleaseArtifacts = readLocalReleaseArtifacts();
+  const localDailyArtifacts = readLocalDailyArtifacts();
 
   const detailedReleases: ParsedRelease[] = [];
   let previousPublishedTag: string | null = null;
@@ -335,11 +523,20 @@ async function fetchChangelog(): Promise<ParsedRelease[]> {
       continue;
     }
 
-    detailedReleases.push(await buildRelease(release, previousPublishedTag));
+    const localArtifact = localReleaseArtifacts.get(release.tag_name);
+
+    if (localArtifact?.release) {
+      detailedReleases.push(releaseFromLocalArtifact(localArtifact, release));
+    } else {
+      detailedReleases.push(await buildRelease(release, previousPublishedTag));
+    }
     previousPublishedTag = release.tag_name;
   }
 
-  return groupReleasesByDay(detailedReleases.reverse());
+  return applyDailyRollups(
+    groupReleasesByDay(detailedReleases.reverse()),
+    localDailyArtifacts,
+  );
 }
 
 function readExistingSnapshot(): ParsedRelease[] | null {

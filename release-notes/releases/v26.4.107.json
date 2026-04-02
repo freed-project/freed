@@ -1,0 +1,38 @@
+{
+  "tag": "v26.4.107",
+  "version": "26.4.107",
+  "dayKey": "26.4.1",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T01:57:04.640Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.4.105",
+    "compareRef": "v26.4.107",
+    "prNumbers": [
+      163,
+      164,
+      166
+    ],
+    "commitSubjects": [
+      "release: v26.4.107",
+      "fix: share settings toggle across desktop and ui (#166)",
+      "release: v26.4.106",
+      "fix: stabilize desktop startup and scraper window modes (#164)",
+      "feat: ship shared map and friends workspace (#163)",
+      "docs: document mozi source planning (#160)"
+    ]
+  },
+  "release": {
+    "summary": "Ship a shared map view for PWA and Freed Desktop with friend-linked popovers and friend last-seen cards",
+    "whatsNew": [
+      "Ship a shared map view for PWA and Freed Desktop with friend-linked popovers and friend last-seen cards"
+    ],
+    "fixes": [
+      "Extract a shared SettingsToggle component in @freed/ui",
+      "Fixed the desktop startup regression that could leave the app on a blank window during consent-store boot"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.107\n\nShip a shared map view for PWA and Freed Desktop with friend-linked popovers and friend last-seen cards\n\n### What's New\n\n- Ship a shared map view for PWA and Freed Desktop with friend-linked popovers and friend last-seen cards\n\n### Fixes\n\n- Extract a shared SettingsToggle component in @freed/ui\n- Fixed the desktop startup regression that could leave the app on a blank window during consent-store boot\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

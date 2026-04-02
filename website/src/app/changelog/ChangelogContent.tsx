@@ -111,8 +111,11 @@ function ReleaseCard({
           </div>
           {release.builds.length > 1 && (
             <p className="mb-3 text-xs text-text-muted">
-              Includes builds {release.builds.map((build) => `v${build}`).join(", ")}
+              Builds: {release.builds.map((build) => `v${build}`).join(", ")}
             </p>
+          )}
+          {release.summary && (
+            <p className="mb-4 text-sm text-text-secondary">{release.summary}</p>
           )}
 
           {/* Content */}
@@ -224,7 +227,7 @@ export default function ChangelogContent({
             <span className="gradient-text">Changelog</span>
           </h1>
           <p className="text-text-secondary text-base sm:text-lg">
-            Even death stars have an exhaust vent.
+            Release notes for every shipped build.
           </p>
           <p className="text-text-muted text-sm mt-1">
             Auto-updated when new builds ship.

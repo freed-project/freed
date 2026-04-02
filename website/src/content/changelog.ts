@@ -7,6 +7,7 @@ export interface ParsedRelease {
   version: string;
   tagName: string;
   date: string;
+  summary?: string;
   features: ReleaseItem[];
   fixes: ReleaseItem[];
   performance: ReleaseItem[];
@@ -22,6 +23,17 @@ interface GitHubRelease {
   html_url: string;
   draft: boolean;
   prerelease: boolean;
+}
+
+function filterGenericItems(items: ReleaseItem[]): ReleaseItem[] {
+  if (items.length <= 1) {
+    return items;
+  }
+
+  return items.filter((item) => {
+    const text = item.text.trim().toLowerCase();
+    return text !== "bug fixes and improvements" && text !== "bug fixes and improvements.";
+  });
 }
 
 function dedupeItems(items: ReleaseItem[]): ReleaseItem[] {
@@ -41,7 +53,7 @@ function dedupeItems(items: ReleaseItem[]): ReleaseItem[] {
     }
   }
 
-  return Array.from(deduped.values());
+  return filterGenericItems(Array.from(deduped.values()));
 }
 
 export function parseReleaseBody(body: string): {
@@ -128,6 +140,7 @@ export function normalizeGitHubReleases(
         version: release.tag_name.replace(/^v/, ""),
         tagName: release.tag_name,
         date: release.published_at,
+        summary: "",
         features,
         fixes,
         performance,
@@ -138,7 +151,7 @@ export function normalizeGitHubReleases(
     });
 }
 
-function versionDayKey(version: string): string {
+export function versionDayKey(version: string): string {
   const parts = version.split(".");
   if (parts.length !== 3) {
     return version;
@@ -165,6 +178,7 @@ export function groupReleasesByDay(releases: ParsedRelease[]): ParsedRelease[] {
 
     return {
       ...head,
+      summary: head.summary ?? "",
       features: dedupeItems(allReleases.flatMap((release) => release.features)),
       fixes: dedupeItems(allReleases.flatMap((release) => release.fixes)),
       performance: dedupeItems(

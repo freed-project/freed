@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Bumps version across PWA + Desktop package files, commits, tags, and pushes.
+# Bumps version across PWA + Desktop package files, then prepares draft
+# release-note artifacts for human review before any tag is created.
 #
 # CalVer format: YY.M.DDBUILD
 #   patch = (day_of_month * 100) + build_number
@@ -62,7 +63,8 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
 fi
 
 TAG="v${VERSION}"
-echo "==> Bumping to ${VERSION} (tag: ${TAG})"
+DAY_KEY=$(node -e "const v='${VERSION}'.split('.'); console.log(v.length===3 ? [v[0], v[1], String(Math.floor(Number(v[2]) / 100))].join('.') : '${VERSION}')")
+echo "==> Preparing ${VERSION} (tag: ${TAG})"
 
 # Update tauri.conf.json
 node -e "
@@ -99,17 +101,26 @@ node -e "
   fs.writeFileSync('${PWA_PKG}', JSON.stringify(pkg, null, 2) + '\n');
 "
 
-echo "==> Updated:"
+echo "==> Updated version files:"
 echo "    ${TAURI_CONF}"
 echo "    ${CARGO_TOML}"
 echo "    ${DESKTOP_PKG}"
 echo "    ${PWA_PKG}"
 
-# Commit and tag
-git add "${TAURI_CONF}" "${CARGO_TOML}" "${DESKTOP_PKG}" "${PWA_PKG}"
-git commit -m "release: ${TAG}"
-git tag -a "${TAG}" -m "Release ${TAG}"
+# Generate draft release-note artifacts
+node scripts/prepare-release-notes.mjs "${VERSION}"
 
-echo "==> Committed and tagged ${TAG}"
-echo "==> To trigger the release workflow, run:"
-echo "    git push origin main --follow-tags"
+# Commit draft release prep, but do not tag yet.
+git add "${TAURI_CONF}" "${CARGO_TOML}" "${DESKTOP_PKG}" "${PWA_PKG}" \
+  "release-notes/releases/${TAG}.json" \
+  "release-notes/releases/${TAG}.md" \
+  "release-notes/daily/${DAY_KEY}.json"
+git commit -m "release: ${TAG}"
+
+echo "==> Committed draft release prep for ${TAG}"
+echo "==> Review and edit:"
+echo "    release-notes/releases/${TAG}.json"
+echo "    release-notes/releases/${TAG}.md"
+echo "    release-notes/daily/${DAY_KEY}.json"
+echo "==> After review, set \"approved\": true in the release file, commit the edits, then run:"
+echo "    ./scripts/release-publish.sh ${VERSION}"
