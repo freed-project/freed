@@ -18,6 +18,9 @@ export interface FbAuthState {
   lastCapturedAt?: number;
   /** Error message from the last failed scrape; undefined when last scrape succeeded */
   lastCaptureError?: string;
+  pausedUntil?: number;
+  pauseReason?: string;
+  pauseLevel?: 1 | 2 | 3;
 }
 
 const FB_AUTH_KEY = "fb_auth_state";
@@ -100,6 +103,9 @@ export function initFbAuth(): FbAuthState {
       lastCheckedAt: parsed.lastCheckedAt,
       lastCapturedAt: parsed.lastCapturedAt,
       lastCaptureError: parsed.lastCaptureError,
+      pausedUntil: parsed.pausedUntil,
+      pauseReason: parsed.pauseReason,
+      pauseLevel: parsed.pauseLevel,
     };
   } catch {
     return { isAuthenticated: false };

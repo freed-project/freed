@@ -9,7 +9,7 @@
  */
 
 import { create } from "zustand";
-import type { FeedItem, FilterOptions, Friend, ReachOutLog, UserPreferences, RssFeed } from "@freed/shared";
+import type { FeedItem, FilterOptions, Friend, ReachOutLog, UserPreferences, RssFeed, RemoveFeedOptions } from "@freed/shared";
 import { createDefaultPreferences } from "@freed/shared";
 import {
   initDoc,
@@ -107,7 +107,7 @@ interface AppState {
 
   // Feed actions (persisted to Automerge)
   addFeed: (feed: RssFeed) => Promise<void>;
-  removeFeed: (url: string) => Promise<void>;
+  removeFeed: (url: string, options?: RemoveFeedOptions) => Promise<void>;
   renameFeed: (url: string, title: string) => Promise<void>;
   removeAllFeeds: (includeItems: boolean) => Promise<void>;
 
@@ -340,8 +340,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     await docAddRssFeed(feed);
   },
 
-  removeFeed: async (url) => {
-    await docRemoveRssFeed(url);
+  removeFeed: async (url, options) => {
+    await docRemoveRssFeed(url, options?.includeItems ?? false);
   },
 
   removeAllFeeds: async (includeItems) => {

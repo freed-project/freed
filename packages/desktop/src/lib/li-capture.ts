@@ -18,6 +18,8 @@ import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { getLiScraperWindowMode } from "./scraper-prefs";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
+import { storeLiAuthState } from "./li-auth";
+import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
 
 // =============================================================================
 // Rate Limiting
@@ -196,6 +198,23 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
  * Respects rate limiting to avoid triggering LinkedIn's anti-bot measures.
  */
 export async function captureLiFeed(): Promise<LiSyncResult> {
+  const startedAt = Date.now();
+  const providerPause = getProviderPause("linkedin");
+  if (providerPause) {
+    addDebugEvent("change", `[LI] paused until ${new Date(providerPause.pausedUntil).toLocaleTimeString()}`);
+    return {
+      items: [],
+      diag: {
+        postsExtracted: 0,
+        itemsNormalized: 0,
+        itemsDeduplicated: 0,
+        itemsAdded: 0,
+        errorStage: "provider_rate_limit",
+        errorMessage: providerPause.pauseReason,
+      },
+    };
+  }
+
   if (isRateLimited()) {
     const minutesRemaining = Math.ceil(
       (MIN_INTERVAL_MS - (Date.now() - lastScrapeAt)) / 60_000,
@@ -204,6 +223,14 @@ export async function captureLiFeed(): Promise<LiSyncResult> {
       "change",
       `[LI] rate limited, next scrape in ~${minutesRemaining} min`,
     );
+    await recordProviderHealthEvent({
+      provider: "linkedin",
+      outcome: "cooldown",
+      stage: "cooldown",
+      reason: `Cooling down. Try again in ~${minutesRemaining} minutes.`,
+      startedAt,
+      finishedAt: Date.now(),
+    });
     return {
       items: [],
       diag: {
@@ -211,8 +238,8 @@ export async function captureLiFeed(): Promise<LiSyncResult> {
         itemsNormalized: 0,
         itemsDeduplicated: 0,
         itemsAdded: 0,
-        errorStage: "rate_limit",
-        errorMessage: `Rate limited. Try again in ~${minutesRemaining} minutes.`,
+        errorStage: "cooldown",
+        errorMessage: `Cooling down. Try again in ~${minutesRemaining} minutes.`,
       },
     };
   }
@@ -228,6 +255,22 @@ export async function captureLiFeed(): Promise<LiSyncResult> {
       const detail = `[LI] sync failed at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
       store.setError(result.diag.errorMessage ?? result.diag.errorStage);
       addDebugEvent("error", detail);
+      const errState = {
+        ...useAppStore.getState().liAuth,
+        lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed",
+      };
+      store.setLiAuth(errState);
+      storeLiAuthState(errState);
+      await recordProviderHealthEvent({
+        provider: "linkedin",
+        outcome: "error",
+        stage: result.diag.errorStage,
+        reason: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed",
+        startedAt,
+        finishedAt: Date.now(),
+        itemsSeen: result.diag.postsExtracted,
+        itemsAdded: result.diag.itemsAdded,
+      });
       return result;
     }
 
@@ -248,12 +291,38 @@ export async function captureLiFeed(): Promise<LiSyncResult> {
       addDebugEvent("change", "[LI] sync complete: feed returned 0 posts");
     }
 
+    const successState = {
+      ...useAppStore.getState().liAuth,
+      lastCapturedAt: Date.now(),
+      lastCaptureError: undefined,
+    };
+    store.setLiAuth(successState);
+    storeLiAuthState(successState);
+    await recordProviderHealthEvent({
+      provider: "linkedin",
+      outcome: result.diag.postsExtracted > 0 ? "success" : "empty",
+      stage: result.diag.postsExtracted > 0 ? undefined : "empty",
+      reason: result.diag.postsExtracted > 0 ? undefined : "No posts pulled",
+      startedAt,
+      finishedAt: Date.now(),
+      itemsSeen: result.diag.postsExtracted,
+      itemsAdded: result.diag.itemsAdded,
+    });
+
     return result;
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to capture LinkedIn feed";
     store.setError(message);
     addDebugEvent("error", `[LI] captureLiFeed threw: ${message}`);
+    await recordProviderHealthEvent({
+      provider: "linkedin",
+      outcome: "error",
+      stage: "unknown",
+      reason: message,
+      startedAt,
+      finishedAt: Date.now(),
+    });
     throw error;
   } finally {
     store.setLoading(false);

@@ -7,6 +7,10 @@
 
 import type { FeedItem, Friend, ReachOutLog, UserPreferences, RssFeed } from "./types.js";
 
+export interface RemoveFeedOptions {
+  includeItems?: boolean;
+}
+
 /**
  * Filter options for the feed view.
  * Duplicated in both PWA and Desktop stores — canonicalized here.
@@ -88,7 +92,7 @@ export interface BaseAppState {
 
   // Feed actions
   addFeed: (feed: RssFeed) => Promise<void>;
-  removeFeed: (url: string) => Promise<void>;
+  removeFeed: (url: string, options?: RemoveFeedOptions) => Promise<void>;
   renameFeed: (url: string, title: string) => Promise<void>;
   /** Remove all feed subscriptions. Pass `includeItems: true` to also wipe all articles. */
   removeAllFeeds: (includeItems: boolean) => Promise<void>;

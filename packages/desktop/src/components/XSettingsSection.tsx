@@ -13,6 +13,7 @@ import { connectX, loadStoredCookies, disconnectX } from "../lib/x-auth";
 import { captureXTimeline } from "../lib/x-capture";
 import type { XSyncDiag } from "../lib/x-capture";
 import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
+import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
 
 // =============================================================================
 // Types
@@ -312,6 +313,8 @@ export function XSettingsSection() {
               : syncError}
           </p>
         )}
+
+        <ProviderHealthSectionSummary provider="x" />
 
         {statusLine}
 

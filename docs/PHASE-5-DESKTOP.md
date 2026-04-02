@@ -190,6 +190,8 @@ export async function captureDomFeed(
 | 5.27 | First-run legal gate and local-only acceptance storage | Medium |
 | 5.28 | Provider-specific risk interstitials for social capture | Medium |
 | 5.29 | Reviewed AI-assisted release notes and cumulative daily changelog cards | Medium |
+| 5.29 | Reviewed AI-assisted release notes and cumulative daily changelog cards | Medium |
+| 5.30 | Provider health dashboard, charts, and unsubscribe flow | Medium |
 
 ---
 
@@ -217,6 +219,9 @@ export async function captureDomFeed(
 - [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
 - [x] macOS DMG is notarized in CI releases
 - [x] Checked-in release notes are reviewed before a release tag can publish
+- [x] Debug panel Health tab charts provider reliability plus daily and hourly pull volume across RSS, X, Facebook, Instagram, LinkedIn, Google Drive, and Dropbox
+- [x] Failing RSS feeds can be reviewed and unsubscribed from the health panel, with optional article/history deletion
+- [x] Sidebar source actions and source settings surface degraded or paused provider health outside the debug panel
 - [ ] Windows installer is code-signed (requires EV certificate)
 - [ ] Update server runs on a Freed-owned domain (not GitHub Releases)
 

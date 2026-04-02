@@ -16,6 +16,7 @@
     "./components/legal/LegalGate": "./src/components/legal/LegalGate.tsx",
     "./components/legal/ProviderRiskDialog": "./src/components/legal/ProviderRiskDialog.tsx",
     "./components/DebugPanel": "./src/components/DebugPanel.tsx",
+    "./components/ProviderHealthSummary": "./src/components/ProviderHealthSummary.tsx",
     "./components/CloudProviderCard": "./src/components/CloudProviderCard.tsx",
     "./lib/debug-store": "./src/lib/debug-store.ts",
     "./lib/map-navigation": "./src/lib/map-navigation.ts",

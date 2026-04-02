@@ -20,6 +20,10 @@ import {
   getCloudToken,
   clearCloudProvider,
   deleteCloudFile,
+  startCloudSync,
+  initiateDesktopOAuth,
+  storeCloudToken,
+  type CloudProvider,
 } from "./lib/sync";
 import { clearLocalDoc } from "./lib/automerge";
 import { isTauri } from "@tauri-apps/api/core";
@@ -49,6 +53,7 @@ import { DesktopLegalSettingsSection } from "./components/DesktopLegalSettingsSe
 import { refreshSampleLibraryData } from "@freed/ui/lib/sample-library-seed";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { acceptDesktopBundle, hasAcceptedDesktopBundle } from "./lib/legal-consent";
+import { forgetRssFeedHealth, initProviderHealth } from "./lib/provider-health";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
@@ -105,6 +110,7 @@ function App() {
 
   useEffect(() => {
     if (!legalAccepted || !isInitialized) return;
+    void initProviderHealth();
     startRssPoller();
     // Wire the LAN relay change subscription + client-count polling.
     startSync();
@@ -254,6 +260,19 @@ function App() {
     location.reload();
   }, []);
 
+  const retryCloudProvider = useCallback(async (provider: CloudProvider) => {
+    const token = getCloudToken(provider);
+    if (!token) return;
+    await startCloudSync(provider, token);
+  }, []);
+
+  const reconnectCloudProvider = useCallback(async (provider: CloudProvider) => {
+    clearCloudProvider(provider);
+    const token = await initiateDesktopOAuth(provider);
+    storeCloudToken(provider, token);
+    await startCloudSync(provider, token);
+  }, []);
+
   // Fake-authenticate all social providers for local testing. Writes stub
   // credentials to localStorage (matching the real auth persistence format)
   // and updates Zustand state so the sidebar dots light up without a real login.
@@ -332,6 +351,9 @@ function App() {
         const items = Object.values(useDesktopStore.getState().items ?? {});
         return exportLibrary(items);
       },
+      retryCloudProvider,
+      reconnectCloudProvider,
+      forgetRssFeedHealth,
       // Local content cache (Tauri FS layer)
       getLocalContent: (globalId) => contentCache.get(globalId),
       // Encrypted API key store (type-widened: ApiKeyProvider -> string for PlatformConfig interface)
@@ -351,7 +373,7 @@ function App() {
         return null;
       })(),
     }),
-     [checkForUpdates, applyUpdate, handleFactoryReset, seedSocialConnections, updateState],
+     [checkForUpdates, applyUpdate, handleFactoryReset, reconnectCloudProvider, retryCloudProvider, seedSocialConnections, updateState],
   );
 
   if (!legalResolved) {

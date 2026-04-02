@@ -309,7 +309,10 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "REMOVE_RSS_FEED":
-        await applyChange((doc) => removeRssFeed(doc, req.url), "Remove RSS feed");
+        await applyChange(
+          (doc) => removeRssFeed(doc, req.url, req.includeItems),
+          req.includeItems ? "Remove RSS feed and articles" : "Remove RSS feed",
+        );
         ack(req.reqId);
         break;
 

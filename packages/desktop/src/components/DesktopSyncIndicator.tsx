@@ -9,6 +9,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "../lib/store";
 import { refreshAllFeeds } from "../lib/capture";
+import { useDebugStore } from "@freed/ui/lib/debug-store";
+import { formatPauseUntil } from "@freed/ui/components/ProviderHealthSummary";
 
 function formatRelativeTime(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -103,6 +105,7 @@ export function DesktopSyncIndicator() {
   const igAuth = useAppStore((s) => s.igAuth);
   const liAuth = useAppStore((s) => s.liAuth);
   const items = useAppStore((s) => s.items);
+  const health = useDebugStore((s) => s.health);
 
   const feedList = useMemo(() => Object.values(feeds), [feeds]);
   const feedCount = feedList.length;
@@ -154,13 +157,21 @@ export function DesktopSyncIndicator() {
 
   const statusLabel = isSyncing
     ? "Syncing..."
-    : feedCount > 0 || xAuth.isAuthenticated || fbAuth.isAuthenticated || igAuth.isAuthenticated || liAuth.isAuthenticated
-      ? "Synced"
+    : health && Object.values(health.providers).some((snapshot) => snapshot.status === "paused")
+      ? "Paused"
+      : health && Object.values(health.providers).some((snapshot) => snapshot.status === "degraded")
+        ? "Needs attention"
+        : feedCount > 0 || xAuth.isAuthenticated || fbAuth.isAuthenticated || igAuth.isAuthenticated || liAuth.isAuthenticated
+          ? "Synced"
       : "Ready";
 
   const statusBadgeClass = isSyncing
     ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
-    : "bg-white/5 text-[#71717a]";
+    : statusLabel === "Paused"
+      ? "bg-red-500/15 text-red-400"
+      : statusLabel === "Needs attention"
+        ? "bg-amber-500/15 text-amber-400"
+        : "bg-white/5 text-[#71717a]";
 
   const hasAnySources =
     feedCount > 0 ||
@@ -205,7 +216,7 @@ export function DesktopSyncIndicator() {
               <span
                 className={`text-xs px-2 py-0.5 rounded-full ${statusBadgeClass}`}
               >
-                {isSyncing ? "Syncing" : hasAnySources ? "Synced" : "Ready"}
+                {statusLabel}
               </span>
             </div>
             <p className="text-[10px] text-[#52525b] mt-1 tabular-nums">
@@ -228,6 +239,12 @@ export function DesktopSyncIndicator() {
                   ? `${feedCount.toLocaleString()} feed${feedCount === 1 ? "" : "s"}, ${rssItemCount.toLocaleString()} items`
                   : "No feeds added"
               }
+              subDetail={
+                health && health.failingRssFeeds.length > 0
+                  ? `${health.failingRssFeeds.length.toLocaleString()} failing feed${health.failingRssFeeds.length === 1 ? "" : "s"}`
+                  : undefined
+              }
+              subDetailError={!!health && health.failingRssFeeds.length > 0}
               syncing={isSyncing}
             />
             <ProviderRow
@@ -239,6 +256,18 @@ export function DesktopSyncIndicator() {
                   ? `Connected, ${xItemCount.toLocaleString()} items`
                   : "Not connected"
               }
+              subDetail={
+                xAuth.isAuthenticated
+                  ? health?.providers.x.pause
+                    ? formatPauseUntil(health.providers.x.pause.pausedUntil)
+                    : xAuth.lastCaptureError
+                      ? "Last sync failed"
+                      : xAuth.lastCapturedAt
+                        ? `Synced ${formatRelativeTime(xAuth.lastCapturedAt)}`
+                        : undefined
+                  : undefined
+              }
+              subDetailError={!!xAuth.lastCaptureError || health?.providers.x.status === "paused"}
               syncing={isSyncing && xAuth.isAuthenticated}
             />
             <ProviderRow
@@ -252,14 +281,16 @@ export function DesktopSyncIndicator() {
               }
               subDetail={
                 fbAuth.isAuthenticated
-                  ? fbAuth.lastCaptureError
-                    ? "Last sync failed"
-                    : fbAuth.lastCapturedAt
-                      ? `Synced ${formatRelativeTime(fbAuth.lastCapturedAt)}`
-                      : undefined
+                  ? health?.providers.facebook.pause
+                    ? formatPauseUntil(health.providers.facebook.pause.pausedUntil)
+                    : fbAuth.lastCaptureError
+                      ? "Last sync failed"
+                      : fbAuth.lastCapturedAt
+                        ? `Synced ${formatRelativeTime(fbAuth.lastCapturedAt)}`
+                        : undefined
                   : undefined
               }
-              subDetailError={!!fbAuth.lastCaptureError}
+              subDetailError={!!fbAuth.lastCaptureError || health?.providers.facebook.status === "paused"}
               syncing={isSyncing && fbAuth.isAuthenticated}
             />
             <ProviderRow
@@ -273,14 +304,16 @@ export function DesktopSyncIndicator() {
               }
               subDetail={
                 igAuth.isAuthenticated
-                  ? igAuth.lastCaptureError
-                    ? "Last sync failed"
-                    : igAuth.lastCapturedAt
-                      ? `Synced ${formatRelativeTime(igAuth.lastCapturedAt)}`
-                      : undefined
+                  ? health?.providers.instagram.pause
+                    ? formatPauseUntil(health.providers.instagram.pause.pausedUntil)
+                    : igAuth.lastCaptureError
+                      ? "Last sync failed"
+                      : igAuth.lastCapturedAt
+                        ? `Synced ${formatRelativeTime(igAuth.lastCapturedAt)}`
+                        : undefined
                   : undefined
               }
-              subDetailError={!!igAuth.lastCaptureError}
+              subDetailError={!!igAuth.lastCaptureError || health?.providers.instagram.status === "paused"}
               syncing={isSyncing && igAuth.isAuthenticated}
             />
             <ProviderRow
@@ -292,6 +325,18 @@ export function DesktopSyncIndicator() {
                   ? `Connected, ${liItemCount.toLocaleString()} items`
                   : "Not connected"
               }
+              subDetail={
+                liAuth.isAuthenticated
+                  ? health?.providers.linkedin.pause
+                    ? formatPauseUntil(health.providers.linkedin.pause.pausedUntil)
+                    : liAuth.lastCaptureError
+                      ? "Last sync failed"
+                      : liAuth.lastCapturedAt
+                        ? `Synced ${formatRelativeTime(liAuth.lastCapturedAt)}`
+                        : undefined
+                  : undefined
+              }
+              subDetailError={!!liAuth.lastCaptureError || health?.providers.linkedin.status === "paused"}
               syncing={isSyncing && liAuth.isAuthenticated}
             />
           </div>

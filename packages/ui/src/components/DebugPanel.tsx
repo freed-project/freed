@@ -10,8 +10,16 @@
  */
 
 import { useEffect, useState, type ReactNode } from "react";
-import { useDebugStore, type SyncEvent, type SyncEventKind, type CloudSyncStatus, type FpsSnapshot } from "../lib/debug-store";
+import { useDebugStore, type SyncEvent, type SyncEventKind, type CloudSyncStatus, type FpsSnapshot, type HealthProviderId, type RssFeedHealthSnapshot } from "../lib/debug-store";
 import { useFpsMonitor } from "../lib/perf-monitor";
+import { useAppStore, usePlatform } from "../context/PlatformContext.js";
+import {
+  HealthStatusBadge,
+  ProviderHealthSummary,
+  VolumeBars,
+  formatHealthRelative,
+  providerHealthLabel,
+} from "./ProviderHealthSummary.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -534,17 +542,269 @@ function PerformanceTab() {
   return <PerformanceTabContent snap={perfSnapshot} />;
 }
 
+function HealthTab() {
+  const health = useDebugStore((s) => s.health);
+  const removeFeed = useAppStore((s) => s.removeFeed);
+  const {
+    retryCloudProvider,
+    reconnectCloudProvider,
+    forgetRssFeedHealth,
+  } = usePlatform();
+  const [expandedProvider, setExpandedProvider] = useState<HealthProviderId | null>(null);
+  const [expandedFeedUrl, setExpandedFeedUrl] = useState<string | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<RssFeedHealthSnapshot | null>(null);
+  const [includeItems, setIncludeItems] = useState(false);
+  const [removingFeed, setRemovingFeed] = useState(false);
+
+  if (!health) {
+    return (
+      <p className="text-xs text-[#52525b] text-center py-8">
+        Health snapshots are loading.
+      </p>
+    );
+  }
+
+  const providerOrder: HealthProviderId[] = [
+    "rss",
+    "x",
+    "facebook",
+    "instagram",
+    "linkedin",
+    "gdrive",
+    "dropbox",
+  ];
+
+  const copySnapshot = async () => {
+    await navigator.clipboard.writeText(JSON.stringify(health, null, 2));
+  };
+
+  const confirmRemoval = async () => {
+    if (!pendingRemoval) return;
+    setRemovingFeed(true);
+    try {
+      await removeFeed(pendingRemoval.feedUrl, { includeItems });
+      if (forgetRssFeedHealth) {
+        await forgetRssFeedHealth(pendingRemoval.feedUrl);
+      }
+      setPendingRemoval(null);
+      setIncludeItems(false);
+    } finally {
+      setRemovingFeed(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] text-[#52525b] uppercase tracking-widest">
+          Provider Health
+        </p>
+        <button
+          onClick={copySnapshot}
+          className="text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+        >
+          Copy Snapshot
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {providerOrder.map((provider) => {
+          const snapshot = health.providers[provider];
+          const expanded = expandedProvider === provider;
+          return (
+            <div key={provider} className="space-y-2">
+              <ProviderHealthSummary snapshot={snapshot} />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setExpandedProvider(expanded ? null : provider)}
+                  className="text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+                >
+                  {expanded ? "Hide 24h" : "Show 24h"}
+                </button>
+                {(provider === "gdrive" || provider === "dropbox") && retryCloudProvider && (
+                  <button
+                    onClick={() => {
+                      void retryCloudProvider(provider);
+                    }}
+                    className="text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+                  >
+                    Retry Now
+                  </button>
+                )}
+                {(provider === "gdrive" || provider === "dropbox") && reconnectCloudProvider && (
+                  <button
+                    onClick={() => {
+                      void reconnectCloudProvider(provider);
+                    }}
+                    className="text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+                  >
+                    Reconnect
+                  </button>
+                )}
+              </div>
+              {expanded && (
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-white">
+                      {providerHealthLabel(provider)} in the last 24 hours
+                    </p>
+                    <HealthStatusBadge snapshot={snapshot} />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <VolumeBars
+                      buckets={snapshot.hourlyBuckets}
+                      metric="itemsSeen"
+                      title="Pulled Per Hour"
+                    />
+                    <VolumeBars
+                      buckets={snapshot.hourlyBuckets}
+                      metric="itemsAdded"
+                      title="Added Per Hour"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-[10px] uppercase tracking-widest text-[#52525b]">
+                      Recent Attempts
+                    </p>
+                    {snapshot.latestAttempts.length === 0 ? (
+                      <p className="text-xs text-[#71717a]">No attempts recorded yet.</p>
+                    ) : (
+                      snapshot.latestAttempts.slice(0, 5).map((attempt) => (
+                        <div key={attempt.id} className="rounded-lg bg-white/5 p-2 text-xs">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-mono text-[#a1a1aa]">
+                              {new Date(attempt.finishedAt).toLocaleTimeString([], {
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                            <span className="text-[#71717a]">
+                              {attempt.outcome}
+                            </span>
+                          </div>
+                          <p className="text-[#52525b]">
+                            pulled {attempt.itemsSeen.toLocaleString()}, added {attempt.itemsAdded.toLocaleString()}
+                          </p>
+                          {attempt.reason && (
+                            <p className="text-amber-400">{attempt.reason}</p>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="space-y-3">
+        <p className="text-[10px] text-[#52525b] uppercase tracking-widest">
+          Failing RSS Feeds
+        </p>
+        {health.failingRssFeeds.length === 0 ? (
+          <p className="text-xs text-[#71717a]">No failing feeds right now.</p>
+        ) : (
+          health.failingRssFeeds.map((feed) => {
+            const expanded = expandedFeedUrl === feed.feedUrl;
+            return (
+              <div key={feed.feedUrl} className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-white">{feed.feedTitle}</p>
+                    <p className="text-xs text-[#71717a] break-all">{feed.feedUrl}</p>
+                    <p className="text-xs text-amber-400 mt-1">
+                      Failing for {feed.outageSince ? formatHealthRelative(feed.outageSince) : "a while"}
+                    </p>
+                    {feed.lastError && (
+                      <p className="text-xs text-amber-300 mt-1">{feed.lastError}</p>
+                    )}
+                    <p className="text-[11px] text-[#71717a] mt-1">
+                      Last success {formatHealthRelative(feed.lastSuccessfulAt)}
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => setExpandedFeedUrl(expanded ? null : feed.feedUrl)}
+                      className="text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+                    >
+                      {expanded ? "Hide 24h" : "Show 24h"}
+                    </button>
+                    <button
+                      onClick={() => setPendingRemoval(feed)}
+                      className="text-xs px-2.5 py-1 rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-400 transition-colors"
+                    >
+                      Unsubscribe
+                    </button>
+                  </div>
+                </div>
+                <VolumeBars buckets={feed.dailyBuckets} metric="itemsSeen" title="Pulled Per Day" />
+                {expanded && (
+                  <VolumeBars buckets={feed.hourlyBuckets} metric="itemsSeen" title="Pulled Per Hour" />
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {pendingRemoval && (
+        <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-white">Unsubscribe failing feed?</p>
+              <p className="text-xs text-[#71717a] mt-1">{pendingRemoval.feedTitle}</p>
+              <p className="text-xs text-[#52525b] mt-1 break-all">{pendingRemoval.feedUrl}</p>
+            </div>
+            <label className="flex items-start gap-3 text-sm text-[#a1a1aa]">
+              <input
+                type="checkbox"
+                checked={includeItems}
+                onChange={(event) => setIncludeItems(event.target.checked)}
+                className="mt-0.5"
+              />
+              <span>Also delete articles and reading history for this feed</span>
+            </label>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setPendingRemoval(null);
+                  setIncludeItems(false);
+                }}
+                className="flex-1 rounded-xl bg-white/5 py-2 text-sm text-[#a1a1aa] hover:bg-white/10 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  void confirmRemoval();
+                }}
+                disabled={removingFeed}
+                className="flex-1 rounded-xl bg-red-500/15 py-2 text-sm text-red-400 hover:bg-red-500/25 transition-colors disabled:opacity-50"
+              >
+                {removingFeed ? "Removing..." : "Unsubscribe"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Shared panel chrome - header + tabs + scrollable content + footer
 // ---------------------------------------------------------------------------
 
-type Tab = "connection" | "events" | "document" | "performance";
+type Tab = "connection" | "events" | "document" | "performance" | "health";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "connection", label: "Connection" },
   { id: "events", label: "Events" },
   { id: "document", label: "Document" },
   { id: "performance", label: "Perf" },
+  { id: "health", label: "Health" },
 ];
 
 function PanelContent({
@@ -600,6 +860,7 @@ function PanelContent({
         {tab === "events" && <EventsTab />}
         {tab === "document" && <DocumentTab />}
         {tab === "performance" && <PerformanceTab />}
+        {tab === "health" && <HealthTab />}
       </div>
 
       {/* Footer - subtle bg tint mirrors the header */}

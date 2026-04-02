@@ -17,6 +17,7 @@ import { captureLiFeed } from "./li-capture";
 import { docBatchRefreshFeeds } from "./automerge";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
+import { isProviderPaused, recordProviderHealthEvent } from "./provider-health";
 
 /**
  * Fetch URL via Tauri backend (bypasses CORS)
@@ -119,6 +120,9 @@ export async function refreshAllFeeds(): Promise<void> {
       const allNewItems: FeedItem[] = [];
       const fetchedFeeds: RssFeed[] = [];
       const feedErrors: string[] = [];
+      const rssStartedAt = Date.now();
+      const rssBefore = store.items.filter((item) => item.platform === "rss").length;
+      let rssSeen = 0;
 
       // Parallel fetch with concurrency cap
       for (let i = 0; i < feeds.length; i += FETCH_CONCURRENCY) {
@@ -159,10 +163,24 @@ export async function refreshAllFeeds(): Promise<void> {
           }),
         );
 
-        for (const result of results) {
+        for (const [resultIndex, result] of results.entries()) {
           if (result.status === "fulfilled") {
             fetchedFeeds.push(result.value.feed);
             allNewItems.push(...result.value.items);
+            rssSeen += result.value.items.length;
+            await recordProviderHealthEvent({
+              provider: "rss",
+              scope: "rss_feed",
+              feedUrl: result.value.feed.url,
+              feedTitle: result.value.feed.title,
+              outcome: result.value.items.length > 0 ? "success" : "empty",
+              stage: result.value.items.length > 0 ? undefined : "empty",
+              reason: result.value.items.length > 0 ? undefined : "No entries pulled",
+              startedAt: rssStartedAt,
+              finishedAt: Date.now(),
+              itemsSeen: result.value.items.length,
+              itemsAdded: result.value.items.length,
+            });
           } else {
             const msg = result.reason instanceof Error
               ? result.reason.message
@@ -170,6 +188,20 @@ export async function refreshAllFeeds(): Promise<void> {
             console.error("[Refresh] Feed fetch failed:", result.reason);
             feedErrors.push(msg);
             addDebugEvent("error", `[RSS] feed fetch failed: ${msg}`);
+            const failedFeed = batch[resultIndex];
+            if (failedFeed) {
+              await recordProviderHealthEvent({
+                provider: "rss",
+                scope: "rss_feed",
+                feedUrl: failedFeed.url,
+                feedTitle: failedFeed.title,
+                outcome: "error",
+                stage: "fetch",
+                reason: msg,
+                startedAt: rssStartedAt,
+                finishedAt: Date.now(),
+              });
+            }
           }
         }
       }
@@ -177,6 +209,28 @@ export async function refreshAllFeeds(): Promise<void> {
       // Single Automerge change for ALL feed + item updates
       if (fetchedFeeds.length > 0 || allNewItems.length > 0) {
         await docBatchRefreshFeeds(fetchedFeeds, allNewItems);
+      }
+      const rssAfter = useAppStore.getState().items.filter((item) => item.platform === "rss").length;
+      const rssItemsAdded = Math.max(0, rssAfter - rssBefore);
+      if (feeds.length > 0) {
+        await recordProviderHealthEvent({
+          provider: "rss",
+          outcome: fetchedFeeds.length > 0 ? "success" : "error",
+          stage:
+            fetchedFeeds.length > 0
+              ? undefined
+              : "fetch",
+          reason:
+            fetchedFeeds.length > 0
+              ? feedErrors.length > 0
+                ? `${feedErrors.length.toLocaleString()} feed failure${feedErrors.length === 1 ? "" : "s"} in batch`
+                : undefined
+              : feedErrors[0] ?? "RSS refresh failed",
+          startedAt: rssStartedAt,
+          finishedAt: Date.now(),
+          itemsSeen: rssSeen,
+          itemsAdded: rssItemsAdded,
+        });
       }
 
       // Surface per-feed failures to the user only when every feed failed.
@@ -203,12 +257,19 @@ export async function refreshAllFeeds(): Promise<void> {
       console.error("[Refresh] RSS batch failed:", rssError);
       store.setError(msg);
       addDebugEvent("error", `[RSS] batch refresh failed: ${msg}`);
+      await recordProviderHealthEvent({
+        provider: "rss",
+        outcome: "error",
+        stage: "merge",
+        reason: msg,
+        finishedAt: Date.now(),
+      });
     }
 
     // ── X timeline ────────────────────────────────────────────────────────────
     // Always runs, fully independent of RSS outcome.
     const { xAuth } = useAppStore.getState();
-    if (xAuth.isAuthenticated && xAuth.cookies) {
+    if (xAuth.isAuthenticated && xAuth.cookies && !isProviderPaused("x")) {
       try {
         await captureXTimeline(xAuth.cookies);
       } catch (xError) {
@@ -224,7 +285,7 @@ export async function refreshAllFeeds(): Promise<void> {
     // ── Facebook feed ─────────────────────────────────────────────────────────
     // Independent of both RSS and X outcomes.
     const { fbAuth } = useAppStore.getState();
-    if (fbAuth.isAuthenticated) {
+    if (fbAuth.isAuthenticated && !isProviderPaused("facebook")) {
       try {
         await captureFbFeed();
       } catch (fbError) {
@@ -240,7 +301,7 @@ export async function refreshAllFeeds(): Promise<void> {
     // ── Instagram feed ───────────────────────────────────────────────────────
     // Independent of RSS, X, and Facebook outcomes.
     const { igAuth } = useAppStore.getState();
-    if (igAuth.isAuthenticated) {
+    if (igAuth.isAuthenticated && !isProviderPaused("instagram")) {
       try {
         await captureIgFeed();
       } catch (igError) {
@@ -256,7 +317,7 @@ export async function refreshAllFeeds(): Promise<void> {
     // ── LinkedIn feed ─────────────────────────────────────────────────────────
     // Independent of RSS, X, Facebook, and Instagram outcomes.
     const { liAuth } = useAppStore.getState();
-    if (liAuth.isAuthenticated) {
+    if (liAuth.isAuthenticated && !isProviderPaused("linkedin")) {
       try {
         await captureLiFeed();
       } catch (liError) {

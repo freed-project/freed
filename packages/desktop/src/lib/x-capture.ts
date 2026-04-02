@@ -28,6 +28,8 @@ import type { XCookies } from "./x-auth";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { getPlatformUA, extractChromeVersion, osPlatformHeader } from "./user-agent";
+import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
+import { clearStoredCookies } from "./x-auth";
 
 // =============================================================================
 // Injectable Transport
@@ -215,7 +217,7 @@ export async function fetchXTimeline(
       return { items: [], diag };
     }
     if (code === 88) {
-      diag.errorStage = "rate_limit";
+      diag.errorStage = "provider_rate_limit";
       diag.errorMessage = "Rate limit exceeded — try again in 15 minutes.";
       return { items: [], diag };
     }
@@ -369,17 +371,62 @@ export async function captureXTimeline(
   requester: XRequester = defaultRequester,
 ): Promise<XSyncResult> {
   const store = useAppStore.getState();
+  const startedAt = Date.now();
 
   store.setLoading(true);
   store.setError(null);
 
   try {
+    const pause = getProviderPause("x");
+    if (pause) {
+      return {
+        items: [],
+        diag: {
+          rawResponseBytes: 0,
+          rawResponsePreview: "",
+          instructionsFound: 0,
+          tweetsExtracted: 0,
+          itemsNormalized: 0,
+          itemsDeduplicated: 0,
+          itemsAdded: 0,
+          errorStage: "provider_rate_limit",
+          errorMessage: pause.pauseReason,
+        },
+      };
+    }
+
     const result = await fetchXTimeline(cookies, requester);
 
     if (result.diag.errorStage) {
       const detail = `[X] sync failed at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
       store.setError(result.diag.errorMessage ?? result.diag.errorStage);
       addDebugEvent("error", detail);
+      const nextAuth =
+        result.diag.errorStage === "auth"
+          ? { isAuthenticated: false, lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage }
+          : {
+              ...store.xAuth,
+              lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage,
+            };
+      if (result.diag.errorStage === "auth") {
+        clearStoredCookies();
+      }
+      store.setXAuth(nextAuth);
+      await recordProviderHealthEvent({
+        provider: "x",
+        outcome:
+          result.diag.errorStage === "provider_rate_limit"
+            ? "provider_rate_limit"
+            : "error",
+        stage: result.diag.errorStage,
+        reason: result.diag.errorMessage ?? result.diag.errorStage,
+        startedAt,
+        finishedAt: Date.now(),
+        itemsSeen: result.diag.tweetsExtracted,
+        itemsAdded: result.diag.itemsAdded,
+        signalType:
+          result.diag.errorStage === "provider_rate_limit" ? "explicit" : "none",
+      });
       return result;
     }
 
@@ -396,12 +443,40 @@ export async function captureXTimeline(
       addDebugEvent("change", `[X] sync complete: timeline returned 0 tweets`);
     }
 
+    store.setXAuth({
+      ...store.xAuth,
+      lastCapturedAt: Date.now(),
+      lastCaptureError: undefined,
+    });
+    await recordProviderHealthEvent({
+      provider: "x",
+      outcome: result.diag.tweetsExtracted > 0 ? "success" : "empty",
+      stage: result.diag.tweetsExtracted > 0 ? undefined : "empty",
+      reason: result.diag.tweetsExtracted > 0 ? undefined : "No tweets pulled",
+      startedAt,
+      finishedAt: Date.now(),
+      itemsSeen: result.diag.tweetsExtracted,
+      itemsAdded: result.diag.itemsAdded,
+    });
+
     return result;
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to capture X timeline";
     store.setError(message);
     addDebugEvent("error", `[X] captureXTimeline threw: ${message}`);
+    store.setXAuth({
+      ...store.xAuth,
+      lastCaptureError: message,
+    });
+    await recordProviderHealthEvent({
+      provider: "x",
+      outcome: "error",
+      stage: "unknown",
+      reason: message,
+      startedAt,
+      finishedAt: Date.now(),
+    });
     throw error;
   } finally {
     store.setLoading(false);

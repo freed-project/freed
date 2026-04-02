@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress — Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, silent background media guarding, and Facebook group controls
+> **Status:** 🚧 In Progress — Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, silent background media guarding, provider health summaries, smart backoff, and Facebook group controls
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -161,6 +161,8 @@ const RATE_LIMITS = {
 - [x] Facebook Settings includes per-group include/exclude controls for joined groups
 - [x] Desktop Sources settings expose per-source scraper window modes: shown, cloaked, hidden
 - [x] Background FB and IG scraper WebViews force provider media silent during scrape and auth-check flows
+- [x] Social providers surface paused/degraded health summaries in settings and the sidebar source surfaces
+- [x] Explicit and heuristic rate-limit signals auto-pause social sync, notify the user, and allow manual resume
 - [x] Empty states for both platforms in the feed view
 - [x] Source indicators in sidebar for both platforms
 - [x] Sync indicator panel shows both platforms

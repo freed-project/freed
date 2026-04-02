@@ -181,6 +181,15 @@ export interface PlatformConfig {
    */
   exportMarkdown?: () => Promise<void>;
 
+  /** Restart the current cloud sync loop for a provider without re-auth. */
+  retryCloudProvider?: (provider: "gdrive" | "dropbox") => Promise<void>;
+
+  /** Force a disconnect and re-auth flow for a cloud provider. */
+  reconnectCloudProvider?: (provider: "gdrive" | "dropbox") => Promise<void>;
+
+  /** Remove a feed's local health history after it is unsubscribed. */
+  forgetRssFeedHealth?: (feedUrl: string) => Promise<void>;
+
   /**
    * Retrieve cached article HTML for a globalId from the device-local store.
    * Desktop: reads from Tauri FS content cache.

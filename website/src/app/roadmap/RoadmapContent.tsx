@@ -482,7 +482,7 @@ const phases: Phase[] = [
     number: 4,
     title: "Sync Layer",
     description:
-      "Local relay and GDrive/Dropbox sync working. iCloud and remaining UI polish in progress.",
+      "Local relay and GDrive/Dropbox sync working, with cloud health diagnostics, retry/reconnect actions, and debug charts. iCloud remains the open item.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-4-SYNC.md",
@@ -491,7 +491,7 @@ const phases: Phase[] = [
     number: 5,
     title: "Desktop & Mobile App",
     description:
-      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, first-run legal gating, provider risk interstitials, signed macOS releases, and reviewed cumulative release headings.",
+      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, first-run legal gating, provider risk interstitials, a provider health dashboard, failing-feed unsubscribe tools, and reviewed cumulative release headings.",
     status: "current",
     priority: true,
     planLink:
@@ -510,7 +510,7 @@ const phases: Phase[] = [
     number: 7,
     title: "Facebook + Instagram",
     description:
-      "Facebook and Instagram integrated via Tauri WebView scraping, with suggested-post filtering, hardened story capture, silent background media guarding, Facebook group controls, and per-source scraper window modes.",
+      "Facebook and Instagram integrated via Tauri WebView scraping, with suggested-post filtering, hardened story capture, silent background media guarding, Facebook group controls, provider health summaries, and smart backoff when sync looks rate-limited.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-7-SOCIAL-CAPTURE.md",
@@ -555,7 +555,7 @@ const phases: Phase[] = [
     number: 12,
     title: "Additional Platforms",
     description:
-      "LinkedIn is in, including matching desktop scraper window controls and silent background media guarding. Next up: Mozi for social planning, then TikTok, Threads, Bluesky, Reddit, and YouTube.",
+      "LinkedIn is in, including matching desktop scraper window controls, silent background media guarding, and the shared provider health and pause-state surfaces. Next up: Mozi for social planning, then TikTok, Threads, Bluesky, Reddit, and YouTube.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-12-ADDITIONAL-PLATFORMS.md",

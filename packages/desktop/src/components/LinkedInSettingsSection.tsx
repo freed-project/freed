@@ -23,6 +23,7 @@ import {
 } from "../lib/scraper-prefs";
 import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
 import { ScraperWindowModeControl } from "./ScraperWindowModeControl";
+import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
 
 // =============================================================================
 // Diagnostic Panel
@@ -231,6 +232,8 @@ export function LinkedInSettingsSection() {
               : syncError}
           </p>
         )}
+
+        <ProviderHealthSectionSummary provider="linkedin" />
 
         {statusLine}
 

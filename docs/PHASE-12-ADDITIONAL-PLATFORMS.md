@@ -15,7 +15,7 @@ Expand capture to more platforms. Each platform gets its own capture layer packa
 
 ### `@freed/capture-linkedin`
 
-Professional network posts and articles, now fully surfaced in the desktop app.
+Professional network posts and articles, now fully surfaced in the desktop app with the same provider health summaries and pause controls as the other social sources.
 
 ```
 packages/capture-linkedin/
@@ -264,6 +264,7 @@ packages/capture-youtube/
 - [x] LinkedIn shares the Desktop scraper window modes: shown, cloaked, hidden
 - [x] LinkedIn background scrape and auth-check WebViews force provider media silent
 - [x] LinkedIn desktop flows have regression coverage in Playwright
+- [x] LinkedIn shares the desktop provider health summaries, rate-limit pause state, and resume controls
 - [ ] Mozi activity captured to FeedItem with plans, trips, attendance, or overlap-adjacent events
 - [ ] Mozi is visible in desktop Sources navigation and source status UI
 - [ ] Mozi desktop flows have regression coverage in Playwright

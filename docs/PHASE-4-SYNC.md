@@ -3,7 +3,7 @@
 > **Status:** 🚧 In Progress
 > **Dependencies:** Phase 1-2 (Capture layers ✓)
 >
-> Local relay, GDrive/Dropbox cloud sync, "Sync Now" button, and "Last synced" indicator are all working. iCloud sync is the remaining open item.
+> Local relay, GDrive/Dropbox cloud sync, "Sync Now" button, "Last synced" indicator, and cloud sync health diagnostics are all working. iCloud sync is the remaining open item.
 
 ---
 
@@ -276,6 +276,7 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 | 4.10 | Sync status observable                | ✓      | Low        |
 | 4.11 | "Last synced" UI indicator            | ✓      | Low        |
 | 4.12 | Manual "Sync now" button              | ✓      | Low        |
+| 4.13 | Cloud sync health diagnostics         | ✓      | Medium     |
 
 ---
 
@@ -289,6 +290,7 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 - [x] Sync connection status observable (`onStatusChange` listener in sync.ts)
 - [x] PWA falls back to cloud sync when away from home (GDrive + Dropbox PKCE OAuth, Automerge merge-upload)
 - [x] At least one cloud provider works — GDrive and Dropbox both confirmed working on app.freed.wtf
+- [x] Desktop surfaces cloud sync health with retry/reconnect actions, recent failures, and debug charts
 - [ ] iCloud sync integration
 
 ---
