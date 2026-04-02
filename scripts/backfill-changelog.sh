@@ -37,31 +37,103 @@ def gh_run(cmd):
 def capitalize(s):
     return s[:1].upper() + s[1:] if s else s
 
+def normalize_body_text(body):
+    return body.replace("\\r\\n", "\n").replace("\\n", "\n")
+
+def normalize_subject(msg):
+    return re.sub(r"^(?:\[[^\]]+\]\s*)+", "", msg).strip()
+
+def commit_kind(msg):
+    normalized = normalize_subject(msg)
+    match = re.match(r"^(feat|fix|perf|refactor|style|chore|docs|test|build|ci)(\([^)]+\))?!?:", normalized)
+    return match.group(1) if match else ""
+
 def strip_prefix(msg):
+    msg = normalize_subject(msg)
     msg = re.sub(r" \(#\d+\)$", "", msg)
     msg = re.sub(r"^(feat|fix|perf|refactor|style|chore|docs|test|build|ci)(\([^)]+\))?!?: ", "", msg)
     return capitalize(msg.strip())
 
-def fetch_summary(pr_num):
-    body = gh_run(["pr", "view", str(pr_num), "--json", "body", "--jq", ".body"])
-    lines, in_summary = [], False
-    for line in body.split("\n"):
-        if re.match(r"^## Summary", line):
-            in_summary = True
+def clean_detail_line(line):
+    cleaned = re.sub(r"\*\*([^*]+)\*\*", r"\1", line)
+    cleaned = re.sub(r"\*([^*]+)\*", r"\1", cleaned)
+    cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)
+    cleaned = re.sub(r"^[-*] ", "", cleaned.strip())
+    cleaned = re.sub(r":\s*$", "", cleaned)
+    return capitalize(cleaned.strip())
+
+def extract_section(body, headings):
+    lines = normalize_body_text(body).split("\n")
+    in_section = False
+    section_lines = []
+    for line in lines:
+        heading = line.strip().lower()
+        if heading in headings:
+            in_section = True
             continue
-        if in_summary and re.match(r"^## ", line):
+        if in_section and re.match(r"^##\s+", line):
             break
-        if in_summary and line.strip():
-            cleaned = re.sub(r"\*\*([^*]+)\*\*", r"\1", line)
-            cleaned = re.sub(r"\*([^*]+)\*", r"\1", cleaned)
-            cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)
-            cleaned = re.sub(r"^[-*] ", "", cleaned.strip())
-            cleaned = re.sub(r":\s*$", "", cleaned)   # strip trailing colon
-            lines.append(cleaned)
-    return capitalize(lines[0]) if lines else ""
+        if in_section:
+            section_lines.append(line.rstrip())
+    return section_lines
+
+def parse_details(lines):
+    details = []
+    paragraph = []
+    skip_values = {"Includes", "Include", "Summary", "What changed", "Impact"}
+
+    def flush_paragraph():
+        nonlocal paragraph
+        if not paragraph:
+            return
+        text = clean_detail_line(" ".join(paragraph))
+        if text and text not in skip_values:
+            details.append(text)
+        paragraph = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            flush_paragraph()
+            continue
+        if stripped.startswith("```"):
+            flush_paragraph()
+            continue
+        if re.match(r"^[-*] ", stripped):
+            flush_paragraph()
+            text = clean_detail_line(stripped)
+            if text:
+                details.append(text)
+            continue
+        if stripped.startswith("(AI Generated"):
+            continue
+        paragraph.append(stripped)
+
+    flush_paragraph()
+    seen = set()
+    unique = []
+    for detail in details:
+        if detail not in seen:
+            seen.add(detail)
+            unique.append(detail)
+    return unique
+
+def fetch_details(pr_num):
+    body = gh_run(["pr", "view", str(pr_num), "--json", "body", "--jq", ".body"])
+    preferred_sections = [
+        {"## what changed"},
+        {"## summary"},
+        {"## impact"},
+    ]
+
+    for headings in preferred_sections:
+        details = parse_details(extract_section(body, headings))
+        if details:
+            return details
+
+    return parse_details(normalize_body_text(body).split("\n"))
 
 def build_body(tag, prev_tag):
-    version = tag.lstrip("v")
     if prev_tag:
         commits = git(["log", f"{prev_tag}..{tag}", "--format=%s"]).splitlines()
     else:
@@ -71,27 +143,34 @@ def build_body(tag, prev_tag):
     for subj in commits:
         if not subj:
             continue
-        if re.match(r"^(release:|chore:|docs:|test:|build:|ci:|Merge )", subj):
+        normalized_subj = normalize_subject(subj)
+        kind = commit_kind(subj)
+        if re.match(r"^(release:|docs:|test:|build:|ci:|Merge )", normalized_subj):
             continue
 
         pr_match = re.search(r"\(#(\d+)\)$", subj)
         pr_num = int(pr_match.group(1)) if pr_match else None
 
         if pr_num:
-            summary = fetch_summary(pr_num)
-            bullet = summary if summary and len(summary) <= 120 else strip_prefix(subj)
-            link = f" ([#{pr_num}](https://github.com/freed-project/freed/pull/{pr_num}))"
+            details = fetch_details(pr_num)
+            if details:
+                entries = [
+                    f"- {detail} ([#{pr_num}](https://github.com/freed-project/freed/pull/{pr_num}))"
+                    for detail in details
+                ]
+            else:
+                entries = [
+                    f"- {strip_prefix(subj)} ([#{pr_num}](https://github.com/freed-project/freed/pull/{pr_num}))"
+                ]
         else:
-            bullet = strip_prefix(subj)
-            link = ""
+            entries = [f"- {strip_prefix(subj)}"]
 
-        entry = f"- {bullet}{link}"
-        if subj.startswith("feat"):
-            feats.append(entry)
-        elif subj.startswith("fix"):
-            fixes.append(entry)
-        elif subj.startswith("perf"):
-            perfs.append(entry)
+        if kind == "feat":
+            feats.extend(entries)
+        elif kind == "perf":
+            perfs.extend(entries)
+        else:
+            fixes.extend(entries)
 
     lines = [f"## Freed {tag}", ""]
     if feats:

@@ -109,6 +109,11 @@ function ReleaseCard({
               {formatDate(release.date)}
             </time>
           </div>
+          {release.builds.length > 1 && (
+            <p className="mb-3 text-xs text-text-muted">
+              Includes builds {release.builds.map((build) => `v${build}`).join(", ")}
+            </p>
+          )}
 
           {/* Content */}
           {hasContent ? (
