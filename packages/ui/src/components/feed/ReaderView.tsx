@@ -557,6 +557,8 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
           <img
             src={item.content.mediaUrls[0]}
             alt=""
+            loading="lazy"
+            decoding="async"
             className="w-full rounded-xl mb-8 bg-white/5 ring-1 ring-white/5"
           />
         )}

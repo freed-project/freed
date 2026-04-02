@@ -31,6 +31,7 @@ import {
 } from "../lib/settings-sections.js";
 import { FeedsSection } from "./settings/FeedsSection.js";
 import { SavedSection } from "./settings/SavedSection.js";
+import { SettingsToggle } from "./SettingsToggle.js";
 
 const SAMPLE_SEED_FEED_COUNT = 10;
 const SAMPLE_SEED_ITEM_COUNT = 155;
@@ -54,43 +55,6 @@ type NavStructureItem = Section | NavGroup;
 interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
-}
-
-// ── Toggle primitive ──────────────────────────────────────────────────────────
-
-function Toggle({
-  label,
-  checked,
-  onChange,
-  description,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  description?: string;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <div>
-        <p className="text-sm text-[#a1a1aa]">{label}</p>
-        {description && <p className="text-xs text-[#52525b] mt-0.5">{description}</p>}
-      </div>
-      <button
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className={`relative shrink-0 w-9 h-5 rounded-full transition-colors ${
-          checked ? "bg-[#8b5cf6]" : "bg-white/10"
-        }`}
-      >
-        <span
-          className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-            checked ? "translate-x-4" : "translate-x-0"
-          }`}
-        />
-      </button>
-    </div>
-  );
 }
 
 // ── Section icons ─────────────────────────────────────────────────────────────
@@ -578,13 +542,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <>
             <SectionHeading label="Reading" />
             <div className="space-y-5">
-              <Toggle
+              <SettingsToggle
                 label="Mark read on scroll"
                 checked={display.reading.markReadOnScroll}
                 onChange={(v) => handleReadingChange({ markReadOnScroll: v })}
                 description="Mark items as read when you scroll past them in the feed"
               />
-              <Toggle
+              <SettingsToggle
                 label="Show engagement counts"
                 checked={display.showEngagementCounts}
                 onChange={(v) => handleDisplayChange({ showEngagementCounts: v })}
@@ -623,7 +587,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   </button>
                 </div>
               </div>
-              <Toggle
+              <SettingsToggle
                 label="Focus mode"
                 checked={display.reading.focusMode}
                 onChange={(v) => handleReadingChange({ focusMode: v })}

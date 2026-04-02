@@ -1,6 +1,7 @@
 import { memo, useRef, useState, type ReactNode } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { PLATFORM_LABELS, type FeedItem as FeedItemType } from "@freed/shared";
+import { usePlatform } from "../../context/PlatformContext.js";
 import {
   RssIcon,
   FacebookIcon,
@@ -130,6 +131,7 @@ export const FeedItem = memo(function FeedItem({
   onOpenCommentUrl,
   storyHeight = 288,
 }: FeedItemProps) {
+  const { feedMediaPreviews = "inline" } = usePlatform();
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
   const platformIcon = platformIcons[item.platform] ?? <span className="text-xs">📄</span>;
   const isRead = Boolean(item.userState.readAt);
@@ -139,6 +141,7 @@ export const FeedItem = memo(function FeedItem({
   const commentCount = formatEngagementCount(item.engagement?.comments);
 
   const [swipeX, setSwipeX] = useState(0);
+  const showInlineMedia = feedMediaPreviews === "inline";
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const swipeLocked = useRef<"horizontal" | "vertical" | null>(null);
@@ -195,7 +198,7 @@ export const FeedItem = memo(function FeedItem({
         tabIndex={0}
         onKeyDown={(e) => e.key === "Enter" && onClick?.()}
       >
-        {bg ? (
+        {showInlineMedia && bg ? (
           <img
             src={bg}
             alt=""
@@ -538,7 +541,7 @@ export const FeedItem = memo(function FeedItem({
           </p>
         )}
 
-        {item.content.mediaUrls.length > 0 && (
+        {showInlineMedia && item.content.mediaUrls.length > 0 && (
           <div className="mt-3 rounded-xl overflow-hidden ring-1 ring-white/5">
             <img
               src={item.content.mediaUrls[0]}

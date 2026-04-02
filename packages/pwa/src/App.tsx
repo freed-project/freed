@@ -111,6 +111,7 @@ function App() {
   const platform: PlatformConfig = useMemo(
     () => ({
       store: useAppStore,
+      feedMediaPreviews: "inline",
       addRssFeed: subscribeToFeed,
       exportFeedsAsOPML,
       SourceIndicator: null,
