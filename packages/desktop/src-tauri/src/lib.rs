@@ -38,6 +38,8 @@ fn sync_relay_port() -> u16 {
 }
 
 const BACKGROUND_SCRAPER_WINDOW_NAME: &str = "__freed_background_scraper__";
+const DEFAULT_WEBKIT_SAFARI_UA: &str =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
 const ENABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
     (function() {
         window.name = "__freed_background_scraper__";
@@ -79,6 +81,88 @@ impl ScraperWindowMode {
             Self::Hidden => "hidden",
         }
     }
+}
+
+fn stored_or_default_user_agent(agent: &std::sync::Mutex<String>) -> String {
+    let stored = agent.lock().unwrap();
+    if stored.trim().is_empty() {
+        DEFAULT_WEBKIT_SAFARI_UA.to_string()
+    } else {
+        stored.clone()
+    }
+}
+
+fn recycle_webview_window(app: &tauri::AppHandle, label: &str, reason: &str) {
+    if let Some(window) = app.get_webview_window(label) {
+        match window.destroy() {
+            Ok(()) => info!("[window] recycled {} ({})", label, reason),
+            Err(error) => error!(
+                "[window] failed to recycle {} ({}): {}",
+                label, reason, error
+            ),
+        }
+    }
+}
+
+struct WebviewRecycleGuard {
+    app: tauri::AppHandle,
+    label: &'static str,
+    reason: &'static str,
+}
+
+impl WebviewRecycleGuard {
+    fn new(app: tauri::AppHandle, label: &'static str, reason: &'static str) -> Self {
+        Self { app, label, reason }
+    }
+}
+
+impl Drop for WebviewRecycleGuard {
+    fn drop(&mut self) {
+        recycle_webview_window(&self.app, self.label, self.reason);
+    }
+}
+
+fn schedule_webview_recycle(
+    app: tauri::AppHandle,
+    label: &'static str,
+    reason: &'static str,
+    delay: Duration,
+) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(delay).await;
+        recycle_webview_window(&app, label, reason);
+    });
+}
+
+fn build_cloaked_scraper_window(
+    app: &tauri::AppHandle,
+    label: &str,
+    title: &str,
+    url: &str,
+    user_agent: &str,
+) -> Result<tauri::WebviewWindow, String> {
+    use tauri::WebviewWindowBuilder;
+
+    WebviewWindowBuilder::new(
+        app,
+        label,
+        tauri::WebviewUrl::External(url.parse().map_err(|e: url::ParseError| e.to_string())?),
+    )
+    .user_agent(user_agent)
+    .transparent(true)
+    .initialization_script(include_str!("webkit-mask.js"))
+    .title(title)
+    .inner_size(1280.0, 900.0)
+    .focused(false)
+    .focusable(false)
+    .decorations(false)
+    .always_on_bottom(true)
+    .skip_taskbar(true)
+    .shadow(false)
+    .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_CLOAK_JS)
+    .visible(true)
+    .build()
+    .map_err(|e| e.to_string())
 }
 
 fn set_background_scraper_window_cloak(
@@ -930,6 +1014,7 @@ async fn fb_show_login(
     }
 
     let app_handle = app.clone();
+    let auth_emitted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     WebviewWindowBuilder::new(
         &app,
@@ -956,11 +1041,21 @@ async fn fb_show_login(
         let host = url.host_str().unwrap_or("");
 
         // Detect successful login: navigated away from /login on a facebook domain
-        if host.contains("facebook.com") && path != "/login" && path != "/login/" {
+        if host.contains("facebook.com")
+            && path != "/login"
+            && path != "/login/"
+            && !auth_emitted.swap(true, std::sync::atomic::Ordering::SeqCst)
+        {
             if let Some(w) = app_handle.get_webview_window("fb-scraper") {
                 let _ = w.hide();
             }
             let _ = app_handle.emit("fb-auth-result", serde_json::json!({ "loggedIn": true }));
+            schedule_webview_recycle(
+                app_handle.clone(),
+                "fb-scraper",
+                "login complete",
+                Duration::from_secs(2),
+            );
         }
 
         true
@@ -976,9 +1071,7 @@ async fn fb_show_login(
 /// Hide the Facebook login window after successful authentication.
 #[tauri::command]
 async fn fb_hide_login(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(w) = app.get_webview_window("fb-scraper") {
-        w.hide().map_err(|e| e.to_string())?;
-    }
+    recycle_webview_window(&app, "fb-scraper", "login dismissed");
     Ok(())
 }
 
@@ -988,26 +1081,27 @@ async fn fb_hide_login(app: tauri::AppHandle) -> Result<(), String> {
 /// waits for the page to settle, then checks for logged-in indicators
 /// (USER_ID != "0" in the page source).
 #[tauri::command]
-async fn fb_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
+async fn fb_check_auth(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+) -> Result<bool, String> {
     use tauri::WebviewWindowBuilder;
 
+    let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
+    let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "auth check");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(w) => w,
-        None => {
-            WebviewWindowBuilder::new(
-                &app,
-                "fb-scraper",
-                tauri::WebviewUrl::External(
-                    "https://www.facebook.com/".parse().unwrap(),
-                ),
-            )
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15")
-            .title("Freed Facebook")
-            .inner_size(460.0, 700.0)
-            .visible(false)
-            .build()
-            .map_err(|e| e.to_string())?
-        }
+        None => WebviewWindowBuilder::new(
+            &app,
+            "fb-scraper",
+            tauri::WebviewUrl::External("https://www.facebook.com/".parse().unwrap()),
+        )
+        .user_agent(&scraper_user_agent)
+        .title("Freed Facebook")
+        .inner_size(460.0, 700.0)
+        .visible(false)
+        .build()
+        .map_err(|e| e.to_string())?,
     };
 
     tokio::time::sleep(Duration::from_secs(6)).await;
@@ -1026,6 +1120,8 @@ async fn fb_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
         "#,
     )
     .map_err(|e| e.to_string())?;
+
+    tokio::time::sleep(Duration::from_millis(250)).await;
 
     // The result is delivered asynchronously via event. The frontend
     // listens for 'fb-auth-result'. For the command return value we
@@ -1275,6 +1371,9 @@ async fn fb_scrape_feed(
     use tauri::WebviewWindowBuilder;
 
     let fb_feed_url = "https://www.facebook.com/";
+    let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
+    let _recycle_guard =
+        WebviewRecycleGuard::new(app.clone(), "fb-scraper", "feed scrape complete");
 
     let wv = match app.get_webview_window("fb-scraper") {
         Some(w) => {
@@ -1290,7 +1389,7 @@ async fn fb_scrape_feed(
                 "fb-scraper",
                 tauri::WebviewUrl::External(fb_feed_url.parse().unwrap()),
             )
-            .user_agent(&*capture.fb_user_agent.lock().unwrap())
+            .user_agent(&scraper_user_agent)
             .transparent(true)
             .initialization_script(include_str!("webkit-mask.js"))
             .title("Freed Facebook")
@@ -1485,10 +1584,6 @@ async fn fb_scrape_feed(
         num_passes + 1
     );
 
-    // Hide the window now that scraping is done. The window stays alive in the
-    // background to preserve the authenticated session for the next scrape.
-    let _ = wv.hide();
-
     Ok(())
 }
 
@@ -1501,6 +1596,9 @@ async fn fb_scrape_groups(
     use tauri::WebviewWindowBuilder;
 
     let fb_groups_url = "https://www.facebook.com/groups/?category=joined";
+    let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
+    let _recycle_guard =
+        WebviewRecycleGuard::new(app.clone(), "fb-scraper", "groups scrape complete");
 
     let wv = match app.get_webview_window("fb-scraper") {
         Some(w) => {
@@ -1516,7 +1614,7 @@ async fn fb_scrape_groups(
                 "fb-scraper",
                 tauri::WebviewUrl::External(fb_groups_url.parse().unwrap()),
             )
-            .user_agent(&*capture.fb_user_agent.lock().unwrap())
+            .user_agent(&scraper_user_agent)
             .initialization_script(include_str!("webkit-mask.js"))
             .title("Freed Facebook")
             .inner_size(1280.0, 900.0)
@@ -1589,7 +1687,6 @@ async fn fb_scrape_groups(
     };
 
     app.unlisten(listener_id);
-    let _ = wv.hide();
     Ok(groups)
 }
 
@@ -1598,7 +1695,7 @@ async fn fb_scrape_groups(
 async fn fb_disconnect(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(wv) = app.get_webview_window("fb-scraper") {
         wv.clear_all_browsing_data().map_err(|e| e.to_string())?;
-        let _ = wv.close();
+        let _ = wv.destroy();
     }
     Ok(())
 }
@@ -1671,8 +1768,8 @@ async fn ig_show_login(
             && path != "/accounts/login/"
             && !auth_emitted.swap(true, std::sync::atomic::Ordering::SeqCst)
         {
-            // Hide the login UI — the window stays alive for scraping but is not
-            // visible to the user. ig_scrape_feed will show it again when needed.
+            // Hide the login UI while the post-login scrape spins up.
+            // ig_scrape_feed now recycles the WebView when the scrape ends.
             if let Some(w) = app_handle.get_webview_window("ig-scraper") {
                 let _ = w.hide();
             }
@@ -1687,12 +1784,7 @@ async fn ig_show_login(
                 let capture = scrape_app.state::<CaptureState>();
                 // Post-login auto-scrapes default to cloaked mode so they stay
                 // out of the way without reintroducing hidden-window stalls.
-                match ig_scrape_feed(
-                    scrape_app.clone(),
-                    capture,
-                    ScraperWindowMode::Cloaked,
-                )
-                .await
+                match ig_scrape_feed(scrape_app.clone(), capture, ScraperWindowMode::Cloaked).await
                 {
                     Ok(()) => info!("[IG] post-login auto-scrape complete"),
                     Err(e) => info!("[IG] post-login auto-scrape error: {}", e),
@@ -1713,9 +1805,7 @@ async fn ig_show_login(
 /// Hide the Instagram login window after successful authentication.
 #[tauri::command]
 async fn ig_hide_login(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(w) = app.get_webview_window("ig-scraper") {
-        w.hide().map_err(|e| e.to_string())?;
-    }
+    recycle_webview_window(&app, "ig-scraper", "login dismissed");
     Ok(())
 }
 
@@ -1724,26 +1814,27 @@ async fn ig_hide_login(app: tauri::AppHandle) -> Result<(), String> {
 /// Creates a hidden WebView if none exists, navigates to instagram.com,
 /// waits for the page to settle, then checks for the sessionid cookie.
 #[tauri::command]
-async fn ig_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
+async fn ig_check_auth(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+) -> Result<bool, String> {
     use tauri::WebviewWindowBuilder;
 
+    let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
+    let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "auth check");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(w) => w,
-        None => {
-            WebviewWindowBuilder::new(
-                &app,
-                "ig-scraper",
-                tauri::WebviewUrl::External(
-                    "https://www.instagram.com/".parse().unwrap(),
-                ),
-            )
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15")
-            .title("Freed Instagram")
-            .inner_size(460.0, 700.0)
-            .visible(false)
-            .build()
-            .map_err(|e| e.to_string())?
-        }
+        None => WebviewWindowBuilder::new(
+            &app,
+            "ig-scraper",
+            tauri::WebviewUrl::External("https://www.instagram.com/".parse().unwrap()),
+        )
+        .user_agent(&scraper_user_agent)
+        .title("Freed Instagram")
+        .inner_size(460.0, 700.0)
+        .visible(false)
+        .build()
+        .map_err(|e| e.to_string())?,
     };
 
     tokio::time::sleep(Duration::from_secs(6)).await;
@@ -1762,6 +1853,8 @@ async fn ig_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
         "#,
     )
     .map_err(|e| e.to_string())?;
+
+    tokio::time::sleep(Duration::from_millis(250)).await;
 
     Ok(true)
 }
@@ -1784,6 +1877,9 @@ async fn ig_scrape_feed(
     use tauri::WebviewWindowBuilder;
 
     let ig_feed_url = "https://www.instagram.com/?variant=following";
+    let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
+    let _recycle_guard =
+        WebviewRecycleGuard::new(app.clone(), "ig-scraper", "feed scrape complete");
 
     let wv = match app.get_webview_window("ig-scraper") {
         Some(w) => {
@@ -1806,7 +1902,7 @@ async fn ig_scrape_feed(
                 "ig-scraper",
                 tauri::WebviewUrl::External(ig_feed_url.parse().unwrap()),
             )
-            .user_agent(&*capture.ig_user_agent.lock().unwrap())
+            .user_agent(&scraper_user_agent)
             .transparent(true)
             .initialization_script(include_str!("webkit-mask.js"))
             .title("Freed Instagram")
@@ -2016,10 +2112,6 @@ async fn ig_scrape_feed(
         num_passes + 1
     );
 
-    // Hide the window now that scraping is done. The window stays alive in the
-    // background to preserve the authenticated session for the next scrape.
-    let _ = wv.hide();
-
     Ok(())
 }
 
@@ -2028,7 +2120,7 @@ async fn ig_scrape_feed(
 async fn ig_disconnect(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(wv) = app.get_webview_window("ig-scraper") {
         wv.clear_all_browsing_data().map_err(|e| e.to_string())?;
-        let _ = wv.close();
+        let _ = wv.destroy();
     }
     Ok(())
 }
@@ -2043,10 +2135,25 @@ async fn ig_disconnect(app: tauri::AppHandle) -> Result<(), String> {
 /// Returns Ok(()) on navigation success, Err if the window doesn't exist or
 /// navigation fails. The caller should treat Err as a retriable failure.
 #[tauri::command]
-async fn fb_visit_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    let wv = app
-        .get_webview_window("fb-scraper")
-        .ok_or_else(|| "fb-scraper window not found".to_string())?;
+async fn fb_visit_url(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    url: String,
+) -> Result<(), String> {
+    let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
+    let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "visit complete");
+    let wv = match app.get_webview_window("fb-scraper") {
+        Some(window) => window,
+        None => build_cloaked_scraper_window(
+            &app,
+            "fb-scraper",
+            "Freed Facebook",
+            &url,
+            &scraper_user_agent,
+        )?,
+    };
+
+    prepare_background_scraper_window(&wv, ScraperWindowMode::Cloaked)?;
 
     wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
         .map_err(|e| e.to_string())?;
@@ -2058,10 +2165,25 @@ async fn fb_visit_url(app: tauri::AppHandle, url: String) -> Result<(), String> 
 /// Navigate the Instagram scraper WebView to a URL and wait for it to load.
 /// Used by the outbox processor to mark posts as seen.
 #[tauri::command]
-async fn ig_visit_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    let wv = app
-        .get_webview_window("ig-scraper")
-        .ok_or_else(|| "ig-scraper window not found".to_string())?;
+async fn ig_visit_url(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    url: String,
+) -> Result<(), String> {
+    let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
+    let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "visit complete");
+    let wv = match app.get_webview_window("ig-scraper") {
+        Some(window) => window,
+        None => build_cloaked_scraper_window(
+            &app,
+            "ig-scraper",
+            "Freed Instagram",
+            &url,
+            &scraper_user_agent,
+        )?,
+    };
+
+    prepare_background_scraper_window(&wv, ScraperWindowMode::Cloaked)?;
 
     wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
         .map_err(|e| e.to_string())?;
@@ -2079,10 +2201,25 @@ async fn ig_visit_url(app: tauri::AppHandle, url: String) -> Result<(), String> 
 /// The outbox processor treats this as a success; if the DOM selector missed,
 /// the item stays "liked locally" which is an acceptable degradation.
 #[tauri::command]
-async fn fb_like_post(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    let wv = app
-        .get_webview_window("fb-scraper")
-        .ok_or_else(|| "fb-scraper window not found".to_string())?;
+async fn fb_like_post(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    url: String,
+) -> Result<(), String> {
+    let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
+    let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "like complete");
+    let wv = match app.get_webview_window("fb-scraper") {
+        Some(window) => window,
+        None => build_cloaked_scraper_window(
+            &app,
+            "fb-scraper",
+            "Freed Facebook",
+            &url,
+            &scraper_user_agent,
+        )?,
+    };
+
+    prepare_background_scraper_window(&wv, ScraperWindowMode::Cloaked)?;
 
     wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
         .map_err(|e| e.to_string())?;
@@ -2112,10 +2249,25 @@ async fn fb_like_post(app: tauri::AppHandle, url: String) -> Result<(), String> 
 /// Same best-effort semantics as `fb_like_post`. `wv.eval()` injects the
 /// click script but cannot confirm whether the selector matched.
 #[tauri::command]
-async fn ig_like_post(app: tauri::AppHandle, url: String) -> Result<(), String> {
-    let wv = app
-        .get_webview_window("ig-scraper")
-        .ok_or_else(|| "ig-scraper window not found".to_string())?;
+async fn ig_like_post(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    url: String,
+) -> Result<(), String> {
+    let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
+    let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "like complete");
+    let wv = match app.get_webview_window("ig-scraper") {
+        Some(window) => window,
+        None => build_cloaked_scraper_window(
+            &app,
+            "ig-scraper",
+            "Freed Instagram",
+            &url,
+            &scraper_user_agent,
+        )?,
+    };
+
+    prepare_background_scraper_window(&wv, ScraperWindowMode::Cloaked)?;
 
     wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
         .map_err(|e| e.to_string())?;
@@ -2227,9 +2379,7 @@ async fn li_show_login(
 /// Hide the LinkedIn login window after successful authentication.
 #[tauri::command]
 async fn li_hide_login(app: tauri::AppHandle) -> Result<(), String> {
-    if let Some(w) = app.get_webview_window("li-scraper") {
-        w.hide().map_err(|e| e.to_string())?;
-    }
+    recycle_webview_window(&app, "li-scraper", "login dismissed");
     Ok(())
 }
 
@@ -2238,32 +2388,31 @@ async fn li_hide_login(app: tauri::AppHandle) -> Result<(), String> {
 /// Creates a hidden WebView if none exists, navigates to linkedin.com/feed,
 /// waits for the page to settle, then checks for the li_at session cookie.
 #[tauri::command]
-async fn li_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
+async fn li_check_auth(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+) -> Result<bool, String> {
     use tauri::WebviewWindowBuilder;
 
+    let scraper_user_agent = stored_or_default_user_agent(&capture.li_user_agent);
+    let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "li-scraper", "auth check");
     let wv = match app.get_webview_window("li-scraper") {
         Some(w) => {
-            w.navigate(
-                "https://www.linkedin.com/feed/".parse().unwrap(),
-            )
-            .map_err(|e| e.to_string())?;
+            w.navigate("https://www.linkedin.com/feed/".parse().unwrap())
+                .map_err(|e| e.to_string())?;
             w
         }
-        None => {
-            WebviewWindowBuilder::new(
-                &app,
-                "li-scraper",
-                tauri::WebviewUrl::External(
-                    "https://www.linkedin.com/feed/".parse().unwrap(),
-                ),
-            )
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15")
-            .title("Freed LinkedIn")
-            .inner_size(460.0, 700.0)
-            .visible(false)
-            .build()
-            .map_err(|e| e.to_string())?
-        }
+        None => WebviewWindowBuilder::new(
+            &app,
+            "li-scraper",
+            tauri::WebviewUrl::External("https://www.linkedin.com/feed/".parse().unwrap()),
+        )
+        .user_agent(&scraper_user_agent)
+        .title("Freed LinkedIn")
+        .inner_size(460.0, 700.0)
+        .visible(false)
+        .build()
+        .map_err(|e| e.to_string())?,
     };
 
     tokio::time::sleep(Duration::from_secs(6)).await;
@@ -2288,6 +2437,8 @@ async fn li_check_auth(app: tauri::AppHandle) -> Result<bool, String> {
     )
     .map_err(|e| e.to_string())?;
 
+    tokio::time::sleep(Duration::from_millis(250)).await;
+
     Ok(true)
 }
 
@@ -2311,6 +2462,9 @@ async fn li_scrape_feed(
     use tauri::WebviewWindowBuilder;
 
     let li_feed_url = "https://www.linkedin.com/feed/";
+    let scraper_user_agent = stored_or_default_user_agent(&capture.li_user_agent);
+    let _recycle_guard =
+        WebviewRecycleGuard::new(app.clone(), "li-scraper", "feed scrape complete");
 
     let wv = match app.get_webview_window("li-scraper") {
         Some(w) => {
@@ -2326,7 +2480,7 @@ async fn li_scrape_feed(
                 "li-scraper",
                 tauri::WebviewUrl::External(li_feed_url.parse().unwrap()),
             )
-            .user_agent(&*capture.li_user_agent.lock().unwrap())
+            .user_agent(&scraper_user_agent)
             .transparent(true)
             .initialization_script(include_str!("webkit-mask.js"))
             .title("Freed LinkedIn")
@@ -2497,9 +2651,6 @@ async fn li_scrape_feed(
         num_passes
     );
 
-    // Hide the window after scraping. The window stays alive to preserve auth.
-    let _ = wv.hide();
-
     Ok(())
 }
 
@@ -2508,7 +2659,7 @@ async fn li_scrape_feed(
 async fn li_disconnect(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(wv) = app.get_webview_window("li-scraper") {
         wv.clear_all_browsing_data().map_err(|e| e.to_string())?;
-        let _ = wv.close();
+        let _ = wv.destroy();
     }
     Ok(())
 }
