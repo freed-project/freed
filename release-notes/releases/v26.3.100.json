@@ -1,0 +1,56 @@
+{
+  "tag": "v26.3.100",
+  "version": "26.3.100",
+  "dayKey": "26.3.1",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:43:40.009Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v0.2.0",
+    "compareRef": "v26.3.100",
+    "prNumbers": [
+      4
+    ],
+    "commitSubjects": [
+      "fix(ci): use case/esac instead of bash 4 associative arrays",
+      "release: v26.3.100",
+      "feat: update system, CalVer DDBUILD, UI polish (#4)",
+      "release: v26.3.4",
+      "feat: UI polish — settings cleanup, sync unification, sidebar refinements",
+      "release: v26.3.3",
+      "feat: UI overhaul — unified header, draggable sidebar, modal consistency",
+      "release: v26.3.2",
+      "fix: include PWA sources in desktop Tailwind content scan",
+      "feat(website): add early-build disclaimer and clarify app vs desktop roles",
+      "release: v26.3.1",
+      "fix: use YY.M.D CalVer to stay within MSI 255 major version limit",
+      "Revert \"release: v2026.3.1\"",
+      "release: v2026.3.1",
+      "chore: update release.sh for CalVer and PWA version lockstep",
+      "Merge pull request #3 from freed-project/refactor/unify-pwa-desktop-components",
+      "Merge pull request #2 from freed-project/feat/get-freed-modal",
+      "refactor: unify PWA and Desktop UI components via PlatformContext",
+      "feat(website): deep-linkable /get modal, restore tooltip, disable subscribe",
+      "feat(website): direct platform downloads with override dropdown",
+      "Merge branch 'main' into feat/get-freed-modal",
+      "docs: update Phase 5 after successful 4-platform release build",
+      "feat(website): redesign Get Freed modal with app links and downloads"
+    ]
+  },
+  "release": {
+    "summary": "UI polish , settings cleanup, sync unification, sidebar refinements",
+    "whatsNew": [
+      "UI polish , settings cleanup, sync unification, sidebar refinements",
+      "UI overhaul , unified header, draggable sidebar, modal consistency",
+      "Add early-build disclaimer and clarify app vs desktop roles"
+    ],
+    "fixes": [
+      "Use case/esac instead of bash 4 associative arrays",
+      "Include PWA sources in desktop Tailwind content scan",
+      "Use YY.M.D CalVer to stay within MSI 255 major version limit"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.100\n\nUI polish , settings cleanup, sync unification, sidebar refinements\n\n### What's New\n\n- UI polish , settings cleanup, sync unification, sidebar refinements\n- UI overhaul , unified header, draggable sidebar, modal consistency\n- Add early-build disclaimer and clarify app vs desktop roles\n\n### Fixes\n\n- Use case/esac instead of bash 4 associative arrays\n- Include PWA sources in desktop Tailwind content scan\n- Use YY.M.D CalVer to stay within MSI 255 major version limit\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

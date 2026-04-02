@@ -1,0 +1,28 @@
+{
+  "dayKey": "26.3.5",
+  "date": "2026-03-05",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [],
+  "editorialNotes": [],
+  "rollup": {
+    "summary": "Add X sync pipeline instrumentation and integration tests",
+    "whatsNew": [
+      "Add X sync pipeline instrumentation and integration tests",
+      "Add PWA X settings page and fix duplicate search clear button",
+      "Move X connection to Settings > Sources > X page"
+    ],
+    "fixes": [
+      "Update Header component layout and spacing",
+      "Center feed cards to match skeleton layout",
+      "Stop Automerge undefined writes from crashing RSS and X sync"
+    ],
+    "performance": [
+      "Fix feed reader lockup and move PWA Automerge to a Web Worker"
+    ]
+  },
+  "updatedAt": "2026-04-02T02:44:26.721Z"
+}

@@ -227,7 +227,7 @@ export default function ChangelogContent({
             <span className="gradient-text">Changelog</span>
           </h1>
           <p className="text-text-secondary text-base sm:text-lg">
-            Release notes for every shipped build.
+            Even death stars have an exhaust vent.
           </p>
           <p className="text-text-muted text-sm mt-1">
             Auto-updated when new builds ship.

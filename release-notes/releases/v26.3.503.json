@@ -1,0 +1,29 @@
+{
+  "tag": "v26.3.503",
+  "version": "26.3.503",
+  "dayKey": "26.3.5",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:44:23.484Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.502",
+    "compareRef": "v26.3.503",
+    "prNumbers": [
+      94
+    ],
+    "commitSubjects": [
+      "release: v26.3.503",
+      "fix: remove hardcoded local path from .cargo/config.toml (#94)"
+    ]
+  },
+  "release": {
+    "summary": "Remove hardcoded local path from .cargo/config.toml",
+    "whatsNew": [],
+    "fixes": [
+      "Remove hardcoded local path from .cargo/config.toml"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.503\n\nRemove hardcoded local path from .cargo/config.toml\n\n### Fixes\n\n- Remove hardcoded local path from .cargo/config.toml\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

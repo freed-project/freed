@@ -1,0 +1,40 @@
+{
+  "tag": "v26.4.101",
+  "version": "26.4.101",
+  "dayKey": "26.4.1",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:45:18.723Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.4.100",
+    "compareRef": "v26.4.101",
+    "prNumbers": [
+      150,
+      151,
+      152,
+      153
+    ],
+    "commitSubjects": [
+      "release: v26.4.101",
+      "feat: add macOS codesigning to release pipeline (#153)",
+      "refactor: simplify legal consent surfaces (#152)",
+      "release: v26.3.3100",
+      "[codex] feat: add legal consent gates across surfaces (#150)",
+      "feat: finalize qr landing page experience (#151)"
+    ]
+  },
+  "release": {
+    "summary": "Pass the Apple signing and notarization environment variables through to tauri-action",
+    "whatsNew": [
+      "Pass the Apple signing and notarization environment variables through to tauri-action",
+      "Add legal consent gates across surfaces",
+      "Finalize qr landing page experience"
+    ],
+    "fixes": [
+      "Simplify legal consent surfaces"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.101\n\nPass the Apple signing and notarization environment variables through to tauri-action\n\n### What's New\n\n- Pass the Apple signing and notarization environment variables through to tauri-action\n- Add legal consent gates across surfaces\n- Finalize qr landing page experience\n\n### Fixes\n\n- Simplify legal consent surfaces\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

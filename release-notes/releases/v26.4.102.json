@@ -1,0 +1,29 @@
+{
+  "tag": "v26.4.102",
+  "version": "26.4.102",
+  "dayKey": "26.4.1",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:45:20.369Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.4.101",
+    "compareRef": "v26.4.102",
+    "prNumbers": [
+      154
+    ],
+    "commitSubjects": [
+      "release: v26.4.102",
+      "fix: finish linkedin desktop integration (#154)"
+    ]
+  },
+  "release": {
+    "summary": "Finish linkedin desktop integration",
+    "whatsNew": [],
+    "fixes": [
+      "Finish linkedin desktop integration"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.102\n\nFinish linkedin desktop integration\n\n### Fixes\n\n- Finish linkedin desktop integration\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

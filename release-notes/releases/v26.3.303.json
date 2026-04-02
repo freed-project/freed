@@ -1,0 +1,47 @@
+{
+  "tag": "v26.3.303",
+  "version": "26.3.303",
+  "dayKey": "26.3.3",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:44:02.701Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.302",
+    "compareRef": "v26.3.303",
+    "prNumbers": [
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47
+    ],
+    "commitSubjects": [
+      "release: v26.3.303",
+      "fix(pwa): fix update detection and move HTTPS warning before QR/manual forms (#47)",
+      "feat(ui): replace emoji sidebar icons with white SVG icons (#46)",
+      "fix(desktop): startup migration heals untitled feeds + toolbar drag fix (#42) (#45)",
+      "fix(cloud-sync): fix OAuth redirect URI, Google Drive client secret, and offline status (#44)",
+      "refactor: unify CloudProviderCard into @freed/ui shared package (#43)",
+      "refactor: remove SidebarConnectionSection from PlatformContext (#42)",
+      "fix(desktop): show download progress and post-restart toast for updates (#41)",
+      "fix(desktop): extend drag region to inner header div and spacer (#40)"
+    ]
+  },
+  "release": {
+    "summary": "Replace emoji sidebar icons with white SVG icons",
+    "whatsNew": [
+      "Replace emoji sidebar icons with white SVG icons"
+    ],
+    "fixes": [
+      "Fix update detection and move HTTPS warning before QR/manual forms",
+      "Startup feed-name healing, toolbar height, window drag",
+      "Fix OAuth redirect URI, Google Drive client secret, and offline status"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.303\n\nReplace emoji sidebar icons with white SVG icons\n\n### What's New\n\n- Replace emoji sidebar icons with white SVG icons\n\n### Fixes\n\n- Fix update detection and move HTTPS warning before QR/manual forms\n- Startup feed-name healing, toolbar height, window drag\n- Fix OAuth redirect URI, Google Drive client secret, and offline status\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

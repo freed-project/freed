@@ -1,0 +1,43 @@
+{
+  "tag": "v26.3.2400",
+  "version": "26.3.2400",
+  "dayKey": "26.3.24",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:45:09.702Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.1300",
+    "compareRef": "v26.3.2400",
+    "prNumbers": [
+      131,
+      145,
+      146,
+      147
+    ],
+    "commitSubjects": [
+      "release: v26.3.2400",
+      "fix: filter polluted social feed items and add Facebook group filters (#146)",
+      "feat: add LinkedIn feed capture via WebView scraper (#131)",
+      "feat: overhaul feed card and reader actions (#147)",
+      "Further footer updates",
+      "Merge branch 'main' of github.com:freed-project/freed",
+      "Adjust footer text formatting",
+      "feat: surface update download progress inside the Settings card (#145)"
+    ]
+  },
+  "release": {
+    "summary": "Add LinkedIn feed capture via WebView scraper",
+    "whatsNew": [
+      "Add LinkedIn feed capture via WebView scraper",
+      "Overhaul feed card and reader actions",
+      "Surface update download progress inside the Settings card"
+    ],
+    "fixes": [
+      "Filter polluted social feed items and add Facebook group filters",
+      "Adjust footer text formatting"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.2400\n\nAdd LinkedIn feed capture via WebView scraper\n\n### What's New\n\n- Add LinkedIn feed capture via WebView scraper\n- Overhaul feed card and reader actions\n- Surface update download progress inside the Settings card\n\n### Fixes\n\n- Filter polluted social feed items and add Facebook group filters\n- Adjust footer text formatting\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

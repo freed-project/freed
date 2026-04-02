@@ -1,0 +1,45 @@
+{
+  "tag": "v26.3.104",
+  "version": "26.3.104",
+  "dayKey": "26.3.1",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:43:45.639Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.103",
+    "compareRef": "v26.3.104",
+    "prNumbers": [],
+    "commitSubjects": [
+      "release: v26.3.104",
+      "style(pwa): rename sidebar-scroll → minimal-scroll, apply to feed content area",
+      "perf(pwa): lazy-load images, drop backdrop-filter blur, add scroll gutter",
+      "fix(rss): deduplicate historical feed items and add link-URL secondary dedup index",
+      "fix(rss): parse <guid>/<id> for stable dedup keys, guard docAddFeedItem against clobbering",
+      "fix(sidebar): hide logo in desktop mobile-layout to clear macOS traffic lights",
+      "feat(desktop): move X connect UI from sidebar into feed blank state",
+      "feat(sidebar): add per-feed context menu with sync status, rename, and unsubscribe",
+      "feat(desktop): sync button opens status popover instead of immediate refresh",
+      "fix(feed): add top padding to first card in feed list",
+      "fix(pwa): reader toolbar full-width layout and macOS inset constant",
+      "perf(pwa): eliminate redundant re-renders on feed list scroll"
+    ]
+  },
+  "release": {
+    "summary": "Move X connect UI from sidebar into feed blank state",
+    "whatsNew": [
+      "Move X connect UI from sidebar into feed blank state",
+      "Add per-feed context menu with sync status, rename, and unsubscribe",
+      "Sync button opens status popover instead of immediate refresh"
+    ],
+    "fixes": [
+      "Rename sidebar-scroll to minimal-scroll, apply to feed content area",
+      "Hide logo in desktop mobile-layout to clear macOS traffic lights",
+      "Add top padding to first card in feed list"
+    ],
+    "performance": [
+      "Lazy-load images, drop backdrop-filter blur, add scroll gutter"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.104\n\nMove X connect UI from sidebar into feed blank state\n\n### What's New\n\n- Move X connect UI from sidebar into feed blank state\n- Add per-feed context menu with sync status, rename, and unsubscribe\n- Sync button opens status popover instead of immediate refresh\n\n### Performance\n\n- Lazy-load images, drop backdrop-filter blur, add scroll gutter\n\n### Fixes\n\n- Rename sidebar-scroll to minimal-scroll, apply to feed content area\n- Hide logo in desktop mobile-layout to clear macOS traffic lights\n- Add top padding to first card in feed list\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

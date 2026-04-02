@@ -1,0 +1,46 @@
+{
+  "tag": "v26.3.903",
+  "version": "26.3.903",
+  "dayKey": "26.3.9",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:44:46.742Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.804",
+    "compareRef": "v26.3.903",
+    "prNumbers": [
+      118,
+      119,
+      120,
+      121,
+      122
+    ],
+    "commitSubjects": [
+      "release: v26.3.903",
+      "fix: switch reqwest and tauri-plugin-updater to rustls-tls on all platforms (#122)",
+      "release: v26.3.902",
+      "fix: remove unused user-agent import from fb-capture.ts (#121)",
+      "release: v26.3.901",
+      "fix: remove capture-x build step from release CI (#120)",
+      "release: v26.3.900",
+      "fix: hide scraper window after FB scrape, stop stealing focus on IG scrape",
+      "feat: anti-detection hardening for social media capture (#119)",
+      "feat: changelog page, remove frosted glass, fix update banner (#118)"
+    ]
+  },
+  "release": {
+    "summary": "Anti-detection hardening for social media capture",
+    "whatsNew": [
+      "Anti-detection hardening for social media capture",
+      "Changelog page, remove frosted glass, fix update banner"
+    ],
+    "fixes": [
+      "Switch reqwest and tauri-plugin-updater to rustls-tls",
+      "Remove unused user-agent import from fb-capture.ts",
+      "Remove capture-x build step from release CI"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.903\n\nAnti-detection hardening for social media capture\n\n### What's New\n\n- Anti-detection hardening for social media capture\n- Changelog page, remove frosted glass, fix update banner\n\n### Fixes\n\n- Switch reqwest and tauri-plugin-updater to rustls-tls\n- Remove unused user-agent import from fb-capture.ts\n- Remove capture-x build step from release CI\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

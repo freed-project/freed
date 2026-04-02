@@ -1,0 +1,33 @@
+{
+  "tag": "v26.3.1200",
+  "version": "26.3.1200",
+  "dayKey": "26.3.12",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:45:04.919Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.1101",
+    "compareRef": "v26.3.1200",
+    "prNumbers": [
+      143,
+      144
+    ],
+    "commitSubjects": [
+      "release: v26.3.1200",
+      "fix: hide FB/IG scraper windows instead of moving them off-screen (#144)",
+      "feat: group changelog cards by CalVer day (#143)"
+    ]
+  },
+  "release": {
+    "summary": "Most recent build for the day is used as the card header",
+    "whatsNew": [
+      "Most recent build for the day is used as the card header"
+    ],
+    "fixes": [
+      "Hide FB/IG scraper windows instead of moving them off-screen"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.1200\n\nMost recent build for the day is used as the card header\n\n### What's New\n\n- Most recent build for the day is used as the card header\n\n### Fixes\n\n- Hide FB/IG scraper windows instead of moving them off-screen\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

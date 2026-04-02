@@ -136,6 +136,8 @@ function cleanDetailLine(line) {
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/\*([^*]+)\*/g, "$1")
     .replace(/`([^`]+)`/g, "$1")
+    .replace(/[—–]/g, ", ")
+    .replace(/→/g, " to ")
     .replace(/^[-*] /, "")
     .replace(/:\s*$/, "")
     .replace(/\s+/g, " ")
@@ -234,12 +236,16 @@ function dedupeStrings(items) {
   const result = [];
 
   for (const item of items) {
-    const key = item.trim().toLowerCase();
+    const normalizedItem = item.trim();
+    const key = normalizedItem.toLowerCase();
     if (!key || seen.has(key)) {
       continue;
     }
+    if (isLowSignalItem(normalizedItem)) {
+      continue;
+    }
     seen.add(key);
-    result.push(item.trim());
+    result.push(normalizedItem);
   }
 
   return result;
@@ -247,7 +253,7 @@ function dedupeStrings(items) {
 
 function limitSectionItems(
   sections,
-  limits = { whatsNew: 5, fixes: 6, performance: 3 },
+  limits = { whatsNew: 3, fixes: 3, performance: 1 },
 ) {
   return {
     ...sections,
@@ -258,8 +264,141 @@ function limitSectionItems(
 }
 
 function summarizeFallbackText(text) {
-  const trimmed = text.trim().replace(/[.]$/, "");
+  const trimmed = text
+    .trim()
+    .replace(/[—–]/g, ", ")
+    .replace(/→/g, " to ")
+    .replace(/\s+/g, " ")
+    .replace(/[.]$/, "");
   return trimmed ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1) : trimmed;
+}
+
+function isLowSignalItem(text) {
+  const normalized = text.trim().toLowerCase();
+
+  if (!normalized) {
+    return true;
+  }
+
+  if (
+    normalized === "bug fixes and improvements" ||
+    normalized.startsWith("no behavior change") ||
+    normalized.startsWith("prerequisite cleanup") ||
+    normalized.startsWith("minor text fixes") ||
+    normalized.startsWith("further ") ||
+    normalized.startsWith("this was ") ||
+    normalized.startsWith("this is ") ||
+    normalized.startsWith("this change ") ||
+    normalized.startsWith("the primary reason ")
+  ) {
+    return true;
+  }
+
+  if (
+    /\b(api returned errors|blocked the release|internal cleanup|package-lock\.json|tsconfig|App\.tsx|SettingsDialog)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    /\b(tsc\b|docaddfeeditem|followingentry\.content|fs caps|dedup index|chrome default "peanuts"|api to get|type$)\b/i.test(
+      normalized,
+    )
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function shortenCandidate(text, maxLength = 110) {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  if (cleaned.length <= maxLength) {
+    return cleaned;
+  }
+
+  const sentence = cleaned
+    .split(/(?<=[.!?])\s+/)
+    .find((part) => part.length > 0 && part.length <= maxLength);
+  if (sentence) {
+    return sentence.trim();
+  }
+
+  const clause = cleaned
+    .split(/[;:.]/)
+    .find((part) => part.trim().length > 0 && part.trim().length <= maxLength);
+  if (clause) {
+    return clause.trim();
+  }
+
+  const trimmed = cleaned.slice(0, maxLength).trimEnd();
+  const breakAt = Math.max(trimmed.lastIndexOf(","), trimmed.lastIndexOf(" "));
+  return (breakAt > 50 ? trimmed.slice(0, breakAt) : trimmed).trim();
+}
+
+function normalizeCandidate(text) {
+  return summarizeFallbackText(
+    shortenCandidate(
+      text
+        .replace(/^(feat|fix|perf|refactor|style|chore|docs|test|build|ci)(\([^)]+\))?!?:\s*/i, "")
+        .replace(/^This\s+/i, "")
+        .replace(/^It\s+/i, "")
+        .replace(/^The\s+/i, "")
+        .replace(/\s+/g, " ")
+        .trim(),
+    ),
+  );
+}
+
+function candidateScore(text, source = "detail") {
+  if (!text) {
+    return -Infinity;
+  }
+
+  const normalized = text.trim();
+  let score = 0;
+  const wordCount = normalized.split(/\s+/).length;
+
+  if (normalized.length >= 28 && normalized.length <= 90) score += 4;
+  if (wordCount >= 4 && wordCount <= 14) score += 3;
+  if (source === "title") score += 2;
+  if (source === "fallback") score += 1;
+
+  if (/[`]/.test(normalized)) score -= 4;
+  if (/[@/\\]|::|=>|->/.test(normalized)) score -= 4;
+  if (/\b(src|docs|tsconfig|package\.json|localStorage|use[A-Z]|AppShell|WebView|Tauri|DOMParser|requestAnimationFrame)\b/.test(normalized)) score -= 5;
+  if (/^(Wires into|Adds @|Adds a |Marks Phase|PWA passes|Exports |In App\.tsx|In SettingsDialog)/i.test(normalized)) score -= 6;
+  if (/^(This was|This is|This change|The primary reason)/i.test(normalized)) score -= 8;
+  if (/[A-Za-z0-9_]+\.[a-z]{2,4}\b/.test(normalized)) score -= 4;
+  if (/[a-z][A-Z]/.test(normalized)) score -= 3;
+  if ((normalized.match(/\(/g) || []).length !== (normalized.match(/\)/g) || []).length) score -= 4;
+  if ((normalized.match(/,/g) || []).length >= 3) score -= 2;
+  if (wordCount > 18) score -= 3;
+  if (normalized.length > 120) score -= 3;
+
+  if (/\b(sign|signed|signing|notarized|notarization|install|desktop|reader|sync|friend|linkedin|legal|qr|window|startup|map)\b/i.test(normalized)) {
+    score += 2;
+  }
+
+  return score;
+}
+
+function chooseBestSummary(entry) {
+  const candidates = [
+    { text: entry.title, source: "title" },
+    ...entry.details.map((text) => ({ text, source: "detail" })),
+    { text: entry.fallback, source: "fallback" },
+  ]
+    .map((candidate) => ({
+      text: normalizeCandidate(candidate.text || ""),
+      source: candidate.source,
+    }))
+    .filter((candidate) => candidate.text.length > 0);
+
+  candidates.sort((a, b) => candidateScore(b.text, b.source) - candidateScore(a.text, a.source));
+  return candidates[0]?.text || normalizeCandidate(entry.fallback || entry.title || "");
 }
 
 function parseReleaseBody(body) {
@@ -541,19 +680,27 @@ function releaseSectionsFromParsed(parsed, summary = "") {
   };
 }
 
+function releaseSectionsFromArtifact(artifact) {
+  return {
+    summary: artifact?.release?.summary?.trim() || "",
+    whatsNew: dedupeStrings((artifact?.release?.whatsNew ?? []).map((item) => String(item).trim())),
+    fixes: dedupeStrings((artifact?.release?.fixes ?? []).map((item) => String(item).trim())),
+    performance: dedupeStrings((artifact?.release?.performance ?? []).map((item) => String(item).trim())),
+  };
+}
+
 function releaseItemsFromEntries(entries) {
   const sections = { summary: "", whatsNew: [], fixes: [], performance: [] };
 
   for (const entry of entries) {
-    const text = entry.details[0] || entry.title || entry.fallback;
-    sections[entry.kind].push(summarizeFallbackText(text));
+    sections[entry.kind].push(chooseBestSummary(entry));
   }
 
   sections.whatsNew = dedupeStrings(sections.whatsNew);
   sections.fixes = dedupeStrings(sections.fixes.filter((item) => item.toLowerCase() !== "bug fixes and improvements"));
   sections.performance = dedupeStrings(sections.performance);
   sections.summary = sections.whatsNew[0] || sections.fixes[0] || sections.performance[0] || "";
-  return limitSectionItems(sections, { whatsNew: 4, fixes: 4, performance: 2 });
+  return limitSectionItems(sections);
 }
 
 function pinHighlights(sections, pinnedHighlights) {
@@ -595,25 +742,37 @@ function buildDailyFallback(context, currentReleaseSections, existingDaily, publ
     (release) => versionDayKey(release.tag_name.replace(/^v/, "")) === context.dayKey,
   );
 
+  const hasEditorialMemory =
+    (existingDaily?.editorialNotes?.length ?? 0) > 0 ||
+    (existingDaily?.pinnedHighlights?.length ?? 0) > 0;
+
   const combined = {
-    summary: existingDaily?.rollup?.summary || currentReleaseSections.summary,
+    summary: hasEditorialMemory ? (existingDaily?.rollup?.summary || currentReleaseSections.summary) : currentReleaseSections.summary,
     whatsNew: [...currentReleaseSections.whatsNew],
     fixes: [...currentReleaseSections.fixes],
     performance: [...currentReleaseSections.performance],
   };
 
   for (const release of sameDayReleases) {
-    const parsed = parseReleaseBody(release.body || "");
-    combined.whatsNew.push(...parsed.features);
-    combined.fixes.push(...parsed.fixes);
-    combined.performance.push(...parsed.performance);
+    const localArtifact = readJsonIfExists(releasePaths(release.tag_name).json);
+    if (localArtifact?.release) {
+      const sections = releaseSectionsFromArtifact(localArtifact);
+      combined.whatsNew.push(...sections.whatsNew);
+      combined.fixes.push(...sections.fixes);
+      combined.performance.push(...sections.performance);
+    } else {
+      const parsed = parseReleaseBody(release.body || "");
+      combined.whatsNew.push(...parsed.features);
+      combined.fixes.push(...parsed.fixes);
+      combined.performance.push(...parsed.performance);
+    }
   }
 
   combined.whatsNew = dedupeStrings(combined.whatsNew);
   combined.fixes = dedupeStrings(combined.fixes.filter((item) => item.toLowerCase() !== "bug fixes and improvements"));
   combined.performance = dedupeStrings(combined.performance);
   combined.summary =
-    existingDaily?.rollup?.summary ||
+    (hasEditorialMemory ? existingDaily?.rollup?.summary : "") ||
     combined.whatsNew[0] ||
     combined.fixes[0] ||
     combined.performance[0] ||
@@ -660,7 +819,7 @@ function validateStructuredNotes(value) {
   }
 
   return {
-    release: limitSectionItems(release, { whatsNew: 4, fixes: 4, performance: 2 }),
+    release: limitSectionItems(release),
     dailyRollup: limitSectionItems(dailyRollup),
   };
 }

@@ -1,0 +1,26 @@
+{
+  "dayKey": "26.3.2",
+  "date": "2026-03-02",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [],
+  "editorialNotes": [],
+  "rollup": {
+    "summary": "Cloud Sync is now the default tab when the Connect to Desktop dialog opens (was Manual)",
+    "whatsNew": [
+      "Cloud Sync is now the default tab when the Connect to Desktop dialog opens (was Manual)",
+      "Sync section explains user-owned cloud storage + passphrase encryption",
+      "MDNS discovery, cloud file sync + desktop cloud sync"
+    ],
+    "fixes": [
+      "Cast rdf.channel before spread in browser.ts",
+      "Add browser entry with fast-xml-parser parseFeedXml",
+      "Inline parseCookieString, switch x-auth to /browser imports"
+    ],
+    "performance": []
+  },
+  "updatedAt": "2026-04-02T02:43:51.691Z"
+}

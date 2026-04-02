@@ -1,0 +1,33 @@
+{
+  "tag": "v26.3.601",
+  "version": "26.3.601",
+  "dayKey": "26.3.6",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:44:28.469Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.3.504",
+    "compareRef": "v26.3.601",
+    "prNumbers": [
+      101
+    ],
+    "commitSubjects": [
+      "release: v26.3.601",
+      "fix: double-cast window through unknown to satisfy strict TS in mock files",
+      "release: v26.3.600",
+      "perf: desktop E2E benchmarks, MiniSearch lazy-build, focus mode fix, eliminate main-thread blocking (#101)"
+    ]
+  },
+  "release": {
+    "summary": "Double-cast window through unknown to satisfy strict TS in mock files",
+    "whatsNew": [],
+    "fixes": [
+      "Double-cast window through unknown to satisfy strict TS in mock files"
+    ],
+    "performance": [
+      "Fix focus mode showing raw HTML brackets from RSS feed descriptions"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.601\n\nDouble-cast window through unknown to satisfy strict TS in mock files\n\n### Performance\n\n- Fix focus mode showing raw HTML brackets from RSS feed descriptions\n\n### Fixes\n\n- Double-cast window through unknown to satisfy strict TS in mock files\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

@@ -1,0 +1,36 @@
+{
+  "tag": "v26.4.105",
+  "version": "26.4.105",
+  "dayKey": "26.4.1",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:45:24.171Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.4.103",
+    "compareRef": "v26.4.105",
+    "prNumbers": [
+      155,
+      157,
+      159
+    ],
+    "commitSubjects": [
+      "release: v26.4.105",
+      "fix: specify scraper restore URL type (#159)",
+      "release: v26.4.104",
+      "fix: recover desktop startup when consent store fails (#157)",
+      "release: v26.4.103",
+      "fix: stabilize hidden scraper webviews (#155)"
+    ]
+  },
+  "release": {
+    "summary": "Recover desktop startup when consent store fails",
+    "whatsNew": [],
+    "fixes": [
+      "Recover desktop startup when consent store fails",
+      "Stabilize hidden scraper webviews"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.105\n\nRecover desktop startup when consent store fails\n\n### Fixes\n\n- Recover desktop startup when consent store fails\n- Stabilize hidden scraper webviews\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
