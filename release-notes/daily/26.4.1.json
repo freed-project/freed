@@ -20,20 +20,23 @@
     "Code signing is a big deal. Keep it near the top even after smaller follow-up builds."
   ],
   "rollup": {
-    "summary": "Native macOS code signing lands alongside the new Friends map and stronger desktop startup reliability.",
+    "summary": "Native macOS code signing for effortless installs",
     "whatsNew": [
       "Native macOS code signing for effortless installs",
-      "Shared Friends map with friend-linked popovers and last-seen cards",
-      "Versioned legal consent gates across the website, PWA, and Freed Desktop",
-      "Final Night Billboard QR poster route"
+      "Add a checked-in release note workflow with draft generation, human approval, and a publish gate before tagging",
+      "Add macOS codesigning to release pipeline",
+      "Validate required Apple signing and notarization secrets in the release workflow before macOS builds start",
+      "Pass the Apple signing and notarization environment variables through to tauri-action"
     ],
     "fixes": [
-      "Desktop startup no longer gets stranded on a blank window during consent bootstrap",
-      "Background scraper windows stay stable without flashing on screen",
-      "LinkedIn is now a first-class Freed Desktop source with sidebar and sync status support",
-      "Shared settings toggles and scraper window modes cleaned up cross-surface desktop controls"
+      "Stop Freed Desktop feed cards from eagerly rendering remote media previews",
+      "This simplifies the public legal surface and moves the desktop license assent to the place where it actually matters, the first launch of Freed Desktop",
+      "Remove the standalone Experimental Risk page and fold that language into Terms of Use and the Desktop EULA",
+      "Remove Desktop EULA assent from the website download modal, which now covers only Terms of Use and Privacy Policy",
+      "Keep the Desktop EULA in the desktop first-run gate, and update shared legal metadata and provider risk links to match",
+      "Update legal docs and Phase 1 docs so the documented flow matches the shipped flow"
     ],
     "performance": []
   },
-  "updatedAt": "2026-04-02T01:57:04.640Z"
+  "updatedAt": "2026-04-02T02:36:51.328Z"
 }

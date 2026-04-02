@@ -1,0 +1,32 @@
+{
+  "tag": "v26.4.109",
+  "version": "26.4.109",
+  "dayKey": "26.4.1",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-02T02:36:51.327Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.4.108",
+    "compareRef": "HEAD",
+    "prNumbers": [
+      170,
+      171
+    ],
+    "commitSubjects": [
+      "fix: reduce desktop feed webview media pressure (#171)",
+      "feat: add reviewed release note workflow (#170)"
+    ]
+  },
+  "release": {
+    "summary": "Add a checked-in release note workflow with draft generation, human approval, and a publish gate before tagging",
+    "whatsNew": [
+      "Add a checked-in release note workflow with draft generation, human approval, and a publish gate before tagging"
+    ],
+    "fixes": [
+      "Stop Freed Desktop feed cards from eagerly rendering remote media previews"
+    ],
+    "performance": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.109\n\nAdd a checked-in release note workflow with draft generation, human approval, and a publish gate before tagging\n\n### What's New\n\n- Add a checked-in release note workflow with draft generation, human approval, and a publish gate before tagging\n\n### Fixes\n\n- Stop Freed Desktop feed cards from eagerly rendering remote media previews\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
