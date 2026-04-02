@@ -59,14 +59,47 @@ Options:
 2. Click "New repository secret"
 3. Add each secret listed above
 
-## How to trigger a release
+## Drafting release notes
+
+`./scripts/release.sh` now prepares a release in two stages:
 
 ```bash
-./scripts/release.sh 0.2.0
+./scripts/release.sh
+```
+
+That command:
+
+1. bumps app versions
+2. generates draft files under `release-notes/`
+3. commits the draft release prep
+
+Optional local environment variable:
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | Enables stronger AI-generated draft release notes and same-day rollups during the prepare step. |
+
+Review and edit:
+
+- `release-notes/releases/vX.Y.Z.json`
+- `release-notes/releases/vX.Y.Z.md`
+- `release-notes/daily/YY.M.D.json`
+
+Set `"approved": true` in the release JSON once the copy is ready, then commit
+that review change.
+
+## How to publish a reviewed release
+
+```bash
+./scripts/release.sh 26.4.107
+# review the generated release-notes files
+git add release-notes
+git commit -m "docs: review release notes for v26.4.107"
+./scripts/release-publish.sh 26.4.107
 git push origin main --follow-tags
 ```
 
-This bumps versions, tags the commit, and pushes. The `v*` tag triggers the
-release workflow which builds all platforms and creates a **draft** GitHub
-Release. Review the draft, then click "Publish" to make it live. The in-app
-updater will pick it up automatically.
+The `v*` tag triggers the release workflow which builds all platforms and
+creates a **draft** GitHub Release using the approved checked-in release body.
+Review the draft, then click "Publish" to make it live. The in-app updater
+will pick it up automatically.

@@ -189,6 +189,7 @@ export async function captureDomFeed(
 | 5.26 | Independent update server domain   | Medium     |
 | 5.27 | First-run legal gate and local-only acceptance storage | Medium |
 | 5.28 | Provider-specific risk interstitials for social capture | Medium |
+| 5.29 | Reviewed AI-assisted release notes and same-day rollups | Medium |
 
 ---
 
@@ -215,6 +216,7 @@ export async function captureDomFeed(
 - [x] Desktop E2E test infrastructure bootstrapped (Playwright + VITE_TEST_TAURI=1 mock layer)
 - [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
 - [x] macOS DMG is notarized in CI releases
+- [x] Checked-in release notes are reviewed before a release tag can publish
 - [ ] Windows installer is code-signed (requires EV certificate)
 - [ ] Update server runs on a Freed-owned domain (not GitHub Releases)
 
@@ -223,8 +225,11 @@ export async function captureDomFeed(
 > required Apple secrets are present. The release workflow now fails fast
 > instead of silently shipping an unsigned macOS artifact. Windows
 > SmartScreen warnings will still appear until an EV certificate is
-> obtained or enough installs build reputation. See `RELEASE-SECRETS.md`
-> for the full setup checklist.
+> obtained or enough installs build reputation. Release notes now use a
+> checked-in review gate: `./scripts/release.sh` prepares draft notes and
+> daily rollup memory, then `./scripts/release-publish.sh` tags only after
+> the reviewed release artifact is approved. See `RELEASE-SECRETS.md` for
+> the full setup checklist.
 
 > **Planned — Independent Update Server (Task 5.26):**
 > The auto-updater currently points at GitHub Releases. If the repo is
