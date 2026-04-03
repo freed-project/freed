@@ -1,6 +1,7 @@
 {
   "dayKey": "26.3.9",
   "date": "2026-03-09",
+  "preferredDeck": null,
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -8,19 +9,5 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [],
-  "rollup": {
-    "summary": "Scraper debug window toggle for Instagram and Facebook",
-    "whatsNew": [
-      "Scraper debug window toggle for Instagram and Facebook",
-      "Anti-detection hardening for social media capture",
-      "Changelog page, remove frosted glass, fix update banner"
-    ],
-    "fixes": [
-      "Exclude draft releases from changelog commit boundary",
-      "Use previous published release as changelog commit boundary",
-      "Switch reqwest and tauri-plugin-updater to rustls-tls"
-    ],
-    "performance": []
-  },
-  "updatedAt": "2026-04-02T02:44:49.973Z"
+  "updatedAt": "2026-04-03T01:02:58.636Z"
 }

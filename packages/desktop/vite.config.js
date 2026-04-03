@@ -80,7 +80,7 @@ export default defineConfig({
     // Unit test configuration
     test: {
         environment: "jsdom",
-        include: ["src/**/*.test.ts"],
+        include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
         // Polyfill Blob.prototype.text (missing from jsdom's older Blob spec).
         setupFiles: ["./src/vitest.setup.ts"],
         // Tauri IPC and plugins are unavailable in the test environment, so we

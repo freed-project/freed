@@ -1,6 +1,7 @@
 {
   "dayKey": "26.3.11",
   "date": "2026-03-11",
+  "preferredDeck": null,
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -8,15 +9,5 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [],
-  "rollup": {
-    "summary": "Add structured file logging and overnight-freeze timeout guards",
-    "whatsNew": [
-      "Add structured file logging and overnight-freeze timeout guards"
-    ],
-    "fixes": [
-      "Clean CI test failures and automate PWA release deployment"
-    ],
-    "performance": []
-  },
-  "updatedAt": "2026-04-02T02:45:02.470Z"
+  "updatedAt": "2026-04-03T01:03:55.911Z"
 }

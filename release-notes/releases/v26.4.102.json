@@ -4,11 +4,16 @@
   "dayKey": "26.4.1",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:45:20.369Z",
+  "generatedAt": "2026-04-03T01:04:15.495Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.4.101",
+    "previousPublishedDayTag": "v26.3.3100",
     "compareRef": "v26.4.102",
+    "isLatestOfDay": false,
+    "sameDayTagsIncluded": [
+      "v26.4.102"
+    ],
     "prNumbers": [
       154
     ],
@@ -18,12 +23,10 @@
     ]
   },
   "release": {
-    "summary": "Finish linkedin desktop integration",
-    "whatsNew": [],
-    "fixes": [
-      "Finish linkedin desktop integration"
-    ],
-    "performance": []
+    "deck": "Signed macOS installs and LinkedIn desktop integration is now complete",
+    "features": [],
+    "fixes": [],
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.102\n\nFinish linkedin desktop integration\n\n### Fixes\n\n- Finish linkedin desktop integration\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.102\n\nSigned macOS installs and LinkedIn desktop integration is now complete\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

@@ -4,26 +4,37 @@
   "dayKey": "26.3.11",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:45:02.470Z",
+  "generatedAt": "2026-04-03T01:03:55.910Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.1100",
+    "previousPublishedDayTag": "v26.3.1002",
     "compareRef": "v26.3.1101",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.3.1100",
+      "v26.3.1101"
+    ],
     "prNumbers": [
+      141,
       142
     ],
     "commitSubjects": [
       "release: v26.3.1101",
-      "fix: clean CI test failures and automate PWA release deployment (#142)"
+      "fix: clean CI test failures and automate PWA release deployment (#142)",
+      "release: v26.3.1100",
+      "feat: add structured file logging and overnight-freeze timeout guards (#141)"
     ]
   },
   "release": {
-    "summary": "Clean CI test failures and automate PWA release deployment",
-    "whatsNew": [],
+    "deck": "File logging and freeze guards",
+    "features": [
+      "Structured file logging and freeze guards"
+    ],
     "fixes": [
       "Clean CI test failures and automate PWA release deployment"
     ],
-    "performance": []
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.1101\n\nClean CI test failures and automate PWA release deployment\n\n### Fixes\n\n- Clean CI test failures and automate PWA release deployment\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.1101\n\nFile logging and freeze guards\n\n### Features\n\n- Structured file logging and freeze guards\n\n### Fixes\n\n- Clean CI test failures and automate PWA release deployment\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

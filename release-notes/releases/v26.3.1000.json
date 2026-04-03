@@ -4,11 +4,16 @@
   "dayKey": "26.3.10",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:44:52.922Z",
+  "generatedAt": "2026-04-03T01:03:01.844Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.904",
+    "previousPublishedDayTag": "v26.3.104",
     "compareRef": "v26.3.1000",
+    "isLatestOfDay": false,
+    "sameDayTagsIncluded": [
+      "v26.3.1000"
+    ],
     "prNumbers": [
       127,
       129,
@@ -28,17 +33,15 @@
     ]
   },
   "release": {
-    "summary": "Default reader view to dual-column mode",
-    "whatsNew": [
-      "Default reader view to dual-column mode",
-      "Add per-platform install warnings to download modal"
+    "deck": "Dual column reader view, platform-specific install cautions, and hTML injection in ReaderView, cache Readability output removed",
+    "features": [
+      "Dual column reader view",
+      "Platform-specific install cautions"
     ],
     "fixes": [
-      "Clean up stale build artifacts and minor text fixes",
-      "Add worktree-add.sh wrapper for automatic node_modules setup",
-      "Eliminate HTML injection in ReaderView, cache Readability output"
+      "Connect button to be enabled before clicking in X E2E test now waits for the correct ready state"
     ],
-    "performance": []
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.1000\n\nDefault reader view to dual-column mode\n\n### What's New\n\n- Default reader view to dual-column mode\n- Add per-platform install warnings to download modal\n\n### Fixes\n\n- Clean up stale build artifacts and minor text fixes\n- Add worktree-add.sh wrapper for automatic node_modules setup\n- Eliminate HTML injection in ReaderView, cache Readability output\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.1000\n\nDual column reader view, platform-specific install cautions, and hTML injection in ReaderView, cache Readability output removed\n\n### Features\n\n- Dual column reader view\n- Platform-specific install cautions\n\n### Fixes\n\n- Connect button to be enabled before clicking in X E2E test now waits for the correct ready state\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

@@ -4,11 +4,16 @@
   "dayKey": "26.4.1",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:45:24.171Z",
+  "generatedAt": "2026-04-03T01:04:19.688Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.4.103",
+    "previousPublishedDayTag": "v26.3.3100",
     "compareRef": "v26.4.105",
+    "isLatestOfDay": false,
+    "sameDayTagsIncluded": [
+      "v26.4.105"
+    ],
     "prNumbers": [
       155,
       157,
@@ -24,13 +29,10 @@
     ]
   },
   "release": {
-    "summary": "Recover desktop startup when consent store fails",
-    "whatsNew": [],
-    "fixes": [
-      "Recover desktop startup when consent store fails",
-      "Stabilize hidden scraper webviews"
-    ],
-    "performance": []
+    "deck": "Hidden scraper webviews are now more stable",
+    "features": [],
+    "fixes": [],
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.105\n\nRecover desktop startup when consent store fails\n\n### Fixes\n\n- Recover desktop startup when consent store fails\n- Stabilize hidden scraper webviews\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.105\n\nHidden scraper webviews are now more stable\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

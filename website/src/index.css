@@ -114,6 +114,18 @@ body {
   background-clip: text;
 }
 
+.release-card-version {
+  background: linear-gradient(
+    135deg,
+    var(--color-glow-blue),
+    var(--color-glow-purple),
+    var(--color-glow-cyan)
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
 /* Glow effects */
 .glow-sm {
   box-shadow:

@@ -4,11 +4,16 @@
   "dayKey": "26.3.7",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:44:35.765Z",
+  "generatedAt": "2026-04-03T01:02:50.560Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.601",
+    "previousPublishedDayTag": "v26.3.3100",
     "compareRef": "v26.3.702",
+    "isLatestOfDay": false,
+    "sameDayTagsIncluded": [
+      "v26.3.702"
+    ],
     "prNumbers": [
       98,
       102,
@@ -41,18 +46,20 @@
     ]
   },
   "release": {
-    "summary": "Add freed-ship-build command",
-    "whatsNew": [
-      "Add freed-ship-build command",
-      "UI polish bundle - tooltips, hover states, scroll reset, save fix, sidebar counts",
-      "Overhaul dual-column split view"
+    "deck": "Playwright e2e smoke test infrastructure for desktop, keep v26.3.601 over concurrent version bump, and x and Facebook scrapers with Tauri WebView capture",
+    "features": [
+      "X and Facebook scrapers with Tauri WebView capture",
+      "Playwright e2e smoke test infrastructure for desktop",
+      "UI polish bundle - tooltips, hover states, scroll reset, save fix, sidebar counts"
     ],
     "fixes": [
-      "Desktop build errors in x-capture and fb-capture",
-      "Archive cache staleness + scroll-read visibility model",
-      "Merge: keep v26.3.601 over concurrent version bump"
+      "Redundant data wrapper from TimelineResponse type removed",
+      "Archive cache staleness + scroll-read visibility model"
     ],
-    "performance": []
+    "followUps": [
+      "Manual cookie entry with native X login window",
+      "Sample data seeding + fix PWA build and Automerge worker"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.702\n\nAdd freed-ship-build command\n\n### What's New\n\n- Add freed-ship-build command\n- UI polish bundle - tooltips, hover states, scroll reset, save fix, sidebar counts\n- Overhaul dual-column split view\n\n### Fixes\n\n- Desktop build errors in x-capture and fb-capture\n- Archive cache staleness + scroll-read visibility model\n- Merge: keep v26.3.601 over concurrent version bump\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.702\n\nPlaywright e2e smoke test infrastructure for desktop, keep v26.3.601 over concurrent version bump, and x and Facebook scrapers with Tauri WebView capture\n\n### Features\n\n- X and Facebook scrapers with Tauri WebView capture\n- Playwright e2e smoke test infrastructure for desktop\n- UI polish bundle - tooltips, hover states, scroll reset, save fix, sidebar counts\n\n### Fixes\n\n- Redundant data wrapper from TimelineResponse type removed\n- Archive cache staleness + scroll-read visibility model\n\n### Follow-ups\n\n- Manual cookie entry with native X login window\n- Sample data seeding + fix PWA build and Automerge worker\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

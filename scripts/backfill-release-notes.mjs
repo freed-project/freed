@@ -1,27 +1,53 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "child_process";
+import { existsSync, readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..");
+const NODE_BIN = process.execPath;
 
-function run(command, args) {
+function ghBinary() {
+  const candidates = [
+    process.env.GH_BIN,
+    "/opt/homebrew/bin/gh",
+    "/usr/local/bin/gh",
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return "gh";
+}
+
+function run(command, args, options = {}) {
   return execFileSync(command, args, {
     cwd: REPO_ROOT,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    ...options,
   }).trim();
 }
 
 function maybeGhToken() {
   try {
-    return run("gh", ["auth", "token"]);
+    return run(ghBinary(), ["auth", "token"]);
   } catch {
     return "";
   }
+}
+
+function parseArguments(argv) {
+  return {
+    rewriteGitHub: argv.includes("--rewrite-github"),
+    dryRun: argv.includes("--dry-run"),
+  };
 }
 
 async function fetchPublishedTags() {
@@ -45,15 +71,43 @@ async function fetchPublishedTags() {
     .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 
+function releaseBodyForTag(tag) {
+  return readFileSync(path.join(REPO_ROOT, "release-notes", "releases", `${tag}.md`), "utf8");
+}
+
+function rewriteGitHubRelease(tag, body, dryRun) {
+  if (dryRun) {
+    console.log(`Would rewrite ${tag}`);
+    return;
+  }
+
+  execFileSync(ghBinary(), ["release", "edit", tag, "--notes-file", "-"], {
+    cwd: REPO_ROOT,
+    stdio: ["pipe", "inherit", "inherit"],
+    input: body,
+  });
+}
+
 async function main() {
+  const { rewriteGitHub, dryRun } = parseArguments(process.argv.slice(2));
   const tags = await fetchPublishedTags();
+
   for (const tag of tags) {
     console.log(`Backfilling ${tag}...`);
-    execFileSync("node", ["scripts/prepare-release-notes.mjs", tag], {
+    execFileSync(NODE_BIN, ["scripts/prepare-release-notes.mjs", tag, "--force"], {
       cwd: REPO_ROOT,
       stdio: "inherit",
       env: process.env,
     });
+  }
+
+  if (!rewriteGitHub) {
+    return;
+  }
+
+  for (const tag of tags) {
+    console.log(`${dryRun ? "Previewing" : "Rewriting"} GitHub body for ${tag}...`);
+    rewriteGitHubRelease(tag, releaseBodyForTag(tag), dryRun);
   }
 }
 

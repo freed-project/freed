@@ -4,11 +4,16 @@
   "dayKey": "26.3.1",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:43:40.009Z",
+  "generatedAt": "2026-04-03T01:02:08.457Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v0.2.0",
+    "previousPublishedDayTag": "v0.2.0",
     "compareRef": "v26.3.100",
+    "isLatestOfDay": false,
+    "sameDayTagsIncluded": [
+      "v26.3.100"
+    ],
     "prNumbers": [
       4
     ],
@@ -39,18 +44,24 @@
     ]
   },
   "release": {
-    "summary": "UI polish , settings cleanup, sync unification, sidebar refinements",
-    "whatsNew": [
+    "deck": "UI polish, settings cleanup, sync unification, sidebar refinements, update system, CalVer DDBUILD, UI polish, and early-build disclaimer and clarify app vs desktop roles",
+    "features": [
       "UI polish , settings cleanup, sync unification, sidebar refinements",
-      "UI overhaul , unified header, draggable sidebar, modal consistency",
-      "Add early-build disclaimer and clarify app vs desktop roles"
+      "Early-build disclaimer and clarify app vs desktop roles",
+      "Update system, CalVer DDBUILD, UI polish"
     ],
     "fixes": [
-      "Use case/esac instead of bash 4 associative arrays",
+      "Case/esac instead of bash 4 associative arrays now uses the correct path",
       "Include PWA sources in desktop Tailwind content scan",
-      "Use YY.M.D CalVer to stay within MSI 255 major version limit"
+      "YY.M.D CalVer to stay within MSI 255 major version limit now uses the correct path"
     ],
-    "performance": []
+    "followUps": [
+      "UI overhaul , unified header, draggable sidebar, modal consistency",
+      "Release.sh for CalVer and PWA version lockstep",
+      "PWA and Desktop UI components via PlatformContext",
+      "Deep-linkable /get modal, restore tooltip, disable subscribe",
+      "Redesign Get Freed modal with app links and downloads"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.100\n\nUI polish , settings cleanup, sync unification, sidebar refinements\n\n### What's New\n\n- UI polish , settings cleanup, sync unification, sidebar refinements\n- UI overhaul , unified header, draggable sidebar, modal consistency\n- Add early-build disclaimer and clarify app vs desktop roles\n\n### Fixes\n\n- Use case/esac instead of bash 4 associative arrays\n- Include PWA sources in desktop Tailwind content scan\n- Use YY.M.D CalVer to stay within MSI 255 major version limit\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.100\n\nUI polish, settings cleanup, sync unification, sidebar refinements, update system, CalVer DDBUILD, UI polish, and early-build disclaimer and clarify app vs desktop roles\n\n### Features\n\n- UI polish , settings cleanup, sync unification, sidebar refinements\n- Early-build disclaimer and clarify app vs desktop roles\n- Update system, CalVer DDBUILD, UI polish\n\n### Fixes\n\n- Case/esac instead of bash 4 associative arrays now uses the correct path\n- Include PWA sources in desktop Tailwind content scan\n- YY.M.D CalVer to stay within MSI 255 major version limit now uses the correct path\n\n### Follow-ups\n\n- UI overhaul , unified header, draggable sidebar, modal consistency\n- Release.sh for CalVer and PWA version lockstep\n- PWA and Desktop UI components via PlatformContext\n- Deep-linkable /get modal, restore tooltip, disable subscribe\n- Redesign Get Freed modal with app links and downloads\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

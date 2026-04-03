@@ -1,6 +1,7 @@
 {
   "dayKey": "26.3.1",
   "date": "2026-03-01",
+  "preferredDeck": null,
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -8,21 +9,5 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [],
-  "rollup": {
-    "summary": "Move X connect UI from sidebar into feed blank state",
-    "whatsNew": [
-      "Move X connect UI from sidebar into feed blank state",
-      "Add per-feed context menu with sync status, rename, and unsubscribe",
-      "Sync button opens status popover instead of immediate refresh"
-    ],
-    "fixes": [
-      "Rename sidebar-scroll to minimal-scroll, apply to feed content area",
-      "Hide logo in desktop mobile-layout to clear macOS traffic lights",
-      "Add top padding to first card in feed list"
-    ],
-    "performance": [
-      "Lazy-load images, drop backdrop-filter blur, add scroll gutter"
-    ]
-  },
-  "updatedAt": "2026-04-02T02:43:45.640Z"
+  "updatedAt": "2026-04-03T01:02:15.814Z"
 }

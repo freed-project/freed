@@ -4,11 +4,16 @@
   "dayKey": "26.4.1",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:45:18.723Z",
+  "generatedAt": "2026-04-03T01:04:13.367Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.4.100",
+    "previousPublishedDayTag": "v26.3.3100",
     "compareRef": "v26.4.101",
+    "isLatestOfDay": false,
+    "sameDayTagsIncluded": [
+      "v26.4.101"
+    ],
     "prNumbers": [
       150,
       151,
@@ -25,16 +30,14 @@
     ]
   },
   "release": {
-    "summary": "Pass the Apple signing and notarization environment variables through to tauri-action",
-    "whatsNew": [
-      "Pass the Apple signing and notarization environment variables through to tauri-action",
-      "Add legal consent gates across surfaces",
+    "deck": "QR landing page, signed macOS installs, and refined consent gates",
+    "features": [
+      "Refined consent gates",
+      "Signed macOS installs",
       "Finalize qr landing page experience"
     ],
-    "fixes": [
-      "Simplify legal consent surfaces"
-    ],
-    "performance": []
+    "fixes": [],
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.101\n\nPass the Apple signing and notarization environment variables through to tauri-action\n\n### What's New\n\n- Pass the Apple signing and notarization environment variables through to tauri-action\n- Add legal consent gates across surfaces\n- Finalize qr landing page experience\n\n### Fixes\n\n- Simplify legal consent surfaces\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.101\n\nQR landing page, signed macOS installs, and refined consent gates\n\n### Features\n\n- Refined consent gates\n- Signed macOS installs\n- Finalize qr landing page experience\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

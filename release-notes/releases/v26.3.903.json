@@ -4,11 +4,16 @@
   "dayKey": "26.3.9",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:44:46.742Z",
+  "generatedAt": "2026-04-03T01:02:57.072Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.804",
+    "previousPublishedDayTag": "v26.3.3100",
     "compareRef": "v26.3.903",
+    "isLatestOfDay": false,
+    "sameDayTagsIncluded": [
+      "v26.3.903"
+    ],
     "prNumbers": [
       118,
       119,
@@ -30,17 +35,15 @@
     ]
   },
   "release": {
-    "summary": "Anti-detection hardening for social media capture",
-    "whatsNew": [
-      "Anti-detection hardening for social media capture",
+    "deck": "Capture hardening, changelog page, remove frosted glass, fix update banner, and reqwest and tauri-plugin-updater to rustls-tls now uses the updated transport",
+    "features": [
+      "Capture hardening",
       "Changelog page, remove frosted glass, fix update banner"
     ],
     "fixes": [
-      "Switch reqwest and tauri-plugin-updater to rustls-tls",
-      "Remove unused user-agent import from fb-capture.ts",
-      "Remove capture-x build step from release CI"
+      "Scraper window after FB scrape, stop stealing focus on IG scrape now stays out of the way"
     ],
-    "performance": []
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.903\n\nAnti-detection hardening for social media capture\n\n### What's New\n\n- Anti-detection hardening for social media capture\n- Changelog page, remove frosted glass, fix update banner\n\n### Fixes\n\n- Switch reqwest and tauri-plugin-updater to rustls-tls\n- Remove unused user-agent import from fb-capture.ts\n- Remove capture-x build step from release CI\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.903\n\nCapture hardening, changelog page, remove frosted glass, fix update banner, and reqwest and tauri-plugin-updater to rustls-tls now uses the updated transport\n\n### Features\n\n- Capture hardening\n- Changelog page, remove frosted glass, fix update banner\n\n### Fixes\n\n- Scraper window after FB scrape, stop stealing focus on IG scrape now stays out of the way\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

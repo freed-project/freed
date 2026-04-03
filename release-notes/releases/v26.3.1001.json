@@ -4,11 +4,16 @@
   "dayKey": "26.3.10",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:44:57.799Z",
+  "generatedAt": "2026-04-03T01:03:06.600Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.1000",
+    "previousPublishedDayTag": "v26.3.104",
     "compareRef": "v26.3.1001",
+    "isLatestOfDay": false,
+    "sameDayTagsIncluded": [
+      "v26.3.1001"
+    ],
     "prNumbers": [
       128,
       132,
@@ -32,17 +37,15 @@
     ]
   },
   "release": {
-    "summary": "Bookmarked items cannot be archived",
-    "whatsNew": [
+    "deck": "Bookmarked items cannot be archived, archive toolbar with delete action and retention settings, and vercel scope guardrails to prevent accidental org deployments",
+    "features": [
       "Bookmarked items cannot be archived",
       "Archive toolbar with delete action and retention settings"
     ],
     "fixes": [
-      "Resolve all desktop TypeScript errors",
-      "Clean up stale build artifacts and minor text fixes",
-      "Add Vercel scope guardrails to prevent accidental org deployments"
+      "Opaque surface background on update toast now uses the correct path"
     ],
-    "performance": []
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.1001\n\nBookmarked items cannot be archived\n\n### What's New\n\n- Bookmarked items cannot be archived\n- Archive toolbar with delete action and retention settings\n\n### Fixes\n\n- Resolve all desktop TypeScript errors\n- Clean up stale build artifacts and minor text fixes\n- Add Vercel scope guardrails to prevent accidental org deployments\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.1001\n\nBookmarked items cannot be archived, archive toolbar with delete action and retention settings, and vercel scope guardrails to prevent accidental org deployments\n\n### Features\n\n- Bookmarked items cannot be archived\n- Archive toolbar with delete action and retention settings\n\n### Fixes\n\n- Opaque surface background on update toast now uses the correct path\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

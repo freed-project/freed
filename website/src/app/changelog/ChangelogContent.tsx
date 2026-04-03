@@ -30,7 +30,7 @@ function ReleaseCard({
   const hasContent =
     release.features.length > 0 ||
     release.fixes.length > 0 ||
-    release.performance.length > 0;
+    release.followUps.length > 0;
 
   return (
     <div ref={ref} className="relative flex gap-6 sm:gap-10 pb-12 last:pb-0">
@@ -89,17 +89,31 @@ function ReleaseCard({
         className="flex-1 min-w-0"
       >
         <div
-          className={`rounded-xl border p-5 sm:p-6 transition-colors duration-200 ${
+          className={`release-card-shell group relative overflow-hidden rounded-xl border transition-[border-color,background-color,box-shadow] duration-300 ${
             isLatest
               ? "border-glow-purple/40 bg-glow-purple/5"
               : "border-freed-border bg-freed-surface/40"
           }`}
         >
+          <a
+            href={release.htmlUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Open GitHub release for v${release.version}`}
+            className="absolute inset-0 z-10 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-glow-purple/70 focus-visible:ring-offset-2 focus-visible:ring-offset-freed-black"
+          />
+
+          <div className="pointer-events-none relative z-20 p-5 sm:p-6">
           {/* Header */}
           <div className="flex flex-wrap items-center gap-3 mb-3">
-            <h2 className="text-xl font-bold gradient-text font-logo tracking-tight">
+            <a
+              href={release.htmlUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="release-card-version pointer-events-auto inline-block text-xl font-bold font-logo tracking-tight underline-offset-4 decoration-glow-purple/70 decoration-1 transition-all group-hover:underline group-focus-within:underline"
+            >
               v{release.version}
-            </h2>
+            </a>
             {isLatest && (
               <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-glow-purple/20 text-glow-purple border border-glow-purple/30">
                 Latest
@@ -109,58 +123,67 @@ function ReleaseCard({
               {formatDate(release.date)}
             </time>
           </div>
-          {release.builds.length > 1 && (
-            <p className="mb-3 text-xs text-text-muted">
-              Builds: {release.builds.map((build) => `v${build}`).join(", ")}
-            </p>
-          )}
-          {release.summary && (
-            <p className="mb-4 text-sm text-text-secondary">{release.summary}</p>
+          {release.deck && (
+            <p className="mb-4 text-[13px] leading-5 text-text-secondary">{release.deck}</p>
           )}
 
           {/* Content */}
           {hasContent ? (
             <div className="space-y-4">
               {release.features.length > 0 && (
-                <Section title="What's New" items={release.features} accent="purple" />
-              )}
-              {release.performance.length > 0 && (
-                <Section title="Performance" items={release.performance} accent="cyan" />
+                <Section title="Features" items={release.features} accent="purple" />
               )}
               {release.fixes.length > 0 && (
-                <Section title="Fixes" items={release.fixes} accent="zinc" />
+                <Section
+                  title="Fixes"
+                  items={release.fixes}
+                  accent="zinc"
+                />
+              )}
+              {release.followUps.length > 0 && (
+                <Section
+                  title="Follow-ups"
+                  items={release.followUps}
+                  accent="zinc"
+                />
               )}
             </div>
           ) : (
-            <p className="text-sm text-text-muted">Bug fixes and improvements.</p>
+            <p className="text-[13px] leading-5 text-text-muted">Bug fixes and improvements.</p>
           )}
 
-          {/* PR links + GitHub release footer - GitHub link always shows */}
-          <div className="mt-4 pt-3 border-t border-freed-border flex flex-wrap gap-2 items-center">
-            {release.prNumbers.length > 0 && (
-              <>
-                <span className="text-xs text-text-muted">PRs</span>
-                {release.prNumbers.map((num) => (
+            <div className="mt-4 pt-3 border-t border-freed-border space-y-2">
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="text-xs text-text-muted">Builds:</span>
+                {release.buildLinks.map((build) => (
                   <a
-                    key={num}
-                    href={`https://github.com/freed-project/freed/pull/${num}`}
+                    key={build.version}
+                    href={build.htmlUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-xs text-text-muted hover:text-glow-purple transition-colors"
+                    className="pointer-events-auto text-xs text-text-muted hover:text-glow-purple transition-colors"
                   >
-                    #{num}
+                    v{build.version}
                   </a>
                 ))}
-              </>
-            )}
-            <a
-              href={release.htmlUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="ml-auto text-xs text-text-muted hover:text-glow-purple transition-colors"
-            >
-              GitHub release →
-            </a>
+              </div>
+              {release.prNumbers.length > 0 && (
+                <div className="flex flex-wrap gap-2 items-center">
+                  <span className="text-xs text-text-muted">PRs:</span>
+                  {release.prNumbers.map((num) => (
+                    <a
+                      key={num}
+                      href={`https://github.com/freed-project/freed/pull/${num}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="pointer-events-auto text-xs text-text-muted hover:text-glow-purple transition-colors"
+                    >
+                      #{num}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </motion.div>
@@ -175,17 +198,15 @@ function Section({
 }: {
   title: string;
   items: Array<{ text: string; prNumber?: number }>;
-  accent: "purple" | "cyan" | "zinc";
+  accent: "purple" | "zinc";
 }) {
   const dotColor = {
     purple: "bg-glow-purple",
-    cyan: "bg-glow-cyan",
     zinc: "bg-zinc-500",
   }[accent];
 
   const labelColor = {
     purple: "text-glow-purple",
-    cyan: "text-glow-cyan",
     zinc: "text-text-muted",
   }[accent];
 
@@ -194,10 +215,10 @@ function Section({
       <h3 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${labelColor}`}>
         {title}
       </h3>
-      <ul className="space-y-1.5">
+      <ul className="space-y-1">
         {items.map((item, i) => (
-          <li key={i} className="flex gap-2.5 text-sm text-text-secondary">
-            <span className={`mt-[7px] w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} opacity-70`} />
+          <li key={i} className="flex gap-2.5 text-[13px] leading-5 text-text-secondary">
+            <span className={`mt-[6px] h-1.5 w-1.5 rounded-full shrink-0 ${dotColor} opacity-70`} />
             <span>{item.text}</span>
           </li>
         ))}
@@ -228,9 +249,6 @@ export default function ChangelogContent({
           </h1>
           <p className="text-text-secondary text-base sm:text-lg">
             Even death stars have an exhaust vent.
-          </p>
-          <p className="text-text-muted text-sm mt-1">
-            Auto-updated when new builds ship.
           </p>
         </motion.header>
 

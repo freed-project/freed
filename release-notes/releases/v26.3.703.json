@@ -4,30 +4,36 @@
   "dayKey": "26.3.7",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:44:39.050Z",
+  "generatedAt": "2026-04-03T01:02:51.977Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.702",
+    "previousPublishedDayTag": "v26.3.3100",
     "compareRef": "v26.3.703",
-    "prNumbers": [
-      111,
-      112
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.3.702",
+      "v26.3.703"
     ],
-    "commitSubjects": [
-      "fix: prefix unused state param in capture-instagram rate-limit (#112)",
-      "release: v26.3.703",
-      "feat: add Instagram integration via Tauri WebView scraping (#111)"
-    ]
+    "prNumbers": [],
+    "commitSubjects": []
   },
   "release": {
-    "summary": "Scrapes only the \"Following\" feed (?variant=following) with defensive DOM filtering to exclude suggested,",
-    "whatsNew": [
-      "Scrapes only the \"Following\" feed (?variant=following) with defensive DOM filtering to exclude suggested,"
+    "deck": "Playwright e2e smoke test infrastructure for desktop, dual-column split view, and uI polish bundle - tooltips, hover states, scroll reset, save fix, sidebar counts",
+    "features": [
+      "Playwright e2e smoke test infrastructure for desktop",
+      "UI polish bundle - tooltips, hover states, scroll reset, save fix, sidebar counts",
+      "Overhaul dual-column split view"
     ],
     "fixes": [
-      "Prefix unused state param in capture-instagram rate-limit"
+      "Archive cache staleness + scroll-read visibility model",
+      "Redundant data wrapper from TimelineResponse type removed"
     ],
-    "performance": []
+    "followUps": [
+      "X and Facebook scrapers with Tauri WebView capture",
+      "Manual cookie entry with native X login window",
+      "Sample data seeding + fix PWA build and Automerge worker"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.703\n\nScrapes only the \"Following\" feed (?variant=following) with defensive DOM filtering to exclude suggested,\n\n### What's New\n\n- Scrapes only the \"Following\" feed (?variant=following) with defensive DOM filtering to exclude suggested,\n\n### Fixes\n\n- Prefix unused state param in capture-instagram rate-limit\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.703\n\nPlaywright e2e smoke test infrastructure for desktop, dual-column split view, and uI polish bundle - tooltips, hover states, scroll reset, save fix, sidebar counts\n\n### Features\n\n- Playwright e2e smoke test infrastructure for desktop\n- UI polish bundle - tooltips, hover states, scroll reset, save fix, sidebar counts\n- Overhaul dual-column split view\n\n### Fixes\n\n- Archive cache staleness + scroll-read visibility model\n- Redundant data wrapper from TimelineResponse type removed\n\n### Follow-ups\n\n- X and Facebook scrapers with Tauri WebView capture\n- Manual cookie entry with native X login window\n- Sample data seeding + fix PWA build and Automerge worker\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

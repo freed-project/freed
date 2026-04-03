@@ -1,6 +1,7 @@
 {
   "dayKey": "26.3.3",
   "date": "2026-03-03",
+  "preferredDeck": null,
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -8,19 +9,5 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [],
-  "rollup": {
-    "summary": "Replace emoji sidebar icons with white SVG icons",
-    "whatsNew": [
-      "Replace emoji sidebar icons with white SVG icons",
-      "Improved UX flow and visual polish in the SyncConnectDialog component in the PWA",
-      "Add privacy policy page"
-    ],
-    "fixes": [
-      "Fix update detection and move HTTPS warning before QR/manual forms",
-      "Startup feed-name healing, toolbar height, window drag",
-      "Fix OAuth redirect URI, Google Drive client secret, and offline status"
-    ],
-    "performance": []
-  },
-  "updatedAt": "2026-04-02T02:44:02.702Z"
+  "updatedAt": "2026-04-03T01:02:24.823Z"
 }

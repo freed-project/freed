@@ -189,7 +189,7 @@ export async function captureDomFeed(
 | 5.26 | Independent update server domain   | Medium     |
 | 5.27 | First-run legal gate and local-only acceptance storage | Medium |
 | 5.28 | Provider-specific risk interstitials for social capture | Medium |
-| 5.29 | Reviewed AI-assisted release notes and same-day rollups | Medium |
+| 5.29 | Reviewed AI-assisted release notes and cumulative daily changelog cards | Medium |
 
 ---
 
@@ -227,9 +227,15 @@ export async function captureDomFeed(
 > SmartScreen warnings will still appear until an EV certificate is
 > obtained or enough installs build reputation. Release notes now use a
 > checked-in review gate: `./scripts/release.sh` prepares draft notes and
-> daily rollup memory, then `./scripts/release-publish.sh` tags only after
-> the reviewed release artifact is approved. See `RELEASE-SECRETS.md` for
-> the full setup checklist.
+> daily editorial memory, then `./scripts/release-publish.sh` tags only after
+> the reviewed release artifact passes validation and is approved. The latest
+> release of each day is cumulative, so website changelog cards describe
+> everything newly shipped since the previous day instead of unioning same-day
+> bullets after the fact. Release artifacts now render a distinct opener plus
+> separate `Features`, `Fixes`, and `Follow-ups` sections so the card headline
+> can reinforce the theme without collapsing the details into one bucket. The
+> desktop updater now shows only that reviewed opener line when an update is
+> available. See `RELEASE-SECRETS.md` for the full setup checklist.
 
 > **Planned — Independent Update Server (Task 5.26):**
 > The auto-updater currently points at GitHub Releases. If the repo is

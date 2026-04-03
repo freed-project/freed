@@ -4,11 +4,16 @@
   "dayKey": "0.2.0",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:43:38.296Z",
+  "generatedAt": "2026-04-03T01:02:06.392Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": null,
+    "previousPublishedDayTag": null,
     "compareRef": "v0.2.0",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v0.2.0"
+    ],
     "prNumbers": [],
     "commitSubjects": [
       "fix(ci): force Automerge base64 entry and use real signing password",
@@ -179,20 +184,24 @@
     ]
   },
   "release": {
-    "summary": "Auto-update system, release pipeline, and distribution",
-    "whatsNew": [
-      "Auto-update system, release pipeline, and distribution",
-      "Clarify hero above-the-fold with platform logos and tighter copy",
-      "Add sandbox settings to settings.local.json"
+    "deck": "@freed/capture-facebook and @freed/capture-instagram packages, sync, cloud, and pairing infrastructure, and content and documentation work",
+    "features": [
+      "@freed/capture-facebook and @freed/capture-instagram packages",
+      "Mark all as read + unread count in desktop header",
+      "Per-feed RSS sidebar with unread counts in desktop app"
     ],
     "fixes": [
       "Force Automerge base64 entry and use real signing password",
       "Skip Automerge WASM patch and fix signing password",
-      "Resolve WASM patch, signing key, and macOS codesign issues"
+      "Release build and type-safety cleanup",
+      "Update button text and comment out motion paragraph",
+      "Sync pipeline, X capture wiring, save quick action on cards",
+      "Honest copy and interaction affordances",
+      "Update descriptions in HowItWorks component for clarity"
     ],
-    "performance": [
-      "Load Automerge WASM as separate streamed asset"
+    "followUps": [
+      "Testing, diagnostics, and developer tooling"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v0.2.0\n\nAuto-update system, release pipeline, and distribution\n\n### What's New\n\n- Auto-update system, release pipeline, and distribution\n- Clarify hero above-the-fold with platform logos and tighter copy\n- Add sandbox settings to settings.local.json\n\n### Performance\n\n- Load Automerge WASM as separate streamed asset\n\n### Fixes\n\n- Force Automerge base64 entry and use real signing password\n- Skip Automerge WASM patch and fix signing password\n- Resolve WASM patch, signing key, and macOS codesign issues\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v0.2.0\n\n@freed/capture-facebook and @freed/capture-instagram packages, sync, cloud, and pairing infrastructure, and content and documentation work\n\n### Features\n\n- @freed/capture-facebook and @freed/capture-instagram packages\n- Mark all as read + unread count in desktop header\n- Per-feed RSS sidebar with unread counts in desktop app\n\n### Fixes\n\n- Force Automerge base64 entry and use real signing password\n- Skip Automerge WASM patch and fix signing password\n- Release build and type-safety cleanup\n- Update button text and comment out motion paragraph\n- Sync pipeline, X capture wiring, save quick action on cards\n- Honest copy and interaction affordances\n- Update descriptions in HowItWorks component for clarity\n\n### Follow-ups\n\n- Testing, diagnostics, and developer tooling\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

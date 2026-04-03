@@ -2,31 +2,89 @@
   "tag": "v26.4.109",
   "version": "26.4.109",
   "dayKey": "26.4.1",
-  "approved": true,
+  "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:36:51.327Z",
+  "generatedAt": "2026-04-03T01:04:33.529Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.4.108",
-    "compareRef": "HEAD",
+    "previousPublishedDayTag": "v26.3.3100",
+    "compareRef": "v26.4.109",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.100",
+      "v26.4.101",
+      "v26.4.102",
+      "v26.4.103",
+      "v26.4.105",
+      "v26.4.107",
+      "v26.4.108",
+      "v26.4.109"
+    ],
     "prNumbers": [
+      152,
+      153,
+      154,
+      155,
+      157,
+      159,
+      163,
+      164,
+      166,
+      167,
+      168,
+      169,
       170,
       171
     ],
     "commitSubjects": [
+      "release: approve v26.4.109 notes",
+      "release: v26.4.109",
       "fix: reduce desktop feed webview media pressure (#171)",
-      "feat: add reviewed release note workflow (#170)"
+      "feat: add reviewed release note workflow (#170)",
+      "release: v26.4.108",
+      "fix: recycle social scraper webviews after each run (#169)",
+      "fix: preserve same-day changelog details (#168)",
+      "fix: snapshot website changelog releases (#167)",
+      "release: v26.4.107",
+      "fix: share settings toggle across desktop and ui (#166)",
+      "release: v26.4.106",
+      "fix: stabilize desktop startup and scraper window modes (#164)",
+      "feat: ship shared map and friends workspace (#163)",
+      "docs: document mozi source planning (#160)",
+      "release: v26.4.105",
+      "fix: specify scraper restore URL type (#159)",
+      "release: v26.4.104",
+      "fix: recover desktop startup when consent store fails (#157)",
+      "release: v26.4.103",
+      "fix: stabilize hidden scraper webviews (#155)",
+      "release: v26.4.102",
+      "fix: finish linkedin desktop integration (#154)",
+      "release: v26.4.101",
+      "feat: add macOS codesigning to release pipeline (#153)",
+      "refactor: simplify legal consent surfaces (#152)"
     ]
   },
   "release": {
-    "summary": "Add a checked-in release note workflow with draft generation, human approval, and a publish gate before tagging",
-    "whatsNew": [
-      "Add a checked-in release note workflow with draft generation, human approval, and a publish gate before tagging"
+    "deck": "Map view, refined consent gates, and signed macOS installs",
+    "features": [
+      "New map and Friends views",
+      "Signed macOS installs",
+      "Refined consent gates"
     ],
     "fixes": [
-      "Stop Freed Desktop feed cards from eagerly rendering remote media previews"
+      "Optimized desktop feed webview media usage",
+      "Social scraper webviews are now recycled after each run",
+      "Settings toggles now stay shared across Freed Desktop and UI",
+      "Desktop startup and scraper window modes are now more stable",
+      "Scraper restore URL handling is now explicit",
+      "Desktop startup now recovers when the consent store fails",
+      "LinkedIn desktop integration is now complete"
     ],
-    "performance": []
+    "followUps": [
+      "Simplify legal consent surfaces",
+      "Finalize qr landing page experience"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.109\n\nAdd a checked-in release note workflow with draft generation, human approval, and a publish gate before tagging\n\n### What's New\n\n- Add a checked-in release note workflow with draft generation, human approval, and a publish gate before tagging\n\n### Fixes\n\n- Stop Freed Desktop feed cards from eagerly rendering remote media previews\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.109\n\nMap view, refined consent gates, and signed macOS installs\n\n### Features\n\n- New map and Friends views\n- Signed macOS installs\n- Refined consent gates\n\n### Fixes\n\n- Optimized desktop feed webview media usage\n- Social scraper webviews are now recycled after each run\n- Settings toggles now stay shared across Freed Desktop and UI\n- Desktop startup and scraper window modes are now more stable\n- Scraper restore URL handling is now explicit\n- Desktop startup now recovers when the consent store fails\n- LinkedIn desktop integration is now complete\n\n### Follow-ups\n\n- Simplify legal consent surfaces\n- Finalize qr landing page experience\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

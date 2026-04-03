@@ -4,12 +4,24 @@
   "dayKey": "26.3.1",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:43:45.639Z",
+  "generatedAt": "2026-04-03T01:02:15.809Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.103",
+    "previousPublishedDayTag": "v0.2.0",
     "compareRef": "v26.3.104",
-    "prNumbers": [],
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.3.100",
+      "v26.3.101",
+      "v26.3.102",
+      "v26.3.103",
+      "v26.3.104"
+    ],
+    "prNumbers": [
+      4,
+      5
+    ],
     "commitSubjects": [
       "release: v26.3.104",
       "style(pwa): rename sidebar-scroll → minimal-scroll, apply to feed content area",
@@ -22,24 +34,79 @@
       "feat(desktop): sync button opens status popover instead of immediate refresh",
       "fix(feed): add top padding to first card in feed list",
       "fix(pwa): reader toolbar full-width layout and macOS inset constant",
-      "perf(pwa): eliminate redundant re-renders on feed list scroll"
+      "perf(pwa): eliminate redundant re-renders on feed list scroll",
+      "release: v26.3.103",
+      "fix: RSS feed persistence, platform capability honesty, desktop UI polish (#5)",
+      "fix(pwa): fix tab strip alignment in AddFeedDialog",
+      "fix(website): fix hero vertical centering and desktop text alignment",
+      "fix(pwa): fix iOS keyboard occlusion and bottom viewport gap",
+      "release: v26.3.102",
+      "fix: iPhone safe-area gaps, desktop sync→settings, traffic light alignment",
+      "fix(ci): auto-publish release after all builds complete",
+      "release: v26.3.101",
+      "fix(pwa): full iPhone mobile compatibility",
+      "fix: read version from package.json instead of npm_package_version",
+      "fix(website): newsletter modal subscribe button scrunched on mobile",
+      "fix(ci): use case/esac instead of bash 4 associative arrays",
+      "release: v26.3.100",
+      "feat: update system, CalVer DDBUILD, UI polish (#4)",
+      "release: v26.3.4",
+      "feat: UI polish — settings cleanup, sync unification, sidebar refinements",
+      "release: v26.3.3",
+      "feat: UI overhaul — unified header, draggable sidebar, modal consistency",
+      "release: v26.3.2",
+      "fix: include PWA sources in desktop Tailwind content scan",
+      "feat(website): add early-build disclaimer and clarify app vs desktop roles",
+      "release: v26.3.1",
+      "fix: use YY.M.D CalVer to stay within MSI 255 major version limit",
+      "Revert \"release: v2026.3.1\"",
+      "release: v2026.3.1",
+      "chore: update release.sh for CalVer and PWA version lockstep",
+      "Merge pull request #3 from freed-project/refactor/unify-pwa-desktop-components",
+      "Merge pull request #2 from freed-project/feat/get-freed-modal",
+      "refactor: unify PWA and Desktop UI components via PlatformContext",
+      "feat(website): deep-linkable /get modal, restore tooltip, disable subscribe",
+      "feat(website): direct platform downloads with override dropdown",
+      "Merge branch 'main' into feat/get-freed-modal",
+      "docs: update Phase 5 after successful 4-platform release build",
+      "feat(website): redesign Get Freed modal with app links and downloads"
     ]
   },
   "release": {
-    "summary": "Move X connect UI from sidebar into feed blank state",
-    "whatsNew": [
-      "Move X connect UI from sidebar into feed blank state",
-      "Add per-feed context menu with sync status, rename, and unsubscribe",
-      "Sync button opens status popover instead of immediate refresh"
+    "deck": "Per-feed context menu with sync status, rename, and unsubscribe, system, CalVer DDBUILD, UI polish, and fix tab strip alignment in AddFeedDialog",
+    "features": [
+      "Per-feed context menu with sync status, rename, and unsubscribe",
+      "Sync button opens status popover instead of immediate refresh",
+      "UI polish , settings cleanup, sync unification, sidebar refinements"
     ],
     "fixes": [
-      "Rename sidebar-scroll to minimal-scroll, apply to feed content area",
-      "Hide logo in desktop mobile-layout to clear macOS traffic lights",
-      "Add top padding to first card in feed list"
+      "Logo in desktop mobile-layout to clear macOS traffic lights now stays out of the way",
+      "Add top padding to first card in feed list",
+      "Reader toolbar full-width layout and macOS inset constant",
+      "RSS feed persistence, platform capability honesty, desktop UI polish",
+      "Fix hero vertical centering and desktop text alignment",
+      "Fix iOS keyboard occlusion and bottom viewport gap",
+      "IPhone safe-area gaps, desktop sync to settings, traffic light alignment",
+      "Auto-publish release after all builds complete",
+      "Full iPhone mobile compatibility",
+      "Read version from package.json instead of npm_package_version",
+      "Newsletter modal subscribe button scrunched on mobile",
+      "Case/esac instead of bash 4 associative arrays now uses the correct path",
+      "Include PWA sources in desktop Tailwind content scan",
+      "YY.M.D CalVer to stay within MSI 255 major version limit now uses the correct path"
     ],
-    "performance": [
-      "Lazy-load images, drop backdrop-filter blur, add scroll gutter"
+    "followUps": [
+      "Rename sidebar-scroll to minimal-scroll, apply to feed content area",
+      "Lazy-load images, drop backdrop-filter blur, add scroll gutter",
+      "Move X connect UI from sidebar into feed blank state",
+      "Eliminate redundant re-renders on feed list scroll",
+      "UI overhaul , unified header, draggable sidebar, modal consistency",
+      "Early-build disclaimer and clarify app vs desktop roles",
+      "Release.sh for CalVer and PWA version lockstep",
+      "PWA and Desktop UI components via PlatformContext",
+      "Deep-linkable /get modal, restore tooltip, disable subscribe",
+      "Redesign Get Freed modal with app links and downloads"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.104\n\nMove X connect UI from sidebar into feed blank state\n\n### What's New\n\n- Move X connect UI from sidebar into feed blank state\n- Add per-feed context menu with sync status, rename, and unsubscribe\n- Sync button opens status popover instead of immediate refresh\n\n### Performance\n\n- Lazy-load images, drop backdrop-filter blur, add scroll gutter\n\n### Fixes\n\n- Rename sidebar-scroll to minimal-scroll, apply to feed content area\n- Hide logo in desktop mobile-layout to clear macOS traffic lights\n- Add top padding to first card in feed list\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.104\n\nPer-feed context menu with sync status, rename, and unsubscribe, system, CalVer DDBUILD, UI polish, and fix tab strip alignment in AddFeedDialog\n\n### Features\n\n- Per-feed context menu with sync status, rename, and unsubscribe\n- Sync button opens status popover instead of immediate refresh\n- UI polish , settings cleanup, sync unification, sidebar refinements\n\n### Fixes\n\n- Logo in desktop mobile-layout to clear macOS traffic lights now stays out of the way\n- Add top padding to first card in feed list\n- Reader toolbar full-width layout and macOS inset constant\n- RSS feed persistence, platform capability honesty, desktop UI polish\n- Fix hero vertical centering and desktop text alignment\n- Fix iOS keyboard occlusion and bottom viewport gap\n- IPhone safe-area gaps, desktop sync to settings, traffic light alignment\n- Auto-publish release after all builds complete\n- Full iPhone mobile compatibility\n- Read version from package.json instead of npm_package_version\n- Newsletter modal subscribe button scrunched on mobile\n- Case/esac instead of bash 4 associative arrays now uses the correct path\n- Include PWA sources in desktop Tailwind content scan\n- YY.M.D CalVer to stay within MSI 255 major version limit now uses the correct path\n\n### Follow-ups\n\n- Rename sidebar-scroll to minimal-scroll, apply to feed content area\n- Lazy-load images, drop backdrop-filter blur, add scroll gutter\n- Move X connect UI from sidebar into feed blank state\n- Eliminate redundant re-renders on feed list scroll\n- UI overhaul , unified header, draggable sidebar, modal consistency\n- Early-build disclaimer and clarify app vs desktop roles\n- Release.sh for CalVer and PWA version lockstep\n- PWA and Desktop UI components via PlatformContext\n- Deep-linkable /get modal, restore tooltip, disable subscribe\n- Redesign Get Freed modal with app links and downloads\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

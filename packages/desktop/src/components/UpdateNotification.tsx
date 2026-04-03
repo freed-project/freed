@@ -1,48 +1,5 @@
 import type { Update } from "@tauri-apps/plugin-updater";
-
-/**
- * Extracts "What's New" bullet points from our structured release note markdown.
- * Falls back to stripping all markdown syntax for a plain-text preview.
- */
-function parseReleaseNotes(body: string): string[] {
-  // Try to find the "### What's New" section
-  const whatsNewMatch = body.match(/###\s+What's New\s*\n([\s\S]*?)(?=\n###|\n##|$)/i);
-  if (whatsNewMatch) {
-    return whatsNewMatch[1]
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.startsWith("- "))
-      .map((l) =>
-        l
-          .replace(/^- /, "")
-          // Strip inline markdown links: [text](url) → text
-          .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-          // Strip bold/italic
-          .replace(/\*\*([^*]+)\*\*/g, "$1")
-          .replace(/\*([^*]+)\*/g, "$1")
-          // Strip inline code
-          .replace(/`([^`]+)`/g, "$1")
-          .trim(),
-      )
-      .filter(Boolean)
-      .slice(0, 3);
-  }
-
-  // Fallback: strip all markdown and return the first meaningful line
-  const stripped = body
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/\*([^*]+)\*/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/^>\s+/gm, "")
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0 && !l.startsWith("**") && !l.match(/^\*+$/))
-    .slice(0, 2);
-
-  return stripped;
-}
+import { extractUpdatePreviewLine } from "../lib/update-release-preview";
 
 export type UpdateState =
   | { phase: "idle" }
@@ -156,19 +113,14 @@ function UpdateContent({
       return (
         <>
           <p className="text-sm font-medium text-text-primary">
-            Update available &mdash; v{state.update.version}
+            Update available, v{state.update.version}
           </p>
           {state.update.body && (() => {
-            const notes = parseReleaseNotes(state.update.body);
-            return notes.length > 0 ? (
-              <ul className="mt-1 space-y-0.5">
-                {notes.map((note, i) => (
-                  <li key={i} className="text-xs text-text-muted flex gap-1.5">
-                    <span className="text-glow-purple shrink-0">+</span>
-                    <span className="line-clamp-1">{note}</span>
-                  </li>
-                ))}
-              </ul>
+            const preview = extractUpdatePreviewLine(state.update.body);
+            return preview ? (
+              <p className="mt-1 text-xs text-text-muted line-clamp-1">
+                {preview}
+              </p>
             ) : null;
           })()}
           <button

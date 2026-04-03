@@ -4,11 +4,16 @@
   "dayKey": "26.3.5",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:44:21.701Z",
+  "generatedAt": "2026-04-03T01:02:39.844Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.303",
+    "previousPublishedDayTag": "v26.3.3100",
     "compareRef": "v26.3.502",
+    "isLatestOfDay": false,
+    "sameDayTagsIncluded": [
+      "v26.3.502"
+    ],
     "prNumbers": [
       48,
       49,
@@ -95,20 +100,43 @@
     ]
   },
   "release": {
-    "summary": "Add PWA X settings page and fix duplicate search clear button",
-    "whatsNew": [
-      "Add PWA X settings page and fix duplicate search clear button",
+    "deck": "PWA X settings page and fix duplicate search clear button, complete X/Twitter integration end-to-end, and move X connection to Settings > Sources > X page",
+    "features": [
+      "PWA X settings page and fix duplicate search clear button",
       "Move X connection to Settings > Sources > X page",
-      "Linux uses the Chrome default \"peanuts\" password"
+      "Complete X/Twitter integration end-to-end"
     ],
     "fixes": [
       "Stop Automerge undefined writes from crashing RSS and X sync",
       "Align sidebar section headers to same height as items",
-      "Never assign undefined into Automerge documents"
+      "Never assign undefined into Automerge documents",
+      "PWA UI polish -- header, settings, update check, X settings",
+      "Increase header toolbar gap from 8px to 24px",
+      "Uniform header spacing and hide command palette on mobile",
+      "Correct CSS @import order, hide swipe indicator at rest, polish search hover",
+      "Trigger update check when button enters viewport, not scrollspy threshold",
+      "Init flash and reduce desktop startup serialization overhead removed",
+      "Import invoke/isTauri from @tauri-apps/api/core instead of window.__TAURI__",
+      "Auto-update service worker and add purple F favicon",
+      "Mobile feed to window scroll for Safari address bar collapse now uses the updated transport",
+      "Highlight Updates nav item on individual post pages",
+      "Open all How You Can Help links in new tab"
     ],
-    "performance": [
-      "Instant app launch with deferred migrations and skeleton loading"
+    "followUps": [
+      "Instant app launch with deferred migrations and skeleton loading",
+      "Command bar foundation with settings navigation and lower-contrast search",
+      "Items as read when scrolled past in the feed list",
+      "Enhance Ulysses Mode and Manifesto content for clarity and impact",
+      "Unified two-column Settings dialog with scrollspy and I/O sections",
+      "Consolidate global CSS into packages/UI/src/index.css",
+      "Lockfile after installing plugin-fs and plugin-store",
+      "Saved content modal, folder import, phased progress, unit tests",
+      "Universal full-text search across all sources",
+      "Phase 8 friends CRM + social graph scaffolding",
+      "Build out the archive system end-to-end",
+      "Fix UI freeze when entering reading mode",
+      "Tighten introducing-freed post, cut technical architecture section"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.502\n\nAdd PWA X settings page and fix duplicate search clear button\n\n### What's New\n\n- Add PWA X settings page and fix duplicate search clear button\n- Move X connection to Settings > Sources > X page\n- Linux uses the Chrome default \"peanuts\" password\n\n### Performance\n\n- Instant app launch with deferred migrations and skeleton loading\n\n### Fixes\n\n- Stop Automerge undefined writes from crashing RSS and X sync\n- Align sidebar section headers to same height as items\n- Never assign undefined into Automerge documents\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.502\n\nPWA X settings page and fix duplicate search clear button, complete X/Twitter integration end-to-end, and move X connection to Settings > Sources > X page\n\n### Features\n\n- PWA X settings page and fix duplicate search clear button\n- Move X connection to Settings > Sources > X page\n- Complete X/Twitter integration end-to-end\n\n### Fixes\n\n- Stop Automerge undefined writes from crashing RSS and X sync\n- Align sidebar section headers to same height as items\n- Never assign undefined into Automerge documents\n- PWA UI polish -- header, settings, update check, X settings\n- Increase header toolbar gap from 8px to 24px\n- Uniform header spacing and hide command palette on mobile\n- Correct CSS @import order, hide swipe indicator at rest, polish search hover\n- Trigger update check when button enters viewport, not scrollspy threshold\n- Init flash and reduce desktop startup serialization overhead removed\n- Import invoke/isTauri from @tauri-apps/api/core instead of window.__TAURI__\n- Auto-update service worker and add purple F favicon\n- Mobile feed to window scroll for Safari address bar collapse now uses the updated transport\n- Highlight Updates nav item on individual post pages\n- Open all How You Can Help links in new tab\n\n### Follow-ups\n\n- Instant app launch with deferred migrations and skeleton loading\n- Command bar foundation with settings navigation and lower-contrast search\n- Items as read when scrolled past in the feed list\n- Enhance Ulysses Mode and Manifesto content for clarity and impact\n- Unified two-column Settings dialog with scrollspy and I/O sections\n- Consolidate global CSS into packages/UI/src/index.css\n- Lockfile after installing plugin-fs and plugin-store\n- Saved content modal, folder import, phased progress, unit tests\n- Universal full-text search across all sources\n- Phase 8 friends CRM + social graph scaffolding\n- Build out the archive system end-to-end\n- Fix UI freeze when entering reading mode\n- Tighten introducing-freed post, cut technical architecture section\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

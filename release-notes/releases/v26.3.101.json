@@ -4,11 +4,16 @@
   "dayKey": "26.3.1",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:43:41.125Z",
+  "generatedAt": "2026-04-03T01:02:10.052Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.100",
+    "previousPublishedDayTag": "v0.2.0",
     "compareRef": "v26.3.101",
+    "isLatestOfDay": false,
+    "sameDayTagsIncluded": [
+      "v26.3.101"
+    ],
     "prNumbers": [],
     "commitSubjects": [
       "release: v26.3.101",
@@ -18,14 +23,12 @@
     ]
   },
   "release": {
-    "summary": "Full iPhone mobile compatibility",
-    "whatsNew": [],
+    "deck": "Full iPhone mobile compatibility and newsletter modal subscribe button scrunched on mobile",
+    "features": [],
     "fixes": [
-      "Full iPhone mobile compatibility",
-      "Read version from package.json instead of npm_package_version",
-      "Newsletter modal subscribe button scrunched on mobile"
+      "Read version from package.json instead of npm_package_version"
     ],
-    "performance": []
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.101\n\nFull iPhone mobile compatibility\n\n### Fixes\n\n- Full iPhone mobile compatibility\n- Read version from package.json instead of npm_package_version\n- Newsletter modal subscribe button scrunched on mobile\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.101\n\nFull iPhone mobile compatibility and newsletter modal subscribe button scrunched on mobile\n\n### Fixes\n\n- Read version from package.json instead of npm_package_version\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
