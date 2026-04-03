@@ -2,7 +2,7 @@
   "tag": "v26.4.301",
   "version": "26.4.301",
   "dayKey": "26.4.3",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-03T21:14:02.286Z",
   "model": "heuristic",
@@ -29,12 +29,17 @@
     ]
   },
   "release": {
-    "deck": "Sharper release messaging, release notes and changelog cards now use summaries, and freed Desktop update prompts now show a single-line release summary",
+    "deck": "Website changelog catches same-day releases",
     "features": [],
     "fixes": [
-      "Historical releases now keep concise daily rollups without losing major highlights"
+      "freed.wtf now redeploys after a release publishes so the changelog includes the newly shipped build",
+      "Release notes and changelog cards now use cleaner reviewed summaries",
+      "Historical releases now keep concise daily rollups without losing major highlights",
+      "Freed Desktop update prompts now show a cleaner single-line release summary"
     ],
-    "followUps": []
+    "followUps": [
+      "Sharper release messaging"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.301\n\nSharper release messaging, release notes and changelog cards now use summaries, and freed Desktop update prompts now show a single-line release summary\n\n### Fixes\n\n- Historical releases now keep concise daily rollups without losing major highlights\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.301\n\nWebsite changelog catches same-day releases\n\n### Fixes\n\n- freed.wtf now redeploys after a release publishes so the changelog includes the newly shipped build\n- Release notes and changelog cards now use cleaner reviewed summaries\n- Historical releases now keep concise daily rollups without losing major highlights\n- Freed Desktop update prompts now show a cleaner single-line release summary\n\n### Follow-ups\n\n- Sharper release messaging\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
