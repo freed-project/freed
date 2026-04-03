@@ -1,0 +1,40 @@
+{
+  "tag": "v26.4.301",
+  "version": "26.4.301",
+  "dayKey": "26.4.3",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-03T21:14:02.286Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.4.300",
+    "previousPublishedDayTag": "v26.4.109",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.300",
+      "v26.4.301"
+    ],
+    "prNumbers": [
+      172,
+      173,
+      174
+    ],
+    "commitSubjects": [
+      "fix: redeploy website after release publish (#174)",
+      "release: approve v26.4.300 notes",
+      "release: v26.4.300",
+      "fix: overhaul changelog release notes and cards (#173)",
+      "fix: backfill concise historical changelog notes (#172)"
+    ]
+  },
+  "release": {
+    "deck": "Sharper release messaging, release notes and changelog cards now use summaries, and freed Desktop update prompts now show a single-line release summary",
+    "features": [],
+    "fixes": [
+      "Historical releases now keep concise daily rollups without losing major highlights"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.301\n\nSharper release messaging, release notes and changelog cards now use summaries, and freed Desktop update prompts now show a single-line release summary\n\n### Fixes\n\n- Historical releases now keep concise daily rollups without losing major highlights\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
