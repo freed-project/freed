@@ -1,6 +1,7 @@
 {
   "dayKey": "26.3.10",
   "date": "2026-03-10",
+  "preferredDeck": null,
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -8,19 +9,5 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [],
-  "rollup": {
-    "summary": "Default reader view to dual-column mode",
-    "whatsNew": [
-      "Default reader view to dual-column mode",
-      "Add per-platform install warnings to download modal",
-      "Bookmarked items cannot be archived"
-    ],
-    "fixes": [
-      "Clean up stale build artifacts and minor text fixes",
-      "Add worktree-add.sh wrapper for automatic node_modules setup",
-      "Eliminate HTML injection in ReaderView, cache Readability output"
-    ],
-    "performance": []
-  },
-  "updatedAt": "2026-04-02T02:44:58.996Z"
+  "updatedAt": "2026-04-03T01:03:51.733Z"
 }

@@ -4,11 +4,16 @@
   "dayKey": "26.3.12",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:45:04.919Z",
+  "generatedAt": "2026-04-03T01:03:58.000Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.1101",
+    "previousPublishedDayTag": "v26.3.1101",
     "compareRef": "v26.3.1200",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.3.1200"
+    ],
     "prNumbers": [
       143,
       144
@@ -20,14 +25,12 @@
     ]
   },
   "release": {
-    "summary": "Most recent build for the day is used as the card header",
-    "whatsNew": [
-      "Most recent build for the day is used as the card header"
+    "deck": "Daily changelog grouping and fB/IG scraper windows instead of moving them off-screen now stays out of the way",
+    "features": [
+      "Group changelog cards by CalVer day"
     ],
-    "fixes": [
-      "Hide FB/IG scraper windows instead of moving them off-screen"
-    ],
-    "performance": []
+    "fixes": [],
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.1200\n\nMost recent build for the day is used as the card header\n\n### What's New\n\n- Most recent build for the day is used as the card header\n\n### Fixes\n\n- Hide FB/IG scraper windows instead of moving them off-screen\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.1200\n\nDaily changelog grouping and fB/IG scraper windows instead of moving them off-screen now stays out of the way\n\n### Features\n\n- Group changelog cards by CalVer day\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

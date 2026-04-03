@@ -1,6 +1,7 @@
 {
   "dayKey": "0.2.0",
   "date": "2000-01-31",
+  "preferredDeck": null,
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -8,21 +9,5 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [],
-  "rollup": {
-    "summary": "Auto-update system, release pipeline, and distribution",
-    "whatsNew": [
-      "Auto-update system, release pipeline, and distribution",
-      "Clarify hero above-the-fold with platform logos and tighter copy",
-      "Add sandbox settings to settings.local.json"
-    ],
-    "fixes": [
-      "Force Automerge base64 entry and use real signing password",
-      "Skip Automerge WASM patch and fix signing password",
-      "Resolve WASM patch, signing key, and macOS codesign issues"
-    ],
-    "performance": [
-      "Load Automerge WASM as separate streamed asset"
-    ]
-  },
-  "updatedAt": "2026-04-02T02:43:38.297Z"
+  "updatedAt": "2026-04-03T01:02:06.393Z"
 }

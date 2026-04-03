@@ -1,6 +1,7 @@
 {
   "dayKey": "26.3.24",
   "date": "2026-03-24",
+  "preferredDeck": null,
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -8,19 +9,5 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [],
-  "rollup": {
-    "summary": "Activate Friends view and add Google Contacts sync",
-    "whatsNew": [
-      "Activate Friends view and add Google Contacts sync",
-      "Add LinkedIn feed capture via WebView scraper",
-      "Overhaul feed card and reader actions"
-    ],
-    "fixes": [
-      "Repair desktop e2e tauri event mocks",
-      "Filter polluted social feed items and add Facebook group filters",
-      "Adjust footer text formatting"
-    ],
-    "performance": []
-  },
-  "updatedAt": "2026-04-02T02:45:11.777Z"
+  "updatedAt": "2026-04-03T01:04:06.231Z"
 }

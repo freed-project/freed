@@ -4,6 +4,19 @@ import { execFileSync } from "child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import {
+  areNearDuplicates,
+  buildReleaseDeck,
+  compareTags,
+  dayDateFromVersion,
+  MAX_FEATURES,
+  normalizeReleaseText,
+  renderReleaseBody,
+  sanitizeReleaseShape,
+  summarizeFallbackText,
+  validateReleaseShape,
+  versionDayKey,
+} from "./release-notes-shared.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,6 +46,22 @@ function git(args) {
   }).trim();
 }
 
+function ghBinary() {
+  const candidates = [
+    process.env.GH_BIN,
+    "/opt/homebrew/bin/gh",
+    "/usr/local/bin/gh",
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return "gh";
+}
+
 function hasGitRef(ref) {
   try {
     execFileSync("git", ["rev-parse", "--verify", "--quiet", ref], {
@@ -47,7 +76,7 @@ function hasGitRef(ref) {
 
 function maybeGhToken() {
   try {
-    return execFileSync("gh", ["auth", "token"], {
+    return execFileSync(ghBinary(), ["auth", "token"], {
       cwd: REPO_ROOT,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
@@ -79,32 +108,12 @@ async function fetchJson(url, headers) {
   return response.json();
 }
 
-function versionDayKey(version) {
-  const parts = version.split(".");
-  if (parts.length !== 3) {
-    return version;
-  }
-
-  const [yy, month, patch] = parts;
-  const day = Math.floor(Number(patch) / 100);
-  return `${yy}.${month}.${day}`;
-}
-
-function dayDateFromVersion(version) {
-  const parts = version.split(".");
-  if (parts.length !== 3) {
-    return null;
-  }
-
-  const [yy, month, patch] = parts;
-  const day = Math.floor(Number(patch) / 100);
-  const year = 2000 + Number(yy);
-  const date = new Date(Date.UTC(year, Number(month) - 1, day));
-  return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
-}
-
 function normalizeSubject(subject) {
   return subject.replace(/^(?:\[[^\]]+\]\s*)+/, "").trim();
+}
+
+function isExactDuplicateText(a, b) {
+  return normalizeReleaseText(a).toLowerCase() === normalizeReleaseText(b).toLowerCase();
 }
 
 function commitKind(subject) {
@@ -113,6 +122,17 @@ function commitKind(subject) {
     /^(feat|fix|perf|refactor|style|chore|docs|test|build|ci)(\([^)]+\))?!?:/,
   );
   return match?.[1] ?? "";
+}
+
+function releaseEntryKind(subject) {
+  const kind = commitKind(subject);
+  if (kind === "feat") {
+    return "feature";
+  }
+  if (kind === "fix") {
+    return "fix";
+  }
+  return "followUp";
 }
 
 function stripPrefix(subject) {
@@ -128,7 +148,7 @@ function stripPrefix(subject) {
     return "Bug fixes and improvements";
   }
 
-  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  return summarizeFallbackText(normalized);
 }
 
 function cleanDetailLine(line) {
@@ -136,8 +156,6 @@ function cleanDetailLine(line) {
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/\*([^*]+)\*/g, "$1")
     .replace(/`([^`]+)`/g, "$1")
-    .replace(/[—–]/g, ", ")
-    .replace(/→/g, " to ")
     .replace(/^[-*] /, "")
     .replace(/:\s*$/, "")
     .replace(/\s+/g, " ")
@@ -145,7 +163,10 @@ function cleanDetailLine(line) {
 }
 
 function normalizeBodyText(body) {
-  return body.replace(/\r\n/g, "\n").replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n");
+  return String(body ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n");
 }
 
 function extractSection(body, headings) {
@@ -188,8 +209,8 @@ function parseDetails(lines) {
       text &&
       !["Includes", "Include", "Summary", "What changed", "Impact"].includes(text)
     ) {
-      const normalized = text.charAt(0).toUpperCase() + text.slice(1);
-      if (!details.includes(normalized)) {
+      const normalized = summarizeFallbackText(text);
+      if (!details.some((item) => areNearDuplicates(item, normalized))) {
         details.push(normalized);
       }
     }
@@ -216,8 +237,8 @@ function parseDetails(lines) {
       flushParagraph();
       const cleaned = cleanDetailLine(stripped);
       if (cleaned) {
-        const normalized = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-        if (!details.includes(normalized)) {
+        const normalized = summarizeFallbackText(cleaned);
+        if (!details.some((item) => areNearDuplicates(item, normalized))) {
           details.push(normalized);
         }
       }
@@ -231,233 +252,12 @@ function parseDetails(lines) {
   return details;
 }
 
-function dedupeStrings(items) {
-  const seen = new Set();
-  const result = [];
-
-  for (const item of items) {
-    const normalizedItem = item.trim();
-    const key = normalizedItem.toLowerCase();
-    if (!key || seen.has(key)) {
-      continue;
-    }
-    if (isLowSignalItem(normalizedItem)) {
-      continue;
-    }
-    seen.add(key);
-    result.push(normalizedItem);
+function readJsonIfExists(filePath) {
+  if (!existsSync(filePath)) {
+    return null;
   }
 
-  return result;
-}
-
-function limitSectionItems(
-  sections,
-  limits = { whatsNew: 3, fixes: 3, performance: 1 },
-) {
-  return {
-    ...sections,
-    whatsNew: sections.whatsNew.slice(0, limits.whatsNew),
-    fixes: sections.fixes.slice(0, limits.fixes),
-    performance: sections.performance.slice(0, limits.performance),
-  };
-}
-
-function summarizeFallbackText(text) {
-  const trimmed = text
-    .trim()
-    .replace(/[—–]/g, ", ")
-    .replace(/→/g, " to ")
-    .replace(/\s+/g, " ")
-    .replace(/[.]$/, "");
-  return trimmed ? trimmed.charAt(0).toUpperCase() + trimmed.slice(1) : trimmed;
-}
-
-function isLowSignalItem(text) {
-  const normalized = text.trim().toLowerCase();
-
-  if (!normalized) {
-    return true;
-  }
-
-  if (
-    normalized === "bug fixes and improvements" ||
-    normalized.startsWith("no behavior change") ||
-    normalized.startsWith("prerequisite cleanup") ||
-    normalized.startsWith("minor text fixes") ||
-    normalized.startsWith("further ") ||
-    normalized.startsWith("this was ") ||
-    normalized.startsWith("this is ") ||
-    normalized.startsWith("this change ") ||
-    normalized.startsWith("the primary reason ")
-  ) {
-    return true;
-  }
-
-  if (
-    /\b(api returned errors|blocked the release|internal cleanup|package-lock\.json|tsconfig|App\.tsx|SettingsDialog)\b/i.test(
-      text,
-    )
-  ) {
-    return true;
-  }
-
-  if (
-    /\b(tsc\b|docaddfeeditem|followingentry\.content|fs caps|dedup index|chrome default "peanuts"|api to get|type$)\b/i.test(
-      normalized,
-    )
-  ) {
-    return true;
-  }
-
-  return false;
-}
-
-function shortenCandidate(text, maxLength = 110) {
-  const cleaned = text.replace(/\s+/g, " ").trim();
-  if (cleaned.length <= maxLength) {
-    return cleaned;
-  }
-
-  const sentence = cleaned
-    .split(/(?<=[.!?])\s+/)
-    .find((part) => part.length > 0 && part.length <= maxLength);
-  if (sentence) {
-    return sentence.trim();
-  }
-
-  const clause = cleaned
-    .split(/[;:.]/)
-    .find((part) => part.trim().length > 0 && part.trim().length <= maxLength);
-  if (clause) {
-    return clause.trim();
-  }
-
-  const trimmed = cleaned.slice(0, maxLength).trimEnd();
-  const breakAt = Math.max(trimmed.lastIndexOf(","), trimmed.lastIndexOf(" "));
-  return (breakAt > 50 ? trimmed.slice(0, breakAt) : trimmed).trim();
-}
-
-function normalizeCandidate(text) {
-  return summarizeFallbackText(
-    shortenCandidate(
-      text
-        .replace(/^(feat|fix|perf|refactor|style|chore|docs|test|build|ci)(\([^)]+\))?!?:\s*/i, "")
-        .replace(/^This\s+/i, "")
-        .replace(/^It\s+/i, "")
-        .replace(/^The\s+/i, "")
-        .replace(/\s+/g, " ")
-        .trim(),
-    ),
-  );
-}
-
-function candidateScore(text, source = "detail") {
-  if (!text) {
-    return -Infinity;
-  }
-
-  const normalized = text.trim();
-  let score = 0;
-  const wordCount = normalized.split(/\s+/).length;
-
-  if (normalized.length >= 28 && normalized.length <= 90) score += 4;
-  if (wordCount >= 4 && wordCount <= 14) score += 3;
-  if (source === "title") score += 2;
-  if (source === "fallback") score += 1;
-
-  if (/[`]/.test(normalized)) score -= 4;
-  if (/[@/\\]|::|=>|->/.test(normalized)) score -= 4;
-  if (/\b(src|docs|tsconfig|package\.json|localStorage|use[A-Z]|AppShell|WebView|Tauri|DOMParser|requestAnimationFrame)\b/.test(normalized)) score -= 5;
-  if (/^(Wires into|Adds @|Adds a |Marks Phase|PWA passes|Exports |In App\.tsx|In SettingsDialog)/i.test(normalized)) score -= 6;
-  if (/^(This was|This is|This change|The primary reason)/i.test(normalized)) score -= 8;
-  if (/[A-Za-z0-9_]+\.[a-z]{2,4}\b/.test(normalized)) score -= 4;
-  if (/[a-z][A-Z]/.test(normalized)) score -= 3;
-  if ((normalized.match(/\(/g) || []).length !== (normalized.match(/\)/g) || []).length) score -= 4;
-  if ((normalized.match(/,/g) || []).length >= 3) score -= 2;
-  if (wordCount > 18) score -= 3;
-  if (normalized.length > 120) score -= 3;
-
-  if (/\b(sign|signed|signing|notarized|notarization|install|desktop|reader|sync|friend|linkedin|legal|qr|window|startup|map)\b/i.test(normalized)) {
-    score += 2;
-  }
-
-  return score;
-}
-
-function chooseBestSummary(entry) {
-  const candidates = [
-    { text: entry.title, source: "title" },
-    ...entry.details.map((text) => ({ text, source: "detail" })),
-    { text: entry.fallback, source: "fallback" },
-  ]
-    .map((candidate) => ({
-      text: normalizeCandidate(candidate.text || ""),
-      source: candidate.source,
-    }))
-    .filter((candidate) => candidate.text.length > 0);
-
-  candidates.sort((a, b) => candidateScore(b.text, b.source) - candidateScore(a.text, a.source));
-  return candidates[0]?.text || normalizeCandidate(entry.fallback || entry.title || "");
-}
-
-function parseReleaseBody(body) {
-  const features = [];
-  const fixes = [];
-  const performance = [];
-  const prNumbers = [];
-
-  const normalizedBody = normalizeBodyText(body);
-  const sectionRegex = /###\s+(.+?)\n([\s\S]*?)(?=\n###|\n##|$)/g;
-  let match;
-
-  while ((match = sectionRegex.exec(normalizedBody)) !== null) {
-    const heading = match[1].trim().toLowerCase();
-    const content = match[2];
-    const lines = content
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.startsWith("- "));
-
-    const items = lines.map((line) => {
-      const text = line
-        .replace(/^- /, "")
-        .replace(/\[#(\d+)\]\([^)]+\)/g, (_, num) => {
-          prNumbers.push(Number(num));
-          return `#${num}`;
-        })
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-        .replace(/\*\*([^*]+)\*\*/g, "$1")
-        .replace(/\*([^*]+)\*/g, "$1")
-        .replace(/`([^`]+)`/g, "$1")
-        .trim();
-
-      return summarizeFallbackText(
-        text.replace(/\s*\(#\d+\)$/, "").replace(/\s*#\d+$/, "").trim(),
-      );
-    });
-
-    if (heading.includes("new") || heading.includes("feat")) {
-      features.push(...items);
-      continue;
-    }
-
-    if (heading.includes("fix")) {
-      fixes.push(...items);
-      continue;
-    }
-
-    if (heading.includes("perf")) {
-      performance.push(...items);
-    }
-  }
-
-  return {
-    features: dedupeStrings(features),
-    fixes: dedupeStrings(fixes.filter((item) => item.toLowerCase() !== "bug fixes and improvements")),
-    performance: dedupeStrings(performance),
-    prNumbers: [...new Set(prNumbers)].sort((a, b) => a - b),
-  };
+  return JSON.parse(readFileSync(filePath, "utf8"));
 }
 
 function releasePaths(tag) {
@@ -471,18 +271,11 @@ function dailyPath(dayKey) {
   return path.join(DAILY_DIR, `${dayKey}.json`);
 }
 
-function readJsonIfExists(filePath) {
-  if (!existsSync(filePath)) {
-    return null;
-  }
-
-  return JSON.parse(readFileSync(filePath, "utf8"));
-}
-
 function defaultDailyEditorial(dayKey, version) {
   return {
     dayKey,
     date: dayDateFromVersion(version),
+    preferredDeck: null,
     editorialGuidance: [
       "Keep the tone concise, professional, and specific.",
       "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -490,12 +283,6 @@ function defaultDailyEditorial(dayKey, version) {
     ],
     pinnedHighlights: [],
     editorialNotes: [],
-    rollup: {
-      summary: "",
-      whatsNew: [],
-      fixes: [],
-      performance: [],
-    },
     updatedAt: null,
   };
 }
@@ -511,67 +298,158 @@ function defaultReleaseArtifact(tag, version, dayKey) {
     model: null,
     source: {
       previousPublishedTag: null,
+      previousPublishedDayTag: null,
       compareRef: "HEAD",
+      isLatestOfDay: true,
+      sameDayTagsIncluded: [],
       prNumbers: [],
       commitSubjects: [],
     },
     release: {
-      summary: "",
-      whatsNew: [],
+      deck: "",
+      features: [],
       fixes: [],
-      performance: [],
+      followUps: [],
     },
     releaseBody: "",
   };
 }
 
-function renderReleaseBody(tag, release) {
-  const lines = ["(AI Generated).", "", `## Freed ${tag}`, ""];
+function releaseFromArtifact(artifact) {
+  return sanitizeReleaseShape(artifact?.release ?? {});
+}
 
-  if (release.summary) {
-    lines.push(release.summary, "");
+function preferredDeckForContext(existingDaily, context) {
+  if (!context.isLatestOfDay) {
+    return "";
   }
 
-  if (release.whatsNew.length > 0) {
-    lines.push("### What's New", "");
-    for (const item of release.whatsNew) {
-      lines.push(`- ${item}`);
+  return existingDaily?.preferredDeck ?? "";
+}
+
+function withComputedDeck(release, context, existingDaily) {
+  const normalizedWithoutDeck = sanitizeReleaseShape({
+    ...release,
+    deck: "",
+  });
+  const normalized = {
+    ...normalizedWithoutDeck,
+    deck: summarizeFallbackText(release?.deck ?? ""),
+  };
+
+  const deck = buildReleaseDeck(normalized, {
+    preferredDeck: preferredDeckForContext(existingDaily, context),
+  });
+
+  return sanitizeReleaseShape({
+    ...normalized,
+    deck,
+  });
+}
+
+function releaseHasContent(release) {
+  return Boolean(
+    release?.deck ||
+      (release?.features ?? []).length > 0 ||
+      (release?.fixes ?? []).length > 0 ||
+      (release?.followUps ?? []).length > 0,
+  );
+}
+
+function mergePriorSameDayReleases(baseRelease, earlierReleases) {
+  const merged = sanitizeReleaseShape(baseRelease);
+
+  for (const priorRelease of earlierReleases) {
+    const prior = sanitizeReleaseShape(priorRelease);
+
+    if (!merged.deck && prior.deck) {
+      merged.deck = prior.deck;
     }
-    lines.push("");
-  }
 
-  if (release.performance.length > 0) {
-    lines.push("### Performance", "");
-    for (const item of release.performance) {
-      lines.push(`- ${item}`);
+    const carryForwardItems = [
+      ...prior.features,
+      ...prior.fixes,
+      prior.deck,
+      ...prior.followUps,
+    ].filter(Boolean);
+
+    for (const item of carryForwardItems) {
+      if (isExactDuplicateText(item, merged.deck)) {
+        continue;
+      }
+
+      if (
+        prior.features.some((feature) => areNearDuplicates(feature, item)) &&
+        merged.features.length < MAX_FEATURES &&
+        !merged.features.some((feature) => areNearDuplicates(feature, item))
+      ) {
+        merged.features.push(item);
+        continue;
+      }
+
+      if (merged.features.some((feature) => areNearDuplicates(feature, item))) {
+        continue;
+      }
+
+      if (
+        prior.features.some((feature) => areNearDuplicates(feature, item)) &&
+        !merged.followUps.some((followUp) => areNearDuplicates(followUp, item))
+      ) {
+        merged.followUps.push(item);
+        continue;
+      }
+
+      if (
+        prior.fixes.some((fix) => areNearDuplicates(fix, item)) &&
+        !merged.fixes.some((fix) => areNearDuplicates(fix, item))
+      ) {
+        merged.fixes.push(item);
+        continue;
+      }
+
+      if (!merged.followUps.some((followUp) => areNearDuplicates(followUp, item))) {
+        merged.followUps.push(item);
+      }
     }
-    lines.push("");
   }
 
-  if (release.fixes.length > 0) {
-    lines.push("### Fixes", "");
-    for (const item of release.fixes) {
-      lines.push(`- ${item}`);
-    }
-    lines.push("");
+  const deduped = sanitizeReleaseShape({
+    ...merged,
+    deck: "",
+  });
+
+  return {
+    deck: merged.deck,
+    features: deduped.features,
+    fixes: deduped.fixes,
+    followUps: deduped.followUps,
+  };
+}
+
+function releaseArtifactsMatch(existingArtifact, nextRelease, nextSource) {
+  if (!existingArtifact) {
+    return false;
   }
 
-  if (
-    release.whatsNew.length === 0 &&
-    release.performance.length === 0 &&
-    release.fixes.length === 0
-  ) {
-    lines.push("### Fixes", "", "- Bug fixes and improvements", "");
-  }
+  const existingRelease = sanitizeReleaseShape(existingArtifact.release ?? {});
+  const existingSource = {
+    previousPublishedTag: existingArtifact.source?.previousPublishedTag ?? null,
+    previousPublishedDayTag: existingArtifact.source?.previousPublishedDayTag ?? null,
+    compareRef: existingArtifact.source?.compareRef ?? "HEAD",
+    isLatestOfDay: Boolean(existingArtifact.source?.isLatestOfDay),
+    sameDayTagsIncluded: existingArtifact.source?.sameDayTagsIncluded ?? [],
+    prNumbers: existingArtifact.source?.prNumbers ?? [],
+    commitSubjects: existingArtifact.source?.commitSubjects ?? [],
+  };
 
-  lines.push("### Downloads", "");
-  lines.push("**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  ");
-  lines.push("**Windows:** `.exe` (NSIS installer)  ");
-  lines.push("**Linux:** `.AppImage`  ");
-  lines.push("");
-  lines.push("> macOS downloads are signed and notarized for normal Gatekeeper installation.");
+  return (
+    JSON.stringify(existingRelease) === JSON.stringify(nextRelease) &&
+    JSON.stringify(existingSource) === JSON.stringify(nextSource)
+  );
+}
 
-  return `${lines.join("\n").trim()}\n`;
+function compareReleases(a, b) {
+  return compareTags(a.tag_name, b.tag_name);
 }
 
 async function listPublishedReleases() {
@@ -583,7 +461,7 @@ async function listPublishedReleases() {
 
   return releases
     .filter((release) => !release.draft && !release.prerelease)
-    .sort((a, b) => a.tag_name.localeCompare(b.tag_name, undefined, { numeric: true }));
+    .sort(compareReleases);
 }
 
 async function fetchPull(prNumber) {
@@ -591,13 +469,89 @@ async function fetchPull(prNumber) {
   return fetchJson(`${GITHUB_API}/repos/freed-project/freed/pulls/${prNumber}`, headers);
 }
 
-async function collectCurrentReleaseContext(tag, version) {
+function parseArguments(argv) {
+  const force = argv.includes("--force");
+  const positional = argv.filter((arg) => arg !== "--force");
+
+  if (positional.length !== 1) {
+    die("Usage: node scripts/prepare-release-notes.mjs <version-or-tag> [--force]");
+  }
+
+  return {
+    input: positional[0],
+    force,
+  };
+}
+
+function previousPublishedDayRelease(version, publishedReleases) {
+  const dayKey = versionDayKey(version);
+
+  return [...publishedReleases]
+    .filter((release) => versionDayKey(release.tag_name.replace(/^v/, "")) < dayKey)
+    .pop() ?? null;
+}
+
+function releaseSummaryScore(text, kind, pinnedTexts) {
+  let score = 0;
+  const normalized = summarizeFallbackText(text);
+  const words = normalized.split(/\s+/).length;
+
+  if (kind === "feature") score += 8;
+  if (kind === "fix") score += 4;
+  if (kind === "followUp") score += 2;
+  if (normalized.length >= 28 && normalized.length <= 96) score += 4;
+  if (words >= 4 && words <= 15) score += 3;
+  if (
+    /\b(sign|signed|signing|notarized|install|desktop|reader|sync|friend|map|legal|workspace|download|capture)\b/i.test(
+      normalized,
+    )
+  ) {
+    score += 3;
+  }
+  if (pinnedTexts.some((item) => areNearDuplicates(item, normalized))) {
+    score += 10;
+  }
+  if (normalized.length > 120) score -= 4;
+  if (words < 3) score -= 4;
+
+  return score;
+}
+
+function chooseBestSummary(entry) {
+  const candidates = [
+    entry.title,
+    ...(entry.details ?? []),
+    entry.fallback,
+  ]
+    .map((candidate) => summarizeFallbackText(candidate))
+    .filter(Boolean);
+
+  return candidates[0] ?? summarizeFallbackText(entry.fallback || entry.title || "");
+}
+
+function collectPriorSameDayReleases(tag, dayKey, publishedReleases) {
+  return publishedReleases.filter(
+    (release) =>
+      versionDayKey(release.tag_name.replace(/^v/, "")) === dayKey &&
+      compareTags(release.tag_name, tag) < 0,
+  );
+}
+
+async function collectReleaseContext(tag, version) {
   const publishedReleases = await listPublishedReleases();
+  const dayKey = versionDayKey(version);
+  const sameDayPublished = publishedReleases.filter(
+    (release) => versionDayKey(release.tag_name.replace(/^v/, "")) === dayKey,
+  );
   const previousPublished = [...publishedReleases]
-    .filter((release) => release.tag_name.localeCompare(tag, undefined, { numeric: true }) < 0)
-    .pop();
+    .filter((release) => compareTags(release.tag_name, tag) < 0)
+    .pop() ?? null;
+  const previousPublishedDay = previousPublishedDayRelease(version, publishedReleases);
+  const isLatestOfDay =
+    sameDayPublished.find((release) => compareTags(release.tag_name, tag) > 0) === undefined;
   const compareRef = hasGitRef(tag) ? tag : "HEAD";
-  const range = previousPublished ? `${previousPublished.tag_name}..${compareRef}` : compareRef;
+  const rangeStart = isLatestOfDay ? previousPublishedDay?.tag_name : previousPublished?.tag_name;
+  const range = rangeStart ? `${rangeStart}..${compareRef}` : compareRef;
   const subjects = git(["log", range, "--format=%s"])
     .split("\n")
     .map((subject) => subject.trim())
@@ -614,12 +568,8 @@ async function collectCurrentReleaseContext(tag, version) {
 
     const prMatch = subject.match(/\(#(\d+)\)$/);
     const prNumber = prMatch ? Number(prMatch[1]) : undefined;
-    const fallback = summarizeFallbackText(stripPrefix(subject));
-    const kind = commitKind(subject) === "feat"
-      ? "whatsNew"
-      : commitKind(subject) === "perf"
-        ? "performance"
-        : "fixes";
+    const fallback = stripPrefix(subject);
+    const kind = releaseEntryKind(subject);
 
     let title = fallback;
     let details = [];
@@ -628,18 +578,20 @@ async function collectCurrentReleaseContext(tag, version) {
       prNumbers.add(prNumber);
       try {
         const pull = await fetchPull(prNumber);
-        title = summarizeFallbackText(pull.title || fallback);
+        title = stripPrefix(pull.title || fallback);
         const preferredSections = [
           new Set(["## what changed"]),
           new Set(["## summary"]),
           new Set(["## impact"]),
         ];
+
         for (const headings of preferredSections) {
           details = parseDetails(extractSection(pull.body || "", headings));
           if (details.length > 0) {
             break;
           }
         }
+
         if (details.length === 0) {
           details = parseDetails(normalizeBodyText(pull.body || "").split("\n"));
         }
@@ -661,126 +613,83 @@ async function collectCurrentReleaseContext(tag, version) {
   return {
     tag,
     version,
-    dayKey: versionDayKey(version),
-    previousPublishedTag: previousPublished?.tag_name ?? null,
+    dayKey,
     compareRef,
+    isLatestOfDay,
+    previousPublishedTag: previousPublished?.tag_name ?? null,
+    previousPublishedDayTag: previousPublishedDay?.tag_name ?? null,
+    sameDayPublishedTags: sameDayPublished.map((release) => release.tag_name),
+    priorSameDayReleases: collectPriorSameDayReleases(tag, dayKey, publishedReleases),
+    publishedReleases,
     commitSubjects: subjects,
     prNumbers: [...prNumbers].sort((a, b) => a - b),
     entries,
-    publishedReleases,
   };
 }
 
-function releaseSectionsFromParsed(parsed, summary = "") {
-  return {
-    summary,
-    whatsNew: parsed.features,
-    fixes: parsed.fixes,
-    performance: parsed.performance,
-  };
-}
+function buildHeuristicRelease(context, existingDaily) {
+  const pinnedTexts = (existingDaily?.pinnedHighlights ?? [])
+    .map((item) => summarizeFallbackText(item?.text ?? ""))
+    .filter(Boolean);
 
-function releaseSectionsFromArtifact(artifact) {
-  return {
-    summary: artifact?.release?.summary?.trim() || "",
-    whatsNew: dedupeStrings((artifact?.release?.whatsNew ?? []).map((item) => String(item).trim())),
-    fixes: dedupeStrings((artifact?.release?.fixes ?? []).map((item) => String(item).trim())),
-    performance: dedupeStrings((artifact?.release?.performance ?? []).map((item) => String(item).trim())),
-  };
-}
+  const candidates = context.entries
+    .map((entry, index) => {
+      const text = chooseBestSummary(entry);
+      return {
+        text,
+        kind: entry.kind,
+        index,
+        priority: releaseSummaryScore(text, entry.kind, pinnedTexts),
+      };
+    })
+    .filter((candidate) => candidate.text);
 
-function releaseItemsFromEntries(entries) {
-  const sections = { summary: "", whatsNew: [], fixes: [], performance: [] };
-
-  for (const entry of entries) {
-    sections[entry.kind].push(chooseBestSummary(entry));
-  }
-
-  sections.whatsNew = dedupeStrings(sections.whatsNew);
-  sections.fixes = dedupeStrings(sections.fixes.filter((item) => item.toLowerCase() !== "bug fixes and improvements"));
-  sections.performance = dedupeStrings(sections.performance);
-  sections.summary = sections.whatsNew[0] || sections.fixes[0] || sections.performance[0] || "";
-  return limitSectionItems(sections);
-}
-
-function pinHighlights(sections, pinnedHighlights) {
-  if (!Array.isArray(pinnedHighlights) || pinnedHighlights.length === 0) {
-    return sections;
-  }
-
-  const pinnedTexts = dedupeStrings(
-    pinnedHighlights
-      .map((item) => typeof item?.text === "string" ? item.text.trim() : "")
-      .filter(Boolean),
-  );
-
-  if (pinnedTexts.length === 0) {
-    return sections;
-  }
-
-  const existing = [...sections.whatsNew];
-  const pinned = [];
-
-  for (const text of pinnedTexts) {
-    const idx = existing.findIndex((item) => item.toLowerCase() === text.toLowerCase());
-    if (idx >= 0) {
-      pinned.push(existing.splice(idx, 1)[0]);
-    } else {
-      pinned.push(text);
+  const sortedCandidates = [...candidates].sort((left, right) => {
+    if (right.priority !== left.priority) {
+      return right.priority - left.priority;
     }
-  }
+    return left.index - right.index;
+  });
 
-  return {
-    ...sections,
-    summary: pinned[0] || sections.summary,
-    whatsNew: dedupeStrings([...pinned, ...existing]),
-  };
-}
-
-function buildDailyFallback(context, currentReleaseSections, existingDaily, publishedReleases) {
-  const sameDayReleases = publishedReleases.filter(
-    (release) => versionDayKey(release.tag_name.replace(/^v/, "")) === context.dayKey,
-  );
-
-  const hasEditorialMemory =
-    (existingDaily?.editorialNotes?.length ?? 0) > 0 ||
-    (existingDaily?.pinnedHighlights?.length ?? 0) > 0;
-
-  const combined = {
-    summary: hasEditorialMemory ? (existingDaily?.rollup?.summary || currentReleaseSections.summary) : currentReleaseSections.summary,
-    whatsNew: [...currentReleaseSections.whatsNew],
-    fixes: [...currentReleaseSections.fixes],
-    performance: [...currentReleaseSections.performance],
-  };
-
-  for (const release of sameDayReleases) {
-    const localArtifact = readJsonIfExists(releasePaths(release.tag_name).json);
-    if (localArtifact?.release) {
-      const sections = releaseSectionsFromArtifact(localArtifact);
-      combined.whatsNew.push(...sections.whatsNew);
-      combined.fixes.push(...sections.fixes);
-      combined.performance.push(...sections.performance);
-    } else {
-      const parsed = parseReleaseBody(release.body || "");
-      combined.whatsNew.push(...parsed.features);
-      combined.fixes.push(...parsed.fixes);
-      combined.performance.push(...parsed.performance);
+  const features = [];
+  for (const candidate of sortedCandidates) {
+    if (features.length >= MAX_FEATURES) {
+      break;
     }
+    if (candidate.kind !== "feature") {
+      continue;
+    }
+    if (features.some((item) => areNearDuplicates(item, candidate.text))) {
+      continue;
+    }
+    features.push(candidate.text);
   }
 
-  combined.whatsNew = dedupeStrings(combined.whatsNew);
-  combined.fixes = dedupeStrings(combined.fixes.filter((item) => item.toLowerCase() !== "bug fixes and improvements"));
-  combined.performance = dedupeStrings(combined.performance);
-  combined.summary =
-    (hasEditorialMemory ? existingDaily?.rollup?.summary : "") ||
-    combined.whatsNew[0] ||
-    combined.fixes[0] ||
-    combined.performance[0] ||
-    "";
+  const fixes = [];
+  const followUps = [];
+  for (const candidate of candidates) {
+    if (features.some((item) => areNearDuplicates(item, candidate.text))) {
+      continue;
+    }
+    if (candidate.kind === "fix") {
+      if (fixes.some((item) => areNearDuplicates(item, candidate.text))) {
+        continue;
+      }
+      fixes.push(candidate.text);
+      continue;
+    }
+    if (followUps.some((item) => areNearDuplicates(item, candidate.text))) {
+      continue;
+    }
+    followUps.push(candidate.text);
+  }
 
-  return limitSectionItems(
-    pinHighlights(combined, existingDaily?.pinnedHighlights ?? []),
-  );
+  return withComputedDeck({
+    deck: pinnedTexts[0] ?? "",
+    features,
+    fixes,
+    followUps,
+  }, context, existingDaily);
 }
 
 function parseJsonContent(raw) {
@@ -793,34 +702,12 @@ function validateStructuredNotes(value) {
     return null;
   }
 
-  const ensureArray = (items) =>
-    Array.isArray(items) ? dedupeStrings(items.filter((item) => typeof item === "string")) : [];
-
-  const release = value.release && typeof value.release === "object"
-    ? {
-        summary: typeof value.release.summary === "string" ? value.release.summary.trim() : "",
-        whatsNew: ensureArray(value.release.whatsNew),
-        fixes: ensureArray(value.release.fixes),
-        performance: ensureArray(value.release.performance),
-      }
-    : null;
-
-  const dailyRollup = value.dailyRollup && typeof value.dailyRollup === "object"
-    ? {
-        summary: typeof value.dailyRollup.summary === "string" ? value.dailyRollup.summary.trim() : "",
-        whatsNew: ensureArray(value.dailyRollup.whatsNew),
-        fixes: ensureArray(value.dailyRollup.fixes),
-        performance: ensureArray(value.dailyRollup.performance),
-      }
-    : null;
-
-  if (!release || !dailyRollup) {
+  if (!value.release || typeof value.release !== "object") {
     return null;
   }
 
   return {
-    release: limitSectionItems(release),
-    dailyRollup: limitSectionItems(dailyRollup),
+    release: sanitizeReleaseShape(value.release),
   };
 }
 
@@ -841,37 +728,30 @@ async function generateWithOpenAI(promptInput) {
           type: "object",
           additionalProperties: false,
           properties: {
-            summary: { type: "string" },
-            whatsNew: { type: "array", items: { type: "string" } },
+            deck: { type: "string" },
+            features: { type: "array", items: { type: "string" } },
             fixes: { type: "array", items: { type: "string" } },
-            performance: { type: "array", items: { type: "string" } },
+            followUps: { type: "array", items: { type: "string" } },
           },
-          required: ["summary", "whatsNew", "fixes", "performance"],
-        },
-        dailyRollup: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            summary: { type: "string" },
-            whatsNew: { type: "array", items: { type: "string" } },
-            fixes: { type: "array", items: { type: "string" } },
-            performance: { type: "array", items: { type: "string" } },
-          },
-          required: ["summary", "whatsNew", "fixes", "performance"],
+          required: ["deck", "features", "fixes", "followUps"],
         },
       },
-      required: ["release", "dailyRollup"],
+      required: ["release"],
     },
   };
 
   const system = [
     "You write polished release notes for Freed.",
     "Return concise, professional release-note copy.",
-    "Prefer user-facing outcomes, trust wins, installability improvements, and shipping milestones over internal implementation detail.",
-    "If the daily editorial guidance or pinned highlights call out an important theme, keep that theme prominent in the daily rollup even if later builds are smaller.",
-    "Each bullet should be one sentence fragment, not a paragraph.",
+    "Features must be executive-level, user-facing headline copy.",
+    "Fixes are concrete bug repairs and corrections.",
+    "Follow-ups are supporting changes that matter but are not headline features or direct bug-fix callouts.",
+    "Fixes and Follow-ups must be comprehensive for the release but must not repeat the deck or the features.",
+    "The deck must be a distinct opener and must not duplicate any bullet.",
+    `Features must contain at most ${MAX_FEATURES.toLocaleString()} items.`,
+    "When isLatestOfDay is true, the release must cumulatively describe everything new since the previous day.",
+    "Prefer installability, trust wins, and meaningful shipped behavior over internal implementation detail.",
     "Do not mention pull requests, commit hashes, internal tickets, or implementation trivia unless it materially changes the shipped product.",
-    "Avoid marketing fluff and avoid sounding robotic.",
   ].join(" ");
 
   const response = await fetch(OPENAI_API, {
@@ -905,11 +785,17 @@ async function generateWithOpenAI(promptInput) {
   return validateStructuredNotes(parseJsonContent(raw));
 }
 
-async function main() {
-  const input = process.argv[2];
-  if (!input) {
-    die("Usage: node scripts/prepare-release-notes.mjs <version-or-tag>");
+function loadPriorSameDayArtifact(release) {
+  const artifact = readJsonIfExists(releasePaths(release.tag_name).json);
+  if (artifact?.release) {
+    return releaseFromArtifact(artifact);
   }
+
+  return null;
+}
+
+async function main() {
+  const { input, force } = parseArguments(process.argv.slice(2));
 
   mkdirp(RELEASES_DIR);
   mkdirp(DAILY_DIR);
@@ -919,27 +805,41 @@ async function main() {
   const dayKey = versionDayKey(version);
   const releaseFile = releasePaths(tag);
   const existingRelease = readJsonIfExists(releaseFile.json);
-  if (existingRelease?.approved) {
+
+  if (existingRelease?.approved && !force) {
     console.log(`${tag} already has an approved release file. Leaving it untouched.`);
     return;
   }
 
   const existingDaily = readJsonIfExists(dailyPath(dayKey)) ?? defaultDailyEditorial(dayKey, version);
-  const context = await collectCurrentReleaseContext(tag, version);
-  const fallbackRelease = releaseItemsFromEntries(context.entries);
-  const fallbackDaily = buildDailyFallback(
-    context,
-    fallbackRelease,
-    existingDaily,
-    context.publishedReleases,
-  );
+  const context = await collectReleaseContext(tag, version);
+  const existingSeedRelease = releaseFromArtifact(existingRelease);
+  const heuristicRelease = buildHeuristicRelease(context, existingDaily);
+  const draftSeedRelease = releaseHasContent(heuristicRelease)
+    ? heuristicRelease
+    : existingSeedRelease;
+  const earlierSameDayArtifacts = context.priorSameDayReleases
+    .map((release) => loadPriorSameDayArtifact(release))
+    .filter(Boolean);
+  const cumulativeDraftRelease = context.isLatestOfDay
+    ? withComputedDeck(
+        mergePriorSameDayReleases(draftSeedRelease, earlierSameDayArtifacts),
+        context,
+        existingDaily,
+      )
+    : withComputedDeck(draftSeedRelease, context, existingDaily);
 
   const promptInput = {
     release: {
       tag,
       version,
       dayKey,
+      isLatestOfDay: context.isLatestOfDay,
       previousPublishedTag: context.previousPublishedTag,
+      previousPublishedDayTag: context.previousPublishedDayTag,
+      sameDayTagsIncluded: context.isLatestOfDay
+        ? [...context.sameDayPublishedTags.filter((sameDayTag) => compareTags(sameDayTag, tag) < 0), tag]
+        : [tag],
       commitSubjects: context.commitSubjects,
       sourceItems: context.entries.map((entry) => ({
         kind: entry.kind,
@@ -948,21 +848,11 @@ async function main() {
         fallback: entry.fallback,
         details: entry.details.slice(0, 5),
       })),
-      currentHeuristicDraft: fallbackRelease,
-    },
-    daily: {
-      dayKey,
+      priorSameDayReleases: earlierSameDayArtifacts,
       editorialGuidance: existingDaily.editorialGuidance,
       pinnedHighlights: existingDaily.pinnedHighlights,
       editorialNotes: existingDaily.editorialNotes,
-      previousRollup: existingDaily.rollup,
-      publishedReleasesForDay: context.publishedReleases
-        .filter((release) => versionDayKey(release.tag_name.replace(/^v/, "")) === dayKey)
-        .map((release) => ({
-          tag: release.tag_name,
-          bodySections: releaseSectionsFromParsed(parseReleaseBody(release.body || "")),
-        })),
-      fallbackRollup: fallbackDaily,
+      currentHeuristicDraft: cumulativeDraftRelease,
     },
   };
 
@@ -973,13 +863,41 @@ async function main() {
     console.warn(`[prepare-release-notes] OpenAI generation failed, using fallback. ${error}`);
   }
 
-  const releaseSections = pinHighlights(
-    structured?.release ?? fallbackRelease,
-    [],
+  const draftedRelease = sanitizeReleaseShape(structured?.release ?? cumulativeDraftRelease);
+  const finalRelease = withComputedDeck(
+    context.isLatestOfDay
+      ? mergePriorSameDayReleases(draftedRelease, earlierSameDayArtifacts)
+      : draftedRelease,
+    context,
+    existingDaily,
   );
-  const dailyRollup = pinHighlights(
-    structured?.dailyRollup ?? fallbackDaily,
-    existingDaily.pinnedHighlights ?? [],
+  const validation = validateReleaseShape(finalRelease, {
+    earlierReleases: context.isLatestOfDay ? earlierSameDayArtifacts : [],
+  });
+
+  if (validation.errors.length > 0) {
+    console.error("[prepare-release-notes] Generated invalid release notes:");
+    for (const error of validation.errors) {
+      console.error(`- ${error}`);
+    }
+    process.exit(1);
+  }
+
+  const nextSource = {
+    previousPublishedTag: context.previousPublishedTag,
+    previousPublishedDayTag: context.previousPublishedDayTag,
+    compareRef: context.compareRef,
+    isLatestOfDay: context.isLatestOfDay,
+    sameDayTagsIncluded: context.isLatestOfDay
+      ? [...context.sameDayPublishedTags.filter((sameDayTag) => compareTags(sameDayTag, tag) < 0), tag]
+      : [tag],
+    prNumbers: context.prNumbers,
+    commitSubjects: context.commitSubjects,
+  };
+  const shouldKeepApproval = releaseArtifactsMatch(
+    existingRelease,
+    validation.normalizedRelease,
+    nextSource,
   );
 
   const releaseArtifact = {
@@ -987,26 +905,23 @@ async function main() {
     tag,
     version,
     dayKey,
-    approved: existingRelease?.approved ?? false,
+    approved: Boolean(existingRelease?.approved) && shouldKeepApproval,
     editorialNotes: existingRelease?.editorialNotes ?? [],
     generatedAt: new Date().toISOString(),
     model: structured ? OPENAI_MODEL : "heuristic",
-    source: {
-      previousPublishedTag: context.previousPublishedTag,
-      compareRef: context.compareRef,
-      prNumbers: context.prNumbers,
-      commitSubjects: context.commitSubjects,
-    },
-    release: releaseSections,
-    releaseBody: renderReleaseBody(tag, releaseSections),
+    source: nextSource,
+    release: validation.normalizedRelease,
+    releaseBody: renderReleaseBody(tag, validation.normalizedRelease),
   };
 
   const dailyArtifact = {
-    ...existingDaily,
     dayKey,
     date: existingDaily.date ?? dayDateFromVersion(version),
+    preferredDeck: existingDaily.preferredDeck ?? null,
+    editorialGuidance: existingDaily.editorialGuidance ?? defaultDailyEditorial(dayKey, version).editorialGuidance,
+    pinnedHighlights: existingDaily.pinnedHighlights ?? [],
+    editorialNotes: existingDaily.editorialNotes ?? [],
     updatedAt: new Date().toISOString(),
-    rollup: dailyRollup,
   };
 
   writeFileSync(releaseFile.json, `${JSON.stringify(releaseArtifact, null, 2)}\n`);

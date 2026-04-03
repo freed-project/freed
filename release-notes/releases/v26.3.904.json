@@ -4,35 +4,34 @@
   "dayKey": "26.3.9",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:44:49.973Z",
+  "generatedAt": "2026-04-03T01:02:58.635Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.903",
+    "previousPublishedDayTag": "v26.3.3100",
     "compareRef": "v26.3.904",
-    "prNumbers": [
-      123,
-      124,
-      125,
-      126
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.3.903",
+      "v26.3.904"
     ],
-    "commitSubjects": [
-      "release: v26.3.904",
-      "chore: sync package-lock.json after skills/ directory removal (#126)",
-      "fix: exclude draft releases from changelog commit boundary (#125)",
-      "fix: use previous published release as changelog commit boundary (#124)",
-      "feat: scraper debug window toggle for Instagram and Facebook (#123)"
-    ]
+    "prNumbers": [],
+    "commitSubjects": []
   },
   "release": {
-    "summary": "Scraper debug window toggle for Instagram and Facebook",
-    "whatsNew": [
-      "Scraper debug window toggle for Instagram and Facebook"
+    "deck": "Changelog page, remove frosted glass, fix update banner, unused user-agent import from fb-capture.ts, and capture-x build step from release CI",
+    "features": [
+      "Changelog page, remove frosted glass, fix update banner",
+      "Remove unused user-agent import from fb-capture.ts",
+      "Remove capture-x build step from release CI"
     ],
     "fixes": [
-      "Exclude draft releases from changelog commit boundary",
-      "Use previous published release as changelog commit boundary"
+      "Scraper window after FB scrape, stop stealing focus on IG scrape now stays out of the way"
     ],
-    "performance": []
+    "followUps": [
+      "Anti-detection hardening for social media capture",
+      "Switch reqwest and tauri-plugin-updater to rustls-tls"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.904\n\nScraper debug window toggle for Instagram and Facebook\n\n### What's New\n\n- Scraper debug window toggle for Instagram and Facebook\n\n### Fixes\n\n- Exclude draft releases from changelog commit boundary\n- Use previous published release as changelog commit boundary\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.904\n\nChangelog page, remove frosted glass, fix update banner, unused user-agent import from fb-capture.ts, and capture-x build step from release CI\n\n### Features\n\n- Changelog page, remove frosted glass, fix update banner\n- Remove unused user-agent import from fb-capture.ts\n- Remove capture-x build step from release CI\n\n### Fixes\n\n- Scraper window after FB scrape, stop stealing focus on IG scrape now stays out of the way\n\n### Follow-ups\n\n- Anti-detection hardening for social media capture\n- Switch reqwest and tauri-plugin-updater to rustls-tls\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

@@ -1,6 +1,7 @@
 {
   "dayKey": "26.3.13",
   "date": "2026-03-13",
+  "preferredDeck": null,
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -8,13 +9,5 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [],
-  "rollup": {
-    "summary": "Each scrape session randomly orders stories vs",
-    "whatsNew": [
-      "Each scrape session randomly orders stories vs"
-    ],
-    "fixes": [],
-    "performance": []
-  },
-  "updatedAt": "2026-04-02T02:45:06.790Z"
+  "updatedAt": "2026-04-03T01:03:59.532Z"
 }

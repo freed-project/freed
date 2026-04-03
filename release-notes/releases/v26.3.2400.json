@@ -4,11 +4,16 @@
   "dayKey": "26.3.24",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:45:09.702Z",
+  "generatedAt": "2026-04-03T01:04:02.190Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.1300",
+    "previousPublishedDayTag": "v26.3.1300",
     "compareRef": "v26.3.2400",
+    "isLatestOfDay": false,
+    "sameDayTagsIncluded": [
+      "v26.3.2400"
+    ],
     "prNumbers": [
       131,
       145,
@@ -27,17 +32,16 @@
     ]
   },
   "release": {
-    "summary": "Add LinkedIn feed capture via WebView scraper",
-    "whatsNew": [
-      "Add LinkedIn feed capture via WebView scraper",
-      "Overhaul feed card and reader actions",
+    "deck": "LinkedIn capture, feed card and reader actions, and update download progress",
+    "features": [
+      "LinkedIn capture",
+      "Feed card and reader actions",
       "Surface update download progress inside the Settings card"
     ],
     "fixes": [
-      "Filter polluted social feed items and add Facebook group filters",
-      "Adjust footer text formatting"
+      "Filter polluted social feed items and add Facebook group filters"
     ],
-    "performance": []
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.2400\n\nAdd LinkedIn feed capture via WebView scraper\n\n### What's New\n\n- Add LinkedIn feed capture via WebView scraper\n- Overhaul feed card and reader actions\n- Surface update download progress inside the Settings card\n\n### Fixes\n\n- Filter polluted social feed items and add Facebook group filters\n- Adjust footer text formatting\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.2400\n\nLinkedIn capture, feed card and reader actions, and update download progress\n\n### Features\n\n- LinkedIn capture\n- Feed card and reader actions\n- Surface update download progress inside the Settings card\n\n### Fixes\n\n- Filter polluted social feed items and add Facebook group filters\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

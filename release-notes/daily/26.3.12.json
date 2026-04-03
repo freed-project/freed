@@ -1,6 +1,7 @@
 {
   "dayKey": "26.3.12",
   "date": "2026-03-12",
+  "preferredDeck": null,
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -8,15 +9,5 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [],
-  "rollup": {
-    "summary": "Most recent build for the day is used as the card header",
-    "whatsNew": [
-      "Most recent build for the day is used as the card header"
-    ],
-    "fixes": [
-      "Hide FB/IG scraper windows instead of moving them off-screen"
-    ],
-    "performance": []
-  },
-  "updatedAt": "2026-04-02T02:45:04.920Z"
+  "updatedAt": "2026-04-03T01:03:58.001Z"
 }

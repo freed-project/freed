@@ -4,11 +4,16 @@
   "dayKey": "26.3.3",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:43:57.458Z",
+  "generatedAt": "2026-04-03T01:02:23.278Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.300",
+    "previousPublishedDayTag": "v26.3.2402",
     "compareRef": "v26.3.302",
+    "isLatestOfDay": false,
+    "sameDayTagsIncluded": [
+      "v26.3.302"
+    ],
     "prNumbers": [
       37,
       38,
@@ -26,17 +31,13 @@
     ]
   },
   "release": {
-    "summary": "Add bulk unsubscribe and factory reset features",
-    "whatsNew": [
-      "Add bulk unsubscribe and factory reset features",
+    "deck": "Bulk unsubscribe and factory reset features, subscribe to RSS feeds from the PWA with deferred metadata, and oAuth client IDs to release workflow, adjust traffic light position",
+    "features": [
+      "Bulk unsubscribe and factory reset features",
       "Subscribe to RSS feeds from the PWA with deferred metadata"
     ],
-    "fixes": [
-      "Update Cargo.lock",
-      "Remove unused CloudProvider import from MobileSyncTab",
-      "Add OAuth client IDs to release workflow, adjust traffic light position"
-    ],
-    "performance": []
+    "fixes": [],
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.302\n\nAdd bulk unsubscribe and factory reset features\n\n### What's New\n\n- Add bulk unsubscribe and factory reset features\n- Subscribe to RSS feeds from the PWA with deferred metadata\n\n### Fixes\n\n- Update Cargo.lock\n- Remove unused CloudProvider import from MobileSyncTab\n- Add OAuth client IDs to release workflow, adjust traffic light position\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.302\n\nBulk unsubscribe and factory reset features, subscribe to RSS feeds from the PWA with deferred metadata, and oAuth client IDs to release workflow, adjust traffic light position\n\n### Features\n\n- Bulk unsubscribe and factory reset features\n- Subscribe to RSS feeds from the PWA with deferred metadata\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

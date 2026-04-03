@@ -4,11 +4,16 @@
   "dayKey": "26.3.3",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:43:54.943Z",
+  "generatedAt": "2026-04-03T01:02:20.872Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.200",
+    "previousPublishedDayTag": "v26.3.2402",
     "compareRef": "v26.3.300",
+    "isLatestOfDay": false,
+    "sameDayTagsIncluded": [
+      "v26.3.300"
+    ],
     "prNumbers": [
       31,
       32,
@@ -29,17 +34,13 @@
     ]
   },
   "release": {
-    "summary": "Improved UX flow and visual polish in the SyncConnectDialog component in the PWA",
-    "whatsNew": [
-      "Improved UX flow and visual polish in the SyncConnectDialog component in the PWA",
-      "Add privacy policy page"
+    "deck": "Privacy policy page, polish SyncConnectDialog UX, and locale-aware unread count formatting and number formatting rule",
+    "features": [
+      "Privacy policy page",
+      "Polish SyncConnectDialog UX"
     ],
-    "fixes": [
-      "Rewrites the Google OAuth proxy API route as a Node",
-      "Locale-aware unread count formatting and number formatting rule",
-      "Heal untitled feed titles from live XML on sync"
-    ],
-    "performance": []
+    "fixes": [],
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.300\n\nImproved UX flow and visual polish in the SyncConnectDialog component in the PWA\n\n### What's New\n\n- Improved UX flow and visual polish in the SyncConnectDialog component in the PWA\n- Add privacy policy page\n\n### Fixes\n\n- Rewrites the Google OAuth proxy API route as a Node\n- Locale-aware unread count formatting and number formatting rule\n- Heal untitled feed titles from live XML on sync\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.300\n\nPrivacy policy page, polish SyncConnectDialog UX, and locale-aware unread count formatting and number formatting rule\n\n### Features\n\n- Privacy policy page\n- Polish SyncConnectDialog UX\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

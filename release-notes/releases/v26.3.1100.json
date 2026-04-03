@@ -4,11 +4,16 @@
   "dayKey": "26.3.11",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:45:00.665Z",
+  "generatedAt": "2026-04-03T01:03:53.644Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.1002",
+    "previousPublishedDayTag": "v26.3.1002",
     "compareRef": "v26.3.1100",
+    "isLatestOfDay": false,
+    "sameDayTagsIncluded": [
+      "v26.3.1100"
+    ],
     "prNumbers": [
       141
     ],
@@ -18,12 +23,12 @@
     ]
   },
   "release": {
-    "summary": "Add structured file logging and overnight-freeze timeout guards",
-    "whatsNew": [
-      "Add structured file logging and overnight-freeze timeout guards"
+    "deck": "File logging and freeze guards",
+    "features": [
+      "Structured file logging and freeze guards"
     ],
     "fixes": [],
-    "performance": []
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.1100\n\nAdd structured file logging and overnight-freeze timeout guards\n\n### What's New\n\n- Add structured file logging and overnight-freeze timeout guards\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.1100\n\nFile logging and freeze guards\n\n### Features\n\n- Structured file logging and freeze guards\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

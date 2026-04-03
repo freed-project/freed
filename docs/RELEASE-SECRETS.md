@@ -77,7 +77,7 @@ Optional local environment variable:
 
 | Variable | Description |
 |----------|-------------|
-| `OPENAI_API_KEY` | Enables stronger AI-generated draft release notes and same-day rollups during the prepare step. |
+| `OPENAI_API_KEY` | Enables stronger AI-generated draft release notes during the prepare step. |
 
 Review and edit:
 
@@ -87,6 +87,25 @@ Review and edit:
 
 Set `"approved": true` in the release JSON once the copy is ready, then commit
 that review change.
+
+The release JSON now has a stricter structure:
+
+- `release.deck`: terse noun-phrase heading for the most meaningful shipped outcomes
+- `release.features`: up to 3 headline bullets
+- `release.fixes`: concrete bug fixes and repairs for that day, capped at 15 lines
+- `release.followUps`: the remaining supporting changes for that day, capped at 15 lines
+- `daily.preferredDeck`: optional exact heading override for the latest release of a day
+
+The generator now rewrites bullets into user-facing release-note language.
+It should describe outcomes, not commit mechanics. If a day produces too many
+raw items, related fixes and follow-ups are consolidated into grouped lines.
+
+For the latest release of a day, the generated copy is cumulative. It should
+describe everything newly shipped since the previous day, not just the delta
+from the previous same-day build.
+
+Freed Desktop update prompts use only the reviewed deck line. They do not
+render release bullets inside the install toast.
 
 ## How to publish a reviewed release
 
@@ -103,3 +122,16 @@ The `v*` tag triggers the release workflow which builds all platforms and
 creates a **draft** GitHub Release using the approved checked-in release body.
 Review the draft, then click "Publish" to make it live. The in-app updater
 will pick it up automatically.
+
+`./scripts/release-publish.sh` and the release workflow both validate that:
+
+- the deck does not duplicate a feature or follow-up
+- there are no more than 3 features
+- there are no more than 15 fixes or 15 follow-ups after consolidation
+- the latest release of a day still carries forward earlier same-day highlights
+
+To regenerate historical artifacts and rewrite older GitHub release bodies:
+
+```bash
+node scripts/backfill-release-notes.mjs --rewrite-github
+```

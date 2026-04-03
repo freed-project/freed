@@ -4,30 +4,52 @@
   "dayKey": "26.3.24",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:45:11.777Z",
+  "generatedAt": "2026-04-03T01:04:06.231Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.2400",
+    "previousPublishedDayTag": "v26.3.1300",
     "compareRef": "v26.3.2402",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.3.2400",
+      "v26.3.2402"
+    ],
     "prNumbers": [
+      131,
       133,
+      145,
+      146,
+      147,
       148
     ],
     "commitSubjects": [
       "release: v26.3.2402",
       "feat: activate Friends view and add Google Contacts sync (#133)",
-      "fix: repair desktop e2e tauri event mocks (#148)"
+      "fix: repair desktop e2e tauri event mocks (#148)",
+      "release: v26.3.2400",
+      "fix: filter polluted social feed items and add Facebook group filters (#146)",
+      "feat: add LinkedIn feed capture via WebView scraper (#131)",
+      "feat: overhaul feed card and reader actions (#147)",
+      "Further footer updates",
+      "Merge branch 'main' of github.com:freed-project/freed",
+      "Adjust footer text formatting",
+      "feat: surface update download progress inside the Settings card (#145)"
     ]
   },
   "release": {
-    "summary": "Activate Friends view and add Google Contacts sync",
-    "whatsNew": [
-      "Activate Friends view and add Google Contacts sync"
+    "deck": "Friends view and contacts sync, LinkedIn capture, and feed card and reader actions",
+    "features": [
+      "Friends view and contacts sync",
+      "LinkedIn capture",
+      "Feed card and reader actions"
     ],
     "fixes": [
-      "Repair desktop e2e tauri event mocks"
+      "Filter polluted social feed items and add Facebook group filters"
     ],
-    "performance": []
+    "followUps": [
+      "Surface update download progress inside the Settings card"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.2402\n\nActivate Friends view and add Google Contacts sync\n\n### What's New\n\n- Activate Friends view and add Google Contacts sync\n\n### Fixes\n\n- Repair desktop e2e tauri event mocks\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.2402\n\nFriends view and contacts sync, LinkedIn capture, and feed card and reader actions\n\n### Features\n\n- Friends view and contacts sync\n- LinkedIn capture\n- Feed card and reader actions\n\n### Fixes\n\n- Filter polluted social feed items and add Facebook group filters\n\n### Follow-ups\n\n- Surface update download progress inside the Settings card\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

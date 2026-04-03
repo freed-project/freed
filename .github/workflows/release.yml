@@ -22,6 +22,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+
       - name: Load reviewed release notes
         id: gen
         shell: bash
@@ -44,6 +49,22 @@ jobs:
             echo "${RELEASE_JSON} is not approved. Review it, set approved=true, commit that change, then retag." >&2
             exit 1
           fi
+
+          mapfile -t PRIOR_RELEASE_FILES < <(node -e "
+            const fs = require('fs');
+            const file = process.argv[1];
+            const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+            const currentTag = data.tag;
+            const files = (data.source?.sameDayTagsIncluded ?? [])
+              .filter((tag) => tag && tag !== currentTag)
+              .map((tag) => 'release-notes/releases/' + tag + '.json')
+              .filter((filePath) => fs.existsSync(filePath));
+            for (const filePath of files) {
+              process.stdout.write(filePath + '\n');
+            }
+          " "$RELEASE_JSON")
+
+          node scripts/validate-release-notes.mjs "$RELEASE_JSON" "${PRIOR_RELEASE_FILES[@]}"
 
           BODY=$(node -e "
             const fs = require('fs');

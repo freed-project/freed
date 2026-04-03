@@ -1,6 +1,7 @@
 {
   "dayKey": "26.3.7",
   "date": "2026-03-07",
+  "preferredDeck": null,
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -8,19 +9,5 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [],
-  "rollup": {
-    "summary": "Scrapes only the \"Following\" feed (?variant=following) with defensive DOM filtering to exclude suggested,",
-    "whatsNew": [
-      "Scrapes only the \"Following\" feed (?variant=following) with defensive DOM filtering to exclude suggested,",
-      "Add freed-ship-build command",
-      "UI polish bundle - tooltips, hover states, scroll reset, save fix, sidebar counts"
-    ],
-    "fixes": [
-      "Prefix unused state param in capture-instagram rate-limit",
-      "Desktop build errors in x-capture and fb-capture",
-      "Archive cache staleness + scroll-read visibility model"
-    ],
-    "performance": []
-  },
-  "updatedAt": "2026-04-02T02:44:39.051Z"
+  "updatedAt": "2026-04-03T01:02:51.978Z"
 }

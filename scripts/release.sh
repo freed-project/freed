@@ -21,6 +21,16 @@ TAURI_CONF="${DESKTOP_DIR}/src-tauri/tauri.conf.json"
 CARGO_TOML="${DESKTOP_DIR}/src-tauri/Cargo.toml"
 DESKTOP_PKG="${DESKTOP_DIR}/package.json"
 PWA_PKG="packages/pwa/package.json"
+NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
+
+if [[ -z "${NODE_BIN}" && -x "${HOME}/.nvm/versions/node/v22.12.0/bin/node" ]]; then
+  NODE_BIN="${HOME}/.nvm/versions/node/v22.12.0/bin/node"
+fi
+
+if [[ -z "${NODE_BIN}" ]]; then
+  echo "Error: could not find node. Set NODE_BIN or add node to PATH." >&2
+  exit 1
+fi
 
 # Ensure working tree is clean
 if ! git diff --quiet HEAD; then
@@ -63,11 +73,11 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
 fi
 
 TAG="v${VERSION}"
-DAY_KEY=$(node -e "const v='${VERSION}'.split('.'); console.log(v.length===3 ? [v[0], v[1], String(Math.floor(Number(v[2]) / 100))].join('.') : '${VERSION}')")
+DAY_KEY=$("${NODE_BIN}" -e "const v='${VERSION}'.split('.'); console.log(v.length===3 ? [v[0], v[1], String(Math.floor(Number(v[2]) / 100))].join('.') : '${VERSION}')")
 echo "==> Preparing ${VERSION} (tag: ${TAG})"
 
 # Update tauri.conf.json
-node -e "
+"${NODE_BIN}" -e "
   const fs = require('fs');
   const conf = JSON.parse(fs.readFileSync('${TAURI_CONF}', 'utf8'));
   conf.version = '${VERSION}';
@@ -86,7 +96,7 @@ awk -v ver="${VERSION}" '
 ' "${CARGO_TOML}" > "${CARGO_TOML}.tmp" && mv "${CARGO_TOML}.tmp" "${CARGO_TOML}"
 
 # Update desktop package.json
-node -e "
+"${NODE_BIN}" -e "
   const fs = require('fs');
   const pkg = JSON.parse(fs.readFileSync('${DESKTOP_PKG}', 'utf8'));
   pkg.version = '${VERSION}';
@@ -94,7 +104,7 @@ node -e "
 "
 
 # Update PWA package.json (PWA and Desktop stay in lockstep)
-node -e "
+"${NODE_BIN}" -e "
   const fs = require('fs');
   const pkg = JSON.parse(fs.readFileSync('${PWA_PKG}', 'utf8'));
   pkg.version = '${VERSION}';
@@ -108,7 +118,7 @@ echo "    ${DESKTOP_PKG}"
 echo "    ${PWA_PKG}"
 
 # Generate draft release-note artifacts
-node scripts/prepare-release-notes.mjs "${VERSION}"
+"${NODE_BIN}" scripts/prepare-release-notes.mjs "${VERSION}"
 
 # Commit draft release prep, but do not tag yet.
 git add "${TAURI_CONF}" "${CARGO_TOML}" "${DESKTOP_PKG}" "${PWA_PKG}" \

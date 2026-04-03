@@ -4,11 +4,16 @@
   "dayKey": "26.3.1",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:43:44.352Z",
+  "generatedAt": "2026-04-03T01:02:13.555Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.102",
+    "previousPublishedDayTag": "v0.2.0",
     "compareRef": "v26.3.103",
+    "isLatestOfDay": false,
+    "sameDayTagsIncluded": [
+      "v26.3.103"
+    ],
     "prNumbers": [
       5
     ],
@@ -21,14 +26,10 @@
     ]
   },
   "release": {
-    "summary": "RSS feed persistence, platform capability honesty, desktop UI polish",
-    "whatsNew": [],
-    "fixes": [
-      "RSS feed persistence, platform capability honesty, desktop UI polish",
-      "Fix tab strip alignment in AddFeedDialog",
-      "Fix hero vertical centering and desktop text alignment"
-    ],
-    "performance": []
+    "deck": "RSS feed persistence, platform capability honesty, desktop UI polish",
+    "features": [],
+    "fixes": [],
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.103\n\nRSS feed persistence, platform capability honesty, desktop UI polish\n\n### Fixes\n\n- RSS feed persistence, platform capability honesty, desktop UI polish\n- Fix tab strip alignment in AddFeedDialog\n- Fix hero vertical centering and desktop text alignment\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.103\n\nRSS feed persistence, platform capability honesty, desktop UI polish\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

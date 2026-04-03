@@ -4,11 +4,16 @@
   "dayKey": "26.3.5",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:44:23.484Z",
+  "generatedAt": "2026-04-03T01:02:41.355Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.502",
+    "previousPublishedDayTag": "v26.3.3100",
     "compareRef": "v26.3.503",
+    "isLatestOfDay": false,
+    "sameDayTagsIncluded": [
+      "v26.3.503"
+    ],
     "prNumbers": [
       94
     ],
@@ -18,12 +23,10 @@
     ]
   },
   "release": {
-    "summary": "Remove hardcoded local path from .cargo/config.toml",
-    "whatsNew": [],
-    "fixes": [
-      "Remove hardcoded local path from .cargo/config.toml"
-    ],
-    "performance": []
+    "deck": "Hardcoded local path from .cargo/config.toml removed",
+    "features": [],
+    "fixes": [],
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.503\n\nRemove hardcoded local path from .cargo/config.toml\n\n### Fixes\n\n- Remove hardcoded local path from .cargo/config.toml\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.503\n\nHardcoded local path from .cargo/config.toml removed\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

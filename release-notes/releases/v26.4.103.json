@@ -4,21 +4,26 @@
   "dayKey": "26.4.1",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:45:21.676Z",
+  "generatedAt": "2026-04-03T01:04:17.034Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.4.102",
+    "previousPublishedDayTag": "v26.3.3100",
     "compareRef": "v26.4.103",
+    "isLatestOfDay": false,
+    "sameDayTagsIncluded": [
+      "v26.4.103"
+    ],
     "prNumbers": [],
     "commitSubjects": [
       "release: v26.4.103"
     ]
   },
   "release": {
-    "summary": "",
-    "whatsNew": [],
+    "deck": "Signed macOS installs",
+    "features": [],
     "fixes": [],
-    "performance": []
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.103\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.103\n\nSigned macOS installs\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }

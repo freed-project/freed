@@ -4,40 +4,59 @@
   "dayKey": "26.3.5",
   "approved": false,
   "editorialNotes": [],
-  "generatedAt": "2026-04-02T02:44:26.721Z",
+  "generatedAt": "2026-04-03T01:02:42.949Z",
   "model": "heuristic",
   "source": {
     "previousPublishedTag": "v26.3.503",
+    "previousPublishedDayTag": "v26.3.3100",
     "compareRef": "v26.3.504",
-    "prNumbers": [
-      95,
-      96,
-      97,
-      100
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.3.502",
+      "v26.3.503",
+      "v26.3.504"
     ],
-    "commitSubjects": [
-      "release: v26.3.504",
-      "Merge branch 'main' of github.com:freed-project/freed",
-      "style: update Header component layout and spacing",
-      "perf: fix feed reader lockup and move PWA Automerge to a Web Worker (#100)",
-      "docs: document desktop E2E Playwright testing workflow in AGENTS.md (#99)",
-      "fix: switch X API to GET, update feature flags, grant fs caps (#97)",
-      "feat: add X sync pipeline instrumentation and integration tests (#96)",
-      "fix: center feed cards to match skeleton layout (#95)"
-    ]
+    "prNumbers": [],
+    "commitSubjects": []
   },
   "release": {
-    "summary": "Add X sync pipeline instrumentation and integration tests",
-    "whatsNew": [
-      "Add X sync pipeline instrumentation and integration tests"
+    "deck": "Complete X/Twitter integration end-to-end, build out the archive system end-to-end, and universal full-text search across all sources",
+    "features": [
+      "Complete X/Twitter integration end-to-end",
+      "Command bar foundation with settings navigation and lower-contrast search",
+      "Mark items as read when scrolled past in the feed list"
     ],
     "fixes": [
-      "Update Header component layout and spacing",
-      "Center feed cards to match skeleton layout"
+      "Stop Automerge undefined writes from crashing RSS and X sync",
+      "Align sidebar section headers to same height as items",
+      "PWA UI polish -- header, settings, update check, X settings",
+      "Increase header toolbar gap from 8px to 24px",
+      "Uniform header spacing and hide command palette on mobile",
+      "Correct CSS @import order, hide swipe indicator at rest, polish search hover",
+      "Trigger update check when button enters viewport, not scrollspy threshold",
+      "Init flash and reduce desktop startup serialization overhead removed",
+      "Import invoke/isTauri from @tauri-apps/api/core instead of window.__TAURI__",
+      "Auto-update service worker and add purple F favicon",
+      "Mobile feed to window scroll for Safari address bar collapse now uses the updated transport",
+      "Highlight Updates nav item on individual post pages",
+      "Open all How You Can Help links in new tab",
+      "Never assign undefined into Automerge documents"
     ],
-    "performance": [
-      "Fix feed reader lockup and move PWA Automerge to a Web Worker"
+    "followUps": [
+      "Fix feed reader lockup and move PWA Automerge to a Web Worker",
+      "PWA X settings page and fix duplicate search clear button",
+      "Instant app launch with deferred migrations and skeleton loading",
+      "Enhance Ulysses Mode and Manifesto content for clarity and impact",
+      "Unified two-column Settings dialog with scrollspy and I/O sections",
+      "Consolidate global CSS into packages/UI/src/index.css",
+      "Lockfile after installing plugin-fs and plugin-store",
+      "Saved content modal, folder import, phased progress, unit tests",
+      "Phase 8 friends CRM + social graph scaffolding",
+      "Tighten introducing-freed post, cut technical architecture section",
+      "Fix UI freeze when entering reading mode",
+      "Move X connection to Settings > Sources > X page",
+      "Hardcoded local path from .cargo/config.toml removed"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.3.504\n\nAdd X sync pipeline instrumentation and integration tests\n\n### What's New\n\n- Add X sync pipeline instrumentation and integration tests\n\n### Performance\n\n- Fix feed reader lockup and move PWA Automerge to a Web Worker\n\n### Fixes\n\n- Update Header component layout and spacing\n- Center feed cards to match skeleton layout\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.3.504\n\nComplete X/Twitter integration end-to-end, build out the archive system end-to-end, and universal full-text search across all sources\n\n### Features\n\n- Complete X/Twitter integration end-to-end\n- Command bar foundation with settings navigation and lower-contrast search\n- Mark items as read when scrolled past in the feed list\n\n### Fixes\n\n- Stop Automerge undefined writes from crashing RSS and X sync\n- Align sidebar section headers to same height as items\n- PWA UI polish -- header, settings, update check, X settings\n- Increase header toolbar gap from 8px to 24px\n- Uniform header spacing and hide command palette on mobile\n- Correct CSS @import order, hide swipe indicator at rest, polish search hover\n- Trigger update check when button enters viewport, not scrollspy threshold\n- Init flash and reduce desktop startup serialization overhead removed\n- Import invoke/isTauri from @tauri-apps/api/core instead of window.__TAURI__\n- Auto-update service worker and add purple F favicon\n- Mobile feed to window scroll for Safari address bar collapse now uses the updated transport\n- Highlight Updates nav item on individual post pages\n- Open all How You Can Help links in new tab\n- Never assign undefined into Automerge documents\n\n### Follow-ups\n\n- Fix feed reader lockup and move PWA Automerge to a Web Worker\n- PWA X settings page and fix duplicate search clear button\n- Instant app launch with deferred migrations and skeleton loading\n- Enhance Ulysses Mode and Manifesto content for clarity and impact\n- Unified two-column Settings dialog with scrollspy and I/O sections\n- Consolidate global CSS into packages/UI/src/index.css\n- Lockfile after installing plugin-fs and plugin-store\n- Saved content modal, folder import, phased progress, unit tests\n- Phase 8 friends CRM + social graph scaffolding\n- Tighten introducing-freed post, cut technical architecture section\n- Fix UI freeze when entering reading mode\n- Move X connection to Settings > Sources > X page\n- Hardcoded local path from .cargo/config.toml removed\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
