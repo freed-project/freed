@@ -235,7 +235,10 @@ export async function captureDomFeed(
 > separate `Features`, `Fixes`, and `Follow-ups` sections so the card headline
 > can reinforce the theme without collapsing the details into one bucket. The
 > desktop updater now shows only that reviewed opener line when an update is
-> available. See `RELEASE-SECRETS.md` for the full setup checklist.
+> available. After the GitHub release is published, the workflow now
+> redeploys `freed.wtf` so the changelog snapshot rebuilds against the newly
+> published release instead of the earlier draft state. See
+> `RELEASE-SECRETS.md` for the full setup checklist.
 
 > **Planned — Independent Update Server (Task 5.26):**
 > The auto-updater currently points at GitHub Releases. If the repo is
