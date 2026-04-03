@@ -1,0 +1,33 @@
+{
+  "tag": "v26.4.300",
+  "version": "26.4.300",
+  "dayKey": "26.4.3",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-03T20:06:30.433Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.4.109",
+    "previousPublishedDayTag": "v26.4.109",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.300"
+    ],
+    "prNumbers": [
+      172,
+      173
+    ],
+    "commitSubjects": [
+      "fix: overhaul changelog release notes and cards (#173)",
+      "fix: backfill concise historical changelog notes (#172)"
+    ]
+  },
+  "release": {
+    "deck": "Changelog release notes and cards and backfill concise historical changelog notes",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.300\n\nChangelog release notes and cards and backfill concise historical changelog notes\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
