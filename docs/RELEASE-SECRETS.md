@@ -59,6 +59,15 @@ Options:
 2. Click "New repository secret"
 3. Add each secret listed above
 
+## Automatic website + PWA deploys
+
+`VERCEL_TOKEN` is required if you want the release workflow to deploy
+`freed.wtf` and `app.freed.wtf` automatically after a desktop release is
+published.
+
+Without it, the release still completes and publishes on GitHub, but the
+workflow will skip the website and PWA deploy steps.
+
 ## Drafting release notes
 
 `./scripts/release.sh` now prepares a release in two stages:
@@ -120,8 +129,17 @@ git push origin main --follow-tags
 
 The `v*` tag triggers the release workflow which builds all platforms and
 creates a **draft** GitHub Release using the approved checked-in release body.
-Review the draft, then click "Publish" to make it live. The in-app updater
-will pick it up automatically.
+After all platform builds succeed, the workflow publishes that release
+automatically.
+
+If `VERCEL_TOKEN` is configured, the workflow then:
+
+- redeploys `website/` so `freed.wtf/changelog` rebuilds its checked-in
+  snapshot against the published GitHub release
+- deploys `packages/pwa/` so the PWA version stays aligned with the shipped
+  desktop release
+
+The in-app updater will pick the new GitHub release up automatically.
 
 `./scripts/release-publish.sh` and the release workflow both validate that:
 
