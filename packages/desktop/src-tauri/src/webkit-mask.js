@@ -17,8 +17,38 @@
 (function () {
   "use strict";
   var CLOAK_WINDOW_NAME = "__freed_background_scraper__";
+  var MEDIA_GUARD_WINDOW_NAME = "__freed_media_guard__";
   var CLOAK_STYLE_ID = "__freed_scraper_cloak__";
+  var MEDIA_GUARD_STATE_KEY = "__freedBackgroundScraperMediaGuardState__";
+  var MEDIA_GUARD_BOUND_KEY = "__freedMediaGuardBound__";
+  var MEDIA_GUARD_REPORTED_KEY = "__freedMediaGuardReported__";
+  var MAX_MEDIA_DIAG_EVENTS = 8;
   var cloakIntervalId = null;
+
+  function emit(name, data) {
+    if (
+      window.__TAURI__ &&
+      window.__TAURI__.event &&
+      typeof window.__TAURI__.event.emit === "function"
+    ) {
+      window.__TAURI__.event.emit(name, data);
+    }
+  }
+
+  function setWindowNameToken(token, enabled) {
+    var tokens = (window.name || "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .filter(function (value) {
+        return value !== token;
+      });
+
+    if (enabled) {
+      tokens.push(token);
+    }
+
+    window.name = tokens.join(" ");
+  }
 
   function ensureCloakStyle() {
     var root = document.documentElement;
@@ -74,6 +104,135 @@
   }
 
   window.__FREED_SET_BACKGROUND_SCRAPER_CLOAK__ = setBackgroundScraperCloak;
+
+  function getMediaGuardState() {
+    if (!window[MEDIA_GUARD_STATE_KEY]) {
+      window[MEDIA_GUARD_STATE_KEY] = {
+        enabled: false,
+        observer: null,
+        diagCount: 0,
+      };
+    }
+    return window[MEDIA_GUARD_STATE_KEY];
+  }
+
+  function reportMediaSilenced(mediaEl, reason) {
+    var state = getMediaGuardState();
+    if (state.diagCount >= MAX_MEDIA_DIAG_EVENTS) return;
+    if (mediaEl[MEDIA_GUARD_REPORTED_KEY]) return;
+
+    mediaEl[MEDIA_GUARD_REPORTED_KEY] = true;
+    state.diagCount += 1;
+
+    emit("freed-scraper-media-diag", {
+      provider: (window.location.hostname || "unknown").replace(/^www\./, ""),
+      kind: mediaEl.tagName.toLowerCase(),
+      reason: reason,
+    });
+  }
+
+  function silenceMediaElement(mediaEl, reason) {
+    if (!(mediaEl instanceof HTMLMediaElement)) return;
+
+    try {
+      mediaEl.defaultMuted = true;
+    } catch (_e) {}
+    try {
+      mediaEl.muted = true;
+    } catch (_e) {}
+    try {
+      mediaEl.volume = 0;
+    } catch (_e) {}
+    try {
+      mediaEl.setAttribute("muted", "");
+    } catch (_e) {}
+
+    if (mediaEl instanceof HTMLAudioElement) {
+      try {
+        mediaEl.pause();
+      } catch (_e) {}
+    }
+
+    reportMediaSilenced(mediaEl, reason);
+  }
+
+  function bindMediaElement(mediaEl) {
+    if (!(mediaEl instanceof HTMLMediaElement)) return;
+    if (mediaEl[MEDIA_GUARD_BOUND_KEY]) {
+      silenceMediaElement(mediaEl, "re-scan");
+      return;
+    }
+
+    mediaEl[MEDIA_GUARD_BOUND_KEY] = true;
+
+    var enforce = function (event) {
+      silenceMediaElement(
+        mediaEl,
+        event && event.type ? event.type : "media-event"
+      );
+    };
+
+    mediaEl.addEventListener("play", enforce, true);
+    mediaEl.addEventListener("volumechange", enforce, true);
+    mediaEl.addEventListener("loadedmetadata", enforce, true);
+
+    silenceMediaElement(mediaEl, "initial-scan");
+  }
+
+  function scanNodeForMedia(node) {
+    if (!node || (node.nodeType !== 1 && node.nodeType !== 11)) return;
+
+    if (node instanceof HTMLMediaElement) {
+      bindMediaElement(node);
+    }
+
+    if (typeof node.querySelectorAll !== "function") return;
+
+    var mediaNodes = node.querySelectorAll("audio, video");
+    for (var i = 0; i < mediaNodes.length; i++) {
+      bindMediaElement(mediaNodes[i]);
+    }
+  }
+
+  function refreshMediaGuardObserver() {
+    var state = getMediaGuardState();
+
+    if (!state.enabled) {
+      if (state.observer) {
+        state.observer.disconnect();
+        state.observer = null;
+      }
+      return;
+    }
+
+    scanNodeForMedia(document.documentElement || document.body);
+
+    if (state.observer || !document.documentElement) return;
+
+    state.observer = new MutationObserver(function (mutations) {
+      for (var i = 0; i < mutations.length; i++) {
+        var mutation = mutations[i];
+        for (var j = 0; j < mutation.addedNodes.length; j++) {
+          scanNodeForMedia(mutation.addedNodes[j]);
+        }
+      }
+    });
+
+    state.observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
+  }
+
+  function setBackgroundScraperMediaGuard(enabled) {
+    var state = getMediaGuardState();
+    state.enabled = !!enabled;
+    setWindowNameToken(MEDIA_GUARD_WINDOW_NAME, state.enabled);
+    refreshMediaGuardObserver();
+  }
+
+  window.__FREED_SET_BACKGROUND_SCRAPER_MEDIA_GUARD__ =
+    setBackgroundScraperMediaGuard;
 
   // ---------------------------------------------------------------------------
   // 1. window.webkit.messageHandlers masking
@@ -151,11 +310,25 @@
     }
   } catch (_e) {}
 
-  if (window.name === CLOAK_WINDOW_NAME) {
+  if ((window.name || "").indexOf(CLOAK_WINDOW_NAME) !== -1) {
     setBackgroundScraperCloak(true);
-    document.addEventListener("DOMContentLoaded", function () {
-      setBackgroundScraperCloak(true);
-    }, { once: true });
   }
+
+  if ((window.name || "").indexOf(MEDIA_GUARD_WINDOW_NAME) !== -1) {
+    setBackgroundScraperMediaGuard(true);
+  }
+
+  document.addEventListener(
+    "DOMContentLoaded",
+    function () {
+      if ((window.name || "").indexOf(CLOAK_WINDOW_NAME) !== -1) {
+        setBackgroundScraperCloak(true);
+      }
+      if ((window.name || "").indexOf(MEDIA_GUARD_WINDOW_NAME) !== -1) {
+        setBackgroundScraperMediaGuard(true);
+      }
+    },
+    { once: true }
+  );
 
 })();

@@ -23,6 +23,7 @@ import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { getFbScraperWindowMode } from "./scraper-prefs";
 import { storeFbAuthState } from "./fb-auth";
+import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 
 // =============================================================================
 // Rate Limiting
@@ -126,6 +127,7 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
       // Auto-cleanup after 35 seconds
       setTimeout(() => fn(), 35_000);
     });
+    attachScraperMediaDiagListener("FB", "facebook");
 
     // Listen for the extraction result
     listen<{ posts: RawFbPost[]; error?: string; extractedAt: number; url: string; strategy?: string; candidateCount?: number }>(
