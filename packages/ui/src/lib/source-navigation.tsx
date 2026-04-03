@@ -16,7 +16,7 @@ export interface SourceNavigationItem {
 
 export const TOP_SOURCE_ITEMS: readonly SourceNavigationItem[] = [
   { id: undefined, label: "All", icon: <AllIcon /> },
-  { id: "rss", label: "RSS", icon: <RssIcon /> },
+  { id: "rss", label: "Feeds", icon: <RssIcon /> },
   { id: "x", label: "X", icon: <span className="text-sm font-bold leading-none">X</span> },
   { id: "facebook", label: "Facebook", icon: <FacebookIcon /> },
   { id: "instagram", label: "Instagram", icon: <InstagramIcon /> },

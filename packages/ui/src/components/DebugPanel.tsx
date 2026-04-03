@@ -14,11 +14,11 @@ import { useDebugStore, type SyncEvent, type SyncEventKind, type CloudSyncStatus
 import { useFpsMonitor } from "../lib/perf-monitor";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
 import {
-  HealthStatusBadge,
   ProviderHealthSummary,
   VolumeBars,
+  DurationSelect,
   formatHealthRelative,
-  providerHealthLabel,
+  type HealthChartRange,
 } from "./ProviderHealthSummary.js";
 
 // ---------------------------------------------------------------------------
@@ -545,16 +545,29 @@ function PerformanceTab() {
 function HealthTab() {
   const health = useDebugStore((s) => s.health);
   const removeFeed = useAppStore((s) => s.removeFeed);
+  const providerSyncCounts = useAppStore(
+    (s) =>
+      ((s as unknown as {
+        providerSyncCounts?: Partial<Record<HealthProviderId, number>>;
+      }).providerSyncCounts ?? {}) as Partial<Record<HealthProviderId, number>>,
+  );
   const {
     retryCloudProvider,
     reconnectCloudProvider,
     forgetRssFeedHealth,
+    syncRssNow,
+    XSettingsContent,
+    FacebookSettingsContent,
+    InstagramSettingsContent,
+    LinkedInSettingsContent,
   } = usePlatform();
-  const [expandedProvider, setExpandedProvider] = useState<HealthProviderId | null>(null);
-  const [expandedFeedUrl, setExpandedFeedUrl] = useState<string | null>(null);
+  const [feedRangeByUrl, setFeedRangeByUrl] = useState<Record<string, HealthChartRange>>({});
   const [pendingRemoval, setPendingRemoval] = useState<RssFeedHealthSnapshot | null>(null);
   const [includeItems, setIncludeItems] = useState(false);
   const [removingFeed, setRemovingFeed] = useState(false);
+  const [pendingProviderAction, setPendingProviderAction] = useState<
+    Partial<Record<HealthProviderId, "sync" | "reconnect">>
+  >({});
 
   if (!health) {
     return (
@@ -573,6 +586,14 @@ function HealthTab() {
     "gdrive",
     "dropbox",
   ];
+  const providerSettingsContent: Partial<
+    Record<HealthProviderId, typeof XSettingsContent>
+  > = {
+    x: XSettingsContent,
+    facebook: FacebookSettingsContent,
+    instagram: InstagramSettingsContent,
+    linkedin: LinkedInSettingsContent,
+  };
 
   const copySnapshot = async () => {
     await navigator.clipboard.writeText(JSON.stringify(health, null, 2));
@@ -610,89 +631,100 @@ function HealthTab() {
       <div className="space-y-3">
         {providerOrder.map((provider) => {
           const snapshot = health.providers[provider];
-          const expanded = expandedProvider === provider;
+          const ProviderSettingsContent = providerSettingsContent[provider];
+          const providerSyncing = (providerSyncCounts[provider] ?? 0) > 0;
+          const pendingAction = pendingProviderAction[provider];
+          const actions =
+            provider === "rss" ? (
+              syncRssNow ? (
+                <button
+                  onClick={() => {
+                    void syncRssNow();
+                  }}
+                  disabled={providerSyncing}
+                  className="inline-flex items-center gap-2 text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors disabled:opacity-50"
+                >
+                  {providerSyncing ? (
+                    <>
+                      <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                      Syncing
+                    </>
+                  ) : (
+                    "Sync Now"
+                  )}
+                </button>
+              ) : null
+            ) : (provider === "gdrive" || provider === "dropbox") ? (
+              <>
+                {retryCloudProvider && (
+                  <button
+                    onClick={() => {
+                      setPendingProviderAction((current) => ({
+                        ...current,
+                        [provider]: "sync",
+                      }));
+                      void retryCloudProvider(provider).finally(() => {
+                        setPendingProviderAction((current) => {
+                          const next = { ...current };
+                          delete next[provider];
+                          return next;
+                        });
+                      });
+                    }}
+                    disabled={pendingAction === "sync"}
+                    className="inline-flex items-center gap-2 text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors disabled:opacity-50"
+                  >
+                    {pendingAction === "sync" ? (
+                      <>
+                        <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                        Syncing
+                      </>
+                    ) : (
+                      "Sync Now"
+                    )}
+                  </button>
+                )}
+                {reconnectCloudProvider && (
+                  <button
+                    onClick={() => {
+                      setPendingProviderAction((current) => ({
+                        ...current,
+                        [provider]: "reconnect",
+                      }));
+                      void reconnectCloudProvider(provider).finally(() => {
+                        setPendingProviderAction((current) => {
+                          const next = { ...current };
+                          delete next[provider];
+                          return next;
+                        });
+                      });
+                    }}
+                    disabled={pendingAction === "reconnect"}
+                    className="inline-flex items-center gap-2 text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors disabled:opacity-50"
+                  >
+                    {pendingAction === "reconnect" ? (
+                      <>
+                        <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                        Reconnecting
+                      </>
+                    ) : (
+                      "Reconnect"
+                    )}
+                  </button>
+                )}
+              </>
+            ) : null;
+
           return (
             <div key={provider} className="space-y-2">
-              <ProviderHealthSummary snapshot={snapshot} />
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setExpandedProvider(expanded ? null : provider)}
-                  className="text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
-                >
-                  {expanded ? "Hide 24h" : "Show 24h"}
-                </button>
-                {(provider === "gdrive" || provider === "dropbox") && retryCloudProvider && (
-                  <button
-                    onClick={() => {
-                      void retryCloudProvider(provider);
-                    }}
-                    className="text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
-                  >
-                    Retry Now
-                  </button>
-                )}
-                {(provider === "gdrive" || provider === "dropbox") && reconnectCloudProvider && (
-                  <button
-                    onClick={() => {
-                      void reconnectCloudProvider(provider);
-                    }}
-                    className="text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
-                  >
-                    Reconnect
-                  </button>
-                )}
-              </div>
-              {expanded && (
-                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-white">
-                      {providerHealthLabel(provider)} in the last 24 hours
-                    </p>
-                    <HealthStatusBadge snapshot={snapshot} />
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <VolumeBars
-                      buckets={snapshot.hourlyBuckets}
-                      metric="itemsSeen"
-                      title="Pulled Per Hour"
-                    />
-                    <VolumeBars
-                      buckets={snapshot.hourlyBuckets}
-                      metric="itemsAdded"
-                      title="Added Per Hour"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-[10px] uppercase tracking-widest text-[#52525b]">
-                      Recent Attempts
-                    </p>
-                    {snapshot.latestAttempts.length === 0 ? (
-                      <p className="text-xs text-[#71717a]">No attempts recorded yet.</p>
-                    ) : (
-                      snapshot.latestAttempts.slice(0, 5).map((attempt) => (
-                        <div key={attempt.id} className="rounded-lg bg-white/5 p-2 text-xs">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="font-mono text-[#a1a1aa]">
-                              {new Date(attempt.finishedAt).toLocaleTimeString([], {
-                                hour: "numeric",
-                                minute: "2-digit",
-                              })}
-                            </span>
-                            <span className="text-[#71717a]">
-                              {attempt.outcome}
-                            </span>
-                          </div>
-                          <p className="text-[#52525b]">
-                            pulled {attempt.itemsSeen.toLocaleString()}, added {attempt.itemsAdded.toLocaleString()}
-                          </p>
-                          {attempt.reason && (
-                            <p className="text-amber-400">{attempt.reason}</p>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
+              {ProviderSettingsContent ? (
+                <ProviderSettingsContent surface="debug-card" />
+              ) : (
+                <ProviderHealthSummary
+                  snapshot={snapshot}
+                  showRecentAttempts
+                  actions={actions}
+                />
               )}
             </div>
           );
@@ -707,7 +739,8 @@ function HealthTab() {
           <p className="text-xs text-[#71717a]">No failing feeds right now.</p>
         ) : (
           health.failingRssFeeds.map((feed) => {
-            const expanded = expandedFeedUrl === feed.feedUrl;
+            const selectedRange = feedRangeByUrl[feed.feedUrl] ?? "daily";
+            const bars = selectedRange === "hourly" ? feed.hourlyBuckets : feed.dailyBuckets;
             return (
               <div key={feed.feedUrl} className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 space-y-3">
                 <div className="flex items-start justify-between gap-3">
@@ -725,12 +758,16 @@ function HealthTab() {
                     </p>
                   </div>
                   <div className="flex flex-col gap-2">
-                    <button
-                      onClick={() => setExpandedFeedUrl(expanded ? null : feed.feedUrl)}
-                      className="text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
-                    >
-                      {expanded ? "Hide 24h" : "Show 24h"}
-                    </button>
+                    <DurationSelect
+                      value={selectedRange}
+                      onChange={(nextRange) => {
+                        setFeedRangeByUrl((current) => ({
+                          ...current,
+                          [feed.feedUrl]: nextRange,
+                        }));
+                      }}
+                      ariaLabel={`${feed.feedTitle} duration`}
+                    />
                     <button
                       onClick={() => setPendingRemoval(feed)}
                       className="text-xs px-2.5 py-1 rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-400 transition-colors"
@@ -739,10 +776,11 @@ function HealthTab() {
                     </button>
                   </div>
                 </div>
-                <VolumeBars buckets={feed.dailyBuckets} metric="itemsSeen" title="Pulled Per Day" />
-                {expanded && (
-                  <VolumeBars buckets={feed.hourlyBuckets} metric="itemsSeen" title="Pulled Per Hour" />
-                )}
+                <VolumeBars
+                  buckets={bars}
+                  metric="itemsSeen"
+                  title={selectedRange === "hourly" ? "Pulled Per Hour" : "Pulled Per Day"}
+                />
               </div>
             );
           })
@@ -750,8 +788,8 @@ function HealthTab() {
       </div>
 
       {pendingRemoval && (
-        <div className="fixed inset-0 z-[260] flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-4">
+        <div className="fixed inset-0 z-[260] flex items-start justify-center overflow-y-auto bg-black/70 p-4 sm:items-center">
+          <div className="my-auto w-full max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-4">
             <div>
               <p className="text-sm font-semibold text-white">Unsubscribe failing feed?</p>
               <p className="text-xs text-[#71717a] mt-1">{pendingRemoval.feedTitle}</p>

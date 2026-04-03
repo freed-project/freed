@@ -53,9 +53,12 @@ export function ProviderRiskDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 px-4">
-      <div className="w-full max-w-lg rounded-3xl border border-white/10 bg-[#101014] shadow-[0_24px_80px_rgba(0,0,0,0.45)] overflow-hidden">
-        <div className="px-6 py-5 border-b border-white/10 bg-gradient-to-r from-[#7f1d1d]/25 via-[#111827] to-[#312e81]/25">
+    <div className="fixed inset-0 z-[130] flex items-start justify-center overflow-y-auto bg-black/70 px-4 py-4 sm:items-center sm:py-6">
+      <div
+        data-testid={`provider-risk-dialog-${provider}`}
+        className="my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#101014] shadow-[0_24px_80px_rgba(0,0,0,0.45)] sm:max-h-[calc(100dvh-3rem)]"
+      >
+        <div className="shrink-0 px-6 py-5 border-b border-white/10 bg-gradient-to-r from-[#7f1d1d]/25 via-[#111827] to-[#312e81]/25">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-300">
             High Risk Source
           </p>
@@ -69,7 +72,10 @@ export function ProviderRiskDialog({
           </p>
         </div>
 
-        <div className="px-6 py-6 space-y-5">
+        <div
+          data-testid={`provider-risk-dialog-body-${provider}`}
+          className="overflow-y-auto px-6 py-6 space-y-5"
+        >
           <div className="rounded-2xl border border-amber-500/25 bg-amber-500/8 p-4">
             <p className="text-sm text-amber-100/90">
               Use Freed only with accounts and content you are authorized to access. Do not use it on employer,

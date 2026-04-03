@@ -157,7 +157,7 @@ test("LinkedIn source button filters the feed to LinkedIn items", async ({
   await expect(app.page.getByText("Article 0:", { exact: false })).toBeHidden();
 });
 
-test("LinkedIn appears in the sync status panel when authenticated", async ({
+test("LinkedIn appears in the source sidebar when authenticated", async ({
   app,
 }) => {
   await app.goto();
@@ -165,12 +165,12 @@ test("LinkedIn appears in the sync status panel when authenticated", async ({
   await setLiAuthState(app.page, true);
   await injectLinkedInItems(app.page, 1);
 
-  await app.page.getByRole("button", { name: "Sync status" }).click();
-  const syncPanel = app.page.locator("div.absolute.right-0.top-full").last();
-  await expect(syncPanel.getByText("LinkedIn", { exact: true })).toBeVisible({
+  const linkedInRow = app.page.getByTestId("source-row-linkedin");
+  await expect(linkedInRow).toBeVisible({
     timeout: 3_000,
   });
-  await expect(syncPanel.getByText("Connected, 1 items")).toBeVisible({
+  await expect(linkedInRow).toContainText("LinkedIn");
+  await expect(app.page.getByTestId("source-indicator-linkedin")).toBeVisible({
     timeout: 3_000,
   });
 });

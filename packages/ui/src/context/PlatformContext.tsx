@@ -19,6 +19,7 @@ import type {
 } from "@freed/shared";
 import type { OPMLFeedEntry } from "@freed/shared";
 import type { ImportSummary, ProgressFn } from "../components/LibraryDialog.types.js";
+import type { ProviderStatusTone } from "../lib/provider-status.js";
 
 /**
  * Pixel offset reserved for macOS traffic-light window controls when
@@ -42,6 +43,20 @@ type AppStoreHook = <U>(selector: (state: any) => U) => U;
 export type UpdateDownloadProgress =
   | { phase: "downloading"; percent: number }
   | { phase: "error"; message: string };
+
+export type SyncProviderSectionSurface = "settings" | "debug-card";
+
+export interface SyncProviderSectionProps {
+  surface?: SyncProviderSectionSurface;
+}
+
+export interface SidebarSourceStatusSummary {
+  tone: ProviderStatusTone;
+  label: string;
+  detail?: string;
+  syncing?: boolean;
+  paused?: boolean;
+}
 
 export interface PlatformConfig {
   /** Zustand store hook — both PWA and Desktop stores extend BaseAppState */
@@ -99,25 +114,25 @@ export interface PlatformConfig {
    * Content rendered in the Settings > Sources > X section.
    * When null, the X section is omitted from settings entirely (e.g. PWA).
    */
-  XSettingsContent: ComponentType | null;
+  XSettingsContent: ComponentType<SyncProviderSectionProps> | null;
 
   /**
    * Content rendered in the Settings > Sources > Facebook section.
    * When null, the Facebook section is omitted from settings entirely (e.g. PWA).
    */
-  FacebookSettingsContent: ComponentType | null;
+  FacebookSettingsContent: ComponentType<SyncProviderSectionProps> | null;
 
   /**
    * Content rendered in the Settings > Sources > Instagram section.
    * When null, the Instagram section is omitted from settings entirely (e.g. PWA).
    */
-  InstagramSettingsContent: ComponentType | null;
+  InstagramSettingsContent: ComponentType<SyncProviderSectionProps> | null;
 
   /**
    * Content rendered in the Settings > Sources > LinkedIn section.
    * When null, the LinkedIn section is omitted from settings entirely (e.g. PWA).
    */
-  LinkedInSettingsContent: ComponentType | null;
+  LinkedInSettingsContent: ComponentType<SyncProviderSectionProps> | null;
 
   /** Manual update check. Returns version string if available, null if up-to-date. */
   checkForUpdates?: () => Promise<string | null>;
@@ -189,6 +204,15 @@ export interface PlatformConfig {
 
   /** Remove a feed's local health history after it is unsubscribed. */
   forgetRssFeedHealth?: (feedUrl: string) => Promise<void>;
+
+  /** Trigger an immediate RSS refresh run. */
+  syncRssNow?: () => Promise<void>;
+
+  /** Trigger an immediate sync run for a specific source provider. */
+  syncSourceNow?: (sourceId: string) => Promise<void>;
+
+  /** Return the current status summary for a source row in the sidebar. */
+  getSourceStatus?: (sourceId: string | undefined) => SidebarSourceStatusSummary | null;
 
   /**
    * Retrieve cached article HTML for a globalId from the device-local store.

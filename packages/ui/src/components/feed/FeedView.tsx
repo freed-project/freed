@@ -176,6 +176,7 @@ function getFilterLabel(filter: FilterOptions, feeds: Record<string, RssFeed>): 
   if (filter.savedOnly) return "Saved";
   if (filter.archivedOnly) return "Archived";
   if (filter.feedUrl) return feeds[filter.feedUrl]?.title ?? "this feed";
+  if (filter.platform === "rss") return "Feeds";
   if (filter.platform) return PLATFORM_LABELS[filter.platform as keyof typeof PLATFORM_LABELS] ?? filter.platform;
   return "All Sources";
 }

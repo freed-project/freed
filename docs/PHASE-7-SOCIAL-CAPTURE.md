@@ -156,13 +156,19 @@ const RATE_LIMITS = {
 - [x] Facebook feed integrated into Desktop via Tauri WebView scraping
 - [x] Instagram feed integrated into Desktop via Tauri WebView scraping
 - [x] Both platforms integrated into Desktop refreshAllFeeds()
-- [x] Settings UI for both platforms (login, check connection, sync, disconnect)
+- [x] Settings UI for both platforms (login, check connection, sync, disconnect), with the same provider section also reused inside Debug panel health cards
 - [x] Feed pollution filtering blocks promoted X entries and suggested FB/IG posts
 - [x] Facebook Settings includes per-group include/exclude controls for joined groups
 - [x] Desktop Sources settings expose per-source scraper window modes: shown, cloaked, hidden
 - [x] Background FB and IG scraper WebViews force provider media silent during scrape and auth-check flows
 - [x] Social providers surface paused/degraded health summaries in settings and the sidebar source surfaces
 - [x] Explicit and heuristic rate-limit signals auto-pause social sync, notify the user, and allow manual resume
+- [x] Social provider settings switch to reconnect prompts when the last sync error indicates expired or unauthorized auth
+- [x] Settings Sources nav shows visible right-edge status dots, while the primary Sources sidebar keeps smaller inline status dots after each social provider name
+- [x] Social sync actions show an inline spinner only while that specific provider is actively syncing
+- [x] Social provider status dots switch to a live spinner while that provider is actively syncing
+- [x] Social provider sections include a line-by-line scrape log so users can see what the scraper is doing in real time
+- [x] Social provider source menus surface a quick status explanation for warning or reconnect states before routing into full settings
 - [x] Empty states for both platforms in the feed view
 - [x] Source indicators in sidebar for both platforms
 - [x] Sync indicator panel shows both platforms

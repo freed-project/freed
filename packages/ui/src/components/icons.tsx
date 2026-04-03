@@ -70,14 +70,23 @@ export function ExternalLinkIcon({ className = "w-4 h-4", style }: IconProps) {
 
 // ─── Platform logos ──────────────────────────────────────────────────────────
 
-/**
- * Classic RSS signal icon: dot + two quarter-circle arcs.
- * Heroicons v2 solid path (24 × 24).
- */
+/** RSS signal icon with cleaner arcs for the sidebar and feed rows. */
 export function RssIcon({ className = "w-4 h-4", style }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style} aria-hidden="true">
-      <path d="M3.75 4.5a.75.75 0 01.75-.75h.75c8.284 0 15 6.716 15 15v.75a.75.75 0 01-.75.75h-.75a.75.75 0 01-.75-.75v-.75C18 11.979 12.021 6 4.5 6h-.75a.75.75 0 01-.75-.75V4.5zM3 12.75a.75.75 0 01.75-.75h.75a8.25 8.25 0 018.25 8.25v.75a.75.75 0 01-.75.75H11.25a.75.75 0 01-.75-.75v-.75a6 6 0 00-6-6h-.75A.75.75 0 013 14.25v-1.5zM6 20.25a2.25 2.25 0 114.5 0 2.25 2.25 0 01-4.5 0z" />
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      style={style}
+      aria-hidden="true"
+    >
+      <path d="M4 11a9 9 0 0 1 9 9" />
+      <path d="M4 4a16 16 0 0 1 16 16" />
+      <circle cx="5" cy="19" r="1.5" fill="currentColor" stroke="none" />
     </svg>
   );
 }

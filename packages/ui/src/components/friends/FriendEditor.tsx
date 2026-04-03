@@ -263,10 +263,10 @@ export function FriendEditor({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 bg-black/60 sm:items-center"
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
-      <div className="w-full max-w-lg bg-[#111] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="my-auto w-full max-w-lg bg-[#111] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-2rem)] sm:max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center gap-2 px-5 py-4 border-b border-white/10 shrink-0">
           <h2 className="text-base font-semibold text-text-primary flex-1">

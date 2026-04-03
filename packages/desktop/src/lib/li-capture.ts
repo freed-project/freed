@@ -249,6 +249,7 @@ export async function captureLiFeed(): Promise<LiSyncResult> {
   store.setError(null);
 
   try {
+    addDebugEvent("change", "[LI] sync started");
     const result = await fetchLiFeed();
 
     if (result.diag.errorStage) {
@@ -277,6 +278,10 @@ export async function captureLiFeed(): Promise<LiSyncResult> {
     recordScrape();
 
     if (result.items.length > 0) {
+      addDebugEvent(
+        "change",
+        `[LI] writing ${result.items.length.toLocaleString()} candidate item${result.items.length === 1 ? "" : "s"} to the library`,
+      );
       const before = store.items.filter((i) => i.platform === "linkedin").length;
       await store.addItems(result.items);
       const after = useAppStore

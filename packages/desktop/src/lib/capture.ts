@@ -15,7 +15,7 @@ import { captureFbFeed } from "./fb-capture";
 import { captureIgFeed } from "./instagram-capture";
 import { captureLiFeed } from "./li-capture";
 import { docBatchRefreshFeeds } from "./automerge";
-import { useAppStore } from "./store";
+import { useAppStore, withProviderSyncing } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { isProviderPaused, recordProviderHealthEvent } from "./provider-health";
 
@@ -117,139 +117,141 @@ export async function refreshAllFeeds(): Promise<void> {
     // commit is wrapped in its own try/catch so a CRDT write error can't
     // prevent the X capture below from running.
     try {
-      const allNewItems: FeedItem[] = [];
-      const fetchedFeeds: RssFeed[] = [];
-      const feedErrors: string[] = [];
-      const rssStartedAt = Date.now();
-      const rssBefore = store.items.filter((item) => item.platform === "rss").length;
-      let rssSeen = 0;
+      await withProviderSyncing("rss", async () => {
+        const allNewItems: FeedItem[] = [];
+        const fetchedFeeds: RssFeed[] = [];
+        const feedErrors: string[] = [];
+        const rssStartedAt = Date.now();
+        const rssBefore = store.items.filter((item) => item.platform === "rss").length;
+        let rssSeen = 0;
 
-      // Parallel fetch with concurrency cap
-      for (let i = 0; i < feeds.length; i += FETCH_CONCURRENCY) {
-        const batch = feeds.slice(i, i + FETCH_CONCURRENCY);
-        const results = await Promise.allSettled(
-          batch.map(async (feed) => {
-            const { items, liveTitle, liveSiteUrl } = await fetchRssFeed(feed.url);
+        // Parallel fetch with concurrency cap
+        for (let i = 0; i < feeds.length; i += FETCH_CONCURRENCY) {
+          const batch = feeds.slice(i, i + FETCH_CONCURRENCY);
+          const results = await Promise.allSettled(
+            batch.map(async (feed) => {
+              const { items, liveTitle, liveSiteUrl } = await fetchRssFeed(feed.url);
 
-            // Sentinel check: OPML fallback or raw URL as title both indicate a broken import.
-            const isUntitled = feed.title === "Untitled Feed" || feed.title === feed.url;
+              // Sentinel check: OPML fallback or raw URL as title both indicate a broken import.
+              const isUntitled = feed.title === "Untitled Feed" || feed.title === feed.url;
 
-            // Resolve the best available title:
-            //   1. Live XML title (if the parser found one)
-            //   2. Hostname of the feed URL (e.g. "news.ycombinator.com") as a
-            //      last resort so the feed doesn't stay labelled "Untitled Feed"
-            //      forever when the XML genuinely omits a <title> element.
-            let healedTitle: string | undefined;
-            if (isUntitled) {
-              try {
-                healedTitle = liveTitle ?? new URL(feed.url).hostname.replace(/^(?:www|feeds?)\./, "");
-              } catch {
-                healedTitle = liveTitle;
+              // Resolve the best available title:
+              //   1. Live XML title (if the parser found one)
+              //   2. Hostname of the feed URL (e.g. "news.ycombinator.com") as a
+              //      last resort so the feed doesn't stay labelled "Untitled Feed"
+              //      forever when the XML genuinely omits a <title> element.
+              let healedTitle: string | undefined;
+              if (isUntitled) {
+                try {
+                  healedTitle = liveTitle ?? new URL(feed.url).hostname.replace(/^(?:www|feeds?)\./, "");
+                } catch {
+                  healedTitle = liveTitle;
+                }
+                console.log(
+                  `[Heal] ${feed.url} | stored="${feed.title}" liveTitle="${liveTitle}" healedTitle="${healedTitle}"`,
+                );
               }
-              console.log(
-                `[Heal] ${feed.url} | stored="${feed.title}" liveTitle="${liveTitle}" healedTitle="${healedTitle}"`,
-              );
-            }
 
-            return {
-              feed: {
-                ...feed,
-                lastFetched: Date.now(),
-                ...(healedTitle ? { title: healedTitle } : {}),
-                ...(!feed.siteUrl && liveSiteUrl ? { siteUrl: liveSiteUrl } : {}),
-              },
-              items,
-            };
-          }),
-        );
+              return {
+                feed: {
+                  ...feed,
+                  lastFetched: Date.now(),
+                  ...(healedTitle ? { title: healedTitle } : {}),
+                  ...(!feed.siteUrl && liveSiteUrl ? { siteUrl: liveSiteUrl } : {}),
+                },
+                items,
+              };
+            }),
+          );
 
-        for (const [resultIndex, result] of results.entries()) {
-          if (result.status === "fulfilled") {
-            fetchedFeeds.push(result.value.feed);
-            allNewItems.push(...result.value.items);
-            rssSeen += result.value.items.length;
-            await recordProviderHealthEvent({
-              provider: "rss",
-              scope: "rss_feed",
-              feedUrl: result.value.feed.url,
-              feedTitle: result.value.feed.title,
-              outcome: result.value.items.length > 0 ? "success" : "empty",
-              stage: result.value.items.length > 0 ? undefined : "empty",
-              reason: result.value.items.length > 0 ? undefined : "No entries pulled",
-              startedAt: rssStartedAt,
-              finishedAt: Date.now(),
-              itemsSeen: result.value.items.length,
-              itemsAdded: result.value.items.length,
-            });
-          } else {
-            const msg = result.reason instanceof Error
-              ? result.reason.message
-              : String(result.reason);
-            console.error("[Refresh] Feed fetch failed:", result.reason);
-            feedErrors.push(msg);
-            addDebugEvent("error", `[RSS] feed fetch failed: ${msg}`);
-            const failedFeed = batch[resultIndex];
-            if (failedFeed) {
+          for (const [resultIndex, result] of results.entries()) {
+            if (result.status === "fulfilled") {
+              fetchedFeeds.push(result.value.feed);
+              allNewItems.push(...result.value.items);
+              rssSeen += result.value.items.length;
               await recordProviderHealthEvent({
                 provider: "rss",
                 scope: "rss_feed",
-                feedUrl: failedFeed.url,
-                feedTitle: failedFeed.title,
-                outcome: "error",
-                stage: "fetch",
-                reason: msg,
+                feedUrl: result.value.feed.url,
+                feedTitle: result.value.feed.title,
+                outcome: result.value.items.length > 0 ? "success" : "empty",
+                stage: result.value.items.length > 0 ? undefined : "empty",
+                reason: result.value.items.length > 0 ? undefined : "No entries pulled",
                 startedAt: rssStartedAt,
                 finishedAt: Date.now(),
+                itemsSeen: result.value.items.length,
+                itemsAdded: result.value.items.length,
               });
+            } else {
+              const msg = result.reason instanceof Error
+                ? result.reason.message
+                : String(result.reason);
+              console.error("[Refresh] Feed fetch failed:", result.reason);
+              feedErrors.push(msg);
+              addDebugEvent("error", `[RSS] feed fetch failed: ${msg}`);
+              const failedFeed = batch[resultIndex];
+              if (failedFeed) {
+                await recordProviderHealthEvent({
+                  provider: "rss",
+                  scope: "rss_feed",
+                  feedUrl: failedFeed.url,
+                  feedTitle: failedFeed.title,
+                  outcome: "error",
+                  stage: "fetch",
+                  reason: msg,
+                  startedAt: rssStartedAt,
+                  finishedAt: Date.now(),
+                });
+              }
             }
           }
         }
-      }
 
-      // Single Automerge change for ALL feed + item updates
-      if (fetchedFeeds.length > 0 || allNewItems.length > 0) {
-        await docBatchRefreshFeeds(fetchedFeeds, allNewItems);
-      }
-      const rssAfter = useAppStore.getState().items.filter((item) => item.platform === "rss").length;
-      const rssItemsAdded = Math.max(0, rssAfter - rssBefore);
-      if (feeds.length > 0) {
-        await recordProviderHealthEvent({
-          provider: "rss",
-          outcome: fetchedFeeds.length > 0 ? "success" : "error",
-          stage:
-            fetchedFeeds.length > 0
-              ? undefined
-              : "fetch",
-          reason:
-            fetchedFeeds.length > 0
-              ? feedErrors.length > 0
-                ? `${feedErrors.length.toLocaleString()} feed failure${feedErrors.length === 1 ? "" : "s"} in batch`
-                : undefined
-              : feedErrors[0] ?? "RSS refresh failed",
-          startedAt: rssStartedAt,
-          finishedAt: Date.now(),
-          itemsSeen: rssSeen,
-          itemsAdded: rssItemsAdded,
-        });
-      }
-
-      // Surface per-feed failures to the user only when every feed failed.
-      // Partial failures are logged but kept silent — some fresh content is
-      // better than a scary error banner.
-      if (feedErrors.length > 0) {
-        if (feedErrors.length === feeds.length) {
-          store.setError(
-            feedErrors.length === 1
-              ? `Feed failed to load: ${feedErrors[0]}`
-              : `All ${feedErrors.length} feeds failed to load. Check your network connection.`,
-          );
-        } else {
-          console.warn(
-            `[Refresh] ${feedErrors.length}/${feeds.length} feeds failed (partial):`,
-            feedErrors,
-          );
+        // Single Automerge change for ALL feed + item updates
+        if (fetchedFeeds.length > 0 || allNewItems.length > 0) {
+          await docBatchRefreshFeeds(fetchedFeeds, allNewItems);
         }
-      }
+        const rssAfter = useAppStore.getState().items.filter((item) => item.platform === "rss").length;
+        const rssItemsAdded = Math.max(0, rssAfter - rssBefore);
+        if (feeds.length > 0) {
+          await recordProviderHealthEvent({
+            provider: "rss",
+            outcome: fetchedFeeds.length > 0 ? "success" : "error",
+            stage:
+              fetchedFeeds.length > 0
+                ? undefined
+                : "fetch",
+            reason:
+              fetchedFeeds.length > 0
+                ? feedErrors.length > 0
+                  ? `${feedErrors.length.toLocaleString()} feed failure${feedErrors.length === 1 ? "" : "s"} in batch`
+                  : undefined
+                : feedErrors[0] ?? "RSS refresh failed",
+            startedAt: rssStartedAt,
+            finishedAt: Date.now(),
+            itemsSeen: rssSeen,
+            itemsAdded: rssItemsAdded,
+          });
+        }
+
+        // Surface per-feed failures to the user only when every feed failed.
+        // Partial failures are logged but kept silent - some fresh content is
+        // better than a scary error banner.
+        if (feedErrors.length > 0) {
+          if (feedErrors.length === feeds.length) {
+            store.setError(
+              feedErrors.length === 1
+                ? `Feed failed to load: ${feedErrors[0]}`
+                : `All ${feedErrors.length} feeds failed to load. Check your network connection.`,
+            );
+          } else {
+            console.warn(
+              `[Refresh] ${feedErrors.length}/${feeds.length} feeds failed (partial):`,
+              feedErrors,
+            );
+          }
+        }
+      });
     } catch (rssError) {
       // Automerge commit error or unexpected RSS failure — log and notify,
       // but continue so the X capture below still runs.
@@ -269,9 +271,10 @@ export async function refreshAllFeeds(): Promise<void> {
     // ── X timeline ────────────────────────────────────────────────────────────
     // Always runs, fully independent of RSS outcome.
     const { xAuth } = useAppStore.getState();
-    if (xAuth.isAuthenticated && xAuth.cookies && !isProviderPaused("x")) {
+    const xCookies = xAuth.cookies;
+    if (xAuth.isAuthenticated && xCookies && !isProviderPaused("x")) {
       try {
-        await captureXTimeline(xAuth.cookies);
+        await withProviderSyncing("x", () => captureXTimeline(xCookies));
       } catch (xError) {
         const msg = xError instanceof Error ? xError.message : "X timeline sync failed";
         console.error("[Refresh] X timeline failed:", xError);
@@ -287,7 +290,7 @@ export async function refreshAllFeeds(): Promise<void> {
     const { fbAuth } = useAppStore.getState();
     if (fbAuth.isAuthenticated && !isProviderPaused("facebook")) {
       try {
-        await captureFbFeed();
+        await withProviderSyncing("facebook", () => captureFbFeed());
       } catch (fbError) {
         const msg = fbError instanceof Error ? fbError.message : "Facebook feed sync failed";
         console.error("[Refresh] Facebook feed failed:", fbError);
@@ -303,7 +306,7 @@ export async function refreshAllFeeds(): Promise<void> {
     const { igAuth } = useAppStore.getState();
     if (igAuth.isAuthenticated && !isProviderPaused("instagram")) {
       try {
-        await captureIgFeed();
+        await withProviderSyncing("instagram", () => captureIgFeed());
       } catch (igError) {
         const msg = igError instanceof Error ? igError.message : "Instagram feed sync failed";
         console.error("[Refresh] Instagram feed failed:", igError);
@@ -319,7 +322,7 @@ export async function refreshAllFeeds(): Promise<void> {
     const { liAuth } = useAppStore.getState();
     if (liAuth.isAuthenticated && !isProviderPaused("linkedin")) {
       try {
-        await captureLiFeed();
+        await withProviderSyncing("linkedin", () => captureLiFeed());
       } catch (liError) {
         const msg = liError instanceof Error ? liError.message : "LinkedIn feed sync failed";
         console.error("[Refresh] LinkedIn feed failed:", liError);

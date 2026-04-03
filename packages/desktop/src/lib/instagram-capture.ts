@@ -219,6 +219,7 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
   store.setError(null);
 
   try {
+    addDebugEvent("change", "[IG] sync started");
     const result = await fetchIgFeed();
     recordScrape();
 
@@ -244,6 +245,10 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
     }
 
     if (result.items.length > 0) {
+      addDebugEvent(
+        "change",
+        `[IG] writing ${result.items.length.toLocaleString()} candidate item${result.items.length === 1 ? "" : "s"} to the library`,
+      );
       const before = store.items.filter((i) => i.platform === "instagram").length;
       await store.addItems(result.items);
       const after = useAppStore

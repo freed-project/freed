@@ -11,6 +11,7 @@ import { useAppStore } from "../lib/store";
 import { disconnectFb } from "../lib/fb-auth";
 import { captureFbFeed } from "../lib/fb-capture";
 import { useSettingsStore } from "@freed/ui/lib/settings-store";
+import { resetProviderPauseState } from "../lib/provider-health";
 
 const FbIcon = () => (
   <svg className="w-7 h-7 text-[#a1a1aa]" viewBox="0 0 24 24" fill="currentColor">
@@ -47,6 +48,7 @@ export function FacebookFeedEmptyState() {
     } catch {
       // Best-effort
     }
+    await resetProviderPauseState("facebook");
     setFbAuth({ isAuthenticated: false });
     setError(null);
   };

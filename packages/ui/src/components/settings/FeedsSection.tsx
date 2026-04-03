@@ -2,13 +2,31 @@
  * FeedsSection — settings pane for RSS feed management + OPML import/export.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { parseOPML, readFileAsText } from "@freed/shared";
 import type { OPMLFeedEntry, ImportProgress } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
+import { useDebugStore } from "../../lib/debug-store.js";
 
 type FeedTab = "manage" | "import" | "export";
 type ImportPhase = "idle" | "preview" | "importing" | "complete";
+type FeedFilter = "all" | "problem";
+
+function isLikelyDeadFeed(error?: string): boolean {
+  if (!error) return false;
+  return (
+    /\b404\b/i.test(error) ||
+    /\b410\b/i.test(error) ||
+    /\bnot found\b/i.test(error) ||
+    /\bgone\b/i.test(error) ||
+    /\benotfound\b/i.test(error) ||
+    /\bnxdomain\b/i.test(error) ||
+    /\bno such host\b/i.test(error) ||
+    /\bhost not found\b/i.test(error) ||
+    /\bunknown host\b/i.test(error) ||
+    /\bdns\b/i.test(error)
+  );
+}
 
 // ── Shared tab bar ────────────────────────────────────────────────────────────
 
@@ -70,17 +88,38 @@ export function FeedsSection() {
 function ManagePane() {
   const feeds = useAppStore((s) => s.feeds);
   const removeFeed = useAppStore((s) => s.removeFeed);
-  const removeAllFeeds = useAppStore((s) => s.removeAllFeeds);
+  const { forgetRssFeedHealth } = usePlatform();
+  const health = useDebugStore((s) => s.health);
   const feedList = Object.values(feeds);
   const [removing, setRemoving] = useState<string | null>(null);
   const [showRemoveAll, setShowRemoveAll] = useState(false);
   const [includeItems, setIncludeItems] = useState(false);
   const [removingAll, setRemovingAll] = useState(false);
+  const [feedFilter, setFeedFilter] = useState<FeedFilter>("all");
+
+  const failingFeedByUrl = useMemo(
+    () =>
+      new Map(
+        (health?.failingRssFeeds ?? []).map((feed) => [feed.feedUrl, feed] as const),
+      ),
+    [health],
+  );
+
+  const filteredFeedList = useMemo(() => {
+    return feedList.filter((feed) => {
+      const failingFeed = failingFeedByUrl.get(feed.url);
+      if (feedFilter === "all") return true;
+      return !!failingFeed;
+    });
+  }, [failingFeedByUrl, feedFilter, feedList]);
 
   const handleRemove = async (url: string) => {
     setRemoving(url);
     try {
       await removeFeed(url);
+      if (forgetRssFeedHealth) {
+        await forgetRssFeedHealth(url);
+      }
     } finally {
       setRemoving(null);
     }
@@ -89,7 +128,12 @@ function ManagePane() {
   const handleRemoveAll = async () => {
     setRemovingAll(true);
     try {
-      await removeAllFeeds(includeItems);
+      for (const feed of filteredFeedList) {
+        await removeFeed(feed.url, { includeItems });
+        if (forgetRssFeedHealth) {
+          await forgetRssFeedHealth(feed.url);
+        }
+      }
     } finally {
       setRemovingAll(false);
       setShowRemoveAll(false);
@@ -106,57 +150,125 @@ function ManagePane() {
     );
   }
 
+  const bulkUnsubscribeLabel =
+    feedFilter === "all"
+      ? `Unsubscribe from all feeds (${filteredFeedList.length.toLocaleString()})`
+      : `Unsubscribe from shown feeds (${filteredFeedList.length.toLocaleString()})`;
+
+  const bulkUnsubscribeTitle =
+    feedFilter === "all" ? "Unsubscribe from all feeds?" : "Unsubscribe from shown feeds?";
+
   return (
     <>
-      <div className="space-y-2">
-        {feedList.map((feed) => (
-          <div
-            key={feed.url}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)]"
-          >
-            {feed.imageUrl ? (
-              <img src={feed.imageUrl} alt="" className="w-8 h-8 rounded-md flex-shrink-0 object-cover" />
-            ) : (
-              <div className="w-8 h-8 rounded-md bg-[#8b5cf6]/10 flex items-center justify-center flex-shrink-0">
-                <svg className="w-4 h-4 text-[#8b5cf6]/60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7M6 17a1 1 0 110-2 1 1 0 010 2z" />
-                </svg>
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-white truncate">{feed.title}</p>
-              <p className="text-xs text-[#52525b] truncate">{feed.url}</p>
-            </div>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex gap-1 rounded-xl bg-white/[0.04] p-1">
+          {[
+            { id: "all" as const, label: `All (${feedList.length.toLocaleString()})` },
+            {
+              id: "problem" as const,
+              label: `Needs review (${health?.failingRssFeeds.length.toLocaleString() ?? "0"})`,
+            },
+          ].map((filter) => (
             <button
-              onClick={() => handleRemove(feed.url)}
-              disabled={removing === feed.url}
-              className="flex-shrink-0 p-1.5 rounded-lg hover:bg-red-500/20 text-[#71717a] hover:text-red-400 transition-colors disabled:opacity-50"
-              aria-label={`Remove ${feed.title}`}
+              key={filter.id}
+              onClick={() => setFeedFilter(filter.id)}
+              className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
+                feedFilter === filter.id
+                  ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
+                  : "text-[#a1a1aa] hover:text-white"
+              }`}
             >
-              {removing === feed.url ? (
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              ) : (
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              )}
+              {filter.label}
             </button>
-          </div>
-        ))}
+          ))}
+        </div>
+
+        <button
+          onClick={() => setShowRemoveAll(true)}
+          disabled={filteredFeedList.length === 0}
+          className="text-xs text-red-400/70 hover:text-red-400 transition-colors disabled:opacity-40 disabled:hover:text-red-400/70"
+        >
+          {bulkUnsubscribeLabel}
+        </button>
       </div>
 
-      <button
-        onClick={() => setShowRemoveAll(true)}
-        className="mt-3 text-xs text-red-400/70 hover:text-red-400 transition-colors"
+      {filteredFeedList.length === 0 ? (
+        <div className="rounded-xl border border-white/[0.05] bg-white/[0.03] px-4 py-6 text-center">
+          <p className="text-sm text-[#71717a]">
+            {feedFilter === "problem"
+              ? "No problem feeds right now."
+              : "No feeds subscribed yet."}
+          </p>
+        </div>
+      ) : (
+      <div
+        className="max-h-[min(52vh,32rem)] space-y-2 overflow-y-auto pr-1"
+        data-testid="feeds-manage-list"
       >
-        Remove all {feedList.length.toLocaleString()} feeds&hellip;
-      </button>
+        {filteredFeedList.map((feed) => {
+          const failingFeed = failingFeedByUrl.get(feed.url);
+          const showLikelyDead = !!failingFeed && isLikelyDeadFeed(failingFeed.lastError);
+          return (
+            <div
+              key={feed.url}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)]"
+            >
+              {feed.imageUrl ? (
+                <img src={feed.imageUrl} alt="" className="w-8 h-8 rounded-md flex-shrink-0 object-cover" />
+              ) : (
+                <div className="w-8 h-8 rounded-md bg-[#8b5cf6]/10 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4 text-[#8b5cf6]/60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7M6 17a1 1 0 110-2 1 1 0 010 2z" />
+                  </svg>
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <p className="text-sm text-white truncate">{feed.title}</p>
+                  {failingFeed ? (
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${
+                        showLikelyDead
+                          ? "bg-red-500/15 text-red-400"
+                          : "bg-amber-500/15 text-amber-400"
+                      }`}
+                    >
+                      {showLikelyDead ? "Likely dead" : "Failing"}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-xs text-[#52525b] truncate">{feed.url}</p>
+                {failingFeed?.lastError ? (
+                  <p className="mt-1 text-xs text-amber-300 truncate">
+                    {failingFeed.lastError}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                onClick={() => handleRemove(feed.url)}
+                disabled={removing === feed.url}
+                className="flex-shrink-0 p-1.5 rounded-lg hover:bg-red-500/20 text-[#71717a] hover:text-red-400 transition-colors disabled:opacity-50"
+                aria-label={`Remove ${feed.title}`}
+              >
+                {removing === feed.url ? (
+                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      )}
 
       {showRemoveAll && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60">
-          <div className="w-full max-w-sm bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded-2xl p-6 shadow-2xl">
+        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4 bg-black/60 sm:items-center">
+          <div className="my-auto w-full max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded-2xl p-6 shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center flex-shrink-0">
                 <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -164,9 +276,9 @@ function ManagePane() {
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-semibold text-white">Remove all feeds?</p>
+                <p className="text-sm font-semibold text-white">{bulkUnsubscribeTitle}</p>
                 <p className="text-xs text-[#71717a] mt-0.5">
-                  Unsubscribes from all {feedList.length.toLocaleString()} feeds on every synced device.
+                  Unsubscribes from {filteredFeedList.length.toLocaleString()} shown feed{filteredFeedList.length === 1 ? "" : "s"} on every synced device.
                 </p>
               </div>
             </div>
@@ -205,7 +317,7 @@ function ManagePane() {
                     Removing&hellip;
                   </span>
                 ) : (
-                  "Remove All"
+                  "Unsubscribe"
                 )}
               </button>
             </div>

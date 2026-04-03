@@ -238,6 +238,44 @@ describe("provider health", () => {
     expect(mod.getProviderPause("facebook")?.pauseLevel).toBe(1);
   });
 
+  it("resets future pause escalation without wiping diagnostics", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, debugStore, storeState } = await loadProviderHealthModule();
+
+    await mod.recordProviderHealthEvent({
+      provider: "facebook",
+      outcome: "provider_rate_limit",
+      stage: "provider_rate_limit",
+      reason: "Rate limit exceeded",
+      finishedAt: now.getTime(),
+    });
+
+    expect(mod.getProviderPause("facebook")?.pauseLevel).toBe(1);
+
+    await mod.resetProviderPauseState("facebook");
+
+    expect(mod.getProviderPause("facebook")).toBeNull();
+    expect(storeState.fbAuth.pausedUntil).toBeUndefined();
+    expect(
+      debugStore.useDebugStore.getState().health?.providers.facebook.dailyBuckets.some(
+        (bucket) => bucket.failures > 0,
+      ),
+    ).toBe(true);
+
+    await mod.recordProviderHealthEvent({
+      provider: "facebook",
+      outcome: "provider_rate_limit",
+      stage: "provider_rate_limit",
+      reason: "Rate limit exceeded again",
+      finishedAt: now.getTime() + 60_000,
+    });
+
+    expect(mod.getProviderPause("facebook")?.pauseLevel).toBe(1);
+  });
+
   it("marks RSS feeds as failing after a 24 hour outage and clears on success", async () => {
     vi.useFakeTimers();
     const now = new Date("2026-04-02T19:15:00.000Z");
@@ -277,5 +315,35 @@ describe("provider health", () => {
 
     failingFeeds = debugStore.useDebugStore.getState().health?.failingRssFeeds ?? [];
     expect(failingFeeds).toHaveLength(0);
+  });
+
+  it("clears visible provider errors after a successful sync", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-04-02T19:15:00.000Z");
+    vi.setSystemTime(now);
+
+    const { mod, debugStore } = await loadProviderHealthModule();
+
+    await mod.recordProviderHealthEvent({
+      provider: "x",
+      outcome: "error",
+      stage: "auth",
+      reason: "Could not authenticate you.",
+      finishedAt: now.getTime() - 60_000,
+    });
+
+    await mod.recordProviderHealthEvent({
+      provider: "x",
+      outcome: "success",
+      finishedAt: now.getTime(),
+      itemsSeen: 7,
+      itemsAdded: 4,
+    });
+
+    const provider = debugStore.useDebugStore.getState().health?.providers.x;
+    expect(provider?.status).toBe("healthy");
+    expect(provider?.lastOutcome).toBe("success");
+    expect(provider?.lastError).toBeUndefined();
+    expect(provider?.currentMessage).toBeUndefined();
   });
 });

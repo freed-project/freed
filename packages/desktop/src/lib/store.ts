@@ -52,6 +52,27 @@ import { initFbAuth, type FbAuthState } from "./fb-auth";
 import { initIgAuth, type IgAuthState } from "./instagram-auth";
 import { initLiAuth, type LiAuthState } from "./li-auth";
 
+export type SyncProviderId =
+  | "rss"
+  | "x"
+  | "facebook"
+  | "instagram"
+  | "linkedin"
+  | "gdrive"
+  | "dropbox";
+
+export type ProviderSyncCounts = Record<SyncProviderId, number>;
+
+const EMPTY_PROVIDER_SYNC_COUNTS: ProviderSyncCounts = {
+  rss: 0,
+  x: 0,
+  facebook: 0,
+  instagram: 0,
+  linkedin: 0,
+  gdrive: 0,
+  dropbox: 0,
+};
+
 // App state interface
 interface AppState {
   // Data (received pre-hydrated from Automerge worker as DocState)
@@ -83,6 +104,7 @@ interface AppState {
   // UI state
   isLoading: boolean;
   isSyncing: boolean;
+  providerSyncCounts: ProviderSyncCounts;
   isInitialized: boolean;
   error: string | null;
   activeFilter: FilterOptions;
@@ -136,6 +158,7 @@ interface AppState {
   setSelectedFriend: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
   setSyncing: (syncing: boolean) => void;
+  setProviderSyncing: (provider: SyncProviderId, syncing: boolean) => void;
   setError: (error: string | null) => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
@@ -204,6 +227,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   liAuth: { isAuthenticated: false },
   isLoading: true,
   isSyncing: false,
+  providerSyncCounts: { ...EMPTY_PROVIDER_SYNC_COUNTS },
   isInitialized: false,
   error: null,
   activeFilter: {},
@@ -393,8 +417,30 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSelectedFriend: (id) => set({ selectedFriendId: id }),
   setLoading: (isLoading) => set({ isLoading }),
   setSyncing: (isSyncing) => set({ isSyncing }),
+  setProviderSyncing: (provider, syncing) =>
+    set((state) => ({
+      providerSyncCounts: {
+        ...state.providerSyncCounts,
+        [provider]: Math.max(
+          0,
+          (state.providerSyncCounts[provider] ?? 0) + (syncing ? 1 : -1),
+        ),
+      },
+    })),
   setError: (error) => set({ error }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setActiveView: (activeView) => set({ activeView }),
   setPendingMatchCount: (pendingMatchCount) => set({ pendingMatchCount }),
 }));
+
+export async function withProviderSyncing<T>(
+  provider: SyncProviderId,
+  task: () => Promise<T>,
+): Promise<T> {
+  useAppStore.getState().setProviderSyncing(provider, true);
+  try {
+    return await task();
+  } finally {
+    useAppStore.getState().setProviderSyncing(provider, false);
+  }
+}

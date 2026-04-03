@@ -558,23 +558,24 @@ function messageFor(providerState: PersistedProviderHealth): string | undefined 
   if (providerState.pause && providerState.pause.pausedUntil > Date.now()) {
     return providerState.pause.pauseReason;
   }
+  if (latest.outcome === "success") return undefined;
   if (latest.reason) return latest.reason;
   if (latest.outcome === "cooldown") return "Cooling down";
   if (latest.outcome === "provider_rate_limit") return "Rate limit detected";
   if (latest.outcome === "empty") return "No posts pulled";
-  return latest.outcome === "success" ? "Healthy" : "Needs attention";
+  return "Needs attention";
 }
 
 function snapshotForProvider(providerState: PersistedProviderHealth): ProviderHealthSnapshot {
+  const latestAttempt = providerState.latestAttempts[0];
+  const latestWasSuccessful = !!latestAttempt && bucketSuccess(latestAttempt.outcome);
   return {
     provider: providerState.provider,
     status: providerStatus(providerState),
-    lastAttemptAt: providerState.latestAttempts[0]?.finishedAt,
+    lastAttemptAt: latestAttempt?.finishedAt,
     lastSuccessfulAt: lastSuccessfulAt(providerState.latestAttempts),
-    lastOutcome: providerState.latestAttempts[0]?.outcome,
-    lastError: providerState.latestAttempts.find(
-      (attempt) => !bucketSuccess(attempt.outcome) && attempt.reason,
-    )?.reason,
+    lastOutcome: latestAttempt?.outcome,
+    lastError: latestWasSuccessful ? undefined : latestAttempt?.reason,
     currentMessage: messageFor(providerState),
     pause: providerState.pause,
     dailyBuckets: providerState.dailyBuckets,
@@ -796,6 +797,24 @@ export async function clearProviderPause(provider: HealthProviderId): Promise<vo
   state.providers[provider] = {
     ...state.providers[provider],
     pause: null,
+  };
+  if (SOCIAL_PROVIDERS.has(provider)) {
+    syncPauseToAuth(provider, null);
+  }
+  state.updatedAt = Date.now();
+  currentState = state;
+  publishState(state);
+  await persistState(state);
+}
+
+export async function resetProviderPauseState(provider: HealthProviderId): Promise<void> {
+  await initProviderHealth();
+  const state = assertState();
+  state.providers[provider] = {
+    ...state.providers[provider],
+    pause: null,
+    lastPauseLevel: undefined,
+    lastPauseDetectedAt: undefined,
   };
   if (SOCIAL_PROVIDERS.has(provider)) {
     syncPauseToAuth(provider, null);

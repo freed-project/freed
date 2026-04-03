@@ -383,9 +383,10 @@ test("health tab surfaces provider charts and can unsubscribe a failing feed", a
   await expect(page.getByText("Provider Health")).toBeVisible();
   await expect(page.getByText(FEED_URL, { exact: true })).toBeVisible();
   await expect(page.getByText("Rate limit exceeded").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sync Now" }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Unsubscribe" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Show 24h" }).first().click();
+  await page.getByLabel("RSS duration").selectOption("hourly");
   await expect(page.getByText("Pulled Per Hour").first()).toBeVisible();
 
   await page.getByRole("button", { name: "Unsubscribe" }).click();
@@ -574,12 +575,12 @@ test("paused provider health is visible in X settings and can be resumed", async
       },
       linkedin: {
         provider: "linkedin",
-        status: "idle",
-        lastAttemptAt: undefined,
-        lastSuccessfulAt: undefined,
-        lastOutcome: undefined,
-        lastError: undefined,
-        currentMessage: undefined,
+        status: "degraded",
+        lastAttemptAt: now,
+        lastSuccessfulAt: now - 60 * 60 * 1000,
+        lastOutcome: "error",
+        lastError: "Scrape timed out",
+        currentMessage: "Scrape timed out",
         pause: null,
         dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
           dateKey: `2026-04-0${index + 1}`,
@@ -708,10 +709,1649 @@ test("paused provider health is visible in X settings and can be resumed", async
 
   await expect(page.getByText("Paused until").first()).toBeVisible();
   await expect(page.getByText("Rate limit exceeded").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Resume now" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Resume Now" })).toBeVisible();
+  await expect(page.getByTestId("settings-provider-status-x")).toHaveAttribute("title", "Paused");
+  await expect(page.getByTestId("settings-provider-status-x")).toHaveClass(/bg-amber-500/);
 
-  await page.getByRole("button", { name: "Resume now" }).click();
+  await page.getByRole("button", { name: "Resume Now" }).click();
+  await app.acceptProviderRiskIfPresent("x");
 
-  await expect(page.getByRole("button", { name: "Resume now" })).toHaveCount(0);
-  await expect(page.getByText("Needs attention").last()).toBeVisible();
+  await expect(page.getByText("Paused until").first()).toHaveCount(0);
+  await expect(page.getByTestId("provider-sync-action-x")).toContainText("Sync Now");
+});
+
+test("facebook groups settings separate last-active text and show active counts", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      setState: (partial: Record<string, unknown>) => void;
+      getState: () => {
+        preferences: Record<string, unknown>;
+      };
+    };
+
+    store.setState({
+      fbAuth: {
+        isAuthenticated: true,
+      },
+      preferences: {
+        ...store.getState().preferences,
+        fbCapture: {
+          knownGroups: {
+            one: {
+              id: "one",
+              name: "CDA Buy Trade Or SellLast active about a minute ago",
+              url: "https://facebook.com/groups/one",
+            },
+            two: {
+              id: "two",
+              name: "North Idaho Lifelast active 2 hours ago",
+              url: "https://facebook.com/groups/two",
+            },
+          },
+          excludedGroupIds: {
+            two: true,
+          },
+        },
+      },
+    });
+  });
+
+  await openSettingsSection(page, "Facebook");
+
+  await expect(page.getByText("1 active of 2 total")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Activate all", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Deactivate all", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeVisible();
+  await expect(page.getByTestId("facebook-group-one-label")).toHaveText("CDA Buy Trade Or Sell");
+  await expect(page.getByTestId("facebook-group-one-meta")).toHaveText("Last active about a minute ago");
+});
+
+test("auth failures in X settings prompt the user to reconnect", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    store.setState({
+      xAuth: {
+        isAuthenticated: true,
+        cookies: { ct0: "ct0", authToken: "token" },
+        lastCaptureError:
+          'X API error 401 Unauthorized: {"errors":[{"message":"Could not authenticate you.","code":32}]}',
+      },
+    });
+  });
+
+  await openSettingsSection(page, "X");
+
+  await expect(page.getByText("Reconnect required").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reconnect X" })).toBeVisible();
+  await expect(
+    page.getByText("X needs you to sign in again before sync can continue."),
+  ).toBeVisible();
+});
+
+test("cooldown states use a specific label instead of generic attention copy", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+
+  await page.addInitScript(() => {
+    const now = Date.now();
+    const providers = {
+      rss: {
+        provider: "rss",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
+          dateKey: `2026-04-0${index + 1}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      x: {
+        provider: "x",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
+          dateKey: `2026-04-0${index + 1}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      facebook: {
+        provider: "facebook",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
+          dateKey: `2026-04-0${index + 1}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      instagram: {
+        provider: "instagram",
+        status: "paused",
+        lastAttemptAt: now,
+        lastSuccessfulAt: now - 16 * 60 * 1000,
+        lastOutcome: "cooldown",
+        lastError: "Cooling down. Try again in ~5 minutes.",
+        currentMessage: "Cooling down. Try again in ~5 minutes.",
+        pause: {
+          pausedUntil: now + 5 * 60 * 1000,
+          pauseReason: "Cooling down. Try again in ~5 minutes.",
+          pauseLevel: 1,
+          detectedAt: now - 60_000,
+          detectedBy: "auto",
+        },
+        dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
+          dateKey: `2026-04-0${index + 1}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [
+          {
+            id: "instagram-cooldown",
+            provider: "instagram",
+            scope: "provider",
+            outcome: "cooldown",
+            stage: "cooldown",
+            reason: "Cooling down. Try again in ~5 minutes.",
+            startedAt: now - 60_000,
+            finishedAt: now,
+            durationMs: 60_000,
+            itemsSeen: 0,
+            itemsAdded: 0,
+            bytesMoved: 0,
+            signalType: "none",
+          },
+        ],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      linkedin: {
+        provider: "linkedin",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
+          dateKey: `2026-04-0${index + 1}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      gdrive: {
+        provider: "gdrive",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
+          dateKey: `2026-04-0${index + 1}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      dropbox: {
+        provider: "dropbox",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
+          dateKey: `2026-04-0${index + 1}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+    };
+
+    window.localStorage.setItem(
+      "__TAURI_MOCK_STORE__:sync-health.json",
+      JSON.stringify({
+        "provider-health": {
+          version: 1,
+          providers,
+          rssFeeds: {},
+          updatedAt: now,
+        },
+      }),
+    );
+  });
+
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    store.setState({
+      igAuth: {
+        isAuthenticated: true,
+        lastCaptureError: "Cooling down. Try again in ~5 minutes.",
+      },
+    });
+  });
+
+  await openSettingsSection(page, "Instagram");
+
+  await expect(page.getByText("Cooling down").first()).toBeVisible();
+  await expect(page.getByTestId("settings-provider-status-instagram")).toHaveAttribute(
+    "title",
+    "Cooling down",
+  );
+});
+
+test("settings sources nav shows provider status dots", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+
+  await page.addInitScript(() => {
+    const now = Date.now();
+    const providers = {
+      rss: {
+        provider: "rss",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
+          dateKey: `2026-04-0${index + 1}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      x: {
+        provider: "x",
+        status: "degraded",
+        lastAttemptAt: now,
+        lastSuccessfulAt: now - 24 * 60 * 60 * 1000,
+        lastOutcome: "error",
+        lastError: "Could not authenticate you.",
+        currentMessage: "Could not authenticate you.",
+        pause: null,
+        dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
+          dateKey: `2026-04-0${index + 1}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      facebook: {
+        provider: "facebook",
+        status: "healthy",
+        lastAttemptAt: now,
+        lastSuccessfulAt: now,
+        lastOutcome: "success",
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
+          dateKey: `2026-04-0${index + 1}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      instagram: {
+        provider: "instagram",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
+          dateKey: `2026-04-0${index + 1}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      linkedin: {
+        provider: "linkedin",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
+          dateKey: `2026-04-0${index + 1}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      gdrive: {
+        provider: "gdrive",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
+          dateKey: `2026-04-0${index + 1}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      dropbox: {
+        provider: "dropbox",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: Array.from({ length: 7 }, (_, index) => ({
+          dateKey: `2026-04-0${index + 1}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        hourlyBuckets: Array.from({ length: 24 }, (_, index) => ({
+          hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+          attempts: 0,
+          successes: 0,
+          failures: 0,
+          itemsSeen: 0,
+          itemsAdded: 0,
+          bytesMoved: 0,
+        })),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+    };
+
+    window.localStorage.setItem(
+      "__TAURI_MOCK_STORE__:sync-health.json",
+      JSON.stringify({
+        "provider-health": {
+          version: 1,
+          providers,
+          rssFeeds: {},
+          updatedAt: now,
+        },
+      }),
+    );
+  });
+
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    store.setState({
+      xAuth: {
+        isAuthenticated: true,
+        cookies: { ct0: "ct0", authToken: "token" },
+        lastCaptureError: "401 Unauthorized",
+      },
+      fbAuth: {
+        isAuthenticated: true,
+      },
+      liAuth: {
+        isAuthenticated: true,
+        lastCaptureError: "Scrape timed out",
+      },
+    });
+  });
+
+  const settingsBtn = page.locator("button").filter({ hasText: /settings/i }).first();
+  await settingsBtn.click();
+  await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
+
+  await expect(page.getByTestId("settings-provider-status-x")).toHaveAttribute("title", "Reconnect required");
+  await expect(page.getByTestId("settings-provider-status-facebook")).toHaveAttribute("title", "Connected");
+  await expect(page.getByTestId("settings-provider-status-linkedin")).toHaveAttribute("title", "Sync issue");
+  await expect(page.getByTestId("settings-provider-status-instagram")).toHaveCount(0);
+  await expect(page.getByTestId("settings-provider-status-x")).toBeVisible();
+  await expect(page.getByTestId("settings-provider-status-facebook")).toBeVisible();
+  await expect(page.getByTestId("settings-provider-status-linkedin")).toBeVisible();
+
+  await expect(page.getByTestId("settings-provider-status-x")).toHaveClass(/bg-red-500/);
+  await expect(page.getByTestId("settings-provider-status-facebook")).toHaveClass(/bg-emerald-500/);
+  await expect(page.getByTestId("settings-provider-status-linkedin")).toHaveClass(/bg-amber-500/);
+  await expect(page.getByTestId("source-indicator-x")).toHaveAttribute("title", "Reconnect required");
+  await expect(page.getByTestId("source-indicator-facebook")).toHaveAttribute("title", "Connected");
+  await expect(page.getByTestId("source-indicator-linkedin")).toHaveAttribute("title", "Sync issue");
+  await expect(page.getByTestId("source-indicator-instagram")).toHaveCount(0);
+  await expect(page.getByTestId("source-indicator-x")).toHaveClass(/bg-red-500/);
+  await expect(page.getByTestId("source-indicator-facebook")).toHaveClass(/bg-emerald-500/);
+  await expect(page.getByTestId("source-indicator-linkedin")).toHaveClass(/bg-amber-500/);
+
+  const facebookSourceIndicatorLayout = await page.evaluate(() => {
+    const row = document.querySelector('[data-testid="source-row-facebook"]')?.parentElement;
+    const indicator = row?.querySelector('[data-testid="source-indicator-facebook"]');
+    const label = row?.querySelector('[data-testid="source-row-facebook"] span.min-w-0.flex-1.truncate');
+    if (!indicator || !label || !row) {
+      return null;
+    }
+
+    const indicatorRect = indicator.getBoundingClientRect();
+    const labelRect = label.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    return {
+      indicatorLeft: indicatorRect.left,
+      indicatorRight: indicatorRect.right,
+      labelRight: labelRect.right,
+      rowRight: rowRect.right,
+    };
+  });
+
+  expect(facebookSourceIndicatorLayout).not.toBeNull();
+  expect(facebookSourceIndicatorLayout!.indicatorLeft).toBeGreaterThan(facebookSourceIndicatorLayout!.labelRight);
+  expect(facebookSourceIndicatorLayout!.indicatorRight).toBeLessThan(facebookSourceIndicatorLayout!.rowRight);
+
+  const sidebarIndicatorSizes = await page.evaluate(() => {
+    const settingsIndicator = document.querySelector('[data-testid="settings-provider-status-facebook"]');
+    const sourceIndicator = document.querySelector('[data-testid="source-indicator-facebook"]');
+    if (!settingsIndicator || !sourceIndicator) {
+      return null;
+    }
+
+    const settingsRect = settingsIndicator.getBoundingClientRect();
+    const sourceRect = sourceIndicator.getBoundingClientRect();
+    return {
+      settingsWidth: settingsRect.width,
+      settingsHeight: settingsRect.height,
+      sourceWidth: sourceRect.width,
+      sourceHeight: sourceRect.height,
+    };
+  });
+
+  expect(sidebarIndicatorSizes).not.toBeNull();
+  expect(Math.abs(sidebarIndicatorSizes!.settingsWidth - sidebarIndicatorSizes!.sourceWidth)).toBeLessThanOrEqual(1);
+  expect(Math.abs(sidebarIndicatorSizes!.settingsHeight - sidebarIndicatorSizes!.sourceHeight)).toBeLessThanOrEqual(1);
+});
+
+test("sidebar keeps friends and map under all, and LinkedIn falls back to source counts for status", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        itemCountByPlatform: Record<string, number>;
+        unreadCountByPlatform: Record<string, number>;
+      };
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    const current = store.getState();
+    store.setState({
+      liAuth: {
+        isAuthenticated: false,
+      },
+      itemCountByPlatform: {
+        ...current.itemCountByPlatform,
+        linkedin: 38,
+      },
+      unreadCountByPlatform: {
+        ...current.unreadCountByPlatform,
+        linkedin: 15,
+      },
+    });
+  });
+
+  const sourceRowOrder = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('[data-testid^="source-row-"]'))
+      .map((node) => node.getAttribute("data-testid"))
+      .slice(0, 8),
+  );
+
+  expect(sourceRowOrder).toEqual([
+    "source-row-all",
+    "source-row-friends",
+    "source-row-map",
+    "source-row-rss",
+    "source-row-x",
+    "source-row-facebook",
+    "source-row-instagram",
+    "source-row-linkedin",
+  ]);
+
+  await expect(page.getByTestId("source-indicator-linkedin")).toHaveAttribute("title", "Connected");
+  await page.getByTestId("source-row-linkedin").hover();
+  await page.getByTestId("source-menu-trigger-linkedin").click();
+  await expect(page.getByText("Connected").first()).toBeVisible();
+});
+
+test("provider sync button shows a spinner while that provider is active", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        providerSyncCounts: Record<string, number>;
+      };
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    const current = store.getState().providerSyncCounts;
+    store.setState({
+      xAuth: {
+        isAuthenticated: true,
+        cookies: { ct0: "ct0", authToken: "token" },
+      },
+      fbAuth: {
+        isAuthenticated: true,
+      },
+      providerSyncCounts: {
+        ...current,
+        x: 1,
+      },
+    });
+
+    window.__freed.debug?.()?.addEvent("change", "[X] sync started");
+    window.__freed.debug?.()?.addEvent("change", "[X] requesting home timeline");
+    window.__freed.debug?.()?.addEvent("change", "[X] response received: 12,345 bytes");
+  });
+
+  await openSettingsSection(page, "X");
+
+  await expect(page.getByTestId("provider-sync-action-x")).toContainText("Syncing");
+  await expect(page.getByTestId("provider-sync-action-x-spinner")).toBeVisible();
+  await expect(page.getByTestId("settings-provider-status-x")).toHaveAttribute("title", "Syncing");
+  await expect(page.getByTestId("provider-status-x")).toHaveAttribute("title", "Syncing");
+  await expect(page.getByTestId("source-indicator-x")).toHaveAttribute("title", "Syncing");
+  await expect(page.getByTestId("provider-activity-log-x")).toContainText("[X] sync started");
+  await expect(page.getByTestId("provider-activity-log-x")).toContainText(
+    "[X] requesting home timeline",
+  );
+
+  const sourceIndicatorSizes = await page.evaluate(() => {
+    const syncingIndicator = document.querySelector('[data-testid="source-indicator-x"]');
+    const healthyIndicator = document.querySelector('[data-testid="source-indicator-facebook"]');
+    if (!syncingIndicator || !healthyIndicator) {
+      return null;
+    }
+
+    const syncingRect = syncingIndicator.getBoundingClientRect();
+    const healthyRect = healthyIndicator.getBoundingClientRect();
+    return {
+      syncingWidth: syncingRect.width,
+      syncingHeight: syncingRect.height,
+      healthyWidth: healthyRect.width,
+      healthyHeight: healthyRect.height,
+    };
+  });
+
+  expect(sourceIndicatorSizes).not.toBeNull();
+  expect(Math.abs(sourceIndicatorSizes!.syncingWidth - sourceIndicatorSizes!.healthyWidth)).toBeLessThanOrEqual(1);
+  expect(Math.abs(sourceIndicatorSizes!.syncingHeight - sourceIndicatorSizes!.healthyHeight)).toBeLessThanOrEqual(1);
+});
+
+test("cooldown indicators stay amber while sync is active", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+
+  const debugStorePath =
+    "/@fs/Users/aubreyfalconer/dev/freed-provider-health/packages/ui/src/lib/debug-store.ts";
+
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async ({ debugStorePath }) => {
+    const now = Date.now();
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        providerSyncCounts: Record<string, number>;
+      };
+      setState: (partial: Record<string, unknown>) => void;
+    };
+
+    store.setState({
+      igAuth: {
+        isAuthenticated: true,
+        lastCaptureError: "Cooling down. Try again in ~1 minute.",
+      },
+      providerSyncCounts: {
+        ...store.getState().providerSyncCounts,
+        instagram: 1,
+      },
+      unreadCountByPlatform: {
+        instagram: 97,
+      },
+      itemCountByPlatform: {
+        instagram: 202,
+      },
+    });
+
+    const makeBuckets = () =>
+      Array.from({ length: 7 }, (_, index) => ({
+        dateKey: `2026-04-0${index + 1}`,
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+      }));
+    const makeHourlyBuckets = () =>
+      Array.from({ length: 24 }, (_, index) => ({
+        hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+      }));
+
+    const mod = await import(debugStorePath);
+    mod.useDebugStore.getState().setHealth({
+      providers: {
+        rss: { provider: "rss", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0 },
+        x: { provider: "x", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0 },
+        facebook: { provider: "facebook", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0 },
+        instagram: {
+          provider: "instagram",
+          status: "paused",
+          lastAttemptAt: now,
+          lastSuccessfulAt: now - 16 * 60 * 1000,
+          lastOutcome: "cooldown",
+          lastError: "Cooling down. Try again in ~1 minute.",
+          currentMessage: "Cooling down. Try again in ~1 minute.",
+          pause: {
+            pausedUntil: now + 60_000,
+            pauseReason: "Cooling down. Try again in ~1 minute.",
+            pauseLevel: 1,
+            detectedAt: now - 30_000,
+            detectedBy: "auto",
+          },
+          dailyBuckets: makeBuckets(),
+          hourlyBuckets: makeHourlyBuckets(),
+          latestAttempts: [],
+          totalSeen7d: 0,
+          totalAdded7d: 0,
+          totalBytes7d: 0,
+        },
+        linkedin: { provider: "linkedin", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0 },
+        gdrive: { provider: "gdrive", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0 },
+        dropbox: { provider: "dropbox", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0 },
+      },
+      failingRssFeeds: [],
+      updatedAt: now,
+    });
+  }, { debugStorePath });
+
+  await expect(page.getByTestId("source-indicator-instagram")).toHaveAttribute("title", "Cooling down");
+  await expect(page.getByTestId("source-indicator-instagram")).toContainText("😴");
+  await page.getByTestId("source-row-instagram").hover();
+  await expect(page.getByTestId("source-menu-trigger-instagram")).toBeVisible();
+  await page.getByTestId("source-menu-trigger-instagram").click();
+  await expect(page.getByText("Cooling down").first()).toBeVisible();
+});
+
+test("feeds source indicator reflects aggregate feed health and active syncing", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+
+  const debugStorePath =
+    "/@fs/Users/aubreyfalconer/dev/freed-provider-health/packages/ui/src/lib/debug-store.ts";
+
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async ({ debugStorePath }) => {
+    const now = Date.now();
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    const makeBuckets = () =>
+      Array.from({ length: 7 }, (_, index) => ({
+        dateKey: `2026-04-0${index + 1}`,
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+      }));
+    const makeHourlyBuckets = () =>
+      Array.from({ length: 24 }, (_, index) => ({
+        hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+      }));
+
+    store.setState({
+      feeds: {
+        "https://healthy.example/feed.xml": {
+          url: "https://healthy.example/feed.xml",
+          title: "Healthy Feed",
+          enabled: true,
+          trackUnread: true,
+        },
+        "https://broken.example/feed.xml": {
+          url: "https://broken.example/feed.xml",
+          title: "Broken Feed",
+          enabled: true,
+          trackUnread: true,
+        },
+      },
+      providerSyncCounts: {
+        rss: 1,
+        x: 0,
+        facebook: 0,
+        instagram: 0,
+        linkedin: 0,
+        gdrive: 0,
+        dropbox: 0,
+      },
+    });
+
+    const mod = await import(debugStorePath);
+    mod.useDebugStore.getState().setHealth({
+      providers: {
+        rss: {
+          provider: "rss",
+          status: "degraded",
+          lastAttemptAt: now,
+          lastSuccessfulAt: now - 60_000,
+          lastOutcome: "error",
+          lastError: "One feed failed",
+          currentMessage: "One feed failed",
+          pause: null,
+          dailyBuckets: makeBuckets(),
+          hourlyBuckets: makeHourlyBuckets(),
+          latestAttempts: [],
+          totalSeen7d: 0,
+          totalAdded7d: 0,
+          totalBytes7d: 0,
+        },
+        x: {
+          provider: "x", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0,
+        },
+        facebook: {
+          provider: "facebook", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0,
+        },
+        instagram: {
+          provider: "instagram", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0,
+        },
+        linkedin: {
+          provider: "linkedin", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0,
+        },
+        gdrive: {
+          provider: "gdrive", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0,
+        },
+        dropbox: {
+          provider: "dropbox", status: "idle", pause: null, dailyBuckets: makeBuckets(), hourlyBuckets: makeHourlyBuckets(), latestAttempts: [], totalSeen7d: 0, totalAdded7d: 0, totalBytes7d: 0,
+        },
+      },
+      failingRssFeeds: [
+        {
+          feedUrl: "https://broken.example/feed.xml",
+          feedTitle: "Broken Feed",
+          status: "failing",
+          outageSince: now - 48 * 60 * 60 * 1000,
+          failedAttemptsSinceSuccess: 4,
+          lastAttemptAt: now,
+          lastSuccessfulAt: now - 49 * 60 * 60 * 1000,
+          lastError: "404 Not Found",
+          dailyBuckets: makeBuckets(),
+          hourlyBuckets: makeHourlyBuckets(),
+          latestAttempts: [],
+        },
+      ],
+      updatedAt: now,
+    });
+  }, { debugStorePath });
+
+  await expect(page.getByTestId("source-indicator-rss")).toHaveAttribute("title", "Syncing");
+  await expect(page.getByTestId("source-menu-trigger-rss")).toBeVisible();
+
+  await page.evaluate(async ({ debugStorePath }) => {
+    const now = Date.now();
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    store.setState({
+      providerSyncCounts: {
+        rss: 0,
+        x: 0,
+        facebook: 0,
+        instagram: 0,
+        linkedin: 0,
+        gdrive: 0,
+        dropbox: 0,
+      },
+    });
+
+    const mod = await import(debugStorePath);
+    const current = mod.useDebugStore.getState().health;
+    mod.useDebugStore.getState().setHealth({
+      ...current,
+      updatedAt: now,
+      failingRssFeeds: [
+        {
+          feedUrl: "https://healthy.example/feed.xml",
+          feedTitle: "Healthy Feed",
+          status: "failing",
+          outageSince: now - 48 * 60 * 60 * 1000,
+          failedAttemptsSinceSuccess: 3,
+          lastAttemptAt: now,
+          lastSuccessfulAt: now - 49 * 60 * 60 * 1000,
+          lastError: "Timeout",
+          dailyBuckets: current.failingRssFeeds[0].dailyBuckets,
+          hourlyBuckets: current.failingRssFeeds[0].hourlyBuckets,
+          latestAttempts: [],
+        },
+        ...current.failingRssFeeds,
+      ],
+    });
+  }, { debugStorePath });
+
+  await expect(page.getByTestId("source-indicator-rss")).toHaveAttribute("title", "Sync issue");
+  await expect(page.getByTestId("source-indicator-rss")).toHaveClass(/bg-amber-500/);
+});
+
+test("source rows swap counts for an actions menu on hover", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      setState: (partial: Record<string, unknown>) => void;
+    };
+
+    store.setState({
+      xAuth: {
+        isAuthenticated: true,
+        cookies: { ct0: "ct0", authToken: "token" },
+        lastCaptureError: "Scrape timed out",
+      },
+      unreadCountByPlatform: {
+        x: 537,
+      },
+      itemCountByPlatform: {
+        x: 648,
+      },
+    });
+  });
+
+  const sourceRow = page.getByTestId("source-row-x");
+  const counts = page.getByTestId("source-counts-x");
+  const trigger = page.getByTestId("source-menu-trigger-x");
+  const indicator = page.getByTestId("source-indicator-slot-x");
+
+  await expect(page.getByTestId("source-menu-trigger-all")).toHaveCount(0);
+  await expect(counts).toBeVisible();
+  await expect(counts).toHaveClass(/opacity-100/);
+  await expect(trigger).toHaveClass(/opacity-0/);
+  await expect(trigger).toHaveClass(/pointer-events-none/);
+  await expect(indicator).toHaveClass(/transition-transform/);
+  await expect(counts).toHaveClass(/transition-all/);
+  await expect(trigger).toHaveClass(/transition-all/);
+
+  await sourceRow.hover();
+
+  await expect(counts).toHaveClass(/opacity-0/);
+  await expect(trigger).toHaveClass(/opacity-100/);
+
+  await trigger.click();
+
+  await expect(page.getByTestId("source-context-menu-x")).toBeVisible();
+  await expect(page.getByText("537 unread, 648 total")).toBeVisible();
+  await expect(page.getByText("Sync issue")).toBeVisible();
+  await expect(page.getByText("Scrape timed out")).toBeVisible();
+  await expect(page.getByTestId("source-menu-sync-x")).toBeVisible();
+  await page.getByTestId("source-menu-settings-x").click();
+
+  await expect(page.getByText("Settings").first()).toBeVisible();
+  await expect(page.getByText("X / Twitter").first()).toBeVisible();
+});
+
+test("source menu trigger toggles open and closed", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        providerSyncCounts: Record<string, number>;
+      };
+      setState: (partial: Record<string, unknown>) => void;
+    };
+
+    store.setState({
+      xAuth: {
+        isAuthenticated: true,
+        cookies: { ct0: "ct0", authToken: "token" },
+      },
+      unreadCountByPlatform: {
+        x: 537,
+      },
+      itemCountByPlatform: {
+        x: 648,
+      },
+    });
+  });
+
+  const sourceRow = page.getByTestId("source-row-x");
+  await sourceRow.hover();
+  const trigger = page.getByTestId("source-menu-trigger-x");
+  await trigger.click();
+
+  const menu = page.getByTestId("source-context-menu-x");
+  await expect(menu).toBeVisible();
+  await expect(menu.getByText("Connected")).toBeVisible();
+
+  await trigger.click();
+  await expect(menu).toHaveCount(0);
+});
+
+test("source menu stays open and acknowledges sync now while syncing is already active", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        providerSyncCounts: Record<string, number>;
+      };
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    store.setState({
+      xAuth: {
+        isAuthenticated: true,
+        cookies: { ct0: "ct0", authToken: "token" },
+      },
+      unreadCountByPlatform: {
+        x: 537,
+      },
+      itemCountByPlatform: {
+        x: 648,
+      },
+      providerSyncCounts: {
+        ...store.getState().providerSyncCounts,
+        x: 1,
+      },
+    });
+  });
+
+  const sourceRow = page.getByTestId("source-row-x");
+  await sourceRow.hover();
+  await page.getByTestId("source-menu-trigger-x").click();
+
+  const menu = page.getByTestId("source-context-menu-x");
+  await expect(menu).toBeVisible();
+  await expect(menu.getByText("537 unread, 648 total")).toBeVisible();
+  await expect(menu.getByText("Syncing")).toBeVisible();
+
+  await page.getByTestId("source-menu-sync-x").click();
+
+  await expect(menu).toBeVisible();
+  await expect(page.getByTestId("source-menu-sync-x")).toContainText("Syncing Initiated");
+  await expect(page.getByText("Syncing Initiated")).toHaveCount(2);
+});
+
+test("feeds settings surfaces one needs-review filter and bulk unsubscribe above the list", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+
+  const failingFeedUrl = "https://broken.example/feed.xml";
+  const healthyFeedUrl = "https://healthy.example/feed.xml";
+  const debugStorePath =
+    "/@fs/Users/aubreyfalconer/dev/freed-provider-health/packages/ui/src/lib/debug-store.ts";
+
+  await page.addInitScript(({ failingFeedUrl }) => {
+    const now = Date.now();
+    const makeBuckets = () =>
+      Array.from({ length: 7 }, (_, index) => ({
+        dateKey: `2026-04-0${index + 1}`,
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+      }));
+    const makeHourlyBuckets = () =>
+      Array.from({ length: 24 }, (_, index) => ({
+        hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+      }));
+
+    const providers = {
+      rss: {
+        provider: "rss",
+        status: "degraded",
+        lastAttemptAt: now,
+        lastSuccessfulAt: now - 60 * 60 * 1000,
+        lastOutcome: "error",
+        lastError: "404 Not Found",
+        currentMessage: "404 Not Found",
+        pause: null,
+        dailyBuckets: makeBuckets(),
+        hourlyBuckets: makeHourlyBuckets(),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      x: {
+        provider: "x",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: makeBuckets(),
+        hourlyBuckets: makeHourlyBuckets(),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      facebook: {
+        provider: "facebook",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: makeBuckets(),
+        hourlyBuckets: makeHourlyBuckets(),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      instagram: {
+        provider: "instagram",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: makeBuckets(),
+        hourlyBuckets: makeHourlyBuckets(),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      linkedin: {
+        provider: "linkedin",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: makeBuckets(),
+        hourlyBuckets: makeHourlyBuckets(),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      gdrive: {
+        provider: "gdrive",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: makeBuckets(),
+        hourlyBuckets: makeHourlyBuckets(),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+      dropbox: {
+        provider: "dropbox",
+        status: "idle",
+        lastAttemptAt: undefined,
+        lastSuccessfulAt: undefined,
+        lastOutcome: undefined,
+        lastError: undefined,
+        currentMessage: undefined,
+        pause: null,
+        dailyBuckets: makeBuckets(),
+        hourlyBuckets: makeHourlyBuckets(),
+        latestAttempts: [],
+        totalSeen7d: 0,
+        totalAdded7d: 0,
+        totalBytes7d: 0,
+      },
+    };
+
+    window.localStorage.setItem(
+      "__TAURI_MOCK_STORE__:sync-health.json",
+      JSON.stringify({
+        "provider-health": {
+          version: 1,
+          providers,
+          rssFeeds: {
+            [failingFeedUrl]: {
+              feedUrl: failingFeedUrl,
+              feedTitle: "Broken Feed",
+              status: "failing",
+              outageSince: now - 2 * 24 * 60 * 60 * 1000,
+              failedAttemptsSinceSuccess: 4,
+              lastAttemptAt: now,
+              lastSuccessfulAt: now - 3 * 24 * 60 * 60 * 1000,
+              lastError: "404 Not Found",
+              dailyBuckets: makeBuckets(),
+              hourlyBuckets: makeHourlyBuckets(),
+              latestAttempts: [],
+            },
+          },
+          updatedAt: now,
+        },
+      }),
+    );
+  }, { failingFeedUrl });
+
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async ({ debugStorePath, failingFeedUrl }) => {
+    const now = Date.now();
+    const makeBuckets = () =>
+      Array.from({ length: 7 }, (_, index) => ({
+        dateKey: `2026-04-0${index + 1}`,
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+      }));
+    const makeHourlyBuckets = () =>
+      Array.from({ length: 24 }, (_, index) => ({
+        hourKey: `2026-04-02T${String(index).padStart(2, "0")}`,
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+      }));
+    const mod = await import(debugStorePath);
+    mod.useDebugStore.getState().setHealth({
+      providers: {
+        rss: {
+          provider: "rss",
+          status: "degraded",
+          lastAttemptAt: now,
+          lastSuccessfulAt: now - 60 * 60 * 1000,
+          lastOutcome: "error",
+          lastError: "404 Not Found",
+          currentMessage: "404 Not Found",
+          pause: null,
+          dailyBuckets: makeBuckets(),
+          hourlyBuckets: makeHourlyBuckets(),
+          latestAttempts: [],
+          totalSeen7d: 0,
+          totalAdded7d: 0,
+          totalBytes7d: 0,
+        },
+        x: {
+          provider: "x",
+          status: "idle",
+          lastAttemptAt: undefined,
+          lastSuccessfulAt: undefined,
+          lastOutcome: undefined,
+          lastError: undefined,
+          currentMessage: undefined,
+          pause: null,
+          dailyBuckets: makeBuckets(),
+          hourlyBuckets: makeHourlyBuckets(),
+          latestAttempts: [],
+          totalSeen7d: 0,
+          totalAdded7d: 0,
+          totalBytes7d: 0,
+        },
+        facebook: {
+          provider: "facebook",
+          status: "idle",
+          lastAttemptAt: undefined,
+          lastSuccessfulAt: undefined,
+          lastOutcome: undefined,
+          lastError: undefined,
+          currentMessage: undefined,
+          pause: null,
+          dailyBuckets: makeBuckets(),
+          hourlyBuckets: makeHourlyBuckets(),
+          latestAttempts: [],
+          totalSeen7d: 0,
+          totalAdded7d: 0,
+          totalBytes7d: 0,
+        },
+        instagram: {
+          provider: "instagram",
+          status: "idle",
+          lastAttemptAt: undefined,
+          lastSuccessfulAt: undefined,
+          lastOutcome: undefined,
+          lastError: undefined,
+          currentMessage: undefined,
+          pause: null,
+          dailyBuckets: makeBuckets(),
+          hourlyBuckets: makeHourlyBuckets(),
+          latestAttempts: [],
+          totalSeen7d: 0,
+          totalAdded7d: 0,
+          totalBytes7d: 0,
+        },
+        linkedin: {
+          provider: "linkedin",
+          status: "idle",
+          lastAttemptAt: undefined,
+          lastSuccessfulAt: undefined,
+          lastOutcome: undefined,
+          lastError: undefined,
+          currentMessage: undefined,
+          pause: null,
+          dailyBuckets: makeBuckets(),
+          hourlyBuckets: makeHourlyBuckets(),
+          latestAttempts: [],
+          totalSeen7d: 0,
+          totalAdded7d: 0,
+          totalBytes7d: 0,
+        },
+        gdrive: {
+          provider: "gdrive",
+          status: "idle",
+          lastAttemptAt: undefined,
+          lastSuccessfulAt: undefined,
+          lastOutcome: undefined,
+          lastError: undefined,
+          currentMessage: undefined,
+          pause: null,
+          dailyBuckets: makeBuckets(),
+          hourlyBuckets: makeHourlyBuckets(),
+          latestAttempts: [],
+          totalSeen7d: 0,
+          totalAdded7d: 0,
+          totalBytes7d: 0,
+        },
+        dropbox: {
+          provider: "dropbox",
+          status: "idle",
+          lastAttemptAt: undefined,
+          lastSuccessfulAt: undefined,
+          lastOutcome: undefined,
+          lastError: undefined,
+          currentMessage: undefined,
+          pause: null,
+          dailyBuckets: makeBuckets(),
+          hourlyBuckets: makeHourlyBuckets(),
+          latestAttempts: [],
+          totalSeen7d: 0,
+          totalAdded7d: 0,
+          totalBytes7d: 0,
+        },
+      },
+      failingRssFeeds: [
+        {
+          feedUrl: failingFeedUrl,
+          feedTitle: "Broken Feed",
+          status: "failing",
+          outageSince: now - 2 * 24 * 60 * 60 * 1000,
+          failedAttemptsSinceSuccess: 4,
+          lastAttemptAt: now,
+          lastSuccessfulAt: now - 3 * 24 * 60 * 60 * 1000,
+          lastError: "404 Not Found",
+          dailyBuckets: makeBuckets(),
+          hourlyBuckets: makeHourlyBuckets(),
+          latestAttempts: [],
+        },
+      ],
+      updatedAt: now,
+    });
+  }, { debugStorePath, failingFeedUrl });
+
+  await page.evaluate(async ({ failingFeedUrl, healthyFeedUrl }) => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddRssFeed: (feed: unknown) => Promise<void>;
+    };
+
+    await automerge.docAddRssFeed({
+      url: failingFeedUrl,
+      title: "Broken Feed",
+      enabled: true,
+      trackUnread: false,
+    });
+    await automerge.docAddRssFeed({
+      url: healthyFeedUrl,
+      title: "Healthy Feed",
+      enabled: true,
+      trackUnread: false,
+    });
+  }, { failingFeedUrl, healthyFeedUrl });
+
+  await page.waitForFunction(
+    ([failingFeedUrl, healthyFeedUrl]) => {
+      const w = window as Record<string, unknown>;
+      const store = w.__FREED_STORE__ as
+        | {
+            getState: () => {
+              feeds: Record<string, unknown>;
+            };
+          }
+        | undefined;
+      const feeds = store?.getState().feeds ?? {};
+      return !!feeds[failingFeedUrl] && !!feeds[healthyFeedUrl];
+    },
+    [failingFeedUrl, healthyFeedUrl],
+  );
+
+  const settingsBtn = page.locator("button").filter({ hasText: /settings/i }).first();
+  await settingsBtn.click();
+  await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
+
+  await expect(page.getByRole("button", { name: "All (2)", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Needs review (1)", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Unsubscribe from all feeds (2)", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Needs review (1)", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Unsubscribe from shown feeds (1)", exact: true })).toBeVisible();
+  await expect(page.getByText("404 Not Found")).toBeVisible();
+  await expect(page.getByText("Broken Feed")).toBeVisible();
+  await expect(page.getByText("Likely dead")).toBeVisible();
 });

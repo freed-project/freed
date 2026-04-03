@@ -8,12 +8,27 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import type { SyncProviderSectionProps } from "@freed/ui/context";
+import { useDebugStore } from "@freed/ui/lib/debug-store";
+import {
+  getProviderStatusLabel,
+  getProviderStatusTone,
+} from "@freed/ui/lib/provider-status";
+import { ProviderStatusIndicator } from "@freed/ui/components/ProviderStatusIndicator";
 import { useAppStore } from "../lib/store";
 import { connectX, loadStoredCookies, disconnectX } from "../lib/x-auth";
 import { captureXTimeline } from "../lib/x-capture";
 import type { XSyncDiag } from "../lib/x-capture";
+import {
+  formatProviderReconnectMessage,
+  needsProviderReconnect,
+} from "../lib/provider-auth-errors";
 import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
 import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
+import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
+import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
+import { withProviderSyncing } from "../lib/store";
+import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
 
 // =============================================================================
 // Types
@@ -166,14 +181,17 @@ function useXLoginPoller(onReady: (ct0: string, authToken: string) => void) {
 // Main Component
 // =============================================================================
 
-export function XSettingsSection() {
+export function XSettingsSection({
+  surface = "settings",
+}: SyncProviderSectionProps) {
   const xAuth = useAppStore((s) => s.xAuth);
   const setXAuth = useAppStore((s) => s.setXAuth);
   const isLoading = useAppStore((s) => s.isLoading);
   const storeError = useAppStore((s) => s.error);
   const setError = useAppStore((s) => s.setError);
+  const syncing = useAppStore((s) => (s.providerSyncCounts.x ?? 0) > 0);
+  const healthSnapshot = useDebugStore((s) => s.health?.providers.x ?? null);
 
-  const [syncing, setSyncing] = useState(false);
   const [lastDiag, setLastDiag] = useState<XSyncDiag | null>(null);
 
   // Manual cookie entry (fallback)
@@ -184,15 +202,12 @@ export function XSettingsSection() {
   const { confirm, dialog } = useProviderRiskGate("x");
 
   const runSync = async (cookies: Parameters<typeof captureXTimeline>[0]) => {
-    setSyncing(true);
     setLastDiag(null);
     try {
-      const result = await captureXTimeline(cookies);
+      const result = await withProviderSyncing("x", () => captureXTimeline(cookies));
       setLastDiag(result.diag);
     } catch (err) {
       console.error("X timeline capture failed:", err);
-    } finally {
-      setSyncing(false);
     }
   };
 
@@ -246,15 +261,19 @@ export function XSettingsSection() {
 
   const handleSync = async () => {
     await confirm(async () => {
-      const cookies = loadStoredCookies();
+      const cookies = xAuth.cookies ?? loadStoredCookies();
       if (!cookies) return;
       setError(null);
+      if (healthSnapshot?.pause && healthSnapshot.pause.pausedUntil > Date.now()) {
+        await clearProviderPause("x");
+      }
       await runSync(cookies);
     });
   };
 
-  const handleDisconnect = () => {
+  const handleDisconnect = async () => {
     disconnectX();
+    await resetProviderPauseState("x");
     setXAuth({ isAuthenticated: false });
     setLastDiag(null);
     setError(null);
@@ -262,7 +281,19 @@ export function XSettingsSection() {
   };
 
   const syncError = storeError && xAuth.isAuthenticated ? storeError : null;
-
+  const authError = xAuth.lastCaptureError ?? syncError;
+  const needsReconnect = needsProviderReconnect(authError);
+  const statusTone = getProviderStatusTone({
+    isConnected: xAuth.isAuthenticated,
+    authError,
+    snapshot: healthSnapshot,
+  });
+  const statusLabel = getProviderStatusLabel({
+    isConnected: xAuth.isAuthenticated,
+    authError,
+    snapshot: healthSnapshot,
+  });
+  const isPaused = !!healthSnapshot?.pause && healthSnapshot.pause.pausedUntil > Date.now();
   // ----- Authenticated view -----
   if (xAuth.isAuthenticated) {
     const statusLine = (() => {
@@ -284,47 +315,68 @@ export function XSettingsSection() {
 
     return (
       <>
-      <div className="space-y-4">
-        <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
-          <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
-          <span className="text-sm text-[#a1a1aa]">Connected</span>
-        </div>
+      <SyncProviderSectionSurface surface={surface} title="X">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
+            <ProviderStatusIndicator
+              tone={statusTone}
+              syncing={syncing}
+              label={statusLabel}
+              testId="provider-status-x"
+              size="sm"
+            />
+            <span className="text-sm text-[#a1a1aa]">
+              {statusLabel}
+            </span>
+          </div>
 
-        <div className="flex gap-2">
-          <button
-            onClick={handleSync}
-            disabled={syncing || isLoading}
-            className="flex-1 text-sm px-3 py-2 rounded-xl bg-[#8b5cf6]/15 text-[#8b5cf6] hover:bg-[#8b5cf6]/25 disabled:opacity-50 transition-colors"
-          >
-            {syncing ? "Syncing..." : "Sync Now"}
-          </button>
-          <button
-            onClick={handleDisconnect}
-            className="text-sm px-3 py-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
-          >
-            Disconnect
-          </button>
-        </div>
+          <div className="flex gap-2">
+            <ProviderSyncActionButton
+              onClick={needsReconnect ? handleSignIn : handleSync}
+              busy={syncing}
+              busyLabel={needsReconnect ? "Reconnecting..." : isPaused ? "Resuming..." : "Syncing"}
+              disabled={
+                (!needsReconnect && (syncing || isLoading)) ||
+                (needsReconnect && isLoading)
+              }
+              testId="provider-sync-action-x"
+            >
+              {needsReconnect ? "Reconnect X" : isPaused ? "Resume Now" : "Sync Now"}
+            </ProviderSyncActionButton>
+            <button
+              onClick={handleDisconnect}
+              className="text-sm px-3 py-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+            >
+              Disconnect
+            </button>
+          </div>
 
-        {syncError && (
-          <p className="text-xs text-red-400 leading-relaxed">
-            {syncError.includes("401") || syncError.includes("403") || syncError.includes("auth")
-              ? "Your cookies have expired. Disconnect and reconnect with fresh cookies from x.com."
-              : syncError}
+          {needsReconnect && (
+            <p className="text-xs text-red-400 leading-relaxed">
+              {formatProviderReconnectMessage("X", authError)}
+            </p>
+          )}
+
+          {syncError && !needsReconnect && (
+            <p className="text-xs text-red-400 leading-relaxed">
+              {syncError.includes("401") || syncError.includes("403") || syncError.includes("auth")
+                ? "Your cookies have expired. Disconnect and reconnect with fresh cookies from x.com."
+                : syncError}
+            </p>
+          )}
+
+          <ProviderHealthSectionSummary provider="x" />
+
+          {statusLine}
+
+          {lastDiag && <DiagPanel diag={lastDiag} />}
+
+          <p className="text-xs text-[#52525b] leading-relaxed">
+            Freed syncs your home timeline every 30 minutes while the app is open.
+            Cookies expire periodically, reconnect when sync stops working.
           </p>
-        )}
-
-        <ProviderHealthSectionSummary provider="x" />
-
-        {statusLine}
-
-        {lastDiag && <DiagPanel diag={lastDiag} />}
-
-        <p className="text-xs text-[#52525b] leading-relaxed">
-          Freed syncs your home timeline every 30 minutes while the app is open.
-          Cookies expire periodically, reconnect when sync stops working.
-        </p>
-      </div>
+        </div>
+      </SyncProviderSectionSurface>
       {dialog}
       </>
     );
@@ -334,24 +386,26 @@ export function XSettingsSection() {
   if (poller.polling) {
     return (
       <>
-      <div className="space-y-4">
-        <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
-          <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
-          <span className="text-sm text-[#a1a1aa]">Waiting for sign-in...</span>
+      <SyncProviderSectionSurface surface={surface} title="X">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
+            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+            <span className="text-sm text-[#a1a1aa]">Waiting for sign-in...</span>
+          </div>
+
+          <p className="text-xs text-[#71717a] leading-relaxed">
+            Sign in to your X account in the window that just opened.
+            This page will update automatically once you're logged in.
+          </p>
+
+          <button
+            onClick={handleCancelLogin}
+            className="text-sm px-3 py-2 rounded-xl bg-white/5 text-[#71717a] hover:bg-white/10 transition-colors"
+          >
+            Cancel
+          </button>
         </div>
-
-        <p className="text-xs text-[#71717a] leading-relaxed">
-          Sign in to your X account in the window that just opened.
-          This page will update automatically once you're logged in.
-        </p>
-
-        <button
-          onClick={handleCancelLogin}
-          className="text-sm px-3 py-2 rounded-xl bg-white/5 text-[#71717a] hover:bg-white/10 transition-colors"
-        >
-          Cancel
-        </button>
-      </div>
+      </SyncProviderSectionSurface>
       {dialog}
       </>
     );
@@ -361,54 +415,56 @@ export function XSettingsSection() {
   if (showManual) {
     return (
       <>
-      <div className="space-y-4">
-        <div className="p-3 rounded-xl bg-white/5 text-xs text-[#a1a1aa] leading-relaxed space-y-2">
-          <p className="font-medium text-white">How to get your cookies:</p>
-          <ol className="list-decimal list-inside space-y-1">
-            <li>Log in to <span className="text-white font-medium">x.com</span> in Chrome</li>
-            <li>Open DevTools with <kbd className="px-1 py-0.5 bg-white/10 rounded text-[10px]">⌥⌘I</kbd></li>
-            <li>Click the <span className="text-white">Application</span> tab</li>
-            <li>Expand <span className="text-white">Cookies</span> and select <span className="font-mono text-[10px] text-[#c4b5fd]">https://x.com</span></li>
-            <li>Copy the value for <span className="font-mono text-[#c4b5fd]">ct0</span></li>
-            <li>Copy the value for <span className="font-mono text-[#c4b5fd]">auth_token</span></li>
-          </ol>
+      <SyncProviderSectionSurface surface={surface} title="X">
+        <div className="space-y-4">
+          <div className="p-3 rounded-xl bg-white/5 text-xs text-[#a1a1aa] leading-relaxed space-y-2">
+            <p className="font-medium text-white">How to get your cookies:</p>
+            <ol className="list-decimal list-inside space-y-1">
+              <li>Log in to <span className="text-white font-medium">x.com</span> in Chrome</li>
+              <li>Open DevTools with <kbd className="px-1 py-0.5 bg-white/10 rounded text-[10px]">⌥⌘I</kbd></li>
+              <li>Click the <span className="text-white">Application</span> tab</li>
+              <li>Expand <span className="text-white">Cookies</span> and select <span className="font-mono text-[10px] text-[#c4b5fd]">https://x.com</span></li>
+              <li>Copy the value for <span className="font-mono text-[#c4b5fd]">ct0</span></li>
+              <li>Copy the value for <span className="font-mono text-[#c4b5fd]">auth_token</span></li>
+            </ol>
+          </div>
+
+          <input
+            type="text"
+            placeholder="ct0 value"
+            value={ct0}
+            onChange={(e) => setCt0(e.target.value)}
+            className="w-full text-sm px-3 py-2 bg-white/5 border border-[rgba(255,255,255,0.1)] rounded-xl text-white placeholder-[#52525b] focus:outline-none focus:border-[#8b5cf6]/50"
+          />
+          <input
+            type="text"
+            placeholder="auth_token value"
+            value={authToken}
+            onChange={(e) => setAuthToken(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleManualConnect(); }}
+            className="w-full text-sm px-3 py-2 bg-white/5 border border-[rgba(255,255,255,0.1)] rounded-xl text-white placeholder-[#52525b] focus:outline-none focus:border-[#8b5cf6]/50"
+          />
+
+          {formError && <p className="text-xs text-red-400">{formError}</p>}
+
+          <div className="flex gap-2">
+            <button
+              data-testid="x-manual-connect"
+              onClick={handleManualConnect}
+              disabled={!ct0 || !authToken}
+              className="flex-1 text-sm px-3 py-2 rounded-xl bg-[#8b5cf6]/15 text-[#8b5cf6] hover:bg-[#8b5cf6]/25 disabled:opacity-40 transition-colors"
+            >
+              Connect
+            </button>
+            <button
+              onClick={() => { setShowManual(false); setFormError(""); }}
+              className="text-sm px-3 py-2 rounded-xl bg-white/5 text-[#71717a] hover:bg-white/10 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
-
-        <input
-          type="text"
-          placeholder="ct0 value"
-          value={ct0}
-          onChange={(e) => setCt0(e.target.value)}
-          className="w-full text-sm px-3 py-2 bg-white/5 border border-[rgba(255,255,255,0.1)] rounded-xl text-white placeholder-[#52525b] focus:outline-none focus:border-[#8b5cf6]/50"
-        />
-        <input
-          type="text"
-          placeholder="auth_token value"
-          value={authToken}
-          onChange={(e) => setAuthToken(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") handleManualConnect(); }}
-          className="w-full text-sm px-3 py-2 bg-white/5 border border-[rgba(255,255,255,0.1)] rounded-xl text-white placeholder-[#52525b] focus:outline-none focus:border-[#8b5cf6]/50"
-        />
-
-        {formError && <p className="text-xs text-red-400">{formError}</p>}
-
-        <div className="flex gap-2">
-          <button
-            data-testid="x-manual-connect"
-            onClick={handleManualConnect}
-            disabled={!ct0 || !authToken}
-            className="flex-1 text-sm px-3 py-2 rounded-xl bg-[#8b5cf6]/15 text-[#8b5cf6] hover:bg-[#8b5cf6]/25 disabled:opacity-40 transition-colors"
-          >
-            Connect
-          </button>
-          <button
-            onClick={() => { setShowManual(false); setFormError(""); }}
-            className="text-sm px-3 py-2 rounded-xl bg-white/5 text-[#71717a] hover:bg-white/10 transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
+      </SyncProviderSectionSurface>
       {dialog}
       </>
     );
@@ -417,24 +473,33 @@ export function XSettingsSection() {
   // ----- Default: not connected -----
   return (
     <>
-    <div className="space-y-4">
-      <p className="text-sm text-[#71717a] leading-relaxed">
-        Pull your home timeline into Freed. Sign in with your X account
-        to start syncing.
-      </p>
-      <button
-        onClick={handleSignIn}
-        className="w-full text-sm px-4 py-2.5 rounded-xl bg-[#8b5cf6]/15 text-[#8b5cf6] hover:bg-[#8b5cf6]/25 transition-colors"
-      >
-        Sign in to X
-      </button>
-      <button
-        onClick={() => setShowManual(true)}
-        className="text-xs text-[#52525b] hover:text-[#71717a] transition-colors"
-      >
-        Manual cookie setup
-      </button>
-    </div>
+    <SyncProviderSectionSurface surface={surface} title="X">
+      <div className="space-y-4">
+        <p className="text-sm text-[#71717a] leading-relaxed">
+          {needsReconnect
+            ? "Your X session is no longer valid. Sign in again to restore sync."
+            : "Pull your home timeline into Freed. Sign in with your X account to start syncing."}
+        </p>
+        <button
+          onClick={handleSignIn}
+          className="w-full text-sm px-4 py-2.5 rounded-xl bg-[#8b5cf6]/15 text-[#8b5cf6] hover:bg-[#8b5cf6]/25 transition-colors"
+        >
+          {needsReconnect ? "Reconnect X" : "Sign in to X"}
+        </button>
+        {needsReconnect && authError && (
+          <p className="text-xs text-amber-400 leading-relaxed">
+            {formatProviderReconnectMessage("X", authError)}
+          </p>
+        )}
+        <button
+          onClick={() => setShowManual(true)}
+          className="text-xs text-[#52525b] hover:text-[#71717a] transition-colors"
+        >
+          Manual cookie setup
+        </button>
+        <ProviderHealthSectionSummary provider="x" />
+      </div>
+    </SyncProviderSectionSurface>
     {dialog}
     </>
   );

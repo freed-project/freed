@@ -182,6 +182,7 @@ export async function fetchXTimeline(
   let rawResponse: string;
 
   try {
+    addDebugEvent("change", "[X] requesting home timeline");
     rawResponse = await xRequest(
       cookies,
       HomeLatestTimeline,
@@ -196,6 +197,10 @@ export async function fetchXTimeline(
 
   diag.rawResponseBytes = rawResponse.length;
   diag.rawResponsePreview = rawResponse.slice(0, 500);
+  addDebugEvent(
+    "change",
+    `[X] response received: ${diag.rawResponseBytes.toLocaleString()} bytes`,
+  );
 
   let parsed: unknown;
   try {
@@ -234,6 +239,10 @@ export async function fetchXTimeline(
   const unwrapped = parsed as TimelineResponse;
   const home = wrapped?.data?.home ?? unwrapped?.home;
   const instructions = home?.home_timeline_urt?.instructions ?? [];
+  addDebugEvent(
+    "change",
+    `[X] parsed ${instructions.length.toLocaleString()} timeline instruction${instructions.length === 1 ? "" : "s"}`,
+  );
 
   if (instructions.length === 0) {
     diag.errorStage = "instructions";
@@ -265,6 +274,10 @@ export async function fetchXTimeline(
   }
 
   diag.tweetsExtracted = tweets.length;
+  addDebugEvent(
+    "change",
+    `[X] extracted ${diag.tweetsExtracted.toLocaleString()} timeline tweet${diag.tweetsExtracted === 1 ? "" : "s"}`,
+  );
 
   if (tweets.length === 0) {
     // Not an error per se — the timeline may genuinely be empty.
@@ -281,9 +294,17 @@ export async function fetchXTimeline(
   }
 
   diag.itemsNormalized = normalized.length;
+  addDebugEvent(
+    "change",
+    `[X] normalized ${diag.itemsNormalized.toLocaleString()} item${diag.itemsNormalized === 1 ? "" : "s"}`,
+  );
 
   const items = deduplicateFeedItems(normalized);
   diag.itemsDeduplicated = items.length;
+  addDebugEvent(
+    "change",
+    `[X] deduplicated to ${diag.itemsDeduplicated.toLocaleString()} item${diag.itemsDeduplicated === 1 ? "" : "s"}`,
+  );
 
   return { items, diag };
 }
@@ -395,6 +416,7 @@ export async function captureXTimeline(
       };
     }
 
+    addDebugEvent("change", "[X] sync started");
     const result = await fetchXTimeline(cookies, requester);
 
     if (result.diag.errorStage) {
@@ -431,6 +453,10 @@ export async function captureXTimeline(
     }
 
     if (result.items.length > 0) {
+      addDebugEvent(
+        "change",
+        `[X] writing ${result.items.length.toLocaleString()} candidate item${result.items.length === 1 ? "" : "s"} to the library`,
+      );
       const before = store.items.filter((i) => i.platform === "x").length;
       await store.addItems(result.items);
       const after = useAppStore.getState().items.filter((i) => i.platform === "x").length;

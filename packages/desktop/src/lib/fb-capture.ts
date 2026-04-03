@@ -272,6 +272,7 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
   store.setError(null);
 
   try {
+    addDebugEvent("change", "[FB] sync started");
     try {
       await captureFbGroups();
     } catch (error) {
@@ -308,6 +309,10 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       const excludedGroupIds =
         useAppStore.getState().preferences.fbCapture?.excludedGroupIds ?? {};
       const filteredItems = filterExcludedGroups(result.items, excludedGroupIds);
+      addDebugEvent(
+        "change",
+        `[FB] writing ${filteredItems.length.toLocaleString()} candidate item${filteredItems.length === 1 ? "" : "s"} to the library`,
+      );
       const before = store.items.filter((i) => i.platform === "facebook").length;
       await store.addItems(filteredItems);
       const after = useAppStore

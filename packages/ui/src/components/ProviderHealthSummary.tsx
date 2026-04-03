@@ -1,9 +1,12 @@
+import { useEffect, useState, type ReactNode } from "react";
 import type {
   HealthDailyBucket,
   HealthHourlyBucket,
+  ProviderHealthAttempt,
   HealthProviderId,
   ProviderHealthSnapshot,
 } from "../lib/debug-store.js";
+import { getHealthStatusLabel } from "../lib/provider-status.js";
 
 export function providerHealthLabel(provider: HealthProviderId): string {
   return {
@@ -42,22 +45,42 @@ function barHeight(value: number, maxValue: number): string {
   return `${Math.max(8, Math.round((value / maxValue) * 100))}%`;
 }
 
+export type HealthChartRange = "daily" | "hourly";
+
+export function DurationSelect({
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  value: HealthChartRange;
+  onChange: (value: HealthChartRange) => void;
+  ariaLabel: string;
+}) {
+  return (
+    <select
+      value={value}
+      aria-label={ariaLabel}
+      onChange={(event) => onChange(event.target.value as HealthChartRange)}
+      className="shrink-0 bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded-lg text-xs text-white px-2.5 py-1.5 focus:outline-none focus:border-[#8b5cf6]/50 cursor-pointer"
+    >
+      <option value="daily">Last 7 days</option>
+      <option value="hourly">Last 24 hours</option>
+    </select>
+  );
+}
+
 export function HealthStatusBadge({ snapshot }: { snapshot: ProviderHealthSnapshot }) {
   const styles = {
     idle: "bg-white/5 text-[#71717a]",
     healthy: "bg-green-500/15 text-green-400",
     degraded: "bg-amber-500/15 text-amber-400",
-    paused: "bg-red-500/15 text-red-400",
+    paused: "bg-amber-500/15 text-amber-400",
   }[snapshot.status];
 
   const label =
-    snapshot.status === "paused"
+    snapshot.status === "paused" && snapshot.lastOutcome !== "cooldown"
       ? formatPauseUntil(snapshot.pause?.pausedUntil)
-      : snapshot.status === "healthy"
-        ? "Healthy"
-        : snapshot.status === "degraded"
-          ? "Needs attention"
-          : "Idle";
+      : getHealthStatusLabel(snapshot);
 
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${styles}`}>
@@ -127,69 +150,168 @@ export function VolumeBars({
   );
 }
 
+function RecentAttemptsList({
+  attempts,
+}: {
+  attempts: ProviderHealthAttempt[];
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] uppercase tracking-widest text-[#52525b]">
+        Recent Attempts
+      </p>
+      {attempts.length === 0 ? (
+        <p className="text-xs text-[#71717a]">No attempts recorded yet.</p>
+      ) : (
+        attempts.slice(0, 5).map((attempt) => (
+          <div key={attempt.id} className="rounded-lg bg-white/5 p-2 text-xs">
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-mono text-[#a1a1aa]">
+                {new Date(attempt.finishedAt).toLocaleTimeString([], {
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}
+              </span>
+              <span className="text-[#71717a]">{attempt.outcome}</span>
+            </div>
+            <p className="text-[#52525b]">
+              pulled {attempt.itemsSeen.toLocaleString()}, added {attempt.itemsAdded.toLocaleString()}
+            </p>
+            {attempt.reason && (
+              <p className="text-amber-400">{attempt.reason}</p>
+            )}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
 export function ProviderHealthSummary({
   snapshot,
-  hourly = false,
+  defaultRange = "daily",
+  showRangeSelector = true,
+  showRecentAttempts = false,
+  framed = true,
+  showProviderInfo = true,
+  actions,
 }: {
   snapshot: ProviderHealthSnapshot;
-  hourly?: boolean;
+  defaultRange?: HealthChartRange;
+  showRangeSelector?: boolean;
+  showRecentAttempts?: boolean;
+  framed?: boolean;
+  showProviderInfo?: boolean;
+  actions?: ReactNode;
 }) {
-  const bars = hourly ? snapshot.hourlyBuckets : snapshot.dailyBuckets;
-  return (
-    <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+  const [selectedRange, setSelectedRange] = useState<HealthChartRange>(defaultRange);
+
+  useEffect(() => {
+    setSelectedRange(defaultRange);
+  }, [defaultRange]);
+
+  const showingHourly = selectedRange === "hourly";
+  const bars = showingHourly ? snapshot.hourlyBuckets : snapshot.dailyBuckets;
+  const totalSeen = bars.reduce((sum, bucket) => sum + bucket.itemsSeen, 0);
+  const totalAdded = bars.reduce((sum, bucket) => sum + bucket.itemsAdded, 0);
+  const rangeLabel = showingHourly ? "24h" : "7d";
+  const showCurrentMessage =
+    !!snapshot.currentMessage &&
+    snapshot.status !== "healthy" &&
+    snapshot.currentMessage !== snapshot.lastError;
+
+  const content = (
+    <>
       <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-white">
-            {providerHealthLabel(snapshot.provider)}
-          </p>
-          <p className="text-[11px] text-[#71717a]">
-            Last success {formatHealthRelative(snapshot.lastSuccessfulAt)}
-          </p>
+        {showProviderInfo ? (
+          <div>
+            <p className="text-sm font-medium text-white">
+              {providerHealthLabel(snapshot.provider)}
+            </p>
+            <p className="text-[11px] text-[#71717a]">
+              Last success {formatHealthRelative(snapshot.lastSuccessfulAt)}
+            </p>
+          </div>
+        ) : (
+          <div className="min-w-0">
+            <p className="text-[11px] text-[#71717a]">
+              Last success {formatHealthRelative(snapshot.lastSuccessfulAt)}
+            </p>
+          </div>
+        )}
+        <div className="flex items-center gap-2">
+          {showRangeSelector && (
+            <DurationSelect
+              value={selectedRange}
+              onChange={setSelectedRange}
+              ariaLabel={`${providerHealthLabel(snapshot.provider)} duration`}
+            />
+          )}
+          <HealthStatusBadge snapshot={snapshot} />
         </div>
-        <HealthStatusBadge snapshot={snapshot} />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
         <VolumeBars
           buckets={bars}
           metric="itemsSeen"
-          title={hourly ? "Pulled Per Hour" : "Pulled Per Day"}
+          title={showingHourly ? "Pulled Per Hour" : "Pulled Per Day"}
         />
         <VolumeBars
           buckets={bars}
           metric="itemsAdded"
-          title={hourly ? "Added Per Hour" : "Added Per Day"}
+          title={showingHourly ? "Added Per Hour" : "Added Per Day"}
         />
       </div>
 
       <div className="space-y-1">
         <p className="text-[10px] uppercase tracking-widest text-[#52525b]">
-          Reliability
+          Reliability (7d)
         </p>
         <ReliabilityBars dailyBuckets={snapshot.dailyBuckets} />
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-xs">
         <div className="rounded-lg bg-white/5 p-2">
-          <p className="text-[#52525b]">Seen (7d)</p>
+          <p className="text-[#52525b]">Seen ({rangeLabel})</p>
           <p className="font-mono text-[#a1a1aa]">
-            {snapshot.totalSeen7d.toLocaleString()}
+            {totalSeen.toLocaleString()}
           </p>
         </div>
         <div className="rounded-lg bg-white/5 p-2">
-          <p className="text-[#52525b]">Added (7d)</p>
+          <p className="text-[#52525b]">Added ({rangeLabel})</p>
           <p className="font-mono text-[#a1a1aa]">
-            {snapshot.totalAdded7d.toLocaleString()}
+            {totalAdded.toLocaleString()}
           </p>
         </div>
       </div>
 
-      {snapshot.currentMessage && (
+      {showRecentAttempts && showingHourly && (
+        <RecentAttemptsList attempts={snapshot.latestAttempts} />
+      )}
+
+      {actions && (
+        <div className="flex flex-wrap gap-2">
+          {actions}
+        </div>
+      )}
+
+      {showCurrentMessage && (
         <p className="text-xs text-[#71717a]">{snapshot.currentMessage}</p>
       )}
       {snapshot.lastError && (
         <p className="text-xs text-amber-400">{snapshot.lastError}</p>
       )}
+    </>
+  );
+
+  if (!framed) {
+    return <div className="space-y-3">{content}</div>;
+  }
+
+  return (
+    <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+      {content}
     </div>
   );
 }
