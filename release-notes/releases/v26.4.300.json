@@ -2,7 +2,7 @@
   "tag": "v26.4.300",
   "version": "26.4.300",
   "dayKey": "26.4.3",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-03T20:06:30.433Z",
   "model": "heuristic",
@@ -24,10 +24,14 @@
     ]
   },
   "release": {
-    "deck": "Changelog release notes and cards and backfill concise historical changelog notes",
+    "deck": "Sharper release messaging",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Release notes and changelog cards now use cleaner reviewed summaries",
+      "Historical releases now keep concise daily rollups without losing major highlights",
+      "Freed Desktop update prompts now show a cleaner single-line release summary"
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.300\n\nChangelog release notes and cards and backfill concise historical changelog notes\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.300\n\nSharper release messaging\n\n### Fixes\n\n- Release notes and changelog cards now use cleaner reviewed summaries\n- Historical releases now keep concise daily rollups without losing major highlights\n- Freed Desktop update prompts now show a cleaner single-line release summary\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
