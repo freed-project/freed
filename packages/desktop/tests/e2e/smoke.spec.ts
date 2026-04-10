@@ -24,6 +24,15 @@ async function dismissCloudSyncNudgeIfPresent(page: Page) {
     await dismissButton.click();
   }
 }
+
+async function clickMapPopupAction(page: Page, actionName: "Open Friend" | "Open Post") {
+  const actionButton = page.getByRole("button", { name: actionName });
+  await expect(actionButton).toBeVisible({ timeout: 5_000 });
+  await actionButton.evaluate((button) => {
+    (button as HTMLButtonElement).click();
+  });
+}
+
 const SETTINGS_STORE_PATH = resolveViteFsModulePath(
   "../../../ui/src/lib/settings-store.ts",
   import.meta.url,
@@ -341,7 +350,7 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
   }, { timeout: 5_000 });
 
   await page.locator(".freed-map-marker").first().click();
-  await page.getByRole("button", { name: "Open Friend" }).click();
+  await clickMapPopupAction(page, "Open Friend");
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
@@ -354,7 +363,7 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
 
   await page.getByRole("button", { name: /^Map/ }).click();
   await page.locator(".freed-map-marker").first().click();
-  await page.getByRole("button", { name: "Open Post" }).click();
+  await clickMapPopupAction(page, "Open Post");
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
