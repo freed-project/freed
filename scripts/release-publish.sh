@@ -61,7 +61,12 @@ done < <("${NODE_BIN}" -e "
   }
 " "$RELEASE_FILE")
 
-"${NODE_BIN}" scripts/validate-release-notes.mjs "$RELEASE_FILE" "${PRIOR_RELEASE_FILES[@]}"
+VALIDATE_ARGS=("$RELEASE_FILE")
+if [[ ${#PRIOR_RELEASE_FILES[@]} -gt 0 ]]; then
+  VALIDATE_ARGS+=("${PRIOR_RELEASE_FILES[@]}")
+fi
+
+"${NODE_BIN}" scripts/validate-release-notes.mjs "${VALIDATE_ARGS[@]}"
 
 git tag -a "${TAG}" -m "Release ${TAG}"
 
