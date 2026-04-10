@@ -23,7 +23,7 @@ export function MapView() {
     [markers, selectedFriendId]
   );
   return (
-    <div className="h-full overflow-hidden bg-[#08070d]">
+    <div className="app-theme-shell h-full overflow-hidden">
       <MapSurface
         markers={markers}
         focusedMarkerKey={focusedMarker?.key ?? null}

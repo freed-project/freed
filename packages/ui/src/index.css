@@ -464,6 +464,76 @@ body {
   box-shadow: 0 0 0 1px var(--theme-focus-ring);
 }
 
+.theme-link {
+  color: var(--theme-accent-secondary);
+  transition:
+    color 0.18s ease,
+    opacity 0.18s ease;
+}
+
+.theme-link:hover {
+  opacity: 0.82;
+}
+
+.theme-chip {
+  border: 1px solid var(--theme-border-subtle);
+  background: color-mix(in oklab, var(--theme-bg-surface) 88%, transparent);
+  color: var(--theme-text-secondary);
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    color 0.18s ease;
+}
+
+.theme-chip:hover {
+  border-color: var(--theme-border-strong);
+  background: color-mix(in oklab, var(--theme-bg-surface) 94%, transparent);
+  color: var(--theme-text-primary);
+}
+
+.theme-chip-active {
+  border-color: var(--theme-border-strong);
+  background: color-mix(in oklab, var(--theme-accent-secondary) 16%, var(--theme-bg-surface));
+  color: var(--theme-text-primary);
+  box-shadow: var(--theme-glow-sm);
+}
+
+.theme-section {
+  background: color-mix(in oklab, var(--theme-bg-surface) 94%, transparent);
+  border-color: var(--theme-border-subtle);
+}
+
+.theme-warning-panel {
+  border: 1px solid rgb(245 158 11 / 0.22);
+  background:
+    linear-gradient(180deg, rgb(245 158 11 / 0.12), transparent),
+    color-mix(in oklab, var(--theme-bg-surface) 94%, transparent);
+}
+
+.theme-map-grid {
+  background-image:
+    linear-gradient(rgb(var(--theme-accent-secondary-rgb) / 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--theme-accent-secondary-rgb) / 0.08) 1px, transparent 1px);
+}
+
+.theme-map-grid-dense {
+  background-image:
+    linear-gradient(rgb(var(--theme-accent-secondary-rgb) / 0.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--theme-accent-secondary-rgb) / 0.12) 1px, transparent 1px);
+}
+
+.theme-map-fade-top {
+  background: linear-gradient(180deg, rgb(var(--theme-accent-secondary-rgb) / 0.12), transparent);
+}
+
+.theme-map-fade-bottom {
+  background: linear-gradient(
+    0deg,
+    color-mix(in oklab, var(--theme-bg-root) 96%, transparent),
+    transparent
+  );
+}
+
 ::selection {
   background: var(--theme-selection);
   color: var(--theme-button-primary-text);

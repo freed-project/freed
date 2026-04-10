@@ -205,6 +205,7 @@ Trackpad pinch zoom is now captured by the Friends graph itself, so zooming the 
 Friend captions in the graph now use pill backgrounds and label-aware spacing, so names stay readable instead of collapsing into an overlapping word soup.
 Friend avatars now share the same lighter purple tint treatment across the Friends graph and map markers, with a user-configurable tint control in Settings.
 Map popovers now use a wider card layout and deliberately omit the old MapLibre tail, so place names and actions fit cleanly without the popup looking like a speech bubble from a cheaper app.
+Friends and Map now consume the same shared theme tokens, button treatments, shell backgrounds, and surface recipes as the rest of Freed, so new themes like Neon, Midas, Vesper, Ember, and Porcelain land consistently across the graph, sidebars, popovers, mini-map cards, editor, and contact-sync flows.
 
 ---
 
@@ -263,6 +264,7 @@ Map popovers now use a wider card layout and deliberately omit the old MapLibre 
 - [x] `maplibre-gl` installed and map view live in PWA and Freed Desktop
 - [x] Friend detail panel shows a last-seen mini map card when location history exists
 - [x] Shared map surface uses a dark futuristic theme across live and fallback rendering
+- [x] Friends and Map inherit the shared multi-theme design system instead of hardcoded one-off gradients
 - [x] Sample data refresh rebuilds a 25-friend social graph with linked profiles and recent map activity
 - [x] Sidebar shows live counts for Friends and recent friend location updates on Map
 - [ ] macOS native contact picker (CNContactStore)

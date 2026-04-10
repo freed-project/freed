@@ -209,6 +209,8 @@ Two Vercel projects, both auto-deploy on push to `main` with preview deploys on 
 | `freed`      | `website/`       | [freed.wtf](https://freed.wtf)                   |
 | `freed-pwa`  | `packages/pwa/`  | [app.freed.wtf](https://app.freed.wtf)           |
 
+Manual preview deploys for this monorepo now go through `./scripts/vercel-deploy-preview.sh website` and `./scripts/vercel-deploy-preview.sh pwa`. The helper stages a temporary monorepo slice with shared workspace packages before uploading to Vercel, which avoids the broken `npm install` failures caused by raw subdirectory deploys.
+
 ---
 
 ## Key Decisions

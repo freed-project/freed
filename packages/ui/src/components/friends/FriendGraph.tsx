@@ -52,9 +52,18 @@ const MAX_SCALE = 2.4;
 const FIT_PADDING = 72;
 const DEFAULT_HEIGHT = 560;
 const CONTROL_BASE =
-  "inline-flex items-center gap-2 rounded-lg border border-white/10 bg-[#121212]/88 px-3 py-1.5 text-xs text-[#a1a1aa] transition-colors hover:border-[#8b5cf6]/30 hover:text-white";
+  "btn-secondary inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs";
 
 const avatarCache = new Map<string, HTMLImageElement | null>();
+
+interface FriendGraphTheme {
+  surfaceFill: string;
+  textPrimary: string;
+  labelFillStart: string;
+  labelFillEnd: string;
+  labelShadow: string;
+  labelBorderSoft: string;
+}
 
 function loadAvatar(url: string): HTMLImageElement | null {
   if (avatarCache.has(url)) return avatarCache.get(url) ?? null;
@@ -68,6 +77,29 @@ function loadAvatar(url: string): HTMLImageElement | null {
 
 function clampScale(scale: number): number {
   return Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+}
+
+function readFriendGraphTheme(): FriendGraphTheme {
+  if (typeof document === "undefined") {
+    return {
+      surfaceFill: "rgba(15,15,20,0.96)",
+      textPrimary: "rgba(255,255,255,0.92)",
+      labelFillStart: "rgba(24,17,32,0.94)",
+      labelFillEnd: "rgba(15,15,20,0.96)",
+      labelShadow: "rgba(0,0,0,0.28)",
+      labelBorderSoft: "rgba(255,255,255,0.08)",
+    };
+  }
+
+  const styles = getComputedStyle(document.documentElement);
+  return {
+    surfaceFill: styles.getPropertyValue("--theme-bg-surface").trim() || "rgba(15,15,20,0.96)",
+    textPrimary: styles.getPropertyValue("--theme-text-primary").trim() || "rgba(255,255,255,0.92)",
+    labelFillStart: styles.getPropertyValue("--theme-bg-elevated").trim() || "rgba(24,17,32,0.94)",
+    labelFillEnd: styles.getPropertyValue("--theme-bg-surface").trim() || "rgba(15,15,20,0.96)",
+    labelShadow: styles.getPropertyValue("--theme-focus-ring").trim() || "rgba(0,0,0,0.28)",
+    labelBorderSoft: styles.getPropertyValue("--theme-border-subtle").trim() || "rgba(255,255,255,0.08)",
+  };
 }
 
 function graphBounds(nodes: FriendLayoutNode[]) {
@@ -124,7 +156,8 @@ function drawNode(
   node: FriendLayoutNode,
   selected: boolean,
   now: number,
-  avatarPalette: FriendAvatarPalette
+  avatarPalette: FriendAvatarPalette,
+  graphTheme: FriendGraphTheme
 ): void {
   const x = node.x ?? 0;
   const y = node.y ?? 0;
@@ -139,7 +172,7 @@ function drawNode(
 
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(15,15,20,0.96)";
+  ctx.fillStyle = graphTheme.surfaceFill;
   ctx.fill();
   ctx.restore();
 
@@ -182,7 +215,7 @@ function drawNode(
     ctx.restore();
     ctx.save();
     ctx.globalAlpha = node.opacity;
-    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    ctx.fillStyle = graphTheme.textPrimary;
     ctx.font = `600 ${Math.max(10, radius * 0.52)}px system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -216,7 +249,7 @@ function drawNode(
   ctx.globalAlpha = 0.92;
   const labelY = y + radius + LABEL_OFFSET_Y;
   const labelX = x - node.labelWidth / 2;
-  ctx.shadowColor = selected ? "rgba(91,33,182,0.32)" : "rgba(0,0,0,0.28)";
+  ctx.shadowColor = selected ? avatarPalette.selectionOuterStroke : graphTheme.labelShadow;
   ctx.shadowBlur = 10;
   drawRoundedRect(
     ctx,
@@ -227,15 +260,15 @@ function drawNode(
     LABEL_PILL_RADIUS
   );
   const labelFill = ctx.createLinearGradient(labelX, labelY, labelX, labelY + LABEL_PILL_HEIGHT);
-  labelFill.addColorStop(0, selected ? "rgba(41,17,71,0.96)" : "rgba(24,17,32,0.94)");
-  labelFill.addColorStop(1, selected ? "rgba(30,13,54,0.98)" : "rgba(15,15,20,0.96)");
+  labelFill.addColorStop(0, selected ? avatarPalette.selectionOuterStroke : graphTheme.labelFillStart);
+  labelFill.addColorStop(1, selected ? avatarPalette.gradientEnd : graphTheme.labelFillEnd);
   ctx.fillStyle = labelFill;
   ctx.fill();
   ctx.shadowBlur = 0;
-  ctx.strokeStyle = selected ? avatarPalette.labelBorder : "rgba(255,255,255,0.08)";
+  ctx.strokeStyle = selected ? avatarPalette.labelBorder : graphTheme.labelBorderSoft;
   ctx.lineWidth = 1;
   ctx.stroke();
-  ctx.fillStyle = "rgba(255,255,255,0.9)";
+  ctx.fillStyle = graphTheme.textPrimary;
   ctx.font = `${Math.max(11, radius * 0.36)}px system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -268,6 +301,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     () => createFriendAvatarPalette(avatarTint),
     [avatarTint]
   );
+  const graphTheme = readFriendGraphTheme();
 
   const layoutSignature = useMemo(
     () => createLayoutSignature(friends, feedItems),
@@ -306,7 +340,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     ctx.translate(transform.x, transform.y);
     ctx.scale(transform.scale, transform.scale);
     for (const node of nodesRef.current) {
-      drawNode(ctx, node, node.friend.id === selectedFriendId, now, avatarPalette);
+      drawNode(ctx, node, node.friend.id === selectedFriendId, now, avatarPalette, graphTheme);
     }
     ctx.restore();
   }, [avatarPalette, selectedFriendId]);
@@ -561,9 +595,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   }, [findHitNode, fitAll, focusFriend]);
 
   return (
-    <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-[#0d0d10]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(91,33,182,0.12),rgba(13,13,16,0)_32%)]" />
-      <div className="pointer-events-none absolute inset-0 opacity-[0.08] [background-image:linear-gradient(rgba(167,139,250,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(167,139,250,0.08)_1px,transparent_1px)] [background-size:96px_96px]" />
+    <div ref={containerRef} className="app-theme-shell relative h-full w-full overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgb(var(--theme-accent-secondary-rgb)/0.12),transparent_32%)]" />
+      <div className="theme-map-grid pointer-events-none absolute inset-0 opacity-[0.08] [background-size:96px_96px]" />
 
       <div className="absolute left-4 top-4 z-10 flex items-center gap-2">
         <button

@@ -61,7 +61,7 @@ function CareStars({ level }: { level: 1 | 2 | 3 | 4 | 5 }) {
         <svg
           key={i}
           viewBox="0 0 12 12"
-          className={`w-3 h-3 ${i <= level ? "text-amber-400" : "text-[#2a2538]"}`}
+          className={`w-3 h-3 ${i <= level ? "text-amber-400" : "text-[color:var(--theme-border-subtle)]"}`}
           fill="currentColor"
           aria-hidden
         >
@@ -88,7 +88,7 @@ function TimelineItem({
 
   return (
     <button
-      className="group w-full border-b border-[#8b5cf6]/8 px-4 py-3 text-left transition-colors hover:bg-[#8b5cf6]/6 last:border-0"
+      className="group w-full border-b border-[color:var(--theme-border-subtle)] px-4 py-3 text-left transition-colors hover:bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.08)] last:border-0"
       onClick={onClick}
     >
       <div className="flex items-start gap-2">
@@ -133,7 +133,7 @@ function ReachOutPopover({ onLog, onCancel }: ReachOutPopoverProps) {
   const [notes, setNotes] = useState("");
 
   return (
-    <div className="mx-4 mb-4 rounded-xl border border-[#8b5cf6]/14 bg-[linear-gradient(180deg,rgba(31,24,46,0.9),rgba(17,17,24,0.98))] px-4 py-3 shadow-lg">
+    <div className="glass-card mx-4 mb-4 rounded-xl px-4 py-3">
       <p className="text-sm font-medium text-text-primary mb-3">Log a reach-out</p>
       <div className="flex flex-wrap gap-1.5 mb-3">
         {CHANNELS.map((c) => (
@@ -141,8 +141,8 @@ function ReachOutPopover({ onLog, onCancel }: ReachOutPopoverProps) {
             key={c.id}
             className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
               channel === c.id
-                ? "border-[#8b5cf6] bg-[#8b5cf6]/20 text-[#c4b5fd]"
-                : "border-[#8b5cf6]/12 text-text-secondary hover:border-[#8b5cf6]/24"
+                ? "theme-chip-active"
+                : "theme-chip"
             }`}
             onClick={() => setChannel(c.id)}
           >
@@ -151,7 +151,7 @@ function ReachOutPopover({ onLog, onCancel }: ReachOutPopoverProps) {
         ))}
       </div>
       <textarea
-        className="mb-3 w-full rounded-lg border border-[#8b5cf6]/14 bg-[linear-gradient(180deg,rgba(17,15,25,0.94),rgba(12,11,18,0.98))] px-3 py-2 text-sm text-text-primary placeholder:text-text-secondary resize-none focus:border-[#8b5cf6]/40 focus:outline-none"
+        className="theme-input mb-3 w-full resize-none rounded-lg px-3 py-2 text-sm"
         placeholder="Optional note..."
         rows={2}
         value={notes}
@@ -165,7 +165,7 @@ function ReachOutPopover({ onLog, onCancel }: ReachOutPopoverProps) {
           Cancel
         </button>
         <button
-          className="px-3 py-1.5 text-xs font-medium bg-[#8b5cf6] hover:bg-[#7c3aed] text-white rounded-lg transition-colors"
+          className="btn-primary rounded-lg px-3 py-1.5 text-xs"
           onClick={() =>
             onLog({
               loggedAt: Date.now(),
@@ -217,9 +217,9 @@ export function FriendDetailPanel({
   };
 
   return (
-    <div className="flex h-full flex-col bg-[#0f0f0f]">
+    <div className="flex h-full flex-col bg-[color:var(--theme-bg-deep)]">
       {/* Identity card */}
-      <div className="shrink-0 border-b border-[#8b5cf6]/10 bg-[linear-gradient(180deg,rgba(24,20,34,0.98),rgba(15,14,22,0.98))] px-4 py-4">
+      <div className="shrink-0 border-b border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_94%,transparent)] px-4 py-4">
         <div className="flex items-start gap-3">
           {/* Avatar */}
           <FriendAvatar
@@ -250,7 +250,7 @@ export function FriendDetailPanel({
                 href={src.profileUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 rounded-full border border-[#8b5cf6]/12 bg-[linear-gradient(180deg,rgba(19,17,27,0.92),rgba(12,11,18,0.98))] px-2 py-0.5 text-xs text-text-secondary transition-colors hover:border-[#8b5cf6]/22 hover:text-text-primary"
+                className="theme-chip inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs"
                 title={src.displayName ?? src.handle}
               >
                 {platformIcons[src.platform]}
@@ -270,7 +270,7 @@ export function FriendDetailPanel({
                 <span className="text-text-tertiary">Phone</span>{" "}
                 <a
                   href={`tel:${friend.contact.phone}`}
-                  className="text-[#c4b5fd] hover:underline"
+                  className="theme-link hover:underline"
                 >
                   {friend.contact.phone}
                 </a>
@@ -281,7 +281,7 @@ export function FriendDetailPanel({
                 <span className="text-text-tertiary">Email</span>{" "}
                 <a
                   href={`mailto:${friend.contact.email}`}
-                  className="text-[#c4b5fd] hover:underline"
+                  className="theme-link hover:underline"
                 >
                   {friend.contact.email}
                 </a>
@@ -314,7 +314,7 @@ export function FriendDetailPanel({
       </div>
 
       {/* Reach out button / popover */}
-      <div className="shrink-0 border-b border-[#8b5cf6]/10 bg-[linear-gradient(180deg,rgba(19,17,27,0.96),rgba(12,11,18,0.98))] px-4 py-3">
+      <div className="shrink-0 border-b border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_92%,transparent)] px-4 py-3">
         {showReachOut ? (
           <ReachOutPopover
             onLog={handleLogReachOut}
@@ -322,7 +322,7 @@ export function FriendDetailPanel({
           />
         ) : (
           <button
-            className="w-full px-3 py-2 text-sm font-medium bg-[#8b5cf6]/15 hover:bg-[#8b5cf6]/25 border border-[#8b5cf6]/30 hover:border-[#8b5cf6]/50 text-[#c4b5fd] rounded-lg transition-colors flex items-center justify-center gap-2"
+            className="btn-secondary flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm"
             onClick={() => setShowReachOut(true)}
           >
             <UsersIcon className="w-3.5 h-3.5" />
