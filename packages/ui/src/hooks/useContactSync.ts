@@ -1,29 +1,27 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { fetchGoogleContacts, mergeContactChanges } from "@freed/shared/google-contacts";
 import { matchContacts } from "@freed/shared/contact-matching";
-import type { ContactSyncState } from "@freed/shared";
+import {
+  CONTACT_SYNC_STORAGE_KEY,
+  createEmptyContactSyncState,
+  parseContactSyncState,
+  type ContactSyncState,
+} from "@freed/shared";
 import { usePlatform } from "../context/PlatformContext.js";
 
-const STORAGE_KEY = "freed_contact_sync";
 const SYNC_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
 function loadSyncState(): ContactSyncState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as ContactSyncState;
-  } catch { /* ignore parse errors */ }
-  return {
-    syncToken: null,
-    lastSyncedAt: null,
-    cachedContacts: [],
-    pendingMatches: [],
-    dismissedMatches: [],
-  };
+    return parseContactSyncState(localStorage.getItem(CONTACT_SYNC_STORAGE_KEY));
+  } catch {
+    return createEmptyContactSyncState();
+  }
 }
 
 function saveSyncState(state: ContactSyncState): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, JSON.stringify(state));
   } catch { /* ignore storage errors */ }
 }
 
@@ -31,7 +29,7 @@ export function useContactSync() {
   const { store, googleContacts } = usePlatform();
 
   // Read live values for use in the sync callback. We store them in refs so
-  // that runSync's useCallback deps stay stable — if we captured friends/items
+  // that runSync's useCallback deps stay stable. If we captured friends/items
   // directly in the dep array, every feed or friend update would recreate
   // runSync and reset the 15-minute setInterval.
   const friends = store((s) => s.friends);
@@ -107,11 +105,11 @@ export function useContactSync() {
       console.warn("[useContactSync] sync failed:", err);
       return syncStateRef.current;
     }
-  // Only stable references in deps — googleContacts and setPendingMatchCount
+  // Only stable references in deps. googleContacts and setPendingMatchCount
   // are both stable across renders, so this callback never re-creates.
   }, [commitSyncState, googleContacts]);
 
-  // 15-minute interval — stable because runSync is stable.
+  // 15-minute interval. Stable because runSync is stable.
   useEffect(() => {
     const id = setInterval(runSync, SYNC_INTERVAL_MS);
     return () => clearInterval(id);

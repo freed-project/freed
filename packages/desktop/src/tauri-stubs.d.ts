@@ -81,7 +81,12 @@ declare module "@tauri-apps/plugin-fs" {
     isSymlink: boolean;
   }
 
+  export function readFile(path: string): Promise<Uint8Array>;
   export function readTextFile(path: string): Promise<string>;
+  export function writeFile(
+    path: string,
+    contents: Uint8Array | string,
+  ): Promise<void>;
   export function writeTextFile(
     path: string,
     contents: string,

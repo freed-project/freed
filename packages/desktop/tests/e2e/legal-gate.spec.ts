@@ -16,12 +16,13 @@ async function openSettings(page: import("@playwright/test").Page): Promise<void
 async function openSettingsSection(
   page: import("@playwright/test").Page,
   sectionName: string,
-  index = 1,
 ): Promise<void> {
   await openSettings(page);
-  const section = page.getByRole("button", { name: sectionName }).nth(index);
+  const section = page.getByRole("button", { name: sectionName }).last();
   await expect(section).toBeVisible({ timeout: 3_000 });
-  await section.click();
+  await section.evaluate((button) => {
+    (button as HTMLButtonElement).click();
+  });
 }
 
 test("first launch blocks the desktop shell until legal consent is accepted", async ({
@@ -71,7 +72,7 @@ test("X risky connection flows require provider consent", async ({ app }) => {
   await app.waitForReady();
 
   const { page } = app;
-  await openSettingsSection(page, "X / Twitter", 0);
+  await openSettingsSection(page, "X / Twitter");
 
   await page.getByText("Sign in to X").click();
   await expect(page.getByTestId("provider-risk-accept-x")).toBeVisible({
@@ -136,8 +137,10 @@ test("LinkedIn login and sync require provider consent", async ({ app }) => {
     });
   });
 
-  await expect(page.getByText("Sync Now")).toBeVisible({ timeout: 5_000 });
-  await page.getByText("Sync Now").click();
+  await expect(page.getByTestId("provider-sync-action-linkedin")).toBeVisible({
+    timeout: 5_000,
+  });
+  await page.getByTestId("provider-sync-action-linkedin").click();
   await expect(page.getByTestId("provider-risk-accept-linkedin")).toBeVisible({
     timeout: 5_000,
   });

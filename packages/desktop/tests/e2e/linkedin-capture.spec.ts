@@ -17,9 +17,11 @@ async function openLinkedInSection(
     timeout: 5_000,
   });
 
-  const liNavBtn = page.getByRole("button", { name: "LinkedIn" }).nth(1);
+  const liNavBtn = page.getByRole("button", { name: "LinkedIn" }).last();
   await expect(liNavBtn).toBeVisible({ timeout: 3_000 });
-  await liNavBtn.click();
+  await liNavBtn.evaluate((button) => {
+    (button as HTMLButtonElement).click();
+  });
   await page.waitForTimeout(500);
 
   const liHeading = page.getByRole("heading", { name: "LinkedIn", level: 3 });
@@ -115,8 +117,7 @@ test("LinkedIn appears in sidebar as an active source", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
 
-  const sidebar = app.page.locator("nav").first();
-  const liButton = sidebar.getByRole("button", { name: "LinkedIn" });
+  const liButton = app.page.getByTestId("source-row-linkedin");
   await expect(liButton).toBeVisible({ timeout: 3_000 });
 });
 
@@ -141,8 +142,7 @@ test("LinkedIn source button filters the feed to LinkedIn items", async ({
   await app.injectRssItems(1);
   await injectLinkedInItems(app.page, 1);
 
-  const sidebar = app.page.locator("nav").first();
-  await sidebar.getByRole("button", { name: "LinkedIn" }).click();
+  await app.page.getByTestId("source-row-linkedin").click();
   await app.page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as

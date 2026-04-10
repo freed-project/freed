@@ -482,7 +482,7 @@ const phases: Phase[] = [
     number: 4,
     title: "Sync Layer",
     description:
-      "Local relay and GDrive/Dropbox sync working, with cloud health diagnostics, retry/reconnect actions, and debug charts. iCloud remains the open item.",
+      "Local relay and GDrive/Dropbox sync are working, with cloud health diagnostics, retry and reconnect actions, debug charts, and desktop snapshot restore. iCloud remains the open item.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-4-SYNC.md",
@@ -491,7 +491,7 @@ const phases: Phase[] = [
     number: 5,
     title: "Desktop & Mobile App",
     description:
-      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, first-run legal gating, provider risk interstitials, a provider health dashboard, failing-feed unsubscribe tools, and reviewed cumulative release headings.",
+      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, first-run legal gating, provider risk interstitials, local snapshot rollback for disaster recovery, a provider health dashboard, failing-feed unsubscribe tools, and reviewed cumulative release headings.",
     status: "current",
     priority: true,
     planLink:
@@ -519,7 +519,7 @@ const phases: Phase[] = [
     number: 8,
     title: "Friends + Social Graph",
     description:
-      "A friend CRM with a stable pan-and-zoom graph workspace, a permanent resizable reconnect sidebar, shared purple avatar styling across Friends and Map, and a dark map that shows each friend's latest known location with time-aware popovers. Unify profiles across platforms into one identity per person, track relationship health, and keep growing the map into a richer view of where friends were, are, and plan to be.",
+      "A friend CRM with a stable pan-and-zoom graph workspace, a permanent resizable reconnect sidebar, shared purple avatar styling across Friends and Map, and a dark map that shows each friend's latest known location with time-aware popovers. Unify profiles across platforms into one identity per person, track relationship health, restore Google contact matches from desktop snapshots, and keep growing the map into a richer view of where friends were, are, and plan to be.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-8-FRIENDS.md",

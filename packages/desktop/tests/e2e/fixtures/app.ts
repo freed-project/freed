@@ -11,6 +11,7 @@
  *   ipc  - IpcFixture for overriding and asserting on invoke() calls.
  */
 
+import { fileURLToPath } from "node:url";
 import { test as base, expect, type Page } from "@playwright/test";
 import { tauriInitScript } from "./tauri-init";
 
@@ -252,6 +253,11 @@ export class AppFixture {
 export async function acceptLegalGate(page: Page, timeout = 5_000): Promise<boolean> {
   const app = new AppFixture(page);
   return app.acceptLegalGateIfPresent(timeout);
+}
+
+export function resolveViteFsModulePath(relativePath: string, baseUrl: string): string {
+  const fsPath = fileURLToPath(new URL(relativePath, baseUrl));
+  return `/@fs${fsPath}`;
 }
 
 // ─── IpcFixture ───────────────────────────────────────────────────────────────

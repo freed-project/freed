@@ -1,6 +1,10 @@
-import { test, expect } from "./fixtures/app";
+import { test, expect, resolveViteFsModulePath } from "./fixtures/app";
 
 const FEED_URL = "https://example.com/feed.xml";
+const DEBUG_STORE_PATH = resolveViteFsModulePath(
+  "../../../ui/src/lib/debug-store.ts",
+  import.meta.url,
+);
 
 async function seedAcceptedDesktopConsent(
   page: import("@playwright/test").Page,
@@ -1556,8 +1560,7 @@ test("provider sync button shows a spinner while that provider is active", async
 test("cooldown indicators stay amber while sync is active", async ({ app, page }) => {
   await seedAcceptedDesktopConsent(page);
 
-  const debugStorePath =
-    "/@fs/Users/aubreyfalconer/dev/freed-provider-health/packages/ui/src/lib/debug-store.ts";
+  const debugStorePath = DEBUG_STORE_PATH;
 
   await app.goto();
   await app.waitForReady();
@@ -1610,6 +1613,9 @@ test("cooldown indicators stay amber while sync is active", async ({ app, page }
         bytesMoved: 0,
       }));
 
+    const response = await fetch(debugStorePath);
+    if (!response.ok) throw new Error(`Failed to load debug store: ${response.status}`);
+    await response.text();
     const mod = await import(debugStorePath);
     mod.useDebugStore.getState().setHealth({
       providers: {
@@ -1658,8 +1664,7 @@ test("cooldown indicators stay amber while sync is active", async ({ app, page }
 test("feeds source indicator reflects aggregate feed health and active syncing", async ({ app, page }) => {
   await seedAcceptedDesktopConsent(page);
 
-  const debugStorePath =
-    "/@fs/Users/aubreyfalconer/dev/freed-provider-health/packages/ui/src/lib/debug-store.ts";
+  const debugStorePath = DEBUG_STORE_PATH;
 
   await app.goto();
   await app.waitForReady();
@@ -1717,6 +1722,9 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
       },
     });
 
+    const response = await fetch(debugStorePath);
+    if (!response.ok) throw new Error(`Failed to load debug store: ${response.status}`);
+    await response.text();
     const mod = await import(debugStorePath);
     mod.useDebugStore.getState().setHealth({
       providers: {
@@ -1795,6 +1803,9 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
       },
     });
 
+    const response = await fetch(debugStorePath);
+    if (!response.ok) throw new Error(`Failed to load debug store: ${response.status}`);
+    await response.text();
     const mod = await import(debugStorePath);
     const current = mod.useDebugStore.getState().health;
     mod.useDebugStore.getState().setHealth({
@@ -1977,8 +1988,7 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
 
   const failingFeedUrl = "https://broken.example/feed.xml";
   const healthyFeedUrl = "https://healthy.example/feed.xml";
-  const debugStorePath =
-    "/@fs/Users/aubreyfalconer/dev/freed-provider-health/packages/ui/src/lib/debug-store.ts";
+  const debugStorePath = DEBUG_STORE_PATH;
 
   await page.addInitScript(({ failingFeedUrl }) => {
     const now = Date.now();
@@ -2170,6 +2180,9 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
         itemsAdded: 0,
         bytesMoved: 0,
       }));
+    const response = await fetch(debugStorePath);
+    if (!response.ok) throw new Error(`Failed to load debug store: ${response.status}`);
+    await response.text();
     const mod = await import(debugStorePath);
     mod.useDebugStore.getState().setHealth({
       providers: {
@@ -2349,7 +2362,9 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
   await expect(page.getByRole("button", { name: "Needs review (1)", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Unsubscribe from all feeds (2)", exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Needs review (1)", exact: true }).click();
+  await page.getByRole("button", { name: "Needs review (1)", exact: true }).evaluate((button) => {
+    (button as HTMLButtonElement).click();
+  });
   await expect(page.getByRole("button", { name: "Unsubscribe from shown feeds (1)", exact: true })).toBeVisible();
   await expect(page.getByText("404 Not Found")).toBeVisible();
   await expect(page.getByText("Broken Feed")).toBeVisible();

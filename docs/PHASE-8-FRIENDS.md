@@ -236,6 +236,7 @@ Map popovers now use a wider card layout and deliberately omit the old MapLibre 
 | 8.22 | Add map timeline scrubber for past and future playback | Medium | Not Started |
 | 8.23 | Render derived overlap states in map and Friend detail surfaces | Medium | Not Started |
 | 8.24 | Support Mozi-backed friend/location events in identity and map flows | Medium | Not Started |
+| 8.25 | Include Google contact sync state in desktop disaster-recovery snapshots | Low | Done |
 
 ---
 
@@ -252,6 +253,7 @@ Map popovers now use a wider card layout and deliberately omit the old MapLibre 
 - [x] FriendEditor links social sources and imports contact info
 - [x] Friends shown in Sidebar as a live navigation destination
 - [x] Google Contacts import suggests matches and can create Friends
+- [x] Desktop snapshot restore preserves cached Google contacts and pending match suggestions
 - [x] Location extraction from geo-tags and text patterns
 - [x] Nominatim geocoding with rate limiter
 - [x] Geocoding cache with TTL

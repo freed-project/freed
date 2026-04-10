@@ -10,7 +10,12 @@
  */
 
 import type { Page } from "@playwright/test";
-import { test, expect, acceptLegalGate } from "./fixtures/app";
+import {
+  test,
+  expect,
+  acceptLegalGate,
+  resolveViteFsModulePath,
+} from "./fixtures/app";
 import { tauriInitScript } from "./fixtures/tauri-init";
 
 async function dismissCloudSyncNudgeIfPresent(page: Page) {
@@ -19,8 +24,10 @@ async function dismissCloudSyncNudgeIfPresent(page: Page) {
     await dismissButton.click();
   }
 }
-const SETTINGS_STORE_PATH =
-  "/@fs/Users/aubreyfalconer/dev/freed-provider-health/packages/ui/src/lib/settings-store.ts";
+const SETTINGS_STORE_PATH = resolveViteFsModulePath(
+  "../../../ui/src/lib/settings-store.ts",
+  import.meta.url,
+);
 
 // ---------------------------------------------------------------------------
 // App initialization
@@ -91,6 +98,9 @@ test("settings dialog closes from the desktop sidebar close button", async ({ ap
 
   const { page } = app;
   await page.evaluate(async (settingsStorePath) => {
+    const response = await fetch(settingsStorePath);
+    if (!response.ok) throw new Error(`Failed to load settings store: ${response.status}`);
+    await response.text();
     const mod = await import(settingsStorePath);
     mod.useSettingsStore.getState().openDefault();
   }, SETTINGS_STORE_PATH);
@@ -106,6 +116,9 @@ test("settings dialog closes from the mobile header close button", async ({ app,
   await app.waitForReady();
 
   await page.evaluate(async (settingsStorePath) => {
+    const response = await fetch(settingsStorePath);
+    if (!response.ok) throw new Error(`Failed to load settings store: ${response.status}`);
+    await response.text();
     const mod = await import(settingsStorePath);
     mod.useSettingsStore.getState().openDefault();
   }, SETTINGS_STORE_PATH);
@@ -124,6 +137,9 @@ test("provider risk dialog scrolls vertically on tiny mobile screens", async ({ 
   await app.waitForReady();
 
   await page.evaluate(async (settingsStorePath) => {
+    const response = await fetch(settingsStorePath);
+    if (!response.ok) throw new Error(`Failed to load settings store: ${response.status}`);
+    await response.text();
     const mod = await import(settingsStorePath);
     mod.useSettingsStore.getState().openTo("facebook");
   }, SETTINGS_STORE_PATH);

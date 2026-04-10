@@ -44,6 +44,7 @@ export type WorkerRequest =
   // Lifecycle
   | { reqId: number; type: "INIT" }
   | { reqId: number; type: "CLEAR_LOCAL" }
+  | { reqId: number; type: "REPLACE_DOC"; binary: Uint8Array }
   // Mutations shared with PWA
   | { reqId: number; type: "MARK_AS_READ"; globalId: string }
   | { reqId: number; type: "MARK_ITEMS_AS_READ"; globalIds: string[] }
