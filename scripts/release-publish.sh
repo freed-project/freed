@@ -43,7 +43,11 @@ if [[ "$APPROVED" != "true" ]]; then
   exit 1
 fi
 
-mapfile -t PRIOR_RELEASE_FILES < <("${NODE_BIN}" -e "
+PRIOR_RELEASE_FILES=()
+while IFS= read -r filePath; do
+  [[ -n "$filePath" ]] || continue
+  PRIOR_RELEASE_FILES+=("$filePath")
+done < <("${NODE_BIN}" -e "
   const fs = require('fs');
   const file = process.argv[1];
   const data = JSON.parse(fs.readFileSync(file, 'utf8'));
