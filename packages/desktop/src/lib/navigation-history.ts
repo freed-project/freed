@@ -95,15 +95,19 @@ export function useDesktopNavigationHistory(enabled: boolean): void {
     recordTimerRef.current = window.setTimeout(() => {
       recordTimerRef.current = null;
 
-      if (skipRecordRef.current) {
-        skipRecordRef.current = false;
-        return;
-      }
-
       const rawState = snapshotNavigationState();
       const knownItemIds = isInitialized ? new Set(items.map((item) => item.globalId)) : null;
       const canonicalState = canonicalizeNavigationState(rawState, { knownItemIds });
       const serialized = serializeNavigationState(canonicalState);
+      const currentSerialized = historyStackRef.current[historyIndexRef.current];
+
+      if (skipRecordRef.current) {
+        skipRecordRef.current = false;
+        if (historyIndexRef.current >= 0 && currentSerialized !== serialized) {
+          historyStackRef.current[historyIndexRef.current] = serialized;
+        }
+        return;
+      }
 
       if (!navigationStatesEqual(rawState, canonicalState)) {
         useAppStore.setState({
@@ -113,7 +117,6 @@ export function useDesktopNavigationHistory(enabled: boolean): void {
         });
       }
 
-      const currentSerialized = historyStackRef.current[historyIndexRef.current];
       if (currentSerialized === serialized) return;
 
       if (historyIndexRef.current < historyStackRef.current.length - 1) {

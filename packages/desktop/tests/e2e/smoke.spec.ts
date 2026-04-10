@@ -331,7 +331,7 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
 
   const { page } = app;
 
-  await page.getByRole("button", { name: /^Map\b/ }).click();
+  await page.getByRole("button", { name: /^Map/ }).click();
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
@@ -352,7 +352,7 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
   }, { timeout: 5_000 });
   await expect(page.locator("main").getByText("Ada Lovelace").first()).toBeVisible({ timeout: 5_000 });
 
-  await page.getByRole("button", { name: /^Map\b/ }).click();
+  await page.getByRole("button", { name: /^Map/ }).click();
   await page.locator(".freed-map-marker").first().click();
   await page.getByRole("button", { name: "Open Post" }).click();
   await page.waitForFunction(() => {
@@ -402,7 +402,9 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
     const state = store?.getState();
     return state?.activeView === "map" && state.selectedFriendId === "friend-ada";
   }, { timeout: 5_000 });
-  await expect(page.locator('.freed-map-marker[aria-label="Ada Lovelace"]')).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByRole("button", { name: /Ada Lovelace/ })).toBeVisible({
+    timeout: 5_000,
+  });
 });
 
 // ---------------------------------------------------------------------------

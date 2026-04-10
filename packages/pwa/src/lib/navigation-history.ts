@@ -81,16 +81,19 @@ export function useBrowserNavigationHistory(enabled: boolean): void {
     writeTimerRef.current = window.setTimeout(() => {
       writeTimerRef.current = null;
 
-      if (skipWriteRef.current) {
-        skipWriteRef.current = false;
-        return;
-      }
-
       const knownItemIds = isInitialized ? new Set(items.map((item) => item.globalId)) : null;
       const rawState = snapshotNavigationState();
       const canonicalState = canonicalizeNavigationState(rawState, { knownItemIds });
       const nextUrl = serializeNavigationState(canonicalState);
       const currentUrl = currentPathWithSearch();
+
+      if (skipWriteRef.current) {
+        skipWriteRef.current = false;
+        if (nextUrl !== currentUrl) {
+          window.history.replaceState(window.history.state, "", nextUrl);
+        }
+        return;
+      }
 
       if (nextUrl === currentUrl) return;
 

@@ -29,7 +29,7 @@ export function CloudSyncNudge() {
   if (dismissed || hasAnyCloudProvider()) return null;
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-3 rounded-xl bg-[#1c1c1e] border border-[rgba(255,255,255,0.1)] shadow-2xl text-sm max-w-sm w-[calc(100%-2rem)]">
+    <div className="fixed bottom-4 left-4 right-4 z-40 flex items-center gap-3 px-4 py-3 rounded-xl bg-[#1c1c1e] border border-[rgba(255,255,255,0.1)] shadow-2xl text-sm max-w-sm sm:left-auto sm:right-4 sm:w-full">
       {/* Cloud icon */}
       <svg
         className="w-4 h-4 text-[#8b5cf6] flex-shrink-0"

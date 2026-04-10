@@ -92,7 +92,9 @@ async function seedSidebarFeeds(
         }
       }, 50);
     });
-=======
+  });
+}
+
 async function waitForPwaReady(
   page: import("@playwright/test").Page,
 ): Promise<void> {
@@ -905,6 +907,30 @@ test.describe("FREED PWA", () => {
       });
     });
 
+    test("stale item cleanup replaces the current history entry", async ({ page }) => {
+      await page.goto("/friends");
+      await acceptLegalGate(page);
+      await waitForPwaReady(page);
+      await expect.poll(() => new URL(page.url()).pathname).toBe("/friends");
+
+      await page.evaluate(() => {
+        window.history.pushState(window.history.state, "", "/?item=missing-item");
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      });
+      await expect.poll(() => new URL(page.url()).search).toBe("");
+
+      await page.goBack();
+      await page.waitForFunction(() => {
+        const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+          getState: () => { activeView: string; selectedItemId: string | null };
+        };
+        const state = store.getState();
+        return state.activeView === "friends" && state.selectedItemId === null;
+      });
+      await expect.poll(() => new URL(page.url()).pathname).toBe("/friends");
+      await expect.poll(() => new URL(page.url()).search).toBe("");
+    });
+
     test("feed filter URLs restore the correct scope on direct load", async ({ page }) => {
       await page.goto("/");
       await acceptLegalGate(page);
@@ -938,7 +964,6 @@ test.describe("FREED PWA", () => {
           tags: ["research"],
         });
     });
-  });
   });
 
   test("map navigation is live from the sidebar", async ({ page }) => {
