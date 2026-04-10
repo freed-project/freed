@@ -23,6 +23,7 @@ import {
 import { getDocBinary, mergeDoc, subscribe, setRelayClientCount } from "./automerge";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { log } from "./logger.js";
+import { recordProviderHealthEvent } from "./provider-health";
 
 const FALLBACK_SYNC_PORT = import.meta.env.VITE_FREED_SYNC_PORT || "8765";
 const RELAY_POLL_TIMEOUT_MS = 5_000;
@@ -497,12 +498,37 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
     if (remote) {
       await mergeDoc(remote);
       console.log("[CloudSync/%s] Initial merge (%d bytes)", provider, remote.length);
+      await recordProviderHealthEvent({
+        provider,
+        outcome: "success",
+        stage: "download",
+        startedAt: Date.now(),
+        finishedAt: Date.now(),
+        bytesMoved: remote.length,
+      });
+    } else {
+      await recordProviderHealthEvent({
+        provider,
+        outcome: "empty",
+        stage: "download",
+        reason: "No remote changes",
+        startedAt: Date.now(),
+        finishedAt: Date.now(),
+      });
     }
   } catch (err) {
     if (!signal.aborted) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[CloudSync/${provider}] Initial download failed:`, err);
       addDebugEvent("error", `[Cloud/${provider}] initial download failed: ${msg}`);
+      await recordProviderHealthEvent({
+        provider,
+        outcome: "error",
+        stage: "download",
+        reason: msg,
+        startedAt: Date.now(),
+        finishedAt: Date.now(),
+      });
     }
   }
 
@@ -510,10 +536,27 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
     try {
       await mergeDoc(binary);
       console.log("[CloudSync/%s] Merged remote change (%d bytes)", provider, binary.length);
+      await recordProviderHealthEvent({
+        provider,
+        outcome: "success",
+        stage: "merge",
+        startedAt: Date.now(),
+        finishedAt: Date.now(),
+        bytesMoved: binary.length,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[CloudSync/${provider}] Merge failed:`, err);
       addDebugEvent("merge_err", `[Cloud/${provider}] merge failed: ${msg}`);
+      await recordProviderHealthEvent({
+        provider,
+        outcome: "error",
+        stage: "merge",
+        reason: msg,
+        startedAt: Date.now(),
+        finishedAt: Date.now(),
+        bytesMoved: binary.length,
+      });
     }
   };
 
@@ -525,19 +568,35 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
   };
 
   if (provider === "gdrive") {
-    gdriveStartPollLoop(token, onRemoteChange, signal, cloudLog).catch((err) => {
+    gdriveStartPollLoop(token, onRemoteChange, signal, cloudLog).catch(async (err) => {
       if (!signal.aborted) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`[cloud/gdrive] poll loop crashed: ${msg}`);
         addDebugEvent("error", `[Cloud/gdrive] poll loop crashed: ${msg}`);
+        await recordProviderHealthEvent({
+          provider: "gdrive",
+          outcome: "error",
+          stage: "poll",
+          reason: msg,
+          startedAt: Date.now(),
+          finishedAt: Date.now(),
+        });
       }
     });
   } else {
-    dropboxStartLongpollLoop(token, onRemoteChange, signal, cloudLog).catch((err) => {
+    dropboxStartLongpollLoop(token, onRemoteChange, signal, cloudLog).catch(async (err) => {
       if (!signal.aborted) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`[cloud/dropbox] longpoll loop crashed: ${msg}`);
         addDebugEvent("error", `[Cloud/dropbox] longpoll loop crashed: ${msg}`);
+        await recordProviderHealthEvent({
+          provider: "dropbox",
+          outcome: "error",
+          stage: "poll",
+          reason: msg,
+          startedAt: Date.now(),
+          finishedAt: Date.now(),
+        });
       }
     });
   }
@@ -600,6 +659,7 @@ export function scheduleCloudUpload(provider: CloudProvider, token: string): voi
   const timer = setTimeout(async () => {
     uploadTimers.delete(provider);
     const binary = getDocBinary();
+    const startedAt = Date.now();
     try {
       if (provider === "gdrive") {
         await gdriveUploadSafe(token, binary);
@@ -607,10 +667,27 @@ export function scheduleCloudUpload(provider: CloudProvider, token: string): voi
         await dropboxUploadSafe(token, binary);
       }
       console.log("[CloudSync/%s] Uploaded (%d bytes)", provider, binary.byteLength);
+      await recordProviderHealthEvent({
+        provider,
+        outcome: "success",
+        stage: "upload",
+        startedAt,
+        finishedAt: Date.now(),
+        bytesMoved: binary.byteLength,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[CloudSync/${provider}] Upload failed:`, err);
       addDebugEvent("error", `[Cloud/${provider}] upload failed: ${msg}`);
+      await recordProviderHealthEvent({
+        provider,
+        outcome: "error",
+        stage: "upload",
+        reason: msg,
+        startedAt,
+        finishedAt: Date.now(),
+        bytesMoved: binary.byteLength,
+      });
     }
   }, UPLOAD_DEBOUNCE_MS);
 

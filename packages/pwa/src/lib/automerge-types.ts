@@ -53,7 +53,7 @@ export type WorkerRequest =
   | { reqId: number; type: "PRUNE_ARCHIVED_ITEMS"; maxAgeMs?: number }
   | { reqId: number; type: "DELETE_ALL_ARCHIVED" }
   | { reqId: number; type: "ADD_RSS_FEED"; feed: RssFeed }
-  | { reqId: number; type: "REMOVE_RSS_FEED"; url: string }
+  | { reqId: number; type: "REMOVE_RSS_FEED"; url: string; includeItems?: boolean }
   | { reqId: number; type: "UPDATE_RSS_FEED"; url: string; updates: Partial<RssFeed> }
   | { reqId: number; type: "REMOVE_ALL_FEEDS"; includeItems: boolean }
   | { reqId: number; type: "UPDATE_PREFERENCES"; updates: Partial<UserPreferences> }

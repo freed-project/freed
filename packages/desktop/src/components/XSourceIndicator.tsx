@@ -1,29 +1,45 @@
-/**
- * SourceIndicator -- subtle purple dot for authenticated social sources in the sidebar.
- * Shows a connected indicator for X, Facebook, Instagram, and LinkedIn when authenticated.
- */
-
+import { ProviderStatusIndicator } from "@freed/ui/components/ProviderStatusIndicator";
+import { usePlatform } from "@freed/ui/context";
+import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { useAppStore } from "../lib/store";
+import { getDesktopSourceStatus } from "../lib/source-status";
 
 export function XSourceIndicator({ sourceId }: { sourceId: string }) {
-  const xAuth = useAppStore((s) => s.xAuth.isAuthenticated);
-  const fbAuth = useAppStore((s) => s.fbAuth.isAuthenticated);
-  const igAuth = useAppStore((s) => s.igAuth.isAuthenticated);
-  const liAuth = useAppStore((s) => s.liAuth.isAuthenticated);
+  const { getSourceStatus } = usePlatform();
+  const xAuth = useAppStore((s) => s.xAuth);
+  const fbAuth = useAppStore((s) => s.fbAuth);
+  const igAuth = useAppStore((s) => s.igAuth);
+  const liAuth = useAppStore((s) => s.liAuth);
+  const providerSyncCounts = useAppStore((s) => s.providerSyncCounts);
+  const itemCountByPlatform = useAppStore((s) => s.itemCountByPlatform);
+  const feeds = useAppStore((s) => s.feeds);
+  const health = useDebugStore((s) => s.health);
 
-  const isConnected =
-    (sourceId === "x" && xAuth) ||
-    (sourceId === "facebook" && fbAuth) ||
-    (sourceId === "instagram" && igAuth) ||
-    (sourceId === "linkedin" && liAuth);
+  const status =
+    getSourceStatus?.(sourceId) ??
+    getDesktopSourceStatus(
+      sourceId,
+      {
+        feeds,
+        providerSyncCounts,
+        itemCountByPlatform,
+        xAuth,
+        fbAuth,
+        igAuth,
+        liAuth,
+      },
+      health,
+    );
 
-  if (!isConnected) return null;
+  if (!status) return null;
 
   return (
-    <span
-      className="ml-1.5 w-1.5 h-1.5 rounded-full bg-[#8b5cf6]/50 flex-shrink-0"
-      data-testid={`source-indicator-${sourceId}`}
-      aria-label={`${sourceId} connected`}
+    <ProviderStatusIndicator
+      tone={status.tone}
+      syncing={status.syncing}
+      label={status.label}
+      testId={`source-indicator-${sourceId}`}
+      size="xxs"
     />
   );
 }

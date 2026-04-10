@@ -279,9 +279,12 @@ export async function docAddRssFeed(feed: RssFeed): Promise<void> {
   return request({ reqId, type: "ADD_RSS_FEED", feed });
 }
 
-export async function docRemoveRssFeed(url: string): Promise<void> {
+export async function docRemoveRssFeed(
+  url: string,
+  includeItems: boolean = false,
+): Promise<void> {
   const reqId = nextReqId++;
-  return request({ reqId, type: "REMOVE_RSS_FEED", url });
+  return request({ reqId, type: "REMOVE_RSS_FEED", url, includeItems });
 }
 
 export async function docUpdateRssFeed(url: string, updates: Partial<RssFeed>): Promise<void> {

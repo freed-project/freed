@@ -78,7 +78,7 @@ export function LibraryDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center"
+      className="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto p-4 sm:items-center"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -87,7 +87,7 @@ export function LibraryDialog({
       <div className="absolute inset-0 bg-black/60" />
 
       {/* Dialog */}
-      <div className="relative z-10 w-full max-w-md mx-4 bg-[#161616] border border-[rgba(255,255,255,0.1)] rounded-2xl shadow-2xl shadow-black/80 overflow-hidden">
+      <div className="relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col bg-[#161616] border border-[rgba(255,255,255,0.1)] rounded-2xl shadow-2xl shadow-black/80 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[rgba(255,255,255,0.08)]">
           <h2 className="text-base font-semibold text-[#fafafa]">Library</h2>
@@ -120,7 +120,7 @@ export function LibraryDialog({
         </div>
 
         {/* Tab content */}
-        <div className="px-5 py-5">
+        <div className="overflow-y-auto px-5 py-5">
           {tab === "import" ? (
             <div>
               <p className="text-sm text-[#71717a] mb-4">

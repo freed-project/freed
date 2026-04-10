@@ -9,7 +9,13 @@
 import { useState, useCallback, useEffect } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { SettingsToggle } from "@freed/ui/components/SettingsToggle";
+import type { SyncProviderSectionProps } from "@freed/ui/context";
+import { useDebugStore } from "@freed/ui/lib/debug-store";
+import {
+  getProviderStatusLabel,
+  getProviderStatusTone,
+} from "@freed/ui/lib/provider-status";
+import { ProviderStatusIndicator } from "@freed/ui/components/ProviderStatusIndicator";
 import type { FbGroupInfo } from "@freed/shared";
 import { useAppStore } from "../lib/store";
 import {
@@ -24,8 +30,17 @@ import {
   getFbScraperWindowMode,
   setFbScraperWindowMode,
 } from "../lib/scraper-prefs";
+import {
+  formatProviderReconnectMessage,
+  needsProviderReconnect,
+} from "../lib/provider-auth-errors";
 import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
 import { ScraperWindowModeControl } from "./ScraperWindowModeControl";
+import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
+import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
+import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
+import { withProviderSyncing } from "../lib/store";
+import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
 
 // =============================================================================
 // Diagnostic Panel
@@ -44,6 +59,86 @@ function DiagRow({ label, value, warn }: DiagRowProps) {
       <span className={warn ? "text-amber-400 font-medium" : "text-[#71717a]"}>
         {value}
       </span>
+    </div>
+  );
+}
+
+function splitFacebookGroupName(rawName: string): {
+  title: string;
+  lastActiveText?: string;
+} {
+  const trimmed = rawName.trim();
+  const match = trimmed.match(/^(.*?)(last active.+)$/i);
+  if (!match) {
+    return { title: trimmed };
+  }
+
+  const title = match[1]?.trim();
+  const lastActiveText = match[2]?.trim();
+
+  if (!title || !lastActiveText) {
+    return { title: trimmed };
+  }
+
+  return {
+    title,
+    lastActiveText: lastActiveText.charAt(0).toUpperCase() + lastActiveText.slice(1),
+  };
+}
+
+function Toggle({
+  label,
+  checked,
+  onChange,
+  description,
+  meta,
+  testId,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  description?: string;
+  meta?: string;
+  testId?: string;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-3">
+          <p
+            data-testid={testId ? `${testId}-label` : undefined}
+            className="min-w-0 text-sm text-[#a1a1aa] truncate"
+          >
+            {label}
+          </p>
+          {meta ? (
+            <p
+              data-testid={testId ? `${testId}-meta` : undefined}
+              className="shrink-0 pt-0.5 text-[11px] text-[#71717a] text-right"
+            >
+              {meta}
+            </p>
+          ) : null}
+        </div>
+        {description ? (
+          <p className="text-xs text-[#52525b] mt-0.5">{description}</p>
+        ) : null}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        className={`relative shrink-0 w-9 h-5 rounded-full transition-colors ${
+          checked ? "bg-[#8b5cf6]" : "bg-white/10"
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+            checked ? "translate-x-4" : "translate-x-0"
+          }`}
+        />
+      </button>
     </div>
   );
 }
@@ -91,7 +186,9 @@ function FbDiagPanel({ diag }: { diag: FbSyncDiag }) {
   );
 }
 
-export function FacebookSettingsSection() {
+export function FacebookSettingsSection({
+  surface = "settings",
+}: SyncProviderSectionProps) {
   const fbAuth = useAppStore((s) => s.fbAuth);
   const setFbAuth = useAppStore((s) => s.setFbAuth);
   const fbCapture = useAppStore((s) => s.preferences.fbCapture);
@@ -99,8 +196,9 @@ export function FacebookSettingsSection() {
   const isLoading = useAppStore((s) => s.isLoading);
   const storeError = useAppStore((s) => s.error);
   const setError = useAppStore((s) => s.setError);
+  const syncing = useAppStore((s) => (s.providerSyncCounts.facebook ?? 0) > 0);
+  const healthSnapshot = useDebugStore((s) => s.health?.providers.facebook ?? null);
 
-  const [syncing, setSyncing] = useState(false);
   const [checking, setChecking] = useState(false);
   const [refreshingGroups, setRefreshingGroups] = useState(false);
   const [lastDiag, setLastDiag] = useState<FbSyncDiag | null>(null);
@@ -112,6 +210,7 @@ export function FacebookSettingsSection() {
   const groups = Object.values(knownGroups).sort((a, b) =>
     a.name.localeCompare(b.name),
   );
+  const activeGroupCount = groups.filter((group) => !excludedGroupIds[group.id]).length;
 
   // Auto-detect login success from the WebView's on_navigation callback
   useEffect(() => {
@@ -160,15 +259,12 @@ export function FacebookSettingsSection() {
   }, [confirm, setFbAuth, setError]);
 
   const runSync = useCallback(async () => {
-    setSyncing(true);
     setLastDiag(null);
     try {
-      const result = await captureFbFeed();
+      const result = await withProviderSyncing("facebook", () => captureFbFeed());
       setLastDiag(result.diag);
     } catch (err) {
       console.error("Facebook feed capture failed:", err);
-    } finally {
-      setSyncing(false);
     }
   }, []);
 
@@ -227,13 +323,26 @@ export function FacebookSettingsSection() {
     } catch {
       // Best-effort cleanup
     }
+    await resetProviderPauseState("facebook");
     setFbAuth({ isAuthenticated: false });
     setLastDiag(null);
     setError(null);
   }, [setFbAuth, setError]);
 
   const syncError = storeError && fbAuth.isAuthenticated ? storeError : null;
-
+  const authError = fbAuth.lastCaptureError ?? syncError;
+  const needsReconnect = needsProviderReconnect(authError);
+  const statusTone = getProviderStatusTone({
+    isConnected: fbAuth.isAuthenticated,
+    authError,
+    snapshot: healthSnapshot,
+  });
+  const statusLabel = getProviderStatusLabel({
+    isConnected: fbAuth.isAuthenticated,
+    authError,
+    snapshot: healthSnapshot,
+  });
+  const isPaused = !!healthSnapshot?.pause && healthSnapshot.pause.pausedUntil > Date.now();
   // ── Connected state ──────────────────────────────────────────────────────
 
   if (fbAuth.isAuthenticated) {
@@ -260,117 +369,153 @@ export function FacebookSettingsSection() {
 
     return (
       <>
-      <div className="space-y-4">
-        <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
-          <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
-          <span className="text-sm text-[#a1a1aa]">Connected</span>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              void confirm(runSync);
-            }}
-            disabled={syncing || isLoading}
-            className="flex-1 text-sm px-3 py-2 rounded-xl bg-[#8b5cf6]/15 text-[#8b5cf6] hover:bg-[#8b5cf6]/25 disabled:opacity-50 transition-colors"
-          >
-            {syncing ? "Syncing..." : "Sync Now"}
-          </button>
-          <button
-            onClick={handleDisconnect}
-            className="text-sm px-3 py-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
-          >
-            Disconnect
-          </button>
-        </div>
-
-        {syncError && (
-          <p className="text-xs text-red-400 leading-relaxed">
-            {syncError.includes("timeout")
-              ? "Scrape timed out. Facebook may be slow to load. Try again."
-              : syncError}
-          </p>
-        )}
-
-        {statusLine}
-
-        {lastDiag && <FbDiagPanel diag={lastDiag} />}
-
-        {groups.length > 0 && (
-          <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <p className="text-sm text-[#a1a1aa]">Groups</p>
-                <button
-                  type="button"
-                  onClick={handleRefreshGroups}
-                  disabled={refreshingGroups}
-                  className="text-xs text-[#71717a] hover:text-[#a1a1aa] disabled:opacity-50 transition-colors"
-                >
-                  {refreshingGroups ? "Refreshing..." : "Refresh"}
-                </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => { void handleSelectAllGroups(); }}
-                  className="text-xs text-[#71717a] hover:text-[#a1a1aa] transition-colors"
-                >
-                  Select all
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { void handleDeselectAllGroups(); }}
-                  className="text-xs text-[#71717a] hover:text-[#a1a1aa] transition-colors"
-                >
-                  Deselect all
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {groups.map((group) => {
-                const included = !excludedGroupIds[group.id];
-                return (
-                  <SettingsToggle
-                    key={group.id}
-                    label={group.name}
-                    checked={included}
-                    onChange={(nextIncluded) => {
-                      void handleToggleGroup(group, nextIncluded);
-                    }}
-                    description={included ? "Included in future syncs" : "Hidden from future syncs"}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        <details className="group">
-          <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">
-            <span className="group-open:rotate-90 transition-transform inline-block">›</span>
-            Advanced
-          </summary>
-          <div className="mt-3 pl-3 border-l border-white/10">
-            <ScraperWindowModeControl
-              sourceLabel="Facebook"
-              mode={windowMode}
-              onChange={(nextMode) => {
-                setWindowMode(nextMode);
-                setFbScraperWindowMode(nextMode);
-              }}
+      <SyncProviderSectionSurface surface={surface} title="Facebook">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
+            <ProviderStatusIndicator
+              tone={statusTone}
+              syncing={syncing}
+              label={statusLabel}
+              testId="provider-status-facebook"
+              size="sm"
             />
+            <span className="text-sm text-[#a1a1aa]">
+              {statusLabel}
+            </span>
           </div>
-        </details>
 
-        <p className="text-xs text-[#52525b] leading-relaxed">
-          Freed reads your Facebook feed through a native browser session to
-          deliver a seamless experience. Reading can potentially be interrupted
-          if Facebook changes their systems in an attempt to keep you in their
-          garden.
-        </p>
-      </div>
+          <div className="flex gap-2">
+            <ProviderSyncActionButton
+              onClick={() => {
+                if (needsReconnect) {
+                  void handleLogin();
+                  return;
+                }
+                void confirm(async () => {
+                  if (isPaused) {
+                    await clearProviderPause("facebook");
+                  }
+                  await runSync();
+                });
+              }}
+              busy={syncing}
+              busyLabel={needsReconnect ? "Reconnecting..." : isPaused ? "Resuming..." : "Syncing"}
+              disabled={
+                (!needsReconnect && (syncing || isLoading)) ||
+                (needsReconnect && isLoading)
+              }
+              testId="provider-sync-action-facebook"
+            >
+              {needsReconnect ? "Reconnect Facebook" : isPaused ? "Resume Now" : "Sync Now"}
+            </ProviderSyncActionButton>
+            <button
+              onClick={handleDisconnect}
+              className="text-sm px-3 py-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+            >
+              Disconnect
+            </button>
+          </div>
+
+          {needsReconnect && (
+            <p className="text-xs text-red-400 leading-relaxed">
+              {formatProviderReconnectMessage("Facebook", authError)}
+            </p>
+          )}
+
+          {syncError && !needsReconnect && (
+            <p className="text-xs text-red-400 leading-relaxed">
+              {syncError.includes("timeout")
+                ? "Scrape timed out. Facebook may be slow to load. Try again."
+                : syncError}
+            </p>
+          )}
+
+          <ProviderHealthSectionSummary provider="facebook" />
+
+          {statusLine}
+
+          {lastDiag && <FbDiagPanel diag={lastDiag} />}
+
+          {groups.length > 0 && (
+            <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-baseline gap-2 min-w-0">
+                  <p className="text-sm text-[#a1a1aa]">Groups</p>
+                  <p className="text-xs text-[#71717a] truncate">
+                    {activeGroupCount.toLocaleString()} active of {groups.length.toLocaleString()} total
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { void handleSelectAllGroups(); }}
+                    className="text-xs text-[#71717a] hover:text-[#a1a1aa] transition-colors"
+                  >
+                    Activate all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { void handleDeselectAllGroups(); }}
+                    className="text-xs text-[#71717a] hover:text-[#a1a1aa] transition-colors"
+                  >
+                    Deactivate all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRefreshGroups}
+                    disabled={refreshingGroups}
+                    className="text-xs text-[#71717a] hover:text-[#a1a1aa] disabled:opacity-50 transition-colors"
+                  >
+                    {refreshingGroups ? "Refreshing..." : "Refresh"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {groups.map((group) => {
+                  const included = !excludedGroupIds[group.id];
+                  const { title, lastActiveText } = splitFacebookGroupName(group.name);
+                  return (
+                    <Toggle
+                      key={group.id}
+                      testId={`facebook-group-${group.id}`}
+                      label={title}
+                      checked={included}
+                      onChange={(nextIncluded) => {
+                        void handleToggleGroup(group, nextIncluded);
+                      }}
+                      meta={lastActiveText}
+                      description={included ? "Included in future syncs" : "Hidden from future syncs"}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <details className="group">
+            <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">
+              <span className="group-open:rotate-90 transition-transform inline-block">›</span>
+              Advanced
+            </summary>
+            <div className="mt-3 pl-3 border-l border-white/10">
+              <ScraperWindowModeControl
+                sourceLabel="Facebook"
+                mode={windowMode}
+                onChange={(nextMode) => {
+                  setWindowMode(nextMode);
+                  setFbScraperWindowMode(nextMode);
+                }}
+              />
+            </div>
+          </details>
+
+          <p className="text-xs text-[#52525b] leading-relaxed">
+            Freed reads your Facebook feed through a native browser session.
+            Your traffic looks identical to normal browsing.
+          </p>
+        </div>
+      </SyncProviderSectionSurface>
       {dialog}
       </>
     );
@@ -380,29 +525,36 @@ export function FacebookSettingsSection() {
 
   return (
     <>
-    <div className="space-y-4">
-      <p className="text-sm text-[#71717a] leading-relaxed">
-        Pull your Facebook feed into Freed. Log in through a native browser
-        window to give Freed an authenticated browser session. Reading can
-        potentially be interrupted if Facebook changes their systems in an
-        attempt to keep you in their garden.
-      </p>
-      <div className="flex gap-2">
-        <button
-          onClick={handleLogin}
-          className="text-sm px-4 py-2 rounded-xl bg-[#1877F2]/15 text-[#1877F2] hover:bg-[#1877F2]/25 transition-colors"
-        >
-          Log in with Facebook
-        </button>
-        <button
-          onClick={handleCheckAuth}
-          disabled={checking}
-          className="text-sm px-4 py-2 rounded-xl bg-white/5 text-[#71717a] hover:bg-white/10 disabled:opacity-50 transition-colors"
-        >
-          {checking ? "Checking..." : "Check Connection"}
-        </button>
+    <SyncProviderSectionSurface surface={surface} title="Facebook">
+      <div className="space-y-4">
+        <p className="text-sm text-[#71717a] leading-relaxed">
+          {needsReconnect
+            ? "Your Facebook session is no longer valid. Sign in again to restore sync."
+            : "Pull your Facebook feed into Freed. Log in through a native browser window. Freed reads your feed the same way you would, so your account stays safe."}
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={handleLogin}
+            className="text-sm px-4 py-2 rounded-xl bg-[#1877F2]/15 text-[#1877F2] hover:bg-[#1877F2]/25 transition-colors"
+          >
+            {needsReconnect ? "Reconnect Facebook" : "Log in with Facebook"}
+          </button>
+          <button
+            onClick={handleCheckAuth}
+            disabled={checking}
+            className="text-sm px-4 py-2 rounded-xl bg-white/5 text-[#71717a] hover:bg-white/10 disabled:opacity-50 transition-colors"
+          >
+            {checking ? "Checking..." : "Check Connection"}
+          </button>
+        </div>
+        {needsReconnect && authError && (
+          <p className="text-xs text-amber-400 leading-relaxed">
+            {formatProviderReconnectMessage("Facebook", authError)}
+          </p>
+        )}
+        <ProviderHealthSectionSummary provider="facebook" />
       </div>
-    </div>
+    </SyncProviderSectionSurface>
     {dialog}
     </>
   );

@@ -1,13 +1,20 @@
 /**
- * SavedSection — settings pane for saved content management + Markdown import/export.
+ * SavedSection - settings pane for saved content overview + Markdown import/export.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { toast } from "../Toast.js";
 import type { ImportPhase, ImportProgress, ImportSummary } from "../LibraryDialog.types.js";
+import {
+  DurationSelect,
+  VolumeBars,
+  formatHealthRelative,
+  type HealthChartRange,
+} from "../ProviderHealthSummary.js";
+import type { FeedItem } from "@freed/shared";
 
-type SavedTab = "manage" | "import" | "export";
+type SavedTab = "overview" | "import" | "export";
 
 const PHASE_LABELS: Record<ImportPhase, string> = {
   scanning: "Scanning files",
@@ -52,34 +59,107 @@ export function SavedSection() {
   const { importMarkdown } = usePlatform();
 
   const availableTabs: { id: SavedTab; label: string }[] = [
-    { id: "manage" as const, label: "Manage" },
+    { id: "overview" as const, label: "Overview" },
     ...(importMarkdown ? [{ id: "import" as const, label: "Import" }] : []),
     // Export tab always shown; ExportPane renders a desktop-app CTA when exportMarkdown is unavailable.
     { id: "export" as const, label: "Export" },
   ];
 
-  const [activeTab, setActiveTab] = useState<SavedTab>("manage");
+  const [activeTab, setActiveTab] = useState<SavedTab>("overview");
 
   return (
     <div>
       {availableTabs.length > 1 && (
         <TabBar tabs={availableTabs} active={activeTab} onChange={setActiveTab} />
       )}
-      {activeTab === "manage" && <ManagePane />}
+      {activeTab === "overview" && <OverviewPane />}
       {activeTab === "import" && importMarkdown && <ImportPane />}
       {activeTab === "export" && <ExportPane />}
     </div>
   );
 }
 
-// ── Manage pane ───────────────────────────────────────────────────────────────
+function getSavedTimestamp(item: FeedItem): number {
+  return item.userState.savedAt ?? item.capturedAt;
+}
 
-function ManagePane() {
+function getSavedSourceLabel(item: FeedItem): string {
+  const source = item.content.linkPreview?.url ?? item.sourceUrl ?? item.author.handle;
+  if (!source) return "Unknown";
+  try {
+    return new URL(source).hostname.replace(/^www\./, "");
+  } catch {
+    return source;
+  }
+}
+
+function buildDailyBuckets(savedItems: FeedItem[]) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const bucketStart = new Date(today);
+    bucketStart.setDate(today.getDate() - (6 - index));
+    const bucketEnd = new Date(bucketStart);
+    bucketEnd.setDate(bucketStart.getDate() + 1);
+
+    const count = savedItems.reduce((sum, item) => {
+      const savedAt = getSavedTimestamp(item);
+      return savedAt >= bucketStart.getTime() && savedAt < bucketEnd.getTime() ? sum + 1 : sum;
+    }, 0);
+
+    return {
+      dateKey: bucketStart.toISOString().slice(0, 10),
+      attempts: count,
+      successes: count,
+      failures: 0,
+      itemsSeen: count,
+      itemsAdded: count,
+      bytesMoved: 0,
+    };
+  });
+}
+
+function buildHourlyBuckets(savedItems: FeedItem[]) {
+  const now = new Date();
+  now.setMinutes(0, 0, 0);
+
+  return Array.from({ length: 24 }, (_, index) => {
+    const bucketStart = new Date(now);
+    bucketStart.setHours(now.getHours() - (23 - index));
+    const bucketEnd = new Date(bucketStart);
+    bucketEnd.setHours(bucketStart.getHours() + 1);
+
+    const count = savedItems.reduce((sum, item) => {
+      const savedAt = getSavedTimestamp(item);
+      return savedAt >= bucketStart.getTime() && savedAt < bucketEnd.getTime() ? sum + 1 : sum;
+    }, 0);
+
+    return {
+      hourKey: bucketStart.toISOString().slice(0, 13),
+      attempts: count,
+      successes: count,
+      failures: 0,
+      itemsSeen: count,
+      itemsAdded: count,
+      bytesMoved: 0,
+    };
+  });
+}
+
+// ── Overview pane ─────────────────────────────────────────────────────────────
+
+function OverviewPane() {
   const items = useAppStore((s) => s.items);
-  const removeItem = useAppStore((s) => s.removeItem);
-  const [removing, setRemoving] = useState<string | null>(null);
+  const [selectedRange, setSelectedRange] = useState<HealthChartRange>("daily");
 
-  const savedItems = items.filter((item) => item.platform === "saved");
+  const savedItems = useMemo(
+    () =>
+      items
+        .filter((item) => item.platform === "saved")
+        .sort((a, b) => getSavedTimestamp(b) - getSavedTimestamp(a)),
+    [items],
+  );
 
   if (savedItems.length === 0) {
     return (
@@ -90,51 +170,118 @@ function ManagePane() {
     );
   }
 
-  const handleRemove = async (globalId: string) => {
-    setRemoving(globalId);
-    try {
-      await removeItem(globalId);
-    } finally {
-      setRemoving(null);
+  const dailyBuckets = useMemo(() => buildDailyBuckets(savedItems), [savedItems]);
+  const hourlyBuckets = useMemo(() => buildHourlyBuckets(savedItems), [savedItems]);
+  const activeBuckets = selectedRange === "hourly" ? hourlyBuckets : dailyBuckets;
+  const rangeLabel = selectedRange === "hourly" ? "24h" : "7d";
+  const savedInRange = activeBuckets.reduce((sum, bucket) => sum + bucket.itemsSeen, 0);
+  const latestSavedAt = getSavedTimestamp(savedItems[0]);
+
+  const topSources = useMemo(() => {
+    const sourceCounts = new Map<string, number>();
+    for (const item of savedItems) {
+      const source = getSavedSourceLabel(item);
+      sourceCounts.set(source, (sourceCounts.get(source) ?? 0) + 1);
     }
-  };
+    return [...sourceCounts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 5);
+  }, [savedItems]);
+
+  const contentMix = useMemo(() => {
+    const typeCounts = new Map<string, number>();
+    for (const item of savedItems) {
+      typeCounts.set(item.contentType, (typeCounts.get(item.contentType) ?? 0) + 1);
+    }
+    return [...typeCounts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [savedItems]);
+
+  const sourceCount = topSources.length;
+  const maxSourceCount = Math.max(...topSources.map(([, count]) => count), 1);
 
   return (
-    <div className="space-y-2 max-h-80 overflow-y-auto -mx-1 px-1">
-      {savedItems.map((item) => {
-        const title =
-          item.content.linkPreview?.title ??
-          item.content.text?.slice(0, 60) ??
-          item.globalId;
-        const urlDisplay = item.content.linkPreview?.url ?? item.author.handle;
-        return (
-          <div
-            key={item.globalId}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)]"
-          >
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-white truncate">{title}</p>
-              <p className="text-xs text-[#52525b] truncate">{urlDisplay}</p>
-            </div>
-            <button
-              onClick={() => handleRemove(item.globalId)}
-              disabled={removing === item.globalId}
-              className="flex-shrink-0 p-1.5 rounded-lg hover:bg-red-500/20 text-[#71717a] hover:text-red-400 transition-colors disabled:opacity-50"
-              aria-label={`Remove ${title}`}
-            >
-              {removing === item.globalId ? (
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              ) : (
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              )}
-            </button>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm text-white">Saved overview</p>
+          <p className="text-xs text-[#71717a] mt-1">
+            Track how much you have saved recently, plus where it is coming from.
+          </p>
+        </div>
+        <DurationSelect
+          value={selectedRange}
+          onChange={setSelectedRange}
+          ariaLabel="Saved content duration"
+        />
+      </div>
+
+      <VolumeBars
+        buckets={activeBuckets}
+        metric="itemsSeen"
+        title={selectedRange === "hourly" ? "Saved Per Hour" : "Saved Per Day"}
+      />
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)] p-4">
+          <p className="text-xs uppercase tracking-widest text-[#52525b]">Total Saved</p>
+          <p className="mt-2 text-2xl font-semibold text-white">
+            {savedItems.length.toLocaleString()}
+          </p>
+        </div>
+        <div className="rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)] p-4">
+          <p className="text-xs uppercase tracking-widest text-[#52525b]">Saved ({rangeLabel})</p>
+          <p className="mt-2 text-2xl font-semibold text-white">
+            {savedInRange.toLocaleString()}
+          </p>
+        </div>
+        <div className="rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)] p-4">
+          <p className="text-xs uppercase tracking-widest text-[#52525b]">Latest Save</p>
+          <p className="mt-2 text-sm font-medium text-white">
+            {formatHealthRelative(latestSavedAt)}
+          </p>
+        </div>
+        <div className="rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)] p-4">
+          <p className="text-xs uppercase tracking-widest text-[#52525b]">Top Sources</p>
+          <p className="mt-2 text-2xl font-semibold text-white">
+            {sourceCount.toLocaleString()}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-[1.4fr_1fr]">
+        <div className="rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)] p-4">
+          <p className="text-xs uppercase tracking-widest text-[#52525b]">Top Sources</p>
+          <div className="mt-4 space-y-3">
+            {topSources.map(([source, count]) => (
+              <div key={source} className="space-y-1.5">
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="truncate text-white">{source}</span>
+                  <span className="shrink-0 text-[#a1a1aa]">{count.toLocaleString()}</span>
+                </div>
+                <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-[#8b5cf6]/80"
+                    style={{ width: `${Math.max(10, Math.round((count / maxSourceCount) * 100))}%` }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
-        );
-      })}
+        </div>
+
+        <div className="rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)] p-4">
+          <p className="text-xs uppercase tracking-widest text-[#52525b]">Content Mix</p>
+          <div className="mt-4 space-y-3">
+            {contentMix.map(([contentType, count]) => (
+              <div key={contentType} className="flex items-center justify-between gap-3 text-sm">
+                <span className="capitalize text-white">{contentType}</span>
+                <span className="text-[#a1a1aa]">{count.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

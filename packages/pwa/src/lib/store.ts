@@ -9,7 +9,7 @@
 
 import { create } from "zustand";
 import { createDefaultPreferences } from "@freed/shared";
-import type { BaseAppState, Friend, ReachOutLog } from "@freed/shared";
+import type { BaseAppState, Friend, ReachOutLog, RemoveFeedOptions } from "@freed/shared";
 import {
   initDoc,
   subscribe,
@@ -180,8 +180,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     await docAddRssFeed(feed);
   },
 
-  removeFeed: async (url) => {
-    await docRemoveRssFeed(url);
+  removeFeed: async (url, options?: RemoveFeedOptions) => {
+    await docRemoveRssFeed(url, options?.includeItems ?? false);
   },
 
   removeAllFeeds: async (includeItems) => {

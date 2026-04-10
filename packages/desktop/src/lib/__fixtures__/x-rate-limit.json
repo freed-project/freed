@@ -1,5 +1,5 @@
 {
-  "_note": "X rate-limit error body (code 88). Triggers errorStage='rate_limit'.",
+  "_note": "X rate-limit error body (code 88). Triggers errorStage='provider_rate_limit'.",
   "errors": [
     {
       "code": 88,

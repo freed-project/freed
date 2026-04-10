@@ -14,6 +14,7 @@ import { useAppStore } from "../lib/store";
 import { loadStoredCookies, disconnectX } from "../lib/x-auth";
 import { captureXTimeline } from "../lib/x-capture";
 import { useSettingsStore } from "@freed/ui/lib/settings-store";
+import { resetProviderPauseState } from "../lib/provider-health";
 
 const XIcon = () => (
   <svg className="w-7 h-7 text-[#a1a1aa]" viewBox="0 0 24 24" fill="currentColor">
@@ -46,8 +47,9 @@ export function XFeedEmptyState() {
     }
   };
 
-  const handleDisconnect = () => {
+  const handleDisconnect = async () => {
     disconnectX();
+    await resetProviderPauseState("x");
     setXAuth({ isAuthenticated: false });
     setError(null);
   };

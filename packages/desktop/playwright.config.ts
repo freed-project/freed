@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const BASE_URL = process.env.BASE_URL ?? "http://localhost:1420";
+const BASE_URL = process.env.BASE_URL ?? "http://localhost:1422";
 const USE_LOCAL_SERVER = !process.env.BASE_URL;
 
 export default defineConfig({
@@ -30,7 +30,7 @@ export default defineConfig({
 
   webServer: USE_LOCAL_SERVER
     ? {
-        command: "VITE_TEST_TAURI=1 npm run dev",
+        command: "VITE_TEST_TAURI=1 npm run dev -- --port 1422",
         url: BASE_URL,
         reuseExistingServer: !process.env.CI,
         timeout: 60_000,

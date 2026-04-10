@@ -80,9 +80,9 @@ export function LegalGate({
 
   return (
     <div className="fixed inset-0 z-[120] bg-[#09090b] text-white">
-      <div className="min-h-screen px-4 py-8 sm:px-6 lg:px-8 flex items-center justify-center">
-        <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-[rgba(15,15,20,0.96)] shadow-[0_24px_80px_rgba(0,0,0,0.45)] overflow-hidden">
-          <div className="px-6 py-5 sm:px-8 sm:py-7 border-b border-white/10 bg-gradient-to-r from-[#312e81]/25 via-[#111827] to-[#7c2d12]/20">
+      <div className="flex min-h-full items-start justify-center overflow-y-auto px-4 py-4 sm:items-center sm:px-6 sm:py-8 lg:px-8">
+        <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-[rgba(15,15,20,0.96)] shadow-[0_24px_80px_rgba(0,0,0,0.45)] sm:max-h-[calc(100dvh-3rem)]">
+          <div className="shrink-0 px-6 py-5 sm:px-8 sm:py-7 border-b border-white/10 bg-gradient-to-r from-[#312e81]/25 via-[#111827] to-[#7c2d12]/20">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#c4b5fd]">
               Before You Continue
             </p>
@@ -96,7 +96,7 @@ export function LegalGate({
             </p>
           </div>
 
-          <div className="px-6 py-6 sm:px-8 sm:py-7 space-y-6">
+          <div className="overflow-y-auto px-6 py-6 sm:px-8 sm:py-7 space-y-6">
             <div className="rounded-2xl border border-amber-500/25 bg-amber-500/8 p-4">
               <p className="text-sm font-semibold text-amber-300">
                 What you are agreeing to

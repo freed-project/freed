@@ -11,6 +11,7 @@ import { useAppStore } from "../lib/store";
 import { disconnectIg } from "../lib/instagram-auth";
 import { captureIgFeed } from "../lib/instagram-capture";
 import { useSettingsStore } from "@freed/ui/lib/settings-store";
+import { resetProviderPauseState } from "../lib/provider-health";
 
 const IgIcon = () => (
   <svg className="w-7 h-7 text-[#a1a1aa]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -49,6 +50,7 @@ export function InstagramFeedEmptyState() {
     } catch {
       // Best-effort
     }
+    await resetProviderPauseState("instagram");
     setIgAuth({ isAuthenticated: false });
     setError(null);
   };

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import { create } from "zustand";
 
 export type ToastType = "success" | "error" | "info";
@@ -7,20 +7,26 @@ interface Toast {
   id: string;
   message: string;
   type: ToastType;
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
 interface ToastStore {
   toasts: Toast[];
-  addToast: (message: string, type?: ToastType) => void;
+  addToast: (
+    message: string,
+    type?: ToastType,
+    options?: { actionLabel?: string; onAction?: () => void },
+  ) => void;
   removeToast: (id: string) => void;
 }
 
 export const useToastStore = create<ToastStore>((set) => ({
   toasts: [],
-  addToast: (message, type = "info") => {
+  addToast: (message, type = "info", options) => {
     const id = Math.random().toString(36).slice(2);
     set((state) => ({
-      toasts: [...state.toasts, { id, message, type }],
+      toasts: [...state.toasts, { id, message, type, ...options }],
     }));
     setTimeout(() => {
       set((state) => ({
@@ -35,11 +41,18 @@ export const useToastStore = create<ToastStore>((set) => ({
 }));
 
 export const toast = {
-  success: (message: string) =>
-    useToastStore.getState().addToast(message, "success"),
-  error: (message: string) =>
-    useToastStore.getState().addToast(message, "error"),
-  info: (message: string) => useToastStore.getState().addToast(message, "info"),
+  success: (
+    message: string,
+    options?: { actionLabel?: string; onAction?: () => void },
+  ) => useToastStore.getState().addToast(message, "success", options),
+  error: (
+    message: string,
+    options?: { actionLabel?: string; onAction?: () => void },
+  ) => useToastStore.getState().addToast(message, "error", options),
+  info: (
+    message: string,
+    options?: { actionLabel?: string; onAction?: () => void },
+  ) => useToastStore.getState().addToast(message, "info", options),
 };
 
 function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
@@ -48,6 +61,12 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
   const handleClose = () => {
     setIsExiting(true);
     setTimeout(onClose, 200);
+  };
+
+  const handleAction = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    toast.onAction?.();
+    handleClose();
   };
 
   // bg-[#1a1a1f] is the opaque base; the colored ring stacks on top so the
@@ -93,8 +112,19 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
     >
       <span className={textColor}>{icon}</span>
       <span className="text-sm text-white flex-1">{toast.message}</span>
+      {toast.actionLabel && toast.onAction && (
+        <button
+          onClick={handleAction}
+          className={`text-xs font-medium transition-colors ${textColor} hover:text-white`}
+        >
+          {toast.actionLabel}
+        </button>
+      )}
       <button
-        onClick={handleClose}
+        onClick={(event) => {
+          event.stopPropagation();
+          handleClose();
+        }}
         className="text-white/50 hover:text-white transition-colors"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

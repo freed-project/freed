@@ -4,10 +4,11 @@ import { FeedView } from "@freed/ui/components/feed";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { ToastContainer } from "@freed/ui/components/Toast";
 import { PlatformProvider, type PlatformConfig, type UpdateDownloadProgress } from "@freed/ui/context";
+import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { UpdateNotification, type UpdateState } from "./components/UpdateNotification";
 import { CloudSyncNudge } from "./components/CloudSyncNudge";
 import { useAppStore } from "./lib/store";
-import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML } from "./lib/capture";
+import { addRssFeed, importOPMLFeeds, exportFeedsAsOPML, refreshAllFeeds } from "./lib/capture";
 import { startRssPoller, stopRssPoller } from "./lib/rss-poller";
 import { exit, relaunch } from "@tauri-apps/plugin-process";
 import { open as shellOpen } from "@tauri-apps/plugin-shell";
@@ -20,6 +21,10 @@ import {
   getCloudToken,
   clearCloudProvider,
   deleteCloudFile,
+  startCloudSync,
+  initiateDesktopOAuth,
+  storeCloudToken,
+  type CloudProvider,
 } from "./lib/sync";
 import { clearLocalDoc } from "./lib/automerge";
 import { isTauri } from "@tauri-apps/api/core";
@@ -30,12 +35,16 @@ import { clearStoredCookies, storeCookies } from "./lib/x-auth";
 import { disconnectIg, storeIgAuthState } from "./lib/instagram-auth";
 import { disconnectFb, storeFbAuthState } from "./lib/fb-auth";
 import { disconnectLi, storeLiAuthState } from "./lib/li-auth";
+import { captureXTimeline } from "./lib/x-capture";
+import { captureFbFeed } from "./lib/fb-capture";
+import { captureIgFeed } from "./lib/instagram-capture";
+import { captureLiFeed } from "./lib/li-capture";
 import { contentCache } from "./lib/content-cache";
 import { saveUrlInDesktop } from "./lib/save-url";
 import { importMarkdownFiles, exportLibrary } from "./lib/import-export";
 import { secureStorage } from "./lib/secure-storage";
 import { start as startContentFetcher, stop as stopContentFetcher } from "./lib/content-fetcher";
-import { useAppStore as useDesktopStore } from "./lib/store";
+import { useAppStore as useDesktopStore, withProviderSyncing } from "./lib/store";
 import { pickContactViaTauri } from "./lib/contacts";
 import { FeedEmptyState } from "./components/FeedEmptyState";
 import { XSettingsSection } from "./components/XSettingsSection";
@@ -43,12 +52,13 @@ import { FacebookSettingsSection } from "./components/FacebookSettingsSection";
 import { InstagramSettingsSection } from "./components/InstagramSettingsSection";
 import { LinkedInSettingsSection } from "./components/LinkedInSettingsSection";
 import { XSourceIndicator } from "./components/XSourceIndicator";
-import { DesktopSyncIndicator } from "./components/DesktopSyncIndicator";
 import { MobileSyncTab } from "./components/MobileSyncTab";
 import { DesktopLegalSettingsSection } from "./components/DesktopLegalSettingsSection";
 import { refreshSampleLibraryData } from "@freed/ui/lib/sample-library-seed";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { acceptDesktopBundle, hasAcceptedDesktopBundle } from "./lib/legal-consent";
+import { clearProviderPause, forgetRssFeedHealth, initProviderHealth } from "./lib/provider-health";
+import { getDesktopSourceStatus } from "./lib/source-status";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
@@ -105,6 +115,7 @@ function App() {
 
   useEffect(() => {
     if (!legalAccepted || !isInitialized) return;
+    void initProviderHealth();
     startRssPoller();
     // Wire the LAN relay change subscription + client-count polling.
     startSync();
@@ -254,6 +265,19 @@ function App() {
     location.reload();
   }, []);
 
+  const retryCloudProvider = useCallback(async (provider: CloudProvider) => {
+    const token = getCloudToken(provider);
+    if (!token) return;
+    await startCloudSync(provider, token);
+  }, []);
+
+  const reconnectCloudProvider = useCallback(async (provider: CloudProvider) => {
+    clearCloudProvider(provider);
+    const token = await initiateDesktopOAuth(provider);
+    storeCloudToken(provider, token);
+    await startCloudSync(provider, token);
+  }, []);
+
   // Fake-authenticate all social providers for local testing. Writes stub
   // credentials to localStorage (matching the real auth persistence format)
   // and updates Zustand state so the sidebar dots light up without a real login.
@@ -304,7 +328,7 @@ function App() {
       exportFeedsAsOPML,
       headerDragRegion: true,
       SourceIndicator: XSourceIndicator,
-      HeaderSyncIndicator: DesktopSyncIndicator,
+      HeaderSyncIndicator: null,
       SettingsExtraSections: MobileSyncTab,
       LegalSettingsContent: DesktopLegalSettingsSection,
       FeedEmptyState: FeedEmptyState,
@@ -332,6 +356,61 @@ function App() {
         const items = Object.values(useDesktopStore.getState().items ?? {});
         return exportLibrary(items);
       },
+      retryCloudProvider,
+      reconnectCloudProvider,
+      forgetRssFeedHealth,
+      syncRssNow: refreshAllFeeds,
+      syncSourceNow: async (sourceId) => {
+        const state = useDesktopStore.getState();
+        const health = useDebugStore.getState().health;
+        const isPaused =
+          (sourceId === "x" ||
+            sourceId === "facebook" ||
+            sourceId === "instagram" ||
+            sourceId === "linkedin") &&
+          health?.providers[sourceId]?.status === "paused";
+
+        if (sourceId === "rss") {
+          await refreshAllFeeds();
+          return;
+        }
+
+        if (sourceId === "x" && state.xAuth.isAuthenticated && state.xAuth.cookies) {
+          if (isPaused) {
+            await clearProviderPause("x");
+          }
+          await withProviderSyncing("x", () => captureXTimeline(state.xAuth.cookies!));
+          return;
+        }
+
+        if (sourceId === "facebook" && state.fbAuth.isAuthenticated) {
+          if (isPaused) {
+            await clearProviderPause("facebook");
+          }
+          await withProviderSyncing("facebook", () => captureFbFeed());
+          return;
+        }
+
+        if (sourceId === "instagram" && state.igAuth.isAuthenticated) {
+          if (isPaused) {
+            await clearProviderPause("instagram");
+          }
+          await withProviderSyncing("instagram", () => captureIgFeed());
+          return;
+        }
+
+        if (sourceId === "linkedin" && state.liAuth.isAuthenticated) {
+          if (isPaused) {
+            await clearProviderPause("linkedin");
+          }
+          await withProviderSyncing("linkedin", () => captureLiFeed());
+        }
+      },
+      getSourceStatus: (sourceId) => {
+        const desktopState = useDesktopStore.getState();
+        const health = useDebugStore.getState().health;
+        return getDesktopSourceStatus(sourceId, desktopState, health);
+      },
       // Local content cache (Tauri FS layer)
       getLocalContent: (globalId) => contentCache.get(globalId),
       // Encrypted API key store (type-widened: ApiKeyProvider -> string for PlatformConfig interface)
@@ -351,7 +430,7 @@ function App() {
         return null;
       })(),
     }),
-     [checkForUpdates, applyUpdate, handleFactoryReset, seedSocialConnections, updateState],
+     [checkForUpdates, applyUpdate, handleFactoryReset, reconnectCloudProvider, retryCloudProvider, seedSocialConnections, updateState],
   );
 
   if (!legalResolved) {

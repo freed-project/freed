@@ -414,8 +414,18 @@ export function updateRssFeed(
  * @param doc - The Automerge document (mutable within A.change)
  * @param url - The feed URL
  */
-export function removeRssFeed(doc: FreedDoc, url: string): void {
+export function removeRssFeed(
+  doc: FreedDoc,
+  url: string,
+  includeItems: boolean = false,
+): void {
   delete doc.rssFeeds[url];
+  if (!includeItems) return;
+  for (const [id, item] of Object.entries(doc.feedItems)) {
+    if (item.rssSource?.feedUrl === url) {
+      delete doc.feedItems[id];
+    }
+  }
 }
 
 /**

@@ -19,6 +19,8 @@ async function dismissCloudSyncNudgeIfPresent(page: Page) {
     await dismissButton.click();
   }
 }
+const SETTINGS_STORE_PATH =
+  "/@fs/Users/aubreyfalconer/dev/freed-provider-health/packages/ui/src/lib/settings-store.ts";
 
 // ---------------------------------------------------------------------------
 // App initialization
@@ -81,6 +83,68 @@ test("main content area renders", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
   await expect(app.page.locator("main")).toBeVisible();
+});
+
+test("settings dialog closes from the desktop sidebar close button", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  const { page } = app;
+  await page.evaluate(async (settingsStorePath) => {
+    const mod = await import(settingsStorePath);
+    mod.useSettingsStore.getState().openDefault();
+  }, SETTINGS_STORE_PATH);
+  await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
+
+  await page.getByTestId("settings-close-button-sidebar").click();
+  await expect(page.getByTestId("settings-close-button-sidebar")).toHaveCount(0);
+});
+
+test("settings dialog closes from the mobile header close button", async ({ app, page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async (settingsStorePath) => {
+    const mod = await import(settingsStorePath);
+    mod.useSettingsStore.getState().openDefault();
+  }, SETTINGS_STORE_PATH);
+  await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
+
+  await page.getByRole("button", { name: "Reading" }).click();
+  await expect(page.getByTestId("settings-close-button-mobile")).toBeVisible({ timeout: 5_000 });
+
+  await page.getByTestId("settings-close-button-mobile").click();
+  await expect(page.getByTestId("settings-close-button-mobile")).toHaveCount(0);
+});
+
+test("provider risk dialog scrolls vertically on tiny mobile screens", async ({ app, page }) => {
+  await page.setViewportSize({ width: 320, height: 360 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async (settingsStorePath) => {
+    const mod = await import(settingsStorePath);
+    mod.useSettingsStore.getState().openTo("facebook");
+  }, SETTINGS_STORE_PATH);
+
+  await page.getByRole("button", { name: "Log in with Facebook" }).click();
+  const dialog = page.getByTestId("provider-risk-dialog-facebook");
+  const dialogBody = page.getByTestId("provider-risk-dialog-body-facebook");
+  await expect(dialog).toBeVisible({ timeout: 5_000 });
+  await expect(dialogBody).toBeVisible({ timeout: 5_000 });
+
+  const metrics = await dialogBody.evaluate((element) => {
+    const style = window.getComputedStyle(element);
+    return {
+      overflowY: style.overflowY,
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    };
+  });
+
+  expect(metrics.overflowY).toBe("auto");
+  expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
 });
 
 test("Friends view can return to the feed from sidebar navigation", async ({ app }) => {

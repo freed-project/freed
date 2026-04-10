@@ -28,6 +28,8 @@ import type { XCookies } from "./x-auth";
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { getPlatformUA, extractChromeVersion, osPlatformHeader } from "./user-agent";
+import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
+import { clearStoredCookies } from "./x-auth";
 
 // =============================================================================
 // Injectable Transport
@@ -180,6 +182,7 @@ export async function fetchXTimeline(
   let rawResponse: string;
 
   try {
+    addDebugEvent("change", "[X] requesting home timeline");
     rawResponse = await xRequest(
       cookies,
       HomeLatestTimeline,
@@ -194,6 +197,10 @@ export async function fetchXTimeline(
 
   diag.rawResponseBytes = rawResponse.length;
   diag.rawResponsePreview = rawResponse.slice(0, 500);
+  addDebugEvent(
+    "change",
+    `[X] response received: ${diag.rawResponseBytes.toLocaleString()} bytes`,
+  );
 
   let parsed: unknown;
   try {
@@ -215,7 +222,7 @@ export async function fetchXTimeline(
       return { items: [], diag };
     }
     if (code === 88) {
-      diag.errorStage = "rate_limit";
+      diag.errorStage = "provider_rate_limit";
       diag.errorMessage = "Rate limit exceeded — try again in 15 minutes.";
       return { items: [], diag };
     }
@@ -232,6 +239,10 @@ export async function fetchXTimeline(
   const unwrapped = parsed as TimelineResponse;
   const home = wrapped?.data?.home ?? unwrapped?.home;
   const instructions = home?.home_timeline_urt?.instructions ?? [];
+  addDebugEvent(
+    "change",
+    `[X] parsed ${instructions.length.toLocaleString()} timeline instruction${instructions.length === 1 ? "" : "s"}`,
+  );
 
   if (instructions.length === 0) {
     diag.errorStage = "instructions";
@@ -263,6 +274,10 @@ export async function fetchXTimeline(
   }
 
   diag.tweetsExtracted = tweets.length;
+  addDebugEvent(
+    "change",
+    `[X] extracted ${diag.tweetsExtracted.toLocaleString()} timeline tweet${diag.tweetsExtracted === 1 ? "" : "s"}`,
+  );
 
   if (tweets.length === 0) {
     // Not an error per se — the timeline may genuinely be empty.
@@ -279,9 +294,17 @@ export async function fetchXTimeline(
   }
 
   diag.itemsNormalized = normalized.length;
+  addDebugEvent(
+    "change",
+    `[X] normalized ${diag.itemsNormalized.toLocaleString()} item${diag.itemsNormalized === 1 ? "" : "s"}`,
+  );
 
   const items = deduplicateFeedItems(normalized);
   diag.itemsDeduplicated = items.length;
+  addDebugEvent(
+    "change",
+    `[X] deduplicated to ${diag.itemsDeduplicated.toLocaleString()} item${diag.itemsDeduplicated === 1 ? "" : "s"}`,
+  );
 
   return { items, diag };
 }
@@ -369,21 +392,71 @@ export async function captureXTimeline(
   requester: XRequester = defaultRequester,
 ): Promise<XSyncResult> {
   const store = useAppStore.getState();
+  const startedAt = Date.now();
 
   store.setLoading(true);
   store.setError(null);
 
   try {
+    const pause = getProviderPause("x");
+    if (pause) {
+      return {
+        items: [],
+        diag: {
+          rawResponseBytes: 0,
+          rawResponsePreview: "",
+          instructionsFound: 0,
+          tweetsExtracted: 0,
+          itemsNormalized: 0,
+          itemsDeduplicated: 0,
+          itemsAdded: 0,
+          errorStage: "provider_rate_limit",
+          errorMessage: pause.pauseReason,
+        },
+      };
+    }
+
+    addDebugEvent("change", "[X] sync started");
     const result = await fetchXTimeline(cookies, requester);
 
     if (result.diag.errorStage) {
       const detail = `[X] sync failed at stage="${result.diag.errorStage}": ${result.diag.errorMessage ?? "(no message)"}`;
       store.setError(result.diag.errorMessage ?? result.diag.errorStage);
       addDebugEvent("error", detail);
+      const nextAuth =
+        result.diag.errorStage === "auth"
+          ? { isAuthenticated: false, lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage }
+          : {
+              ...store.xAuth,
+              lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage,
+            };
+      if (result.diag.errorStage === "auth") {
+        clearStoredCookies();
+      }
+      store.setXAuth(nextAuth);
+      await recordProviderHealthEvent({
+        provider: "x",
+        outcome:
+          result.diag.errorStage === "provider_rate_limit"
+            ? "provider_rate_limit"
+            : "error",
+        stage: result.diag.errorStage,
+        reason: result.diag.errorMessage ?? result.diag.errorStage,
+        startedAt,
+        finishedAt: Date.now(),
+        itemsSeen: result.diag.tweetsExtracted,
+        itemsAdded: result.diag.itemsAdded,
+        signalType:
+          result.diag.errorStage === "provider_rate_limit" ? "explicit" : "none",
+      });
       return result;
     }
 
     if (result.items.length > 0) {
+      addDebugEvent(
+        "change",
+        `[X] writing ${result.items.length.toLocaleString()} candidate item${result.items.length === 1 ? "" : "s"} to the library`,
+      );
       const before = store.items.filter((i) => i.platform === "x").length;
       await store.addItems(result.items);
       const after = useAppStore.getState().items.filter((i) => i.platform === "x").length;
@@ -396,12 +469,40 @@ export async function captureXTimeline(
       addDebugEvent("change", `[X] sync complete: timeline returned 0 tweets`);
     }
 
+    store.setXAuth({
+      ...store.xAuth,
+      lastCapturedAt: Date.now(),
+      lastCaptureError: undefined,
+    });
+    await recordProviderHealthEvent({
+      provider: "x",
+      outcome: result.diag.tweetsExtracted > 0 ? "success" : "empty",
+      stage: result.diag.tweetsExtracted > 0 ? undefined : "empty",
+      reason: result.diag.tweetsExtracted > 0 ? undefined : "No tweets pulled",
+      startedAt,
+      finishedAt: Date.now(),
+      itemsSeen: result.diag.tweetsExtracted,
+      itemsAdded: result.diag.itemsAdded,
+    });
+
     return result;
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to capture X timeline";
     store.setError(message);
     addDebugEvent("error", `[X] captureXTimeline threw: ${message}`);
+    store.setXAuth({
+      ...store.xAuth,
+      lastCaptureError: message,
+    });
+    await recordProviderHealthEvent({
+      provider: "x",
+      outcome: "error",
+      stage: "unknown",
+      reason: message,
+      startedAt,
+      finishedAt: Date.now(),
+    });
     throw error;
   } finally {
     store.setLoading(false);

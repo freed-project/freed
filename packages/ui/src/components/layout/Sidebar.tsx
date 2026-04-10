@@ -1,8 +1,11 @@
 import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from "react";
 
 import { countFriendsWithRecentLocationUpdates, type FilterOptions, type RssFeed } from "@freed/shared";
-import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
+import { useAppStore, usePlatform, type SidebarSourceStatusSummary } from "../../context/PlatformContext.js";
+import { ProviderStatusIndicator } from "../ProviderStatusIndicator.js";
 import { SettingsDialog } from "../SettingsDialog.js";
+import { toast } from "../Toast.js";
+import { useDebugStore } from "../../lib/debug-store.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
 import { TOP_SOURCE_ITEMS, type SourceNavigationItem } from "../../lib/source-navigation.js";
@@ -88,29 +91,34 @@ function syncStatusLabel(lastFetched?: number): string {
 interface FeedContextMenuProps {
   feed: RssFeed;
   anchorRect: DOMRect;
+  anchorElement?: HTMLElement | null;
   onClose: () => void;
   onRename: (title: string) => void;
   onUnsubscribe: () => void;
 }
 
-function FeedContextMenu({
-  feed,
+function SidebarContextMenuShell({
   anchorRect,
   onClose,
-  onRename,
-  onUnsubscribe,
-}: FeedContextMenuProps) {
+  ignoreElement,
+  width = 224,
+  testId,
+  children,
+}: {
+  anchorRect: DOMRect;
+  onClose: () => void;
+  ignoreElement?: HTMLElement | null;
+  width?: number;
+  testId?: string;
+  children: ReactNode;
+}) {
   const menuRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [renaming, setRenaming] = useState(false);
-  const [renameValue, setRenameValue] = useState(feed.title);
-
-  useEffect(() => {
-    if (renaming) inputRef.current?.focus();
-  }, [renaming]);
 
   useEffect(() => {
     const handleDown = (e: MouseEvent) => {
+      if (ignoreElement && ignoreElement.contains(e.target as Node)) {
+        return;
+      }
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
@@ -124,7 +132,40 @@ function FeedContextMenu({
       document.removeEventListener("mousedown", handleDown);
       document.removeEventListener("keydown", handleKey);
     };
-  }, [onClose]);
+  }, [ignoreElement, onClose]);
+
+  const gap = 6;
+  const fitsRight = anchorRect.right + gap + width <= window.innerWidth;
+  const left = fitsRight ? anchorRect.right + gap : anchorRect.left - gap - width;
+  const top = Math.min(anchorRect.top, window.innerHeight - 180);
+
+  return (
+    <div
+      ref={menuRef}
+      style={{ top, left, width }}
+      data-testid={testId}
+      className="fixed z-[300] bg-[#161616] border border-[rgba(255,255,255,0.1)] rounded-xl shadow-2xl shadow-black/70 overflow-hidden"
+    >
+      {children}
+    </div>
+  );
+}
+
+function FeedContextMenu({
+  feed,
+  anchorRect,
+  anchorElement,
+  onClose,
+  onRename,
+  onUnsubscribe,
+}: FeedContextMenuProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(feed.title);
+
+  useEffect(() => {
+    if (renaming) inputRef.current?.focus();
+  }, [renaming]);
 
   const handleRenameSubmit = () => {
     const trimmed = renameValue.trim();
@@ -135,18 +176,8 @@ function FeedContextMenu({
     }
   };
 
-  const menuWidth = 224;
-  const gap = 6;
-  const fitsRight = anchorRect.right + gap + menuWidth <= window.innerWidth;
-  const left = fitsRight ? anchorRect.right + gap : anchorRect.left - gap - menuWidth;
-  const top = Math.min(anchorRect.top, window.innerHeight - 180);
-
   return (
-    <div
-      ref={menuRef}
-      style={{ top, left, width: menuWidth }}
-      className="fixed z-[300] bg-[#161616] border border-[rgba(255,255,255,0.1)] rounded-xl shadow-2xl shadow-black/70 overflow-hidden"
-    >
+    <SidebarContextMenuShell anchorRect={anchorRect} ignoreElement={anchorElement} onClose={onClose} testId={`feed-context-menu-${feed.url}`}>
       {/* Sync status header */}
       <div className="px-3 py-2.5 border-b border-[rgba(255,255,255,0.07)]">
         <div className="flex items-center gap-2">
@@ -196,7 +227,119 @@ function FeedContextMenu({
           Unsubscribe
         </button>
       </div>
-    </div>
+    </SidebarContextMenuShell>
+  );
+}
+
+function SourceContextMenu({
+  source,
+  anchorRect,
+  anchorElement,
+  unread,
+  total,
+  status,
+  onClose,
+  onOpenSettings,
+  onSyncNow,
+}: {
+  source: SourceNavigationItem;
+  anchorRect: DOMRect;
+  anchorElement?: HTMLElement | null;
+  unread: number;
+  total: number;
+  status: SidebarSourceStatusSummary | null;
+  onClose: () => void;
+  onOpenSettings?: () => void;
+  onSyncNow?: () => void;
+}) {
+  const [syncInitiated, setSyncInitiated] = useState(false);
+  const sourceKey = source.id ?? "all";
+  const totalLabel = total > 0 ? `${fmt(unread)} unread, ${fmt(total)} total` : "No items yet";
+  const sourceLabel = source.id === undefined ? "All sources" : source.label;
+  const syncActionLabel = status?.paused ? "Resume now" : "Sync now";
+  const syncInitiatedLabel = status?.paused ? "Resuming" : "Syncing Initiated";
+
+  useEffect(() => {
+    if (!syncInitiated) return;
+    const timeout = window.setTimeout(() => setSyncInitiated(false), 1500);
+    return () => window.clearTimeout(timeout);
+  }, [syncInitiated]);
+
+  return (
+    <SidebarContextMenuShell
+      anchorRect={anchorRect}
+      ignoreElement={anchorElement}
+      onClose={onClose}
+      testId={`source-context-menu-${sourceKey}`}
+    >
+      <div className="px-3 py-2.5 border-b border-[rgba(255,255,255,0.07)]">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-medium text-[#d4d4d8] truncate">{sourceLabel}</span>
+          <span className="text-[11px] text-[#52525b] ml-auto">{totalLabel}</span>
+        </div>
+      </div>
+
+      {status ? (
+        <div className="px-3 py-2.5 border-b border-[rgba(255,255,255,0.07)]">
+          <div className="flex items-center gap-2">
+            <ProviderStatusIndicator
+              tone={status.tone}
+              syncing={status.syncing}
+              label={status.label}
+              size="xs"
+            />
+            <span className="text-xs font-medium text-[#d4d4d8]">
+              {status.syncing && status.tone === "healthy" ? "Syncing" : status.label}
+            </span>
+          </div>
+          {status.detail ? (
+            <p className="mt-1.5 text-[11px] leading-4 text-[#8a8a93]">
+              {status.detail}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="py-1">
+        {onSyncNow ? (
+          <button
+            onClick={() => {
+              setSyncInitiated(true);
+              toast.info("Syncing Initiated");
+              onSyncNow();
+            }}
+            data-testid={`source-menu-sync-${sourceKey}`}
+            className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors text-left ${
+              syncInitiated
+                ? "bg-[#8b5cf6]/20 text-[#c4b5fd]"
+                : "text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+            }`}
+          >
+            <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0A8.003 8.003 0 015.418 15m13.001 0H15" />
+            </svg>
+            {syncInitiated ? syncInitiatedLabel : syncActionLabel}
+          </button>
+        ) : null}
+
+        {onOpenSettings ? (
+          <button
+            onClick={() => {
+              onOpenSettings();
+              onClose();
+            }}
+            data-testid={`source-menu-settings-${sourceKey}`}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-colors text-left"
+          >
+            <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.25 3.75h1.5a1.5 1.5 0 011.5 1.5v.621a1.5 1.5 0 001.06 1.436l.587.196a1.5 1.5 0 001.63-.367l.44-.44a1.5 1.5 0 012.122 0l1.06 1.06a1.5 1.5 0 010 2.121l-.44.44a1.5 1.5 0 00-.366 1.63l.195.588a1.5 1.5 0 001.437 1.06h.62a1.5 1.5 0 011.5 1.5v1.5a1.5 1.5 0 01-1.5 1.5h-.62a1.5 1.5 0 00-1.437 1.06l-.195.587a1.5 1.5 0 00.366 1.63l.44.44a1.5 1.5 0 010 2.122l-1.06 1.06a1.5 1.5 0 01-2.121 0l-.44-.44a1.5 1.5 0 00-1.63-.366l-.588.195a1.5 1.5 0 00-1.06 1.437v.62a1.5 1.5 0 01-1.5 1.5h-1.5a1.5 1.5 0 01-1.5-1.5v-.62a1.5 1.5 0 00-1.06-1.437l-.587-.195a1.5 1.5 0 00-1.63.366l-.44.44a1.5 1.5 0 01-2.122 0l-1.06-1.06a1.5 1.5 0 010-2.121l.44-.44a1.5 1.5 0 00.366-1.63l-.195-.588A1.5 1.5 0 005.871 18h-.62a1.5 1.5 0 01-1.5-1.5V15a1.5 1.5 0 011.5-1.5h.62a1.5 1.5 0 001.437-1.06l.195-.587a1.5 1.5 0 00-.366-1.63l-.44-.44a1.5 1.5 0 010-2.122l1.06-1.06a1.5 1.5 0 012.121 0l.44.44a1.5 1.5 0 001.63.367l.588-.196a1.5 1.5 0 001.06-1.436V5.25a1.5 1.5 0 011.5-1.5z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Open settings
+          </button>
+        ) : null}
+      </div>
+    </SidebarContextMenuShell>
   );
 }
 
@@ -204,7 +347,7 @@ const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
 const DEFAULT_WIDTH = 256;
 export function Sidebar({ open, onClose }: SidebarProps) {
-  const { SourceIndicator, headerDragRegion } = usePlatform();
+  const { SourceIndicator, headerDragRegion, syncRssNow, syncSourceNow, getSourceStatus } = usePlatform();
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
@@ -220,12 +363,18 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const unreadCountByPlatform = useAppStore((s) => s.unreadCountByPlatform);
   const totalItemCount = useAppStore((s) => s.totalItemCount);
   const itemCountByPlatform = useAppStore((s) => s.itemCountByPlatform);
+  const providerSyncCounts = useAppStore(
+    (s) =>
+      ((s as unknown as { providerSyncCounts?: Partial<Record<string, number>> })
+        .providerSyncCounts ?? {}) as Partial<Record<string, number>>,
+  );
   const sidebarWidth = useAppStore((s) => s.preferences.display.sidebarWidth) ?? DEFAULT_WIDTH;
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const items = useAppStore((s) => s.items);
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
+  const health = useDebugStore((s) => s.health);
 
   const savedCount = useMemo(() => items.filter((i) => i.userState.saved).length, [items]);
   const archivedCount = useMemo(() => items.filter((i) => i.userState.archived).length, [items]);
@@ -254,6 +403,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   }, []);
   const [openMenuFeedUrl, setOpenMenuFeedUrl] = useState<string | null>(null);
   const [menuAnchorRect, setMenuAnchorRect] = useState<DOMRect | null>(null);
+  const [menuAnchorElement, setMenuAnchorElement] = useState<HTMLElement | null>(null);
+  const [openMenuSourceKey, setOpenMenuSourceKey] = useState<string | null>(null);
+  const [sourceMenuAnchorRect, setSourceMenuAnchorRect] = useState<DOMRect | null>(null);
+  const [sourceMenuAnchorElement, setSourceMenuAnchorElement] = useState<HTMLElement | null>(null);
   const dragging = useRef(false);
 
 
@@ -364,6 +517,36 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       ? totalItemCount
       : (itemCountByPlatform[source.id] ?? 0);
 
+  const sourceKey = (source: SourceNavigationItem) => source.id ?? "all";
+  const allSource = TOP_SOURCE_ITEMS[0];
+  const providerSourceItems = TOP_SOURCE_ITEMS.slice(1);
+
+  const settingsSectionForSource = (source: SourceNavigationItem) => {
+    if (source.id === undefined) return null;
+    if (source.id === "rss") return "feeds";
+    if (source.id === "x") return "x";
+    if (source.id === "facebook") return "facebook";
+    if (source.id === "instagram") return "instagram";
+    if (source.id === "linkedin") return "linkedin";
+    return "sync";
+  };
+
+  const canShowSourceMenu = (source: SourceNavigationItem) =>
+    source.id === "rss" ||
+    source.id === "x" ||
+    source.id === "facebook" ||
+    source.id === "instagram" ||
+    source.id === "linkedin";
+
+  const selectedMenuSource = openMenuSourceKey
+    ? TOP_SOURCE_ITEMS.find((source) => sourceKey(source) === openMenuSourceKey) ?? null
+    : null;
+  const selectedMenuSourceId = selectedMenuSource?.id;
+  const selectedMenuStatus = useMemo(
+    () => (selectedMenuSource ? (getSourceStatus?.(selectedMenuSourceId) ?? null) : null),
+    [getSourceStatus, selectedMenuSource, selectedMenuSourceId, providerSyncCounts, health],
+  );
+
   return (
     <>
       {/* Mobile overlay */}
@@ -406,37 +589,96 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           {/* Sources */}
           <SidebarSection title="Sources">
             <ul className="space-y-1">
-              {TOP_SOURCE_ITEMS.map((source) => (
-                <li key={source.id ?? "all"}>
+              {[allSource].map((source) => (
+                <li
+                  key={source.id ?? "all"}
+                  className={`group/source flex items-stretch gap-2 rounded-lg border transition-all ${
+                    isTopSourceActive(source)
+                      ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
+                      : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                  }`}
+                >
                   <button
                     onClick={() => handleSourceClick(source)}
+                    data-testid={`source-row-${sourceKey(source)}`}
                     className={`
-                      w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
-                      text-left text-sm transition-all border
+                      flex-1 flex items-center gap-3 pl-3 py-1.5 min-w-0
+                      text-left text-sm transition-all
                       ${
                         isTopSourceActive(source)
-                          ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
-                          : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                          ? "text-white"
+                          : "text-[#a1a1aa] group-hover/source:text-white"
                       }
                     `}
                   >
                     <span className="w-5 flex items-center justify-center">{source.icon}</span>
-                    <span className="flex-1 flex items-center">
-                      <span>{source.label}</span>
-                      {SourceIndicator && (
-                        <SourceIndicator sourceId={source.id ?? "all"} />
-                      )}
-                    </span>
-                    {sourceTotalCount(source) > 0 && (
-                      <span className="shrink-0 flex items-center gap-0.5 text-[10px] tabular-nums">
-                        <span className={sourceUnreadCount(source) > 0 ? "text-[#8b5cf6] font-medium" : "text-[#52525b]"}>
-                          {fmt(sourceUnreadCount(source))}
-                        </span>
-                        <span className="text-[#3f3f46]">/</span>
-                        <span className="text-[#52525b]">{fmt(sourceTotalCount(source))}</span>
-                      </span>
-                    )}
+                    <span className="min-w-0 flex-1 truncate">{source.label}</span>
                   </button>
+                  <div className="shrink-0 flex items-center pr-2">
+                    {SourceIndicator ? (
+                      <span
+                        data-testid={`source-indicator-slot-${sourceKey(source)}`}
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center transition-transform duration-200 ease-in-out ${
+                          openMenuSourceKey === sourceKey(source)
+                            ? "translate-x-1"
+                            : "group-hover/source:translate-x-1"
+                        }`}
+                      >
+                        <SourceIndicator sourceId={source.id ?? "all"} />
+                      </span>
+                    ) : null}
+                    <div className="relative ml-1.5 h-6 w-[54px] shrink-0">
+                      {sourceTotalCount(source) > 0 && (
+                        <span
+                          data-testid={`source-counts-${sourceKey(source)}`}
+                          className={`absolute inset-y-0 right-0 flex items-center gap-0.5 text-[10px] leading-none tabular-nums transition-all duration-200 ease-in-out ${
+                            openMenuSourceKey === sourceKey(source)
+                              ? "pointer-events-none translate-x-1 opacity-0"
+                              : "opacity-100 group-hover/source:pointer-events-none group-hover/source:translate-x-1 group-hover/source:opacity-0"
+                          }`}
+                        >
+                            <span className={sourceUnreadCount(source) > 0 ? "text-[#8b5cf6] font-medium" : "text-[#52525b]"}>
+                              {fmt(sourceUnreadCount(source))}
+                            </span>
+                            <span className="text-[#3f3f46]">/</span>
+                            <span className="text-[#52525b]">{fmt(sourceTotalCount(source))}</span>
+                        </span>
+                      )}
+                      {canShowSourceMenu(source) ? (
+                        <button
+                          aria-label={`Options for ${source.label}`}
+                          data-testid={`source-menu-trigger-${sourceKey(source)}`}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (openMenuSourceKey === sourceKey(source)) {
+                              setOpenMenuSourceKey(null);
+                              setSourceMenuAnchorRect(null);
+                              setSourceMenuAnchorElement(null);
+                            } else {
+                              setOpenMenuFeedUrl(null);
+                              setMenuAnchorRect(null);
+                              setMenuAnchorElement(null);
+                              setOpenMenuSourceKey(sourceKey(source));
+                              setSourceMenuAnchorRect(e.currentTarget.getBoundingClientRect());
+                              setSourceMenuAnchorElement(e.currentTarget);
+                            }
+                          }}
+                          className={`absolute inset-y-0 right-0 flex items-center p-1 rounded-md transition-all duration-200 ease-in-out hover:text-white hover:bg-white/10 ${
+                            openMenuSourceKey === sourceKey(source)
+                              ? "translate-x-0 bg-white/10 text-white opacity-100"
+                              : "pointer-events-none translate-x-[-4px] text-[#71717a] opacity-0 group-hover/source:pointer-events-auto group-hover/source:translate-x-0 group-hover/source:opacity-100"
+                          }`}
+                        >
+                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
+                          </svg>
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
                 </li>
               ))}
               {/* Friends — active nav item */}
@@ -448,6 +690,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     setSelectedItem(null);
                     onClose();
                   }}
+                  data-testid="source-row-friends"
                   className={`
                     w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
                     text-left text-sm transition-all border
@@ -485,6 +728,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     setSearchQuery("");
                     onClose();
                   }}
+                  data-testid="source-row-map"
                   className={`
                     w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
                     text-left text-sm transition-all border
@@ -508,6 +752,98 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   )}
                 </button>
               </li>
+              {providerSourceItems.map((source) => (
+                <li
+                  key={source.id ?? "all"}
+                  className={`group/source flex items-stretch gap-2 rounded-lg border transition-all ${
+                    isTopSourceActive(source)
+                      ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
+                      : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  <button
+                    onClick={() => handleSourceClick(source)}
+                    data-testid={`source-row-${sourceKey(source)}`}
+                    className={`
+                      flex-1 flex items-center gap-3 pl-3 py-1.5 min-w-0
+                      text-left text-sm transition-all
+                      ${
+                        isTopSourceActive(source)
+                          ? "text-white"
+                          : "text-[#a1a1aa] group-hover/source:text-white"
+                      }
+                    `}
+                  >
+                    <span className="w-5 flex items-center justify-center">{source.icon}</span>
+                    <span className="min-w-0 flex-1 truncate">{source.label}</span>
+                  </button>
+                  <div className="shrink-0 flex items-center pr-2">
+                    {SourceIndicator ? (
+                      <span
+                        data-testid={`source-indicator-slot-${sourceKey(source)}`}
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center transition-transform duration-200 ease-in-out ${
+                          openMenuSourceKey === sourceKey(source)
+                            ? "translate-x-1"
+                            : "group-hover/source:translate-x-1"
+                        }`}
+                      >
+                        <SourceIndicator sourceId={source.id ?? "all"} />
+                      </span>
+                    ) : null}
+                    <div className="relative ml-1.5 h-6 w-[54px] shrink-0">
+                      {sourceTotalCount(source) > 0 && (
+                        <span
+                          data-testid={`source-counts-${sourceKey(source)}`}
+                          className={`absolute inset-y-0 right-0 flex items-center gap-0.5 text-[10px] leading-none tabular-nums transition-all duration-200 ease-in-out ${
+                            openMenuSourceKey === sourceKey(source)
+                              ? "pointer-events-none translate-x-1 opacity-0"
+                              : "opacity-100 group-hover/source:pointer-events-none group-hover/source:translate-x-1 group-hover/source:opacity-0"
+                          }`}
+                        >
+                          <span className={sourceUnreadCount(source) > 0 ? "text-[#8b5cf6] font-medium" : "text-[#52525b]"}>
+                            {fmt(sourceUnreadCount(source))}
+                          </span>
+                          <span className="text-[#3f3f46]">/</span>
+                          <span className="text-[#52525b]">{fmt(sourceTotalCount(source))}</span>
+                        </span>
+                      )}
+                      {canShowSourceMenu(source) ? (
+                        <button
+                          aria-label={`Options for ${source.label}`}
+                          data-testid={`source-menu-trigger-${sourceKey(source)}`}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (openMenuSourceKey === sourceKey(source)) {
+                              setOpenMenuSourceKey(null);
+                              setSourceMenuAnchorRect(null);
+                              setSourceMenuAnchorElement(null);
+                            } else {
+                              setOpenMenuFeedUrl(null);
+                              setMenuAnchorRect(null);
+                              setMenuAnchorElement(null);
+                              setOpenMenuSourceKey(sourceKey(source));
+                              setSourceMenuAnchorRect(e.currentTarget.getBoundingClientRect());
+                              setSourceMenuAnchorElement(e.currentTarget);
+                            }
+                          }}
+                          className={`absolute inset-y-0 right-0 flex items-center p-1 rounded-md transition-all duration-200 ease-in-out hover:text-white hover:bg-white/10 ${
+                            openMenuSourceKey === sourceKey(source)
+                              ? "translate-x-0 bg-white/10 text-white opacity-100"
+                              : "pointer-events-none translate-x-[-4px] text-[#71717a] opacity-0 group-hover/source:pointer-events-auto group-hover/source:translate-x-0 group-hover/source:opacity-100"
+                          }`}
+                        >
+                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
+                          </svg>
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </li>
+              ))}
             </ul>
           </SidebarSection>
 
@@ -643,14 +979,22 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                         )}
                         <button
                           aria-label={`Options for ${feed.title}`}
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                          }}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (menuOpen) {
                               setOpenMenuFeedUrl(null);
                               setMenuAnchorRect(null);
+                              setMenuAnchorElement(null);
                             } else {
+                              setOpenMenuSourceKey(null);
+                              setSourceMenuAnchorRect(null);
+                              setSourceMenuAnchorElement(null);
                               setOpenMenuFeedUrl(feed.url);
                               setMenuAnchorRect(e.currentTarget.getBoundingClientRect());
+                              setMenuAnchorElement(e.currentTarget);
                             }
                           }}
                           className={`${menuOpen ? "flex bg-white/10 text-white" : "hidden group-hover/feed:flex text-[#71717a]"} items-center p-1 rounded-md hover:text-white hover:bg-white/10 transition-colors`}
@@ -698,14 +1042,17 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         <FeedContextMenu
           feed={feeds[openMenuFeedUrl]}
           anchorRect={menuAnchorRect}
+          anchorElement={menuAnchorElement}
           onClose={() => {
             setOpenMenuFeedUrl(null);
             setMenuAnchorRect(null);
+            setMenuAnchorElement(null);
           }}
           onRename={async (title) => {
             await renameFeed(openMenuFeedUrl, title);
             setOpenMenuFeedUrl(null);
             setMenuAnchorRect(null);
+            setMenuAnchorElement(null);
           }}
           onUnsubscribe={async () => {
             await removeFeed(openMenuFeedUrl);
@@ -714,7 +1061,43 @@ export function Sidebar({ open, onClose }: SidebarProps) {
             }
             setOpenMenuFeedUrl(null);
             setMenuAnchorRect(null);
+            setMenuAnchorElement(null);
           }}
+        />
+      )}
+
+      {selectedMenuSource && sourceMenuAnchorRect && (
+        <SourceContextMenu
+          source={selectedMenuSource}
+          anchorRect={sourceMenuAnchorRect}
+          anchorElement={sourceMenuAnchorElement}
+          unread={sourceUnreadCount(selectedMenuSource)}
+          total={sourceTotalCount(selectedMenuSource)}
+          status={selectedMenuStatus}
+          onClose={() => {
+            setOpenMenuSourceKey(null);
+            setSourceMenuAnchorRect(null);
+            setSourceMenuAnchorElement(null);
+          }}
+          onOpenSettings={
+            settingsSectionForSource(selectedMenuSource)
+              ? () => {
+                  useSettingsStore.getState().openTo(settingsSectionForSource(selectedMenuSource)!);
+                  onClose();
+                }
+              : undefined
+          }
+          onSyncNow={
+            selectedMenuSourceId === "rss" && syncRssNow
+              ? () => {
+                  void syncRssNow();
+                }
+              : typeof selectedMenuSourceId === "string" && syncSourceNow
+                ? () => {
+                    void syncSourceNow(selectedMenuSourceId);
+                  }
+              : undefined
+          }
         />
       )}
     </>

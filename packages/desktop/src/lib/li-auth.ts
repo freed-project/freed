@@ -14,6 +14,13 @@ export interface LiAuthState {
   isAuthenticated: boolean;
   /** Timestamp of last successful auth check */
   lastCheckedAt?: number;
+  /** Epoch ms of the last completed (successful) scrape */
+  lastCapturedAt?: number;
+  /** Error message from the last failed scrape; undefined when last scrape succeeded */
+  lastCaptureError?: string;
+  pausedUntil?: number;
+  pauseReason?: string;
+  pauseLevel?: 1 | 2 | 3;
 }
 
 const LI_AUTH_KEY = "li_auth_state";
@@ -91,7 +98,15 @@ export function initLiAuth(): LiAuthState {
   if (!stored) return { isAuthenticated: false };
   try {
     const parsed = JSON.parse(stored) as LiAuthState;
-    return { isAuthenticated: !!parsed.isAuthenticated, lastCheckedAt: parsed.lastCheckedAt };
+    return {
+      isAuthenticated: !!parsed.isAuthenticated,
+      lastCheckedAt: parsed.lastCheckedAt,
+      lastCapturedAt: parsed.lastCapturedAt,
+      lastCaptureError: parsed.lastCaptureError,
+      pausedUntil: parsed.pausedUntil,
+      pauseReason: parsed.pauseReason,
+      pauseLevel: parsed.pauseLevel,
+    };
   } catch {
     return { isAuthenticated: false };
   }

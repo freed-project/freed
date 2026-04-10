@@ -198,10 +198,10 @@ describe("fetchXTimeline", () => {
   });
 
   describe("rate limiting", () => {
-    it("returns errorStage='rate_limit' for code-88 bodies", async () => {
+    it("returns errorStage='provider_rate_limit' for code-88 bodies", async () => {
       const result = await fetchXTimeline(fakeCookies, requesterFor(rateLimitFixture));
 
-      expect(result.diag.errorStage).toBe("rate_limit");
+      expect(result.diag.errorStage).toBe("provider_rate_limit");
       expect(result.diag.errorMessage).toContain("15 minutes");
       expect(result.items).toHaveLength(0);
     });

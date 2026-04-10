@@ -44,6 +44,11 @@ export interface XAuthState {
   isAuthenticated: boolean;
   username?: string;
   cookies?: XCookies;
+  lastCapturedAt?: number;
+  lastCaptureError?: string;
+  pausedUntil?: number;
+  pauseReason?: string;
+  pauseLevel?: 1 | 2 | 3;
 }
 
 const X_COOKIES_KEY = "x_auth_cookies";

@@ -79,20 +79,127 @@ export interface CloudProvidersDebugState {
   dropbox: CloudProviderDebugState;
 }
 
+export type HealthProviderId =
+  | "rss"
+  | "x"
+  | "facebook"
+  | "instagram"
+  | "linkedin"
+  | "gdrive"
+  | "dropbox";
+
+export type HealthOutcome =
+  | "success"
+  | "empty"
+  | "error"
+  | "cooldown"
+  | "provider_rate_limit";
+
+export type HealthSignalType = "none" | "explicit" | "heuristic";
+
+export type ProviderHealthStatus = "idle" | "healthy" | "degraded" | "paused";
+
+export interface HealthDailyBucket {
+  dateKey: string;
+  attempts: number;
+  successes: number;
+  failures: number;
+  itemsSeen: number;
+  itemsAdded: number;
+  bytesMoved: number;
+}
+
+export interface HealthHourlyBucket {
+  hourKey: string;
+  attempts: number;
+  successes: number;
+  failures: number;
+  itemsSeen: number;
+  itemsAdded: number;
+  bytesMoved: number;
+}
+
+export interface ProviderPauseState {
+  pausedUntil: number;
+  pauseReason: string;
+  pauseLevel: 1 | 2 | 3;
+  detectedAt: number;
+  detectedBy: "auto" | "manual";
+}
+
+export interface ProviderHealthAttempt {
+  id: string;
+  provider: HealthProviderId;
+  scope: "provider" | "rss_feed";
+  feedUrl?: string;
+  feedTitle?: string;
+  outcome: HealthOutcome;
+  stage?: string;
+  reason?: string;
+  startedAt: number;
+  finishedAt: number;
+  durationMs: number;
+  itemsSeen: number;
+  itemsAdded: number;
+  bytesMoved: number;
+  signalType: HealthSignalType;
+}
+
+export interface ProviderHealthSnapshot {
+  provider: HealthProviderId;
+  status: ProviderHealthStatus;
+  lastAttemptAt?: number;
+  lastSuccessfulAt?: number;
+  lastOutcome?: HealthOutcome;
+  lastError?: string;
+  currentMessage?: string;
+  pause: ProviderPauseState | null;
+  dailyBuckets: HealthDailyBucket[];
+  hourlyBuckets: HealthHourlyBucket[];
+  latestAttempts: ProviderHealthAttempt[];
+  totalSeen7d: number;
+  totalAdded7d: number;
+  totalBytes7d: number;
+}
+
+export interface RssFeedHealthSnapshot {
+  feedUrl: string;
+  feedTitle: string;
+  status: "ok" | "failing";
+  outageSince?: number;
+  failedAttemptsSinceSuccess: number;
+  lastAttemptAt?: number;
+  lastSuccessfulAt?: number;
+  lastError?: string;
+  dailyBuckets: HealthDailyBucket[];
+  hourlyBuckets: HealthHourlyBucket[];
+  latestAttempts: ProviderHealthAttempt[];
+}
+
+export interface ProviderHealthDebugState {
+  providers: Record<HealthProviderId, ProviderHealthSnapshot>;
+  failingRssFeeds: RssFeedHealthSnapshot[];
+  updatedAt: number;
+}
+
 interface DebugState {
   visible: boolean;
   events: SyncEvent[];
   docSnapshot: DocSnapshot | null;
   cloudProviders: CloudProvidersDebugState | null;
+  health: ProviderHealthDebugState | null;
   perfSnapshot: FpsSnapshot | null;
   /** Incremented by resetPerfSnapshot so useFpsMonitor can clear its refs */
   perfResetGeneration: number;
 
   toggle: () => void;
+  show: () => void;
+  setVisible: (visible: boolean) => void;
   addEvent: (kind: SyncEventKind, detail?: string, bytes?: number) => void;
   clearEvents: () => void;
   setDocSnapshot: (snap: DocSnapshot) => void;
   setCloudProviders: (state: CloudProvidersDebugState) => void;
+  setHealth: (state: ProviderHealthDebugState) => void;
   setPerfSnapshot: (snap: FpsSnapshot) => void;
   resetPerfSnapshot: () => void;
 }
@@ -108,10 +215,13 @@ export const useDebugStore = create<DebugState>()((set) => ({
   events: [],
   docSnapshot: null,
   cloudProviders: null,
+  health: null,
   perfSnapshot: null,
   perfResetGeneration: 0,
 
   toggle: () => set((s) => ({ visible: !s.visible })),
+  show: () => set({ visible: true }),
+  setVisible: (visible) => set({ visible }),
 
   addEvent: (kind, detail, bytes) =>
     set((s) => {
@@ -130,6 +240,8 @@ export const useDebugStore = create<DebugState>()((set) => ({
   setDocSnapshot: (docSnapshot) => set({ docSnapshot }),
 
   setCloudProviders: (cloudProviders) => set({ cloudProviders }),
+
+  setHealth: (health) => set({ health }),
 
   setPerfSnapshot: (perfSnapshot) => set({ perfSnapshot }),
 
@@ -184,6 +296,10 @@ export function setDocSnapshot(snap: DocSnapshot): void {
 
 export function setCloudProviders(state: CloudProvidersDebugState): void {
   useDebugStore.getState().setCloudProviders(state);
+}
+
+export function setProviderHealth(state: ProviderHealthDebugState): void {
+  useDebugStore.getState().setHealth(state);
 }
 
 // ---------------------------------------------------------------------------

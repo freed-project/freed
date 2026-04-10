@@ -23,6 +23,7 @@ import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { getIgScraperWindowMode } from "./scraper-prefs";
 import { storeIgAuthState } from "./instagram-auth";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
+import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
 
 // =============================================================================
 // Rate Limiting
@@ -167,6 +168,23 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
  * Respects rate limiting to avoid triggering Instagram's anti-bot measures.
  */
 export async function captureIgFeed(): Promise<IgSyncResult> {
+  const startedAt = Date.now();
+  const providerPause = getProviderPause("instagram");
+  if (providerPause) {
+    addDebugEvent("change", `[IG] paused until ${new Date(providerPause.pausedUntil).toLocaleTimeString()}`);
+    return {
+      items: [],
+      diag: {
+        postsExtracted: 0,
+        itemsNormalized: 0,
+        itemsDeduplicated: 0,
+        itemsAdded: 0,
+        errorStage: "provider_rate_limit",
+        errorMessage: providerPause.pauseReason,
+      },
+    };
+  }
+
   if (isRateLimited()) {
     const minutesRemaining = Math.ceil(
       (MIN_INTERVAL_MS - (Date.now() - lastScrapeAt)) / 60_000,
@@ -175,6 +193,14 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
       "change",
       `[IG] rate limited, next scrape in ~${minutesRemaining} min`,
     );
+    await recordProviderHealthEvent({
+      provider: "instagram",
+      outcome: "cooldown",
+      stage: "cooldown",
+      reason: `Cooling down. Try again in ~${minutesRemaining} minutes.`,
+      startedAt,
+      finishedAt: Date.now(),
+    });
     return {
       items: [],
       diag: {
@@ -182,8 +208,8 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
         itemsNormalized: 0,
         itemsDeduplicated: 0,
         itemsAdded: 0,
-        errorStage: "rate_limit",
-        errorMessage: `Rate limited. Try again in ~${minutesRemaining} minutes.`,
+        errorStage: "cooldown",
+        errorMessage: `Cooling down. Try again in ~${minutesRemaining} minutes.`,
       },
     };
   }
@@ -193,6 +219,7 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
   store.setError(null);
 
   try {
+    addDebugEvent("change", "[IG] sync started");
     const result = await fetchIgFeed();
     recordScrape();
 
@@ -204,10 +231,24 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
       const errState = { ...useAppStore.getState().igAuth, lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed" };
       store.setIgAuth(errState);
       storeIgAuthState(errState);
+      await recordProviderHealthEvent({
+        provider: "instagram",
+        outcome: "error",
+        stage: result.diag.errorStage,
+        reason: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed",
+        startedAt,
+        finishedAt: Date.now(),
+        itemsSeen: result.diag.postsExtracted,
+        itemsAdded: result.diag.itemsAdded,
+      });
       return result;
     }
 
     if (result.items.length > 0) {
+      addDebugEvent(
+        "change",
+        `[IG] writing ${result.items.length.toLocaleString()} candidate item${result.items.length === 1 ? "" : "s"} to the library`,
+      );
       const before = store.items.filter((i) => i.platform === "instagram").length;
       await store.addItems(result.items);
       const after = useAppStore
@@ -226,6 +267,16 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
     const successState = { ...useAppStore.getState().igAuth, lastCapturedAt: Date.now(), lastCaptureError: undefined };
     store.setIgAuth(successState);
     storeIgAuthState(successState);
+    await recordProviderHealthEvent({
+      provider: "instagram",
+      outcome: result.diag.postsExtracted > 0 ? "success" : "empty",
+      stage: result.diag.postsExtracted > 0 ? undefined : "empty",
+      reason: result.diag.postsExtracted > 0 ? undefined : "No posts pulled",
+      startedAt,
+      finishedAt: Date.now(),
+      itemsSeen: result.diag.postsExtracted,
+      itemsAdded: result.diag.itemsAdded,
+    });
 
     return result;
   } catch (error) {
@@ -233,6 +284,14 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
       error instanceof Error ? error.message : "Failed to capture Instagram feed";
     store.setError(message);
     addDebugEvent("error", `[IG] captureIgFeed threw: ${message}`);
+    await recordProviderHealthEvent({
+      provider: "instagram",
+      outcome: "error",
+      stage: "unknown",
+      reason: message,
+      startedAt,
+      finishedAt: Date.now(),
+    });
     throw error;
   } finally {
     store.setLoading(false);

@@ -20,6 +20,8 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Ranking runs here** — Desktop computes `priority` scores, syncs to PWA via Automerge
 - **Versioned legal gate** — Freed Desktop blocks startup side effects until the current legal bundle is accepted locally on-device
 - **Provider risk interstitials** — X, Facebook, Instagram, and LinkedIn require separate local consent before login or sync actions
+- **Manual disconnect clears active pauses:** Disconnecting a social provider clears its current pause and resets future backoff escalation, but keeps historical diagnostics intact
+- **Paused providers reuse the primary action:** Settings surfaces swap `Sync Now` to `Resume Now` when a provider is paused, instead of rendering a second resume button
 
 ---
 
@@ -190,6 +192,7 @@ export async function captureDomFeed(
 | 5.27 | First-run legal gate and local-only acceptance storage | Medium |
 | 5.28 | Provider-specific risk interstitials for social capture | Medium |
 | 5.29 | Reviewed AI-assisted release notes and cumulative daily changelog cards | Medium |
+| 5.30 | Provider health dashboard, charts, and unsubscribe flow | Medium |
 
 ---
 
@@ -217,6 +220,37 @@ export async function captureDomFeed(
 - [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
 - [x] macOS DMG is notarized in CI releases
 - [x] Checked-in release notes are reviewed before a release tag can publish
+- [x] Debug panel Health tab charts provider reliability plus daily and hourly pull volume across RSS, X, Facebook, Instagram, LinkedIn, Google Drive, and Dropbox
+- [x] Failing RSS feeds can be reviewed and unsubscribed from the health panel, with optional article/history deletion
+- [x] Sidebar source actions and source settings surface degraded or paused provider health outside the debug panel
+- [x] Debug panel Health tab charts provider reliability plus daily and hourly pull volume across RSS, X, Facebook, Instagram, LinkedIn, Google Drive, and Dropbox, with an in-card duration dropdown for each provider
+- [x] Failing RSS feeds can be reviewed and unsubscribed from the health panel, with optional article/history deletion
+- [x] Provider status indicators switch to a live spinner while that provider is actively syncing
+- [x] Social provider sections surface a scrollable scrape log with line-by-line progress while capture is running
+- [x] Settings modal includes an explicit close button in the sidebar on larger screens and at the mobile header edge on small screens
+- [x] Risk dialogs and other central overlay modals stay vertically scrollable on tiny mobile screens so action buttons remain reachable
+- [x] Desktop sync header and source settings surface degraded or paused provider health outside the debug panel
+- [x] Provider health cards reuse the same sync provider sections as Settings, with `Sync Now` actions embedded inside each provider section
+- [x] Provider sections prompt for reconnect when the last social sync failed with expired or unauthorized auth state
+- [x] Settings > Sources nav shows visible provider status dots, and the primary Sources sidebar keeps smaller right-edge dots or spinners aligned with the unread and total counts lane
+- [x] Hovering a row in the primary Sources sidebar swaps the unread and total counts for the same three-dot actions affordance used by feed rows
+- [x] Primary Sources sidebar status dots ease sideways with the hover swap so the metadata lane animates smoothly instead of snapping
+- [x] Source action menus include a quick sync-status summary with the reason for warning states and a direct path into the full source settings
+- [x] Source action menus only appear for actionable providers, hide the dead-end `All` row menu, and include `Sync now` for social providers as well as feeds
+- [x] Clicking `Sync now` from a source action menu keeps the menu open so the user can watch the status and spinner update in place
+- [x] Clicking the same source actions trigger again closes the already-open menu instead of reopening it through the outside-click handler
+- [x] Source action menu headers spell out provider counts as `863 unread, 1.1K total` style summaries instead of a slash pair
+- [x] Clicking `Sync now` shows a visible `Syncing Initiated` acknowledgment while the menu stays open, even if the provider is already syncing
+- [x] `Cooling down` uses a small amber emoji indicator instead of an amber spinner so the paused state feels distinct at a glance
+- [x] LinkedIn and the other social source rows keep a sidebar status indicator even if auth state lags behind, falling back to the provider's actual item counts before hiding the dot
+- [x] Facebook group settings show active group counts in the header, keep refresh with the bulk actions, and split scraped `Last active ...` text into its own smaller right-aligned column instead of mashing it into the group name
+- [x] The redundant desktop header sync dropdown has been removed, leaving the sidebar source menus and provider settings as the canonical sync status and action surfaces
+- [x] Friends and Map sit directly under `All` in the primary Sources sidebar so navigation order matches the product's main reading flow
+- [x] Feeds sidebar status uses aggregate feed health, stays green when at least one followed feed is healthy, turns amber only when every followed feed is failing, and shows a spinner while RSS sync is actively running
+- [x] Provider sync actions swap to an inline spinner while that specific provider is actively syncing
+- [x] Provider health badges and section headers use specific state labels like `Cooling down`, `Paused`, `Reconnect required`, and `Sync issue` instead of generic attention copy
+- [x] Settings > Feeds can filter to one needs-review bucket and bulk unsubscribe the currently shown set from a toolbar above the list, while each row still shows whether the feed looks likely dead or just failing
+- [x] Settings > Saved now shows an overview dashboard with saved-volume charts and source mix, instead of listing every saved item inline
 - [ ] Windows installer is code-signed (requires EV certificate)
 - [ ] Update server runs on a Freed-owned domain (not GitHub Releases)
 

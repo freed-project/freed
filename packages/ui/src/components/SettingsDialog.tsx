@@ -17,6 +17,11 @@ import { useAppStore, usePlatform } from "../context/PlatformContext.js";
 import { useDebugStore } from "../lib/debug-store.js";
 import { useSettingsStore } from "../lib/settings-store.js";
 import { refreshSampleLibraryData } from "../lib/sample-library-seed.js";
+import {
+  getProviderStatusLabel,
+  getProviderStatusTone,
+} from "../lib/provider-status.js";
+import { ProviderStatusIndicator } from "./ProviderStatusIndicator.js";
 import { toast } from "./Toast.js";
 import {
   BASE_SECTION_METAS,
@@ -57,6 +62,80 @@ interface SettingsDialogProps {
   onClose: () => void;
 }
 
+type ProviderSectionId = Extract<SectionId, "x" | "facebook" | "instagram" | "linkedin">;
+type ProviderAuthState = {
+  isAuthenticated?: boolean;
+  lastCaptureError?: string;
+};
+type ProviderAuthSlices = {
+  xAuth?: ProviderAuthState;
+  fbAuth?: ProviderAuthState;
+  igAuth?: ProviderAuthState;
+  liAuth?: ProviderAuthState;
+};
+
+function isProviderSection(sectionId: SectionId): sectionId is ProviderSectionId {
+  return (
+    sectionId === "x" ||
+    sectionId === "facebook" ||
+    sectionId === "instagram" ||
+    sectionId === "linkedin"
+  );
+}
+
+function ProviderStatusDot({ sectionId }: { sectionId: ProviderSectionId }) {
+  const health = useDebugStore((s) => s.health);
+  const providerSyncCounts = useAppStore(
+    (s) =>
+      ((s as unknown as { providerSyncCounts?: Partial<Record<ProviderSectionId, number>> })
+        .providerSyncCounts ?? {}) as Partial<Record<ProviderSectionId, number>>,
+  );
+  const xAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).xAuth);
+  const fbAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).fbAuth);
+  const igAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).igAuth);
+  const liAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).liAuth);
+
+  const authState =
+    sectionId === "x"
+      ? xAuth
+      : sectionId === "facebook"
+        ? fbAuth
+        : sectionId === "instagram"
+          ? igAuth
+          : liAuth;
+
+  const snapshot = health?.providers[sectionId];
+  const isConnected = authState?.isAuthenticated === true;
+  const authError =
+    typeof authState?.lastCaptureError === "string" ? authState.lastCaptureError : undefined;
+  const tone = getProviderStatusTone({
+    isConnected,
+    authError,
+    snapshot,
+  });
+
+  if (tone === "idle") {
+    return null;
+  }
+
+  const label = getProviderStatusLabel({
+    isConnected,
+    authError,
+    snapshot,
+  });
+
+  return (
+    <div className="ml-auto flex h-4 w-4 shrink-0 items-center justify-center pl-2">
+      <ProviderStatusIndicator
+        tone={tone}
+        syncing={(providerSyncCounts[sectionId] ?? 0) > 0}
+        label={label}
+        testId={`settings-provider-status-${sectionId}`}
+        size="xxs"
+      />
+    </div>
+  );
+}
 // ── Section icons ─────────────────────────────────────────────────────────────
 
 /** Icon for the Sources nav group (not a section itself). */
@@ -188,8 +267,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       label: "Sources",
       icon: ICON_SOURCES,
       children: [
-        sectionById.feeds,
         sectionById.saved,
+        sectionById.feeds,
         ...(XSettingsContent ? [sectionById.x] : []),
         ...(FacebookSettingsContent ? [sectionById.facebook] : []),
         ...(InstagramSettingsContent ? [sectionById.instagram] : []),
@@ -509,6 +588,28 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   if (!open) return null;
 
+  function CloseButton({
+    className = "",
+    testId,
+  }: {
+    className?: string;
+    testId: string;
+  }) {
+    return (
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close settings"
+        data-testid={testId}
+        className={`inline-flex h-9 w-9 items-center justify-center rounded-lg text-[#71717a] transition-colors hover:bg-white/10 hover:text-white ${className}`}
+      >
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    );
+  }
+
   // ── Section content renderer ──────────────────────────────────────────────
 
   function SectionBlock({ id }: { id: SectionId }) {
@@ -638,7 +739,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         return XSettingsContent ? (
           <>
             <SectionHeading label="X / Twitter" />
-            <XSettingsContent />
+            <XSettingsContent surface="settings" />
           </>
         ) : null;
 
@@ -646,7 +747,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         return FacebookSettingsContent ? (
           <>
             <SectionHeading label="Facebook" />
-            <FacebookSettingsContent />
+            <FacebookSettingsContent surface="settings" />
           </>
         ) : null;
 
@@ -654,7 +755,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         return InstagramSettingsContent ? (
           <>
             <SectionHeading label="Instagram" />
-            <InstagramSettingsContent />
+            <InstagramSettingsContent surface="settings" />
           </>
         ) : null;
 
@@ -662,7 +763,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         return LinkedInSettingsContent ? (
           <>
             <SectionHeading label="LinkedIn" />
-            <LinkedInSettingsContent />
+            <LinkedInSettingsContent surface="settings" />
           </>
         ) : null;
 
@@ -853,6 +954,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           {section.icon}
         </span>
         <span>{section.label}</span>
+        {isProviderSection(section.id) ? (
+          <ProviderStatusDot sectionId={section.id} />
+        ) : null}
       </button>
     );
   }
@@ -932,8 +1036,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           `}
         >
           {/* Header */}
-          <div className="pl-5 pr-3 pt-4 pb-2 shrink-0">
+          <div className="flex items-center justify-between gap-3 pl-5 pr-2 pt-4 pb-2 shrink-0">
             <h2 className="text-base font-semibold text-white">Settings</h2>
+            <CloseButton
+              testId="settings-close-button-sidebar"
+              className="sm:mr-0"
+            />
           </div>
 
           {/* Search */}
@@ -1014,6 +1122,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             <span className="text-sm font-medium text-white">
               {allSections.find((s) => s.id === activeSection)?.label}
             </span>
+            <CloseButton
+              testId="settings-close-button-mobile"
+              className="ml-auto -mr-1"
+            />
           </div>
 
           {/* Scrollable sections */}
@@ -1052,8 +1164,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
       {/* Factory reset confirmation overlay */}
       {showResetConfirm && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-black/60">
-          <div className="w-full max-w-sm bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded-2xl p-6 shadow-2xl">
+        <div className="absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-4 bg-black/60 sm:items-center">
+          <div className="my-auto w-full max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded-2xl p-6 shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center flex-shrink-0">
                 <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1114,8 +1226,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       )}
 
       {showSampleSeedConfirm && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center p-4 bg-black/60">
-          <div className="w-full max-w-md bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded-2xl p-6 shadow-2xl">
+        <div className="absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-4 bg-black/60 sm:items-center">
+          <div className="my-auto w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded-2xl p-6 shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center flex-shrink-0">
                 <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">

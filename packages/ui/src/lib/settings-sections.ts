@@ -48,14 +48,14 @@ export const BASE_SECTION_METAS: readonly SectionMeta[] = [
     ],
   },
   {
-    id: "feeds",
-    label: "Feeds",
-    keywords: ["rss", "atom", "subscribe", "subscription", "add feed", "url", "opml", "import", "export", "manage", "sources"],
-  },
-  {
     id: "saved",
     label: "Saved",
     keywords: ["bookmark", "save url", "reading list", "markdown", "import", "export", "manage", "articles", "sources"],
+  },
+  {
+    id: "feeds",
+    label: "Feeds",
+    keywords: ["rss", "atom", "subscribe", "subscription", "add feed", "url", "opml", "import", "export", "manage", "sources"],
   },
 ];
 

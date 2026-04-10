@@ -24,6 +24,7 @@ import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { getFbScraperWindowMode } from "./scraper-prefs";
 import { storeFbAuthState } from "./fb-auth";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
+import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
 
 // =============================================================================
 // Rate Limiting
@@ -220,6 +221,23 @@ export async function captureFbGroups(): Promise<FbGroupInfo[]> {
  * Respects rate limiting to avoid triggering Facebook's anti-bot measures.
  */
 export async function captureFbFeed(): Promise<FbSyncResult> {
+  const startedAt = Date.now();
+  const providerPause = getProviderPause("facebook");
+  if (providerPause) {
+    addDebugEvent("change", `[FB] paused until ${new Date(providerPause.pausedUntil).toLocaleTimeString()}`);
+    return {
+      items: [],
+      diag: {
+        postsExtracted: 0,
+        itemsNormalized: 0,
+        itemsDeduplicated: 0,
+        itemsAdded: 0,
+        errorStage: "provider_rate_limit",
+        errorMessage: providerPause.pauseReason,
+      },
+    };
+  }
+
   if (isRateLimited()) {
     const minutesRemaining = Math.ceil(
       (MIN_INTERVAL_MS - (Date.now() - lastScrapeAt)) / 60_000,
@@ -228,6 +246,14 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       "change",
       `[FB] rate limited, next scrape in ~${minutesRemaining} min`,
     );
+    await recordProviderHealthEvent({
+      provider: "facebook",
+      outcome: "cooldown",
+      stage: "cooldown",
+      reason: `Cooling down. Try again in ~${minutesRemaining} minutes.`,
+      startedAt,
+      finishedAt: Date.now(),
+    });
     return {
       items: [],
       diag: {
@@ -235,8 +261,8 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
         itemsNormalized: 0,
         itemsDeduplicated: 0,
         itemsAdded: 0,
-        errorStage: "rate_limit",
-        errorMessage: `Rate limited. Try again in ~${minutesRemaining} minutes.`,
+        errorStage: "cooldown",
+        errorMessage: `Cooling down. Try again in ~${minutesRemaining} minutes.`,
       },
     };
   }
@@ -246,6 +272,7 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
   store.setError(null);
 
   try {
+    addDebugEvent("change", "[FB] sync started");
     try {
       await captureFbGroups();
     } catch (error) {
@@ -265,6 +292,16 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       const errState = { ...useAppStore.getState().fbAuth, lastCaptureError: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed" };
       store.setFbAuth(errState);
       storeFbAuthState(errState);
+      await recordProviderHealthEvent({
+        provider: "facebook",
+        outcome: "error",
+        stage: result.diag.errorStage,
+        reason: result.diag.errorMessage ?? result.diag.errorStage ?? "Sync failed",
+        startedAt,
+        finishedAt: Date.now(),
+        itemsSeen: result.diag.postsExtracted,
+        itemsAdded: result.diag.itemsAdded,
+      });
       return result;
     }
 
@@ -272,6 +309,10 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       const excludedGroupIds =
         useAppStore.getState().preferences.fbCapture?.excludedGroupIds ?? {};
       const filteredItems = filterExcludedGroups(result.items, excludedGroupIds);
+      addDebugEvent(
+        "change",
+        `[FB] writing ${filteredItems.length.toLocaleString()} candidate item${filteredItems.length === 1 ? "" : "s"} to the library`,
+      );
       const before = store.items.filter((i) => i.platform === "facebook").length;
       await store.addItems(filteredItems);
       const after = useAppStore
@@ -290,6 +331,16 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
     const successState = { ...useAppStore.getState().fbAuth, lastCapturedAt: Date.now(), lastCaptureError: undefined };
     store.setFbAuth(successState);
     storeFbAuthState(successState);
+    await recordProviderHealthEvent({
+      provider: "facebook",
+      outcome: result.diag.postsExtracted > 0 ? "success" : "empty",
+      stage: result.diag.postsExtracted > 0 ? undefined : "empty",
+      reason: result.diag.postsExtracted > 0 ? undefined : "No posts pulled",
+      startedAt,
+      finishedAt: Date.now(),
+      itemsSeen: result.diag.postsExtracted,
+      itemsAdded: result.diag.itemsAdded,
+    });
 
     return result;
   } catch (error) {
@@ -297,6 +348,14 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       error instanceof Error ? error.message : "Failed to capture Facebook feed";
     store.setError(message);
     addDebugEvent("error", `[FB] captureFbFeed threw: ${message}`);
+    await recordProviderHealthEvent({
+      provider: "facebook",
+      outcome: "error",
+      stage: "unknown",
+      reason: message,
+      startedAt,
+      finishedAt: Date.now(),
+    });
     throw error;
   } finally {
     store.setLoading(false);

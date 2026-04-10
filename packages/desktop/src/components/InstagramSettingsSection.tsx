@@ -9,6 +9,13 @@
 import { useState, useCallback, useEffect } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import type { SyncProviderSectionProps } from "@freed/ui/context";
+import { useDebugStore } from "@freed/ui/lib/debug-store";
+import {
+  getProviderStatusLabel,
+  getProviderStatusTone,
+} from "@freed/ui/lib/provider-status";
+import { ProviderStatusIndicator } from "@freed/ui/components/ProviderStatusIndicator";
 import { useAppStore } from "../lib/store";
 import {
   showIgLogin,
@@ -22,8 +29,17 @@ import {
   getIgScraperWindowMode,
   setIgScraperWindowMode,
 } from "../lib/scraper-prefs";
+import {
+  formatProviderReconnectMessage,
+  needsProviderReconnect,
+} from "../lib/provider-auth-errors";
 import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
 import { ScraperWindowModeControl } from "./ScraperWindowModeControl";
+import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
+import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
+import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
+import { withProviderSyncing } from "../lib/store";
+import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
 
 // =============================================================================
 // Diagnostic Panel
@@ -89,14 +105,17 @@ function IgDiagPanel({ diag }: { diag: IgSyncDiag }) {
   );
 }
 
-export function InstagramSettingsSection() {
+export function InstagramSettingsSection({
+  surface = "settings",
+}: SyncProviderSectionProps) {
   const igAuth = useAppStore((s) => s.igAuth);
   const setIgAuth = useAppStore((s) => s.setIgAuth);
   const isLoading = useAppStore((s) => s.isLoading);
   const storeError = useAppStore((s) => s.error);
   const setError = useAppStore((s) => s.setError);
+  const syncing = useAppStore((s) => (s.providerSyncCounts.instagram ?? 0) > 0);
+  const healthSnapshot = useDebugStore((s) => s.health?.providers.instagram ?? null);
 
-  const [syncing, setSyncing] = useState(false);
   const [checking, setChecking] = useState(false);
   const [lastDiag, setLastDiag] = useState<IgSyncDiag | null>(null);
   const [windowMode, setWindowMode] = useState(() => getIgScraperWindowMode());
@@ -149,15 +168,12 @@ export function InstagramSettingsSection() {
   }, [confirm, setIgAuth, setError]);
 
   const runSync = useCallback(async () => {
-    setSyncing(true);
     setLastDiag(null);
     try {
-      const result = await captureIgFeed();
+      const result = await withProviderSyncing("instagram", () => captureIgFeed());
       setLastDiag(result.diag);
     } catch (err) {
       console.error("Instagram feed capture failed:", err);
-    } finally {
-      setSyncing(false);
     }
   }, []);
 
@@ -167,13 +183,26 @@ export function InstagramSettingsSection() {
     } catch {
       // Best-effort cleanup
     }
+    await resetProviderPauseState("instagram");
     setIgAuth({ isAuthenticated: false });
     setLastDiag(null);
     setError(null);
   }, [setIgAuth, setError]);
 
   const syncError = storeError && igAuth.isAuthenticated ? storeError : null;
-
+  const authError = igAuth.lastCaptureError ?? syncError;
+  const needsReconnect = needsProviderReconnect(authError);
+  const statusTone = getProviderStatusTone({
+    isConnected: igAuth.isAuthenticated,
+    authError,
+    snapshot: healthSnapshot,
+  });
+  const statusLabel = getProviderStatusLabel({
+    isConnected: igAuth.isAuthenticated,
+    authError,
+    snapshot: healthSnapshot,
+  });
+  const isPaused = !!healthSnapshot?.pause && healthSnapshot.pause.pausedUntil > Date.now();
   // ── Connected state ──────────────────────────────────────────────────────
 
   if (igAuth.isAuthenticated) {
@@ -200,66 +229,96 @@ export function InstagramSettingsSection() {
 
     return (
       <>
-      <div className="space-y-4">
-        <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
-          <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
-          <span className="text-sm text-[#a1a1aa]">Connected</span>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              void confirm(runSync);
-            }}
-            disabled={syncing || isLoading}
-            className="flex-1 text-sm px-3 py-2 rounded-xl bg-[#8b5cf6]/15 text-[#8b5cf6] hover:bg-[#8b5cf6]/25 disabled:opacity-50 transition-colors"
-          >
-            {syncing ? "Syncing..." : "Sync Now"}
-          </button>
-          <button
-            onClick={handleDisconnect}
-            className="text-sm px-3 py-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
-          >
-            Disconnect
-          </button>
-        </div>
-
-        {syncError && (
-          <p className="text-xs text-red-400 leading-relaxed">
-            {syncError.includes("timeout")
-              ? "Scrape timed out. Instagram may be slow to load. Try again."
-              : syncError}
-          </p>
-        )}
-
-        {statusLine}
-
-        {lastDiag && <IgDiagPanel diag={lastDiag} />}
-
-        <details className="group">
-          <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">
-            <span className="group-open:rotate-90 transition-transform inline-block">›</span>
-            Advanced
-          </summary>
-          <div className="mt-3 pl-3 border-l border-white/10">
-            <ScraperWindowModeControl
-              sourceLabel="Instagram"
-              mode={windowMode}
-              onChange={(nextMode) => {
-                setWindowMode(nextMode);
-                setIgScraperWindowMode(nextMode);
-              }}
+      <SyncProviderSectionSurface surface={surface} title="Instagram">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
+            <ProviderStatusIndicator
+              tone={statusTone}
+              syncing={syncing}
+              label={statusLabel}
+              testId="provider-status-instagram"
+              size="sm"
             />
+            <span className="text-sm text-[#a1a1aa]">
+              {statusLabel}
+            </span>
           </div>
-        </details>
 
-        <p className="text-xs text-[#52525b] leading-relaxed">
-          Freed reads your Instagram feed through a native browser session to
-          deliver a seamless experience. Reading can potentially be interrupted
-          if Instagram changes their systems in an attempt to keep you in their
-          garden.
-        </p>
-      </div>
+          <div className="flex gap-2">
+            <ProviderSyncActionButton
+              onClick={() => {
+                if (needsReconnect) {
+                  void handleLogin();
+                  return;
+                }
+                void confirm(async () => {
+                  if (isPaused) {
+                    await clearProviderPause("instagram");
+                  }
+                  await runSync();
+                });
+              }}
+              busy={syncing}
+              busyLabel={needsReconnect ? "Reconnecting..." : isPaused ? "Resuming..." : "Syncing"}
+              disabled={
+                (!needsReconnect && (syncing || isLoading)) ||
+                (needsReconnect && isLoading)
+              }
+              testId="provider-sync-action-instagram"
+            >
+              {needsReconnect ? "Reconnect Instagram" : isPaused ? "Resume Now" : "Sync Now"}
+            </ProviderSyncActionButton>
+            <button
+              onClick={handleDisconnect}
+              className="text-sm px-3 py-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+            >
+              Disconnect
+            </button>
+          </div>
+
+          {needsReconnect && (
+            <p className="text-xs text-red-400 leading-relaxed">
+              {formatProviderReconnectMessage("Instagram", authError)}
+            </p>
+          )}
+
+          {syncError && !needsReconnect && (
+            <p className="text-xs text-red-400 leading-relaxed">
+              {syncError.includes("timeout")
+                ? "Scrape timed out. Instagram may be slow to load. Try again."
+                : syncError}
+            </p>
+          )}
+
+          <ProviderHealthSectionSummary provider="instagram" />
+
+          {statusLine}
+
+          {lastDiag && <IgDiagPanel diag={lastDiag} />}
+
+          <details className="group">
+            <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">
+              <span className="group-open:rotate-90 transition-transform inline-block">›</span>
+              Advanced
+            </summary>
+            <div className="mt-3 pl-3 border-l border-white/10">
+              <ScraperWindowModeControl
+                sourceLabel="Instagram"
+                mode={windowMode}
+                onChange={(nextMode) => {
+                  setWindowMode(nextMode);
+                  setIgScraperWindowMode(nextMode);
+                }}
+              />
+            </div>
+          </details>
+
+          <p className="text-xs text-[#52525b] leading-relaxed">
+            Freed reads your Instagram feed through a native browser session.
+            Your traffic looks identical to normal browsing.
+          </p>
+        </div>
+      </SyncProviderSectionSurface>
       {dialog}
       </>
     );
@@ -269,29 +328,36 @@ export function InstagramSettingsSection() {
 
   return (
     <>
-    <div className="space-y-4">
-      <p className="text-sm text-[#71717a] leading-relaxed">
-        Pull your Instagram feed into Freed. Log in through a native browser
-        window to give Freed an authenticated browser session. Reading can
-        potentially be interrupted if Instagram changes their systems in an
-        attempt to keep you in their garden.
-      </p>
-      <div className="flex gap-2">
-        <button
-          onClick={handleLogin}
-          className="text-sm px-4 py-2 rounded-xl bg-[#E1306C]/15 text-[#E1306C] hover:bg-[#E1306C]/25 transition-colors"
-        >
-          Log in with Instagram
-        </button>
-        <button
-          onClick={handleCheckAuth}
-          disabled={checking}
-          className="text-sm px-4 py-2 rounded-xl bg-white/5 text-[#71717a] hover:bg-white/10 disabled:opacity-50 transition-colors"
-        >
-          {checking ? "Checking..." : "Check Connection"}
-        </button>
+    <SyncProviderSectionSurface surface={surface} title="Instagram">
+      <div className="space-y-4">
+        <p className="text-sm text-[#71717a] leading-relaxed">
+          {needsReconnect
+            ? "Your Instagram session is no longer valid. Sign in again to restore sync."
+            : "Pull your Instagram feed into Freed. Log in through a native browser window. Freed reads your feed the same way you would, so your account stays safe."}
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={handleLogin}
+            className="text-sm px-4 py-2 rounded-xl bg-[#E1306C]/15 text-[#E1306C] hover:bg-[#E1306C]/25 transition-colors"
+          >
+            {needsReconnect ? "Reconnect Instagram" : "Log in with Instagram"}
+          </button>
+          <button
+            onClick={handleCheckAuth}
+            disabled={checking}
+            className="text-sm px-4 py-2 rounded-xl bg-white/5 text-[#71717a] hover:bg-white/10 disabled:opacity-50 transition-colors"
+          >
+            {checking ? "Checking..." : "Check Connection"}
+          </button>
+        </div>
+        {needsReconnect && authError && (
+          <p className="text-xs text-amber-400 leading-relaxed">
+            {formatProviderReconnectMessage("Instagram", authError)}
+          </p>
+        )}
+        <ProviderHealthSectionSummary provider="instagram" />
       </div>
-    </div>
+    </SyncProviderSectionSurface>
     {dialog}
     </>
   );

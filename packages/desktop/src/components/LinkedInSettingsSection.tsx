@@ -8,6 +8,13 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
+import type { SyncProviderSectionProps } from "@freed/ui/context";
+import { useDebugStore } from "@freed/ui/lib/debug-store";
+import {
+  getProviderStatusLabel,
+  getProviderStatusTone,
+} from "@freed/ui/lib/provider-status";
+import { ProviderStatusIndicator } from "@freed/ui/components/ProviderStatusIndicator";
 import { useAppStore } from "../lib/store";
 import {
   showLiLogin,
@@ -21,8 +28,17 @@ import {
   getLiScraperWindowMode,
   setLiScraperWindowMode,
 } from "../lib/scraper-prefs";
+import {
+  formatProviderReconnectMessage,
+  needsProviderReconnect,
+} from "../lib/provider-auth-errors";
 import { useProviderRiskGate } from "../hooks/useProviderRiskGate";
 import { ScraperWindowModeControl } from "./ScraperWindowModeControl";
+import { ProviderHealthSectionSummary } from "./ProviderHealthSectionSummary";
+import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
+import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
+import { withProviderSyncing } from "../lib/store";
+import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
 
 // =============================================================================
 // Diagnostic Panel
@@ -88,29 +104,29 @@ function LiDiagPanel({ diag }: { diag: LiSyncDiag }) {
   );
 }
 
-export function LinkedInSettingsSection() {
+export function LinkedInSettingsSection({
+  surface = "settings",
+}: SyncProviderSectionProps) {
   const liAuth = useAppStore((s) => s.liAuth);
   const setLiAuth = useAppStore((s) => s.setLiAuth);
   const isLoading = useAppStore((s) => s.isLoading);
   const storeError = useAppStore((s) => s.error);
   const setError = useAppStore((s) => s.setError);
+  const syncing = useAppStore((s) => (s.providerSyncCounts.linkedin ?? 0) > 0);
+  const healthSnapshot = useDebugStore((s) => s.health?.providers.linkedin ?? null);
 
-  const [syncing, setSyncing] = useState(false);
   const [checking, setChecking] = useState(false);
   const [lastDiag, setLastDiag] = useState<LiSyncDiag | null>(null);
   const [windowMode, setWindowMode] = useState(() => getLiScraperWindowMode());
   const { confirm, dialog } = useProviderRiskGate("linkedin");
 
   const runSync = useCallback(async () => {
-    setSyncing(true);
     setLastDiag(null);
     try {
-      const result = await captureLiFeed();
+      const result = await withProviderSyncing("linkedin", () => captureLiFeed());
       setLastDiag(result.diag);
     } catch (err) {
       console.error("LinkedIn feed capture failed:", err);
-    } finally {
-      setSyncing(false);
     }
   }, []);
 
@@ -167,13 +183,26 @@ export function LinkedInSettingsSection() {
     } catch {
       // Best-effort cleanup
     }
+    await resetProviderPauseState("linkedin");
     setLiAuth({ isAuthenticated: false });
     setLastDiag(null);
     setError(null);
   }, [setLiAuth, setError]);
 
   const syncError = storeError && liAuth.isAuthenticated ? storeError : null;
-
+  const authError = liAuth.lastCaptureError ?? syncError;
+  const needsReconnect = needsProviderReconnect(authError);
+  const statusTone = getProviderStatusTone({
+    isConnected: liAuth.isAuthenticated,
+    authError,
+    snapshot: healthSnapshot,
+  });
+  const statusLabel = getProviderStatusLabel({
+    isConnected: liAuth.isAuthenticated,
+    authError,
+    snapshot: healthSnapshot,
+  });
+  const isPaused = !!healthSnapshot?.pause && healthSnapshot.pause.pausedUntil > Date.now();
   // ── Connected state ──────────────────────────────────────────────────────
 
   if (liAuth.isAuthenticated) {
@@ -200,66 +229,96 @@ export function LinkedInSettingsSection() {
 
     return (
       <>
-      <div className="space-y-4">
-        <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
-          <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
-          <span className="text-sm text-[#a1a1aa]">Connected</span>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              void confirm(runSync);
-            }}
-            disabled={syncing || isLoading}
-            className="flex-1 text-sm px-3 py-2 rounded-xl bg-[#8b5cf6]/15 text-[#8b5cf6] hover:bg-[#8b5cf6]/25 disabled:opacity-50 transition-colors"
-          >
-            {syncing ? "Syncing..." : "Sync Now"}
-          </button>
-          <button
-            onClick={handleDisconnect}
-            className="text-sm px-3 py-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
-          >
-            Disconnect
-          </button>
-        </div>
-
-        {syncError && (
-          <p className="text-xs text-red-400 leading-relaxed">
-            {syncError.includes("timeout")
-              ? "Scrape timed out. LinkedIn may be slow to load. Try again."
-              : syncError}
-          </p>
-        )}
-
-        {statusLine}
-
-        {lastDiag && <LiDiagPanel diag={lastDiag} />}
-
-        <details className="group">
-          <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">
-            <span className="group-open:rotate-90 transition-transform inline-block">›</span>
-            Advanced
-          </summary>
-          <div className="mt-3 pl-3 border-l border-white/10">
-            <ScraperWindowModeControl
-              sourceLabel="LinkedIn"
-              mode={windowMode}
-              onChange={(nextMode) => {
-                setWindowMode(nextMode);
-                setLiScraperWindowMode(nextMode);
-              }}
+      <SyncProviderSectionSurface surface={surface} title="LinkedIn">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5">
+            <ProviderStatusIndicator
+              tone={statusTone}
+              syncing={syncing}
+              label={statusLabel}
+              testId="provider-status-linkedin"
+              size="sm"
             />
+            <span className="text-sm text-[#a1a1aa]">
+              {statusLabel}
+            </span>
           </div>
-        </details>
 
-        <p className="text-xs text-[#52525b] leading-relaxed">
-          Freed reads your LinkedIn feed through a native browser session to
-          deliver a seamless experience. Reading can potentially be interrupted
-          if LinkedIn changes their systems in an attempt to keep you in their
-          garden.
-        </p>
-      </div>
+          <div className="flex gap-2">
+            <ProviderSyncActionButton
+              onClick={() => {
+                if (needsReconnect) {
+                  void handleLogin();
+                  return;
+                }
+                void confirm(async () => {
+                  if (isPaused) {
+                    await clearProviderPause("linkedin");
+                  }
+                  await runSync();
+                });
+              }}
+              busy={syncing}
+              busyLabel={needsReconnect ? "Reconnecting..." : isPaused ? "Resuming..." : "Syncing"}
+              disabled={
+                (!needsReconnect && (syncing || isLoading)) ||
+                (needsReconnect && isLoading)
+              }
+              testId="provider-sync-action-linkedin"
+            >
+              {needsReconnect ? "Reconnect LinkedIn" : isPaused ? "Resume Now" : "Sync Now"}
+            </ProviderSyncActionButton>
+            <button
+              onClick={handleDisconnect}
+              className="text-sm px-3 py-2 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors"
+            >
+              Disconnect
+            </button>
+          </div>
+
+          {needsReconnect && (
+            <p className="text-xs text-red-400 leading-relaxed">
+              {formatProviderReconnectMessage("LinkedIn", authError)}
+            </p>
+          )}
+
+          {syncError && !needsReconnect && (
+            <p className="text-xs text-red-400 leading-relaxed">
+              {syncError.includes("timeout")
+                ? "Scrape timed out. LinkedIn may be slow to load. Try again."
+                : syncError}
+            </p>
+          )}
+
+          <ProviderHealthSectionSummary provider="linkedin" />
+
+          {statusLine}
+
+          {lastDiag && <LiDiagPanel diag={lastDiag} />}
+
+          <details className="group">
+            <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">
+              <span className="group-open:rotate-90 transition-transform inline-block">›</span>
+              Advanced
+            </summary>
+            <div className="mt-3 pl-3 border-l border-white/10">
+              <ScraperWindowModeControl
+                sourceLabel="LinkedIn"
+                mode={windowMode}
+                onChange={(nextMode) => {
+                  setWindowMode(nextMode);
+                  setLiScraperWindowMode(nextMode);
+                }}
+              />
+            </div>
+          </details>
+
+          <p className="text-xs text-[#52525b] leading-relaxed">
+            Freed reads your LinkedIn feed through a native browser session.
+            Your traffic looks identical to normal browsing.
+          </p>
+        </div>
+      </SyncProviderSectionSurface>
       {dialog}
       </>
     );
@@ -269,29 +328,36 @@ export function LinkedInSettingsSection() {
 
   return (
     <>
-    <div className="space-y-4">
-      <p className="text-sm text-[#71717a] leading-relaxed">
-        Pull your LinkedIn feed into Freed. Log in through a native browser
-        window to give Freed an authenticated browser session. Reading can
-        potentially be interrupted if LinkedIn changes their systems in an
-        attempt to keep you in their garden.
-      </p>
-      <div className="flex gap-2">
-        <button
-          onClick={handleLogin}
-          className="text-sm px-4 py-2 rounded-xl bg-[#0A66C2]/15 text-[#0A66C2] hover:bg-[#0A66C2]/25 transition-colors"
-        >
-          Log in with LinkedIn
-        </button>
-        <button
-          onClick={handleCheckAuth}
-          disabled={checking}
-          className="text-sm px-4 py-2 rounded-xl bg-white/5 text-[#71717a] hover:bg-white/10 disabled:opacity-50 transition-colors"
-        >
-          {checking ? "Checking..." : "Check Connection"}
-        </button>
+    <SyncProviderSectionSurface surface={surface} title="LinkedIn">
+      <div className="space-y-4">
+        <p className="text-sm text-[#71717a] leading-relaxed">
+          {needsReconnect
+            ? "Your LinkedIn session is no longer valid. Sign in again to restore sync."
+            : "Pull your LinkedIn feed into Freed. Log in through a native browser window. Freed reads your feed the same way you would, so your account stays safe."}
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={handleLogin}
+            className="text-sm px-4 py-2 rounded-xl bg-[#0A66C2]/15 text-[#0A66C2] hover:bg-[#0A66C2]/25 transition-colors"
+          >
+            {needsReconnect ? "Reconnect LinkedIn" : "Log in with LinkedIn"}
+          </button>
+          <button
+            onClick={handleCheckAuth}
+            disabled={checking}
+            className="text-sm px-4 py-2 rounded-xl bg-white/5 text-[#71717a] hover:bg-white/10 disabled:opacity-50 transition-colors"
+          >
+            {checking ? "Checking..." : "Check Connection"}
+          </button>
+        </div>
+        {needsReconnect && authError && (
+          <p className="text-xs text-amber-400 leading-relaxed">
+            {formatProviderReconnectMessage("LinkedIn", authError)}
+          </p>
+        )}
+        <ProviderHealthSectionSummary provider="linkedin" />
       </div>
-    </div>
+    </SyncProviderSectionSurface>
     {dialog}
     </>
   );

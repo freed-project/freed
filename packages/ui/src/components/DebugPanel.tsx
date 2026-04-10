@@ -10,8 +10,16 @@
  */
 
 import { useEffect, useState, type ReactNode } from "react";
-import { useDebugStore, type SyncEvent, type SyncEventKind, type CloudSyncStatus, type FpsSnapshot } from "../lib/debug-store";
+import { useDebugStore, type SyncEvent, type SyncEventKind, type CloudSyncStatus, type FpsSnapshot, type HealthProviderId, type RssFeedHealthSnapshot } from "../lib/debug-store";
 import { useFpsMonitor } from "../lib/perf-monitor";
+import { useAppStore, usePlatform } from "../context/PlatformContext.js";
+import {
+  ProviderHealthSummary,
+  VolumeBars,
+  DurationSelect,
+  formatHealthRelative,
+  type HealthChartRange,
+} from "./ProviderHealthSummary.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -534,17 +542,307 @@ function PerformanceTab() {
   return <PerformanceTabContent snap={perfSnapshot} />;
 }
 
+function HealthTab() {
+  const health = useDebugStore((s) => s.health);
+  const removeFeed = useAppStore((s) => s.removeFeed);
+  const providerSyncCounts = useAppStore(
+    (s) =>
+      ((s as unknown as {
+        providerSyncCounts?: Partial<Record<HealthProviderId, number>>;
+      }).providerSyncCounts ?? {}) as Partial<Record<HealthProviderId, number>>,
+  );
+  const {
+    retryCloudProvider,
+    reconnectCloudProvider,
+    forgetRssFeedHealth,
+    syncRssNow,
+    XSettingsContent,
+    FacebookSettingsContent,
+    InstagramSettingsContent,
+    LinkedInSettingsContent,
+  } = usePlatform();
+  const [feedRangeByUrl, setFeedRangeByUrl] = useState<Record<string, HealthChartRange>>({});
+  const [pendingRemoval, setPendingRemoval] = useState<RssFeedHealthSnapshot | null>(null);
+  const [includeItems, setIncludeItems] = useState(false);
+  const [removingFeed, setRemovingFeed] = useState(false);
+  const [pendingProviderAction, setPendingProviderAction] = useState<
+    Partial<Record<HealthProviderId, "sync" | "reconnect">>
+  >({});
+
+  if (!health) {
+    return (
+      <p className="text-xs text-[#52525b] text-center py-8">
+        Health snapshots are loading.
+      </p>
+    );
+  }
+
+  const providerOrder: HealthProviderId[] = [
+    "rss",
+    "x",
+    "facebook",
+    "instagram",
+    "linkedin",
+    "gdrive",
+    "dropbox",
+  ];
+  const providerSettingsContent: Partial<
+    Record<HealthProviderId, typeof XSettingsContent>
+  > = {
+    x: XSettingsContent,
+    facebook: FacebookSettingsContent,
+    instagram: InstagramSettingsContent,
+    linkedin: LinkedInSettingsContent,
+  };
+
+  const copySnapshot = async () => {
+    await navigator.clipboard.writeText(JSON.stringify(health, null, 2));
+  };
+
+  const confirmRemoval = async () => {
+    if (!pendingRemoval) return;
+    setRemovingFeed(true);
+    try {
+      await removeFeed(pendingRemoval.feedUrl, { includeItems });
+      if (forgetRssFeedHealth) {
+        await forgetRssFeedHealth(pendingRemoval.feedUrl);
+      }
+      setPendingRemoval(null);
+      setIncludeItems(false);
+    } finally {
+      setRemovingFeed(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] text-[#52525b] uppercase tracking-widest">
+          Provider Health
+        </p>
+        <button
+          onClick={copySnapshot}
+          className="text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+        >
+          Copy Snapshot
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        {providerOrder.map((provider) => {
+          const snapshot = health.providers[provider];
+          const ProviderSettingsContent = providerSettingsContent[provider];
+          const providerSyncing = (providerSyncCounts[provider] ?? 0) > 0;
+          const pendingAction = pendingProviderAction[provider];
+          const actions =
+            provider === "rss" ? (
+              syncRssNow ? (
+                <button
+                  onClick={() => {
+                    void syncRssNow();
+                  }}
+                  disabled={providerSyncing}
+                  className="inline-flex items-center gap-2 text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors disabled:opacity-50"
+                >
+                  {providerSyncing ? (
+                    <>
+                      <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                      Syncing
+                    </>
+                  ) : (
+                    "Sync Now"
+                  )}
+                </button>
+              ) : null
+            ) : (provider === "gdrive" || provider === "dropbox") ? (
+              <>
+                {retryCloudProvider && (
+                  <button
+                    onClick={() => {
+                      setPendingProviderAction((current) => ({
+                        ...current,
+                        [provider]: "sync",
+                      }));
+                      void retryCloudProvider(provider).finally(() => {
+                        setPendingProviderAction((current) => {
+                          const next = { ...current };
+                          delete next[provider];
+                          return next;
+                        });
+                      });
+                    }}
+                    disabled={pendingAction === "sync"}
+                    className="inline-flex items-center gap-2 text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors disabled:opacity-50"
+                  >
+                    {pendingAction === "sync" ? (
+                      <>
+                        <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                        Syncing
+                      </>
+                    ) : (
+                      "Sync Now"
+                    )}
+                  </button>
+                )}
+                {reconnectCloudProvider && (
+                  <button
+                    onClick={() => {
+                      setPendingProviderAction((current) => ({
+                        ...current,
+                        [provider]: "reconnect",
+                      }));
+                      void reconnectCloudProvider(provider).finally(() => {
+                        setPendingProviderAction((current) => {
+                          const next = { ...current };
+                          delete next[provider];
+                          return next;
+                        });
+                      });
+                    }}
+                    disabled={pendingAction === "reconnect"}
+                    className="inline-flex items-center gap-2 text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors disabled:opacity-50"
+                  >
+                    {pendingAction === "reconnect" ? (
+                      <>
+                        <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+                        Reconnecting
+                      </>
+                    ) : (
+                      "Reconnect"
+                    )}
+                  </button>
+                )}
+              </>
+            ) : null;
+
+          return (
+            <div key={provider} className="space-y-2">
+              {ProviderSettingsContent ? (
+                <ProviderSettingsContent surface="debug-card" />
+              ) : (
+                <ProviderHealthSummary
+                  snapshot={snapshot}
+                  showRecentAttempts
+                  actions={actions}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="space-y-3">
+        <p className="text-[10px] text-[#52525b] uppercase tracking-widest">
+          Failing RSS Feeds
+        </p>
+        {health.failingRssFeeds.length === 0 ? (
+          <p className="text-xs text-[#71717a]">No failing feeds right now.</p>
+        ) : (
+          health.failingRssFeeds.map((feed) => {
+            const selectedRange = feedRangeByUrl[feed.feedUrl] ?? "daily";
+            const bars = selectedRange === "hourly" ? feed.hourlyBuckets : feed.dailyBuckets;
+            return (
+              <div key={feed.feedUrl} className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-white">{feed.feedTitle}</p>
+                    <p className="text-xs text-[#71717a] break-all">{feed.feedUrl}</p>
+                    <p className="text-xs text-amber-400 mt-1">
+                      Failing for {feed.outageSince ? formatHealthRelative(feed.outageSince) : "a while"}
+                    </p>
+                    {feed.lastError && (
+                      <p className="text-xs text-amber-300 mt-1">{feed.lastError}</p>
+                    )}
+                    <p className="text-[11px] text-[#71717a] mt-1">
+                      Last success {formatHealthRelative(feed.lastSuccessfulAt)}
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <DurationSelect
+                      value={selectedRange}
+                      onChange={(nextRange) => {
+                        setFeedRangeByUrl((current) => ({
+                          ...current,
+                          [feed.feedUrl]: nextRange,
+                        }));
+                      }}
+                      ariaLabel={`${feed.feedTitle} duration`}
+                    />
+                    <button
+                      onClick={() => setPendingRemoval(feed)}
+                      className="text-xs px-2.5 py-1 rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-400 transition-colors"
+                    >
+                      Unsubscribe
+                    </button>
+                  </div>
+                </div>
+                <VolumeBars
+                  buckets={bars}
+                  metric="itemsSeen"
+                  title={selectedRange === "hourly" ? "Pulled Per Hour" : "Pulled Per Day"}
+                />
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {pendingRemoval && (
+        <div className="fixed inset-0 z-[260] flex items-start justify-center overflow-y-auto bg-black/70 p-4 sm:items-center">
+          <div className="my-auto w-full max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-4">
+            <div>
+              <p className="text-sm font-semibold text-white">Unsubscribe failing feed?</p>
+              <p className="text-xs text-[#71717a] mt-1">{pendingRemoval.feedTitle}</p>
+              <p className="text-xs text-[#52525b] mt-1 break-all">{pendingRemoval.feedUrl}</p>
+            </div>
+            <label className="flex items-start gap-3 text-sm text-[#a1a1aa]">
+              <input
+                type="checkbox"
+                checked={includeItems}
+                onChange={(event) => setIncludeItems(event.target.checked)}
+                className="mt-0.5"
+              />
+              <span>Also delete articles and reading history for this feed</span>
+            </label>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setPendingRemoval(null);
+                  setIncludeItems(false);
+                }}
+                className="flex-1 rounded-xl bg-white/5 py-2 text-sm text-[#a1a1aa] hover:bg-white/10 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  void confirmRemoval();
+                }}
+                disabled={removingFeed}
+                className="flex-1 rounded-xl bg-red-500/15 py-2 text-sm text-red-400 hover:bg-red-500/25 transition-colors disabled:opacity-50"
+              >
+                {removingFeed ? "Removing..." : "Unsubscribe"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Shared panel chrome - header + tabs + scrollable content + footer
 // ---------------------------------------------------------------------------
 
-type Tab = "connection" | "events" | "document" | "performance";
+type Tab = "connection" | "events" | "document" | "performance" | "health";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "connection", label: "Connection" },
   { id: "events", label: "Events" },
   { id: "document", label: "Document" },
   { id: "performance", label: "Perf" },
+  { id: "health", label: "Health" },
 ];
 
 function PanelContent({
@@ -600,6 +898,7 @@ function PanelContent({
         {tab === "events" && <EventsTab />}
         {tab === "document" && <DocumentTab />}
         {tab === "performance" && <PerformanceTab />}
+        {tab === "health" && <HealthTab />}
       </div>
 
       {/* Footer - subtle bg tint mirrors the header */}
