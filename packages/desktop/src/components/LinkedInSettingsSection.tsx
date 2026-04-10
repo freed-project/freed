@@ -254,8 +254,10 @@ export function LinkedInSettingsSection() {
         </details>
 
         <p className="text-xs text-[#52525b] leading-relaxed">
-          Freed reads your LinkedIn feed through a native browser session.
-          Your traffic looks identical to normal browsing.
+          Freed reads your LinkedIn feed through a native browser session to
+          deliver a seamless experience. Reading can potentially be interrupted
+          if LinkedIn changes their systems in an attempt to keep you in their
+          garden.
         </p>
       </div>
       {dialog}
@@ -270,8 +272,9 @@ export function LinkedInSettingsSection() {
     <div className="space-y-4">
       <p className="text-sm text-[#71717a] leading-relaxed">
         Pull your LinkedIn feed into Freed. Log in through a native browser
-        window. Freed reads your feed the same way you would, so your account
-        stays safe.
+        window to give Freed an authenticated browser session. Reading can
+        potentially be interrupted if LinkedIn changes their systems in an
+        attempt to keep you in their garden.
       </p>
       <div className="flex gap-2">
         <button
