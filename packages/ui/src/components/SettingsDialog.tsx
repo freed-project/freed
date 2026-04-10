@@ -75,6 +75,8 @@ type ProviderAuthSlices = {
   liAuth?: ProviderAuthState;
 };
 
+const EMPTY_PROVIDER_SYNC_COUNTS: Partial<Record<ProviderSectionId, number>> = {};
+
 function isProviderSection(sectionId: SectionId): sectionId is ProviderSectionId {
   return (
     sectionId === "x" ||
@@ -89,7 +91,7 @@ function ProviderStatusDot({ sectionId }: { sectionId: ProviderSectionId }) {
   const providerSyncCounts = useAppStore(
     (s) =>
       ((s as unknown as { providerSyncCounts?: Partial<Record<ProviderSectionId, number>> })
-        .providerSyncCounts ?? {}) as Partial<Record<ProviderSectionId, number>>,
+        .providerSyncCounts ?? EMPTY_PROVIDER_SYNC_COUNTS) as Partial<Record<ProviderSectionId, number>>,
   );
   const xAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).xAuth);
   const fbAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).fbAuth);

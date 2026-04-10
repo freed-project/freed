@@ -372,6 +372,8 @@ function SourceContextMenu({
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
 const DEFAULT_WIDTH = 256;
+const EMPTY_PROVIDER_SYNC_COUNTS: Partial<Record<string, number>> = {};
+
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { SourceIndicator, headerDragRegion, syncRssNow, syncSourceNow, getSourceStatus } = usePlatform();
   const activeFilter = useAppStore((s) => s.activeFilter);
@@ -393,7 +395,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const providerSyncCounts = useAppStore(
     (s) =>
       ((s as unknown as { providerSyncCounts?: Partial<Record<string, number>> })
-        .providerSyncCounts ?? {}) as Partial<Record<string, number>>,
+        .providerSyncCounts ?? EMPTY_PROVIDER_SYNC_COUNTS) as Partial<Record<string, number>>,
   );
   const sidebarWidth = useAppStore((s) => s.preferences.display.sidebarWidth) ?? DEFAULT_WIDTH;
   const updatePreferences = useAppStore((s) => s.updatePreferences);
