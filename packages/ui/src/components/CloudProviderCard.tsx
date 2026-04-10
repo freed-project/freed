@@ -83,15 +83,15 @@ export function CloudProviderCard({
         isConnected
           ? "bg-green-500/5 border-green-500/20"
           : isIdle
-            ? "bg-white/5 border-[rgba(255,255,255,0.08)] cursor-pointer hover:bg-white/[0.08] hover:border-[#8b5cf6]/30"
-            : "bg-white/5 border-[rgba(255,255,255,0.08)]"
+            ? "cursor-pointer border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] hover:border-[var(--theme-border-strong)] hover:bg-[var(--theme-bg-card-hover)]"
+            : "border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)]"
       }`}
     >
       {meta.icon}
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <p className="text-sm font-medium text-white">{meta.name}</p>
+          <p className="text-sm font-medium text-[var(--theme-text-primary)]">{meta.name}</p>
           {isConnected && (
             <span className="inline-flex items-center gap-1 text-xs text-green-400">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
@@ -99,14 +99,14 @@ export function CloudProviderCard({
             </span>
           )}
         </div>
-        <p className="text-xs text-[#71717a] mt-0.5">{meta.detail}</p>
+        <p className="mt-0.5 text-xs text-[var(--theme-text-muted)]">{meta.detail}</p>
         {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
       </div>
 
       {isConnected && onDisconnect ? (
         <button
           onClick={(e) => { e.stopPropagation(); onDisconnect(provider); }}
-          className="flex-shrink-0 text-xs px-2.5 py-1 rounded-lg bg-white/5 text-[#71717a] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+          className="flex-shrink-0 rounded-lg bg-[var(--theme-bg-muted)] px-2.5 py-1 text-xs text-[var(--theme-text-muted)] transition-colors hover:bg-red-500/10 hover:text-red-400"
         >
           Disconnect
         </button>
@@ -116,8 +116,8 @@ export function CloudProviderCard({
             isConnected
               ? "bg-green-500/10 text-green-400 border border-green-500/20"
               : isConnecting
-                ? "opacity-50 text-[#8b5cf6]"
-                : "bg-[#8b5cf6]/20 text-[#8b5cf6]"
+                ? "opacity-50 text-[var(--theme-accent-secondary)]"
+                : "theme-accent-tag"
           }`}
         >
           {isConnecting ? "Opening…" : isConnected ? "Connected" : "Connect"}

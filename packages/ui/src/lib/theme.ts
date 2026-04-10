@@ -1,6 +1,7 @@
 import {
   DEFAULT_THEME_ID,
   THEME_DEFINITIONS,
+  getThemeDefinition,
   resolveThemeId,
   type ThemeDefinition,
   type ThemeId,
@@ -24,8 +25,7 @@ export function getStoredThemeId(): ThemeId {
 export function applyThemeToDocument(themeId: ThemeId): void {
   if (typeof document === "undefined") return;
   document.documentElement.dataset.theme = themeId;
-  document.documentElement.style.colorScheme =
-    themeId === "porcelain" ? "light" : "dark";
+  document.documentElement.style.colorScheme = getThemeDefinition(themeId).surface;
 }
 
 export function persistTheme(themeId: ThemeId): void {

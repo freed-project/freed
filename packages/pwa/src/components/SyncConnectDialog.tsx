@@ -398,8 +398,8 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
             }}
             className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
               mode === id
-                ? "bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30"
-                : "bg-white/5 text-[#71717a] hover:text-white"
+                ? "border border-[color:rgb(var(--theme-accent-secondary-rgb)/0.3)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.16)] text-[var(--theme-accent-secondary)]"
+                : "bg-[var(--theme-bg-muted)] text-[var(--theme-text-muted)] hover:text-[var(--theme-text-primary)]"
             }`}
           >
             {label}
@@ -408,7 +408,7 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
       </div>
 
       {mode !== "cloud" && (
-        <p className="text-sm text-[#71717a] mb-5">
+        <p className="mb-5 text-sm text-[var(--theme-text-muted)]">
           {mode === "scanning"
             ? "Point your camera at the QR code shown in your desktop app."
             : "Enter your desktop's IP address and pairing token, or scan the QR code."}
@@ -433,7 +433,7 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
 
       {mode === "scanning" ? (
         <div className="mb-4">
-          <div className="relative rounded-xl overflow-hidden bg-black aspect-square">
+          <div className="relative aspect-square overflow-hidden rounded-xl bg-[var(--theme-bg-deep)]">
             <video
               ref={videoRef}
               className="w-full h-full object-cover"
@@ -443,18 +443,18 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
             />
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div
-                className={`w-48 h-48 border-2 rounded-2xl transition-colors ${
-                  scanStatus === "found" ? "border-green-400" : "border-white/40"
+                className={`h-48 w-48 rounded-2xl border-2 transition-colors ${
+                  scanStatus === "found" ? "border-green-400" : "border-[var(--theme-border-quiet)]"
                 }`}
               >
-                <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-[#8b5cf6] rounded-tl-lg" />
-                <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-[#8b5cf6] rounded-tr-lg" />
-                <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-[#8b5cf6] rounded-bl-lg" />
-                <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-[#8b5cf6] rounded-br-lg" />
+                <div className="absolute top-0 left-0 h-6 w-6 rounded-tl-lg border-t-2 border-l-2 border-[var(--theme-accent-secondary)]" />
+                <div className="absolute top-0 right-0 h-6 w-6 rounded-tr-lg border-t-2 border-r-2 border-[var(--theme-accent-secondary)]" />
+                <div className="absolute bottom-0 left-0 h-6 w-6 rounded-bl-lg border-b-2 border-l-2 border-[var(--theme-accent-secondary)]" />
+                <div className="absolute bottom-0 right-0 h-6 w-6 rounded-br-lg border-b-2 border-r-2 border-[var(--theme-accent-secondary)]" />
               </div>
             </div>
             {scanStatus === "found" && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+              <div className="theme-elevated-overlay absolute inset-0 flex items-center justify-center">
                 <div className="flex flex-col items-center gap-2">
                   <div className="w-12 h-12 rounded-full bg-green-500/20 border-2 border-green-400 flex items-center justify-center">
                     <svg
@@ -480,7 +480,7 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
           </div>
 
           {/* Live scan diagnostics */}
-          <div className="mt-3 flex items-center justify-between text-[10px] text-[#52525b] font-mono">
+          <div className="mt-3 flex items-center justify-between font-mono text-[10px] text-[var(--theme-text-soft)]">
             <span>
               {videoResolution
                 ? `Camera ${videoResolution}`
@@ -499,7 +499,7 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
                 </span>
               )}
           </div>
-          <p className="text-xs text-[#71717a] text-center mt-2">
+          <p className="mt-2 text-center text-xs text-[var(--theme-text-muted)]">
             Open the desktop app &rarr; Settings &rarr; Mobile Sync to see the QR code
           </p>
         </div>
@@ -508,7 +508,7 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
         <div className="mb-4 space-y-4">
           {/* IP address */}
           <div>
-            <label htmlFor="sync-ip" className="block text-sm text-[#a1a1aa] mb-2">
+            <label htmlFor="sync-ip" className="mb-2 block text-sm text-[var(--theme-text-secondary)]">
               Desktop IP address
             </label>
             <input
@@ -518,7 +518,7 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
               value={ip}
               onChange={(e) => setIp(e.target.value)}
               placeholder="192.168.1.x"
-              className="w-full px-4 py-3 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-xl focus:outline-none focus:border-[#8b5cf6] text-white placeholder-[#71717a] font-mono text-sm transition-colors"
+              className="theme-input w-full rounded-xl px-4 py-3 font-mono text-sm transition-colors"
               disabled={connecting}
               autoFocus
               onKeyDown={(e) => e.key === "Enter" && handleConnect()}
@@ -527,9 +527,9 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
 
           {/* Pairing token */}
           <div>
-            <label htmlFor="sync-token" className="block text-sm text-[#a1a1aa] mb-2">
+            <label htmlFor="sync-token" className="mb-2 block text-sm text-[var(--theme-text-secondary)]">
               Pairing token{" "}
-              <span className="text-[#52525b] text-xs">(43 characters)</span>
+              <span className="text-xs text-[var(--theme-text-soft)]">(43 characters)</span>
             </label>
             <input
               id="sync-token"
@@ -538,14 +538,14 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
               onChange={(e) => setToken(e.target.value.trim())}
               placeholder="43-character token from desktop app"
               maxLength={43}
-              className="w-full px-4 py-3 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-xl focus:outline-none focus:border-[#8b5cf6] text-white placeholder-[#71717a] font-mono text-xs tracking-wide transition-colors"
+              className="theme-input w-full rounded-xl px-4 py-3 font-mono text-xs tracking-wide transition-colors"
               disabled={connecting}
               onKeyDown={(e) => e.key === "Enter" && handleConnect()}
             />
             {token.length > 0 && (
               <p
                 className={`mt-1 text-xs ${
-                  token.length === 43 ? "text-green-500" : "text-[#71717a]"
+                  token.length === 43 ? "text-green-500" : "text-[var(--theme-text-muted)]"
                 }`}
               >
                 {token.length}/43 characters
@@ -553,7 +553,7 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
             )}
           </div>
 
-          <p className="text-xs text-[#71717a]">
+          <p className="text-xs text-[var(--theme-text-muted)]">
             Find these in your desktop app: Settings &rarr; Mobile Sync &rarr; Manual Entry
           </p>
         </div>
@@ -582,7 +582,7 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
               />
             );
           })}
-          <p className="text-xs text-[#71717a] text-center pt-6">
+          <p className="pt-6 text-center text-xs text-[var(--theme-text-muted)]">
             Connect to Freed Desktop over the cloud or your local network to keep your library in sync.
             Your data stays in your own cloud account -- Freed never sees it.
           </p>
@@ -596,7 +596,7 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
           {error.includes("not found") && mode !== "cloud" && (
             <button
               onClick={() => { setMode("cloud"); setError(null); }}
-              className="block mt-2 text-[#8b5cf6] underline text-xs"
+              className="theme-link mt-2 block text-xs underline"
             >
               Set up cloud sync instead
             </button>
@@ -607,7 +607,7 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
       {mode === "manual" && (
         <div className="flex flex-col gap-2">
           {connecting && constructedUrl && (
-            <p className="text-xs text-[#52525b] font-mono text-center truncate">
+            <p className="truncate text-center font-mono text-xs text-[var(--theme-text-soft)]">
               Attempting: {constructedUrl}
             </p>
           )}

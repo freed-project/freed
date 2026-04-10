@@ -109,7 +109,7 @@ export function BottomSheet({
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60"
+        className="theme-elevated-overlay absolute inset-0"
         onClick={onClose}
       />
 
@@ -134,7 +134,7 @@ export function BottomSheet({
           <h2 className="text-lg font-semibold">{title}</h2>
           <button
             onClick={onClose}
-            className="hidden sm:block p-1.5 rounded-lg hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+            className="hidden rounded-lg p-1.5 text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)] sm:block"
             aria-label="Close dialog"
           >
             <svg

@@ -46,7 +46,7 @@ function OllamaStatus({ url }: { url: string }) {
   return (
     <span
       title={reachable ? "Ollama is running" : "Ollama not reachable"}
-      className={`inline-block w-2 h-2 rounded-full ${reachable ? "bg-emerald-500" : "bg-[#52525b]"}`}
+      className={`inline-block h-2 w-2 rounded-full ${reachable ? "bg-emerald-500" : "bg-[var(--theme-text-soft)]"}`}
     />
   );
 }
@@ -102,7 +102,7 @@ function ApiKeyInput({
           if (hasSaved) setHasSaved(false);
         }}
         placeholder="Paste API key"
-        className="flex-1 bg-[#0a0a0a] border border-[rgba(255,255,255,0.1)] rounded-lg px-3 py-1.5 text-sm text-[#a1a1aa] placeholder-[#3f3f46] font-mono focus:outline-none focus:border-[#8b5cf6]/50 transition-colors"
+        className="flex-1 rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-1.5 font-mono text-sm text-[var(--theme-text-secondary)] placeholder-[var(--theme-text-soft)] transition-colors focus:outline-none focus:border-[var(--theme-border-strong)]"
         spellCheck={false}
         autoComplete="off"
       />
@@ -110,7 +110,7 @@ function ApiKeyInput({
         <button
           onClick={handleSave}
           disabled={!keyDraft.trim() || saving}
-          className="px-3 py-1.5 text-xs rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors disabled:opacity-40"
+          className="theme-accent-button rounded-lg px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
         >
           {saving ? "Saving..." : "Save"}
         </button>
@@ -159,17 +159,17 @@ export function AISection() {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--theme-text-muted)]">
         AI Summarization
       </h3>
 
       {/* Provider */}
       <div>
-        <label className="block text-sm text-[#a1a1aa] mb-1.5">Provider</label>
+        <label className="mb-1.5 block text-sm text-[var(--theme-text-secondary)]">Provider</label>
         <select
           value={ai.provider}
           onChange={(e) => handleProviderChange(e.target.value as AIPreferences["provider"])}
-          className="w-full bg-[#0a0a0a] border border-[rgba(255,255,255,0.1)] rounded-lg px-3 py-1.5 text-sm text-[#a1a1aa] focus:outline-none focus:border-[#8b5cf6]/50 transition-colors"
+          className="w-full rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-1.5 text-sm text-[var(--theme-text-secondary)] transition-colors focus:outline-none focus:border-[var(--theme-border-strong)]"
         >
           {Object.entries(PROVIDER_LABELS).map(([val, label]) => (
             <option key={val} value={val}>{label}</option>
@@ -180,12 +180,12 @@ export function AISection() {
       {/* Ollama status + URL override */}
       {ai.provider === "ollama" && (
         <div className="space-y-2">
-          <div className="flex items-center gap-2 text-sm text-[#71717a]">
+          <div className="flex items-center gap-2 text-sm text-[var(--theme-text-muted)]">
             <OllamaStatus url={ollamaUrl} />
             <span>Ollama at {ollamaUrl}</span>
             <button
               onClick={() => setShowOllamaUrl((v) => !v)}
-              className="text-[#52525b] hover:text-[#8b5cf6] text-xs underline transition-colors"
+              className="text-xs underline text-[var(--theme-text-soft)] transition-colors hover:text-[var(--theme-accent-secondary)]"
             >
               {showOllamaUrl ? "Hide" : "Change"}
             </button>
@@ -196,7 +196,7 @@ export function AISection() {
               value={ai.ollamaUrl ?? ""}
               onChange={(e) => update({ ollamaUrl: e.target.value || undefined })}
               placeholder="http://localhost:11434"
-              className="w-full bg-[#0a0a0a] border border-[rgba(255,255,255,0.1)] rounded-lg px-3 py-1.5 text-sm text-[#a1a1aa] placeholder-[#3f3f46] font-mono focus:outline-none focus:border-[#8b5cf6]/50 transition-colors"
+              className="w-full rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-1.5 font-mono text-sm text-[var(--theme-text-secondary)] placeholder-[var(--theme-text-soft)] transition-colors focus:outline-none focus:border-[var(--theme-border-strong)]"
             />
           )}
         </div>
@@ -205,13 +205,13 @@ export function AISection() {
       {/* Model */}
       {ai.provider !== "none" && (
         <div>
-          <label className="block text-sm text-[#a1a1aa] mb-1.5">Model</label>
+          <label className="mb-1.5 block text-sm text-[var(--theme-text-secondary)]">Model</label>
           <input
             type="text"
             value={ai.model}
             onChange={(e) => update({ model: e.target.value })}
             placeholder={DEFAULT_MODELS[ai.provider] ?? "Model name"}
-            className="w-full bg-[#0a0a0a] border border-[rgba(255,255,255,0.1)] rounded-lg px-3 py-1.5 text-sm text-[#a1a1aa] placeholder-[#3f3f46] font-mono focus:outline-none focus:border-[#8b5cf6]/50 transition-colors"
+            className="w-full rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-1.5 font-mono text-sm text-[var(--theme-text-secondary)] placeholder-[var(--theme-text-soft)] transition-colors focus:outline-none focus:border-[var(--theme-border-strong)]"
           />
         </div>
       )}
@@ -219,20 +219,20 @@ export function AISection() {
       {/* API key -- desktop only */}
       {requiresKey && secureStorage && (
         <div>
-          <label className="block text-sm text-[#a1a1aa] mb-1.5">API Key</label>
+          <label className="mb-1.5 block text-sm text-[var(--theme-text-secondary)]">API Key</label>
           <ApiKeyInput
             provider={ai.provider as "openai" | "anthropic" | "gemini"}
             getApiKey={secureStorage.getApiKey}
             setApiKey={secureStorage.setApiKey}
             clearApiKey={secureStorage.clearApiKey}
           />
-          <p className="mt-1 text-[11px] text-[#52525b]">
+          <p className="mt-1 text-[11px] text-[var(--theme-text-soft)]">
             Stored encrypted on this device only. Never synced.
           </p>
         </div>
       )}
       {requiresKey && !secureStorage && (
-        <p className="text-xs text-[#71717a] bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+        <p className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-[var(--theme-text-muted)]">
           API key storage is only available in the desktop app. On the PWA, saves are sent to your desktop for AI processing.
         </p>
       )}

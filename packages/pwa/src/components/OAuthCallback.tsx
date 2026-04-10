@@ -169,9 +169,9 @@ export function OAuthCallback() {
       <div className="text-center max-w-sm px-6">
         {status === "exchanging" && (
           <>
-            <div className="w-10 h-10 border-2 border-glow-purple border-t-transparent rounded-full animate-spin mx-auto mb-5" />
-            <p className="text-white font-medium">Connecting cloud sync...</p>
-            <p className="text-[#71717a] text-sm mt-2">Exchanging authorization code</p>
+            <div className="mx-auto mb-5 h-10 w-10 animate-spin rounded-full border-2 border-[var(--theme-accent-secondary)] border-t-transparent" />
+            <p className="font-medium text-[var(--theme-text-primary)]">Connecting cloud sync...</p>
+            <p className="mt-2 text-sm text-[var(--theme-text-muted)]">Exchanging authorization code</p>
           </>
         )}
 
@@ -182,8 +182,8 @@ export function OAuthCallback() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <p className="text-white font-medium">Cloud sync connected</p>
-            <p className="text-[#71717a] text-sm mt-2">Returning to your feed...</p>
+            <p className="font-medium text-[var(--theme-text-primary)]">Cloud sync connected</p>
+            <p className="mt-2 text-sm text-[var(--theme-text-muted)]">Returning to your feed...</p>
           </>
         )}
 
@@ -194,8 +194,8 @@ export function OAuthCallback() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <p className="text-white font-medium">Connection failed</p>
-            <p className="text-[#71717a] text-sm mt-2 mb-5">{errorMessage}</p>
+            <p className="font-medium text-[var(--theme-text-primary)]">Connection failed</p>
+            <p className="mb-5 mt-2 text-sm text-[var(--theme-text-muted)]">{errorMessage}</p>
             <button
               onClick={() => window.location.replace("/")}
               className="btn-primary text-sm px-5 py-2.5"

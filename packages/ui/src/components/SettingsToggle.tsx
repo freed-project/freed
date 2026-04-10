@@ -24,18 +24,18 @@ export function SettingsToggle({
     >
       <div
         className={`relative mt-0.5 h-4.5 w-8 shrink-0 rounded-full transition-colors ${
-          checked ? "bg-[#8b5cf6]" : "bg-[#27272a]"
+          checked ? "bg-[var(--theme-accent-secondary)]" : "bg-[var(--theme-text-soft)]"
         }`}
       >
         <div
-          className={`absolute top-0.5 left-0.5 h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
+          className={`absolute top-0.5 left-0.5 h-3.5 w-3.5 rounded-full bg-[var(--theme-button-primary-text)] shadow transition-transform ${
             checked ? "translate-x-3.5" : "translate-x-0"
           }`}
         />
       </div>
       <div className="min-w-0">
-        <p className="text-sm text-[#a1a1aa] group-hover:text-[#fafafa] transition-colors">{label}</p>
-        {description ? <p className="text-xs text-[#52525b] mt-0.5">{description}</p> : null}
+        <p className="text-sm text-[var(--theme-text-secondary)] group-hover:text-[var(--theme-text-primary)] transition-colors">{label}</p>
+        {description ? <p className="mt-0.5 text-xs text-[var(--theme-text-soft)]">{description}</p> : null}
       </div>
     </button>
   );

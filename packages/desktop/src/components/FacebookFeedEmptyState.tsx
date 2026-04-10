@@ -14,7 +14,7 @@ import { useSettingsStore } from "@freed/ui/lib/settings-store";
 import { resetProviderPauseState } from "../lib/provider-health";
 
 const FbIcon = () => (
-  <svg className="w-7 h-7 text-[#a1a1aa]" viewBox="0 0 24 24" fill="currentColor">
+  <svg className="h-7 w-7 text-[var(--theme-media-facebook)]" viewBox="0 0 24 24" fill="currentColor">
     <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
   </svg>
 );
@@ -60,20 +60,20 @@ export function FacebookFeedEmptyState() {
   if (fbAuth.isAuthenticated) {
     return (
       <>
-        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#1877f2]/20 to-[#8b5cf6]/20 flex items-center justify-center mb-4">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[var(--theme-border-subtle)] bg-[radial-gradient(circle_at_top,var(--theme-bg-card-hover),transparent_72%),linear-gradient(135deg,color-mix(in_srgb,var(--theme-media-facebook)_18%,transparent),rgb(var(--theme-accent-secondary-rgb)/0.12))]">
           <FbIcon />
         </div>
         <p className="text-lg font-medium mb-2">All caught up!</p>
-        <p className="text-sm text-[#71717a] mb-6">Your Facebook feed is up to date.</p>
+        <p className="mb-6 text-sm text-[var(--theme-text-muted)]">Your Facebook feed is up to date.</p>
         <div className="flex gap-3">
           <button
             onClick={handleSync}
             disabled={syncing || isLoading}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 disabled:opacity-50 transition-colors font-medium text-sm"
+            className="theme-accent-button flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-colors disabled:opacity-50"
           >
             {syncing ? (
               <>
-                <div className="w-3.5 h-3.5 border-2 border-[#8b5cf6] border-t-transparent rounded-full animate-spin" />
+                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--theme-accent-secondary)] border-t-transparent" />
                 Syncing...
               </>
             ) : (
@@ -105,16 +105,16 @@ export function FacebookFeedEmptyState() {
 
   return (
     <>
-      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#1877f2]/20 to-[#8b5cf6]/20 flex items-center justify-center mb-4">
+      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[var(--theme-border-subtle)] bg-[radial-gradient(circle_at_top,var(--theme-bg-card-hover),transparent_72%),linear-gradient(135deg,color-mix(in_srgb,var(--theme-media-facebook)_18%,transparent),rgb(var(--theme-accent-secondary-rgb)/0.12))]">
         <FbIcon />
       </div>
       <p className="text-lg font-medium mb-2">Connect Facebook</p>
-      <p className="text-sm text-[#71717a] mb-6 max-w-xs text-center">
+      <p className="mb-6 max-w-xs text-center text-sm text-[var(--theme-text-muted)]">
         Pull your news feed into Freed. Set it up in Sources settings.
       </p>
       <button
         onClick={() => openSettings("facebook")}
-        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors font-medium text-sm"
+        className="theme-accent-button flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-colors"
       >
         Open Settings
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

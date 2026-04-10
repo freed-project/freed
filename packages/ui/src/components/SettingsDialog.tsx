@@ -632,7 +632,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         onClick={onClose}
         aria-label="Close settings"
         data-testid={testId}
-        className={`inline-flex h-9 w-9 items-center justify-center rounded-lg text-[#71717a] transition-colors hover:bg-white/10 hover:text-white ${className}`}
+        className={`inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)] ${className}`}
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -975,13 +975,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   onClose();
                   setTimeout(toggleDebug, 150);
                 }}
-                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-left"
+                className="w-full rounded-xl bg-[var(--theme-bg-muted)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--theme-bg-card-hover)]"
               >
                 <div>
-                  <p className="text-sm text-[#a1a1aa]">Open Debug Panel</p>
-                  <p className="text-xs text-[#52525b] mt-0.5">Sync diagnostics, event log, document inspector</p>
+                  <p className="text-sm text-[var(--theme-text-secondary)]">Open Debug Panel</p>
+                  <p className="mt-0.5 text-xs text-[var(--theme-text-soft)]">Sync diagnostics, event log, document inspector</p>
                 </div>
-                <span className="text-[10px] font-mono text-[#52525b] shrink-0 ml-3">⌘⇧D</span>
+                <span className="ml-3 shrink-0 text-[10px] font-mono text-[var(--theme-text-soft)]">⌘⇧D</span>
               </button>
               <button
                 onClick={requestSeedSampleData}
@@ -1119,7 +1119,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60"
+        className="theme-elevated-overlay absolute inset-0"
         onClick={onClose}
       />
 
@@ -1269,7 +1269,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
       {/* Factory reset confirmation overlay */}
       {showResetConfirm && (
-        <div className="absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-4 bg-black/60 sm:items-center">
+        <div className="theme-elevated-overlay absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-4 sm:items-center">
           <div className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto rounded-2xl border border-[color:var(--theme-border)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_94%,transparent)] p-6 shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center flex-shrink-0">
@@ -1292,7 +1292,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   type="checkbox"
                   checked={deleteFromCloud}
                   onChange={(e) => setDeleteFromCloud(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 rounded border-[rgba(255,255,255,0.2)] bg-white/5 text-red-500 focus:ring-red-500 focus:ring-offset-0"
+                  className="mt-0.5 h-4 w-4 rounded border-[var(--theme-border-quiet)] bg-[var(--theme-bg-input)] text-red-500 focus:ring-red-500 focus:ring-offset-0"
                 />
                 <div>
                   <p className="text-sm text-text-secondary transition-colors group-hover:text-text-primary">
@@ -1331,7 +1331,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       )}
 
       {showSampleSeedConfirm && (
-        <div className="absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-4 bg-black/60 sm:items-center">
+        <div className="theme-elevated-overlay absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-4 sm:items-center">
           <div className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-[color:var(--theme-border)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_94%,transparent)] p-6 shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center flex-shrink-0">

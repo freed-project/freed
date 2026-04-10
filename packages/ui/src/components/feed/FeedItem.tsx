@@ -185,8 +185,8 @@ export const FeedItem = memo(function FeedItem({
     const bg = item.content.mediaUrls[0];
     const isIg = item.platform === "instagram";
     const gradientFallback = isIg
-      ? "from-[#f9a825] via-[#e91e8c] to-[#9b4beb]"
-      : "from-[#1877f2] to-[#0a4bb5]";
+      ? "from-[var(--theme-media-rss)] via-[var(--theme-media-instagram)] to-[var(--theme-accent-secondary)]"
+      : "from-[var(--theme-media-facebook)] to-[var(--theme-media-linkedin)]";
 
     return (
       <div
@@ -265,7 +265,7 @@ export const FeedItem = memo(function FeedItem({
                   onClick={(e) => { e.stopPropagation(); onSave(e); }}
                   title={item.userState.saved ? "Remove bookmark" : "Bookmark"}
                   className={`p-1.5 rounded-lg bg-black/35 backdrop-blur-sm transition-colors ${
-                    item.userState.saved ? "text-[#8b5cf6]" : "text-white/70 hover:text-[#8b5cf6]"
+                    item.userState.saved ? "text-[var(--theme-accent-secondary)]" : "text-white/70 hover:text-[var(--theme-accent-secondary)]"
                   }`}
                 >
                   <svg className="w-3.5 h-3.5" fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
@@ -295,8 +295,8 @@ export const FeedItem = memo(function FeedItem({
         <article
           className={`feed-card group cursor-pointer aspect-square overflow-hidden p-3 flex flex-col transition-colors ${
             selected
-              ? "border-l-2 border-l-[#8b5cf6] bg-[#8b5cf6]/10"
-              : "hover:bg-white/5"
+              ? "border-l-2 border-l-[var(--theme-accent-secondary)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)]"
+              : "hover:bg-[var(--theme-bg-muted)]"
           } ${isRead ? "grayscale opacity-60" : ""}`}
           onClick={onClick}
           onMouseEnter={onMouseEnter}
@@ -315,13 +315,13 @@ export const FeedItem = memo(function FeedItem({
                   className="w-7 h-7 rounded-full bg-white/5 ring-1 ring-white/10 shrink-0"
                 />
               ) : (
-                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#3b82f6] to-[#8b5cf6] flex items-center justify-center font-medium shrink-0 text-xs">
+                <div className="theme-avatar-fallback flex h-7 w-7 items-center justify-center rounded-full font-medium shrink-0 text-xs">
                   {item.author.displayName[0]?.toUpperCase() || "?"}
                 </div>
               )}
               <div className="flex-1 min-w-0">
                 <span className="font-medium text-xs truncate block">{item.author.displayName}</span>
-                <div className="flex items-center gap-1.5 text-[10px] text-[#71717a]">
+                <div className="flex items-center gap-1.5 text-[10px] text-[var(--theme-text-muted)]">
                   <span>{platformIcon}</span>
                   <span className="truncate">{timeAgo}</span>
                 </div>
@@ -336,7 +336,7 @@ export const FeedItem = memo(function FeedItem({
           )}
 
           {item.content.text && (
-            <p className={`text-[#a1a1aa] leading-relaxed flex-1 min-h-0 ${narrow ? "text-[10px] line-clamp-4" : "text-xs line-clamp-3"}`}>
+            <p className={`text-[var(--theme-text-secondary)] leading-relaxed flex-1 min-h-0 ${narrow ? "text-[10px] line-clamp-4" : "text-xs line-clamp-3"}`}>
               {item.content.text}
             </p>
           )}
@@ -346,7 +346,7 @@ export const FeedItem = memo(function FeedItem({
               {item.userState.tags.slice(0, 2).map((tag) => (
                 <span
                   key={tag}
-                  className="px-1.5 py-0.5 text-[10px] rounded-full bg-[#8b5cf6]/20 text-[#8b5cf6]"
+                  className="theme-accent-tag rounded-full px-1.5 py-0.5 text-[10px]"
                 >
                   {tag}
                 </span>
@@ -380,7 +380,7 @@ export const FeedItem = memo(function FeedItem({
       )}
 
       <article
-        className={`feed-card group cursor-pointer active:scale-[0.99] transition-transform ${focused ? "ring-2 ring-[#8b5cf6]/60 ring-inset" : ""} ${isRead ? "grayscale opacity-60" : ""}`}
+        className={`feed-card group cursor-pointer active:scale-[0.99] transition-transform ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${isRead ? "grayscale opacity-60" : ""}`}
         style={{
           transform: swipeX !== 0 ? `translateX(${swipeX}px)` : undefined,
           transition: swipeX === 0 ? "transform 0.25s ease" : undefined,
@@ -405,16 +405,16 @@ export const FeedItem = memo(function FeedItem({
               className="w-10 h-10 rounded-full bg-white/5 ring-1 ring-white/10 shrink-0"
             />
           ) : (
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3b82f6] to-[#8b5cf6] flex items-center justify-center font-medium shrink-0 text-lg">
+            <div className="theme-avatar-fallback flex h-10 w-10 items-center justify-center rounded-full font-medium shrink-0 text-lg">
               {item.author.displayName[0]?.toUpperCase() || "?"}
             </div>
           )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-medium truncate">{item.author.displayName}</span>
-              <span className="text-[#71717a] text-sm">@{item.author.handle}</span>
+              <span className="text-[var(--theme-text-muted)] text-sm">@{item.author.handle}</span>
             </div>
-            <div className="flex items-center gap-2 text-xs text-[#71717a]">
+            <div className="flex items-center gap-2 text-xs text-[var(--theme-text-muted)]">
               <span>{platformIcon}</span>
               <span>{timeAgo}</span>
               {item.preservedContent?.readingTime && (
@@ -430,7 +430,7 @@ export const FeedItem = memo(function FeedItem({
             {onLike && (
               <div className="relative group/reactions">
                 {hasReactionPalette && (
-                  <div className="pointer-events-none absolute right-0 bottom-full mb-2 flex translate-y-1 rounded-xl border border-white/10 bg-[#18181b]/95 p-1 opacity-0 shadow-lg shadow-black/40 transition-all group-hover/reactions:pointer-events-auto group-hover/reactions:translate-y-0 group-hover/reactions:opacity-100 group-focus-within/reactions:pointer-events-auto group-focus-within/reactions:translate-y-0 group-focus-within/reactions:opacity-100">
+                  <div className="pointer-events-none absolute right-0 bottom-full mb-2 flex translate-y-1 rounded-xl border border-[var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_96%,transparent)] p-1 opacity-0 shadow-lg shadow-black/30 transition-all group-hover/reactions:pointer-events-auto group-hover/reactions:translate-y-0 group-hover/reactions:opacity-100 group-focus-within/reactions:pointer-events-auto group-focus-within/reactions:translate-y-0 group-focus-within/reactions:opacity-100">
                     {reactions.map((reaction) => (
                       <button
                         key={reaction.label}
@@ -457,7 +457,7 @@ export const FeedItem = memo(function FeedItem({
                       ? "text-amber-400"
                       : likeStatus === "failed"
                       ? "text-orange-400"
-                      : "text-[#52525b] hover:text-red-400"
+                      : "text-[var(--theme-text-soft)] hover:text-red-400"
                   }`}
                 >
                   <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={likeStatus !== "none" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
@@ -483,7 +483,7 @@ export const FeedItem = memo(function FeedItem({
                 onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
                 title={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
                 aria-label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
-                className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-[#52525b] hover:text-[#a1a1aa] transition-colors opacity-0 group-hover:opacity-100"
+                className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
               >
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -498,8 +498,8 @@ export const FeedItem = memo(function FeedItem({
                 title={item.userState.saved ? "Remove bookmark" : "Bookmark"}
                 className={`p-1.5 rounded-lg transition-colors ${
                   item.userState.saved
-                    ? "text-[#8b5cf6]"
-                    : "text-[#52525b] hover:text-[#8b5cf6] opacity-0 group-hover:opacity-100"
+                    ? "text-[var(--theme-accent-secondary)]"
+                    : "text-[var(--theme-text-soft)] hover:text-[var(--theme-accent-secondary)] opacity-0 group-hover:opacity-100"
                 }`}
               >
                 <svg className="w-4 h-4" fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
@@ -512,7 +512,7 @@ export const FeedItem = memo(function FeedItem({
               <button
                 onClick={onArchive}
                 title="Archive"
-                className="p-1.5 rounded-lg transition-colors text-[#52525b] hover:text-green-400 opacity-0 group-hover:opacity-100"
+                className="p-1.5 rounded-lg transition-colors text-[var(--theme-text-soft)] hover:text-green-400 opacity-0 group-hover:opacity-100"
               >
                 <TrashIcon className="w-4 h-4" />
               </button>
@@ -523,7 +523,7 @@ export const FeedItem = memo(function FeedItem({
                 onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
                 title="Open"
                 aria-label="Open"
-                className="p-1.5 rounded-lg text-[#52525b] hover:text-[#a1a1aa] transition-colors opacity-0 group-hover:opacity-100"
+                className="p-1.5 rounded-lg text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
               >
                 <ExternalLinkIcon className="w-4 h-4" />
               </button>
@@ -538,7 +538,7 @@ export const FeedItem = memo(function FeedItem({
         )}
 
         {item.content.text && (
-          <p className="text-[#a1a1aa] leading-relaxed line-clamp-3 mb-3">
+          <p className="mb-3 leading-relaxed line-clamp-3 text-[var(--theme-text-secondary)]">
             {item.content.text}
           </p>
         )}
@@ -560,7 +560,7 @@ export const FeedItem = memo(function FeedItem({
             {item.userState.tags.map((tag) => (
               <span
                 key={tag}
-                className="px-2.5 py-1 text-xs rounded-full bg-[#8b5cf6]/20 text-[#8b5cf6]"
+                className="theme-accent-tag rounded-full px-2.5 py-1 text-xs"
               >
                 {tag}
               </span>

@@ -69,13 +69,13 @@ function ProviderIcon({ iconKey, size = "md" }: { iconKey: IconKey; size?: "sm" 
       );
     case "local":
       return (
-        <svg className={`${dim} text-[#a1a1aa] flex-shrink-0`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className={`${dim} flex-shrink-0 text-[var(--theme-text-secondary)]`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
         </svg>
       );
     case "unlinked":
       return (
-        <svg className={`${dim} text-[#52525b] flex-shrink-0`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className={`${dim} flex-shrink-0 text-[var(--theme-text-soft)]`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
         </svg>
       );
@@ -118,8 +118,8 @@ export function SyncIndicator() {
   }, [panelOpen]);
 
   const statusLabel = isSyncing ? "Syncing" : syncConnected ? "Connected" : "Offline";
-  const dotColor = isSyncing ? "bg-[#8b5cf6]" : syncConnected ? "bg-green-400" : "bg-[#71717a]";
-  const statusColor = isSyncing ? "text-[#8b5cf6]" : syncConnected ? "text-green-400" : "text-[#71717a]";
+  const dotColor = isSyncing ? "bg-[var(--theme-accent-secondary)]" : syncConnected ? "bg-green-400" : "bg-[var(--theme-text-muted)]";
+  const statusColor = isSyncing ? "text-[var(--theme-accent-secondary)]" : syncConnected ? "text-green-400" : "text-[var(--theme-text-muted)]";
 
   return (
     <div className="relative" ref={panelRef}>
@@ -140,12 +140,12 @@ export function SyncIndicator() {
             setPanelOpen((prev) => !prev);
           }
         }}
-        className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm transition-colors hover:bg-white/5 ${statusColor}`}
+        className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm transition-colors hover:bg-[var(--theme-bg-muted)] ${statusColor}`}
       >
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor} ${isSyncing ? "animate-pulse" : ""}`} />
         <span>{statusLabel}</span>
         {lastSyncTime && !isSyncing && (
-          <span className="hidden sm:inline text-[10px] text-[#52525b] tabular-nums">
+          <span className="hidden sm:inline text-[10px] tabular-nums text-[var(--theme-text-soft)]">
             · {formatRelativeTime(lastSyncTime)}
           </span>
         )}
@@ -153,36 +153,36 @@ export function SyncIndicator() {
 
       {/* Dropdown -- informational card + one action */}
       {panelOpen && (
-        <div className="absolute right-0 top-full mt-1.5 w-60 bg-[#161616] border border-[rgba(255,255,255,0.1)] rounded-xl shadow-2xl shadow-black/70 overflow-hidden z-50">
+        <div className="absolute right-0 top-full z-50 mt-1.5 w-60 overflow-hidden rounded-xl border border-[var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_95%,transparent)] shadow-2xl shadow-black/40">
           {/* Status card */}
           <div className="px-4 py-3.5 flex items-center gap-3">
             <ProviderIcon iconKey={iconKey} size="md" />
             <div className="min-w-0">
-              <p className={`text-sm font-semibold leading-none ${syncConnected ? "text-white" : "text-[#71717a]"}`}>
+              <p className={`text-sm font-semibold leading-none ${syncConnected ? "text-[var(--theme-text-primary)]" : "text-[var(--theme-text-muted)]"}`}>
                 {connectionLabel}
               </p>
               {syncConnected && lastSyncTime && (
-                <p className="text-[11px] text-[#52525b] tabular-nums mt-1">
+                <p className="mt-1 text-[11px] tabular-nums text-[var(--theme-text-soft)]">
                   Last synced {formatRelativeTime(lastSyncTime)}
                 </p>
               )}
               {syncConnected && !lastSyncTime && (
-                <p className="text-[11px] text-[#52525b] mt-1">Never synced</p>
+                <p className="mt-1 text-[11px] text-[var(--theme-text-soft)]">Never synced</p>
               )}
               {!syncConnected && (
-                <p className="text-[11px] text-[#3f3f46] mt-1">Tap below to connect</p>
+                <p className="mt-1 text-[11px] text-[var(--theme-text-soft)]">Tap below to connect</p>
               )}
             </div>
           </div>
 
           {/* Single action -- always present */}
-          <div className="border-t border-[rgba(255,255,255,0.06)]">
+          <div className="border-t border-[var(--theme-border-subtle)]">
             <button
               onClick={() => {
                 setPanelOpen(false);
                 openSyncSettings();
               }}
-              className="w-full flex items-center justify-between px-4 py-2.5 text-sm text-[#8b5cf6] hover:bg-white/5 hover:text-[#a78bfa] transition-colors text-left"
+              className="w-full text-left flex items-center justify-between px-4 py-2.5 text-sm text-[var(--theme-accent-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:opacity-80"
             >
               <span>Sync settings</span>
               <svg className="w-3.5 h-3.5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">

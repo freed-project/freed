@@ -35,15 +35,15 @@ function TabBar({
   onChange: (id: SavedTab) => void;
 }) {
   return (
-    <div className="flex gap-0.5 bg-white/[0.04] rounded-xl p-1 mb-5">
+    <div className="mb-5 flex gap-0.5 rounded-xl bg-[var(--theme-bg-muted)] p-1">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onChange(tab.id)}
           className={`flex-1 py-1.5 px-3 text-sm font-medium rounded-lg transition-all whitespace-nowrap ${
             active === tab.id
-              ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
-              : "text-[#a1a1aa] hover:text-white"
+              ? "theme-accent-button"
+              : "text-[var(--theme-text-secondary)] hover:text-[var(--theme-text-primary)]"
           }`}
         >
           {tab.label}
@@ -164,8 +164,8 @@ function OverviewPane() {
   if (savedItems.length === 0) {
     return (
       <div className="text-center py-8">
-        <p className="text-sm text-[#71717a]">No saved items yet.</p>
-        <p className="text-xs text-[#52525b] mt-1">Save a URL to get started.</p>
+        <p className="text-sm text-[var(--theme-text-muted)]">No saved items yet.</p>
+        <p className="mt-1 text-xs text-[var(--theme-text-soft)]">Save a URL to get started.</p>
       </div>
     );
   }
@@ -204,8 +204,8 @@ function OverviewPane() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-sm text-white">Saved overview</p>
-          <p className="text-xs text-[#71717a] mt-1">
+          <p className="text-sm text-[var(--theme-text-primary)]">Saved overview</p>
+          <p className="mt-1 text-xs text-[var(--theme-text-muted)]">
             Track how much you have saved recently, plus where it is coming from.
           </p>
         </div>
@@ -223,45 +223,45 @@ function OverviewPane() {
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)] p-4">
-          <p className="text-xs uppercase tracking-widest text-[#52525b]">Total Saved</p>
-          <p className="mt-2 text-2xl font-semibold text-white">
+        <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4">
+          <p className="text-xs uppercase tracking-widest text-[var(--theme-text-soft)]">Total Saved</p>
+          <p className="mt-2 text-2xl font-semibold text-[var(--theme-text-primary)]">
             {savedItems.length.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)] p-4">
-          <p className="text-xs uppercase tracking-widest text-[#52525b]">Saved ({rangeLabel})</p>
-          <p className="mt-2 text-2xl font-semibold text-white">
+        <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4">
+          <p className="text-xs uppercase tracking-widest text-[var(--theme-text-soft)]">Saved ({rangeLabel})</p>
+          <p className="mt-2 text-2xl font-semibold text-[var(--theme-text-primary)]">
             {savedInRange.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)] p-4">
-          <p className="text-xs uppercase tracking-widest text-[#52525b]">Latest Save</p>
-          <p className="mt-2 text-sm font-medium text-white">
+        <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4">
+          <p className="text-xs uppercase tracking-widest text-[var(--theme-text-soft)]">Latest Save</p>
+          <p className="mt-2 text-sm font-medium text-[var(--theme-text-primary)]">
             {formatHealthRelative(latestSavedAt)}
           </p>
         </div>
-        <div className="rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)] p-4">
-          <p className="text-xs uppercase tracking-widest text-[#52525b]">Top Sources</p>
-          <p className="mt-2 text-2xl font-semibold text-white">
+        <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4">
+          <p className="text-xs uppercase tracking-widest text-[var(--theme-text-soft)]">Top Sources</p>
+          <p className="mt-2 text-2xl font-semibold text-[var(--theme-text-primary)]">
             {sourceCount.toLocaleString()}
           </p>
         </div>
       </div>
 
       <div className="grid gap-3 xl:grid-cols-[1.4fr_1fr]">
-        <div className="rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)] p-4">
-          <p className="text-xs uppercase tracking-widest text-[#52525b]">Top Sources</p>
+        <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4">
+          <p className="text-xs uppercase tracking-widest text-[var(--theme-text-soft)]">Top Sources</p>
           <div className="mt-4 space-y-3">
             {topSources.map(([source, count]) => (
               <div key={source} className="space-y-1.5">
                 <div className="flex items-center justify-between gap-3 text-sm">
-                  <span className="truncate text-white">{source}</span>
-                  <span className="shrink-0 text-[#a1a1aa]">{count.toLocaleString()}</span>
+                  <span className="truncate text-[var(--theme-text-primary)]">{source}</span>
+                  <span className="shrink-0 text-[var(--theme-text-secondary)]">{count.toLocaleString()}</span>
                 </div>
-                <div className="h-2 rounded-full bg-white/5 overflow-hidden">
+                <div className="h-2 overflow-hidden rounded-full bg-[var(--theme-bg-muted)]">
                   <div
-                    className="h-full rounded-full bg-[#8b5cf6]/80"
+                    className="h-full rounded-full bg-[var(--theme-accent-secondary)]"
                     style={{ width: `${Math.max(10, Math.round((count / maxSourceCount) * 100))}%` }}
                   />
                 </div>
@@ -270,13 +270,13 @@ function OverviewPane() {
           </div>
         </div>
 
-        <div className="rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)] p-4">
-          <p className="text-xs uppercase tracking-widest text-[#52525b]">Content Mix</p>
+        <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4">
+          <p className="text-xs uppercase tracking-widest text-[var(--theme-text-soft)]">Content Mix</p>
           <div className="mt-4 space-y-3">
             {contentMix.map(([contentType, count]) => (
               <div key={contentType} className="flex items-center justify-between gap-3 text-sm">
-                <span className="capitalize text-white">{contentType}</span>
-                <span className="text-[#a1a1aa]">{count.toLocaleString()}</span>
+                <span className="capitalize text-[var(--theme-text-primary)]">{contentType}</span>
+                <span className="text-[var(--theme-text-secondary)]">{count.toLocaleString()}</span>
               </div>
             ))}
           </div>
@@ -343,17 +343,17 @@ function ImportPane() {
   if (state === "idle") {
     return (
       <>
-        <p className="text-sm text-[#71717a] mb-4">
+        <p className="mb-4 text-sm text-[var(--theme-text-muted)]">
           Import Freed Markdown archive files. Select a folder to import its entire
           structure, or pick individual{" "}
-          <code className="text-[#8b5cf6] bg-white/5 px-1 rounded">.md</code> files.
+          <code className="rounded bg-[var(--theme-bg-muted)] px-1 text-[var(--theme-accent-secondary)]">.md</code> files.
           Subfolder names become searchable tags.
         </p>
 
         <div className="flex gap-3">
           <button
             onClick={() => folderInputRef.current?.click()}
-            className="flex-1 flex flex-col items-center gap-2 py-4 rounded-xl border border-dashed border-[rgba(255,255,255,0.15)] text-[#a1a1aa] text-sm hover:border-[#8b5cf6]/50 hover:text-[#8b5cf6] hover:bg-[#8b5cf6]/5 transition-colors"
+            className="flex flex-1 flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--theme-border-quiet)] py-4 text-sm text-[var(--theme-text-secondary)] transition-colors hover:border-[var(--theme-border-strong)] hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.06)] hover:text-[var(--theme-accent-secondary)]"
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
@@ -363,7 +363,7 @@ function ImportPane() {
 
           <button
             onClick={() => filesInputRef.current?.click()}
-            className="flex-1 flex flex-col items-center gap-2 py-4 rounded-xl border border-dashed border-[rgba(255,255,255,0.15)] text-[#a1a1aa] text-sm hover:border-[#8b5cf6]/50 hover:text-[#8b5cf6] hover:bg-[#8b5cf6]/5 transition-colors"
+            className="flex flex-1 flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--theme-border-quiet)] py-4 text-sm text-[var(--theme-text-secondary)] transition-colors hover:border-[var(--theme-border-strong)] hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.06)] hover:text-[var(--theme-accent-secondary)]"
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
@@ -408,22 +408,22 @@ function ImportPane() {
       </div>
 
       <div className="text-center">
-        <p className="text-lg font-semibold text-white">Import complete</p>
+        <p className="text-lg font-semibold text-[var(--theme-text-primary)]">Import complete</p>
         <div className="flex justify-center gap-6 mt-3">
           <div className="text-center">
             <p className="text-2xl font-bold text-green-400">{summary?.imported.toLocaleString()}</p>
-            <p className="text-xs text-[#71717a]">imported</p>
+              <p className="text-xs text-[var(--theme-text-muted)]">imported</p>
           </div>
           {(summary?.skipped ?? 0) > 0 && (
             <div className="text-center">
-              <p className="text-2xl font-bold text-[#a1a1aa]">{summary!.skipped.toLocaleString()}</p>
-              <p className="text-xs text-[#71717a]">skipped</p>
+              <p className="text-2xl font-bold text-[var(--theme-text-secondary)]">{summary!.skipped.toLocaleString()}</p>
+              <p className="text-xs text-[var(--theme-text-muted)]">skipped</p>
             </div>
           )}
           {(summary?.errors.length ?? 0) > 0 && (
             <div className="text-center">
               <p className="text-2xl font-bold text-red-400">{summary!.errors.length.toLocaleString()}</p>
-              <p className="text-xs text-[#71717a]">errors</p>
+              <p className="text-xs text-[var(--theme-text-muted)]">errors</p>
             </div>
           )}
         </div>
@@ -443,7 +443,7 @@ function ImportPane() {
       )}
 
       <div className="flex justify-center">
-        <button onClick={reset} className="px-4 py-2.5 text-[#a1a1aa] hover:text-white transition-colors text-sm">
+        <button onClick={reset} className="px-4 py-2.5 text-sm text-[var(--theme-text-secondary)] transition-colors hover:text-[var(--theme-text-primary)]">
           Import more
         </button>
       </div>
@@ -466,8 +466,8 @@ function ExportPane() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
         </svg>
         <div>
-          <p className="text-sm text-[#a1a1aa]">Export requires the desktop app</p>
-          <p className="text-xs text-[#52525b] mt-1 leading-relaxed max-w-[240px] mx-auto">
+          <p className="text-sm text-[var(--theme-text-secondary)]">Export requires Freed Desktop</p>
+          <p className="mx-auto mt-1 max-w-[240px] text-xs leading-relaxed text-[var(--theme-text-soft)]">
             Download Freed Desktop to export your library as Markdown files.
           </p>
         </div>
@@ -475,7 +475,7 @@ function ExportPane() {
           href="https://freed.wtf/get"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs px-4 py-2 rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors"
+          className="theme-accent-button rounded-lg px-4 py-2 text-xs transition-colors"
         >
           Download the desktop app
         </a>
@@ -501,15 +501,15 @@ function ExportPane() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="bg-white/[0.03] rounded-xl p-4">
-        <p className="text-sm text-white">
+      <div className="rounded-xl bg-[var(--theme-bg-card)] p-4">
+        <p className="text-sm text-[var(--theme-text-primary)]">
           <span className="font-semibold">{totalCount.toLocaleString()}</span>{" "}
           item{totalCount !== 1 ? "s" : ""} total
           {savedCount < totalCount && (
-            <span className="text-[#71717a]"> · {savedCount.toLocaleString()} saved</span>
+            <span className="text-[var(--theme-text-muted)]"> · {savedCount.toLocaleString()} saved</span>
           )}
         </p>
-        <p className="text-xs text-[#71717a] mt-1">
+        <p className="mt-1 text-xs text-[var(--theme-text-muted)]">
           Exported as Freed Markdown with YAML frontmatter. Full article text included where cached.
         </p>
       </div>
@@ -517,11 +517,11 @@ function ExportPane() {
       <button
         onClick={handleExport}
         disabled={exporting || totalCount === 0}
-        className="w-full py-2.5 rounded-xl bg-[#8b5cf6]/20 text-[#8b5cf6] text-sm font-medium hover:bg-[#8b5cf6]/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        className="theme-accent-button flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
       >
         {exporting ? (
           <>
-            <span className="w-4 h-4 border border-[#8b5cf6]/30 border-t-[#8b5cf6] rounded-full animate-spin" />
+            <span className="h-4 w-4 animate-spin rounded-full border border-[rgb(var(--theme-accent-secondary-rgb)/0.3)] border-t-[var(--theme-accent-secondary)]" />
             Preparing export...
           </>
         ) : (
@@ -550,18 +550,18 @@ function ProgressBar({ progress, percent }: { progress: ImportProgress | null; p
 
   return (
     <div className="mt-4 space-y-2">
-      <div className="flex items-center justify-between text-xs text-[#71717a]">
-        <span className="font-medium text-[#a1a1aa]">{phaseLabel}</span>
+      <div className="flex items-center justify-between text-xs text-[var(--theme-text-muted)]">
+        <span className="font-medium text-[var(--theme-text-secondary)]">{phaseLabel}</span>
         <span>{fractionLabel}</span>
       </div>
-      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+      <div className="h-1.5 overflow-hidden rounded-full bg-[var(--theme-bg-muted)]">
         <div
-          className="h-full bg-[#8b5cf6] rounded-full transition-all duration-200"
+          className="h-full rounded-full bg-[var(--theme-accent-secondary)] transition-all duration-200"
           style={{ width: `${percent}%` }}
         />
       </div>
       {(progress.imported > 0 || progress.skipped > 0) && (
-        <div className="flex gap-4 text-xs text-[#71717a]">
+        <div className="flex gap-4 text-xs text-[var(--theme-text-muted)]">
           <span className="text-emerald-400">{progress.imported.toLocaleString()} new</span>
           {progress.skipped > 0 && <span>{progress.skipped.toLocaleString()} skipped</span>}
         </div>

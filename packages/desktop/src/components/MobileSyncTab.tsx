@@ -133,20 +133,20 @@ export function MobileSyncTab() {
   return (
     <>
       <section id="mobile-sync-section">
-      <h3 className="text-xs font-semibold text-[#71717a] uppercase tracking-wider mb-4">
+      <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-[var(--theme-text-muted)]">
         Mobile Sync
       </h3>
 
       {/* Tab selector, Cloud first, then QR, then Manual */}
-      <div className="flex gap-1.5 mb-5 p-1 bg-white/5 rounded-xl">
+      <div className="mb-5 flex gap-1.5 rounded-xl bg-[var(--theme-bg-muted)] p-1">
         {(["cloud", "qr", "manual"] as Tab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               activeTab === tab
-                ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
-                : "text-[#71717a] hover:text-white"
+                ? "theme-accent-button"
+                : "text-[var(--theme-text-muted)] hover:text-[var(--theme-text-primary)]"
             }`}
           >
             {tab === "cloud" ? "Cloud Sync" : tab === "qr" ? "Scan QR" : "Manual"}
@@ -166,7 +166,7 @@ export function MobileSyncTab() {
               onDisconnect={disconnect}
             />
           ))}
-          <p className="text-xs text-[#71717a] text-center pt-1">
+          <p className="pt-1 text-center text-xs text-[var(--theme-text-muted)]">
             Connecting both providers lets the desktop bridge mobile clients
             using different cloud accounts.
           </p>
@@ -176,8 +176,8 @@ export function MobileSyncTab() {
       {/* QR Code tab, rendered locally, never sent to a third party */}
       {activeTab === "qr" && (
         <>
-        <div className="flex flex-col items-center p-4 bg-white/5 rounded-xl border border-[rgba(255,255,255,0.08)] mb-4">
-        <p className="text-xs text-[#71717a] mb-3">
+        <div className="mb-4 flex flex-col items-center rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4">
+        <p className="mb-3 text-xs text-[var(--theme-text-muted)]">
           Scan with your phone to connect Freed PWA
         </p>
         {syncUrl && (
@@ -190,8 +190,8 @@ export function MobileSyncTab() {
             />
           </div>
         )}
-        <p className="text-xs text-[#71717a] mt-3 text-center">
-          Open <span className="text-[#8b5cf6]">app.freed.wtf</span> on your
+        <p className="mt-3 text-center text-xs text-[var(--theme-text-muted)]">
+          Open <span className="text-[var(--theme-accent-secondary)]">app.freed.wtf</span> on your
           phone,
           <br />
           then scan this QR code
@@ -224,12 +224,12 @@ export function MobileSyncTab() {
                   onClick={() => handleSelectInterface(iface)}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors border ${
                     ip === iface.ip
-                      ? "bg-[#8b5cf6]/20 border-[#8b5cf6]/30 text-[#8b5cf6]"
-                      : "bg-white/5 border-transparent text-[#a1a1aa] hover:bg-white/10"
+                      ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.16)] text-[var(--theme-accent-secondary)]"
+                      : "border-transparent bg-[var(--theme-bg-muted)] text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-card-hover)]"
                   }`}
                 >
                   <span className="font-mono">{iface.ip}</span>
-                  <span className="text-[#52525b] ml-2">
+                  <span className="ml-2 text-[var(--theme-text-soft)]">
                     {iface.interface}
                     {looksLikeVpn(iface) && " (VPN)"}
                   </span>
@@ -244,14 +244,14 @@ export function MobileSyncTab() {
 
       {/* Manual entry tab */}
       {activeTab === "manual" && (
-      <div className="mb-4 p-3 bg-white/5 rounded-xl border border-[rgba(255,255,255,0.08)]">
-        <p className="text-xs font-medium text-[#71717a] uppercase tracking-wider mb-3">
+      <div className="mb-4 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-3">
+        <p className="mb-3 text-xs font-medium uppercase tracking-wider text-[var(--theme-text-muted)]">
           Manual Entry
         </p>
 
         {/* IP address */}
         <div className="mb-3">
-          <label className="block text-xs text-[#71717a] mb-1.5">
+          <label className="mb-1.5 block text-xs text-[var(--theme-text-muted)]">
             Desktop IP address
           </label>
           <div className="flex gap-2">
@@ -260,11 +260,11 @@ export function MobileSyncTab() {
               value={ip}
               readOnly
               aria-label="Desktop IP address"
-              className="flex-1 px-3 py-2 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-lg text-sm text-[#a1a1aa] font-mono tracking-wide"
+              className="flex-1 rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-2 font-mono text-sm tracking-wide text-[var(--theme-text-secondary)]"
             />
             <button
               onClick={makeCopyHandler(ip, setCopiedIp)}
-              className="px-3 py-2 bg-[#8b5cf6]/20 text-[#8b5cf6] rounded-lg hover:bg-[#8b5cf6]/30 transition-colors text-sm font-medium min-w-[68px]"
+              className="theme-accent-button min-w-[68px] rounded-lg px-3 py-2 text-sm font-medium transition-colors"
             >
               {copiedIp ? "Copied!" : "Copy"}
             </button>
@@ -273,9 +273,9 @@ export function MobileSyncTab() {
 
         {/* Pairing token */}
         <div className="mb-3">
-          <label className="block text-xs text-[#71717a] mb-1.5">
+          <label className="mb-1.5 block text-xs text-[var(--theme-text-muted)]">
             Pairing token{" "}
-            <span className="text-[#52525b]">(43 characters)</span>
+            <span className="text-[var(--theme-text-soft)]">(43 characters)</span>
           </label>
           <div className="flex gap-2">
             <input
@@ -283,11 +283,11 @@ export function MobileSyncTab() {
               value={token}
               readOnly
               aria-label="Pairing token"
-              className="flex-1 px-3 py-2 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-lg text-sm text-[#a1a1aa] font-mono tracking-wide min-w-0"
+              className="min-w-0 flex-1 rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-2 font-mono text-sm tracking-wide text-[var(--theme-text-secondary)]"
             />
             <button
               onClick={makeCopyHandler(token, setCopiedToken)}
-              className="px-3 py-2 bg-[#8b5cf6]/20 text-[#8b5cf6] rounded-lg hover:bg-[#8b5cf6]/30 transition-colors text-sm font-medium min-w-[68px]"
+              className="theme-accent-button min-w-[68px] rounded-lg px-3 py-2 text-sm font-medium transition-colors"
             >
               {copiedToken ? "Copied!" : "Copy"}
             </button>
@@ -296,9 +296,9 @@ export function MobileSyncTab() {
 
         {/* Full URL, for power users or browser-based paste */}
         <div>
-          <label className="block text-xs text-[#71717a] mb-1.5">
+          <label className="mb-1.5 block text-xs text-[var(--theme-text-muted)]">
             Full URL{" "}
-            <span className="text-[#52525b]">(IP + port + token combined)</span>
+            <span className="text-[var(--theme-text-soft)]">(IP + port + token combined)</span>
           </label>
           <div className="flex gap-2">
             <input
@@ -306,11 +306,11 @@ export function MobileSyncTab() {
               value={syncUrl}
               readOnly
               aria-label="Full sync URL"
-              className="flex-1 px-3 py-2 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-lg text-xs text-[#52525b] font-mono min-w-0"
+              className="min-w-0 flex-1 rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-2 font-mono text-xs text-[var(--theme-text-soft)]"
             />
             <button
               onClick={makeCopyHandler(syncUrl, setCopiedUrl)}
-              className="px-3 py-2 bg-[#8b5cf6]/20 text-[#8b5cf6] rounded-lg hover:bg-[#8b5cf6]/30 transition-colors text-sm font-medium min-w-[68px]"
+              className="theme-accent-button min-w-[68px] rounded-lg px-3 py-2 text-sm font-medium transition-colors"
             >
               {copiedUrl ? "Copied!" : "Copy"}
             </button>
@@ -322,7 +322,7 @@ export function MobileSyncTab() {
       {/* LAN-only: connected devices, token rotation, and mDNS are irrelevant for cloud sync */}
       {activeTab !== "cloud" && (
         <>
-          <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl mb-4">
+          <div className="mb-4 flex items-center justify-between rounded-xl bg-[var(--theme-bg-muted)] p-3">
             <div className="flex items-center gap-2">
               <span
                 className={`sync-dot ${
@@ -331,11 +331,11 @@ export function MobileSyncTab() {
               />
               <span className="text-sm">Connected devices</span>
             </div>
-            <span className="text-sm font-medium text-[#a1a1aa]">{clientCount.toLocaleString()}</span>
+            <span className="text-sm font-medium text-[var(--theme-text-secondary)]">{clientCount}</span>
           </div>
 
-          <div className="p-3 bg-white/5 rounded-xl border border-[rgba(255,255,255,0.08)]">
-            <p className="text-xs text-[#71717a] mb-2">
+          <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-3">
+            <p className="mb-2 text-xs text-[var(--theme-text-muted)]">
               Rotate the pairing token if you suspect an unauthorized device has
               connected. Paired phones will need to rescan the QR code or re-enter
               the new token.
@@ -350,16 +350,16 @@ export function MobileSyncTab() {
           </div>
 
           {mdnsActive !== null && (
-            <div className="flex items-center justify-between p-3 bg-white/5 rounded-xl mt-3">
+            <div className="mt-3 flex items-center justify-between rounded-xl bg-[var(--theme-bg-muted)] p-3">
               <div className="flex items-center gap-2">
                 <span
                   className={`inline-block w-2 h-2 rounded-full ${
                     mdnsActive ? "bg-green-400" : "bg-[#71717a]"
                   }`}
                 />
-                <span className="text-sm text-[#a1a1aa]">mDNS discovery</span>
+                <span className="text-sm text-[var(--theme-text-secondary)]">mDNS discovery</span>
               </div>
-              <span className="text-xs text-[#71717a]">
+              <span className="text-xs text-[var(--theme-text-muted)]">
                 {mdnsActive ? "_freed-sync._tcp.local" : "unavailable"}
               </span>
             </div>

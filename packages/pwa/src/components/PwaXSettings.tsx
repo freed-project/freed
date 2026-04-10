@@ -24,15 +24,15 @@ export function PwaXSettings() {
   return (
     <div className="flex flex-col items-center gap-4 py-6 text-center">
       {/* X logo */}
-      <svg className="w-10 h-10 text-[#3f3f46]" viewBox="0 0 24 24" fill="currentColor">
+      <svg className="h-10 w-10 text-[var(--theme-media-x)]" viewBox="0 0 24 24" fill="currentColor">
         <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.747l7.73-8.835L1.254 2.25H8.08l4.259 5.63 5.905-5.63zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
       </svg>
 
       {xCount > 0 ? (
         <>
           <div>
-            <p className="text-sm text-[#a1a1aa]">Synced from Freed Desktop</p>
-            <p className="text-xs text-[#52525b] mt-1 leading-relaxed max-w-[240px] mx-auto">
+            <p className="text-sm text-[var(--theme-text-secondary)]">Synced from Freed Desktop</p>
+            <p className="mx-auto mt-1 max-w-[240px] text-xs leading-relaxed text-[var(--theme-text-soft)]">
               {xCount.toLocaleString()} posts synced
               {lastSync && (
                 <> · last {new Date(lastSync).toLocaleString(undefined, {
@@ -48,7 +48,7 @@ export function PwaXSettings() {
             href="https://freed.wtf/get"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs px-4 py-2 rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors"
+            className="theme-accent-button rounded-lg px-4 py-2 text-xs transition-colors"
           >
             Download the desktop app
           </a>
@@ -56,8 +56,8 @@ export function PwaXSettings() {
       ) : (
         <>
           <div>
-            <p className="text-sm text-[#a1a1aa]">X capture requires the desktop app</p>
-            <p className="text-xs text-[#52525b] mt-1 leading-relaxed max-w-[240px] mx-auto">
+            <p className="text-sm text-[var(--theme-text-secondary)]">X capture requires Freed Desktop</p>
+            <p className="mx-auto mt-1 max-w-[240px] text-xs leading-relaxed text-[var(--theme-text-soft)]">
               Download Freed Desktop to connect your X account and sync your home timeline.
             </p>
           </div>
@@ -65,7 +65,7 @@ export function PwaXSettings() {
             href="https://freed.wtf/get"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs px-4 py-2 rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors"
+            className="theme-accent-button rounded-lg px-4 py-2 text-xs transition-colors"
           >
             Download the desktop app
           </a>

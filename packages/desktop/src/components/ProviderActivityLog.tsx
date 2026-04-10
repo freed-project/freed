@@ -40,9 +40,9 @@ export function ProviderActivityLog({
   }
 
   return (
-    <div className="space-y-2 rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+    <div className="space-y-2 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] px-3 py-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] uppercase tracking-[0.18em] text-[#52525b]">
+        <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--theme-text-soft)]">
           {title}
         </p>
         {syncing && (
@@ -55,19 +55,19 @@ export function ProviderActivityLog({
 
       {lines.length > 0 ? (
         <div
-          className="max-h-40 space-y-1 overflow-y-auto rounded-lg bg-black/20 px-2 py-2 font-mono text-[11px] text-[#a1a1aa]"
+          className="max-h-40 space-y-1 overflow-y-auto rounded-lg bg-[var(--theme-bg-muted)] px-2 py-2 font-mono text-[11px] text-[var(--theme-text-secondary)]"
           data-testid={`provider-activity-log-${provider}`}
         >
           {lines.map((event) => (
             <div key={event.id} className="flex gap-2 leading-relaxed">
-              <span className="shrink-0 text-[#71717a]">{formatLogTime(event.ts)}</span>
-              <span className="break-words text-[#d4d4d8]">{event.detail}</span>
+              <span className="shrink-0 text-[var(--theme-text-muted)]">{formatLogTime(event.ts)}</span>
+              <span className="break-words text-[var(--theme-text-primary)]">{event.detail}</span>
             </div>
           ))}
         </div>
       ) : (
         <p
-          className="rounded-lg bg-black/20 px-2 py-2 text-[11px] text-[#71717a]"
+          className="rounded-lg bg-[var(--theme-bg-muted)] px-2 py-2 text-[11px] text-[var(--theme-text-muted)]"
           data-testid={`provider-activity-log-${provider}`}
         >
           Waiting for scraper output...

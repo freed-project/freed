@@ -65,7 +65,7 @@ function ProviderLogo({ provider }: { provider: Provider }) {
       );
     case "local":
       return (
-        <svg className="w-8 h-8 text-[#a1a1aa] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="h-8 w-8 flex-shrink-0 text-[var(--theme-text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
         </svg>
       );
@@ -100,39 +100,39 @@ export function PwaSyncSettings() {
   if (!syncConnected) {
     return (
       <div className="flex flex-col flex-1">
-        <div className="mb-8 rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.06)] overflow-hidden">
+        <div className="mb-8 overflow-hidden rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)]">
           {/* Status row */}
           <div className="flex items-center gap-4 px-4 py-4">
-            <span className="flex items-center justify-center w-9 h-9 rounded-full bg-[#3f3f46]/60 shrink-0">
-              <svg className="w-4 h-4 text-[#71717a]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--theme-bg-muted)]">
+              <svg className="h-4 w-4 text-[var(--theme-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
               </svg>
             </span>
             <div>
-              <p className="text-sm font-semibold text-[#a1a1aa]">Not connected</p>
-              <p className="text-xs text-[#52525b] mt-0.5">Choose a sync method below to get started.</p>
+              <p className="text-sm font-semibold text-[var(--theme-text-secondary)]">Not connected</p>
+              <p className="mt-0.5 text-xs text-[var(--theme-text-soft)]">Choose a sync method below to get started.</p>
             </div>
           </div>
 
           {/* Divider */}
-          <div className="border-t border-[rgba(255,255,255,0.06)]" />
+          <div className="border-t border-[var(--theme-border-subtle)]" />
 
           {/* New user welcome */}
           <div className="flex items-center gap-4 px-4 py-4">
-            <span className="flex items-center justify-center w-9 h-9 rounded-full bg-[#8b5cf6]/10 shrink-0">
-              <svg className="w-4 h-4 text-[#8b5cf6]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[rgb(var(--theme-accent-secondary-rgb)/0.1)]">
+              <svg className="h-4 w-4 text-[var(--theme-accent-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
               </svg>
             </span>
             <div>
-              <p className="text-xs text-[#71717a] leading-relaxed">
+              <p className="text-xs leading-relaxed text-[var(--theme-text-muted)]">
                 First time? Install Freed Desktop to track your feeds and sync them here.
               </p>
               <a
                 href="https://freed.wtf/get"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-block mt-1 text-xs font-semibold text-[#8b5cf6] hover:text-[#a78bfa] transition-colors"
+                className="mt-1 inline-block text-xs font-semibold text-[var(--theme-accent-secondary)] transition-colors hover:text-[var(--theme-text-primary)]"
               >
                 Get Freed Desktop →
               </a>
@@ -146,20 +146,20 @@ export function PwaSyncSettings() {
 
   // Connected -- polished status card
   const statusText = isSyncing ? "Syncing now" : "Connected";
-  const dotColor = isSyncing ? "bg-[#8b5cf6] animate-pulse" : "bg-green-400";
+  const dotColor = isSyncing ? "bg-[var(--theme-accent-secondary)] animate-pulse" : "bg-green-400";
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4 px-4 py-4 bg-white/[0.03] rounded-xl border border-[rgba(255,255,255,0.06)]">
+      <div className="flex items-center gap-4 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] px-4 py-4">
         {provider && <ProviderLogo provider={provider} />}
         <div className="min-w-0 flex-1">
-          <p className="text-base font-semibold text-white leading-none">{label}</p>
+          <p className="text-base font-semibold leading-none text-[var(--theme-text-primary)]">{label}</p>
           <div className="flex items-center gap-1.5 mt-1.5">
             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotColor}`} />
-            <span className="text-xs text-[#71717a]">{statusText}</span>
+            <span className="text-xs text-[var(--theme-text-muted)]">{statusText}</span>
           </div>
           {lastSyncTime && (
-            <p className="text-[11px] text-[#52525b] tabular-nums mt-1">
+            <p className="mt-1 text-[11px] tabular-nums text-[var(--theme-text-soft)]">
               Last synced {formatRelativeTime(lastSyncTime)}
             </p>
           )}

@@ -471,7 +471,7 @@ export type ThemeId =
   | "midas"
   | "vesper"
   | "ember"
-  | "porcelain";
+  | "scriptorium";
 
 /**
  * Reading enhancements configuration

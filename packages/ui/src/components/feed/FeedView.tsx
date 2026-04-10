@@ -123,7 +123,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   return (
     <div
       ref={parentRef}
-      className="shrink-0 min-h-0 bg-[#0a0a0a] overflow-y-auto minimal-scroll"
+      className="shrink-0 min-h-0 overflow-y-auto minimal-scroll bg-[var(--theme-bg-root)]"
       style={{ width }}
     >
       <div
@@ -359,15 +359,15 @@ export function FeedView() {
         <ContentHeader title={scopeLabel} subtitle={feedSubtitle} />
         {/* Archive retention toolbar — only shown in the archived view */}
         {activeFilter.archivedOnly && (
-          <div className="flex-shrink-0 px-4 py-2 border-b border-white/5 flex items-center justify-between gap-4">
-            <p className="text-xs text-[#52525b]">{getRetentionLabel(archivePruneDays ?? 30)}</p>
+          <div className="flex-shrink-0 px-4 py-2 border-b border-[var(--theme-header-border)] flex items-center justify-between gap-4">
+            <p className="text-xs text-[var(--theme-text-soft)]">{getRetentionLabel(archivePruneDays ?? 30)}</p>
             {(archivePruneDays ?? 30) > 0 && (
               <button
                 onClick={handleDeleteArchivedClick}
                 className={`text-xs px-3 py-1 rounded-lg transition-colors border whitespace-nowrap ${
                   deleteConfirmArmed
                     ? "bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30"
-                    : "bg-white/5 text-[#71717a] border-transparent hover:bg-white/10 hover:text-white"
+                    : "bg-[var(--theme-bg-muted)] text-[var(--theme-text-muted)] border-transparent hover:bg-[var(--theme-bg-card-hover)] hover:text-[var(--theme-text-primary)]"
                 }`}
               >
                 {deleteConfirmArmed ? "Confirm delete?" : "Delete archived content now"}
@@ -384,7 +384,7 @@ export function FeedView() {
           />
           {/* Draggable column separator -- zero visible width, padding provides the hit area */}
           <div
-            className="w-0 px-0.5 shrink-0 cursor-col-resize hover:bg-[#8b5cf6]/20 active:bg-[#8b5cf6]/30 transition-colors -mx-0.5 z-10"
+            className="w-0 px-0.5 shrink-0 cursor-col-resize hover:bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.2)] active:bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.3)] transition-colors -mx-0.5 z-10"
             onPointerDown={handleDragStart}
             onPointerMove={handleDragMove}
             onPointerUp={handleDragEnd}
@@ -405,15 +405,15 @@ export function FeedView() {
       <ContentHeader title={scopeLabel} subtitle={feedSubtitle} />
       {/* Archive retention toolbar — only shown in the archived view */}
       {activeFilter.archivedOnly && (
-        <div className="flex-shrink-0 px-4 py-2 border-b border-white/5 flex items-center justify-between gap-4">
-          <p className="text-xs text-[#52525b]">{getRetentionLabel(archivePruneDays ?? 30)}</p>
+        <div className="flex-shrink-0 px-4 py-2 border-b border-[var(--theme-header-border)] flex items-center justify-between gap-4">
+          <p className="text-xs text-[var(--theme-text-soft)]">{getRetentionLabel(archivePruneDays ?? 30)}</p>
           {(archivePruneDays ?? 30) > 0 && (
             <button
               onClick={handleDeleteArchivedClick}
               className={`text-xs px-3 py-1 rounded-lg transition-colors border whitespace-nowrap ${
                 deleteConfirmArmed
                   ? "bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30"
-                  : "bg-white/5 text-[#71717a] border-transparent hover:bg-white/10 hover:text-white"
+                  : "bg-[var(--theme-bg-muted)] text-[var(--theme-text-muted)] border-transparent hover:bg-[var(--theme-bg-card-hover)] hover:text-[var(--theme-text-primary)]"
               }`}
             >
               {deleteConfirmArmed ? "Confirm delete?" : "Delete archived content now"}
@@ -424,17 +424,17 @@ export function FeedView() {
 
       {/* Search results banner — only shown when actively searching */}
       {isSearching && (
-        <div className="flex-shrink-0 px-4 py-2 border-b border-white/5 flex items-center justify-between">
-          <p className="text-xs text-[#71717a]">
+        <div className="flex-shrink-0 px-4 py-2 border-b border-[var(--theme-header-border)] flex items-center justify-between">
+          <p className="text-xs text-[var(--theme-text-muted)]">
             {resultCount > 0 ? (
               <>
-                <span className="text-white/60 font-medium">{resultCount.toLocaleString()}</span>
+                <span className="font-medium text-[var(--theme-text-secondary)]">{resultCount.toLocaleString()}</span>
                 {" "}result{resultCount !== 1 ? "s" : ""} in{" "}
-                <span className="text-white/60 font-medium">{scopeLabel}</span>
+                <span className="font-medium text-[var(--theme-text-secondary)]">{scopeLabel}</span>
               </>
             ) : (
               <>
-                No results in <span className="text-white/60 font-medium">{scopeLabel}</span>
+                No results in <span className="font-medium text-[var(--theme-text-secondary)]">{scopeLabel}</span>
               </>
             )}
           </p>

@@ -19,6 +19,14 @@ const COLORS = {
   logoAccent: "var(--theme-accent-primary)",
 };
 
+const PLATFORM_COLORS: Record<string, string> = {
+  x: "var(--theme-media-x)",
+  facebook: "var(--theme-media-facebook)",
+  instagram: "var(--theme-media-instagram)",
+  youtube: "var(--theme-media-youtube)",
+  linkedin: "var(--theme-media-linkedin)",
+};
+
 const CENTER = 200;
 const RING_RADIUS = 175;
 const LOGO_RADIUS = 220;
@@ -419,11 +427,11 @@ export default function HeroAnimation() {
                   d={logo.path}
                   animate={{
                     fill: [
-                      COLORS.logoAccent,
-                      COLORS.logoAccent,
-                      COLORS.logoAccent,
+                      PLATFORM_COLORS[logo.id] ?? COLORS.logoAccent,
+                      PLATFORM_COLORS[logo.id] ?? COLORS.logoAccent,
+                      PLATFORM_COLORS[logo.id] ?? COLORS.logoAccent,
                       COLORS.warning,
-                      COLORS.logoAccent,
+                      PLATFORM_COLORS[logo.id] ?? COLORS.logoAccent,
                     ],
                   }}
                   transition={{
