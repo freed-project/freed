@@ -120,9 +120,9 @@ export default function PrivacyContent() {
                   <strong className="text-text-primary block mb-1">
                     Your credentials never leave your device.
                   </strong>
-                  Freed accesses social platforms through your own authenticated
-                  browser sessions. Credentials are stored in your local
-                  keychain or browser storage and never transmitted to us.
+                  Freed accesses social platforms through authenticated browser
+                  sessions on your device. Session data stays local to your
+                  device and is never transmitted to us.
                 </li>
               </ul>
             </section>
