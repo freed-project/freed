@@ -2,7 +2,7 @@
   "tag": "v26.4.1000",
   "version": "26.4.1000",
   "dayKey": "26.4.10",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-10T22:12:58.076Z",
   "model": "heuristic",
@@ -61,8 +61,6 @@
       "Browser-style navigation history"
     ],
     "fixes": [
-      "Handle empty release validation args",
-      "Support macOS bash in release publish",
       "Mark items read when scrolled past",
       "Make browser session copy more accurate",
       "Silence background social scrapers",
@@ -76,5 +74,5 @@
       "Provider health diagnostics and source management"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1000\n\nContacts settings and sync, rotating desktop snapshots, and browser-style navigation history\n\n### Features\n\n- Finish Google Contacts settings and sync\n- Rotating desktop snapshots\n- Browser-style navigation history\n\n### Fixes\n\n- Handle empty release validation args\n- Support macOS bash in release publish\n- Mark items read when scrolled past\n- Make browser session copy more accurate\n- Silence background social scrapers\n- Redeploy website after release publish\n- Overhaul changelog release notes and cards\n- Backfill concise historical changelog notes\n\n### Follow-ups\n\n- Public-safe bug reporting\n- Move feeds into source accordion\n- Provider health diagnostics and source management\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1000\n\nContacts settings and sync, rotating desktop snapshots, and browser-style navigation history\n\n### Features\n\n- Finish Google Contacts settings and sync\n- Rotating desktop snapshots\n- Browser-style navigation history\n\n### Fixes\n\n- Mark items read when scrolled past\n- Make browser session copy more accurate\n- Silence background social scrapers\n- Redeploy website after release publish\n- Overhaul changelog release notes and cards\n- Backfill concise historical changelog notes\n\n### Follow-ups\n\n- Public-safe bug reporting\n- Move feeds into source accordion\n- Provider health diagnostics and source management\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
