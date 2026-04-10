@@ -39,7 +39,7 @@ const GDRIVE_CLIENT_ID = import.meta.env.VITE_GDRIVE_CLIENT_ID ?? "";
 const DROPBOX_CLIENT_ID = import.meta.env.VITE_DROPBOX_CLIENT_ID ?? "";
 const OAUTH_REDIRECT_URI = `${window.location.origin}/oauth-callback`;
 
-async function initiateGDriveOAuth(): Promise<void> {
+export async function initiateGDriveOAuth(): Promise<void> {
   const verifier = generateCodeVerifier();
   const challenge = await generateCodeChallenge(verifier);
   sessionStorage.setItem("freed_pkce_verifier", verifier);

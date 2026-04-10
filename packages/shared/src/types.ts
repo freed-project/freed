@@ -724,11 +724,17 @@ export interface ContactMatch {
  * Persisted state for the Google Contacts sync cycle.
  */
 export interface ContactSyncState {
+  authStatus: "connected" | "reconnect_required";
+  syncStatus: "idle" | "syncing" | "error";
   syncToken: string | null;
   lastSyncedAt: number | null;
+  lastErrorCode?: "missing_token" | "auth" | "network" | "unknown";
+  lastErrorMessage?: string;
   cachedContacts: GoogleContact[];
   pendingMatches: ContactMatch[];
   dismissedMatches: Array<{ contactResourceName: string; friendIdOrAuthorId: string }>;
+  autoLinkedCount: number;
+  autoCreatedCount: number;
 }
 
 /**

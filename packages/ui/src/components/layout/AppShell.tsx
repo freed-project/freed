@@ -5,8 +5,15 @@ import { DebugPanel } from "../DebugPanel.js";
 import { useDebugStore } from "../../lib/debug-store.js";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { FriendsView } from "../friends/FriendsView.js";
+import { ContactSyncModal } from "../friends/ContactSyncModal.js";
 import { useContactSync } from "../../hooks/useContactSync.js";
 import { ContactSyncContext } from "../../context/ContactSyncContext.js";
+import type { ContactMatch, GoogleContact } from "@freed/shared";
+import {
+  buildFriendSourcesFromAuthorIds,
+  createDeviceContactFromGoogleContact,
+  mergeFriendSources,
+} from "@freed/shared/google-contacts-automation";
 import { MapView } from "../map/MapView.js";
 
 const DEFAULT_DEBUG_WIDTH = 320;
@@ -22,10 +29,14 @@ export function AppShell({ children }: AppShellProps) {
   const debugVisible = useDebugStore((s) => s.visible);
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);
+  const items = useAppStore((s) => s.items);
+  const addFriend = useAppStore((s) => s.addFriend);
+  const updateFriend = useAppStore((s) => s.updateFriend);
 
   // Mount the contact sync hook here (not in FriendsView) so the 15-minute
   // interval and focus listener run regardless of which view is active.
   const contactSync = useContactSync();
+  const [showContactReview, setShowContactReview] = useState(false);
   const savedDebugWidth = useAppStore((s) => s.preferences.display.debugPanelWidth) ?? DEFAULT_DEBUG_WIDTH;
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const [dragWidth, setDragWidth] = useState<number | null>(null);
@@ -74,8 +85,61 @@ export function AppShell({ children }: AppShellProps) {
     return () => window.removeEventListener("keydown", handler);
   }, [toggleDebug, debugVisible]);
 
+  const handleLinkContact = useCallback(async (match: ContactMatch) => {
+    const now = Date.now();
+    const contact = createDeviceContactFromGoogleContact(match.contact, now);
+    const newSources = buildFriendSourcesFromAuthorIds(items, match.authorIds);
+
+    if (match.friend) {
+      await updateFriend(match.friend.id, {
+        contact,
+        sources: mergeFriendSources(match.friend.sources ?? [], newSources),
+        updatedAt: now,
+      });
+    } else if (newSources.length > 0) {
+      await addFriend({
+        id: crypto.randomUUID(),
+        name: contact.name,
+        sources: newSources,
+        contact,
+        careLevel: 3,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    for (const id of [
+      ...(match.friend ? [match.friend.id] : []),
+      ...match.authorIds,
+    ]) {
+      contactSync.dismissMatch(match.contact.resourceName, id);
+    }
+  }, [addFriend, contactSync, items, updateFriend]);
+
+  const handleCreateFriend = useCallback(async (contact: GoogleContact) => {
+    const now = Date.now();
+    await addFriend({
+      id: crypto.randomUUID(),
+      name: contact.name.displayName ?? contact.name.givenName ?? "",
+      sources: [],
+      contact: createDeviceContactFromGoogleContact(contact, now),
+      careLevel: 3,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }, [addFriend]);
+
+  const openReview = useCallback(async () => {
+    const result = await contactSync.syncNow();
+    const shouldOpen =
+      result.authStatus === "connected" ||
+      result.pendingMatches.length > 0 ||
+      result.cachedContacts.length > 0;
+    setShowContactReview(shouldOpen);
+  }, [contactSync]);
+
   return (
-    <ContactSyncContext.Provider value={contactSync}>
+    <ContactSyncContext.Provider value={{ ...contactSync, openReview }}>
     {/* On mobile (<md), the layout flows naturally in the document so Safari can
         collapse its address bar when the feed scrolls. min-h-0 and overflow-hidden
         are desktop-only; they lock the layout to 100dvh for in-element scrolling. */}
@@ -118,6 +182,16 @@ export function AppShell({ children }: AppShellProps) {
         <div className="sm:hidden">
           <DebugPanel variant="overlay" />
         </div>
+      )}
+
+      {showContactReview && (
+        <ContactSyncModal
+          onClose={() => setShowContactReview(false)}
+          syncState={contactSync.syncState}
+          onLink={handleLinkContact}
+          onSkip={contactSync.dismissMatch}
+          onCreateFriend={handleCreateFriend}
+        />
       )}
     </div>
     </ContactSyncContext.Provider>

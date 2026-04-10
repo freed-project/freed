@@ -230,7 +230,7 @@ Map popovers now use a wider card layout and deliberately omit the old MapLibre 
 | 8.16 | Install `maplibre-gl` and wire Map nav entry | Low | Done |
 | 8.17 | Implement macOS `CNContactStore` Tauri command (objc2-contacts) | High | Not Started |
 | 8.18 | Wire Friends to live sidebar navigation | Low | Done |
-| 8.19 | Google Contacts import, matching, and Friend creation flow | Medium | Done |
+| 8.19 | Google Contacts source, sync lifecycle, matching, and Friend creation flow | Medium | Done |
 | 8.20 | Wire Map to live sidebar navigation | Low | Done |
 | 8.21 | Add future-aware map filtering for location-bearing items | Medium | Not Started |
 | 8.22 | Add map timeline scrubber for past and future playback | Medium | Not Started |
@@ -254,6 +254,8 @@ Map popovers now use a wider card layout and deliberately omit the old MapLibre 
 - [x] Friends shown in Sidebar as a live navigation destination
 - [x] Google Contacts import suggests matches and can create Friends
 - [x] Desktop snapshot restore preserves cached Google contacts and pending match suggestions
+- [x] Google Contacts appears as a first-class source in Settings and Friends
+- [x] Google Contacts auto-links high-confidence matches and can create Friends from high-confidence unlinked authors
 - [x] Location extraction from geo-tags and text patterns
 - [x] Nominatim geocoding with rate limiter
 - [x] Geocoding cache with TTL

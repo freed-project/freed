@@ -14,6 +14,7 @@ export type SectionId =
   | "sync"
   | "updates"
   | "danger"
+  | "googleContacts"
   | "x"
   | "facebook"
   | "instagram"
@@ -92,6 +93,13 @@ export const LI_SECTION_META: SectionMeta = {
   id: "linkedin",
   label: "LinkedIn",
   keywords: ["linkedin", "li", "professional", "feed", "connect", "network", "jobs", "posts"],
+};
+
+/** Shown only when the platform provides a Google Contacts settings component. */
+export const GOOGLE_CONTACTS_SECTION_META: SectionMeta = {
+  id: "googleContacts",
+  label: "Google Contacts",
+  keywords: ["google contacts", "contacts", "people api", "friends", "address book", "connect", "sync"],
 };
 
 /** Shown only when the platform supports factory reset (desktop). */

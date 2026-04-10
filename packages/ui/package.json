@@ -13,6 +13,7 @@
     "./components/SettingsToggle": "./src/components/SettingsToggle.tsx",
     "./components/AddFeedDialog": "./src/components/AddFeedDialog.tsx",
     "./components/SettingsDialog": "./src/components/SettingsDialog.tsx",
+    "./components/settings/GoogleContactsSection": "./src/components/settings/GoogleContactsSection.tsx",
     "./components/legal/LegalGate": "./src/components/legal/LegalGate.tsx",
     "./components/legal/ProviderRiskDialog": "./src/components/legal/ProviderRiskDialog.tsx",
     "./components/DebugPanel": "./src/components/DebugPanel.tsx",

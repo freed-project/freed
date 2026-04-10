@@ -11,6 +11,7 @@
     "./legal-storage": "./src/legal-storage.ts",
     "./opml": "./src/opml.ts",
     "./google-contacts": "./src/google-contacts.ts",
+    "./google-contacts-automation": "./src/google-contacts-automation.ts",
     "./contact-matching": "./src/contact-matching.ts"
   },
   "scripts": {

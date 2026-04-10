@@ -14,6 +14,7 @@ export interface ContactSyncContextValue {
   getSyncState: () => ContactSyncState;
   syncNow: () => Promise<ContactSyncState>;
   dismissMatch: (contactResourceName: string, friendIdOrAuthorId: string) => void;
+  openReview: () => Promise<void>;
 }
 
 export const ContactSyncContext = createContext<ContactSyncContextValue | null>(null);

@@ -15,6 +15,7 @@ import {
 } from "react";
 import type {
   BaseAppState,
+  ContactSyncState,
   ImportProgress,
 } from "@freed/shared";
 import type { OPMLFeedEntry } from "@freed/shared";
@@ -134,6 +135,12 @@ export interface PlatformConfig {
    */
   LinkedInSettingsContent: ComponentType<SyncProviderSectionProps> | null;
 
+  /**
+   * Content rendered in the Settings > Sources > Google Contacts section.
+   * When null, the Google Contacts section is omitted from settings entirely.
+   */
+  GoogleContactsSettingsContent: ComponentType | null;
+
   /** Manual update check. Returns version string if available, null if up-to-date. */
   checkForUpdates?: () => Promise<string | null>;
 
@@ -240,6 +247,8 @@ export interface PlatformConfig {
   googleContacts?: {
     /** Return the current Google OAuth access token, or null when not authenticated. */
     getToken: () => string | null;
+    /** Start or refresh the Google OAuth flow so contacts scope is granted. */
+    connect: () => Promise<void>;
   };
 
   /**
@@ -259,6 +268,12 @@ export interface PlatformConfig {
     address?: string;
     nativeId?: string;
   } | null>;
+}
+
+export interface ContactSyncActions {
+  syncNow: () => Promise<ContactSyncState>;
+  dismissMatch: (contactResourceName: string, friendIdOrAuthorId: string) => void;
+  openReview: () => Promise<void>;
 }
 
 const PlatformCtx = createContext<PlatformConfig | null>(null);

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
+import { GoogleContactsSection } from "@freed/ui/components/settings/GoogleContactsSection";
 import { ToastContainer } from "@freed/ui/components/Toast";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { OAuthCallback } from "./components/OAuthCallback";
@@ -28,6 +29,7 @@ import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
 import { PwaSyncSettings } from "./components/PwaSyncSettings";
 import { PwaXSettings } from "./components/PwaXSettings";
 import { PwaLegalSettingsSection } from "./components/PwaLegalSettingsSection";
+import { initiateGDriveOAuth } from "./components/SyncConnectDialog";
 import { acceptPwaBundle, hasAcceptedPwaBundle } from "./lib/legal-consent";
 
 function App() {
@@ -123,6 +125,7 @@ function App() {
       FacebookSettingsContent: null,
       InstagramSettingsContent: null,
       LinkedInSettingsContent: null,
+      GoogleContactsSettingsContent: GoogleContactsSection,
       checkForUpdates,
       applyUpdate: applyPwaUpdate,
       factoryReset: handleFactoryReset,
@@ -152,6 +155,7 @@ function App() {
       pickContact: pickContactViaWebApi,
       googleContacts: {
         getToken: () => localStorage.getItem("freed_cloud_token_gdrive"),
+        connect: initiateGDriveOAuth,
       },
       openUrl: (url: string) => { window.open(url, "_blank", "noopener,noreferrer"); },
     }),

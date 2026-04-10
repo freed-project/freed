@@ -2,6 +2,7 @@ import { useEffect, useMemo, useCallback, useRef, useState, Profiler, type Profi
 import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
+import { GoogleContactsSection } from "@freed/ui/components/settings/GoogleContactsSection";
 import { ToastContainer } from "@freed/ui/components/Toast";
 import { PlatformProvider, type PlatformConfig, type UpdateDownloadProgress } from "@freed/ui/context";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
@@ -284,6 +285,12 @@ function App() {
     await startCloudSync(provider, token);
   }, []);
 
+  const connectGoogleContacts = useCallback(async () => {
+    const token = await initiateDesktopOAuth("gdrive");
+    storeCloudToken("gdrive", token);
+    await startCloudSync("gdrive", token);
+  }, []);
+
   // Fake-authenticate all social providers for local testing. Writes stub
   // credentials to localStorage (matching the real auth persistence format)
   // and updates Zustand state so the sidebar dots light up without a real login.
@@ -342,6 +349,7 @@ function App() {
       FacebookSettingsContent: FacebookSettingsSection,
       InstagramSettingsContent: InstagramSettingsSection,
       LinkedInSettingsContent: LinkedInSettingsSection,
+      GoogleContactsSettingsContent: GoogleContactsSection,
       checkForUpdates: IS_LOCAL_PREVIEW ? undefined : checkForUpdates,
       applyUpdate: IS_LOCAL_PREVIEW ? undefined : applyUpdate,
       factoryReset: handleFactoryReset,
@@ -429,6 +437,7 @@ function App() {
       pickContact: pickContactViaTauri,
       googleContacts: {
         getToken: () => localStorage.getItem("freed_cloud_token_gdrive"),
+        connect: connectGoogleContacts,
       },
       updateDownloadProgress: ((): UpdateDownloadProgress | null => {
         if (updateState.phase === "downloading") return { phase: "downloading", percent: updateState.percent };
@@ -436,7 +445,7 @@ function App() {
         return null;
       })(),
     }),
-     [checkForUpdates, applyUpdate, handleFactoryReset, reconnectCloudProvider, retryCloudProvider, seedSocialConnections, updateState],
+     [checkForUpdates, applyUpdate, connectGoogleContacts, handleFactoryReset, reconnectCloudProvider, retryCloudProvider, seedSocialConnections, updateState],
   );
 
   if (!legalResolved) {
