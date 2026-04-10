@@ -64,6 +64,8 @@ const KIND_STYLES: Record<SyncEventKind, { badge: string; dot: string; label: st
   connect_timeout:    { badge: "bg-red-500/20 text-red-400 border-red-500/30",          dot: "bg-red-400",      label: "timeout" },
 };
 
+const EMPTY_PROVIDER_SYNC_COUNTS: Partial<Record<HealthProviderId, number>> = {};
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
@@ -549,7 +551,7 @@ function HealthTab() {
     (s) =>
       ((s as unknown as {
         providerSyncCounts?: Partial<Record<HealthProviderId, number>>;
-      }).providerSyncCounts ?? {}) as Partial<Record<HealthProviderId, number>>,
+      }).providerSyncCounts ?? EMPTY_PROVIDER_SYNC_COUNTS) as Partial<Record<HealthProviderId, number>>,
   );
   const {
     retryCloudProvider,

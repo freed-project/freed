@@ -95,6 +95,17 @@ async function seedSidebarFeeds(
   });
 }
 
+async function waitForPwaReady(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => { isInitialized: boolean };
+    };
+    return store.getState().isInitialized === true;
+  });
+}
+
 async function seedFriendLocation(
   page: import("@playwright/test").Page,
 ): Promise<void> {
@@ -496,6 +507,162 @@ async function getLibraryCounts(
   });
 }
 
+const NAV_FEED_URL = "https://example.com/navigation.xml";
+
+async function seedNavigationFeed(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  await page.evaluate(async (feedUrl: string) => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddRssFeed: (feed: unknown) => Promise<void>;
+      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        feeds: Record<string, unknown>;
+        items: Array<{ globalId: string }>;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddRssFeed({
+      url: feedUrl,
+      title: "Navigation Feed",
+      siteUrl: "https://example.com",
+      enabled: true,
+      trackUnread: true,
+      lastFetched: now,
+    });
+
+    await automerge.docAddFeedItems([
+      {
+        globalId: "rss:navigation:1",
+        platform: "rss",
+        contentType: "article",
+        capturedAt: now,
+        publishedAt: now - 60_000,
+        author: {
+          id: "nav-feed",
+          handle: "nav-feed",
+          displayName: "Navigation Feed",
+        },
+        content: {
+          text: "Navigation item one",
+          mediaUrls: [],
+          mediaTypes: [],
+          linkPreview: {
+            url: "https://example.com/navigation-1",
+            title: "Navigation Item One",
+            description: "First navigation test article",
+          },
+        },
+        rssSource: {
+          feedUrl,
+          feedTitle: "Navigation Feed",
+          siteUrl: "https://example.com",
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: ["research", "alpha"],
+        },
+        topics: [],
+        sourceUrl: "https://example.com/navigation-1",
+      },
+      {
+        globalId: "rss:navigation:2",
+        platform: "rss",
+        contentType: "article",
+        capturedAt: now,
+        publishedAt: now - 120_000,
+        author: {
+          id: "nav-feed",
+          handle: "nav-feed",
+          displayName: "Navigation Feed",
+        },
+        content: {
+          text: "Navigation item two",
+          mediaUrls: [],
+          mediaTypes: [],
+          linkPreview: {
+            url: "https://example.com/navigation-2",
+            title: "Navigation Item Two",
+            description: "Second navigation test article",
+          },
+        },
+        rssSource: {
+          feedUrl,
+          feedTitle: "Navigation Feed",
+          siteUrl: "https://example.com",
+        },
+        userState: {
+          hidden: false,
+          saved: true,
+          savedAt: now - 30_000,
+          archived: false,
+          tags: ["research"],
+        },
+        topics: [],
+        sourceUrl: "https://example.com/navigation-2",
+      },
+      {
+        globalId: "rss:navigation:3",
+        platform: "rss",
+        contentType: "article",
+        capturedAt: now,
+        publishedAt: now - 180_000,
+        author: {
+          id: "nav-feed",
+          handle: "nav-feed",
+          displayName: "Navigation Feed",
+        },
+        content: {
+          text: "Archived navigation item",
+          mediaUrls: [],
+          mediaTypes: [],
+          linkPreview: {
+            url: "https://example.com/navigation-3",
+            title: "Archived Navigation Item",
+            description: "Archived navigation test article",
+          },
+        },
+        rssSource: {
+          feedUrl,
+          feedTitle: "Navigation Feed",
+          siteUrl: "https://example.com",
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: true,
+          archivedAt: now - 10_000,
+          tags: ["archive"],
+        },
+        topics: [],
+        sourceUrl: "https://example.com/navigation-3",
+      },
+    ]);
+
+    await new Promise<void>((resolve, reject) => {
+      const startedAt = Date.now();
+      const interval = window.setInterval(() => {
+        const state = store.getState();
+        if (state.feeds[feedUrl] && state.items.some((item) => item.globalId === "rss:navigation:1")) {
+          clearInterval(interval);
+          resolve();
+          return;
+        }
+        if (Date.now() - startedAt > 5_000) {
+          clearInterval(interval);
+          reject(new Error("navigation seed timeout"));
+        }
+      }, 50);
+    });
+  }, NAV_FEED_URL);
+}
+
 test.describe("FREED PWA", () => {
   test("first load blocks the app shell until legal consent is accepted", async ({
     page,
@@ -631,6 +798,172 @@ test.describe("FREED PWA", () => {
     await expect(page.getByText("11 to 12 of 12")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Next feeds page" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Alpha Dispatch" })).toHaveCount(0);
+  });
+
+  test.describe.serial("URL history", () => {
+    test("loads the Friends view directly from the URL", async ({ page }) => {
+      await page.goto("/friends");
+      await acceptLegalGate(page);
+      await waitForPwaReady(page);
+
+      await page.waitForFunction(() => {
+        const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+          getState: () => { activeView: string };
+        };
+        return store.getState().activeView === "friends";
+      });
+      await expect(page.getByRole("button", { name: /import contacts/i })).toBeVisible();
+    });
+
+    test("browser history tracks top-level view navigation", async ({ page }) => {
+      await page.goto("/");
+      await acceptLegalGate(page);
+      await waitForPwaReady(page);
+
+      await page.locator("aside").getByRole("button", { name: "Friends" }).click({ force: true });
+      await expect.poll(() => new URL(page.url()).pathname).toBe("/friends");
+
+      await page.goBack();
+      await page.waitForFunction(() => {
+        const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+          getState: () => { activeView: string };
+        };
+        return store.getState().activeView === "feed";
+      });
+      await expect.poll(() => new URL(page.url()).pathname).toBe("/");
+
+      await page.goForward();
+      await page.waitForFunction(() => {
+        const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+          getState: () => { activeView: string };
+        };
+        return store.getState().activeView === "friends";
+      });
+      await expect.poll(() => new URL(page.url()).pathname).toBe("/friends");
+    });
+
+    test("feed filters update the URL and restore with browser history", async ({ page }) => {
+      await page.goto("/");
+      await acceptLegalGate(page);
+      await waitForPwaReady(page);
+      await seedNavigationFeed(page);
+
+      const sidebar = page.locator("aside");
+
+      await sidebar.getByRole("button", { name: /^RSS/ }).click();
+      await expect.poll(() => new URL(page.url()).search).toBe("?platform=rss");
+
+      await sidebar.getByRole("button", { name: "Saved" }).click();
+      await expect.poll(() => new URL(page.url()).search).toBe("?scope=saved");
+
+      await page.goBack();
+      await expect.poll(() => new URL(page.url()).search).toBe("?platform=rss");
+
+      await sidebar.getByRole("button", { name: "research" }).click();
+      await expect
+        .poll(() => new URL(page.url()).searchParams.getAll("tag"))
+        .toEqual(["research"]);
+
+      await sidebar.getByRole("button", { name: /^Feeds/ }).click();
+      await sidebar.getByRole("button", { name: /Navigation Feed/ }).click();
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get("feed"))
+        .toBe(NAV_FEED_URL);
+
+      await sidebar.getByRole("button", { name: "Archived" }).click();
+      await expect.poll(() => new URL(page.url()).search).toBe("?scope=archived");
+    });
+
+    test("reader selection syncs to item history and restores with browser forward", async ({ page }) => {
+      await page.goto("/");
+      await acceptLegalGate(page);
+      await waitForPwaReady(page);
+      await seedNavigationFeed(page);
+
+      await page.locator(".feed-card").filter({ hasText: "Navigation Item One" }).first().click();
+      await expect(page.getByLabel("Back")).toBeVisible();
+      await expect.poll(() => new URL(page.url()).search).toBe("?item=rss%3Anavigation%3A1");
+
+      await page.goBack();
+      await expect(page.getByLabel("Back")).toHaveCount(0);
+      await expect.poll(() => new URL(page.url()).search).toBe("");
+
+      await page.goForward();
+      await expect(page.getByLabel("Back")).toBeVisible();
+      await expect.poll(() => new URL(page.url()).search).toBe("?item=rss%3Anavigation%3A1");
+    });
+
+    test("stale item URLs are cleaned up after initialization", async ({ page }) => {
+      await page.goto("/?item=missing-item");
+      await acceptLegalGate(page);
+      await waitForPwaReady(page);
+
+      await expect.poll(() => new URL(page.url()).search).toBe("");
+      await page.waitForFunction(() => {
+        const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+          getState: () => { selectedItemId: string | null };
+        };
+        return store.getState().selectedItemId === null;
+      });
+    });
+
+    test("stale item cleanup replaces the current history entry", async ({ page }) => {
+      await page.goto("/friends");
+      await acceptLegalGate(page);
+      await waitForPwaReady(page);
+      await expect.poll(() => new URL(page.url()).pathname).toBe("/friends");
+
+      await page.evaluate(() => {
+        window.history.pushState(window.history.state, "", "/?item=missing-item");
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      });
+      await expect.poll(() => new URL(page.url()).search).toBe("");
+
+      await page.goBack();
+      await page.waitForFunction(() => {
+        const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+          getState: () => { activeView: string; selectedItemId: string | null };
+        };
+        const state = store.getState();
+        return state.activeView === "friends" && state.selectedItemId === null;
+      });
+      await expect.poll(() => new URL(page.url()).pathname).toBe("/friends");
+      await expect.poll(() => new URL(page.url()).search).toBe("");
+    });
+
+    test("feed filter URLs restore the correct scope on direct load", async ({ page }) => {
+      await page.goto("/");
+      await acceptLegalGate(page);
+      await waitForPwaReady(page);
+      await seedNavigationFeed(page);
+
+      await page.goto(`/?feed=${encodeURIComponent(NAV_FEED_URL)}&tag=research`);
+      await waitForPwaReady(page);
+      await page.waitForFunction((feedUrl: string) => {
+        const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+          getState: () => {
+            activeFilter: {
+              platform?: string;
+              feedUrl?: string;
+              tags?: string[];
+            };
+          };
+        };
+        const filter = store.getState().activeFilter;
+        return filter.platform === "rss"
+          && filter.feedUrl === feedUrl
+          && (filter.tags ?? []).includes("research");
+      }, NAV_FEED_URL);
+      await expect
+        .poll(() => ({
+          feed: new URL(page.url()).searchParams.get("feed"),
+          tags: new URL(page.url()).searchParams.getAll("tag"),
+        }))
+        .toEqual({
+          feed: NAV_FEED_URL,
+          tags: ["research"],
+        });
+    });
   });
 
   test("map navigation is live from the sidebar", async ({ page }) => {

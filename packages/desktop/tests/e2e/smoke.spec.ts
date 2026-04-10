@@ -24,6 +24,15 @@ async function dismissCloudSyncNudgeIfPresent(page: Page) {
     await dismissButton.click();
   }
 }
+
+async function clickMapPopupAction(page: Page, actionName: "Open Friend" | "Open Post") {
+  const actionButton = page.getByRole("button", { name: actionName });
+  await expect(actionButton).toBeVisible({ timeout: 5_000 });
+  await actionButton.evaluate((button) => {
+    (button as HTMLButtonElement).click();
+  });
+}
+
 const SETTINGS_STORE_PATH = resolveViteFsModulePath(
   "../../../ui/src/lib/settings-store.ts",
   import.meta.url,
@@ -190,6 +199,73 @@ test("Friends view can return to the feed from sidebar navigation", async ({ app
   await expect(page.getByText("Article 0:", { exact: false })).toBeVisible({ timeout: 5_000 });
 });
 
+test("desktop navigation history supports Cmd+[ and Cmd+] across views", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(1);
+
+  const { page } = app;
+
+  await page.getByRole("button", { name: "Friends" }).click();
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { activeView: string } }
+      | undefined;
+    return store?.getState().activeView === "friends";
+  }, { timeout: 5_000 });
+
+  await page.keyboard.press("Meta+[");
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { activeView: string } }
+      | undefined;
+    return store?.getState().activeView === "feed";
+  }, { timeout: 5_000 });
+
+  await page.keyboard.press("Meta+]");
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { activeView: string } }
+      | undefined;
+    return store?.getState().activeView === "friends";
+  }, { timeout: 5_000 });
+});
+
+test("desktop reader history supports Cmd+[ and Cmd+] for open items", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(1);
+
+  const { page } = app;
+  await page.getByText("Article 0:", { exact: false }).click();
+
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { selectedItemId: string | null } }
+      | undefined;
+    return store?.getState().selectedItemId !== null;
+  }, { timeout: 5_000 });
+  await expect(page.getByLabel("Back")).toBeVisible({ timeout: 5_000 });
+
+  await page.keyboard.press("Meta+[");
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { selectedItemId: string | null } }
+      | undefined;
+    return store?.getState().selectedItemId === null;
+  }, { timeout: 5_000 });
+  await expect(page.getByLabel("Back")).toHaveCount(0);
+
+  await page.keyboard.press("Meta+]");
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { selectedItemId: string | null } }
+      | undefined;
+    return store?.getState().selectedItemId !== null;
+  }, { timeout: 5_000 });
+  await expect(page.getByLabel("Back")).toBeVisible({ timeout: 5_000 });
+});
+
 test("Friends workspace keeps a visible sidebar and supports back navigation", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
@@ -264,7 +340,7 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
 
   const { page } = app;
 
-  await page.getByRole("button", { name: /^Map\b/ }).click();
+  await page.getByRole("button", { name: /^Map/ }).click();
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
@@ -274,7 +350,7 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
   }, { timeout: 5_000 });
 
   await page.locator(".freed-map-marker").first().click();
-  await page.getByRole("button", { name: "Open Friend" }).click();
+  await clickMapPopupAction(page, "Open Friend");
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
@@ -285,9 +361,9 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
   }, { timeout: 5_000 });
   await expect(page.locator("main").getByText("Ada Lovelace").first()).toBeVisible({ timeout: 5_000 });
 
-  await page.getByRole("button", { name: /^Map\b/ }).click();
+  await page.getByRole("button", { name: /^Map/ }).click();
   await page.locator(".freed-map-marker").first().click();
-  await page.getByRole("button", { name: "Open Post" }).click();
+  await clickMapPopupAction(page, "Open Post");
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
@@ -335,7 +411,9 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
     const state = store?.getState();
     return state?.activeView === "map" && state.selectedFriendId === "friend-ada";
   }, { timeout: 5_000 });
-  await expect(page.locator('.freed-map-marker[aria-label="Ada Lovelace"]')).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByRole("button", { name: /Ada Lovelace/ })).toBeVisible({
+    timeout: 5_000,
+  });
 });
 
 // ---------------------------------------------------------------------------

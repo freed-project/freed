@@ -31,6 +31,7 @@ import { PwaXSettings } from "./components/PwaXSettings";
 import { PwaLegalSettingsSection } from "./components/PwaLegalSettingsSection";
 import { initiateGDriveOAuth } from "./components/SyncConnectDialog";
 import { acceptPwaBundle, hasAcceptedPwaBundle } from "./lib/legal-consent";
+import { useBrowserNavigationHistory } from "./lib/navigation-history";
 
 function App() {
   // Intercept OAuth callback before rendering the main app.
@@ -44,6 +45,8 @@ function App() {
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
   const [legalResolved, setLegalResolved] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
+
+  useBrowserNavigationHistory(legalAccepted);
 
   useEffect(() => {
     setLegalAccepted(hasAcceptedPwaBundle());

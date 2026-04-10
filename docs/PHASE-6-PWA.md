@@ -16,6 +16,7 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 - **Light saves** — Can save URLs with metadata extraction (og tags); full article extraction requires Desktop
 - **Offline-first** — Service worker caches feed data and images for offline reading
 - **Versioned first-run consent** — PWA startup is blocked until the current legal bundle is accepted locally in the browser
+- **URL-driven navigation** — Active view, feed scope, and open reader state serialize into the URL so browser back and forward behave naturally
 
 ---
 
@@ -208,6 +209,7 @@ export function filterByAuthor(
 | 6.12 | Offline support + image caching        | High       |
 | 6.13 | Add to homescreen prompt               | Low        |
 | 6.14 | First-run legal gate with local-only acceptance storage | Low |
+| 6.15 | URL navigation state with browser back/forward support | Low |
 
 ---
 
@@ -234,6 +236,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] RSS source accordion pages subscriptions in the sidebar and top search moves matching feeds into the first page
 - [x] RSS subscription management functional (add/remove/OPML import-export)
 - [x] First launch is blocked behind a local-only legal clickwrap gate
+- [x] Active view, feed filters, and reader selection round-trip through the URL for browser back/forward navigation
 - [ ] PWA installable on mobile (add to homescreen) — manifest exists, needs testing
 - [ ] Offline access works (service worker + image cache) — SW registered, image cache pending
 

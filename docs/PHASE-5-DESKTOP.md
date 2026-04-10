@@ -22,6 +22,7 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Provider risk interstitials** — X, Facebook, Instagram, and LinkedIn require separate local consent before login or sync actions
 - **Manual disconnect clears active pauses:** Disconnecting a social provider clears its current pause and resets future backoff escalation, but keeps historical diagnostics intact
 - **Paused providers reuse the primary action:** Settings surfaces swap `Sync Now` to `Resume Now` when a provider is paused, instead of rendering a second resume button
+- **Internal navigation history** — Desktop keeps a browser-style serialized navigation stack so `Cmd+[` and `Cmd+]` move through views and open reader state
 
 ---
 
@@ -191,9 +192,10 @@ export async function captureDomFeed(
 | 5.26 | Independent update server domain   | Medium     |
 | 5.27 | First-run legal gate and local-only acceptance storage | Medium |
 | 5.28 | Provider-specific risk interstitials for social capture | Medium |
-| 5.29 | Reviewed AI-assisted release notes and cumulative daily changelog cards | Medium |
-| 5.30 | Provider health dashboard, charts, and unsubscribe flow | Medium |
-| 5.31 | Rotating local database snapshots + restore UI | Medium |
+| 5.29 | Internal serialized navigation history with `Cmd+[` / `Cmd+]` | Low |
+| 5.30 | Reviewed AI-assisted release notes and cumulative daily changelog cards | Medium |
+| 5.31 | Provider health dashboard, charts, and unsubscribe flow | Medium |
+| 5.32 | Rotating local database snapshots + restore UI | Medium |
 
 ---
 
@@ -219,6 +221,7 @@ export async function captureDomFeed(
 - [x] Legal acceptance stays outside synced Automerge state
 - [x] Freed Desktop keeps rotating local database snapshots with a restore flow in Settings
 - [x] Desktop E2E test infrastructure bootstrapped (Playwright + VITE_TEST_TAURI=1 mock layer)
+- [x] Desktop navigation history supports browser-style back and forward shortcuts for views and reader state
 - [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
 - [x] macOS DMG is notarized in CI releases
 - [x] Checked-in release notes are reviewed before a release tag can publish
