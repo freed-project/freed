@@ -38,6 +38,7 @@ import {
 import { FeedsSection } from "./settings/FeedsSection.js";
 import { SavedSection } from "./settings/SavedSection.js";
 import { SettingsToggle } from "./SettingsToggle.js";
+import { ReportComposer } from "./report/ReportComposer.js";
 
 const SAMPLE_SEED_FEED_COUNT = 10;
 const SAMPLE_SEED_ITEM_COUNT = 155;
@@ -153,6 +154,11 @@ const ICONS: Record<SectionId, ReactNode> = {
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3l7.5 3v6c0 5.25-3.34 9.922-7.5 11.25C7.84 21.922 4.5 17.25 4.5 12V6L12 3z" />
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 12.75l1.5 1.5 3-3.75" />
+    </svg>
+  ),
+  support: (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 8h10M7 12h7m-5 8l-4-4H4a2 2 0 01-2-2V6a2 2 0 012-2h16a2 2 0 012 2v8a2 2 0 01-2 2h-7l-4 4z" />
     </svg>
   ),
   reading: (
@@ -272,6 +278,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const sectionById = Object.fromEntries(allSections.map((s) => [s.id, s])) as Record<SectionId, Section>;
   const navStructure: NavStructureItem[] = [
     sectionById.legal,
+    sectionById.support,
     sectionById.sync,
     sectionById.reading,
     {
@@ -745,6 +752,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 </select>
               </div>
             </div>
+          </>
+        );
+
+      case "support":
+        return (
+          <>
+            <SectionHeading label="Support" />
+            <ReportComposer />
           </>
         );
 

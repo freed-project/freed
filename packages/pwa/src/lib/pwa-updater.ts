@@ -9,6 +9,7 @@
  */
 
 import { registerSW } from "virtual:pwa-register";
+import { recordBugReportEvent } from "@freed/ui/lib/bug-report";
 
 const POLL_INTERVAL_MS = 60 * 60 * 1_000; // 1 hour
 
@@ -85,6 +86,7 @@ export async function checkForPwaUpdate(): Promise<string | null> {
     );
 
     reg.update().catch(() => {
+      recordBugReportEvent("pwa:updater", "warn", "Manual update check failed");
       clearTimeout(timer);
       resolve(null);
     });
@@ -131,7 +133,9 @@ export function initPwaUpdater(): () => void {
 
   if (!intervalId) {
     intervalId = setInterval(() => {
-      checkForPwaUpdate().catch(() => {});
+      checkForPwaUpdate().catch(() => {
+        recordBugReportEvent("pwa:updater", "warn", "Background update check failed");
+      });
     }, POLL_INTERVAL_MS);
   }
 

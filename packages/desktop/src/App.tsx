@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useCallback, useRef, useState, Profiler, type ProfilerOnRenderCallback } from "react";
 import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
+import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
+import { FatalErrorScreen } from "@freed/ui/components/FatalErrorScreen";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { GoogleContactsSection } from "@freed/ui/components/settings/GoogleContactsSection";
 import { ToastContainer } from "@freed/ui/components/Toast";
@@ -63,6 +65,8 @@ import { getDesktopSourceStatus } from "./lib/source-status";
 import { clearContactSyncState } from "./lib/contact-sync-storage";
 import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
 import { useDesktopNavigationHistory } from "./lib/navigation-history";
+import { desktopBugReporting } from "./lib/bug-report";
+import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
@@ -93,6 +97,7 @@ function App() {
   const error = useAppStore((state) => state.error);
   const [legalResolved, setLegalResolved] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
+  const fatalError = useFatalRuntimeError();
 
   useDesktopNavigationHistory(legalAccepted);
 
@@ -447,6 +452,7 @@ function App() {
         if (updateState.phase === "error") return { phase: "error", message: updateState.message };
         return null;
       })(),
+      bugReporting: desktopBugReporting,
     }),
      [checkForUpdates, applyUpdate, connectGoogleContacts, handleFactoryReset, reconnectCloudProvider, retryCloudProvider, seedSocialConnections, updateState],
   );
@@ -484,52 +490,65 @@ function App() {
 
   if (error && !isInitialized) {
     return (
-      <div className="h-screen flex items-center justify-center bg-transparent">
-        <div className="text-center max-w-md p-6">
-          <p className="text-red-400 mb-4">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="btn-primary"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
+      <PlatformProvider value={platform}>
+        <FatalErrorScreen
+          error={{ message: error }}
+          productName="Freed Desktop"
+          onRetry={() => window.location.reload()}
+        />
+      </PlatformProvider>
+    );
+  }
+
+  if (fatalError) {
+    return (
+      <PlatformProvider value={platform}>
+        <FatalErrorScreen
+          error={fatalError}
+          productName="Freed Desktop"
+          onRetry={() => {
+            clearFatalRuntimeError();
+            window.location.reload();
+          }}
+        />
+      </PlatformProvider>
     );
   }
 
   return (
     <Profiler id="App" onRender={onRender}>
     <PlatformProvider value={platform}>
-      <div className="h-screen flex flex-col bg-transparent">
-        <AppShell>
-          <FeedView />
-        </AppShell>
-        <UpdateNotification
-          state={updateState}
-          onInstall={applyUpdate}
-          onRelaunch={handleRelaunch}
-          onDismiss={handleDismissUpdate}
-        />
-      </div>
-
-      {/* Toast nudge — shown every launch while no cloud provider is connected */}
-      <CloudSyncNudge />
-      <ToastContainer />
-
-      {/* Post-restart confirmation — shown for 5s after a successful update relaunch */}
-      {justUpdated && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 animate-slide-up pointer-events-none">
-          <div className="rounded-2xl bg-[var(--freed-surface)] px-4 py-3 shadow-lg border border-[rgba(34,197,94,0.3)] flex items-center gap-2">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-              <path d="M3 8l3.5 3.5L13 5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span className="text-sm text-text-primary">
-              Updated to <span className="font-mono font-bold">v{justUpdated}</span>
-            </span>
-          </div>
+      <BugReportBoundary>
+        <div className="h-screen flex flex-col bg-transparent">
+          <AppShell>
+            <FeedView />
+          </AppShell>
+          <UpdateNotification
+            state={updateState}
+            onInstall={applyUpdate}
+            onRelaunch={handleRelaunch}
+            onDismiss={handleDismissUpdate}
+          />
         </div>
-      )}
+
+        {/* Toast nudge — shown every launch while no cloud provider is connected */}
+        <CloudSyncNudge />
+        <ToastContainer />
+
+        {/* Post-restart confirmation — shown for 5s after a successful update relaunch */}
+        {justUpdated && (
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 animate-slide-up pointer-events-none">
+            <div className="rounded-2xl bg-[var(--freed-surface)] px-4 py-3 shadow-lg border border-[rgba(34,197,94,0.3)] flex items-center gap-2">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+                <path d="M3 8l3.5 3.5L13 5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="text-sm text-text-primary">
+                Updated to <span className="font-mono font-bold">v{justUpdated}</span>
+              </span>
+            </div>
+          </div>
+        )}
+      </BugReportBoundary>
     </PlatformProvider>
     </Profiler>
   );

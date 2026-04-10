@@ -16,7 +16,12 @@ import {
 import type {
   BaseAppState,
   ContactSyncState,
+  BugReportDraft,
+  BugReportIssueType,
+  BugReportScreenshot,
+  GeneratedBugReportBundle,
   ImportProgress,
+  ReportPrivacyTier,
 } from "@freed/shared";
 import type { OPMLFeedEntry } from "@freed/shared";
 import type { ImportSummary, ProgressFn } from "../components/LibraryDialog.types.js";
@@ -57,6 +62,19 @@ export interface SidebarSourceStatusSummary {
   detail?: string;
   syncing?: boolean;
   paused?: boolean;
+}
+
+export interface BugReportingConfig {
+  githubRepo: string;
+  privateShareEmail?: string;
+  createDraft?: (issueType?: BugReportIssueType) => Partial<BugReportDraft>;
+  generateBundle: (input: {
+    draft: BugReportDraft;
+    privacyTier: ReportPrivacyTier;
+  }) => Promise<GeneratedBugReportBundle>;
+  captureScreenshot?: () => Promise<BugReportScreenshot | null>;
+  exportBundle?: (bundle: GeneratedBugReportBundle) => Promise<void>;
+  openUrl?: (url: string) => void;
 }
 
 export interface PlatformConfig {
@@ -268,6 +286,9 @@ export interface PlatformConfig {
     address?: string;
     nativeId?: string;
   } | null>;
+
+  /** Shared bug report composer hooks and platform-specific collectors. */
+  bugReporting?: BugReportingConfig;
 }
 
 export interface ContactSyncActions {

@@ -1,6 +1,6 @@
 # Phase 6: PWA Reader
 
-> **Status:** ✅ Core Complete (first-run legal gate shipped, offline image cache + homescreen install testing pending)
+> **Status:** ✅ Core Complete (first-run legal gate shipped, public-safe bug reporting shipped, offline image cache + homescreen install testing pending)
 > **Dependencies:** Phase 4 (Sync Layer), Phase 5 (Desktop App)
 
 ---
@@ -210,6 +210,7 @@ export function filterByAuthor(
 | 6.13 | Add to homescreen prompt               | Low        |
 | 6.14 | First-run legal gate with local-only acceptance storage | Low |
 | 6.15 | URL navigation state with browser back/forward support | Low |
+| 6.16 | Public-safe and private bug report bundles | Medium |
 
 ---
 
@@ -237,6 +238,8 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] RSS subscription management functional (add/remove/OPML import-export)
 - [x] First launch is blocked behind a local-only legal clickwrap gate
 - [x] Active view, feed filters, and reader selection round-trip through the URL for browser back/forward navigation
+- [x] Settings and crash recovery surfaces can export public-safe bug report bundles
+- [x] Private diagnostics stay opt-in and are clearly separated from public GitHub sharing
 - [ ] PWA installable on mobile (add to homescreen) — manifest exists, needs testing
 - [ ] Offline access works (service worker + image cache) — SW registered, image cache pending
 

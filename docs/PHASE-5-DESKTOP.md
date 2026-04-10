@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, local snapshot restore shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, local snapshot restore shipped, public-safe bug reporting shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -196,6 +196,7 @@ export async function captureDomFeed(
 | 5.30 | Reviewed AI-assisted release notes and cumulative daily changelog cards | Medium |
 | 5.31 | Provider health dashboard, charts, and unsubscribe flow | Medium |
 | 5.32 | Rotating local database snapshots + restore UI | Medium |
+| 5.33 | Public-safe and private bug report bundles | Medium |
 
 ---
 
@@ -222,6 +223,8 @@ export async function captureDomFeed(
 - [x] Freed Desktop keeps rotating local database snapshots with a restore flow in Settings
 - [x] Desktop E2E test infrastructure bootstrapped (Playwright + VITE_TEST_TAURI=1 mock layer)
 - [x] Desktop navigation history supports browser-style back and forward shortcuts for views and reader state
+- [x] Settings and crash recovery surfaces can export public-safe bug report bundles
+- [x] Private diagnostic bundles are opt-in, redacted, and steered toward email instead of public GitHub attachment
 - [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
 - [x] macOS DMG is notarized in CI releases
 - [x] Checked-in release notes are reviewed before a release tag can publish

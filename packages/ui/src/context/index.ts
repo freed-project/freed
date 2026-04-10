@@ -4,6 +4,7 @@ export {
   useAppStore,
   MACOS_TRAFFIC_LIGHT_INSET,
   type ContactSyncActions,
+  type BugReportingConfig,
   type PlatformConfig,
   type SidebarSourceStatusSummary,
   type SyncProviderSectionProps,
