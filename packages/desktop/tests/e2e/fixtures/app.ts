@@ -60,15 +60,15 @@ export class AppFixture {
     provider: "x" | "facebook" | "instagram" | "linkedin",
     timeout = 5_000,
   ): Promise<boolean> {
+    const dialog = this.page.getByTestId(`provider-risk-dialog-${provider}`);
     const acceptButton = this.page.getByTestId(`provider-risk-accept-${provider}`);
     const dialogVisible = await acceptButton.isVisible({ timeout }).catch(() => false);
 
     if (!dialogVisible) return false;
 
-    const checkbox = this.page
-      .locator("div.fixed")
-      .filter({ has: acceptButton })
-      .getByRole("checkbox");
+    const checkbox = dialog.getByRole("checkbox", {
+      name: /i understand the risk of using freed/i,
+    });
 
     await checkbox.check();
     await expect(acceptButton).toBeEnabled({ timeout });
