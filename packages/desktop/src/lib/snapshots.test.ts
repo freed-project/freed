@@ -1,10 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CONTACT_SYNC_STORAGE_KEY } from "@freed/shared";
 
-const mockDocBinary = vi.fn<() => Uint8Array>();
-const mockDocState = vi.fn();
-const mockReplaceLocalDoc = vi.fn<(binary: Uint8Array) => Promise<void>>();
-const subscribers = new Set<() => void>();
+const {
+  mockDocBinary,
+  mockDocState,
+  mockReplaceLocalDoc,
+  subscribers,
+} = vi.hoisted(() => ({
+  mockDocBinary: vi.fn<() => Uint8Array>(),
+  mockDocState: vi.fn(),
+  mockReplaceLocalDoc: vi.fn<(binary: Uint8Array) => Promise<void>>(),
+  subscribers: new Set<() => void>(),
+}));
 
 vi.mock("@tauri-apps/api/path", async () => {
   const actual = await import("../__mocks__/@tauri-apps/api/path");

@@ -231,7 +231,7 @@ export async function restoreSnapshot(snapshotId: string): Promise<SnapshotSumma
 
   const [binary, contactsRaw] = await Promise.all([
     readFile(snapshotBinaryPath(root, snapshotId)),
-    exists(snapshotContactsPath(root, snapshotId))
+    (await exists(snapshotContactsPath(root, snapshotId)))
       ? readTextFile(snapshotContactsPath(root, snapshotId))
       : Promise.resolve(null),
   ]);
