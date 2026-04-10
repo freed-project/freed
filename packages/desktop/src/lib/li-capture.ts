@@ -17,6 +17,7 @@ import {
 import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { getLiScraperWindowMode } from "./scraper-prefs";
+import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 
 // =============================================================================
 // Rate Limiting
@@ -87,6 +88,7 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
     let unlisten: UnlistenFn | null = null;
     const allRawPosts: RawLiPost[] = [];
     const seenUrns = new Set<string>();
+    attachScraperMediaDiagListener("LI", "linkedin");
 
     // Timeout if the WebView takes too long
     const timeout = setTimeout(() => {

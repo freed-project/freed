@@ -22,6 +22,7 @@ import { useAppStore } from "./store";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { getIgScraperWindowMode } from "./scraper-prefs";
 import { storeIgAuthState } from "./instagram-auth";
+import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 
 // =============================================================================
 // Rate Limiting
@@ -93,6 +94,7 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
   let unlisten: UnlistenFn | null = null;
 
   try {
+    attachScraperMediaDiagListener("IG", "instagram");
     unlisten = await listen<{
       posts: RawIgPost[];
       error?: string;

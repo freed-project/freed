@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress — Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering and Facebook group controls
+> **Status:** 🚧 In Progress — Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, silent background media guarding, and Facebook group controls
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -102,6 +102,8 @@ Self-contained JavaScript injected into the WebView's execution context. No exte
 
 Story scraping is interleaved with feed scraping in each session. A coin flip (~50%) determines whether stories are scraped before or after the initial feed passes. ~15% of sessions skip story scraping entirely (real users don't always check stories). Up to 30 story frames are captured per session.
 
+Background scrape and auth-check sessions now force provider media elements silent through the injected WebKit mask layer. Audio elements are paused outright, video elements are forced muted, and newly inserted media is re-silenced as the DOM changes.
+
 ---
 
 ## Rate Limiting
@@ -158,6 +160,7 @@ const RATE_LIMITS = {
 - [x] Feed pollution filtering blocks promoted X entries and suggested FB/IG posts
 - [x] Facebook Settings includes per-group include/exclude controls for joined groups
 - [x] Desktop Sources settings expose per-source scraper window modes: shown, cloaked, hidden
+- [x] Background FB and IG scraper WebViews force provider media silent during scrape and auth-check flows
 - [x] Empty states for both platforms in the feed view
 - [x] Source indicators in sidebar for both platforms
 - [x] Sync indicator panel shows both platforms

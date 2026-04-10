@@ -37,12 +37,16 @@ fn sync_relay_port() -> u16 {
         .unwrap_or(DEFAULT_SYNC_RELAY_PORT)
 }
 
-const BACKGROUND_SCRAPER_WINDOW_NAME: &str = "__freed_background_scraper__";
 const DEFAULT_WEBKIT_SAFARI_UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
 const ENABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
     (function() {
-        window.name = "__freed_background_scraper__";
+        var token = "__freed_background_scraper__";
+        var tokens = (window.name || "").split(/\s+/).filter(Boolean).filter(function(value) {
+            return value !== token;
+        });
+        tokens.push(token);
+        window.name = tokens.join(" ");
         if (typeof window.__FREED_SET_BACKGROUND_SCRAPER_CLOAK__ === "function") {
             window.__FREED_SET_BACKGROUND_SCRAPER_CLOAK__(true);
         }
@@ -50,7 +54,11 @@ const ENABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
 "#;
 const DISABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
     (function() {
-        window.name = "";
+        var token = "__freed_background_scraper__";
+        var tokens = (window.name || "").split(/\s+/).filter(Boolean).filter(function(value) {
+            return value !== token;
+        });
+        window.name = tokens.join(" ");
         if (typeof window.__FREED_SET_BACKGROUND_SCRAPER_CLOAK__ === "function") {
             window.__FREED_SET_BACKGROUND_SCRAPER_CLOAK__(false);
         }
@@ -58,9 +66,52 @@ const DISABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
 "#;
 const INITIALIZE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
     (function() {
-        window.name = "__freed_background_scraper__";
+        var token = "__freed_background_scraper__";
+        var tokens = (window.name || "").split(/\s+/).filter(Boolean).filter(function(value) {
+            return value !== token;
+        });
+        tokens.push(token);
+        window.name = tokens.join(" ");
         if (typeof window.__FREED_SET_BACKGROUND_SCRAPER_CLOAK__ === "function") {
             window.__FREED_SET_BACKGROUND_SCRAPER_CLOAK__(true);
+        }
+    })();
+"#;
+const ENABLE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS: &str = r#"
+    (function() {
+        var token = "__freed_media_guard__";
+        var tokens = (window.name || "").split(/\s+/).filter(Boolean).filter(function(value) {
+            return value !== token;
+        });
+        tokens.push(token);
+        window.name = tokens.join(" ");
+        if (typeof window.__FREED_SET_BACKGROUND_SCRAPER_MEDIA_GUARD__ === "function") {
+            window.__FREED_SET_BACKGROUND_SCRAPER_MEDIA_GUARD__(true);
+        }
+    })();
+"#;
+const DISABLE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS: &str = r#"
+    (function() {
+        var token = "__freed_media_guard__";
+        var tokens = (window.name || "").split(/\s+/).filter(Boolean).filter(function(value) {
+            return value !== token;
+        });
+        window.name = tokens.join(" ");
+        if (typeof window.__FREED_SET_BACKGROUND_SCRAPER_MEDIA_GUARD__ === "function") {
+            window.__FREED_SET_BACKGROUND_SCRAPER_MEDIA_GUARD__(false);
+        }
+    })();
+"#;
+const INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS: &str = r#"
+    (function() {
+        var token = "__freed_media_guard__";
+        var tokens = (window.name || "").split(/\s+/).filter(Boolean).filter(function(value) {
+            return value !== token;
+        });
+        tokens.push(token);
+        window.name = tokens.join(" ");
+        if (typeof window.__FREED_SET_BACKGROUND_SCRAPER_MEDIA_GUARD__ === "function") {
+            window.__FREED_SET_BACKGROUND_SCRAPER_MEDIA_GUARD__(true);
         }
     })();
 "#;
@@ -151,6 +202,7 @@ fn build_cloaked_scraper_window(
     .user_agent(user_agent)
     .transparent(true)
     .initialization_script(include_str!("webkit-mask.js"))
+    .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
     .title(title)
     .inner_size(1280.0, 900.0)
     .focused(false)
@@ -178,10 +230,24 @@ fn set_background_scraper_window_cloak(
         .map_err(|e| e.to_string())
 }
 
+fn set_background_scraper_media_guard(
+    window: &tauri::WebviewWindow,
+    enabled: bool,
+) -> Result<(), String> {
+    window
+        .eval(if enabled {
+            ENABLE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS
+        } else {
+            DISABLE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS
+        })
+        .map_err(|e| e.to_string())
+}
+
 fn prepare_background_scraper_window(
     window: &tauri::WebviewWindow,
     window_mode: ScraperWindowMode,
 ) -> Result<(), String> {
+    set_background_scraper_media_guard(window, true)?;
     match window_mode {
         ScraperWindowMode::Shown => {
             let _ = window.set_ignore_cursor_events(false);
@@ -1003,6 +1069,8 @@ async fn fb_show_login(
     use tauri::WebviewWindowBuilder;
 
     if let Some(existing) = app.get_webview_window("fb-scraper") {
+        let _ = set_background_scraper_window_cloak(&existing, false);
+        let _ = set_background_scraper_media_guard(&existing, false);
         existing
             .navigate("https://www.facebook.com/login".parse().unwrap())
             .map_err(|e| e.to_string())?;
@@ -1097,12 +1165,15 @@ async fn fb_check_auth(
             tauri::WebviewUrl::External("https://www.facebook.com/".parse().unwrap()),
         )
         .user_agent(&scraper_user_agent)
+        .initialization_script(include_str!("webkit-mask.js"))
+        .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
         .title("Freed Facebook")
         .inner_size(460.0, 700.0)
         .visible(false)
         .build()
         .map_err(|e| e.to_string())?,
     };
+    set_background_scraper_media_guard(&wv, true)?;
 
     tokio::time::sleep(Duration::from_secs(6)).await;
 
@@ -1147,7 +1218,8 @@ async fn fb_check_auth(
 async fn scrape_fb_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
     use rand::Rng;
 
-    println!("[FB] starting story scrape (max {} frames)", max_frames);
+    let _ = set_background_scraper_media_guard(wv, true);
+    info!("[FB] story scrape start, max_frames={}", max_frames);
 
     // Click the first story card at the top of the News Feed. Facebook renders
     // story cards as a horizontal carousel above the feed. The first non-"Your Story"
@@ -1258,7 +1330,8 @@ async fn scrape_fb_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
 async fn scrape_ig_stories(wv: &tauri::WebviewWindow, max_frames: usize) {
     use rand::Rng;
 
-    println!("[IG] starting story scrape (max {} frames)", max_frames);
+    let _ = set_background_scraper_media_guard(wv, true);
+    info!("[IG] story scrape start, max_frames={}", max_frames);
 
     // Click the first friend's story avatar in the top tray.
     // Instagram story trays are anchors linking to /stories/<username>/
@@ -1392,6 +1465,7 @@ async fn fb_scrape_feed(
             .user_agent(&scraper_user_agent)
             .transparent(true)
             .initialization_script(include_str!("webkit-mask.js"))
+            .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
             .title("Freed Facebook")
             .inner_size(1280.0, 900.0)
             .on_navigation(move |url| {
@@ -1616,6 +1690,7 @@ async fn fb_scrape_groups(
             )
             .user_agent(&scraper_user_agent)
             .initialization_script(include_str!("webkit-mask.js"))
+            .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
             .title("Freed Facebook")
             .inner_size(1280.0, 900.0)
             .on_navigation(move |url| {
@@ -1724,6 +1799,8 @@ async fn ig_show_login(
     use tauri::WebviewWindowBuilder;
 
     if let Some(existing) = app.get_webview_window("ig-scraper") {
+        let _ = set_background_scraper_window_cloak(&existing, false);
+        let _ = set_background_scraper_media_guard(&existing, false);
         existing
             .navigate("https://www.instagram.com/accounts/login/".parse().unwrap())
             .map_err(|e| e.to_string())?;
@@ -1830,12 +1907,15 @@ async fn ig_check_auth(
             tauri::WebviewUrl::External("https://www.instagram.com/".parse().unwrap()),
         )
         .user_agent(&scraper_user_agent)
+        .initialization_script(include_str!("webkit-mask.js"))
+        .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
         .title("Freed Instagram")
         .inner_size(460.0, 700.0)
         .visible(false)
         .build()
         .map_err(|e| e.to_string())?,
     };
+    set_background_scraper_media_guard(&wv, true)?;
 
     tokio::time::sleep(Duration::from_secs(6)).await;
 
@@ -1905,6 +1985,7 @@ async fn ig_scrape_feed(
             .user_agent(&scraper_user_agent)
             .transparent(true)
             .initialization_script(include_str!("webkit-mask.js"))
+            .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
             .title("Freed Instagram")
             .inner_size(1280.0, 900.0)
             .on_navigation(move |url| {
@@ -2315,6 +2396,8 @@ async fn li_show_login(
     use tauri::WebviewWindowBuilder;
 
     if let Some(existing) = app.get_webview_window("li-scraper") {
+        let _ = set_background_scraper_window_cloak(&existing, false);
+        let _ = set_background_scraper_media_guard(&existing, false);
         existing
             .navigate("https://www.linkedin.com/login".parse().unwrap())
             .map_err(|e| e.to_string())?;
@@ -2398,6 +2481,7 @@ async fn li_check_auth(
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "li-scraper", "auth check");
     let wv = match app.get_webview_window("li-scraper") {
         Some(w) => {
+            let _ = set_background_scraper_media_guard(&w, true);
             w.navigate("https://www.linkedin.com/feed/".parse().unwrap())
                 .map_err(|e| e.to_string())?;
             w
@@ -2408,12 +2492,15 @@ async fn li_check_auth(
             tauri::WebviewUrl::External("https://www.linkedin.com/feed/".parse().unwrap()),
         )
         .user_agent(&scraper_user_agent)
+        .initialization_script(include_str!("webkit-mask.js"))
+        .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
         .title("Freed LinkedIn")
         .inner_size(460.0, 700.0)
         .visible(false)
         .build()
         .map_err(|e| e.to_string())?,
     };
+    set_background_scraper_media_guard(&wv, true)?;
 
     tokio::time::sleep(Duration::from_secs(6)).await;
 
@@ -2483,6 +2570,7 @@ async fn li_scrape_feed(
             .user_agent(&scraper_user_agent)
             .transparent(true)
             .initialization_script(include_str!("webkit-mask.js"))
+            .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
             .title("Freed LinkedIn")
             .inner_size(1280.0, 900.0)
             .on_navigation(move |url| {

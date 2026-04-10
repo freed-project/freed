@@ -57,4 +57,45 @@ describe("ig-stories-extract.js", () => {
     expect(payloads[0].posts[0].shortcode).toBe("story_ABC123xyz");
     expect(payloads[1].posts[0].shortcode).toBe("story_ABC123xyz");
   });
+
+  it("still extracts video story media when the video is muted", () => {
+    window.history.replaceState({}, "", "/stories/alice/VID123/");
+
+    document.body.innerHTML = `
+      <div role="dialog">
+        <a href="https://www.instagram.com/alice/">alice</a>
+        <video src="https://cdn.example/story-video.mp4" poster="https://cdn.example/poster.jpg" muted></video>
+        <time datetime="2026-03-23T12:00:00.000Z"></time>
+      </div>
+    `;
+
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+    setReadonlyNumber(dialog, "offsetHeight", 800);
+
+    const payloads: Array<{ posts: Array<{ shortcode: string; mediaUrls: string[]; isVideo: boolean }> }> = [];
+    (
+      window as unknown as {
+        __TAURI__: { event: { emit: (_name: string, payload: unknown) => void } };
+      }
+    ).__TAURI__ = {
+      event: {
+        emit: (_name, payload) => {
+          payloads.push(
+            payload as {
+              posts: Array<{ shortcode: string; mediaUrls: string[]; isVideo: boolean }>;
+            },
+          );
+        },
+      },
+    };
+
+    window.eval(script);
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].posts[0].shortcode).toBe("story_VID123");
+    expect(payloads[0].posts[0].isVideo).toBe(true);
+    expect(payloads[0].posts[0].mediaUrls).toContain(
+      "https://cdn.example/story-video.mp4",
+    );
+  });
 });
