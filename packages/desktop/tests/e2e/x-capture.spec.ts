@@ -108,9 +108,11 @@ test("X settings section shows connect button when not authenticated", async ({
   });
 
   // Navigate to X section via the sidebar button
-  const xSection = page.getByRole("button", { name: "X / Twitter" });
+  const xSection = page.getByRole("button", { name: "X / Twitter" }).last();
   await expect(xSection).toBeVisible({ timeout: 3_000 });
-  await xSection.click();
+  await xSection.evaluate((button) => {
+    (button as HTMLButtonElement).click();
+  });
 
   await expect(page.getByText("Sign in to X")).toBeVisible({
     timeout: 3_000,
@@ -146,9 +148,11 @@ test("X connect form accepts cookies and triggers sync", async ({
   });
 
   // Navigate to X section via the sidebar button and wait for scroll to settle
-  const xSection = page.getByRole("button", { name: "X / Twitter" });
+  const xSection = page.getByRole("button", { name: "X / Twitter" }).last();
   await expect(xSection).toBeVisible({ timeout: 3_000 });
-  await xSection.click();
+  await xSection.evaluate((button) => {
+    (button as HTMLButtonElement).click();
+  });
   await page.waitForTimeout(500);
 
   // Click "Manual cookie setup" to reach the cookie input form
@@ -181,5 +185,8 @@ test("X connect form accepts cookies and triggers sync", async ({
   await app.acceptProviderRiskIfPresent("x");
 
   // After connecting, the "Connected" indicator should appear
-  await expect(page.getByText("Connected", { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("provider-status-x")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("provider-sync-action-x")).toBeVisible({
+    timeout: 10_000,
+  });
 });

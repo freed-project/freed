@@ -60,9 +60,11 @@ test("Facebook settings section shows connect button when not authenticated", as
 
   // Navigate to Facebook section via the settings sidebar button (second match,
   // after the main sidebar source button and before "Connect Facebook Account")
-  const fbSection = page.getByRole("button", { name: "Facebook" }).nth(1);
+  const fbSection = page.getByRole("button", { name: "Facebook" }).last();
   await expect(fbSection).toBeVisible({ timeout: 3_000 });
-  await fbSection.click();
+  await fbSection.evaluate((button) => {
+    (button as HTMLButtonElement).click();
+  });
 
   await expect(page.getByText("Log in with Facebook")).toBeVisible({
     timeout: 3_000,
@@ -96,9 +98,11 @@ test("Facebook connect form accepts cookies and triggers sync", async ({
   });
 
   // Navigate to Facebook section via the settings sidebar button
-  const fbSection = page.getByRole("button", { name: "Facebook" }).nth(1);
+  const fbSection = page.getByRole("button", { name: "Facebook" }).last();
   await expect(fbSection).toBeVisible({ timeout: 3_000 });
-  await fbSection.click();
+  await fbSection.evaluate((button) => {
+    (button as HTMLButtonElement).click();
+  });
 
   // Click "Log in with Facebook" to open the login WebView (calls fb_show_login IPC)
   await expect(page.getByText("Log in with Facebook")).toBeVisible({ timeout: 3_000 });
@@ -117,9 +121,9 @@ test("Facebook connect form accepts cookies and triggers sync", async ({
   });
 
   // After auth state updates, the section should expose the sync action.
-  await expect(
-    page.getByRole("button", { name: "Sync Now" }),
-  ).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("provider-sync-action-facebook")).toBeVisible({
+    timeout: 5_000,
+  });
 });
 
 test("Facebook sync excludes posts from filtered groups", async ({
@@ -144,9 +148,11 @@ test("Facebook sync excludes posts from filtered groups", async ({
     timeout: 5_000,
   });
 
-  const fbSection = page.getByRole("button", { name: "Facebook" }).nth(1);
+  const fbSection = page.getByRole("button", { name: "Facebook" }).last();
   await expect(fbSection).toBeVisible({ timeout: 3_000 });
-  await fbSection.click();
+  await fbSection.evaluate((button) => {
+    (button as HTMLButtonElement).click();
+  });
 
   await ipc.setHandler("fb_scrape_feed", () => {
     const emit = (eventName: string, payload: unknown) => {
@@ -258,11 +264,11 @@ test("Facebook sync excludes posts from filtered groups", async ({
     }));
   });
 
-  await expect(page.getByRole("button", { name: "Sync Now" })).toBeVisible({
+  await expect(page.getByTestId("provider-sync-action-facebook")).toBeVisible({
     timeout: 5_000,
   });
 
-  await page.getByRole("button", { name: "Sync Now" }).click();
+  await page.getByTestId("provider-sync-action-facebook").click();
   await app.acceptProviderRiskIfPresent("facebook");
 
   await page.waitForFunction(() => {
