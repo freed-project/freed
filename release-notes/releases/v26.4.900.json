@@ -1,0 +1,37 @@
+{
+  "tag": "v26.4.900",
+  "version": "26.4.900",
+  "dayKey": "26.4.9",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-10T04:24:13.131Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.4.301",
+    "previousPublishedDayTag": "v26.4.301",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.900"
+    ],
+    "prNumbers": [
+      158,
+      175,
+      176,
+      177
+    ],
+    "commitSubjects": [
+      "feat: add provider health diagnostics and source management (#177)",
+      "fix: mark items read when scrolled past (#158)",
+      "fix: make browser session copy more accurate (#176)",
+      "fix: silence background social scrapers (#175)"
+    ]
+  },
+  "release": {
+    "deck": "Provider health diagnostics and source management",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.900\n\nProvider health diagnostics and source management\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
