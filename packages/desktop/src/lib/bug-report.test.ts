@@ -91,6 +91,32 @@ describe("desktop bug reporting", () => {
     expect(zip.file("diagnostics/snapshots.json")).toBeNull();
   });
 
+  it("omits unchecked public-safe artifacts from the bundle", async () => {
+    const bundle = await desktopBugReporting.generateBundle({
+      privacyTier: "public-safe",
+      draft: {
+        issueType: "broken-feature",
+        title: "Minimal report",
+        description: "Only crash context should ship.",
+        reproSteps: "",
+        expectedBehavior: "",
+        actualBehavior: "",
+        selectedArtifacts: ["crash-context"],
+        screenshot: null,
+      },
+    });
+
+    const zip = await JSZip.loadAsync(bundle.blob);
+    const summary = await zip.file("summary.md")?.async("string");
+
+    expect(zip.file("diagnostics/runtime.json")).toBeNull();
+    expect(zip.file("diagnostics/state-summary.json")).toBeNull();
+    expect(zip.file("diagnostics/report-events.json")).toBeNull();
+    expect(zip.file("diagnostics/debug-events.json")).toBeNull();
+    expect(summary).not.toContain("Version:");
+    expect(summary).not.toContain("Platform:");
+  });
+
   it("redacts sensitive values even in private bundles", async () => {
     const bundle = await desktopBugReporting.generateBundle({
       privacyTier: "private",

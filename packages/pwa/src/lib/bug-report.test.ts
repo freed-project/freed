@@ -63,4 +63,30 @@ describe("pwa bug reporting", () => {
     expect(bundle.manifest.includedArtifacts).not.toContain("screenshot");
     expect(zip.file("screenshots/capture.png")).toBeNull();
   });
+
+  it("omits unchecked public-safe artifacts from exported zips", async () => {
+    const bundle = await pwaBugReporting.generateBundle({
+      privacyTier: "public-safe",
+      draft: {
+        issueType: "other",
+        title: "Minimal report",
+        description: "No metadata please.",
+        reproSteps: "",
+        expectedBehavior: "",
+        actualBehavior: "",
+        selectedArtifacts: ["crash-context"],
+        screenshot: null,
+      },
+    });
+
+    const zip = await JSZip.loadAsync(bundle.blob);
+    const summary = await zip.file("summary.md")?.async("string");
+
+    expect(zip.file("diagnostics/runtime.json")).toBeNull();
+    expect(zip.file("diagnostics/state-summary.json")).toBeNull();
+    expect(zip.file("diagnostics/report-events.json")).toBeNull();
+    expect(zip.file("diagnostics/debug-events.json")).toBeNull();
+    expect(summary).not.toContain("Version:");
+    expect(summary).not.toContain("Platform:");
+  });
 });

@@ -90,18 +90,23 @@ async function buildPwaBundle(input: {
     appName: APP_NAME,
     draft: input.draft,
     manifest,
-    metadataLines: [
-      `Version: ${runtimeInfo.version}`,
-      `Platform: ${runtimeInfo.platform}`,
-      `Online: ${runtimeInfo.online ? "yes" : "no"}`,
-      `Service worker: ${runtimeInfo.serviceWorker ? "available" : "missing"}`,
-    ],
+    metadataLines: includedArtifacts.includes("app-metadata")
+      ? [
+          `Version: ${runtimeInfo.version}`,
+          `Platform: ${runtimeInfo.platform}`,
+          `Online: ${runtimeInfo.online ? "yes" : "no"}`,
+          `Service worker: ${runtimeInfo.serviceWorker ? "available" : "missing"}`,
+        ]
+      : [],
   });
 
-  const diagnostics: Record<string, unknown> = {
-    runtime: runtimeInfo,
-    stateSummary,
-  };
+  const diagnostics: Record<string, unknown> = {};
+  if (includedArtifacts.includes("app-metadata")) {
+    diagnostics.runtime = runtimeInfo;
+  }
+  if (includedArtifacts.includes("state-summary")) {
+    diagnostics.stateSummary = stateSummary;
+  }
   if (includedArtifacts.includes("diagnostic-events")) {
     diagnostics.reportEvents = reportEvents;
     diagnostics.debugEvents = debugEvents;
@@ -129,11 +134,15 @@ async function buildPwaBundle(input: {
         : null,
     },
   });
-  addJson(zip, "diagnostics/report-events.json", reportEvents);
-  addJson(zip, "diagnostics/state-summary.json", stateSummary);
-  addJson(zip, "diagnostics/runtime.json", runtimeInfo);
   if (includedArtifacts.includes("diagnostic-events")) {
+    addJson(zip, "diagnostics/report-events.json", reportEvents);
     addJson(zip, "diagnostics/debug-events.json", debugEvents);
+  }
+  if (includedArtifacts.includes("state-summary")) {
+    addJson(zip, "diagnostics/state-summary.json", stateSummary);
+  }
+  if (includedArtifacts.includes("app-metadata")) {
+    addJson(zip, "diagnostics/runtime.json", runtimeInfo);
   }
   if (includedArtifacts.includes("crash-context") && fatalError) {
     addJson(zip, "diagnostics/fatal-error.json", fatalError);
