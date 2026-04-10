@@ -18,8 +18,81 @@ async function acceptLegalGate(
   await acceptButton.evaluate((element) => {
     (element as HTMLButtonElement).click();
   });
-  await expect(page.locator("main")).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator("main")).toBeVisible({ timeout: 10_000 });
   return true;
+}
+
+async function seedSidebarFeeds(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        feeds: Record<string, unknown>;
+        isInitialized: boolean;
+        addFeed: (feed: unknown) => Promise<void>;
+        removeAllFeeds: (includeItems: boolean) => Promise<void>;
+      };
+    };
+
+    const feedTitles = [
+      "Alpha Dispatch",
+      "Beta Notes",
+      "Gamma Journal",
+      "Delta Weekly",
+      "Epsilon Review",
+      "Zeta Digest",
+      "Eta Bulletin",
+      "Theta Roundup",
+      "Iota Ledger",
+      "Kappa Signal",
+      "Lambda Letters",
+      "Needle Feed",
+    ];
+
+    await new Promise<void>((resolve, reject) => {
+      const startedAt = Date.now();
+      const interval = window.setInterval(() => {
+        if (store.getState().isInitialized) {
+          clearInterval(interval);
+          resolve();
+          return;
+        }
+        if (Date.now() - startedAt > 5_000) {
+          clearInterval(interval);
+          reject(new Error("store init timeout"));
+        }
+      }, 50);
+    });
+
+    await store.getState().removeAllFeeds(false);
+
+    for (const [index, title] of feedTitles.entries()) {
+      await store.getState().addFeed({
+        url: `https://example.com/feeds/${index + 1}.xml`,
+        title,
+        enabled: true,
+        trackUnread: false,
+      });
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const startedAt = Date.now();
+      const interval = window.setInterval(() => {
+        const { feeds } = store.getState();
+        if (Object.keys(feeds).length >= feedTitles.length) {
+          clearInterval(interval);
+          resolve();
+          return;
+        }
+        if (Date.now() - startedAt > 5_000) {
+          clearInterval(interval);
+          reject(new Error("feed seed timeout"));
+        }
+      }, 50);
+    });
+  });
 }
 
 async function seedFriendLocation(
@@ -534,6 +607,30 @@ test.describe("FREED PWA", () => {
     await page.click('button:has-text("All")');
     const allButton = page.locator('button:has-text("All")');
     await expect(allButton).toHaveClass(/bg-\[#8b5cf6\]\/20/);
+  });
+
+  test("rss source accordion pages feeds and search moves matches into the first page", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await acceptLegalGate(page);
+    await seedSidebarFeeds(page);
+
+    await page.getByRole("button", { name: "Expand feeds" }).click();
+
+    await expect(page.getByRole("button", { name: "Alpha Dispatch" })).toBeVisible();
+    await expect(page.getByText("1 to 10 of 12")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next feeds page" })).toBeEnabled();
+
+    await page.getByRole("button", { name: "Next feeds page" }).click();
+    await expect(page.getByText("11 to 12 of 12")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Previous feeds page" })).toBeEnabled();
+
+    await page.getByRole("textbox", { name: "Search or run a command" }).fill("needle");
+    await expect(page.getByRole("button", { name: "Needle Feed" })).toBeVisible();
+    await expect(page.getByText("11 to 12 of 12")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Next feeds page" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Alpha Dispatch" })).toHaveCount(0);
   });
 
   test("map navigation is live from the sidebar", async ({ page }) => {

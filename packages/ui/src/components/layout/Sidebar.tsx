@@ -18,6 +18,32 @@ function fmt(n: number): string {
   return compactNumberFormatter.format(n);
 }
 
+const FEEDS_PAGE_SIZE = 10;
+
+function scoreFeedMatch(feed: RssFeed, queryTerms: string[]): number {
+  if (queryTerms.length === 0) return 0;
+
+  const title = feed.title.toLocaleLowerCase();
+  const siteUrl = feed.siteUrl?.toLocaleLowerCase() ?? "";
+  const url = feed.url.toLocaleLowerCase();
+  const folder = feed.folder?.toLocaleLowerCase() ?? "";
+
+  let score = 0;
+  for (const term of queryTerms) {
+    if (title === term) score += 120;
+    else if (title.startsWith(term)) score += 90;
+    else if (title.includes(term)) score += 60;
+
+    if (folder.startsWith(term)) score += 40;
+    else if (folder.includes(term)) score += 24;
+
+    if (siteUrl.startsWith(term) || url.startsWith(term)) score += 36;
+    else if (siteUrl.includes(term) || url.includes(term)) score += 18;
+  }
+
+  return score;
+}
+
 interface SidebarProps {
   open: boolean;
   onClose: () => void;
@@ -353,6 +379,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setSelectedFriend = useAppStore((s) => s.setSelectedFriend);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
+  const searchQuery = useAppStore((s) => s.searchQuery);
   const feeds = useAppStore((s) => s.feeds);
   const friends = useAppStore((s) => s.friends);
   const feedUnreadCounts = useAppStore((s) => s.feedUnreadCounts);
@@ -386,6 +413,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const { open: showSettings, openDefault: openSettings, close: closeSettings } = useSettingsStore();
   const [dragWidth, setDragWidth] = useState<number | null>(null);
+  const [rssFeedsOpen, setRssFeedsOpen] = useState(false);
+  const [rssFeedPage, setRssFeedPage] = useState(0);
 
   // Allow external packages (desktop, pwa) to open settings to a specific section
   // via a DOM event rather than importing the store directly across package boundaries.
@@ -482,6 +511,30 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   );
 
   const feedList = Object.values(feeds).filter((f) => f.enabled);
+  const trimmedSearchQuery = searchQuery.trim().toLocaleLowerCase();
+  const searchTerms = useMemo(
+    () => trimmedSearchQuery.split(/\s+/).filter(Boolean),
+    [trimmedSearchQuery],
+  );
+  const visibleFeedList = useMemo(() => {
+    if (searchTerms.length === 0) return feedList;
+
+    return feedList
+      .map((feed) => ({ feed, score: scoreFeedMatch(feed, searchTerms) }))
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        if (a.feed.url === activeFilter.feedUrl) return -1;
+        if (b.feed.url === activeFilter.feedUrl) return 1;
+        return a.feed.title.localeCompare(b.feed.title);
+      })
+      .map(({ feed }) => feed);
+  }, [activeFilter.feedUrl, feedList, searchTerms]);
+  const totalFeedPages = Math.max(1, Math.ceil(visibleFeedList.length / FEEDS_PAGE_SIZE));
+  const pagedFeeds = useMemo(() => {
+    const startIndex = rssFeedPage * FEEDS_PAGE_SIZE;
+    return visibleFeedList.slice(startIndex, startIndex + FEEDS_PAGE_SIZE);
+  }, [rssFeedPage, visibleFeedList]);
 
   const showFeed = useCallback((filter: FilterOptions) => {
     setActiveView("feed");
@@ -501,6 +554,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const isTopSourceActive = (source: SourceNavigationItem) => {
     if (!isFeedView) return false;
+    if (source.id === "rss" && activeFilter.platform === "rss") return true;
     if (activeFilter.feedUrl) return false;
     if (activeFilter.archivedOnly) return false;
     if (activeFilter.savedOnly) return false;
@@ -546,6 +600,33 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     () => (selectedMenuSource ? (getSourceStatus?.(selectedMenuSourceId) ?? null) : null),
     [getSourceStatus, selectedMenuSource, selectedMenuSourceId, providerSyncCounts, health],
   );
+
+  useEffect(() => {
+    if (activeFilter.platform === "rss" || activeFilter.feedUrl) {
+      setRssFeedsOpen(true);
+    }
+  }, [activeFilter.feedUrl, activeFilter.platform]);
+
+  useEffect(() => {
+    setRssFeedPage(0);
+  }, [trimmedSearchQuery]);
+
+  useEffect(() => {
+    const maxPage = Math.max(0, totalFeedPages - 1);
+    if (rssFeedPage > maxPage) {
+      setRssFeedPage(maxPage);
+    }
+  }, [rssFeedPage, totalFeedPages]);
+
+  useEffect(() => {
+    if (!activeFilter.feedUrl || visibleFeedList.length === 0) return;
+    const index = visibleFeedList.findIndex((feed) => feed.url === activeFilter.feedUrl);
+    if (index === -1) return;
+    const nextPage = Math.floor(index / FEEDS_PAGE_SIZE);
+    if (nextPage !== rssFeedPage) {
+      setRssFeedPage(nextPage);
+    }
+  }, [activeFilter.feedUrl, rssFeedPage, visibleFeedList]);
 
   return (
     <>
@@ -637,50 +718,343 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                               : "opacity-100 group-hover/source:pointer-events-none group-hover/source:translate-x-1 group-hover/source:opacity-0"
                           }`}
                         >
+                          <span className={sourceUnreadCount(source) > 0 ? "text-[#8b5cf6] font-medium" : "text-[#52525b]"}>
+                            {fmt(sourceUnreadCount(source))}
+                          </span>
+                          <span className="text-[#3f3f46]">/</span>
+                          <span className="text-[#52525b]">{fmt(sourceTotalCount(source))}</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+              {providerSourceItems.map((source) => {
+                const isRssSource = source.id === "rss" && feedList.length > 0;
+                const sourceStatus = getSourceStatus?.(source.id) ?? null;
+
+                if (isRssSource) {
+                  return (
+                    <li key={sourceKey(source)}>
+                      <div
+                        className={`group/source rounded-lg border transition-all ${
+                          isTopSourceActive(source)
+                            ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
+                            : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                        }`}
+                      >
+                        <div className="flex items-stretch gap-2">
+                          <button
+                            onClick={() => handleSourceClick(source)}
+                            data-testid={`source-row-${sourceKey(source)}`}
+                            className={`
+                              flex-1 flex items-center gap-3 pl-3 py-1.5 min-w-0
+                              text-left text-sm transition-all
+                              ${
+                                isTopSourceActive(source)
+                                  ? "text-white"
+                                  : "text-[#a1a1aa] group-hover/source:text-white"
+                              }
+                            `}
+                          >
+                            <span className="w-5 flex items-center justify-center">{source.icon}</span>
+                            <span className="min-w-0 flex-1 flex items-center gap-1.5 truncate">
+                              <span className="truncate">{source.label}</span>
+                              {sourceStatus ? (
+                                <ProviderStatusIndicator
+                                  tone={sourceStatus.tone}
+                                  syncing={sourceStatus.syncing}
+                                  label={sourceStatus.label}
+                                  size="xxs"
+                                  testId={`source-status-${sourceKey(source)}`}
+                                />
+                              ) : null}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRssFeedsOpen((value) => !value)}
+                            className="shrink-0 self-center p-1 rounded text-[#52525b] hover:text-[#a1a1aa] transition-colors"
+                            aria-label={rssFeedsOpen ? "Collapse feeds" : "Expand feeds"}
+                            aria-expanded={rssFeedsOpen}
+                          >
+                            <svg
+                              className={`w-3 h-3 transition-transform ${rssFeedsOpen ? "rotate-90" : ""}`}
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                          <div className="shrink-0 flex items-center pr-2">
+                            <div className="relative ml-1.5 h-6 w-[54px] shrink-0">
+                              {sourceTotalCount(source) > 0 && (
+                                <span
+                                  data-testid={`source-counts-${sourceKey(source)}`}
+                                  className={`absolute inset-y-0 right-0 flex items-center gap-0.5 text-[10px] leading-none tabular-nums transition-all duration-200 ease-in-out ${
+                                    openMenuSourceKey === sourceKey(source)
+                                      ? "pointer-events-none translate-x-1 opacity-0"
+                                      : "opacity-100 group-hover/source:pointer-events-none group-hover/source:translate-x-1 group-hover/source:opacity-0"
+                                  }`}
+                                >
+                                  <span className={sourceUnreadCount(source) > 0 ? "text-[#8b5cf6] font-medium" : "text-[#52525b]"}>
+                                    {fmt(sourceUnreadCount(source))}
+                                  </span>
+                                  <span className="text-[#3f3f46]">/</span>
+                                  <span className="text-[#52525b]">{fmt(sourceTotalCount(source))}</span>
+                                </span>
+                              )}
+                              {canShowSourceMenu(source) ? (
+                                <button
+                                  aria-label={`Options for ${source.label}`}
+                                  data-testid={`source-menu-trigger-${sourceKey(source)}`}
+                                  onMouseDown={(e) => {
+                                    e.stopPropagation();
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (openMenuSourceKey === sourceKey(source)) {
+                                      setOpenMenuSourceKey(null);
+                                      setSourceMenuAnchorRect(null);
+                                      setSourceMenuAnchorElement(null);
+                                    } else {
+                                      setOpenMenuFeedUrl(null);
+                                      setMenuAnchorRect(null);
+                                      setMenuAnchorElement(null);
+                                      setOpenMenuSourceKey(sourceKey(source));
+                                      setSourceMenuAnchorRect(e.currentTarget.getBoundingClientRect());
+                                      setSourceMenuAnchorElement(e.currentTarget);
+                                    }
+                                  }}
+                                  className={`absolute inset-y-0 right-0 flex items-center p-1 rounded-md transition-all duration-200 ease-in-out hover:text-white hover:bg-white/10 ${
+                                    openMenuSourceKey === sourceKey(source)
+                                      ? "translate-x-0 bg-white/10 text-white opacity-100"
+                                      : "pointer-events-none translate-x-[-4px] text-[#71717a] opacity-0 group-hover/source:pointer-events-auto group-hover/source:translate-x-0 group-hover/source:opacity-100"
+                                  }`}
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
+                                  </svg>
+                                </button>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+
+                        {rssFeedsOpen && (
+                          <div className="mt-1 ml-8 border-l border-[rgba(255,255,255,0.06)] pl-2">
+                            {visibleFeedList.length > 0 ? (
+                              <>
+                                <ul className="space-y-0.5">
+                                  {pagedFeeds.map((feed) => {
+                                    const unread = feedUnreadCounts[feed.url] ?? 0;
+                                    const total = feedTotalCounts[feed.url] ?? 0;
+                                    const isActive = isFeedView && activeFilter.feedUrl === feed.url;
+                                    const menuOpen = openMenuFeedUrl === feed.url;
+
+                                    return (
+                                      <li
+                                        key={feed.url}
+                                        className={`group/feed flex items-stretch gap-2 rounded-lg border transition-all ${
+                                          isActive
+                                            ? "bg-[#8b5cf6]/20 border-[#8b5cf6]/30 text-white"
+                                            : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                                        }`}
+                                      >
+                                        <button
+                                          onClick={() => handleFeedClick(feed.url)}
+                                          className="flex-1 flex items-center gap-2 pl-3 py-2 min-w-0 text-left"
+                                        >
+                                          {feed.imageUrl ? (
+                                            <img
+                                              src={feed.imageUrl}
+                                              alt=""
+                                              loading="lazy"
+                                              decoding="async"
+                                              className="w-4 h-4 rounded-sm shrink-0 object-cover"
+                                            />
+                                          ) : (
+                                            <RssIcon className="w-4 h-4 shrink-0 text-[#52525b]" />
+                                          )}
+                                          <span className="flex-1 truncate text-xs">{feed.title}</span>
+                                        </button>
+
+                                        <div className="shrink-0 flex items-center pr-2">
+                                          {total > 0 && (
+                                            <span className={`${menuOpen ? "hidden" : "flex group-hover/feed:hidden"} items-center gap-0.5 text-[10px] tabular-nums`}>
+                                              <span className={unread > 0 ? "text-[#8b5cf6] font-medium" : "text-[#52525b]"}>
+                                                {fmt(unread)}
+                                              </span>
+                                              <span className="text-[#3f3f46]">/</span>
+                                              <span className="text-[#52525b]">{fmt(total)}</span>
+                                            </span>
+                                          )}
+                                          <button
+                                            aria-label={`Options for ${feed.title}`}
+                                            onMouseDown={(e) => {
+                                              e.stopPropagation();
+                                            }}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              if (menuOpen) {
+                                                setOpenMenuFeedUrl(null);
+                                                setMenuAnchorRect(null);
+                                                setMenuAnchorElement(null);
+                                              } else {
+                                                setOpenMenuSourceKey(null);
+                                                setSourceMenuAnchorRect(null);
+                                                setSourceMenuAnchorElement(null);
+                                                setOpenMenuFeedUrl(feed.url);
+                                                setMenuAnchorRect(e.currentTarget.getBoundingClientRect());
+                                                setMenuAnchorElement(e.currentTarget);
+                                              }
+                                            }}
+                                            className={`${menuOpen ? "flex bg-white/10 text-white" : "hidden group-hover/feed:flex text-[#71717a]"} items-center p-1 rounded-md hover:text-white hover:bg-white/10 transition-colors`}
+                                          >
+                                            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                                              <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
+                                            </svg>
+                                          </button>
+                                        </div>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+
+                                {visibleFeedList.length > FEEDS_PAGE_SIZE && (
+                                  <div className="mt-2 flex items-center justify-between gap-2 px-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => setRssFeedPage((page) => Math.max(0, page - 1))}
+                                      disabled={rssFeedPage === 0}
+                                      aria-label="Previous feeds page"
+                                      className="rounded-md px-2 py-1 text-[11px] font-medium text-[#a1a1aa] hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                      &lt;
+                                    </button>
+                                    <span className="text-[10px] text-[#52525b]">
+                                      {(rssFeedPage * FEEDS_PAGE_SIZE + 1).toLocaleString()} to{" "}
+                                      {Math.min((rssFeedPage + 1) * FEEDS_PAGE_SIZE, visibleFeedList.length).toLocaleString()} of{" "}
+                                      {visibleFeedList.length.toLocaleString()}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setRssFeedPage((page) => Math.min(totalFeedPages - 1, page + 1))}
+                                      disabled={rssFeedPage >= totalFeedPages - 1}
+                                      aria-label="Next feeds page"
+                                      className="rounded-md px-2 py-1 text-[11px] font-medium text-[#a1a1aa] hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                      &gt;
+                                    </button>
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <p className="px-3 py-2 text-[11px] text-[#71717a]">
+                                No feeds match &ldquo;{searchQuery.trim()}&rdquo;.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </li>
+                  );
+                }
+
+                return (
+                  <li
+                    key={source.id ?? "all"}
+                    className={`group/source flex items-stretch gap-2 rounded-lg border transition-all ${
+                      isTopSourceActive(source)
+                        ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
+                        : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                    }`}
+                  >
+                    <button
+                      onClick={() => handleSourceClick(source)}
+                      data-testid={`source-row-${sourceKey(source)}`}
+                      className={`
+                        flex-1 flex items-center gap-3 pl-3 py-1.5 min-w-0
+                        text-left text-sm transition-all
+                        ${
+                          isTopSourceActive(source)
+                            ? "text-white"
+                            : "text-[#a1a1aa] group-hover/source:text-white"
+                        }
+                      `}
+                    >
+                      <span className="w-5 flex items-center justify-center">{source.icon}</span>
+                      <span className="min-w-0 flex-1 truncate">{source.label}</span>
+                    </button>
+                    <div className="shrink-0 flex items-center pr-2">
+                      {SourceIndicator ? (
+                        <span
+                          data-testid={`source-indicator-slot-${sourceKey(source)}`}
+                          className={`flex h-4 w-4 shrink-0 items-center justify-center transition-transform duration-200 ease-in-out ${
+                            openMenuSourceKey === sourceKey(source)
+                              ? "translate-x-1"
+                              : "group-hover/source:translate-x-1"
+                          }`}
+                        >
+                          <SourceIndicator sourceId={source.id ?? "all"} />
+                        </span>
+                      ) : null}
+                      <div className="relative ml-1.5 h-6 w-[54px] shrink-0">
+                        {sourceTotalCount(source) > 0 && (
+                          <span
+                            data-testid={`source-counts-${sourceKey(source)}`}
+                            className={`absolute inset-y-0 right-0 flex items-center gap-0.5 text-[10px] leading-none tabular-nums transition-all duration-200 ease-in-out ${
+                              openMenuSourceKey === sourceKey(source)
+                                ? "pointer-events-none translate-x-1 opacity-0"
+                                : "opacity-100 group-hover/source:pointer-events-none group-hover/source:translate-x-1 group-hover/source:opacity-0"
+                            }`}
+                          >
                             <span className={sourceUnreadCount(source) > 0 ? "text-[#8b5cf6] font-medium" : "text-[#52525b]"}>
                               {fmt(sourceUnreadCount(source))}
                             </span>
                             <span className="text-[#3f3f46]">/</span>
                             <span className="text-[#52525b]">{fmt(sourceTotalCount(source))}</span>
-                        </span>
-                      )}
-                      {canShowSourceMenu(source) ? (
-                        <button
-                          aria-label={`Options for ${source.label}`}
-                          data-testid={`source-menu-trigger-${sourceKey(source)}`}
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (openMenuSourceKey === sourceKey(source)) {
-                              setOpenMenuSourceKey(null);
-                              setSourceMenuAnchorRect(null);
-                              setSourceMenuAnchorElement(null);
-                            } else {
-                              setOpenMenuFeedUrl(null);
-                              setMenuAnchorRect(null);
-                              setMenuAnchorElement(null);
-                              setOpenMenuSourceKey(sourceKey(source));
-                              setSourceMenuAnchorRect(e.currentTarget.getBoundingClientRect());
-                              setSourceMenuAnchorElement(e.currentTarget);
-                            }
-                          }}
-                          className={`absolute inset-y-0 right-0 flex items-center p-1 rounded-md transition-all duration-200 ease-in-out hover:text-white hover:bg-white/10 ${
-                            openMenuSourceKey === sourceKey(source)
-                              ? "translate-x-0 bg-white/10 text-white opacity-100"
-                              : "pointer-events-none translate-x-[-4px] text-[#71717a] opacity-0 group-hover/source:pointer-events-auto group-hover/source:translate-x-0 group-hover/source:opacity-100"
-                          }`}
-                        >
-                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
-                          </svg>
-                        </button>
-                      ) : null}
+                          </span>
+                        )}
+                        {canShowSourceMenu(source) ? (
+                          <button
+                            aria-label={`Options for ${source.label}`}
+                            data-testid={`source-menu-trigger-${sourceKey(source)}`}
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (openMenuSourceKey === sourceKey(source)) {
+                                setOpenMenuSourceKey(null);
+                                setSourceMenuAnchorRect(null);
+                                setSourceMenuAnchorElement(null);
+                              } else {
+                                setOpenMenuFeedUrl(null);
+                                setMenuAnchorRect(null);
+                                setMenuAnchorElement(null);
+                                setOpenMenuSourceKey(sourceKey(source));
+                                setSourceMenuAnchorRect(e.currentTarget.getBoundingClientRect());
+                                setSourceMenuAnchorElement(e.currentTarget);
+                              }
+                            }}
+                            className={`absolute inset-y-0 right-0 flex items-center p-1 rounded-md transition-all duration-200 ease-in-out hover:text-white hover:bg-white/10 ${
+                              openMenuSourceKey === sourceKey(source)
+                                ? "translate-x-0 bg-white/10 text-white opacity-100"
+                                : "pointer-events-none translate-x-[-4px] text-[#71717a] opacity-0 group-hover/source:pointer-events-auto group-hover/source:translate-x-0 group-hover/source:opacity-100"
+                            }`}
+                          >
+                            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
+                            </svg>
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
               {/* Friends — active nav item */}
               <li>
                 <button
@@ -752,98 +1126,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   )}
                 </button>
               </li>
-              {providerSourceItems.map((source) => (
-                <li
-                  key={source.id ?? "all"}
-                  className={`group/source flex items-stretch gap-2 rounded-lg border transition-all ${
-                    isTopSourceActive(source)
-                      ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
-                      : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
-                  }`}
-                >
-                  <button
-                    onClick={() => handleSourceClick(source)}
-                    data-testid={`source-row-${sourceKey(source)}`}
-                    className={`
-                      flex-1 flex items-center gap-3 pl-3 py-1.5 min-w-0
-                      text-left text-sm transition-all
-                      ${
-                        isTopSourceActive(source)
-                          ? "text-white"
-                          : "text-[#a1a1aa] group-hover/source:text-white"
-                      }
-                    `}
-                  >
-                    <span className="w-5 flex items-center justify-center">{source.icon}</span>
-                    <span className="min-w-0 flex-1 truncate">{source.label}</span>
-                  </button>
-                  <div className="shrink-0 flex items-center pr-2">
-                    {SourceIndicator ? (
-                      <span
-                        data-testid={`source-indicator-slot-${sourceKey(source)}`}
-                        className={`flex h-4 w-4 shrink-0 items-center justify-center transition-transform duration-200 ease-in-out ${
-                          openMenuSourceKey === sourceKey(source)
-                            ? "translate-x-1"
-                            : "group-hover/source:translate-x-1"
-                        }`}
-                      >
-                        <SourceIndicator sourceId={source.id ?? "all"} />
-                      </span>
-                    ) : null}
-                    <div className="relative ml-1.5 h-6 w-[54px] shrink-0">
-                      {sourceTotalCount(source) > 0 && (
-                        <span
-                          data-testid={`source-counts-${sourceKey(source)}`}
-                          className={`absolute inset-y-0 right-0 flex items-center gap-0.5 text-[10px] leading-none tabular-nums transition-all duration-200 ease-in-out ${
-                            openMenuSourceKey === sourceKey(source)
-                              ? "pointer-events-none translate-x-1 opacity-0"
-                              : "opacity-100 group-hover/source:pointer-events-none group-hover/source:translate-x-1 group-hover/source:opacity-0"
-                          }`}
-                        >
-                          <span className={sourceUnreadCount(source) > 0 ? "text-[#8b5cf6] font-medium" : "text-[#52525b]"}>
-                            {fmt(sourceUnreadCount(source))}
-                          </span>
-                          <span className="text-[#3f3f46]">/</span>
-                          <span className="text-[#52525b]">{fmt(sourceTotalCount(source))}</span>
-                        </span>
-                      )}
-                      {canShowSourceMenu(source) ? (
-                        <button
-                          aria-label={`Options for ${source.label}`}
-                          data-testid={`source-menu-trigger-${sourceKey(source)}`}
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (openMenuSourceKey === sourceKey(source)) {
-                              setOpenMenuSourceKey(null);
-                              setSourceMenuAnchorRect(null);
-                              setSourceMenuAnchorElement(null);
-                            } else {
-                              setOpenMenuFeedUrl(null);
-                              setMenuAnchorRect(null);
-                              setMenuAnchorElement(null);
-                              setOpenMenuSourceKey(sourceKey(source));
-                              setSourceMenuAnchorRect(e.currentTarget.getBoundingClientRect());
-                              setSourceMenuAnchorElement(e.currentTarget);
-                            }
-                          }}
-                          className={`absolute inset-y-0 right-0 flex items-center p-1 rounded-md transition-all duration-200 ease-in-out hover:text-white hover:bg-white/10 ${
-                            openMenuSourceKey === sourceKey(source)
-                              ? "translate-x-0 bg-white/10 text-white opacity-100"
-                              : "pointer-events-none translate-x-[-4px] text-[#71717a] opacity-0 group-hover/source:pointer-events-auto group-hover/source:translate-x-0 group-hover/source:opacity-100"
-                          }`}
-                        >
-                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
-                          </svg>
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                </li>
-              ))}
             </ul>
           </SidebarSection>
 
@@ -925,86 +1207,6 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                           />
                         ))}
                     </TagTreeNode>
-                  );
-                })}
-              </ul>
-            </SidebarSection>
-          )}
-
-          {/* Feeds */}
-          {feedList.length > 0 && (
-            <SidebarSection title="Feeds" defaultOpen={false} count={feedList.length}>
-              <ul className="space-y-0.5 overflow-y-auto max-h-[40vh] -mr-4 pr-1">
-                {feedList.map((feed) => {
-                  const unread = feedUnreadCounts[feed.url] ?? 0;
-                  const total = feedTotalCounts[feed.url] ?? 0;
-                  const isActive = isFeedView && activeFilter.feedUrl === feed.url;
-                  const menuOpen = openMenuFeedUrl === feed.url;
-                  return (
-                    <li
-                      key={feed.url}
-                      className={`group/feed flex items-stretch gap-2 rounded-lg border transition-all ${
-                        isActive
-                          ? "bg-[#8b5cf6]/20 border-[#8b5cf6]/30 text-white"
-                          : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
-                      }`}
-                    >
-                      <button
-                        onClick={() => handleFeedClick(feed.url)}
-                        className="flex-1 flex items-center gap-2 pl-3 py-2 min-w-0 text-left"
-                      >
-                        {feed.imageUrl ? (
-                          <img
-                            src={feed.imageUrl}
-                            alt=""
-                            loading="lazy"
-                            decoding="async"
-                            className="w-4 h-4 rounded-sm shrink-0 object-cover"
-                          />
-                        ) : (
-                          <RssIcon className="w-4 h-4 shrink-0 text-[#52525b]" />
-                        )}
-                        <span className="flex-1 truncate text-xs">{feed.title}</span>
-                      </button>
-
-                      <div className="shrink-0 flex items-center pr-2">
-                        {total > 0 && (
-                          <span className={`${menuOpen ? "hidden" : "flex group-hover/feed:hidden"} items-center gap-0.5 text-[10px] tabular-nums`}>
-                            <span className={unread > 0 ? "text-[#8b5cf6] font-medium" : "text-[#52525b]"}>
-                              {fmt(unread)}
-                            </span>
-                            <span className="text-[#3f3f46]">/</span>
-                            <span className="text-[#52525b]">{fmt(total)}</span>
-                          </span>
-                        )}
-                        <button
-                          aria-label={`Options for ${feed.title}`}
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (menuOpen) {
-                              setOpenMenuFeedUrl(null);
-                              setMenuAnchorRect(null);
-                              setMenuAnchorElement(null);
-                            } else {
-                              setOpenMenuSourceKey(null);
-                              setSourceMenuAnchorRect(null);
-                              setSourceMenuAnchorElement(null);
-                              setOpenMenuFeedUrl(feed.url);
-                              setMenuAnchorRect(e.currentTarget.getBoundingClientRect());
-                              setMenuAnchorElement(e.currentTarget);
-                            }
-                          }}
-                          className={`${menuOpen ? "flex bg-white/10 text-white" : "hidden group-hover/feed:flex text-[#71717a]"} items-center p-1 rounded-md hover:text-white hover:bg-white/10 transition-colors`}
-                        >
-                          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
-                          </svg>
-                        </button>
-                      </div>
-                    </li>
                   );
                 })}
               </ul>

@@ -231,6 +231,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Reading enhancements work correctly (focus mode, font, reader view)
 - [x] Ranking weights affect item order
 - [x] Platform/author filters work (sidebar filter by platform/feed)
+- [x] RSS source accordion pages subscriptions in the sidebar and top search moves matching feeds into the first page
 - [x] RSS subscription management functional (add/remove/OPML import-export)
 - [x] First launch is blocked behind a local-only legal clickwrap gate
 - [ ] PWA installable on mobile (add to homescreen) — manifest exists, needs testing
