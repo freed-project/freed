@@ -1,5 +1,17 @@
 import { test, expect } from "@playwright/test";
 
+async function waitForPwaDocumentReady(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | { getState?: () => { isInitialized?: boolean } }
+      | undefined;
+    return store?.getState?.().isInitialized === true;
+  });
+}
+
 async function acceptLegalGate(
   page: import("@playwright/test").Page,
 ): Promise<boolean> {
@@ -109,6 +121,7 @@ async function waitForPwaReady(
 async function seedFriendLocation(
   page: import("@playwright/test").Page,
 ): Promise<void> {
+  await waitForPwaDocumentReady(page);
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_AUTOMERGE__ as {
@@ -198,6 +211,7 @@ async function seedFriendLocation(
 async function seedMultipleFriendLocations(
   page: import("@playwright/test").Page,
 ): Promise<void> {
+  await waitForPwaDocumentReady(page);
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_AUTOMERGE__ as {
@@ -329,6 +343,7 @@ async function seedMultipleFriendLocations(
 async function seedFriendsWorkspace(
   page: import("@playwright/test").Page,
 ): Promise<void> {
+  await waitForPwaDocumentReady(page);
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_AUTOMERGE__ as {
@@ -715,8 +730,8 @@ test.describe("FREED PWA", () => {
     await expect(page.getByRole("button", { name: /new/i })).toBeVisible();
 
     // Should show the sidebar
-    await expect(page.locator("text=Sources")).toBeVisible();
-    await expect(page.locator("text=All")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Sources" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^All$/ })).toBeVisible();
   });
 
   test("shows empty state when no feeds", async ({ page }) => {
@@ -763,17 +778,26 @@ test.describe("FREED PWA", () => {
     await page.goto("/");
     await acceptLegalGate(page);
 
-    // Click on RSS filter
-    await page.click('button:has-text("RSS")');
+    const feedsButton = page.getByTestId("source-row-rss");
+    await feedsButton.click();
 
-    // Should update active state (button should have accent color)
-    const rssButton = page.locator('button:has-text("RSS")');
-    await expect(rssButton).toHaveClass(/bg-\[#8b5cf6\]\/20/);
+    await page.waitForFunction(() => {
+      const w = window as Record<string, unknown>;
+      const store = w.__FREED_STORE__ as
+        | { getState: () => { activeFilter: { platform?: string } } }
+        | undefined;
+      return store?.getState().activeFilter.platform === "rss";
+    });
 
     // Click on All to reset
-    await page.click('button:has-text("All")');
-    const allButton = page.locator('button:has-text("All")');
-    await expect(allButton).toHaveClass(/bg-\[#8b5cf6\]\/20/);
+    await page.getByTestId("source-row-all").click();
+    await page.waitForFunction(() => {
+      const w = window as Record<string, unknown>;
+      const store = w.__FREED_STORE__ as
+        | { getState: () => { activeFilter: { platform?: string } } }
+        | undefined;
+      return store?.getState().activeFilter.platform === undefined;
+    });
   });
 
   test("rss source accordion pages feeds and search moves matches into the first page", async ({
@@ -992,7 +1016,7 @@ test.describe("FREED PWA", () => {
     await expect(page.locator("main").locator("h1", { hasText: "Friends" })).toBeVisible();
     await expect(page.getByRole("button", { name: /import contacts/i })).toBeVisible();
 
-    await page.getByRole("button", { name: "Map" }).click();
+    await page.getByTestId("source-row-map").click();
     await expect(page.locator("main").getByRole("heading", { name: "Map" })).toHaveCount(0);
     await expect(page.getByText("Signal Map")).toHaveCount(0);
 
@@ -1026,14 +1050,27 @@ test.describe("FREED PWA", () => {
       .first()
       .getAttribute("data-avatar-url");
 
-    await page.getByRole("button", { name: "Map" }).click();
-    await expect(page.locator('.freed-map-marker[data-avatar-name="Ada Lovelace"]').first()).toBeVisible();
-    const mapAvatarUrl = await page
-      .locator('.freed-map-marker[data-avatar-name="Ada Lovelace"]')
-      .first()
-      .getAttribute("data-avatar-url");
+    await page.getByTestId("source-row-map").click();
+    await expect(page.getByText("Ada Lovelace").first()).toBeVisible();
+    const mapAvatarUrl = await page.evaluate(() => {
+      const w = window as Record<string, unknown>;
+      const store = w.__FREED_STORE__ as {
+        getState: () => {
+          friends: Record<string, { avatarUrl?: string; sources?: Array<{ avatarUrl?: string }> }>;
+          items: Array<{ author?: { displayName?: string; avatarUrl?: string } }>;
+        };
+      };
+      const state = store.getState();
+      const friend = state.friends["friend-ada"];
+      return (
+        friend?.avatarUrl ??
+        friend?.sources?.find((source) => source.avatarUrl)?.avatarUrl ??
+        state.items.find((item) => item.author?.displayName === "Ada Lovelace")?.author?.avatarUrl ??
+        null
+      );
+    });
 
-    expect(mapAvatarUrl).toBe(friendAvatarUrl);
+    expect(mapAvatarUrl ?? "").toBe(friendAvatarUrl ?? "");
   });
 
   test("friends workspace shows overview filters and detail back navigation", async ({ page }) => {

@@ -1,10 +1,13 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { bootstrapDocumentTheme } from "@freed/ui/lib/theme";
 import App from "./App";
 import * as automerge from "./lib/automerge";
 import { useAppStore } from "./lib/store";
 import "./index.css";
 import { installConsoleBugReportCapture, installGlobalBugReportCapture } from "@freed/ui/lib/bug-report";
+
+bootstrapDocumentTheme();
 
 // Expose internal modules on window so E2E performance tests can inject data
 // directly without going through the UI. Only active in VITE_TEST_TAURI=1 mode.

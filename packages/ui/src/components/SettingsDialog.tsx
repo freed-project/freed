@@ -10,7 +10,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { DEFAULT_FRIEND_AVATAR_TINT } from "@freed/shared";
+import {
+  DEFAULT_FRIEND_AVATAR_TINT,
+} from "@freed/shared";
+import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
 import { createFriendAvatarPalette } from "../lib/friend-avatar-style.js";
 import { createPortal } from "react-dom";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
@@ -75,8 +78,7 @@ type ProviderAuthSlices = {
   igAuth?: ProviderAuthState;
   liAuth?: ProviderAuthState;
 };
-
-const EMPTY_PROVIDER_SYNC_COUNTS: Partial<Record<ProviderSectionId, number>> = {};
+const EMPTY_PROVIDER_SECTION_SYNC_COUNTS: Partial<Record<ProviderSectionId, number>> = {};
 
 function isProviderSection(sectionId: SectionId): sectionId is ProviderSectionId {
   return (
@@ -92,7 +94,7 @@ function ProviderStatusDot({ sectionId }: { sectionId: ProviderSectionId }) {
   const providerSyncCounts = useAppStore(
     (s) =>
       ((s as unknown as { providerSyncCounts?: Partial<Record<ProviderSectionId, number>> })
-        .providerSyncCounts ?? EMPTY_PROVIDER_SYNC_COUNTS) as Partial<Record<ProviderSectionId, number>>,
+        .providerSyncCounts ?? EMPTY_PROVIDER_SECTION_SYNC_COUNTS) as Partial<Record<ProviderSectionId, number>>,
   );
   const xAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).xAuth);
   const fbAuth = useAppStore((s) => (s as unknown as ProviderAuthSlices).fbAuth);
@@ -159,6 +161,14 @@ const ICONS: Record<SectionId, ReactNode> = {
   support: (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 8h10M7 12h7m-5 8l-4-4H4a2 2 0 01-2-2V6a2 2 0 012-2h16a2 2 0 012 2v8a2 2 0 01-2 2h-7l-4 4z" />
+    </svg>
+  ),
+  appearance: (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3c4.97 0 9 4.03 9 9a9 9 0 01-9 9c-2.208 0-4-1.567-4-3.5 0-.971.42-1.84 1.09-2.473.476-.45.744-1.077.744-1.731 0-1.308-1.06-2.37-2.369-2.37-.653 0-1.28.269-1.73.745A3.49 3.49 0 013 12c0-4.97 4.03-9 9-9z" />
+      <circle cx="7.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none" />
+      <circle cx="16.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
     </svg>
   ),
   reading: (
@@ -277,6 +287,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   // Re-use the Section objects already defined in allSections so keywords stay in sync.
   const sectionById = Object.fromEntries(allSections.map((s) => [s.id, s])) as Record<SectionId, Section>;
   const navStructure: NavStructureItem[] = [
+    sectionById.appearance,
     sectionById.legal,
     sectionById.support,
     sectionById.sync,
@@ -650,6 +661,64 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   function SectionContent({ id }: { id: SectionId }) {
     switch (id) {
+      case "appearance":
+        return (
+          <>
+            <SectionHeading label="Appearance" />
+            <div className="space-y-5">
+              <div className="space-y-1">
+                <p className="text-sm text-[var(--theme-text-primary)]">
+                  Pick the room Freed lives in
+                </p>
+                <p className="text-xs text-[var(--theme-text-muted)]">
+                  Theme selection syncs between Freed Desktop and the web app.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {THEME_DEFINITIONS.map((theme) => {
+                  const isActive = display.themeId === theme.id;
+                  return (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      onClick={() => handleDisplayChange({ themeId: theme.id as ThemeId })}
+                      className={`rounded-2xl border p-3 text-left transition-all ${
+                        isActive
+                          ? "border-[var(--theme-border-strong)] bg-[var(--theme-bg-card-hover)] shadow-[var(--theme-glow-sm)]"
+                          : "border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] hover:border-[var(--theme-border-strong)] hover:bg-[var(--theme-bg-card-hover)]"
+                      }`}
+                    >
+                      <div
+                        className="h-20 rounded-xl border border-white/10"
+                        style={{ background: theme.previewGradient }}
+                        aria-hidden="true"
+                      />
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-[var(--theme-text-primary)]">
+                            {theme.name}
+                          </p>
+                          <p className="mt-1 text-xs text-[var(--theme-text-muted)]">
+                            {theme.tagline}
+                          </p>
+                        </div>
+                        {isActive ? (
+                          <span className="rounded-full bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--theme-accent-secondary)]">
+                            Active
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-2 text-xs leading-relaxed text-[var(--theme-text-secondary)]">
+                        {theme.description}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        );
+
       case "legal":
         return (
           <>
@@ -677,8 +746,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               />
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
-                  <p className="text-sm text-white">Friend avatar tint</p>
-                  <p className="mt-0.5 text-xs text-[#52525b]">
+                  <p className="text-sm text-text-primary">Friend avatar tint</p>
+                  <p className="mt-0.5 text-xs text-text-muted">
                     Shared across the Friends graph and map markers
                   </p>
                 </div>
@@ -696,13 +765,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                     type="color"
                     value={friendAvatarTint}
                     onChange={(event) => handleDisplayChange({ friendAvatarTint: event.target.value })}
-                    className="h-9 w-11 cursor-pointer rounded-lg border border-[#8b5cf6]/16 bg-[#18181b] p-1"
+                    className="h-9 w-11 cursor-pointer rounded-lg border border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_16%,transparent)] bg-[var(--theme-bg-root)] p-1"
                     aria-label="Friend avatar tint"
                   />
                   <button
                     type="button"
                     onClick={() => handleDisplayChange({ friendAvatarTint: DEFAULT_FRIEND_AVATAR_TINT })}
-                    className="rounded-lg border border-[#8b5cf6]/16 bg-[linear-gradient(180deg,rgba(91,33,182,0.08),rgba(17,17,24,0.38))] px-3 py-1.5 text-xs text-[#b4b0c8] transition-colors hover:border-[#8b5cf6]/28 hover:text-white"
+                    className="rounded-lg border border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_16%,transparent)] bg-[linear-gradient(180deg,color-mix(in_srgb,var(--theme-accent-secondary)_8%,transparent),color-mix(in_srgb,var(--theme-bg-root)_65%,transparent))] px-3 py-1.5 text-xs text-text-secondary transition-colors hover:border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_28%,transparent)] hover:text-text-primary"
                   >
                     Reset
                   </button>
@@ -716,7 +785,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               />
               {display.reading.focusMode && (
                 <div className="space-y-2">
-                  <p className="text-sm text-[#a1a1aa]">Focus intensity</p>
+                  <p className="text-sm text-text-secondary">Focus intensity</p>
                   <div className="flex gap-2">
                     {(["light", "normal", "strong"] as const).map((level) => (
                       <button
@@ -724,8 +793,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                         onClick={() => handleReadingChange({ focusIntensity: level })}
                         className={`flex-1 py-1.5 rounded-lg text-sm capitalize transition-colors border ${
                           display.reading.focusIntensity === level
-                            ? "bg-[#8b5cf6]/20 text-[#8b5cf6] border-[#8b5cf6]/30"
-                            : "bg-white/5 text-[#71717a] hover:text-white border-transparent"
+                            ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_20%,transparent)] text-[var(--theme-accent-secondary)] border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_30%,transparent)]"
+                            : "bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] text-text-muted hover:text-text-primary border-transparent"
                         }`}
                       >
                         {level}
@@ -736,13 +805,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               )}
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
-                  <p className="text-sm text-white">Delete archived content after</p>
-                  <p className="text-xs text-[#52525b] mt-0.5">Saved items are never deleted</p>
+                  <p className="text-sm text-text-primary">Delete archived content after</p>
+                  <p className="mt-0.5 text-xs text-text-muted">Saved items are never deleted</p>
                 </div>
                 <select
                   value={display.archivePruneDays ?? 30}
                   onChange={(e) => handleDisplayChange({ archivePruneDays: Number(e.target.value) })}
-                  className="shrink-0 bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded-lg text-sm text-white px-3 py-1.5 focus:outline-none focus:border-[#8b5cf6]/50 cursor-pointer"
+                  className="shrink-0 rounded-lg border border-[color:var(--theme-border)] bg-[var(--theme-bg-root)] px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_50%,transparent)] cursor-pointer"
                 >
                   <option value={3}>3 days</option>
                   <option value={7}>7 days</option>
@@ -836,7 +905,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <>
             <SectionHeading label="Updates" />
             <div className="space-y-3">
-              <p className="text-xs text-[#52525b]">
+              <p className="text-xs text-text-muted">
                 Current version:{" "}
                 <span className="text-sm font-bold font-mono">v{__APP_VERSION__}</span>
               </p>
@@ -845,11 +914,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   <button
                     onClick={handleCheckForUpdates}
                     disabled={updateState.status === "checking" || updateDownloadProgress?.phase === "downloading"}
-                    className="text-sm px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#a1a1aa] hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="text-sm px-3 py-1.5 rounded-lg bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_88%,transparent)] text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {updateState.status === "checking" ? (
                       <span className="flex items-center gap-2">
-                        <span className="w-3 h-3 border-2 border-[#8b5cf6] border-t-transparent rounded-full animate-spin" />
+                        <span className="h-3 w-3 animate-spin rounded-full border-2 border-[var(--theme-accent-secondary)] border-t-transparent" />
                         Checking&hellip;
                       </span>
                     ) : (
@@ -859,12 +928,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   {updateState.status === "up-to-date" && <UpToDateBadge />}
                   {updateState.status === "available" && (
                     <span className="flex items-center gap-2">
-                      <span className="text-xs text-[#8b5cf6]">Update available</span>
+                      <span className="text-xs text-[var(--theme-accent-secondary)]">Update available</span>
                       {applyUpdate && (
                         <button
                           onClick={applyUpdate}
                           disabled={updateDownloadProgress?.phase === "downloading"}
-                          className="text-xs font-semibold px-2.5 py-1 rounded-md bg-[#8b5cf6] text-white hover:bg-[#7c3aed] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="btn-primary px-2.5 py-1 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {headerDragRegion ? "Install & Restart" : "Reload"}
                         </button>
@@ -878,12 +947,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               )}
               {updateDownloadProgress?.phase === "downloading" && (
                 <div className="space-y-1.5">
-                  <p className="text-xs text-[#a1a1aa]">
+                  <p className="text-xs text-text-secondary">
                     Downloading... {Math.round(updateDownloadProgress.percent)}%
                   </p>
-                  <div className="h-1.5 rounded-full bg-[rgba(255,255,255,0.08)] overflow-hidden">
+                  <div className="h-1.5 overflow-hidden rounded-full bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_86%,transparent)]">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-[var(--glow-blue)] to-[var(--glow-purple)] transition-[width] duration-300"
+                      className="h-full rounded-full bg-[linear-gradient(90deg,var(--theme-accent-primary),var(--theme-accent-secondary),var(--theme-accent-tertiary))] transition-[width] duration-300"
                       style={{ width: `${updateDownloadProgress.percent}%` }}
                     />
                   </div>
@@ -980,13 +1049,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           indented ? "pl-7 pr-2 py-2" : "px-2 py-2"
         } ${
           isActive
-            ? "bg-[#8b5cf6]/15 text-[#8b5cf6]"
+            ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_15%,transparent)] text-[var(--theme-accent-secondary)]"
             : isDanger
             ? "text-red-400/70 hover:text-red-400 hover:bg-red-500/5"
-            : "text-[#a1a1aa] hover:text-white hover:bg-white/5"
+            : "text-text-secondary hover:text-text-primary hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)]"
         }`}
       >
-        <span className={`shrink-0 ${isActive ? "text-[#8b5cf6]" : isDanger ? "text-red-400/60" : "text-[#52525b]"}`}>
+        <span className={`shrink-0 ${isActive ? "text-[var(--theme-accent-secondary)]" : isDanger ? "text-red-400/60" : "text-text-muted"}`}>
           {section.icon}
         </span>
         <span>{section.label}</span>
@@ -1022,11 +1091,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   onClick={() => scrollToSection(item.children[0].id)}
                   className={`w-full flex items-center gap-2 px-2 py-2 text-left text-xs transition-colors rounded-md ${
                     isGroupActive
-                      ? "text-[#8b5cf6]"
-                      : "text-[#a1a1aa] hover:text-white hover:bg-white/5"
+                      ? "text-[var(--theme-accent-secondary)]"
+                      : "text-text-secondary hover:text-text-primary hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)]"
                   }`}
                 >
-                  <span className={`shrink-0 ${isGroupActive ? "text-[#8b5cf6]" : "text-[#52525b]"}`}>
+                  <span className={`shrink-0 ${isGroupActive ? "text-[var(--theme-accent-secondary)]" : "text-text-muted"}`}>
                     {item.icon}
                   </span>
                   <span>{item.label}</span>
@@ -1057,23 +1126,23 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       {/* Panel */}
       <div
         className={`
-          relative z-10 w-full bg-[#141414] overflow-hidden flex flex-col
+          relative z-10 flex w-full flex-col overflow-hidden bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_92%,transparent)]
           h-[92dvh] rounded-t-2xl
-          sm:rounded-2xl sm:border sm:border-[rgba(255,255,255,0.08)] sm:shadow-2xl
+          sm:rounded-2xl sm:border sm:border-[color:var(--theme-border)] sm:shadow-2xl
           sm:flex-row sm:max-w-3xl sm:h-[80vh] sm:max-h-[700px]
         `}
       >
         {/* ── Left column ────────────────────────────────────────────────── */}
         <div
           className={`
-            flex flex-col border-b border-[rgba(255,255,255,0.06)] shrink-0
-            sm:w-52 sm:border-b-0 sm:border-r sm:border-[rgba(255,255,255,0.06)]
+            flex flex-col border-b border-[color:var(--theme-border)] shrink-0
+            sm:w-52 sm:border-b-0 sm:border-r sm:border-[color:var(--theme-border)]
             ${mobileView === "section" ? "hidden sm:flex" : "flex"}
           `}
         >
           {/* Header */}
           <div className="flex items-center justify-between gap-3 pl-5 pr-2 pt-4 pb-2 shrink-0">
-            <h2 className="text-base font-semibold text-white">Settings</h2>
+            <h2 className="text-base font-semibold text-text-primary">Settings</h2>
             <CloseButton
               testId="settings-close-button-sidebar"
               className="sm:mr-0"
@@ -1083,7 +1152,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           {/* Search */}
           <div className="px-3 pt-2 pb-2 shrink-0">
             <div className="relative">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#52525b] pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <input
@@ -1091,13 +1160,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search settings"
-                className={`w-full pl-8 py-1.5 bg-white/[0.05] border border-[rgba(255,255,255,0.06)] rounded-lg text-sm text-white placeholder-[#52525b] focus:outline-none focus:border-[#8b5cf6]/40 transition-colors ${search ? "pr-7" : "pr-3"}`}
+                className={`w-full rounded-lg border border-[color:var(--theme-border)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_74%,transparent)] py-1.5 pl-8 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_40%,transparent)] transition-colors ${search ? "pr-7" : "pr-3"}`}
               />
               {search && (
                 <button
                   onClick={() => setSearch("")}
                   aria-label="Clear search"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-[#71717a] hover:text-white transition-colors"
+                  className="absolute right-2 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-full bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_82%,transparent)] text-text-muted transition-colors hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_94%,transparent)] hover:text-text-primary"
                 >
                   <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
@@ -1110,19 +1179,19 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <NavList />
 
           {/* Footer — desktop sidebar only */}
-          <div className="hidden sm:flex items-center justify-between px-4 py-3 shrink-0 border-t border-[rgba(255,255,255,0.05)]">
+          <div className="hidden shrink-0 items-center justify-between border-t border-[color:var(--theme-border)] px-4 py-3 sm:flex">
             {checkForUpdates ? (
               <button
                 onClick={() => {
                   setSearch("");
                   scrollToSection("updates");
                 }}
-                className="text-xs font-mono text-[#52525b] hover:text-[#a1a1aa] transition-colors tabular-nums"
+                className="text-xs font-mono text-text-muted transition-colors tabular-nums hover:text-text-secondary"
               >
                 v{__APP_VERSION__}
               </button>
             ) : (
-              <span className="text-xs font-mono text-[#52525b] tabular-nums">
+              <span className="text-xs font-mono text-text-muted tabular-nums">
                 v{__APP_VERSION__}
               </span>
             )}
@@ -1130,7 +1199,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               href="https://freed.wtf"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-[#52525b] hover:text-[#8b5cf6] transition-colors"
+              className="text-xs text-text-muted transition-colors hover:text-[var(--theme-accent-secondary)]"
             >
               freed.wtf
             </a>
@@ -1145,17 +1214,17 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           `}
         >
           {/* Mobile back button + section title */}
-          <div className="sm:hidden flex items-center gap-2 px-4 pt-5 pb-3 shrink-0 border-b border-[rgba(255,255,255,0.06)]">
+          <div className="sm:hidden flex shrink-0 items-center gap-2 border-b border-[color:var(--theme-border)] px-4 pb-3 pt-5">
             <button
               onClick={() => setMobileView("nav")}
-              className="p-1.5 -ml-1 rounded-lg hover:bg-white/10 text-[#a1a1aa] hover:text-white transition-colors"
+              className="-ml-1 rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] hover:text-text-primary"
               aria-label="Back to settings"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <span className="text-sm font-medium text-white">
+            <span className="text-sm font-medium text-text-primary">
               {allSections.find((s) => s.id === activeSection)?.label}
             </span>
             <CloseButton
@@ -1172,10 +1241,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           >
             {searchLower && visibleSections.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center gap-2 pb-16 text-center">
-                <svg className="w-8 h-8 text-[#3f3f46]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="h-8 w-8 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
-                <p className="text-sm text-[#52525b]">No settings match <span className="text-[#71717a]">"{search}"</span></p>
+                <p className="text-sm text-text-muted">No settings match <span className="text-text-secondary">"{search}"</span></p>
               </div>
             ) : (
               allSections.map((section) => (
@@ -1189,7 +1258,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 href="https://freed.wtf"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs text-[#52525b] hover:text-[#8b5cf6] transition-colors"
+                className="text-xs text-text-muted transition-colors hover:text-[var(--theme-accent-secondary)]"
               >
                 freed.wtf
               </a>
@@ -1201,7 +1270,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       {/* Factory reset confirmation overlay */}
       {showResetConfirm && (
         <div className="absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-4 bg-black/60 sm:items-center">
-          <div className="my-auto w-full max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded-2xl p-6 shadow-2xl">
+          <div className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto rounded-2xl border border-[color:var(--theme-border)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_94%,transparent)] p-6 shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center flex-shrink-0">
                 <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1209,8 +1278,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-semibold text-white">Reset this device?</p>
-                <p className="text-xs text-[#71717a] mt-0.5">
+                <p className="text-sm font-semibold text-text-primary">Reset this device?</p>
+                <p className="mt-0.5 text-xs text-text-secondary">
                   Clears all local data on this device only.
                   {!deleteFromCloud && " Cloud sync will re-download your data on next launch."}
                 </p>
@@ -1226,10 +1295,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   className="mt-0.5 w-4 h-4 rounded border-[rgba(255,255,255,0.2)] bg-white/5 text-red-500 focus:ring-red-500 focus:ring-offset-0"
                 />
                 <div>
-                  <p className="text-sm text-[#a1a1aa] group-hover:text-white transition-colors">
+                  <p className="text-sm text-text-secondary transition-colors group-hover:text-text-primary">
                     Also delete from {activeCloudProviderLabel()}
                   </p>
-                  <p className="text-xs text-[#52525b] mt-0.5">Permanently removes your cloud backup</p>
+                  <p className="mt-0.5 text-xs text-text-muted">Permanently removes your cloud backup</p>
                 </div>
               </label>
             )}
@@ -1238,7 +1307,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               <button
                 onClick={() => { setShowResetConfirm(false); setDeleteFromCloud(false); }}
                 disabled={resetting}
-                className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-[#a1a1aa] hover:text-white transition-colors text-sm disabled:opacity-50"
+                className="flex-1 rounded-xl bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] py-2.5 text-sm text-text-secondary transition-colors hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_90%,transparent)] hover:text-text-primary disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -1263,7 +1332,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
       {showSampleSeedConfirm && (
         <div className="absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-4 bg-black/60 sm:items-center">
-          <div className="my-auto w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded-2xl p-6 shadow-2xl">
+          <div className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-[color:var(--theme-border)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_94%,transparent)] p-6 shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center flex-shrink-0">
                 <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1271,8 +1340,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-semibold text-white">Populate sample data into a non-empty library?</p>
-                <p className="text-xs text-[#71717a] mt-0.5">
+                <p className="text-sm font-semibold text-text-primary">Populate sample data into a non-empty library?</p>
+                <p className="mt-0.5 text-xs text-text-secondary">
                   This app already contains data. Sample content will be appended to what is already here, which can make the feed, map, and friends views noisy.
                 </p>
               </div>
@@ -1297,7 +1366,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               <button
                 type="button"
                 onClick={() => setShowSampleSeedConfirm(false)}
-                className="flex-1 px-4 py-2.5 rounded-xl border border-white/10 text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-colors"
+                className="flex-1 rounded-xl border border-[color:var(--theme-border)] px-4 py-2.5 text-text-secondary transition-colors hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] hover:text-text-primary"
               >
                 Cancel
               </button>
@@ -1372,7 +1441,7 @@ function SectionHeading({ label, danger }: { label: string; danger?: boolean }) 
   return (
     <h3
       className={`text-sm font-semibold uppercase tracking-wide mb-5 ${
-        danger ? "text-red-400/60" : "text-[#71717a]"
+        danger ? "text-red-400/60" : "text-text-muted"
       }`}
     >
       {label}

@@ -16,7 +16,7 @@ export default function SiteShell({
 
   return (
     <>
-      <div className="flex flex-col overflow-hidden relative">
+      <div className="theme-shell flex flex-col overflow-hidden relative">
         <BackgroundGradients />
 
         {!isQrGallery && <Navigation />}

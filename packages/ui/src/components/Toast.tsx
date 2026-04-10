@@ -69,18 +69,16 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
     handleClose();
   };
 
-  // bg-[#1a1a1f] is the opaque base; the colored ring stacks on top so the
-  // tint reads against the surface rather than bleeding through to content below.
   const bgColor = {
-    success: "bg-[#1a1a1f] ring-1 ring-green-500/30 border-green-500/30",
-    error: "bg-[#1a1a1f] ring-1 ring-red-500/30 border-red-500/30",
-    info: "bg-[#1a1a1f] ring-1 ring-[#8b5cf6]/30 border-[#8b5cf6]/30",
+    success: "bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_94%,transparent)] ring-1 ring-green-500/30 border-green-500/30",
+    error: "bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_94%,transparent)] ring-1 ring-red-500/30 border-red-500/30",
+    info: "bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_94%,transparent)] ring-1 ring-[color:color-mix(in_srgb,var(--theme-accent-secondary)_30%,transparent)] border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_30%,transparent)]",
   }[toast.type];
 
   const textColor = {
     success: "text-green-400",
     error: "text-red-400",
-    info: "text-[#8b5cf6]",
+    info: "text-[var(--theme-accent-secondary)]",
   }[toast.type];
 
   const icon = {
@@ -111,11 +109,11 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
       onClick={handleClose}
     >
       <span className={textColor}>{icon}</span>
-      <span className="text-sm text-white flex-1">{toast.message}</span>
+      <span className="flex-1 text-sm text-text-primary">{toast.message}</span>
       {toast.actionLabel && toast.onAction && (
         <button
           onClick={handleAction}
-          className={`text-xs font-medium transition-colors ${textColor} hover:text-white`}
+          className={`text-xs font-medium transition-colors ${textColor} hover:text-text-primary`}
         >
           {toast.actionLabel}
         </button>
@@ -125,7 +123,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
           event.stopPropagation();
           handleClose();
         }}
-        className="text-white/50 hover:text-white transition-colors"
+        className="text-text-muted hover:text-text-primary transition-colors"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

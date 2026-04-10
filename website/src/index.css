@@ -1,82 +1,48 @@
 @import "tailwindcss";
-
-/* ============================================
-   Freed Design System - Glowmorphic Dark Theme
-   ============================================ */
+@import "@freed/ui/index.css";
 
 @theme {
-  /* Colors */
-  --color-freed-black: #0a0a0a;
-  --color-freed-dark: #0f0f0f;
-  --color-freed-surface: #141414;
-  --color-freed-border: rgba(255, 255, 255, 0.08);
+  --color-freed-black: var(--theme-bg-root);
+  --color-freed-dark: var(--theme-bg-deep);
+  --color-freed-surface: var(--theme-bg-surface);
+  --color-freed-border: var(--theme-border-subtle);
 
-  --color-glow-blue: #3b82f6;
-  --color-glow-purple: #8b5cf6;
-  --color-glow-cyan: #06b6d4;
+  --color-glow-blue: var(--theme-accent-primary);
+  --color-glow-purple: var(--theme-accent-secondary);
+  --color-glow-cyan: var(--theme-accent-tertiary);
 
-  --color-text-primary: #fafafa;
-  --color-text-secondary: #a1a1aa;
-  --color-text-muted: #71717a;
+  --color-text-primary: var(--theme-text-primary);
+  --color-text-secondary: var(--theme-text-secondary);
+  --color-text-muted: var(--theme-text-muted);
 }
 
-/* Base styles */
 html {
-  /* Overlay scrollbar - content extends under it */
   scrollbar-gutter: auto;
+  scroll-behavior: smooth;
+  background-color: var(--theme-bg-root);
 }
 
 html,
 body {
-  /* Prevent overscroll revealing anything behind */
   overscroll-behavior: none;
-  /* Ensure full height coverage for iOS Safari */
   height: 100%;
 }
 
-/* iOS Safari viewport fix: svh fallback with dvh override */
+body {
+  background-color: var(--theme-bg-root);
+  color: var(--theme-text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
 .min-h-viewport-safe {
   min-height: 100svh;
   min-height: 100dvh;
 }
 
-html {
-  scroll-behavior: smooth;
-  background-color: var(--color-freed-black);
-}
-
-body {
-  font-family:
-    var(--font-manrope),
-    "Manrope",
-    system-ui,
-    -apple-system,
-    sans-serif;
-  background-color: var(--color-freed-black);
-  color: var(--color-text-primary);
-  line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  /* Safe area insets for iOS viewport-fit=cover */
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
-  /* No min-height constraints - let content flow naturally into safe areas */
-}
-
-/* Logo typography - Space Grotesk */
-.font-logo {
-  font-family:
-    var(--font-space-grotesk), "Space Grotesk", system-ui, sans-serif;
-  letter-spacing: -0.02em;
-}
-
-/* Accessibility: Focus styles */
-:focus-visible {
-  outline: 2px solid var(--color-glow-purple);
-  outline-offset: 2px;
-}
-
-/* Screen reader only utility */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -89,7 +55,6 @@ body {
   border-width: 0;
 }
 
-/* Reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -101,142 +66,14 @@ body {
   }
 }
 
-/* Gradient text utility */
-.gradient-text {
-  background: linear-gradient(
-    135deg,
-    var(--color-glow-blue),
-    var(--color-glow-purple),
-    var(--color-glow-cyan)
-  );
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.release-card-version {
-  background: linear-gradient(
-    135deg,
-    var(--color-glow-blue),
-    var(--color-glow-purple),
-    var(--color-glow-cyan)
-  );
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* Glow effects */
-.glow-sm {
-  box-shadow:
-    0 0 10px rgba(139, 92, 246, 0.2),
-    0 0 20px rgba(59, 130, 246, 0.1);
-}
-
-.glow-md {
-  box-shadow:
-    0 0 20px rgba(139, 92, 246, 0.3),
-    0 0 40px rgba(59, 130, 246, 0.15),
-    0 0 60px rgba(139, 92, 246, 0.05);
-}
-
-.glow-lg {
-  box-shadow:
-    0 0 30px rgba(139, 92, 246, 0.4),
-    0 0 60px rgba(59, 130, 246, 0.2),
-    0 0 100px rgba(139, 92, 246, 0.1);
-}
-
-/* Glassmorphic card */
-.glass-card {
-  background: rgba(12, 12, 16, 0.75);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--color-freed-border);
-  border-radius: 16px;
-}
-
-/* Interactive variant - only for clickable cards */
 .glass-card-interactive:hover {
-  background: rgba(18, 18, 24, 0.85);
-  border-color: rgba(139, 92, 246, 0.3);
+  background: color-mix(in oklab, var(--theme-bg-surface) 94%, transparent);
+  border-color: var(--theme-border-strong);
 }
 
-/* Button styles */
-.btn-primary {
-  position: relative;
-  background: linear-gradient(
-    135deg,
-    var(--color-glow-blue),
-    var(--color-glow-purple)
-  );
-  color: white;
-  font-weight: 600;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  border: none;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 0 20px rgba(139, 92, 246, 0.3);
-  overflow: hidden;
-}
-
-/* Shine effect overlay */
-.btn-primary::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.3),
-    transparent
-  );
-  transition: left 0.5s ease;
-}
-
-.btn-primary:hover {
-  transform: scale(1.03);
-  box-shadow: 0 0 25px rgba(139, 92, 246, 0.4);
-}
-
-.btn-primary:focus-visible {
-  outline: 2px solid white;
-  outline-offset: 2px;
-}
-
-.btn-primary:hover::before {
-  left: 100%;
-}
-
-.btn-secondary {
-  background: transparent;
-  color: var(--color-text-primary);
-  font-weight: 600;
-  padding: 0.75rem 1.5rem;
-  border-radius: 8px;
-  border: 1px solid var(--color-freed-border);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-secondary:hover {
-  border-color: var(--color-glow-purple);
-  background: rgba(139, 92, 246, 0.1);
-}
-
-.btn-secondary:focus-visible {
-  outline: 2px solid var(--color-glow-purple);
-  outline-offset: 2px;
-}
-
-/* Animated gradient border */
 .gradient-border {
   position: relative;
-  background: var(--color-freed-surface);
+  background: var(--theme-bg-surface);
   border-radius: 16px;
 }
 
@@ -247,70 +84,27 @@ body {
   border-radius: 17px;
   background: linear-gradient(
     135deg,
-    var(--color-glow-blue),
-    var(--color-glow-purple),
-    var(--color-glow-cyan)
+    var(--theme-accent-primary),
+    var(--theme-accent-secondary),
+    var(--theme-accent-tertiary)
   );
   z-index: -1;
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
-/* Background gradient orbs with P3 wide-gamut support */
 .bg-gradient-orbs {
-  /* sRGB fallback for browsers without P3 support */
   background:
     radial-gradient(
       ellipse 900px 900px at -10% -15%,
-      rgba(139, 92, 246, 0.12) 0%,
-      rgba(139, 92, 246, 0.04) 35%,
+      rgb(var(--theme-accent-secondary-rgb) / 0.17) 0%,
+      rgb(var(--theme-accent-secondary-rgb) / 0.05) 35%,
       transparent 65%
     ),
     radial-gradient(
       ellipse 800px 800px at 110% 110%,
-      rgba(59, 130, 246, 0.12) 0%,
-      rgba(59, 130, 246, 0.04) 35%,
+      rgb(var(--theme-accent-primary-rgb) / 0.14) 0%,
+      rgb(var(--theme-accent-primary-rgb) / 0.04) 35%,
       transparent 65%
     ),
-    radial-gradient(
-      ellipse 500px 500px at 85% 40%,
-      rgba(6, 182, 212, 0.06) 0%,
-      rgba(6, 182, 212, 0.02) 35%,
-      transparent 65%
-    );
-}
-
-/* P3 wide-gamut colors for displays that support them (Safari, modern displays) */
-@supports (color: color(display-p3 1 1 1)) {
-  .bg-gradient-orbs {
-    background:
-      radial-gradient(
-        ellipse 900px 900px at -10% -15%,
-        color(display-p3 0.6 0.35 1 / 0.15) 0%,
-        color(display-p3 0.6 0.35 1 / 0.05) 35%,
-        transparent 65%
-      ),
-      radial-gradient(
-        ellipse 800px 800px at 110% 110%,
-        color(display-p3 0.2 0.5 1 / 0.15) 0%,
-        color(display-p3 0.2 0.5 1 / 0.05) 35%,
-        transparent 65%
-      ),
-      radial-gradient(
-        ellipse 500px 500px at 85% 40%,
-        color(display-p3 0 0.75 0.9 / 0.08) 0%,
-        color(display-p3 0 0.75 0.9 / 0.02) 35%,
-        transparent 65%
-      );
-  }
-}
-/* Selection color */
-::selection {
-  background: rgba(139, 92, 246, 0.4);
-  color: white;
-}
-
-/* Scrollbar - thin and unobtrusive */
-html {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+    linear-gradient(180deg, transparent 0%, rgb(var(--theme-shell-rgb) / 0.08) 100%);
 }

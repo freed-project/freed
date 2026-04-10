@@ -15,7 +15,7 @@
 
 html,
 body {
-  background: var(--freed-black);
+  background: var(--theme-bg-root);
   margin: 0;
   padding: 0;
   height: 100%;
@@ -33,6 +33,5 @@ body {
 #root {
   height: 100%;
   overflow: hidden;
-  /* Slight transparency lets Tauri vibrancy show through on macOS */
-  background: rgba(10, 10, 10, 0.85);
+  background: color-mix(in oklab, var(--theme-bg-root) 78%, transparent);
 }

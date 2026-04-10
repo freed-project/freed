@@ -27,14 +27,18 @@
 html {
   height: 100%;
   overflow: hidden;
+  overflow-x: clip;
   scroll-behavior: smooth;
+  width: 100%;
+  max-width: 100%;
 }
 
 body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--freed-black);
+  overflow-x: clip;
+  background: var(--theme-bg-root);
   color: var(--text-primary);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
@@ -43,6 +47,8 @@ body {
   overscroll-behavior: none;
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
+  width: 100%;
+  max-width: 100%;
 }
 
 /* Mobile: document-level scrolling so Safari collapses its address bar
@@ -57,6 +63,7 @@ body {
   html {
     height: auto;
     overflow: visible;
+    overflow-x: clip;
     /* Must be on html (not just body) — iOS Safari applies the pull-to-refresh
        gesture at the root element level when overflow:visible is set here. */
     overscroll-behavior: none;
@@ -65,6 +72,7 @@ body {
   body {
     height: auto;
     overflow: visible;
+    overflow-x: clip;
     overscroll-behavior: none;
   }
 
@@ -75,6 +83,7 @@ body {
     height: 100svh;
     height: 100dvh;
     overflow: visible;
+    overflow-x: clip;
   }
 }
 
@@ -83,6 +92,9 @@ body {
   height: 100dvh;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 /* iOS Safari viewport fix: svh fallback with dvh override */
@@ -149,14 +161,14 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
-  background: rgba(10, 10, 10, 1);
-  border-top: 1px solid var(--freed-border);
+  background: color-mix(in oklab, var(--theme-bg-root) 90%, transparent);
+  border-top: 1px solid var(--theme-border-subtle);
   padding-bottom: var(--safe-area-bottom);
   z-index: 50;
 }
 
 /* Pull-to-refresh spinner */
 .pull-indicator {
-  background: linear-gradient(135deg, var(--glow-blue), var(--glow-purple));
+  background: var(--theme-button-primary-background);
   border-radius: 50%;
 }

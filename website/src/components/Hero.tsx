@@ -31,7 +31,7 @@ export default function Hero() {
             transition={{ duration: 0.5, delay: 0.3 }}
           >
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-freed-border bg-freed-surface/50">
-              <span className="w-2 h-2 rounded-full bg-glow-purple animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-[var(--theme-accent-secondary)] animate-pulse" />
               <span className="text-sm text-text-secondary">
                 Open Source & Free Forever
               </span>
@@ -80,10 +80,10 @@ export default function Hero() {
           </h1>
 
           <p className="inline-flex items-center gap-3 text-xl sm:text-2xl text-text-primary font-medium mb-2 sm:mb-3">
-            <FaFacebook className="text-white/90 shrink-0" />
-            <FaInstagram className="text-white/90 shrink-0" />
-            <FaXTwitter className="text-white/90 shrink-0" />
-            <FaRss className="text-white/90 shrink-0" />
+            <FaFacebook className="text-text-primary shrink-0" />
+            <FaInstagram className="text-text-primary shrink-0" />
+            <FaXTwitter className="text-text-primary shrink-0" />
+            <FaRss className="text-text-primary shrink-0" />
             <span>in one local app.</span>
           </p>
 

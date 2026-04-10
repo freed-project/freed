@@ -12,6 +12,9 @@ const compat = new FlatCompat({
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals"),
   {
+    ignores: [".next/**"],
+  },
+  {
     rules: {
       // Allow metadata exports and other Next.js patterns in page files
       "react-refresh/only-export-components": "off",

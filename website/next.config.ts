@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Disable x-powered-by header
   poweredByHeader: false,
-  transpilePackages: ["@freed/shared"],
+  transpilePackages: ["@freed/shared", "@freed/ui"],
 
   // Configure redirects if needed
   async redirects() {

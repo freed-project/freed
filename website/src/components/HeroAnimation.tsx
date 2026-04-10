@@ -8,9 +8,15 @@ import { useState, useEffect, useRef, useCallback } from "react";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const COLORS = {
-  blues: ["#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#2563eb"],
-  red: "#ef4444",
-  logoBlue: "#3b82f6",
+  accents: [
+    "var(--theme-accent-primary)",
+    "var(--theme-accent-secondary)",
+    "var(--theme-accent-tertiary)",
+    "color-mix(in srgb, var(--theme-accent-primary) 65%, var(--theme-accent-secondary) 35%)",
+    "color-mix(in srgb, var(--theme-accent-secondary) 58%, var(--theme-accent-tertiary) 42%)",
+  ],
+  warning: "#ef4444",
+  logoAccent: "var(--theme-accent-primary)",
 };
 
 const CENTER = 200;
@@ -97,8 +103,8 @@ function createParticle(logo: (typeof LOGOS)[0], isRed: boolean): Particle {
     scale: 1,
     isRed,
     color: isRed
-      ? COLORS.red
-      : COLORS.blues[Math.floor(Math.random() * COLORS.blues.length)],
+      ? COLORS.warning
+      : COLORS.accents[Math.floor(Math.random() * COLORS.accents.length)],
     startX: logo.emitX,
     startY: logo.emitY,
     delay: Math.random() * CYCLE_DURATION,
@@ -276,9 +282,9 @@ export default function HeroAnimation() {
       <svg viewBox="-50 -50 500 500" className="w-full h-full">
         <defs>
           <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.3" />
-            <stop offset="50%" stopColor="#8b5cf6" stopOpacity="0.5" />
-            <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.3" />
+            <stop offset="0%" stopColor="var(--theme-accent-primary)" stopOpacity="0.3" />
+            <stop offset="50%" stopColor="var(--theme-accent-secondary)" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="var(--theme-accent-tertiary)" stopOpacity="0.3" />
           </linearGradient>
           <linearGradient
             id="centerGradient"
@@ -287,14 +293,14 @@ export default function HeroAnimation() {
             x2="100%"
             y2="100%"
           >
-            {COLORS.blues.map((c, i) => (
+            {COLORS.accents.map((c, i) => (
               <stop key={i} offset={`${i * 25}%`} stopColor={c} />
             ))}
           </linearGradient>
           <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0" />
-            <stop offset="50%" stopColor="#8b5cf6" stopOpacity="0.6" />
-            <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0" />
+            <stop offset="0%" stopColor="var(--theme-accent-secondary)" stopOpacity="0" />
+            <stop offset="50%" stopColor="var(--theme-accent-secondary)" stopOpacity="0.6" />
+            <stop offset="100%" stopColor="var(--theme-accent-secondary)" stopOpacity="0" />
           </linearGradient>
           <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
             <feGaussianBlur stdDeviation="4" result="blur" />
@@ -374,18 +380,18 @@ export default function HeroAnimation() {
               filter="url(#glow)"
               animate={{
                 fill: [
-                  `${COLORS.logoBlue}20`,
-                  `${COLORS.logoBlue}20`,
-                  `${COLORS.logoBlue}20`,
-                  `${COLORS.red}20`,
-                  `${COLORS.logoBlue}20`,
+                  `color-mix(in srgb, ${COLORS.logoAccent} 20%, transparent)`,
+                  `color-mix(in srgb, ${COLORS.logoAccent} 20%, transparent)`,
+                  `color-mix(in srgb, ${COLORS.logoAccent} 20%, transparent)`,
+                  `color-mix(in srgb, ${COLORS.warning} 20%, transparent)`,
+                  `color-mix(in srgb, ${COLORS.logoAccent} 20%, transparent)`,
                 ],
                 stroke: [
-                  `${COLORS.logoBlue}50`,
-                  `${COLORS.logoBlue}50`,
-                  `${COLORS.logoBlue}50`,
-                  `${COLORS.red}50`,
-                  `${COLORS.logoBlue}50`,
+                  `color-mix(in srgb, ${COLORS.logoAccent} 50%, transparent)`,
+                  `color-mix(in srgb, ${COLORS.logoAccent} 50%, transparent)`,
+                  `color-mix(in srgb, ${COLORS.logoAccent} 50%, transparent)`,
+                  `color-mix(in srgb, ${COLORS.warning} 50%, transparent)`,
+                  `color-mix(in srgb, ${COLORS.logoAccent} 50%, transparent)`,
                 ],
               }}
               transition={{
@@ -413,11 +419,11 @@ export default function HeroAnimation() {
                   d={logo.path}
                   animate={{
                     fill: [
-                      COLORS.logoBlue,
-                      COLORS.logoBlue,
-                      COLORS.logoBlue,
-                      COLORS.red,
-                      COLORS.logoBlue,
+                      COLORS.logoAccent,
+                      COLORS.logoAccent,
+                      COLORS.logoAccent,
+                      COLORS.warning,
+                      COLORS.logoAccent,
                     ],
                   }}
                   transition={{
@@ -451,7 +457,7 @@ export default function HeroAnimation() {
           width="90"
           height="90"
           rx="16"
-          fill="rgba(0,0,0,0.4)"
+          fill="color-mix(in srgb, var(--theme-bg-surface) 82%, transparent)"
         />
         <rect
           x="155"
@@ -468,7 +474,7 @@ export default function HeroAnimation() {
           x={CENTER}
           y="215"
           textAnchor="middle"
-          fill="white"
+          fill="var(--theme-text-primary)"
           fontSize="48"
           fontWeight="bold"
           fontFamily="system-ui"
@@ -486,7 +492,7 @@ export default function HeroAnimation() {
             height="90"
             rx="16"
             fill="none"
-            stroke="#8b5cf6"
+            stroke="var(--theme-accent-secondary)"
             strokeWidth="2"
             animate={{ scale: [1, 1.8 + i * 0.3], opacity: [0.6, 0] }}
             transition={{

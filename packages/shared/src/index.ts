@@ -30,6 +30,9 @@ export * from "./location";
 // Re-export sample data generators (browser-safe, no deps)
 export * from "./sample-data";
 
+// Re-export shared theme metadata (browser-safe, no deps)
+export * from "./themes";
+
 // Re-export legal metadata and acceptance helpers (browser-safe, no deps)
 export * from "./legal";
 export * from "./legal-storage";

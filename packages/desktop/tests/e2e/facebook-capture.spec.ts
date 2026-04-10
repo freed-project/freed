@@ -7,6 +7,10 @@
 
 import { test, expect } from "./fixtures/app";
 
+function getSettingsDialog(page: import("@playwright/test").Page) {
+  return page.locator(".fixed.inset-0.z-50").last();
+}
+
 // Minimal mbasic.facebook.com-style HTML fixture
 const MBASIC_HTML = `
 <html>
@@ -60,7 +64,7 @@ test("Facebook settings section shows connect button when not authenticated", as
 
   // Navigate to Facebook section via the settings sidebar button (second match,
   // after the main sidebar source button and before "Connect Facebook Account")
-  const fbSection = page.getByRole("button", { name: "Facebook" }).last();
+  const fbSection = getSettingsDialog(page).getByRole("button", { name: /^Facebook$/ });
   await expect(fbSection).toBeVisible({ timeout: 3_000 });
   await fbSection.evaluate((button) => {
     (button as HTMLButtonElement).click();
@@ -98,7 +102,7 @@ test("Facebook connect form accepts cookies and triggers sync", async ({
   });
 
   // Navigate to Facebook section via the settings sidebar button
-  const fbSection = page.getByRole("button", { name: "Facebook" }).last();
+  const fbSection = getSettingsDialog(page).getByRole("button", { name: /^Facebook$/ });
   await expect(fbSection).toBeVisible({ timeout: 3_000 });
   await fbSection.evaluate((button) => {
     (button as HTMLButtonElement).click();
@@ -148,7 +152,7 @@ test("Facebook sync excludes posts from filtered groups", async ({
     timeout: 5_000,
   });
 
-  const fbSection = page.getByRole("button", { name: "Facebook" }).last();
+  const fbSection = getSettingsDialog(page).getByRole("button", { name: /^Facebook$/ });
   await expect(fbSection).toBeVisible({ timeout: 3_000 });
   await fbSection.evaluate((button) => {
     (button as HTMLButtonElement).click();

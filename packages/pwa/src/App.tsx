@@ -37,11 +37,15 @@ import { useBrowserNavigationHistory } from "./lib/navigation-history";
 import { pwaBugReporting } from "./lib/bug-report";
 import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
 
-function App() {
-  // Intercept OAuth callback before rendering the main app.
+function OAuthRouter() {
   if (window.location.pathname === "/oauth-callback") {
     return <OAuthCallback />;
   }
+
+  return <App />;
+}
+
+function App() {
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
   const error = useAppStore((state) => state.error);
@@ -172,7 +176,7 @@ function App() {
   );
 
   if (!legalResolved) {
-    return <div className="h-screen bg-[#121212]" />;
+    return <div className="app-theme-shell h-screen" />;
   }
 
   if (!legalAccepted) {
@@ -228,20 +232,20 @@ function App() {
         <ToastContainer />
         {showUpdateBanner && (
           <div className="fixed bottom-4 right-4 z-50 max-w-sm animate-slide-up">
-            <div className="bg-[#141414] border border-[rgba(139,92,246,0.3)] rounded-xl p-4 shadow-lg flex items-center gap-3">
+            <div className="theme-panel flex items-center gap-3 rounded-xl p-4">
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white">New version available</p>
-                <p className="text-xs text-[#71717a] mt-0.5">Reload to apply the update.</p>
+                <p className="text-sm font-medium text-[var(--theme-text-primary)]">New version available</p>
+                <p className="mt-0.5 text-xs text-[var(--theme-text-muted)]">Reload to apply the update.</p>
               </div>
               <button
                 onClick={applyPwaUpdate}
-                className="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-md bg-[#8b5cf6] text-white hover:bg-[#7c3aed] transition-colors"
+                className="btn-primary shrink-0 px-3 py-1.5 text-xs font-semibold"
               >
                 Reload
               </button>
               <button
                 onClick={() => setShowUpdateBanner(false)}
-                className="shrink-0 text-[#71717a] hover:text-white transition-colors"
+                className="shrink-0 text-[var(--theme-text-muted)] transition-colors hover:text-[var(--theme-text-primary)]"
                 aria-label="Dismiss"
               >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -256,4 +260,4 @@ function App() {
   );
 }
 
-export default App;
+export default OAuthRouter;

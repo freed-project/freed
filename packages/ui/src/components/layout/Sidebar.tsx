@@ -14,6 +14,8 @@ const compactNumberFormatter = new Intl.NumberFormat(undefined, {
   notation: "compact",
   maximumFractionDigits: 1,
 });
+const EMPTY_PROVIDER_SYNC_COUNTS: Partial<Record<string, number>> = {};
+
 function fmt(n: number): string {
   return compactNumberFormatter.format(n);
 }
@@ -645,8 +647,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         className={`
           fixed inset-y-0 left-0 md:relative z-50 md:z-auto
           h-full
-          bg-[#0a0a0a] md:bg-[#0f0f0f]
-          border-r border-[rgba(255,255,255,0.08)]
+          bg-[color-mix(in_oklab,var(--theme-bg-root)_88%,transparent)] md:bg-[color-mix(in_oklab,var(--theme-bg-deep)_88%,transparent)]
+          border-r border-[var(--theme-border-subtle)]
           transform transition-transform duration-200 ease-in-out
           ${open ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
           flex flex-col min-h-0
@@ -654,11 +656,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         style={{ width: `${width}px` }}
       >
         {/* Mobile header with close button */}
-        <div className="md:hidden flex items-center justify-between p-4 pt-[calc(env(safe-area-inset-top)+1rem)] border-b border-[rgba(255,255,255,0.08)] shrink-0">
+        <div className="md:hidden flex shrink-0 items-center justify-between border-b border-[var(--theme-border-subtle)] p-4 pt-[calc(env(safe-area-inset-top)+1rem)]">
           {!headerDragRegion && (
             <span className="text-lg font-bold gradient-text font-logo">FREED</span>
           )}
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/10 ml-auto">
+          <button onClick={onClose} className="ml-auto rounded-lg p-2 transition-colors hover:bg-[var(--theme-bg-muted)]">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -677,8 +679,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   key={source.id ?? "all"}
                   className={`group/source flex items-stretch gap-2 rounded-lg border transition-all ${
                     isTopSourceActive(source)
-                      ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
-                      : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                      ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
+                      : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                   }`}
                 >
                   <button
@@ -689,8 +691,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                       text-left text-sm transition-all
                       ${
                         isTopSourceActive(source)
-                          ? "text-white"
-                          : "text-[#a1a1aa] group-hover/source:text-white"
+                          ? "text-[var(--theme-text-primary)]"
+                          : "text-[var(--theme-text-secondary)] group-hover/source:text-[var(--theme-text-primary)]"
                       }
                     `}
                   >
@@ -720,11 +722,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                               : "opacity-100 group-hover/source:pointer-events-none group-hover/source:translate-x-1 group-hover/source:opacity-0"
                           }`}
                         >
-                          <span className={sourceUnreadCount(source) > 0 ? "text-[#8b5cf6] font-medium" : "text-[#52525b]"}>
+                          <span className={sourceUnreadCount(source) > 0 ? "font-medium text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"}>
                             {fmt(sourceUnreadCount(source))}
                           </span>
-                          <span className="text-[#3f3f46]">/</span>
-                          <span className="text-[#52525b]">{fmt(sourceTotalCount(source))}</span>
+                          <span className="text-[var(--theme-text-soft)]">/</span>
+                          <span className="text-[var(--theme-text-soft)]">{fmt(sourceTotalCount(source))}</span>
                         </span>
                       )}
                     </div>
@@ -995,8 +997,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                           data-testid={`source-indicator-slot-${sourceKey(source)}`}
                           className={`flex h-4 w-4 shrink-0 items-center justify-center transition-transform duration-200 ease-in-out ${
                             openMenuSourceKey === sourceKey(source)
-                              ? "translate-x-1"
-                              : "group-hover/source:translate-x-1"
+                              ? "translate-x-0 bg-[var(--theme-bg-muted)] text-[var(--theme-text-primary)] opacity-100"
+                              : "pointer-events-none translate-x-[-4px] text-[var(--theme-text-muted)] opacity-0 group-hover/source:pointer-events-auto group-hover/source:translate-x-0 group-hover/source:opacity-100"
                           }`}
                         >
                           <SourceIndicator sourceId={source.id ?? "all"} />
@@ -1072,15 +1074,15 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     text-left text-sm transition-all border
                     ${
                       activeView === "friends"
-                        ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
-                        : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                        ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
+                        : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                     }
                   `}
                 >
                   <span className="w-5 flex items-center justify-center"><UsersIcon /></span>
                   <span className="flex-1">Friends</span>
                   {pendingMatchCount > 0 && (
-                    <span className="shrink-0 text-[10px] tabular-nums font-medium px-1.5 py-0.5 rounded-full bg-[#8b5cf6]/30 text-[#c4b5fd]">
+                    <span className="shrink-0 rounded-full bg-[rgb(var(--theme-accent-secondary-rgb)/0.22)] px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-[var(--theme-text-primary)]">
                       {fmt(pendingMatchCount)}
                     </span>
                   )}
@@ -1110,8 +1112,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     text-left text-sm transition-all border
                     ${
                       activeView === "map"
-                        ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
-                        : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                        ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
+                        : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                     }
                   `}
                 >
@@ -1142,8 +1144,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     text-left text-sm transition-all border
                     ${
                       isFeedView && activeFilter.savedOnly
-                        ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
-                        : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                        ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
+                        : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                     }
                   `}
                 >

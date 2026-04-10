@@ -18,7 +18,8 @@ async function openSettingsSection(
   sectionName: string,
 ): Promise<void> {
   await openSettings(page);
-  const section = page.getByRole("button", { name: sectionName }).last();
+  const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
+  const section = settingsDialog.getByRole("button", { name: new RegExp(`^${sectionName.replace("/", "\\/")}$`) });
   await expect(section).toBeVisible({ timeout: 3_000 });
   await section.evaluate((button) => {
     (button as HTMLButtonElement).click();
