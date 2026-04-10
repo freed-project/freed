@@ -23,6 +23,7 @@ import {
   updateFeedItem,
   removeFeedItem,
   markAsRead,
+  markItemsAsRead,
   toggleSaved,
   toggleArchived,
   archiveAllReadUnsaved,
@@ -203,6 +204,14 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
       case "MARK_AS_READ":
         await applyChange((doc) => markAsRead(doc, req.globalId), "Mark as read");
+        ack(req.reqId);
+        break;
+
+      case "MARK_ITEMS_AS_READ":
+        await applyChange(
+          (doc) => markItemsAsRead(doc, req.globalIds),
+          `Mark ${req.globalIds.length.toLocaleString()} items as read`,
+        );
         ack(req.reqId);
         break;
 

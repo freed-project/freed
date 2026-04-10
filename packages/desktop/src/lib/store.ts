@@ -22,6 +22,7 @@ import {
   docUpdateRssFeed,
   docUpdateFeedItem,
   docMarkAsRead,
+  docMarkItemsAsRead,
   docMarkAllAsRead,
   docToggleSaved,
   docRemoveFeedItem,
@@ -95,6 +96,7 @@ interface AppState {
   addItems: (items: FeedItem[]) => Promise<void>;
   updateItem: (id: string, update: Partial<FeedItem>) => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
+  markItemsAsRead: (ids: string[]) => Promise<void>;
   markAllAsRead: (platform?: string) => Promise<void>;
   toggleSaved: (id: string) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
@@ -298,6 +300,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   markAsRead: async (id) => {
     await docMarkAsRead(id);
+  },
+
+  markItemsAsRead: async (ids) => {
+    await docMarkItemsAsRead(ids);
   },
 
   markAllAsRead: async (platform) => {

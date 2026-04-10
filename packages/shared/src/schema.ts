@@ -166,6 +166,21 @@ export function markAsRead(doc: FreedDoc, globalId: string): void {
 }
 
 /**
+ * Mark multiple feed items as read in a single Automerge change.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @param globalIds - The item IDs to mark as read
+ */
+export function markItemsAsRead(doc: FreedDoc, globalIds: readonly string[]): void {
+  const now = Date.now();
+  for (const globalId of globalIds) {
+    const item = doc.feedItems[globalId];
+    if (!item || item.userState.readAt) continue;
+    item.userState.readAt = now;
+  }
+}
+
+/**
  * Toggle archived status for a feed item, maintaining the archivedAt timestamp.
  *
  * @param doc - The Automerge document (mutable within A.change)

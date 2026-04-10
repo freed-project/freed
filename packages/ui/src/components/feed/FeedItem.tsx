@@ -190,7 +190,9 @@ export const FeedItem = memo(function FeedItem({
 
     return (
       <div
-        className="relative overflow-hidden rounded-2xl cursor-pointer group select-none w-full"
+        className={`relative overflow-hidden rounded-2xl cursor-pointer group select-none w-full transition-opacity ${
+          isRead ? "grayscale opacity-60" : ""
+        }`}
         style={{ height: storyHeight }}
         onClick={onClick}
         onMouseEnter={onMouseEnter}

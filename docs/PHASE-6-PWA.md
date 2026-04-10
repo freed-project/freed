@@ -30,7 +30,7 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 
 **Key Features:**
 
-1. **Per-source unread tracking** — Enable for newsletters and priority sources
+1. **Per-source unread tracking** — Enable for newsletters and priority sources, mark items read when they scroll past, and finish the list when you leave after reaching bottom
 2. **Reading enhancements** — Focus mode, font options, theming
 3. **Custom ranking** — User-controlled weights, not engagement
 4. **Source filtering** — View by platform, author, or topic
