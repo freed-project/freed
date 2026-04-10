@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   extractLocationFromItem,
   friendForAuthor,
@@ -104,7 +104,7 @@ export function useFriendLastSeenLocation(
   lastSeen: LocationMarkerSummary | null;
   resolvingCount: number;
 } {
-  const friendMap = { [friend.id]: friend };
+  const friendMap = useMemo(() => ({ [friend.id]: friend }), [friend]);
   const { resolvedItems, resolvingCount } = useResolvedLocations(feedItems, friendMap);
   return {
     lastSeen: getLastSeenLocationForFriend(resolvedItems, friend.id),

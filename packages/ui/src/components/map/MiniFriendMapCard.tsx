@@ -21,9 +21,16 @@ export function MiniFriendMapCard({
   if (!lastSeen && resolvingCount === 0) return null;
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onOpenMap}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpenMap();
+        }
+      }}
       className="mt-4 w-full overflow-hidden rounded-2xl border border-[#6f56a8]/18 bg-[linear-gradient(180deg,rgba(50,34,74,0.34),rgba(15,14,22,0.9))] text-left shadow-[0_18px_40px_rgba(2,6,23,0.38)] transition-colors hover:border-[#8b5cf6]/22 hover:bg-[linear-gradient(180deg,rgba(62,39,98,0.42),rgba(17,17,24,0.94))]"
     >
       <div className="flex items-center justify-between px-3.5 py-3">
@@ -57,6 +64,6 @@ export function MiniFriendMapCard({
           />
         </div>
       )}
-    </button>
+    </div>
   );
 }

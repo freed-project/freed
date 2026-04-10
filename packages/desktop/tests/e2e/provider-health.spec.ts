@@ -1474,13 +1474,13 @@ test("sidebar keeps friends and map under all, and LinkedIn falls back to source
 
   expect(sourceRowOrder).toEqual([
     "source-row-all",
-    "source-row-friends",
-    "source-row-map",
     "source-row-rss",
     "source-row-x",
     "source-row-facebook",
     "source-row-instagram",
     "source-row-linkedin",
+    "source-row-friends",
+    "source-row-map",
   ]);
 
   await expect(page.getByTestId("source-indicator-linkedin")).toHaveAttribute("title", "Connected");
@@ -1782,7 +1782,8 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
     });
   }, { debugStorePath });
 
-  await expect(page.getByTestId("source-indicator-rss")).toHaveAttribute("title", "Syncing");
+  await expect(page.getByTestId("source-status-rss")).toHaveAttribute("title", "Syncing");
+  await page.getByTestId("source-row-rss").hover();
   await expect(page.getByTestId("source-menu-trigger-rss")).toBeVisible();
 
   await page.evaluate(async ({ debugStorePath }) => {
@@ -1830,8 +1831,8 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
     });
   }, { debugStorePath });
 
-  await expect(page.getByTestId("source-indicator-rss")).toHaveAttribute("title", "Sync issue");
-  await expect(page.getByTestId("source-indicator-rss")).toHaveClass(/bg-amber-500/);
+  await expect(page.getByTestId("source-status-rss")).toHaveAttribute("title", "Sync issue");
+  await expect(page.getByTestId("source-status-rss")).toHaveClass(/bg-amber-500/);
 });
 
 test("source rows swap counts for an actions menu on hover", async ({ app, page }) => {
