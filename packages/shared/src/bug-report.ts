@@ -75,7 +75,7 @@ export interface BugReportStateSummary {
   totalFriends: number;
   totalUnread: number;
   totalArchived: number;
-  activeView: "feed" | "friends";
+  activeView: "feed" | "friends" | "map";
   isInitialized: boolean;
   isLoading: boolean;
   isSyncing: boolean;

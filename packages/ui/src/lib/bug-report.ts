@@ -403,7 +403,7 @@ export function summarizeStateForReport(input: {
     feeds: Record<string, unknown>;
     friends: Record<string, unknown>;
     totalUnreadCount: number;
-    activeView: "feed" | "friends";
+    activeView: "feed" | "friends" | "map";
     isInitialized: boolean;
     isLoading: boolean;
     isSyncing: boolean;
