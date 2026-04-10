@@ -2,7 +2,7 @@
   "tag": "v26.4.900",
   "version": "26.4.900",
   "dayKey": "26.4.9",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-10T04:24:13.131Z",
   "model": "heuristic",
@@ -28,10 +28,16 @@
     ]
   },
   "release": {
-    "deck": "Provider health diagnostics and source management",
-    "features": [],
-    "fixes": [],
+    "deck": "Provider health diagnostics and quieter background scrapers",
+    "features": [
+      "New provider health diagnostics make it easier to spot auth issues and source problems."
+    ],
+    "fixes": [
+      "Items now mark as read when you scroll past them.",
+      "Browser session copy is more accurate.",
+      "Background social scrapers stay quieter when they do not need attention."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.900\n\nProvider health diagnostics and source management\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.900\n\nProvider health diagnostics and quieter background scrapers\n\n### New\n\n- New provider health diagnostics make it easier to spot auth issues and source problems.\n\n### Fixes\n\n- Items now mark as read when you scroll past them.\n- Browser session copy is more accurate.\n- Background social scrapers stay quieter when they do not need attention.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
