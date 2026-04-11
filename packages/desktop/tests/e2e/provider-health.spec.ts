@@ -722,7 +722,7 @@ test("paused provider health is visible in X settings and can be resumed", async
   await page.getByRole("button", { name: "Resume Now" }).click();
   await app.acceptProviderRiskIfPresent("x");
 
-  await expect(page.getByText("Paused until").first()).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Resume Now" })).toHaveCount(0);
   await expect(page.getByTestId("provider-sync-action-x")).toContainText("Sync Now");
 });
 

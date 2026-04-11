@@ -190,18 +190,17 @@ test("X connect form accepts cookies and triggers sync", async ({
     }
   }
 
-  const nextState = await Promise.race([
-    page
-      .getByTestId("provider-risk-accept-x")
-      .waitFor({ state: "visible", timeout: 10_000 })
-      .then(() => "risk" as const),
-    page
-      .getByTestId("provider-status-x")
-      .waitFor({ state: "visible", timeout: 10_000 })
-      .then(() => "connected" as const),
-  ]);
+  await page.waitForFunction(() => {
+    const risk = document.querySelector('[data-testid="provider-risk-accept-x"]');
+    const status = document.querySelector('[data-testid="provider-status-x"]');
+    const isVisible = (element: Element | null) =>
+      !!element &&
+      element instanceof HTMLElement &&
+      element.offsetParent !== null;
+    return isVisible(risk) || isVisible(status);
+  }, { timeout: 10_000 });
 
-  if (nextState === "risk") {
+  if (await page.getByTestId("provider-risk-accept-x").isVisible().catch(() => false)) {
     await app.acceptProviderRiskIfPresent("x");
   }
 

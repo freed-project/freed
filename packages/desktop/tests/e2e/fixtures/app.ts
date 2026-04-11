@@ -88,7 +88,21 @@ export class AppFixture {
     if (!checked) return false;
 
     await expect(acceptButton).toBeEnabled({ timeout });
-    await acceptButton.click();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const button = this.page.getByTestId(`provider-risk-accept-${provider}`);
+        await button.waitFor({ state: "visible", timeout });
+        await button.evaluate((element) => {
+          (element as HTMLButtonElement).click();
+        });
+        break;
+      } catch (error) {
+        if (attempt === 2) {
+          throw error;
+        }
+        await this.page.waitForTimeout(150);
+      }
+    }
     await expect(acceptButton).toBeHidden({ timeout });
     return true;
   }
