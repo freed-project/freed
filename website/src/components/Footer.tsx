@@ -18,7 +18,7 @@ export default function Footer() {
                   className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
                   style={{
                     background:
-                      "linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #8b5cf6, #ec4899)",
+                      "linear-gradient(90deg, var(--theme-accent-primary), var(--theme-accent-secondary), var(--theme-accent-tertiary))",
                   }}
                 />
               </span>

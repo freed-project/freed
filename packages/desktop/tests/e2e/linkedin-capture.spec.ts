@@ -1,5 +1,9 @@
 import { test, expect } from "./fixtures/app";
 
+function getSettingsDialog(page: import("@playwright/test").Page) {
+  return page.locator(".fixed.inset-0.z-50").last();
+}
+
 async function openLinkedInSection(
   page: import("@playwright/test").Page,
   t: typeof test,
@@ -17,14 +21,14 @@ async function openLinkedInSection(
     timeout: 5_000,
   });
 
-  const liNavBtn = page.getByRole("button", { name: "LinkedIn" }).last();
+  const liNavBtn = getSettingsDialog(page).getByRole("button", { name: /^LinkedIn$/ });
   await expect(liNavBtn).toBeVisible({ timeout: 3_000 });
   await liNavBtn.evaluate((button) => {
     (button as HTMLButtonElement).click();
   });
   await page.waitForTimeout(500);
 
-  const liHeading = page.getByRole("heading", { name: "LinkedIn", level: 3 });
+  const liHeading = getSettingsDialog(page).getByRole("heading", { name: "LinkedIn", level: 3 });
   await expect(liHeading).toBeVisible({ timeout: 3_000 });
   return liHeading.locator("..");
 }
@@ -117,7 +121,8 @@ test("LinkedIn appears in sidebar as an active source", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
 
-  const liButton = app.page.getByTestId("source-row-linkedin");
+  const sidebar = app.page.locator("nav").first();
+  const liButton = sidebar.getByTestId("source-row-linkedin");
   await expect(liButton).toBeVisible({ timeout: 3_000 });
 });
 
@@ -142,7 +147,8 @@ test("LinkedIn source button filters the feed to LinkedIn items", async ({
   await app.injectRssItems(1);
   await injectLinkedInItems(app.page, 1);
 
-  await app.page.getByTestId("source-row-linkedin").click();
+  const sidebar = app.page.locator("nav").first();
+  await sidebar.getByTestId("source-row-linkedin").click();
   await app.page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as

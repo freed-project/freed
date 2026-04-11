@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = "edge";
+const BREVO_CONTACTS_ENDPOINT = "https://api.brevo.com/v3/contacts";
 
 interface SubscribeRequest {
   email: string;
@@ -27,10 +27,16 @@ function isValidEmail(email: string): boolean {
 
 export async function POST(request: NextRequest) {
   try {
-    const { email } = (await request.json()) as SubscribeRequest;
+    const body = await request.json().catch(() => null) as SubscribeRequest | null;
+
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    const normalizedEmail = (body.email ?? "").trim().toLowerCase();
 
     // Validate email
-    if (!email || !isValidEmail(email)) {
+    if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
       return NextResponse.json(
         { error: "Invalid email address" },
         { status: 400 }
@@ -51,8 +57,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const parsedListId = Number.parseInt(listId, 10);
+
+    if (!Number.isFinite(parsedListId) || parsedListId <= 0) {
+      console.error("Invalid BREVO_LIST_ID environment variable");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
     // Add contact to Brevo
-    const brevoResponse = await fetch("https://api.brevo.com/v3/contacts", {
+    const brevoResponse = await fetch(BREVO_CONTACTS_ENDPOINT, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -60,8 +76,8 @@ export async function POST(request: NextRequest) {
         "api-key": apiKey,
       },
       body: JSON.stringify({
-        email: email,
-        listIds: [parseInt(listId)],
+        email: normalizedEmail,
+        listIds: [parsedListId],
         updateEnabled: true, // Update if contact already exists
       }),
     });
@@ -75,9 +91,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Handle specific Brevo errors
-    const brevoError = (await brevoResponse
-      .json()
-      .catch(() => ({}))) as BrevoError;
+    const brevoError = (await brevoResponse.json().catch(() => ({}))) as BrevoError;
 
     // Contact already exists (not really an error for our use case)
     if (brevoError.code === "duplicate_parameter") {

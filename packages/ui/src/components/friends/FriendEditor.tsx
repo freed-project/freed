@@ -266,7 +266,7 @@ export function FriendEditor({
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 bg-black/60 sm:items-center"
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
-      <div className="my-auto w-full max-w-lg bg-[#111] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-2rem)] sm:max-h-[90vh]">
+      <div className="my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-elevated)_96%,transparent)] shadow-2xl sm:max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center gap-2 px-5 py-4 border-b border-white/10 shrink-0">
           <h2 className="text-base font-semibold text-text-primary flex-1">
@@ -300,7 +300,7 @@ export function FriendEditor({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Full name"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-[#8b5cf6]/60"
+                  className="theme-input w-full rounded-lg px-3 py-2 text-sm"
                 />
               </div>
               <div>
@@ -312,7 +312,7 @@ export function FriendEditor({
                   value={avatarUrl}
                   onChange={(e) => setAvatarUrl(e.target.value)}
                   placeholder="https://..."
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-[#8b5cf6]/60"
+                  className="theme-input w-full rounded-lg px-3 py-2 text-sm"
                 />
               </div>
               <div>
@@ -322,7 +322,7 @@ export function FriendEditor({
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
                   placeholder="Optional short bio"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-[#8b5cf6]/60"
+                  className="theme-input w-full rounded-lg px-3 py-2 text-sm"
                 />
               </div>
             </div>
@@ -340,8 +340,8 @@ export function FriendEditor({
                   onClick={() => setCareLevel(level)}
                   className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border text-left transition-colors ${
                     careLevel === level
-                      ? "border-[#8b5cf6]/50 bg-[#8b5cf6]/10"
-                      : "border-white/10 hover:border-white/20 hover:bg-white/5"
+                      ? "theme-chip-active"
+                      : "theme-chip"
                   }`}
                 >
                   <div className="flex gap-0.5">
@@ -372,7 +372,7 @@ export function FriendEditor({
                   value={reachOutDays}
                   onChange={(e) => setReachOutDays(e.target.value)}
                   placeholder="e.g. 21"
-                  className="w-32 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-[#8b5cf6]/60"
+                  className="theme-input w-32 rounded-lg px-3 py-2 text-sm"
                 />
               </div>
             </div>
@@ -384,12 +384,12 @@ export function FriendEditor({
               Contact info
             </h3>
             {contact ? (
-              <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-xs text-text-secondary space-y-0.5">
+              <div className="rounded-lg border border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-card)] px-3 py-2.5 text-xs text-text-secondary space-y-0.5">
                 {contact.phone && <p>Phone: {contact.phone}</p>}
                 {contact.email && <p>Email: {contact.email}</p>}
                 {contact.address && <p>Address: {contact.address}</p>}
                 <button
-                  className="text-[#c4b5fd] hover:text-[#a78bfa] transition-colors mt-1"
+                  className="theme-link mt-1 transition-colors"
                   onClick={() => {
                     setContact(undefined);
                     setContactPhone("");
@@ -407,21 +407,21 @@ export function FriendEditor({
                   value={contactPhone}
                   onChange={(e) => setContactPhone(e.target.value)}
                   placeholder="Phone"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-[#8b5cf6]/60"
+                  className="theme-input w-full rounded-lg px-3 py-2 text-sm"
                 />
                 <input
                   type="email"
                   value={contactEmail}
                   onChange={(e) => setContactEmail(e.target.value)}
                   placeholder="Email"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-[#8b5cf6]/60"
+                  className="theme-input w-full rounded-lg px-3 py-2 text-sm"
                 />
                 <input
                   type="text"
                   value={contactAddress}
                   onChange={(e) => setContactAddress(e.target.value)}
                   placeholder="Address"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-[#8b5cf6]/60"
+                  className="theme-input w-full rounded-lg px-3 py-2 text-sm"
                 />
                 <div className="flex gap-2">
                   <button
@@ -431,7 +431,7 @@ export function FriendEditor({
                     Cancel
                   </button>
                   <button
-                    className="px-3 py-1.5 text-xs font-medium bg-[#8b5cf6]/20 text-[#c4b5fd] rounded-lg hover:bg-[#8b5cf6]/30 transition-colors"
+                    className="theme-chip-active rounded-lg px-3 py-1.5 text-xs font-medium"
                     onClick={handleSaveContactForm}
                   >
                     Save
@@ -442,7 +442,7 @@ export function FriendEditor({
               <button
                 onClick={handleImportContact}
                 disabled={contactImporting}
-                className="w-full px-3 py-2 text-sm text-text-secondary hover:text-text-primary border border-white/10 hover:border-white/20 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                className="btn-secondary flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm disabled:opacity-50"
               >
                 {contactImporting ? (
                   <span className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" />
@@ -470,14 +470,14 @@ export function FriendEditor({
                 {sources.map((src) => (
                   <span
                     key={`${src.platform}-${src.authorId}`}
-                    className="inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-full bg-[#8b5cf6]/15 border border-[#8b5cf6]/30 text-xs text-[#c4b5fd]"
+                    className="theme-chip-active inline-flex items-center gap-1.5 rounded-full py-0.5 pl-2 pr-1 text-xs"
                   >
                     {platformIcons[src.platform]}
                     <span className="truncate max-w-[80px]">
                       {src.handle ?? src.displayName}
                     </span>
                     <button
-                      className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors text-[#c4b5fd]/70 hover:text-[#c4b5fd]"
+                      className="flex h-4 w-4 items-center justify-center rounded-full text-[color:var(--theme-text-secondary)] transition-colors hover:bg-[color:var(--theme-bg-card)] hover:text-[color:var(--theme-text-primary)]"
                       onClick={() => toggleSource({ ...src } as AuthorCandidate)}
                       aria-label={`Unlink ${src.handle}`}
                     >
@@ -494,7 +494,7 @@ export function FriendEditor({
               value={sourceSearch}
               onChange={(e) => setSourceSearch(e.target.value)}
               placeholder="Search profiles in your feed..."
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-[#8b5cf6]/60 mb-2"
+              className="theme-input mb-2 w-full rounded-lg px-3 py-2 text-sm"
             />
 
             {filteredCandidates.length === 0 && (
@@ -519,7 +519,7 @@ export function FriendEditor({
                       className="w-6 h-6 rounded-full bg-white/5 shrink-0"
                     />
                   ) : (
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#3b82f6] to-[#8b5cf6] shrink-0" />
+                    <div className="h-6 w-6 shrink-0 rounded-full" style={{ background: "var(--theme-button-primary-background)" }} />
                   )}
                   <span className="flex-1 min-w-0">
                     <span className="text-xs text-text-primary truncate block">
@@ -533,8 +533,8 @@ export function FriendEditor({
                   <span
                     className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
                       isSourceLinked(c)
-                        ? "bg-[#8b5cf6] border-[#8b5cf6] text-white"
-                        : "border-white/20"
+                        ? "border-[color:var(--theme-border-strong)] bg-[color:var(--theme-accent-secondary)] text-white"
+                        : "border-[color:var(--theme-border-subtle)]"
                     }`}
                     aria-hidden
                   >
@@ -564,7 +564,7 @@ export function FriendEditor({
                   value={tags}
                   onChange={(e) => setTags(e.target.value)}
                   placeholder="work, college, hiking..."
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-[#8b5cf6]/60"
+                  className="theme-input w-full rounded-lg px-3 py-2 text-sm"
                 />
               </div>
               <div>
@@ -574,7 +574,7 @@ export function FriendEditor({
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="Anything you want to remember..."
                   rows={3}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-[#8b5cf6]/60 resize-none"
+                  className="theme-input w-full resize-none rounded-lg px-3 py-2 text-sm"
                 />
               </div>
             </div>
@@ -617,14 +617,14 @@ export function FriendEditor({
         <div className="flex items-center gap-2 px-5 py-4 border-t border-white/10 shrink-0">
           <button
             onClick={onCancel}
-            className="flex-1 px-4 py-2 text-sm text-text-secondary hover:text-text-primary border border-white/10 hover:border-white/20 rounded-lg transition-colors"
+            className="btn-secondary flex-1 rounded-lg px-4 py-2 text-sm"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={!name.trim()}
-            className="flex-1 px-4 py-2 text-sm font-medium bg-[#8b5cf6] hover:bg-[#7c3aed] text-white rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="btn-primary flex-1 rounded-lg px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40"
           >
             {existing ? "Save changes" : "Add friend"}
           </button>

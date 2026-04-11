@@ -1,8 +1,11 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { bootstrapDocumentTheme } from '@freed/ui/lib/theme'
 import './index.css'
 import App from './App.tsx'
 import { installConsoleBugReportCapture, installGlobalBugReportCapture } from '@freed/ui/lib/bug-report'
+
+bootstrapDocumentTheme()
 
 if (import.meta.env.DEV) {
   Promise.all([import("./lib/store"), import("./lib/automerge")]).then(

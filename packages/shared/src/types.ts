@@ -464,6 +464,16 @@ export interface SyncPreferences {
 export type ReadingIntensity = "light" | "normal" | "strong";
 
 /**
+ * Visual theme identifiers shared across website, desktop, and PWA.
+ */
+export type ThemeId =
+  | "neon"
+  | "midas"
+  | "vesper"
+  | "ember"
+  | "porcelain";
+
+/**
  * Reading enhancements configuration
  */
 export interface ReadingEnhancements {
@@ -497,6 +507,9 @@ export interface DisplayPreferences {
 
   /** Compact mode */
   compactMode: boolean;
+
+  /** Active visual theme */
+  themeId: ThemeId;
 
   /** Show engagement counts (default: false - opt-in only) */
   showEngagementCounts: boolean;
@@ -657,6 +670,7 @@ export function createDefaultPreferences(): UserPreferences {
     display: {
       itemsPerPage: 20,
       compactMode: false,
+      themeId: "neon",
       showEngagementCounts: false, // Hidden by default
       reading: {
         focusMode: false,

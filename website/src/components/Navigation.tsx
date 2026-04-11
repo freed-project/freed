@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { useNewsletter } from "@/context/NewsletterContext";
+import { THEME_DEFINITIONS, useTheme } from "@/context/ThemeContext";
 
 const WTF_CAPTIONS = [
   // Core brand
@@ -53,6 +54,7 @@ function isActive(itemPath: string, pathname: string): boolean {
 export default function Navigation() {
   const pathname = usePathname();
   const { openModal } = useNewsletter();
+  const { themeId, setThemeId } = useTheme();
   const [captionIndex, setCaptionIndex] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -120,7 +122,7 @@ export default function Navigation() {
           className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
           style={{
             background:
-              "linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #8b5cf6, #ec4899)",
+              "linear-gradient(to right, var(--theme-accent-primary), var(--theme-accent-primary), var(--theme-accent-secondary), var(--theme-accent-tertiary), var(--theme-accent-secondary), var(--theme-accent-primary))",
           }}
         />
       </span>
@@ -239,11 +241,11 @@ export default function Navigation() {
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
           maskImage:
-            "linear-gradient(to bottom, black 0%, black 50%, transparent 100%)",
+            "linear-gradient(to bottom, var(--theme-bg-root) 0%, var(--theme-bg-root) 50%, transparent 100%)",
           WebkitMaskImage:
-            "linear-gradient(to bottom, black 0%, black 50%, transparent 100%)",
+            "linear-gradient(to bottom, var(--theme-bg-root) 0%, var(--theme-bg-root) 50%, transparent 100%)",
           background:
-            "linear-gradient(to bottom, rgba(10, 10, 10, 0.8) 0%, rgba(10, 10, 10, 0.4) 50%, transparent 100%)",
+            "linear-gradient(to bottom, color-mix(in oklab, var(--theme-bg-root) 78%, transparent) 0%, color-mix(in oklab, var(--theme-bg-root) 42%, transparent) 50%, transparent 100%)",
         }}
         aria-hidden="true"
       />
@@ -280,6 +282,20 @@ export default function Navigation() {
             <div className="max-w-6xl mx-auto flex items-center justify-between">
               {logoElement}
               {desktopLinks}
+              <label className="hidden lg:flex items-center gap-2 text-xs text-text-muted">
+                <span className="uppercase tracking-[0.18em]">Theme</span>
+                <select
+                  value={themeId}
+                  onChange={(event) => setThemeId(event.target.value as typeof themeId)}
+                  className="rounded-lg border border-freed-border bg-freed-surface/70 px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-glow-purple"
+                >
+                  {THEME_DEFINITIONS.map((theme) => (
+                    <option key={theme.id} value={theme.id}>
+                      {theme.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
           </div>
         </div>
@@ -332,6 +348,28 @@ export default function Navigation() {
                 >
                   GitHub
                 </motion.a>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.22, duration: 0.15 }}
+                  className="flex flex-col items-center gap-2"
+                >
+                  <span className="text-xs uppercase tracking-[0.22em] text-text-muted">
+                    Theme
+                  </span>
+                  <select
+                    value={themeId}
+                    onChange={(event) => setThemeId(event.target.value as typeof themeId)}
+                    className="rounded-xl border border-freed-border bg-freed-surface/80 px-4 py-3 text-base text-text-primary focus:outline-none focus:border-glow-purple"
+                  >
+                    {THEME_DEFINITIONS.map((theme) => (
+                      <option key={theme.id} value={theme.id}>
+                        {theme.name}
+                      </option>
+                    ))}
+                  </select>
+                </motion.div>
 
                 <motion.button
                   initial={{ opacity: 0, y: 10 }}

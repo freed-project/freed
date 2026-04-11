@@ -21,6 +21,7 @@ import {
 } from "@/lib/legal-consent";
 
 type SubmitState = "idle" | "loading" | "success" | "error";
+type InstallNoteVariant = "callout" | "inline";
 
 const RELEASE_BASE =
   "https://github.com/freed-project/freed/releases/latest/download";
@@ -45,6 +46,13 @@ const DOWNLOADS: Record<DownloadKey, { label: string; file: string }> = {
     file: "Freed-Linux-x64.AppImage",
   },
 };
+
+const INSTALL_NOTE_VARIANT: InstallNoteVariant = "inline";
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isValidEmailAddress(email: string): boolean {
+  return EMAIL_REGEX.test(email);
+}
 
 function detectDownloadKey(): DownloadKey {
   if (typeof navigator === "undefined") return "mac-arm";
@@ -155,6 +163,13 @@ export default function NewsletterModal() {
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!email || state === "loading") return;
+      const normalizedEmail = email.trim().toLowerCase();
+
+      if (!normalizedEmail || !isValidEmailAddress(normalizedEmail)) {
+        setState("error");
+        setErrorMessage("Please enter a valid email address.");
+        return;
+      }
 
       setState("loading");
       setErrorMessage("");
@@ -163,18 +178,26 @@ export default function NewsletterModal() {
         const response = await fetch("/api/subscribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email }),
+          body: JSON.stringify({ email: normalizedEmail }),
         });
 
-        const data = await response.json();
+        const data = (await response.json().catch(() => ({}))) as {
+          success?: boolean;
+          error?: string;
+          message?: string;
+        };
+
+        const nextState = response.ok && data.success ? "success" : "error";
+        setState(nextState);
 
         if (response.ok && data.success) {
-          setState("success");
           setEmail("");
-        } else {
-          setState("error");
-          setErrorMessage(data.error || "Something went wrong");
+          return;
         }
+
+        setErrorMessage(
+          data.error ?? "Something went wrong. Please try again in a moment."
+        );
       } catch {
         setState("error");
         setErrorMessage("Network error. Please try again.");
@@ -196,6 +219,8 @@ export default function NewsletterModal() {
   const downloadUrl = `${RELEASE_BASE}/${currentDownload.file}`;
   const canProceed = acceptedBundle || legalChecked;
   const storedAcceptance = getWebsiteBundleAcceptance();
+  const normalizedEmailInput = email.trim().toLowerCase();
+  const isEmailInputValid = isValidEmailAddress(normalizedEmailInput);
 
   const ensureAccepted = useCallback(() => {
     if (acceptedBundle) return true;
@@ -236,7 +261,7 @@ export default function NewsletterModal() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ type: "spring", duration: 0.5 }}
-            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-lg px-4"
+            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-5xl px-4"
           >
             <div className="relative p-6 sm:p-10 md:p-12 overflow-hidden rounded-2xl bg-freed-black/80 backdrop-blur-xl border border-freed-border shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
               {/* Decorative glows */}
@@ -267,319 +292,331 @@ export default function NewsletterModal() {
                   <SuccessView onClose={handleClose} />
                 ) : (
                   <>
-                    <div className="text-center mb-10">
+                    <div className="text-center mb-8">
                       <h3
                         id="get-freed-title"
-                        className="text-2xl font-bold text-text-primary mb-2"
+                        className="text-5xl font-bold text-text-primary mb-2"
                       >
                         Get <span className="gradient-text">Freed</span>
                       </h3>
-                      <p className="text-text-secondary text-sm">
+                      <p className="text-text-secondary text-base mt-2">
                         Open-source. Free forever. Take back your feed.
                       </p>
                     </div>
 
-                    {/* Release warning */}
-                    <div className="mb-6 px-4 py-4 rounded-xl border border-amber-500/30 bg-amber-500/5">
-                      <p className="text-center text-sm font-semibold text-amber-300">
-                        ⚠️ Early experimental build
-                      </p>
-                      <p className="text-center text-xs text-amber-100/70 mt-2 leading-relaxed">
-                        Some features can break, lock you out, or get your social
-                        accounts throttled or banned. I'm shipping new builds{" "}
-                        <a
-                          href="/changelog"
-                          className="underline underline-offset-2 hover:text-amber-200 transition-colors"
-                        >
-                          most every day
-                        </a>
-                        . Expect rough edges while we harden the release.
-                      </p>
-                      {selectedPlatform === "windows" && (
-                        <p className="text-center text-xs text-amber-400/70 mt-3">
-                          Windows will probably block this installer since it's
-                          unsigned. Click{" "}
-                          <span className="text-amber-400/80 font-medium">
-                            More info
-                          </span>{" "}
-                          then{" "}
-                          <span className="text-amber-400/80 font-medium">
-                            Run anyway
-                          </span>{" "}
-                          to proceed.
-                        </p>
-                      )}
-                      {selectedPlatform === "linux" && (
-                        <p className="text-center text-xs text-amber-400/70 mt-3">
-                          Make the AppImage executable before running:{" "}
-                          <code className="font-mono bg-amber-500/10 px-1 py-0.5 rounded">
-                            chmod +x Freed-Linux-x64.AppImage
-                          </code>
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="mb-6 rounded-xl border border-freed-border bg-freed-surface/30 p-4">
-                      <div className="flex flex-wrap justify-center gap-x-3 gap-y-2 text-xs sm:text-sm text-text-secondary">
-                        <a
-                          href={LEGAL_DOCS.terms.path}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="underline underline-offset-2 hover:text-text-primary transition-colors"
-                        >
-                          {LEGAL_DOCS.terms.label}
-                        </a>
-                        <a
-                          href={LEGAL_DOCS.privacy.path}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="underline underline-offset-2 hover:text-text-primary transition-colors"
-                        >
-                          {LEGAL_DOCS.privacy.label}
-                        </a>
-                      </div>
-                      {acceptedBundle ? (
-                        <p className="mt-3 text-xs text-center text-green-300/80">
-                          This browser already accepted legal bundle {LEGAL_BUNDLE_VERSION}
-                          {storedAcceptance?.acceptedAt
-                            ? ` on ${new Date(storedAcceptance.acceptedAt).toLocaleString()}`
-                            : ""}
-                          .
-                        </p>
-                      ) : (
-                        <label className="mt-3 flex items-start gap-3 text-xs sm:text-sm text-text-secondary cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={legalChecked}
-                            onChange={(event) => setLegalChecked(event.target.checked)}
-                            className="mt-0.5 h-4 w-4 rounded border-freed-border bg-freed-surface text-glow-purple focus:ring-glow-purple"
-                          />
-                          <span>
-                            I have read and agree to the Terms of Use and Privacy Policy.
-                            I understand that Freed can have rough edges and that the desktop app
-                            will present additional license and risk terms on first launch.
-                          </span>
-                        </label>
-                      )}
-                    </div>
-
-                    {/* --- Web App --- */}
-                    <button
-                      type="button"
-                      onClick={handleOpenWebApp}
-                      disabled={!canProceed}
-                      data-testid="website-legal-open-web-app"
-                      className="group w-full flex items-center gap-4 p-4 rounded-xl border border-freed-border hover:border-glow-purple/40 bg-freed-surface/40 hover:bg-freed-surface/70 transition-all mb-3 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <div className="shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-glow-blue to-glow-purple flex items-center justify-center">
-                        <svg
-                          className="w-5 h-5 text-white"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={2}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5a17.92 17.92 0 01-8.716-2.247m0 0A9 9 0 013 12c0-1.605.42-3.113 1.157-4.418"
-                          />
-                        </svg>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-text-primary group-hover:text-white transition-colors">
-                          Open Web App
-                        </p>
-                        <p className="text-xs text-text-muted">
-                          Read your feeds anywhere, great on mobile
-                        </p>
-                      </div>
-                      <svg
-                        className="w-4 h-4 text-text-muted group-hover:text-text-secondary transition-colors shrink-0"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"
-                        />
-                      </svg>
-                    </button>
-
-                    {/* --- Desktop Download with platform dropdown --- */}
-                    <div className="relative mb-8" ref={dropdownRef}>
-                      <div className="flex items-center rounded-xl border border-freed-border hover:border-glow-purple/40 bg-freed-surface/40 hover:bg-freed-surface/70 transition-all">
-                        <button
-                          type="button"
-                          onClick={handleDownload}
-                          disabled={!canProceed}
-                          data-testid="website-legal-download"
-                          className="group flex items-center gap-4 p-4 flex-1 min-w-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <div className="shrink-0 w-10 h-10 rounded-lg bg-freed-surface border border-freed-border flex items-center justify-center">
-                            <svg
-                              className="w-5 h-5 text-text-secondary"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                              strokeWidth={2}
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-                              />
-                            </svg>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-text-primary group-hover:text-white transition-colors">
-                              Download for {currentDownload.label}
-                            </p>
-                            <p className="text-xs text-text-muted">
-                              Runs in background to subscribe &amp; monitor
-                            </p>
-                          </div>
-                        </button>
-                        <button
-                          onClick={() => setDropdownOpen((o) => !o)}
-                          aria-label="Choose a different platform"
-                          className="shrink-0 px-3 self-stretch border-l border-freed-border text-text-muted hover:text-text-primary transition-colors"
-                        >
-                          <svg
-                            className={`w-4 h-4 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                            strokeWidth={2}
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M19.5 8.25l-7.5 7.5-7.5-7.5"
-                            />
-                          </svg>
-                        </button>
-                      </div>
-
-                      {/* Platform dropdown */}
-                      <AnimatePresence>
-                        {dropdownOpen && (
-                          <motion.ul
-                            initial={{ opacity: 0, y: -4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -4 }}
-                            transition={{ duration: 0.15 }}
-                            className="absolute left-0 right-0 mt-1.5 rounded-xl border border-freed-border bg-freed-black/95 backdrop-blur-xl shadow-lg overflow-hidden z-20"
-                          >
-                            {(
-                              Object.entries(DOWNLOADS) as [
-                                DownloadKey,
-                                (typeof DOWNLOADS)[DownloadKey],
-                              ][]
-                            ).map(([key, dl]) => (
-                              <li key={key}>
-                                <button
-                                  onClick={() => {
-                                    setSelectedPlatform(key);
-                                    setDropdownOpen(false);
-                                  }}
-                                  className={`w-full text-left px-4 py-3 text-sm transition-colors flex items-center justify-between ${
-                                    key === selectedPlatform
-                                      ? "text-white bg-freed-surface/60"
-                                      : "text-text-secondary hover:text-white hover:bg-freed-surface/40"
-                                  }`}
-                                >
-                                  <span>{dl.label}</span>
-                                  {key === selectedPlatform && (
-                                    <svg
-                                      className="w-4 h-4 text-glow-purple"
-                                      fill="none"
-                                      viewBox="0 0 24 24"
-                                      stroke="currentColor"
-                                      strokeWidth={2}
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        d="M4.5 12.75l6 6 9-13.5"
-                                      />
-                                    </svg>
-                                  )}
-                                </button>
-                              </li>
-                            ))}
-                          </motion.ul>
-                        )}
-                      </AnimatePresence>
-                    </div>
-
-                    {/* --- Divider --- */}
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="flex-1 h-px bg-freed-border" />
-                      <span className="text-xs text-text-muted uppercase tracking-wider">
-                        Stay in the loop
-                      </span>
-                      <div className="flex-1 h-px bg-freed-border" />
-                    </div>
-
-                    {/* --- Newsletter (disabled — tooltip on hover) --- */}
-                    <div
-                      className="relative"
-                      ref={setTooltipReference}
-                      {...getReferenceProps()}
-                    >
-                      <AnimatePresence>
-                        {isTooltipOpen && (
-                          <motion.div
-                            ref={setTooltipFloating}
-                            style={floatingStyles}
-                            {...getFloatingProps()}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="z-[60] pointer-events-none px-3 py-1.5 rounded-lg text-xs font-medium bg-freed-black border border-freed-border text-text-primary shadow-lg whitespace-nowrap"
-                          >
-                            <span>We just launched! 🚀</span>{" "}
-                            <span className="text-text-muted">
-                              Email updates coming soon ✨
-                            </span>
-                            <FloatingArrow
-                              ref={setArrowElement}
-                              context={floatingCtx}
-                              fill="#0a0a0a"
-                              strokeWidth={1}
-                              stroke="var(--freed-border, #1f1f1f)"
-                            />
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-
-                      <form onSubmit={handleSubmit} className="space-y-3">
-                        <div className="flex gap-2">
-                          <input
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="your@email.com"
-                            disabled
-                            className="min-w-0 flex-1 px-3 sm:px-4 py-2.5 rounded-lg bg-freed-surface border border-freed-border text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-glow-purple/50 focus:ring-1 focus:ring-glow-purple/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          />
-                          <motion.button
-                            type="submit"
-                            disabled
-                            className="btn-primary shrink-0 px-5 py-2.5 text-sm whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Subscribe
-                          </motion.button>
+                    <div className="grid gap-0 lg:grid-cols-2 lg:items-start">
+                      <div className="py-2 sm:py-4 lg:pr-8">
+                        <div className="mb-6 max-w-md">
+                          <h4 className="text-3xl font-bold text-text-primary">
+                            Email Updates
+                          </h4>
+                          <p className="mt-2 text-base leading-relaxed text-text-secondary">
+                            Occasional updates on new builds, major fixes, and
+                            meaningful progress as Freed settles down.
+                          </p>
                         </div>
 
-                        <p className="text-text-muted text-xs text-center">
-                          No spam. Unsubscribe anytime. We respect your privacy.
-                        </p>
-                      </form>
+                        <div
+                          className="relative"
+                          ref={setTooltipReference}
+                          {...getReferenceProps()}
+                        >
+                          <AnimatePresence>
+                            {isTooltipOpen && (
+                              <motion.div
+                                ref={setTooltipFloating}
+                                style={floatingStyles}
+                                {...getFloatingProps()}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="z-[60] pointer-events-none px-3 py-1.5 rounded-lg text-xs font-medium bg-freed-black border border-freed-border text-text-primary shadow-lg whitespace-nowrap"
+                              >
+                                <span>We just launched! 🚀</span>{" "}
+                                <span className="text-text-muted">
+                                  Email updates are now live.
+                                </span>
+                                <FloatingArrow
+                                  ref={setArrowElement}
+                                  context={floatingCtx}
+                                  fill="var(--color-freed-black)"
+                                  strokeWidth={1}
+                                  stroke="var(--freed-border, #1f1f1f)"
+                                />
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+
+                          <form onSubmit={handleSubmit} className="space-y-3">
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <input
+                                type="email"
+                                value={email}
+                                onChange={(e) => {
+                                  setEmail(e.target.value);
+                                  if (state === "error") {
+                                    setState("idle");
+                                    setErrorMessage("");
+                                  }
+                                }}
+                                placeholder="your@email.com"
+                                className="min-w-0 flex-1 px-3 sm:px-4 py-2.5 rounded-lg bg-freed-surface/70 border border-freed-border/70 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-glow-purple/50 focus:ring-1 focus:ring-glow-purple/50 transition-colors"
+                                autoComplete="email"
+                                inputMode="email"
+                                aria-describedby={
+                                  state === "error" ? "newsletter-error" : undefined
+                                }
+                                disabled={state === "loading"}
+                                aria-invalid={
+                                  state === "error" || (!!email && !isEmailInputValid)
+                                }
+                                name="email"
+                                maxLength={254}
+                                required
+                              />
+                              <motion.button
+                                type="submit"
+                                disabled={state === "loading" || !isEmailInputValid}
+                                className="btn-primary shrink-0 px-5 py-2.5 text-sm whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                {state === "loading" ? "Subscribing..." : "Subscribe"}
+                              </motion.button>
+                          </div>
+
+                          {state === "error" && (
+                            <p
+                              id="newsletter-error"
+                              role="status"
+                              aria-live="polite"
+                              className="text-xs leading-relaxed text-red-300"
+                            >
+                              {errorMessage}
+                            </p>
+                          )}
+                          <p className="text-xs leading-relaxed text-text-muted">
+                            No spam. Unsubscribe anytime. We respect your privacy.
+                          </p>
+                        </form>
+                        </div>
+                      </div>
+
+                      <div className="space-y-5 py-2 sm:py-4 lg:pl-8 lg:border-l lg:border-freed-border">
+                        <div className="max-w-lg">
+                          <h4 className="text-3xl font-bold text-text-primary">
+                            Install Freed Desktop
+                          </h4>
+                          <p className="mt-2 text-base leading-relaxed text-text-secondary">
+                            Start with Freed Desktop. The web app becomes useful
+                            after your feed is running locally and syncing.
+                          </p>
+                          {INSTALL_NOTE_VARIANT === "inline" && (
+                            <p className="mt-3 text-xs leading-relaxed text-text-muted">
+                              Freed is experimental software under active
+                              development. You may still hit bugs or unfinished
+                              edges, but stability is improving quickly and new
+                              builds ship{" "}
+                              <a
+                                href="/changelog"
+                                className="underline underline-offset-2 hover:text-text-primary transition-colors"
+                              >
+                                most days
+                              </a>
+                              .
+                            </p>
+                          )}
+                        </div>
+
+                        {INSTALL_NOTE_VARIANT === "callout" && (
+                          <div className="rounded-2xl border border-glow-purple/30 bg-glow-purple/8 px-4 py-4">
+                            <p className="text-sm font-semibold text-glow-purple">
+                              Early experimental build
+                            </p>
+                            <p className="mt-2 text-xs leading-relaxed text-text-muted">
+                              Freed is experimental software under active
+                              development. You may still hit bugs or unfinished
+                              edges, but stability is improving quickly and new
+                              builds ship{" "}
+                              <a
+                                href="/changelog"
+                                className="underline underline-offset-2 hover:text-text-primary transition-colors"
+                              >
+                                most days
+                              </a>
+                              .
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="rounded-2xl bg-freed-surface/80 p-4">
+                          {acceptedBundle ? (
+                            <p className="text-xs leading-relaxed text-text-muted">
+                              Legal terms already accepted for bundle {LEGAL_BUNDLE_VERSION}
+                              {storedAcceptance?.acceptedAt
+                                ? ` on ${new Date(storedAcceptance.acceptedAt).toLocaleString()}`
+                                : ""}
+                              .
+                            </p>
+                          ) : (
+                            <label className="flex items-start gap-3 text-xs sm:text-sm leading-relaxed text-text-secondary cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={legalChecked}
+                                onChange={(event) => setLegalChecked(event.target.checked)}
+                                className="mt-0.5 h-4 w-4 rounded border-freed-border bg-freed-surface text-glow-purple focus:ring-glow-purple"
+                              />
+                              <span>
+                                I have read and agree to the{" "}
+                                <a
+                                  href={LEGAL_DOCS.terms.path}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="underline underline-offset-2 hover:text-text-primary transition-colors"
+                                >
+                                  {LEGAL_DOCS.terms.label}
+                                </a>{" "}
+                                and{" "}
+                                <a
+                                  href={LEGAL_DOCS.privacy.path}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="underline underline-offset-2 hover:text-text-primary transition-colors"
+                                >
+                                  {LEGAL_DOCS.privacy.label}
+                                </a>
+                                . I understand that Freed is experimental software
+                                under active development. The desktop app will show
+                                additional license and risk terms on first launch.
+                              </span>
+                            </label>
+                          )}
+                        </div>
+
+                        <div className="relative" ref={dropdownRef}>
+                          <div className="flex items-center rounded-xl border border-freed-border hover:border-glow-purple/40 bg-freed-surface/35 hover:bg-freed-surface/60 transition-all">
+                            <button
+                              type="button"
+                              onClick={handleDownload}
+                              disabled={!canProceed}
+                              data-testid="website-legal-download"
+                              className="group flex items-center gap-4 p-4 flex-1 min-w-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <div className="shrink-0 w-10 h-10 rounded-lg bg-freed-surface border border-freed-border flex items-center justify-center">
+                                <svg
+                                  className="w-5 h-5 text-text-secondary"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                  strokeWidth={2}
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                                  />
+                                </svg>
+                              </div>
+                              <div className="flex-1 min-w-0 text-left">
+                                <p className="text-sm font-semibold text-text-primary group-hover:text-text-primary transition-colors">
+                                  Download for {currentDownload.label}
+                                </p>
+                                <p className="text-xs text-text-muted">
+                                  Runs in background to subscribe and monitor
+                                </p>
+                              </div>
+                            </button>
+                            <button
+                              onClick={() => setDropdownOpen((o) => !o)}
+                              aria-label="Choose a different platform"
+                              className="shrink-0 self-stretch border-l border-freed-border px-3 text-text-muted transition-colors hover:text-text-primary"
+                            >
+                              <svg
+                                className={`w-4 h-4 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M19.5 8.25l-7.5 7.5-7.5-7.5"
+                                />
+                              </svg>
+                            </button>
+                          </div>
+
+                          <AnimatePresence>
+                            {dropdownOpen && (
+                              <motion.ul
+                                initial={{ opacity: 0, y: -4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -4 }}
+                                transition={{ duration: 0.15 }}
+                                className="absolute left-0 right-0 mt-1.5 rounded-xl border border-freed-border bg-freed-black/95 backdrop-blur-xl shadow-lg overflow-hidden z-20"
+                              >
+                                {(
+                                  Object.entries(DOWNLOADS) as [
+                                    DownloadKey,
+                                    (typeof DOWNLOADS)[DownloadKey],
+                                  ][]
+                                ).map(([key, dl]) => (
+                                  <li key={key}>
+                                    <button
+                                      onClick={() => {
+                                        setSelectedPlatform(key);
+                                        setDropdownOpen(false);
+                                      }}
+                                      className={`w-full text-left px-4 py-3 text-sm transition-colors flex items-center justify-between ${
+                                        key === selectedPlatform
+                                          ? "text-text-primary bg-freed-surface/60"
+                                          : "text-text-secondary hover:text-text-primary hover:bg-freed-surface/40"
+                                      }`}
+                                    >
+                                      <span>{dl.label}</span>
+                                      {key === selectedPlatform && (
+                                        <svg
+                                          className="w-4 h-4 text-glow-purple"
+                                          fill="none"
+                                          viewBox="0 0 24 24"
+                                          stroke="currentColor"
+                                          strokeWidth={2}
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            d="M4.5 12.75l6 6 9-13.5"
+                                          />
+                                        </svg>
+                                      )}
+                                    </button>
+                                  </li>
+                                ))}
+                              </motion.ul>
+                            )}
+                          </AnimatePresence>
+                        </div>
+
+                        <div className="space-y-3">
+                          {(selectedPlatform === "windows" ||
+                            selectedPlatform === "linux") && (
+                            <p className="text-xs leading-relaxed text-text-muted">
+                              {selectedPlatform === "windows"
+                                ? "Windows will probably warn before opening this unsigned installer. Click More info, then Run anyway."
+                                : "Before running on Linux, make the AppImage executable with chmod +x Freed-Linux-x64.AppImage."}
+                            </p>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={handleOpenWebApp}
+                            disabled={!canProceed}
+                            data-testid="website-legal-open-web-app"
+                            className="text-sm text-text-muted underline underline-offset-4 transition-colors hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Already running Freed Desktop? Open the web app.
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </>
                 )}
@@ -599,9 +636,9 @@ function SuccessView({ onClose }: { onClose: () => void }) {
       animate={{ opacity: 1, y: 0 }}
       className="text-center py-6"
     >
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/20 flex items-center justify-center">
+      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-glow-purple/20 flex items-center justify-center">
         <svg
-          className="w-8 h-8 text-green-400"
+          className="w-8 h-8 text-glow-purple"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"

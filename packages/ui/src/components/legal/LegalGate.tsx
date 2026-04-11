@@ -32,7 +32,7 @@ function LegalLink({
     <button
       type="button"
       onClick={() => openLegalUrl(href, openUrl)}
-      className="text-[#c4b5fd] hover:text-white underline underline-offset-2 transition-colors"
+      className="text-[var(--theme-accent-secondary)] hover:text-text-primary underline underline-offset-2 transition-colors"
     >
       {label}
     </button>
@@ -79,17 +79,17 @@ export function LegalGate({
   };
 
   return (
-    <div className="fixed inset-0 z-[120] bg-[#09090b] text-white">
+    <div className="fixed inset-0 z-[120] app-theme-shell text-text-primary">
       <div className="flex min-h-full items-start justify-center overflow-y-auto px-4 py-4 sm:items-center sm:px-6 sm:py-8 lg:px-8">
-        <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-[rgba(15,15,20,0.96)] shadow-[0_24px_80px_rgba(0,0,0,0.45)] sm:max-h-[calc(100dvh-3rem)]">
-          <div className="shrink-0 px-6 py-5 sm:px-8 sm:py-7 border-b border-white/10 bg-gradient-to-r from-[#312e81]/25 via-[#111827] to-[#7c2d12]/20">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#c4b5fd]">
+        <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-[color:var(--theme-border)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_92%,rgba(10,10,14,0.16))] shadow-[0_24px_80px_rgba(0,0,0,0.45)] sm:max-h-[calc(100dvh-3rem)]">
+          <div className="shrink-0 border-b border-[color:var(--theme-border)] bg-[linear-gradient(90deg,color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent),color-mix(in_srgb,var(--theme-bg-surface)_92%,transparent),color-mix(in_srgb,var(--theme-accent-tertiary)_12%,transparent))] px-6 py-5 sm:px-8 sm:py-7">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--theme-accent-secondary)]">
               Before You Continue
             </p>
             <h1 className="mt-2 text-2xl sm:text-3xl font-semibold">
               {productName} is a live experiment with sharp edges.
             </h1>
-            <p className="mt-3 text-sm sm:text-base text-[#d4d4d8] leading-relaxed">
+            <p className="mt-3 text-sm leading-relaxed text-text-secondary sm:text-base">
               Freed is local-first and does not phone home, but some features can still go badly sideways.
               Third-party providers can rate limit you, lock your account, force re-authentication,
               or ban you outright.
@@ -109,28 +109,28 @@ export function LegalGate({
               </ul>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <p className="text-sm font-semibold text-white">
+            <div className="rounded-2xl border border-[color:var(--theme-border)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_76%,transparent)] p-4">
+              <p className="text-sm font-semibold text-text-primary">
                 Read these documents
               </p>
-              <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 text-sm text-[#d4d4d8]">
+              <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 text-sm text-text-secondary">
                 {documentList.map((doc, index) => (
                   <span key={doc.id}>
                     <LegalLink href={doc.url} label={doc.label} openUrl={openUrl} />
-                    {index < documentList.length - 1 ? <span className="ml-3 text-white/30">•</span> : null}
+                    {index < documentList.length - 1 ? <span className="ml-3 text-text-muted/60">•</span> : null}
                   </span>
                 ))}
               </div>
             </div>
 
-            <label className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 cursor-pointer">
+            <label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_84%,transparent)] p-4">
               <input
                 type="checkbox"
                 checked={checked}
                 onChange={(event) => setChecked(event.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-white/20 bg-[#18181b] text-[#8b5cf6] focus:ring-[#8b5cf6]"
+                className="mt-1 h-4 w-4 rounded border-[color:var(--theme-border)] bg-[var(--theme-bg-root)] text-[var(--theme-accent-secondary)] focus:ring-[var(--theme-accent-secondary)]"
               />
-              <span className="text-sm text-[#e4e4e7] leading-relaxed">
+              <span className="text-sm leading-relaxed text-text-secondary">
                 I have read and agree to the{" "}
                 <LegalLink href={LEGAL_DOCS.terms.url} label={LEGAL_DOCS.terms.label} openUrl={openUrl} />,{" "}
                 <LegalLink href={LEGAL_DOCS.privacy.url} label={LEGAL_DOCS.privacy.label} openUrl={openUrl} />
@@ -153,7 +153,7 @@ export function LegalGate({
                 onClick={() => {
                   void handleDecline();
                 }}
-                className="px-4 py-2.5 rounded-xl border border-white/10 bg-white/5 text-sm text-[#d4d4d8] hover:bg-white/10 transition-colors"
+                className="px-4 py-2.5 rounded-xl border border-[color:var(--theme-border)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] text-sm text-text-secondary transition-colors hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_90%,transparent)]"
               >
                 {declineLabel}
               </button>
@@ -164,7 +164,7 @@ export function LegalGate({
                   void handleAccept();
                 }}
                 disabled={!checked || submitting}
-                className="px-4 py-2.5 rounded-xl bg-[#8b5cf6] text-sm font-semibold text-white hover:bg-[#7c3aed] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="btn-primary px-4 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {submitting ? "Saving..." : acceptLabel}
               </button>

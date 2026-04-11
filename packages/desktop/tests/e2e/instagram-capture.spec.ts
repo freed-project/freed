@@ -9,6 +9,10 @@
 
 import { test, expect } from "./fixtures/app";
 
+function getSettingsDialog(page: import("@playwright/test").Page) {
+  return page.locator(".fixed.inset-0.z-50").last();
+}
+
 /**
  * Navigate to Settings and scroll the Instagram section into view.
  * Returns the Instagram section container locator.
@@ -30,14 +34,14 @@ async function openInstagramSection(
     timeout: 5_000,
   });
 
-  const igNavBtn = page.getByRole("button", { name: "Instagram" }).last();
+  const igNavBtn = getSettingsDialog(page).getByRole("button", { name: /^Instagram$/ });
   await expect(igNavBtn).toBeVisible({ timeout: 3_000 });
   await igNavBtn.evaluate((button) => {
     (button as HTMLButtonElement).click();
   });
   await page.waitForTimeout(500);
 
-  const igHeading = page.getByRole("heading", { name: "Instagram", level: 3 });
+  const igHeading = getSettingsDialog(page).getByRole("heading", { name: "Instagram", level: 3 });
   await expect(igHeading).toBeVisible({ timeout: 3_000 });
   return igHeading.locator("..");
 }
@@ -134,7 +138,8 @@ test("Instagram appears in sidebar as active source", async ({ app }) => {
   await app.waitForReady();
 
   // Instagram should be in the sidebar sources list (not "coming soon")
-  const igButton = app.page.getByTestId("source-row-instagram");
+  const sidebar = app.page.locator("nav").first();
+  const igButton = sidebar.getByTestId("source-row-instagram");
   await expect(igButton).toBeVisible({ timeout: 3_000 });
 });
 
@@ -148,6 +153,7 @@ test("Instagram source indicator shows connected when authenticated", async ({
   await setIgAuthState(app.page, true);
 
   // The Instagram sidebar button should indicate connection somehow
-  const igButton = app.page.getByTestId("source-row-instagram");
+  const sidebar = app.page.locator("nav").first();
+  const igButton = sidebar.getByTestId("source-row-instagram");
   await expect(igButton).toBeVisible({ timeout: 3_000 });
 });

@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope, Space_Grotesk } from "next/font/google";
+import Script from "next/script";
 import { NewsletterProvider } from "@/context/NewsletterContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 import SiteShell from "@/components/SiteShell";
 import "../index.css";
 
@@ -91,17 +93,28 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${manrope.variable} ${spaceGrotesk.variable}`}>
       <body className={manrope.className}>
-        <NewsletterProvider>
-          {/* Skip to main content link for accessibility */}
-          <a
-            href="#main-content"
-            className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-glow-purple focus:text-white focus:rounded-lg focus:outline-none"
-          >
-            Skip to main content
-          </a>
+        <Script id="freed-theme-bootstrap" strategy="beforeInteractive">{`
+          (function() {
+            try {
+              var theme = localStorage.getItem("freed-theme") || "neon";
+              document.documentElement.dataset.theme = theme;
+              document.documentElement.style.colorScheme = theme === "porcelain" ? "light" : "dark";
+            } catch (error) {}
+          })();
+        `}</Script>
+        <ThemeProvider>
+          <NewsletterProvider>
+            {/* Skip to main content link for accessibility */}
+            <a
+              href="#main-content"
+              className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-glow-purple focus:text-text-primary focus:rounded-lg focus:outline-none"
+            >
+              Skip to main content
+            </a>
 
-          <SiteShell>{children}</SiteShell>
-        </NewsletterProvider>
+            <SiteShell>{children}</SiteShell>
+          </NewsletterProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

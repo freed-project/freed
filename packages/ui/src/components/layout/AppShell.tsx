@@ -14,6 +14,7 @@ import {
   createDeviceContactFromGoogleContact,
   mergeFriendSources,
 } from "@freed/shared/google-contacts-automation";
+import { applyThemeToDocument, persistTheme } from "../../lib/theme.js";
 import { MapView } from "../map/MapView.js";
 
 const DEFAULT_DEBUG_WIDTH = 320;
@@ -32,6 +33,8 @@ export function AppShell({ children }: AppShellProps) {
   const items = useAppStore((s) => s.items);
   const addFriend = useAppStore((s) => s.addFriend);
   const updateFriend = useAppStore((s) => s.updateFriend);
+  const isInitialized = useAppStore((s) => s.isInitialized);
+  const themeId = useAppStore((s) => s.preferences.display.themeId);
 
   // Mount the contact sync hook here (not in FriendsView) so the 15-minute
   // interval and focus listener run regardless of which view is active.
@@ -72,6 +75,12 @@ export function AppShell({ children }: AppShellProps) {
   );
 
   // Keyboard shortcuts: Cmd/Ctrl+Shift+D to toggle, Escape to close
+  useEffect(() => {
+    if (!isInitialized) return;
+    applyThemeToDocument(themeId);
+    persistTheme(themeId);
+  }, [isInitialized, themeId]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "D" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
@@ -143,7 +152,7 @@ export function AppShell({ children }: AppShellProps) {
     {/* On mobile (<md), the layout flows naturally in the document so Safari can
         collapse its address bar when the feed scrolls. min-h-0 and overflow-hidden
         are desktop-only; they lock the layout to 100dvh for in-element scrolling. */}
-    <div className="flex-1 md:min-h-0 flex flex-col bg-[#121212]">
+    <div className="app-theme-shell flex-1 md:min-h-0 flex flex-col">
       <Header onMenuClick={() => setSidebarOpen(true)} />
 
       <div className="flex-1 md:min-h-0 flex md:overflow-hidden">

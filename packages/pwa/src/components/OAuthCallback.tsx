@@ -85,38 +85,47 @@ export function OAuthCallback() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get("code");
-    const oauthError = params.get("error");
+    let cancelled = false;
 
-    const provider = sessionStorage.getItem("freed_pkce_provider") as CloudProvider | null;
-    const verifier = sessionStorage.getItem("freed_pkce_verifier");
+    const run = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get("code");
+      const oauthError = params.get("error");
 
-    // Clean up PKCE state immediately — single-use.
-    sessionStorage.removeItem("freed_pkce_provider");
-    sessionStorage.removeItem("freed_pkce_verifier");
+      const provider = sessionStorage.getItem("freed_pkce_provider") as CloudProvider | null;
+      const verifier = sessionStorage.getItem("freed_pkce_verifier");
 
-    if (oauthError) {
-      setStatus("error");
-      setErrorMessage(`Authorization denied: ${oauthError}`);
-      return;
-    }
+      // Clean up PKCE state immediately, single-use.
+      sessionStorage.removeItem("freed_pkce_provider");
+      sessionStorage.removeItem("freed_pkce_verifier");
 
-    if (!code || !provider || !verifier) {
-      setStatus("error");
-      setErrorMessage(
-        "OAuth callback is missing required parameters. Please try connecting again.",
-      );
-      return;
-    }
-
-    const exchange = provider === "gdrive" ? exchangeGDrive : exchangeDropbox;
-
-    exchange(code, verifier)
-      .then(async (result) => {
-        if (!result.ok) {
+      if (oauthError) {
+        if (!cancelled) {
           setStatus("error");
-          setErrorMessage(result.error);
+          setErrorMessage(`Authorization denied: ${oauthError}`);
+        }
+        return;
+      }
+
+      if (!code || !provider || !verifier) {
+        if (!cancelled) {
+          setStatus("error");
+          setErrorMessage(
+            "OAuth callback is missing required parameters. Please try connecting again.",
+          );
+        }
+        return;
+      }
+
+      const exchange = provider === "gdrive" ? exchangeGDrive : exchangeDropbox;
+
+      try {
+        const result = await exchange(code, verifier);
+        if (!result.ok) {
+          if (!cancelled) {
+            setStatus("error");
+            setErrorMessage(result.error);
+          }
           return;
         }
 
@@ -129,24 +138,34 @@ export function OAuthCallback() {
           console.error("[OAuthCallback] startCloudSync failed:", err);
         });
 
+        if (cancelled) return;
+
         setStatus("success");
 
         // Give the user a moment to see the success state before navigating.
         setTimeout(() => {
           window.location.replace("/");
         }, 1200);
-      })
-      .catch((err: unknown) => {
+      } catch (err: unknown) {
         console.error("[OAuthCallback] token exchange threw:", err);
-        setStatus("error");
-        setErrorMessage(
-          err instanceof Error ? err.message : "Unexpected error during token exchange.",
-        );
-      });
+        if (!cancelled) {
+          setStatus("error");
+          setErrorMessage(
+            err instanceof Error ? err.message : "Unexpected error during token exchange.",
+          );
+        }
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
-    <div className="h-screen flex items-center justify-center bg-freed-black">
+    <div className="app-theme-shell flex h-screen items-center justify-center">
       <div className="text-center max-w-sm px-6">
         {status === "exchanging" && (
           <>

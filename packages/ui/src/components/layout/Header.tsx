@@ -242,7 +242,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   return (
     <>
       <header
-        className={`sticky top-0 flex-shrink-0 bg-[#0a0a0a] z-30 border-b border-[rgba(255,255,255,0.08)] ${
+        className={`sticky top-0 z-30 flex-shrink-0 border-b border-[var(--theme-border-subtle)] bg-[color-mix(in_oklab,var(--theme-bg-root)_84%,transparent)] backdrop-blur-xl ${
           headerDragRegion ? "" : "pt-[env(safe-area-inset-top)]"
         } px-1`}
         {...(headerDragRegion
@@ -268,7 +268,7 @@ export function Header({ onMenuClick }: HeaderProps) {
           <Tooltip label="Menu" className="md:hidden">
             <button
               onClick={onMenuClick}
-              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors flex-shrink-0"
+              className="flex-shrink-0 rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)]"
               aria-label="Open menu"
               style={headerDragRegion ? noDrag : undefined}
             >
@@ -311,7 +311,7 @@ export function Header({ onMenuClick }: HeaderProps) {
             >
               {/* Search icon */}
               <svg
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#3f3f46]"
+                className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--theme-text-soft)]"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -339,7 +339,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                 aria-label="Search or run a command"
                 aria-expanded={showPalette}
                 aria-haspopup="listbox"
-                className="w-full bg-transparent border border-white/[0.06] rounded-lg pl-8 pr-7 py-1.5 text-sm text-white/70 placeholder-transparent sm:placeholder-[#3f3f46] focus:outline-none hover:border-white/[0.11] hover:bg-white/[0.02] focus:border-white/[0.16] focus:bg-white/[0.04] transition-colors"
+                className="w-full rounded-lg border border-[var(--theme-border-subtle)] bg-transparent py-1.5 pl-8 pr-7 text-sm text-[var(--theme-text-secondary)] placeholder-transparent transition-colors hover:border-[var(--theme-border-quiet)] hover:bg-[var(--theme-bg-muted)] focus:bg-[var(--theme-bg-muted)] focus:outline-none focus:border-[var(--theme-border-strong)] sm:placeholder:text-[var(--theme-text-soft)]"
               />
 
               {/* Clear button — only visible when there's input */}
@@ -347,10 +347,10 @@ export function Header({ onMenuClick }: HeaderProps) {
                 <button
                   onClick={clearSearch}
                   aria-label="Clear search"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-white/10 transition-colors"
+                  className="absolute right-2 top-1/2 rounded p-0.5 transition-colors hover:bg-[var(--theme-bg-muted)]"
                 >
                   <svg
-                    className="w-3 h-3 text-[#52525b]"
+                    className="h-3 w-3 text-[var(--theme-text-soft)]"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -370,10 +370,10 @@ export function Header({ onMenuClick }: HeaderProps) {
                 <div
                   role="listbox"
                   aria-label="Quick actions"
-                  className="hidden sm:block absolute left-0 right-0 top-full mt-1.5 bg-[#161616] border border-[rgba(255,255,255,0.1)] rounded-xl shadow-2xl shadow-black/70 overflow-hidden z-50 py-1"
+                  className="absolute left-0 right-0 top-full z-50 mt-1.5 hidden overflow-hidden rounded-xl border border-[var(--theme-border-subtle)] bg-[color-mix(in_oklab,var(--theme-bg-surface)_95%,transparent)] py-1 shadow-2xl shadow-black/50 sm:block"
                 >
                   {!inputValue && (
-                    <p className="px-3 pt-1 pb-0.5 text-[10px] font-semibold text-[#3f3f46] uppercase tracking-wider">
+                    <p className="px-3 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--theme-text-soft)]">
                       Quick actions
                     </p>
                   )}
@@ -387,12 +387,12 @@ export function Header({ onMenuClick }: HeaderProps) {
                       onClick={() => handleActionSelect(action)}
                       className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
                         i === activeIndex
-                          ? "bg-white/[0.06] text-white"
-                          : "text-[#a1a1aa] hover:bg-white/[0.04] hover:text-white"
+                          ? "bg-[var(--theme-bg-muted)] text-[var(--theme-text-primary)]"
+                          : "text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                       }`}
                     >
                       <svg
-                        className="w-3.5 h-3.5 text-[#52525b] shrink-0"
+                        className="h-3.5 w-3.5 shrink-0 text-[var(--theme-text-soft)]"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
@@ -412,7 +412,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                         />
                       </svg>
                       <span className="flex-1 truncate">{action.label}</span>
-                      <span className="text-xs text-[#3f3f46] shrink-0">
+                      <span className="shrink-0 text-xs text-[var(--theme-text-soft)]">
                         {action.hint}
                       </span>
                     </button>
@@ -433,7 +433,7 @@ export function Header({ onMenuClick }: HeaderProps) {
               <Tooltip label={`Mark all ${unreadCount.toLocaleString()} items as read`} className="hidden sm:flex">
                 <button
                   onClick={() => markAllAsRead(activeFilter.platform)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-[#71717a] hover:bg-white/5 hover:text-white transition-colors"
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                 >
                   <svg
                     className="w-4 h-4"
@@ -462,7 +462,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                       activeFilter.feedUrl,
                     )
                   }
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-[#71717a] hover:bg-white/5 hover:text-white transition-colors"
+                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                 >
                   <svg
                     className="w-4 h-4"
@@ -488,7 +488,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                 <Tooltip label="Add new content">
                   <button
                     onClick={() => setDropdownOpen((v) => !v)}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors"
+                    className="flex items-center gap-2 rounded-lg bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] px-3 py-1.5 text-[var(--theme-accent-secondary)] transition-colors hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.28)]"
                     aria-haspopup="true"
                     aria-expanded={dropdownOpen}
                   >

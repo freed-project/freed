@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useMemo } from "react";
 
-// Color definitions with per-color intensity multipliers
+// Theme-driven orb channels. CSS variables keep the art direction aligned with
+// the active site theme without forcing a rerender when the palette changes.
 const colors = {
-  purple: { rgb: [139, 92, 246], intensity: 1.0 },
-  blue: { rgb: [59, 130, 246], intensity: 1.0 },
-  cyan: { rgb: [6, 182, 212], intensity: 0.75 },
+  purple: { rgbVar: "--theme-accent-secondary-rgb", intensity: 1.0 },
+  blue: { rgbVar: "--theme-accent-primary-rgb", intensity: 1.0 },
+  cyan: { rgbVar: "--theme-accent-tertiary-rgb", intensity: 0.75 },
 } as const;
 
 type ColorName = keyof typeof colors;
@@ -69,14 +70,13 @@ function generateOrbs(): Orb[] {
 
 function buildBackground(orbs: Orb[], intensityMultiplier: number): string {
   const gradients = orbs.map((orb) => {
-    const { rgb, intensity: colorIntensity } = colors[orb.color];
-    const [r, g, b] = rgb;
+    const { rgbVar, intensity: colorIntensity } = colors[orb.color];
     const o =
       BASE_COLOR_INTENSITY *
       orb.intensity *
       colorIntensity *
       intensityMultiplier;
-    return `radial-gradient(${orb.size}px ${orb.size}px at ${orb.x}% ${orb.y}px, rgba(${r}, ${g}, ${b}, ${o}), transparent)`;
+    return `radial-gradient(${orb.size}px ${orb.size}px at ${orb.x}% ${orb.y}px, rgb(var(${rgbVar}) / ${o}), transparent)`;
   });
   return [NOISE_TEXTURE, ...gradients].join(", ");
 }

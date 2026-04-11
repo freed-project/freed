@@ -184,9 +184,8 @@ test("X connect form accepts cookies and triggers sync", async ({
   await connectBtn.click();
   await app.acceptProviderRiskIfPresent("x");
 
-  // After connecting, the "Connected" indicator should appear
+  // After connecting, the authenticated state should render.
   await expect(page.getByTestId("provider-status-x")).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByTestId("provider-sync-action-x")).toBeVisible({
-    timeout: 10_000,
-  });
+  await expect(page.getByTestId("provider-sync-action-x")).toContainText("Sync Now");
+  await expect(page.getByRole("button", { name: "Disconnect" })).toBeVisible();
 });

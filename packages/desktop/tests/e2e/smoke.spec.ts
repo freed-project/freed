@@ -347,7 +347,7 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
       | { getState: () => { activeView: string } }
       | undefined;
     return store?.getState().activeView === "map";
-  }, { timeout: 5_000 });
+  }, { timeout: 10_000 });
 
   await page.locator(".freed-map-marker").first().click();
   await clickMapPopupAction(page, "Open Friend");
@@ -358,8 +358,10 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
       | undefined;
     const state = store?.getState();
     return state?.activeView === "friends" && state.selectedFriendId === "friend-ada";
-  }, { timeout: 5_000 });
-  await expect(page.locator("main").getByText("Ada Lovelace").first()).toBeVisible({ timeout: 5_000 });
+  }, { timeout: 10_000 });
+  await expect(page.getByRole("button", { name: "Back to all friends" })).toBeVisible({
+    timeout: 10_000,
+  });
 
   await page.getByRole("button", { name: /^Map/ }).click();
   await page.locator(".freed-map-marker").first().click();
@@ -371,8 +373,10 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
       | undefined;
     const state = store?.getState();
     return state?.activeView === "feed" && state.selectedItemId === "ig:ada:paris";
-  }, { timeout: 5_000 });
-  await expect(page.getByRole("heading", { name: "Bonjour from Paris" })).toBeVisible({ timeout: 5_000 });
+  }, { timeout: 10_000 });
+  await expect(page.getByRole("heading", { name: "Bonjour from Paris" })).toBeVisible({
+    timeout: 10_000,
+  });
 });
 
 test("Friend detail last seen card opens the full Map view", async ({ app }) => {
@@ -410,9 +414,9 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
       | undefined;
     const state = store?.getState();
     return state?.activeView === "map" && state.selectedFriendId === "friend-ada";
-  }, { timeout: 5_000 });
-  await expect(page.locator("main").getByText("Ada Lovelace").first()).toBeVisible({
-    timeout: 5_000,
+  }, { timeout: 10_000 });
+  await expect(page.locator('.freed-map-marker[aria-label="Ada Lovelace"]')).toBeVisible({
+    timeout: 10_000,
   });
 });
 

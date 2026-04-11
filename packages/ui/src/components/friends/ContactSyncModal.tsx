@@ -48,8 +48,8 @@ function ContactAvatar({ contact }: { contact: GoogleContact }) {
   }
 
   return (
-    <div className="w-9 h-9 rounded-full bg-[#8b5cf6]/20 flex items-center justify-center shrink-0 ring-1 ring-[#8b5cf6]/30">
-      <span className="text-xs font-semibold text-[#c4b5fd]">{initials}</span>
+    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.18)] ring-1 ring-[color:var(--theme-border-strong)]">
+      <span className="text-xs font-semibold text-[color:var(--theme-text-primary)]">{initials}</span>
     </div>
   );
 }
@@ -107,23 +107,23 @@ function MatchRow({
 
       {/* Arrow + matched friend / author name */}
       <div className="flex items-center gap-1.5 shrink-0">
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-[#52525b]" aria-hidden>
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-[color:var(--theme-text-muted)]" aria-hidden>
           <path d="M4 10h12M12 6l4 4-4 4" />
         </svg>
-        <span className="text-xs font-medium text-[#a1a1aa] max-w-[100px] truncate">{matchedName}</span>
+        <span className="max-w-[100px] truncate text-xs font-medium text-[color:var(--theme-text-secondary)]">{matchedName}</span>
       </div>
 
       {/* Actions */}
       <div className="flex items-center gap-1.5 shrink-0">
         <button
-          className="text-xs px-2.5 py-1 rounded-lg bg-[#8b5cf6]/20 text-[#c4b5fd] hover:bg-[#8b5cf6]/30 transition-colors font-medium disabled:opacity-50"
+          className="theme-chip-active rounded-lg px-2.5 py-1 text-xs font-medium disabled:opacity-50"
           onClick={handleLink}
           disabled={linking}
         >
           {linking ? "Linking…" : "Link"}
         </button>
         <button
-          className="text-xs px-2.5 py-1 rounded-lg text-[#71717a] hover:bg-white/5 hover:text-[#a1a1aa] transition-colors"
+          className="rounded-lg px-2.5 py-1 text-xs text-[color:var(--theme-text-muted)] transition-colors hover:bg-[color:var(--theme-bg-card)] hover:text-[color:var(--theme-text-secondary)]"
           onClick={handleSkip}
         >
           Skip
@@ -169,14 +169,14 @@ function UnmatchedRow({
           </p>
         )}
         {contact.organizations[0]?.name && (
-          <p className="text-xs text-[#52525b] truncate">
+          <p className="truncate text-xs text-[color:var(--theme-text-muted)]">
             {contact.organizations[0].name}
           </p>
         )}
       </div>
 
       <button
-        className="text-xs px-2.5 py-1 rounded-lg border border-white/10 text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-colors shrink-0 disabled:opacity-50"
+        className="btn-secondary shrink-0 rounded-lg px-2.5 py-1 text-xs disabled:opacity-50"
         onClick={handleCreate}
         disabled={creating}
       >
@@ -193,8 +193,8 @@ function UnmatchedRow({
 function SectionHeader({ title, count, action }: { title: string; count: number; action?: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 mb-1 px-1">
-      <span className="text-xs font-semibold text-[#71717a] uppercase tracking-wider">{title}</span>
-      <span className="text-xs text-[#52525b] tabular-nums">({count})</span>
+      <span className="text-xs font-semibold uppercase tracking-wider text-[color:var(--theme-text-muted)]">{title}</span>
+      <span className="text-xs tabular-nums text-[color:var(--theme-text-soft)]">({count})</span>
       {action && <div className="ml-auto">{action}</div>}
     </div>
   );
@@ -266,10 +266,10 @@ export function ContactSyncModal({ onClose, syncState, onLink, onSkip, onCreateF
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 bg-black/70 sm:items-center"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="my-auto w-full max-w-xl bg-[#111] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-2rem)] sm:max-h-[85vh]">
+      <div className="my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-elevated)_96%,transparent)] shadow-2xl sm:max-h-[85vh]">
 
         {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10 shrink-0">
+        <div className="flex shrink-0 items-center gap-3 border-b border-[color:var(--theme-border-subtle)] px-5 py-4">
           <div className="flex-1 min-w-0">
             <h2 className="text-base font-semibold text-text-primary">Google Contacts</h2>
             <p className="text-xs text-text-secondary mt-0.5">
@@ -317,7 +317,7 @@ export function ContactSyncModal({ onClose, syncState, onLink, onSkip, onCreateF
                   <button
                     onClick={handleLinkAll}
                     disabled={linkingAll}
-                    className="text-xs px-2.5 py-1 rounded-lg bg-[#8b5cf6]/20 text-[#c4b5fd] hover:bg-[#8b5cf6]/30 transition-colors font-medium disabled:opacity-50"
+                    className="theme-chip-active rounded-lg px-2.5 py-1 text-xs font-medium disabled:opacity-50"
                   >
                     {linkingAll ? "Linking…" : "Link All"}
                   </button>
@@ -359,7 +359,7 @@ export function ContactSyncModal({ onClose, syncState, onLink, onSkip, onCreateF
           {unmatchedContacts.length > 0 && (
             <section>
               <SectionHeader title="Unmatched Contacts" count={unmatchedContacts.length} />
-              <p className="text-xs text-[#52525b] px-1 mb-2">
+              <p className="mb-2 px-1 text-xs text-[color:var(--theme-text-muted)]">
                 These contacts don't match anyone in your feed. Add them as a Friend to track them.
               </p>
               <div className="space-y-0.5">
@@ -374,7 +374,7 @@ export function ContactSyncModal({ onClose, syncState, onLink, onSkip, onCreateF
               {unmatchedContacts.length > UNMATCHED_PAGE_SIZE && (
                 <button
                   onClick={() => setShowAllUnmatched(v => !v)}
-                  className="mt-2 w-full text-xs text-[#71717a] hover:text-[#a1a1aa] transition-colors py-1.5"
+                  className="mt-2 w-full py-1.5 text-xs text-[color:var(--theme-text-muted)] transition-colors hover:text-[color:var(--theme-text-secondary)]"
                 >
                   {showAllUnmatched
                     ? "Show fewer"
@@ -391,12 +391,12 @@ export function ContactSyncModal({ onClose, syncState, onLink, onSkip, onCreateF
                 onClick={() => setAlreadyLinkedOpen(v => !v)}
                 className="w-full flex items-center gap-2 px-1 py-1 text-left group"
               >
-                <span className="text-xs font-semibold text-[#71717a] uppercase tracking-wider flex-1">
+                <span className="flex-1 text-xs font-semibold uppercase tracking-wider text-[color:var(--theme-text-muted)]">
                   Already Linked
                 </span>
-                <span className="text-xs text-[#52525b] tabular-nums">({linkedContacts.length})</span>
+                <span className="text-xs tabular-nums text-[color:var(--theme-text-soft)]">({linkedContacts.length})</span>
                 <svg
-                  className={`w-3 h-3 text-[#52525b] transition-transform shrink-0 ${alreadyLinkedOpen ? "rotate-90" : ""}`}
+                  className={`h-3 w-3 shrink-0 text-[color:var(--theme-text-soft)] transition-transform ${alreadyLinkedOpen ? "rotate-90" : ""}`}
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -429,15 +429,15 @@ export function ContactSyncModal({ onClose, syncState, onLink, onSkip, onCreateF
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-white/10 shrink-0 flex items-center justify-between">
+        <div className="flex shrink-0 items-center justify-between border-t border-[color:var(--theme-border-subtle)] px-5 py-3">
           {syncState.lastSyncedAt && (
-            <span className="text-xs text-[#52525b]">
+            <span className="text-xs text-[color:var(--theme-text-muted)]">
               Last synced {new Date(syncState.lastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </span>
           )}
           <button
             onClick={onClose}
-            className="ml-auto text-sm px-4 py-1.5 rounded-lg border border-white/10 text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-colors"
+            className="btn-secondary ml-auto rounded-lg px-4 py-1.5 text-sm"
           >
             Done
           </button>

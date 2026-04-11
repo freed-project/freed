@@ -28,6 +28,7 @@
     "./lib/provider-status": "./src/lib/provider-status.ts",
     "./lib/sample-library-seed": "./src/lib/sample-library-seed.ts",
     "./lib/settings-store": "./src/lib/settings-store.ts",
+    "./lib/theme": "./src/lib/theme.ts",
     "./context": "./src/context/index.ts",
     "./components/friends": "./src/components/friends/index.ts"
   },

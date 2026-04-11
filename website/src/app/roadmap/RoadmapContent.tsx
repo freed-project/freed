@@ -107,7 +107,13 @@ function useDataFlow(layout: (typeof LAYOUT)["desktop"]) {
 
   const spawnParticle = useCallback(() => {
     const isCapture = Math.random() > 0.3;
-    const colors = ["#3b82f6", "#6366f1", "#8b5cf6", "#a855f7", "#06b6d4"];
+    const colors = [
+      "var(--theme-accent-primary)",
+      "var(--theme-accent-secondary)",
+      "var(--theme-accent-tertiary)",
+      "color-mix(in srgb, var(--theme-accent-primary) 60%, var(--theme-accent-secondary) 40%)",
+      "color-mix(in srgb, var(--theme-accent-secondary) 65%, var(--theme-accent-tertiary) 35%)",
+    ];
     const l = layoutRef.current;
 
     if (isCapture) {
@@ -196,13 +202,13 @@ function ArchitectureDiagram() {
       >
         <defs>
           <linearGradient id="archGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#3b82f6" />
-            <stop offset="50%" stopColor="#8b5cf6" />
-            <stop offset="100%" stopColor="#06b6d4" />
+            <stop offset="0%" stopColor="var(--theme-accent-primary)" />
+            <stop offset="50%" stopColor="var(--theme-accent-secondary)" />
+            <stop offset="100%" stopColor="var(--theme-accent-tertiary)" />
           </linearGradient>
           <linearGradient id="syncGlow" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.8" />
-            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.8" />
+            <stop offset="0%" stopColor="var(--theme-accent-secondary)" stopOpacity="0.8" />
+            <stop offset="100%" stopColor="var(--theme-accent-primary)" stopOpacity="0.8" />
           </linearGradient>
           <filter id="archGlow" x="-50%" y="-50%" width="200%" height="200%">
             <feGaussianBlur stdDeviation="3" result="blur" />
@@ -265,7 +271,7 @@ function ArchitectureDiagram() {
           <text
             x="45"
             y="20"
-            fill="#71717a"
+            fill="var(--theme-text-muted)"
             fontSize="10"
             fontWeight="600"
             textAnchor="middle"
@@ -288,7 +294,7 @@ function ArchitectureDiagram() {
                 transition={{ duration: 2, repeat: Infinity, delay: i * 0.3 }}
               />
               <g transform="translate(4, 4) scale(1)">
-                <path d={icon.path} fill="#a1a1aa" transform="scale(1)" />
+                <path d={icon.path} fill="var(--theme-text-secondary)" transform="scale(1)" />
               </g>
             </g>
           ))}
@@ -299,7 +305,7 @@ function ArchitectureDiagram() {
           <text
             x="50"
             y="-10"
-            fill="#71717a"
+            fill="var(--theme-text-muted)"
             fontSize="10"
             fontWeight="600"
             textAnchor="middle"
@@ -343,17 +349,17 @@ function ArchitectureDiagram() {
           <text
             x="50"
             y="42"
-            fill="#fafafa"
+            fill="var(--theme-text-primary)"
             fontSize="11"
             fontWeight="700"
             textAnchor="middle"
           >
             Automerge
           </text>
-          <text x="50" y="56" fill="#a1a1aa" fontSize="9" textAnchor="middle">
+          <text x="50" y="56" fill="var(--theme-text-secondary)" fontSize="9" textAnchor="middle">
             CRDT
           </text>
-          <text x="50" y="72" fill="#6366f1" fontSize="8" textAnchor="middle">
+          <text x="50" y="72" fill="var(--theme-accent-secondary)" fontSize="8" textAnchor="middle">
             Local + Cloud
           </text>
         </g>
@@ -363,7 +369,7 @@ function ArchitectureDiagram() {
           <text
             x={layout.clients.labelX}
             y="20"
-            fill="#71717a"
+            fill="var(--theme-text-muted)"
             fontSize="10"
             fontWeight="600"
             textAnchor="middle"
@@ -394,14 +400,14 @@ function ArchitectureDiagram() {
               <g transform="translate(13, 8) scale(1)">
                 <path
                   d={icon.path}
-                  fill={i === 0 ? "#8b5cf6" : "#a1a1aa"}
+                  fill={i === 0 ? "var(--theme-accent-secondary)" : "var(--theme-text-secondary)"}
                   transform="scale(1)"
                 />
               </g>
               <text
                 x="25"
                 y="52"
-                fill="#71717a"
+                fill="var(--theme-text-muted)"
                 fontSize="8"
                 textAnchor="middle"
               >
@@ -428,7 +434,7 @@ function ArchitectureDiagram() {
         <text
           x="300"
           y="240"
-          fill="#71717a"
+          fill="var(--theme-text-muted)"
           fontSize="9"
           textAnchor="middle"
           fontStyle="italic"
@@ -581,9 +587,9 @@ function PhaseCard({ phase, index }: { phase: Phase; index: number }) {
       glow: "",
     },
     current: {
-      border: "border-glow-purple/50",
-      bg: "bg-glow-purple/5",
-      badge: "bg-glow-purple/20 text-glow-purple",
+      border: "border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_50%,transparent)]",
+      bg: "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_8%,transparent)]",
+      badge: "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent)] text-[var(--theme-accent-secondary)]",
       badgeText: "● In Progress",
       glow: "glow-sm",
     },
@@ -602,7 +608,7 @@ function PhaseCard({ phase, index }: { phase: Phase; index: number }) {
     <>
       {/* Priority badge */}
       {phase.priority && (
-        <div className="absolute -top-3 -right-3 px-3 py-1 rounded-full bg-linear-to-r from-glow-blue to-glow-purple text-xs font-bold text-white z-10">
+        <div className="absolute -top-3 -right-3 px-3 py-1 rounded-full text-xs font-bold text-[var(--theme-bg-root)] z-10 bg-[linear-gradient(90deg,var(--theme-accent-primary),var(--theme-accent-secondary),var(--theme-accent-tertiary))]">
           HIGHEST PRIORITY
         </div>
       )}
@@ -627,7 +633,7 @@ function PhaseCard({ phase, index }: { phase: Phase; index: number }) {
             {style.badgeText}
           </span>
           {phase.planLink && (
-            <span className="text-xs text-text-muted group-hover:text-white transition-colors duration-200 flex items-center gap-1">
+            <span className="text-xs text-text-muted group-hover:text-text-primary transition-colors duration-200 flex items-center gap-1">
               View Plan →
             </span>
           )}
@@ -726,7 +732,7 @@ export default function RoadmapContent() {
               initial={{ width: 0 }}
               animate={{ width: `${progressPercent}%` }}
               transition={{ duration: 1, delay: 0.4 }}
-              className="h-full bg-linear-to-r from-glow-blue via-glow-purple to-glow-cyan"
+              className="h-full bg-[linear-gradient(90deg,var(--theme-accent-primary),var(--theme-accent-secondary),var(--theme-accent-tertiary))]"
             />
             <motion.div
               initial={{ width: 0 }}

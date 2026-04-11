@@ -32,11 +32,13 @@ async function openSettingsSection(
   await expect(settingsBtn).toBeVisible({ timeout: 5_000 });
   await settingsBtn.click();
   await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
-
-  const navButton = page.getByRole("button", { name: settingsLabel }).last();
+  await expect(page.getByTestId("settings-close-button-sidebar")).toBeVisible({ timeout: 5_000 });
+  const navButton = page.locator("button").filter({
+    has: page.getByText(settingsLabel, { exact: true }),
+  }).last();
   await expect(navButton).toBeVisible({ timeout: 3_000 });
   await navButton.click();
-  await expect(page.getByRole("heading", { name: settingsLabel })).toBeVisible({ timeout: 3_000 });
+  await expect(page.getByRole("heading", { name: settingsLabel }).last()).toBeVisible({ timeout: 3_000 });
 }
 
 test("health tab surfaces provider charts and can unsubscribe a failing feed", async ({ app, page }) => {

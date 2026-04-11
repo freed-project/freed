@@ -159,7 +159,7 @@ function buildPopupContent(
     "width:min(460px,calc(100vw - 40px))",
     "min-width:420px",
     "padding:20px",
-    "color:#f5f3ff",
+    "color:var(--theme-text-primary)",
     "font-family:system-ui,sans-serif",
     "box-sizing:border-box",
   ].join(";");
@@ -174,19 +174,19 @@ function buildPopupContent(
     "align-items:center",
     "padding:5px 9px",
     "border-radius:999px",
-    "border:1px solid rgba(168,85,247,0.24)",
-    "background:linear-gradient(135deg,rgba(91,33,182,0.22),rgba(31,18,53,0.78))",
+    "border:1px solid var(--theme-border-strong)",
+    "background:color-mix(in oklab,var(--theme-accent-secondary) 16%,var(--theme-bg-surface))",
     "font-size:10px",
     "font-weight:700",
     "text-transform:uppercase",
     "letter-spacing:0.14em",
-    "color:rgba(233,213,255,0.84)",
+    "color:var(--theme-text-primary)",
   ].join(";");
   badgeRow.appendChild(eyebrow);
 
   const meta = document.createElement("div");
   meta.textContent = popupMeta(marker);
-  meta.style.cssText = "font-size:11px;color:rgba(255,255,255,0.45);white-space:nowrap;text-align:right;padding-top:6px;";
+  meta.style.cssText = "font-size:11px;color:var(--theme-text-muted);white-space:nowrap;text-align:right;padding-top:6px;";
   badgeRow.appendChild(meta);
   root.appendChild(badgeRow);
 
@@ -195,13 +195,13 @@ function buildPopupContent(
 
   const title = document.createElement("div");
   title.textContent = popupTitle(marker);
-  title.style.cssText = "font-size:22px;font-weight:700;color:#faf5ff;letter-spacing:-0.03em;line-height:1.08;";
+  title.style.cssText = "font-size:22px;font-weight:700;color:var(--theme-text-primary);letter-spacing:-0.03em;line-height:1.08;";
   header.appendChild(title);
 
   if (marker.label) {
     const location = document.createElement("div");
     location.textContent = marker.label;
-    location.style.cssText = "font-size:14px;font-weight:600;color:rgba(216,180,254,0.94);line-height:1.5;max-width:34ch;";
+    location.style.cssText = "font-size:14px;font-weight:600;color:var(--theme-accent-secondary);line-height:1.5;max-width:34ch;";
     header.appendChild(location);
   }
   root.appendChild(header);
@@ -212,14 +212,14 @@ function buildPopupContent(
     snippetCard.style.cssText = [
       "padding:12px 14px",
       "border-radius:16px",
-      "border:1px solid rgba(139,92,246,0.12)",
-      "background:linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))",
-      "box-shadow:inset 0 1px 0 rgba(255,255,255,0.04)",
+      "border:1px solid var(--theme-border-subtle)",
+      "background:var(--theme-bg-card)",
+      "box-shadow:inset 0 1px 0 rgb(255 255 255 / 0.04)",
     ].join(";");
 
     const snippet = document.createElement("p");
     snippet.textContent = snippetText;
-    snippet.style.cssText = "margin:0;font-size:14px;line-height:1.65;color:rgba(255,255,255,0.82);";
+    snippet.style.cssText = "margin:0;font-size:14px;line-height:1.65;color:var(--theme-text-secondary);";
     snippetCard.appendChild(snippet);
     root.appendChild(snippetCard);
   }
@@ -228,20 +228,20 @@ function buildPopupContent(
   facts.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;";
 
   const updateFact = document.createElement("div");
-  updateFact.style.cssText = "padding:10px 12px;border-radius:14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);";
-  updateFact.innerHTML = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.14em;color:rgba(255,255,255,0.42);margin-bottom:6px;">Seen</div><div style="font-size:13px;font-weight:600;color:#faf5ff;">${popupRelativeTime(marker.seenAt)}</div>`;
+  updateFact.style.cssText = "padding:10px 12px;border-radius:14px;background:var(--theme-bg-card);border:1px solid var(--theme-border-subtle);";
+  updateFact.innerHTML = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.14em;color:var(--theme-text-muted);margin-bottom:6px;">Seen</div><div style="font-size:13px;font-weight:600;color:var(--theme-text-primary);">${popupRelativeTime(marker.seenAt)}</div>`;
   facts.appendChild(updateFact);
 
   const sourceFact = document.createElement("div");
-  sourceFact.style.cssText = "padding:10px 12px;border-radius:14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.05);";
-  sourceFact.innerHTML = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.14em;color:rgba(255,255,255,0.42);margin-bottom:6px;">Source</div><div style="font-size:13px;font-weight:600;color:#faf5ff;text-transform:capitalize;">${marker.item.platform}</div>`;
+  sourceFact.style.cssText = "padding:10px 12px;border-radius:14px;background:var(--theme-bg-card);border:1px solid var(--theme-border-subtle);";
+  sourceFact.innerHTML = `<div style="font-size:10px;text-transform:uppercase;letter-spacing:0.14em;color:var(--theme-text-muted);margin-bottom:6px;">Source</div><div style="font-size:13px;font-weight:600;color:var(--theme-text-primary);text-transform:capitalize;">${marker.item.platform}</div>`;
   facts.appendChild(sourceFact);
   root.appendChild(facts);
 
   if (marker.groupCount > 1) {
     const more = document.createElement("div");
     more.textContent = `${marker.groupCount.toLocaleString()} updates from this spot`;
-    more.style.cssText = "font-size:11px;color:rgba(216,180,254,0.76);";
+    more.style.cssText = "font-size:11px;color:var(--theme-accent-secondary);";
     root.appendChild(more);
   }
 
@@ -255,16 +255,16 @@ function buildPopupContent(
     friendButton.style.cssText = [
       "padding:10px 14px",
       "border-radius:12px",
-      "border:1px solid rgba(192,132,252,0.26)",
-      "background:linear-gradient(135deg,rgba(91,33,182,0.58),rgba(45,15,78,0.98))",
-      "color:#faf5ff",
+      "border:1px solid var(--theme-border-strong)",
+      "background:var(--theme-button-primary-background)",
+      "color:var(--theme-button-primary-text)",
       "font-size:12px",
       "font-weight:600",
       "cursor:pointer",
       "outline:none",
       "width:100%",
       "white-space:nowrap",
-      "box-shadow:0 12px 26px rgba(17,17,24,0.34)",
+      "box-shadow:var(--theme-button-primary-shadow)",
     ].join(";");
     friendButton.addEventListener("click", () => onOpenFriend(marker));
     actions.appendChild(friendButton);
@@ -277,9 +277,9 @@ function buildPopupContent(
     postButton.style.cssText = [
       "padding:10px 14px",
       "border-radius:12px",
-      "border:1px solid rgba(255,255,255,0.1)",
-      "background:rgba(255,255,255,0.04)",
-      "color:#f5f3ff",
+      "border:1px solid var(--theme-border-subtle)",
+      "background:var(--theme-button-secondary-background)",
+      "color:var(--theme-text-primary)",
       "font-size:12px",
       "font-weight:600",
       "cursor:pointer",
@@ -302,9 +302,7 @@ function mapStyles(interactive: boolean) {
   return `
     .freed-map-shell {
       position: relative;
-      background:
-        radial-gradient(circle at top, rgba(91, 33, 182, 0.18), rgba(91, 33, 182, 0) 34%),
-        linear-gradient(180deg, rgba(8, 7, 13, 0.98), rgba(10, 9, 16, 0.98));
+      background: var(--theme-shell-background);
     }
 
     .freed-map-shell .maplibregl-map {
@@ -326,12 +324,12 @@ function mapStyles(interactive: boolean) {
       max-width: min(460px, calc(100vw - 40px));
       padding: 0;
       background:
-        linear-gradient(180deg, rgba(18, 18, 28, 0.98), rgba(10, 10, 16, 0.98));
-      border: 1px solid rgba(139, 92, 246, 0.18);
+        color-mix(in oklab, var(--theme-bg-elevated) 96%, transparent);
+      border: 1px solid var(--theme-border-strong);
       border-radius: 24px;
       box-shadow:
         0 20px 48px rgba(2, 6, 23, 0.74),
-        0 0 0 1px rgba(139, 92, 246, 0.06);
+        0 0 0 1px var(--theme-border-subtle);
       backdrop-filter: blur(18px);
       overflow: hidden;
     }
@@ -352,15 +350,13 @@ function mapStyles(interactive: boolean) {
       scale: 1.06;
       filter: brightness(1.06);
       box-shadow:
-        0 0 0 1px rgba(216, 180, 254, 0.24),
-        0 0 24px rgba(168, 85, 247, 0.28),
+        0 0 0 1px var(--theme-border-strong),
+        0 0 24px rgb(var(--theme-accent-secondary-rgb) / 0.28),
         0 20px 42px rgba(2, 6, 23, 0.76);
     }
 
     .freed-map-fallback-scan {
-      background:
-        radial-gradient(circle at top, rgba(91, 33, 182, 0.18), rgba(91, 33, 182, 0) 30%),
-        linear-gradient(180deg, rgba(8, 7, 13, 0.98), rgba(10, 9, 16, 0.98));
+      background: var(--theme-shell-background);
     }
   `;
 }
@@ -554,29 +550,29 @@ export function MapSurface({
   }, [avatarPalette, closeActivePopup, focusedMarkerKey, interactive, mapReady, onOpenFriend, onOpenPost, stableMarkers]);
 
   return (
-    <div className="freed-map-shell relative h-full w-full overflow-hidden bg-[#08070d]">
+    <div className="freed-map-shell relative h-full w-full overflow-hidden">
       <style>{mapStyles(interactive)}</style>
       <div
         ref={containerRef}
         className={`h-full w-full ${showFallback ? "invisible" : "visible"}`}
       />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(91,33,182,0.16),rgba(8,7,13,0)_34%)]" />
-      <div className="pointer-events-none absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(167,139,250,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(167,139,250,0.06)_1px,transparent_1px)] [background-size:84px_84px]" />
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-[#8b5cf6]/10 to-transparent" />
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-[#08070d] via-[#08070d]/20 to-transparent" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgb(var(--theme-accent-secondary-rgb)/0.16),transparent_34%)]" />
+      <div className="theme-map-grid pointer-events-none absolute inset-0 opacity-20 [background-size:84px_84px]" />
+      <div className="theme-map-fade-top pointer-events-none absolute inset-x-0 top-0 h-28" />
+      <div className="theme-map-fade-bottom pointer-events-none absolute inset-x-0 bottom-0 h-28" />
 
       {showFallback && stableMarkers.length > 0 && (
         <div className="freed-map-fallback-scan absolute inset-0 overflow-hidden">
-          <div className="absolute inset-0 opacity-24 [background-image:linear-gradient(rgba(167,139,250,0.14)_1px,transparent_1px),linear-gradient(90deg,rgba(167,139,250,0.1)_1px,transparent_1px)] [background-size:72px_72px]" />
-          <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-[#8b5cf6]/20 to-transparent" />
-          <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-transparent via-[#8b5cf6]/16 to-transparent" />
+          <div className="theme-map-grid-dense absolute inset-0 opacity-24 [background-size:72px_72px]" />
+          <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-[color:rgb(var(--theme-accent-secondary-rgb)/0.2)] to-transparent" />
+          <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-transparent via-[color:rgb(var(--theme-accent-secondary-rgb)/0.16)] to-transparent" />
           {stableMarkers.map((marker) => {
             const position = fallbackPosition(marker);
             return (
               <button
                 key={marker.key}
                 type="button"
-                className="freed-map-marker absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#8b5cf6]/24 bg-[linear-gradient(135deg,rgba(76,29,149,0.82),rgba(16,16,24,0.94))] px-2.5 py-1.5 text-[11px] text-[#f5f3ff] shadow-[0_14px_28px_rgba(2,6,23,0.38)] backdrop-blur-md"
+                className="freed-map-marker absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-[color:var(--theme-border-strong)] bg-[color:color-mix(in_oklab,var(--theme-accent-secondary)_24%,var(--theme-bg-surface))] px-2.5 py-1.5 text-[11px] text-[color:var(--theme-text-primary)] shadow-[0_14px_28px_rgba(2,6,23,0.38)] backdrop-blur-md"
                 style={position}
                 onClick={() => setSelectedFallbackMarkerKey((current) => current === marker.key ? null : marker.key)}
                 aria-label={fallbackLabel(marker)}
@@ -587,28 +583,28 @@ export function MapSurface({
           })}
 
           {interactive && selectedFallbackMarker && (
-            <div data-testid="map-fallback-popup" className="absolute bottom-4 left-4 w-[min(480px,calc(100%-2rem))] rounded-[24px] border border-[#8b5cf6]/16 bg-[linear-gradient(180deg,rgba(18,18,28,0.98),rgba(10,10,16,0.98))] p-5 shadow-[0_24px_60px_rgba(2,6,23,0.72)] backdrop-blur-xl">
+            <div data-testid="map-fallback-popup" className="absolute bottom-4 left-4 w-[min(480px,calc(100%-2rem))] rounded-[24px] border border-[color:var(--theme-border-strong)] bg-[color:color-mix(in_oklab,var(--theme-bg-elevated)_96%,transparent)] p-5 shadow-[0_24px_60px_rgba(2,6,23,0.72)] backdrop-blur-xl">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-[#8b5cf6]/24 bg-[linear-gradient(135deg,rgba(91,33,182,0.22),rgba(31,18,53,0.78))] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#e9d5ff]">
+                    <span className="rounded-full border border-[color:var(--theme-border-strong)] bg-[color:color-mix(in_oklab,var(--theme-accent-secondary)_16%,var(--theme-bg-surface))] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)]">
                       {popupKicker(selectedFallbackMarker)}
                     </span>
-                    <span className="text-[11px] text-white/45">
+                    <span className="text-[11px] text-[color:var(--theme-text-muted)]">
                       {popupMeta(selectedFallbackMarker)}
                     </span>
                   </div>
-                  <p className="mt-3 text-xl font-semibold tracking-[-0.03em] text-white">
+                  <p className="mt-3 text-xl font-semibold tracking-[-0.03em] text-[color:var(--theme-text-primary)]">
                     {fallbackLabel(selectedFallbackMarker)}
                   </p>
                   {selectedFallbackMarker.label && (
-                    <p className="mt-1 text-sm font-medium text-[#d8b4fe]">
+                    <p className="mt-1 text-sm font-medium text-[color:var(--theme-accent-secondary)]">
                       {selectedFallbackMarker.label}
                     </p>
                   )}
                   {popupSnippet(selectedFallbackMarker.item.content.text) && (
-                    <div className="mt-4 rounded-2xl border border-[#8b5cf6]/12 bg-white/[0.03] p-3">
-                      <p className="text-sm leading-6 text-white/80">
+                    <div className="mt-4 rounded-2xl border border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-card)] p-3">
+                      <p className="text-sm leading-6 text-[color:var(--theme-text-secondary)]">
                         {popupSnippet(selectedFallbackMarker.item.content.text)}
                       </p>
                     </div>
@@ -616,7 +612,7 @@ export function MapSurface({
                 </div>
                 <button
                   type="button"
-                  className="rounded-xl border border-white/10 px-2.5 py-1.5 text-[11px] text-white/55 transition-colors hover:border-[#8b5cf6]/28 hover:text-white"
+                  className="btn-secondary rounded-xl px-2.5 py-1.5 text-[11px]"
                   onClick={() => setSelectedFallbackMarkerKey(null)}
                 >
                   Close
@@ -624,22 +620,22 @@ export function MapSurface({
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <div className="rounded-2xl border border-white/5 bg-white/[0.03] px-3 py-2.5">
-                  <p className="text-[10px] uppercase tracking-[0.14em] text-white/40">Seen</p>
-                  <p className="mt-1 text-sm font-semibold text-white">
+                <div className="rounded-2xl border border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-card)] px-3 py-2.5">
+                  <p className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">Seen</p>
+                  <p className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                     {popupRelativeTime(selectedFallbackMarker.seenAt)}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-white/5 bg-white/[0.03] px-3 py-2.5">
-                  <p className="text-[10px] uppercase tracking-[0.14em] text-white/40">Source</p>
-                  <p className="mt-1 text-sm font-semibold capitalize text-white">
+                <div className="rounded-2xl border border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-card)] px-3 py-2.5">
+                  <p className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">Source</p>
+                  <p className="mt-1 text-sm font-semibold capitalize text-[color:var(--theme-text-primary)]">
                     {selectedFallbackMarker.item.platform}
                   </p>
                 </div>
               </div>
 
               {selectedFallbackMarker.groupCount > 1 && (
-                <p className="mt-3 text-xs text-[#d8b4fe]/76">
+                <p className="mt-3 text-xs text-[color:var(--theme-accent-secondary)]">
                   {selectedFallbackMarker.groupCount.toLocaleString()} updates from this spot
                 </p>
               )}
@@ -648,7 +644,7 @@ export function MapSurface({
                 {selectedFallbackMarker.friend && onOpenFriend && (
                   <button
                     type="button"
-                    className="w-full rounded-xl border border-[#8b5cf6]/24 bg-[linear-gradient(135deg,rgba(91,33,182,0.58),rgba(45,15,78,0.98))] px-3.5 py-2 text-xs font-medium text-[#faf5ff]"
+                    className="btn-primary w-full rounded-xl px-3.5 py-2 text-xs"
                     onClick={() => onOpenFriend(selectedFallbackMarker)}
                   >
                     Open Friend
@@ -657,7 +653,7 @@ export function MapSurface({
                 {onOpenPost && (
                   <button
                     type="button"
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-2 text-xs text-white"
+                    className="btn-secondary w-full rounded-xl px-3.5 py-2 text-xs"
                     onClick={() => onOpenPost(selectedFallbackMarker)}
                   >
                     Open Post
@@ -670,12 +666,12 @@ export function MapSurface({
       )}
 
       {showFallback && stableMarkers.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[linear-gradient(180deg,rgba(15,23,42,0.95),rgba(2,6,23,0.98))] px-6 text-center">
+        <div className="absolute inset-0 flex items-center justify-center bg-[color:color-mix(in_oklab,var(--theme-bg-deep)_94%,transparent)] px-6 text-center">
           <div>
-            <p className="text-sm font-medium text-white">
+            <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
               {loadFailed ? "Map failed to load" : emptyTitle}
             </p>
-            <p className="mt-1 text-xs text-white/60">
+            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
               {loadFailed
                 ? "This browser could not initialize the live map, so a simplified view is shown instead."
                 : emptyBody}

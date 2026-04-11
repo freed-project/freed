@@ -48,6 +48,12 @@ export type Platform =
   | "saved";
 
 export type ContentType = "post" | "story" | "article" | "video" | "podcast";
+export type ThemeId =
+  | "neon"
+  | "midas"
+  | "vesper"
+  | "ember"
+  | "porcelain";
 
 // Core feed item structure
 export interface FeedItem {
@@ -125,6 +131,9 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 - RSS/Atom feed generation at build time
 - Public legal pages for Terms of Use, Privacy, and Desktop EULA
 - Versioned website clickwrap in the download modal for Terms of Use and Privacy before opening the PWA or downloading Freed Desktop
+- Shared cross-surface theme system for the marketing site, Freed Desktop, and the PWA
+- Five authored themes: Neon, Midas, Vesper, Ember, and Porcelain
+- Synced theme preference with `Neon` as the default for fresh installs
 - Mobile-responsive design
 - Glassmorphic dark theme
 - Full accessibility support (skip links, ARIA labels, focus states)
@@ -138,8 +147,10 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 - [x] Finish first updates blog post (001-introducing-freed)
 - [x] Finish the manifesto
 - [ ] Complete newsletter subscription system:
-  - [ ] Create Brevo account and contact list
+  - [x] Wire `NewsletterModal` form to `POST /api/subscribe`
+  - [ ] Finalize Brevo list mapping and list settings
   - [ ] Import existing 90k subscribers
+  - [ ] Add one-click endpoint smoke test before release
   - [ ] Set `BREVO_API_KEY` and `BREVO_LIST_ID` in Vercel
   - [ ] Configure freed.wtf domain in Vercel
 - [ ] Send our first email newsletter
@@ -149,13 +160,24 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 
 #### Newsletter Infrastructure
 
-The newsletter system uses Brevo for contact management and email delivery, proxied through a Next.js Edge Route Handler to keep API keys server-side.
+The newsletter system uses Brevo for contact management and email delivery, proxied through a Next.js Route Handler to keep API keys server-side.
 
 **Setup:**
 
 1. Brevo account with API key and contact list
 2. Vercel project with environment variables: `BREVO_API_KEY`, `BREVO_LIST_ID`
 3. Frontend calls `/api/subscribe` (same domain, no CORS)
+4. Use this smoke command to verify the endpoint before launch:
+
+```bash
+curl -X POST http://localhost:3000/api/subscribe \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com"}'
+```
+
+### Desktop and PWA follow up
+
+- Add a recurring invite banner in Freed Desktop and app.freed.wtf to nudge users to join the newsletter after they run the desktop app.
 
 **Files:**
 
@@ -187,6 +209,8 @@ Two Vercel projects, both auto-deploy on push to `main` with preview deploys on 
 | `freed`      | `website/`       | [freed.wtf](https://freed.wtf)                   |
 | `freed-pwa`  | `packages/pwa/`  | [app.freed.wtf](https://app.freed.wtf)           |
 
+Manual preview deploys for this monorepo now go through `./scripts/vercel-deploy-preview.sh website` and `./scripts/vercel-deploy-preview.sh pwa`. The helper stages a temporary monorepo slice with shared workspace packages before uploading to Vercel, which avoids the broken `npm install` failures caused by raw subdirectory deploys.
+
 ---
 
 ## Key Decisions
@@ -211,10 +235,11 @@ Two Vercel projects, both auto-deploy on push to `main` with preview deploys on 
 | 1.4  | Build marketing site (landing, manifesto)    | ✓      |
 | 1.5  | Set up GitHub Actions CI/CD                  | ✓      |
 | 1.6  | Configure custom domain (freed.wtf)          | ✓      |
-| 1.7  | Add newsletter signup with Next.js Edge Route Handler (Brevo) | ✓      |
+| 1.7  | Add newsletter signup with Next.js Route Handler (Brevo) | ✓      |
 | 1.8  | Add Roadmap and Updates pages                | ✓      |
 | 1.9  | Generate RSS feed at build time              | ✓      |
 | 1.10 | Add public legal docs and versioned website clickwrap | ✓ |
+| 1.11 | Add unified shared theme system across website, Freed Desktop, and PWA | ✓ |
 
 ---
 

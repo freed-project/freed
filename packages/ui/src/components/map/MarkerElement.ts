@@ -50,7 +50,7 @@ export function createMarkerElement(
     "position:relative",
     "border-radius:999px",
     `border:1px solid ${avatarPalette.borderStrong}`,
-    `box-shadow:0 0 0 1px ${avatarPalette.borderSoft},0 0 18px ${avatarPalette.glow},0 12px 28px rgba(2,6,23,0.68)`,
+    `box-shadow:0 0 0 1px ${avatarPalette.borderSoft},0 0 18px ${avatarPalette.glow},0 12px 28px rgba(2,6,23,0.52)`,
     "overflow:hidden",
     "display:flex",
     "align-items:center",
@@ -139,7 +139,7 @@ export function createMarkerElement(
       "font-size:10px",
       "font-weight:700",
       "color:white",
-      "background:linear-gradient(135deg,rgba(76,29,149,0.98),rgba(17,17,24,0.98))",
+      "background:var(--theme-button-primary-background)",
       `border:1px solid ${avatarPalette.borderSoft}`,
       "box-shadow:0 10px 22px rgba(2,6,23,0.42)",
     ].join(";");
