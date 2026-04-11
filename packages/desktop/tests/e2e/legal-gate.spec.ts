@@ -26,6 +26,18 @@ async function openSettingsSection(
   });
 }
 
+async function cancelProviderRiskDialog(
+  page: import("@playwright/test").Page,
+  provider: "x" | "facebook" | "instagram" | "linkedin",
+): Promise<void> {
+  const dialog = page.getByTestId(`provider-risk-dialog-${provider}`);
+  const cancelButton = dialog.getByRole("button", { name: "Cancel" });
+  await cancelButton.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
+  await expect(dialog).toBeHidden();
+}
+
 test("first launch blocks the desktop shell until legal consent is accepted", async ({
   app,
 }) => {
@@ -79,7 +91,7 @@ test("X risky connection flows require provider consent", async ({ app }) => {
   await expect(page.getByTestId("provider-risk-accept-x")).toBeVisible({
     timeout: 5_000,
   });
-  await page.getByRole("button", { name: "Cancel" }).click();
+  await cancelProviderRiskDialog(page, "x");
 
   await page.getByText("Manual cookie setup").click();
   await page.getByPlaceholder("ct0 value").fill("test_ct0_value");
@@ -128,7 +140,7 @@ test("LinkedIn login and sync require provider consent", async ({ app }) => {
     timeout: 5_000,
   });
 
-  await page.getByRole("button", { name: "Cancel" }).click();
+  await cancelProviderRiskDialog(page, "linkedin");
   await page.evaluate(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as {
       setState: (partial: Record<string, unknown>) => void;
@@ -138,10 +150,9 @@ test("LinkedIn login and sync require provider consent", async ({ app }) => {
     });
   });
 
-  await expect(page.getByTestId("provider-sync-action-linkedin")).toBeVisible({
-    timeout: 5_000,
-  });
-  await page.getByTestId("provider-sync-action-linkedin").click();
+  const syncNowButton = page.getByTestId("provider-sync-action-linkedin");
+  await expect(syncNowButton).toBeVisible({ timeout: 5_000 });
+  await syncNowButton.click();
   await expect(page.getByTestId("provider-risk-accept-linkedin")).toBeVisible({
     timeout: 5_000,
   });

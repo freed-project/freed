@@ -172,7 +172,7 @@ function SidebarContextMenuShell({
       ref={menuRef}
       style={{ top, left, width }}
       data-testid={testId}
-      className="fixed z-[300] bg-[#161616] border border-[rgba(255,255,255,0.1)] rounded-xl shadow-2xl shadow-black/70 overflow-hidden"
+      className="theme-dialog-shell fixed z-[300] overflow-hidden rounded-xl"
     >
       {children}
     </div>
@@ -207,7 +207,7 @@ function FeedContextMenu({
   return (
     <SidebarContextMenuShell anchorRect={anchorRect} ignoreElement={anchorElement} onClose={onClose} testId={`feed-context-menu-${feed.url}`}>
       {/* Sync status header */}
-      <div className="px-3 py-2.5 border-b border-[rgba(255,255,255,0.07)]">
+      <div className="theme-dialog-divider border-b px-3 py-2.5">
         <div className="flex items-center gap-2">
           <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${syncDotClass(feed.lastFetched)}`} />
           <span className="text-[11px] text-[#71717a]">{syncStatusLabel(feed.lastFetched)}</span>

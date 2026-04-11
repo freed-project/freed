@@ -181,8 +181,29 @@ test("X connect form accepts cookies and triggers sync", async ({
     "[data-testid='x-manual-connect']",
     { timeout: 3_000 },
   );
-  await connectBtn.click();
-  await app.acceptProviderRiskIfPresent("x");
+  try {
+    await connectBtn.click({ timeout: 3_000 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("detached")) {
+      throw error;
+    }
+  }
+
+  const nextState = await Promise.race([
+    page
+      .getByTestId("provider-risk-accept-x")
+      .waitFor({ state: "visible", timeout: 10_000 })
+      .then(() => "risk" as const),
+    page
+      .getByTestId("provider-status-x")
+      .waitFor({ state: "visible", timeout: 10_000 })
+      .then(() => "connected" as const),
+  ]);
+
+  if (nextState === "risk") {
+    await app.acceptProviderRiskIfPresent("x");
+  }
 
   // After connecting, the authenticated state should render.
   await expect(page.getByTestId("provider-status-x")).toBeVisible({ timeout: 10_000 });

@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import { useNewsletter } from "@/context/NewsletterContext";
-import { THEME_DEFINITIONS, useTheme } from "@/context/ThemeContext";
 
 const WTF_CAPTIONS = [
   // Core brand
@@ -54,7 +53,6 @@ function isActive(itemPath: string, pathname: string): boolean {
 export default function Navigation() {
   const pathname = usePathname();
   const { openModal } = useNewsletter();
-  const { themeId, setThemeId } = useTheme();
   const [captionIndex, setCaptionIndex] = useState(0);
   const [isHovering, setIsHovering] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -282,20 +280,6 @@ export default function Navigation() {
             <div className="max-w-6xl mx-auto flex items-center justify-between">
               {logoElement}
               {desktopLinks}
-              <label className="hidden lg:flex items-center gap-2 text-xs text-text-muted">
-                <span className="uppercase tracking-[0.18em]">Theme</span>
-                <select
-                  value={themeId}
-                  onChange={(event) => setThemeId(event.target.value as typeof themeId)}
-                  className="rounded-lg border border-freed-border bg-freed-surface/70 px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-glow-purple"
-                >
-                  {THEME_DEFINITIONS.map((theme) => (
-                    <option key={theme.id} value={theme.id}>
-                      {theme.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
             </div>
           </div>
         </div>
@@ -348,33 +332,10 @@ export default function Navigation() {
                 >
                   GitHub
                 </motion.a>
-
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.22, duration: 0.15 }}
-                  className="flex flex-col items-center gap-2"
-                >
-                  <span className="text-xs uppercase tracking-[0.22em] text-text-muted">
-                    Theme
-                  </span>
-                  <select
-                    value={themeId}
-                    onChange={(event) => setThemeId(event.target.value as typeof themeId)}
-                    className="rounded-xl border border-freed-border bg-freed-surface/80 px-4 py-3 text-base text-text-primary focus:outline-none focus:border-glow-purple"
-                  >
-                    {THEME_DEFINITIONS.map((theme) => (
-                      <option key={theme.id} value={theme.id}>
-                        {theme.name}
-                      </option>
-                    ))}
-                  </select>
-                </motion.div>
-
                 <motion.button
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.25, duration: 0.15 }}
+                  transition={{ delay: 0.22, duration: 0.15 }}
                   onClick={() => {
                     openModal();
                     setMobileMenuOpen(false);

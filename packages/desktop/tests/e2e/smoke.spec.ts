@@ -140,6 +140,38 @@ test("settings dialog closes from the mobile header close button", async ({ app,
   await expect(page.getByTestId("settings-close-button-mobile")).toHaveCount(0);
 });
 
+test("settings nav highlight follows scroll position", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async (settingsStorePath) => {
+    const mod = await import(settingsStorePath);
+    mod.useSettingsStore.getState().openDefault();
+  }, SETTINGS_STORE_PATH);
+  await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
+
+  const dialog = page.locator(".theme-dialog-shell").first();
+  const scrollContainer = page.getByTestId("settings-scroll-container");
+  const appearanceButton = dialog.locator('button[data-active="true"]').filter({
+    hasText: /^Appearance$/,
+  });
+  const readingButton = dialog.locator('button[data-active="true"]').filter({
+    hasText: /^Reading$/,
+  });
+
+  await expect(appearanceButton).toHaveCount(1);
+
+  await scrollContainer.evaluate((element) => {
+    const target = element.querySelector('[data-section="reading"]');
+    if (!(target instanceof HTMLElement)) {
+      throw new Error("Reading section not found");
+    }
+    element.scrollTo({ top: Math.max(0, target.offsetTop - 24) });
+  });
+
+  await expect(readingButton).toHaveCount(1);
+});
+
 test("provider risk dialog scrolls vertically on tiny mobile screens", async ({ app, page }) => {
   await page.setViewportSize({ width: 320, height: 360 });
   await app.goto();

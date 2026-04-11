@@ -2360,16 +2360,26 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
   const settingsBtn = page.locator("button").filter({ hasText: /settings/i }).first();
   await settingsBtn.click();
   await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
+  const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
 
-  await expect(page.getByRole("button", { name: "All (2)", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Needs review (1)", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Unsubscribe from all feeds (2)", exact: true })).toBeVisible();
-
-  await page.getByRole("button", { name: "Needs review (1)", exact: true }).evaluate((button) => {
-    (button as HTMLButtonElement).click();
+  await expect(settingsDialog.getByRole("button", { name: "All (2)", exact: true })).toBeVisible();
+  const needsReviewButton = settingsDialog.getByRole("button", {
+    name: "Needs review (1)",
+    exact: true,
   });
-  await expect(page.getByRole("button", { name: "Unsubscribe from shown feeds (1)", exact: true })).toBeVisible();
-  await expect(page.getByText("404 Not Found")).toBeVisible();
-  await expect(page.getByText("Broken Feed")).toBeVisible();
-  await expect(page.getByText("Likely dead")).toBeVisible();
+  await expect(needsReviewButton).toBeVisible();
+  await expect(
+    settingsDialog.getByRole("button", { name: "Unsubscribe from all feeds (2)", exact: true }),
+  ).toBeVisible();
+
+  await needsReviewButton.evaluate((element) => {
+    (element as HTMLButtonElement).click();
+  });
+  await expect(settingsDialog.getByText("Healthy Feed")).toHaveCount(0);
+  await expect(
+    settingsDialog.getByRole("button", { name: "Unsubscribe from shown feeds (1)", exact: true }),
+  ).toBeVisible();
+  await expect(settingsDialog.getByText("404 Not Found")).toBeVisible();
+  await expect(settingsDialog.getByText("Broken Feed")).toBeVisible();
+  await expect(settingsDialog.getByText("Likely dead")).toBeVisible();
 });

@@ -266,10 +266,10 @@ export function ContactSyncModal({ onClose, syncState, onLink, onSkip, onCreateF
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 bg-black/70 sm:items-center"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-elevated)_96%,transparent)] shadow-2xl sm:max-h-[85vh]">
+      <div className="theme-dialog-shell my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col sm:max-h-[85vh]">
 
         {/* Header */}
-        <div className="flex shrink-0 items-center gap-3 border-b border-[color:var(--theme-border-subtle)] px-5 py-4">
+        <div className="theme-dialog-divider flex shrink-0 items-center gap-3 border-b px-5 py-4">
           <div className="flex-1 min-w-0">
             <h2 className="text-base font-semibold text-text-primary">Google Contacts</h2>
             <p className="text-xs text-text-secondary mt-0.5">
@@ -429,7 +429,7 @@ export function ContactSyncModal({ onClose, syncState, onLink, onSkip, onCreateF
         </div>
 
         {/* Footer */}
-        <div className="flex shrink-0 items-center justify-between border-t border-[color:var(--theme-border-subtle)] px-5 py-3">
+        <div className="theme-dialog-divider flex shrink-0 items-center justify-between border-t px-5 py-3">
           {syncState.lastSyncedAt && (
             <span className="text-xs text-[color:var(--theme-text-muted)]">
               Last synced {new Date(syncState.lastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}

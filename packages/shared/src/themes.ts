@@ -7,6 +7,7 @@ export interface ThemeDefinition {
   tagline: string;
   description: string;
   previewGradient: string;
+  avatarTint: string;
   surface: "dark" | "light";
   effects: "dramatic" | "restrained";
 }
@@ -21,6 +22,7 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
     description:
       "Freed in its original high-voltage form. Blue, purple, cyan, and a little bit of trouble.",
     previewGradient: "linear-gradient(135deg, #3b82f6, #8b5cf6 55%, #06b6d4)",
+    avatarTint: "#7d8dff",
     surface: "dark",
     effects: "dramatic",
   },
@@ -31,6 +33,7 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
     description:
       "Parchment, bronze, and old-world warmth. Elegant, ceremonial, and quietly grand.",
     previewGradient: "linear-gradient(135deg, #7c5c38, #b08a48 55%, #5f4a32)",
+    avatarTint: "#b89452",
     surface: "dark",
     effects: "dramatic",
   },
@@ -41,6 +44,7 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
     description:
       "Neutral slate, smoke, and restrained contrast. Clean enough for work, warm enough to stay human.",
     previewGradient: "linear-gradient(135deg, #46535d, #6f7a81 55%, #8f969a)",
+    avatarTint: "#7b8b90",
     surface: "dark",
     effects: "restrained",
   },
@@ -51,6 +55,7 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
     description:
       "Volcanic charcoal with ember-orange heat. Heavier, sharper, and built like forged metal.",
     previewGradient: "linear-gradient(135deg, #7a2f1f, #c15a2e 55%, #5b1711)",
+    avatarTint: "#cb6939",
     surface: "dark",
     effects: "dramatic",
   },
@@ -61,6 +66,7 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
     description:
       "A low-blue-light editorial theme for long reading sessions. Vellum, walnut, and quietly dignified typography.",
     previewGradient: "linear-gradient(135deg, #f4ead7, #d8c4a1 55%, #86684a)",
+    avatarTint: "#9b7655",
     surface: "light",
     effects: "restrained",
   },

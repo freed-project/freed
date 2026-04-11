@@ -203,9 +203,9 @@ Map popovers now include the time of each location update and behave like a sane
 Friends now behaves like a proper workspace: the graph settles once and freezes, supports pan and zoom, and uses a permanent resizable right sidebar for reconnect, search, filters, overview, and selected-friend detail.
 Trackpad pinch zoom is now captured by the Friends graph itself, so zooming the workspace no longer zooms the whole browser window.
 Friend captions in the graph now use pill backgrounds and label-aware spacing, so names stay readable instead of collapsing into an overlapping word soup.
-Friend avatars now share the same lighter purple tint treatment across the Friends graph and map markers, with a user-configurable tint control in Settings.
+Friend avatars now inherit a theme-authored tint across the Friends graph and map markers, so each theme stays coherent without a stray custom accent fighting the palette.
 Map popovers now use a wider card layout and deliberately omit the old MapLibre tail, so place names and actions fit cleanly without the popup looking like a speech bubble from a cheaper app.
-Friends and Map now consume the same shared theme tokens, button treatments, shell backgrounds, and surface recipes as the rest of Freed, so new themes like Neon, Midas, Vesper, Ember, and Porcelain land consistently across the graph, sidebars, popovers, mini-map cards, editor, and contact-sync flows.
+Friends and Map now consume the same shared theme tokens, button treatments, shell backgrounds, and surface recipes as the rest of Freed, so themes like Neon, Midas, Vesper, Ember, and Scriptorium land consistently across the graph, sidebars, popovers, mini-map cards, editor, and contact-sync flows.
 
 ---
 

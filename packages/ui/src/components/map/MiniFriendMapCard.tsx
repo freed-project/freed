@@ -1,5 +1,5 @@
 import { formatDistanceToNow } from "date-fns";
-import { DEFAULT_FRIEND_AVATAR_TINT, type Friend, type FeedItem } from "@freed/shared";
+import type { FeedItem, Friend } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useFriendLastSeenLocation } from "../../hooks/useResolvedLocations.js";
 import { MapSurface } from "./MapSurface.js";
@@ -16,7 +16,7 @@ export function MiniFriendMapCard({
   onOpenMap,
 }: MiniFriendMapCardProps) {
   const { lastSeen, resolvingCount } = useFriendLastSeenLocation(friend, feedItems);
-  const avatarTint = useAppStore((state) => state.preferences.display.friendAvatarTint) ?? DEFAULT_FRIEND_AVATAR_TINT;
+  const themeId = useAppStore((state) => state.preferences.display.themeId);
 
   if (!lastSeen && resolvingCount === 0) return null;
 
@@ -31,7 +31,7 @@ export function MiniFriendMapCard({
           onOpenMap();
         }
       }}
-      className="mt-4 w-full overflow-hidden rounded-2xl border border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-card)] text-left shadow-[0_18px_40px_rgb(2_6_23_/_0.28)] transition-colors hover:border-[color:var(--theme-border-strong)] hover:bg-[color:var(--theme-bg-card-hover)]"
+      className="theme-card-soft mt-4 w-full overflow-hidden rounded-2xl text-left transition-colors hover:border-[color:var(--theme-border-strong)] hover:bg-[color:var(--theme-bg-card-hover)]"
     >
       <div className="flex items-center justify-between px-3.5 py-3">
         <div>
@@ -53,12 +53,12 @@ export function MiniFriendMapCard({
       </div>
 
       {lastSeen && (
-        <div className="h-36 border-t border-[color:var(--theme-border-subtle)]">
+        <div className="theme-dialog-divider h-36 border-t">
           <MapSurface
             markers={[lastSeen]}
             focusedMarkerKey={lastSeen.key}
             interactive={false}
-            avatarTint={avatarTint}
+            themeId={themeId}
             emptyTitle="Resolving location"
             emptyBody="The mini map will appear here."
           />

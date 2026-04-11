@@ -1,4 +1,5 @@
 import Link from "next/link";
+import ThemeSelector from "@/components/ThemeSelector";
 
 export default function Footer() {
   return (
@@ -8,9 +9,9 @@ export default function Footer() {
       style={{ paddingBottom: "calc(2rem + env(safe-area-inset-bottom))" }}
     >
       <div className="max-w-6xl mx-auto">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
           {/* Brand */}
-          <div className="col-span-2 md:col-span-2">
+          <div>
             <Link href="/" className="inline-flex items-baseline gap-0.5 mb-4">
               <span className="relative text-xl font-bold text-text-primary font-logo">
                 FREED
@@ -30,6 +31,9 @@ export default function Footer() {
               Take back your feed. Freed is open-source software that helps you
               read on your own terms.
             </p>
+            <div className="mt-6 max-w-[13rem]">
+              <ThemeSelector compact />
+            </div>
           </div>
 
           {/* Links */}

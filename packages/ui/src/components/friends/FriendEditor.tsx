@@ -266,9 +266,9 @@ export function FriendEditor({
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 bg-black/60 sm:items-center"
       onClick={(e) => e.target === e.currentTarget && onCancel()}
     >
-      <div className="my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-elevated)_96%,transparent)] shadow-2xl sm:max-h-[90vh]">
+      <div className="theme-dialog-shell my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col sm:max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center gap-2 px-5 py-4 border-b border-white/10 shrink-0">
+        <div className="theme-dialog-divider flex shrink-0 items-center gap-2 border-b px-5 py-4">
           <h2 className="text-base font-semibold text-text-primary flex-1">
             {existing ? "Edit friend" : "Add friend"}
           </h2>
@@ -384,7 +384,7 @@ export function FriendEditor({
               Contact info
             </h3>
             {contact ? (
-              <div className="rounded-lg border border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-card)] px-3 py-2.5 text-xs text-text-secondary space-y-0.5">
+              <div className="theme-card-soft rounded-lg px-3 py-2.5 text-xs text-text-secondary space-y-0.5">
                 {contact.phone && <p>Phone: {contact.phone}</p>}
                 {contact.email && <p>Email: {contact.email}</p>}
                 {contact.address && <p>Address: {contact.address}</p>}

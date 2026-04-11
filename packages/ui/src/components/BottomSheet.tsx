@@ -120,17 +120,17 @@ export function BottomSheet({
           the top edge. */}
       <div
         ref={panelRef}
-        className={`relative w-full ${maxWidth} sm:mx-4 bg-[#141414] border border-[rgba(255,255,255,0.08)] rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col`}
+        className={`theme-dialog-shell relative flex w-full ${maxWidth} flex-col rounded-t-[28px] sm:mx-4 sm:rounded-[28px]`}
         style={{ maxHeight: 'calc(var(--visual-viewport-height, 100dvh) * 0.85)' }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
         {/* Drag handle — mobile only, now functional */}
-        <div className="sm:hidden w-12 h-1 bg-white/20 rounded-full mx-auto mt-4 mb-1 shrink-0 cursor-grab active:cursor-grabbing" />
+        <div className="sm:hidden mx-auto mb-1 mt-4 h-1 w-12 shrink-0 cursor-grab rounded-full bg-white/20 active:cursor-grabbing" />
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 shrink-0">
+        <div className="theme-dialog-divider flex shrink-0 items-center justify-between border-b px-6 py-4">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button
             onClick={onClose}

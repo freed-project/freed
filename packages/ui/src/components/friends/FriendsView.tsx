@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import type { FeedItem, Friend, ReachOutLog } from "@freed/shared";
 import { formatDistanceToNow } from "date-fns";
-import { DEFAULT_FRIEND_AVATAR_TINT, isInReconnectZone } from "@freed/shared";
+import { isInReconnectZone } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
@@ -79,10 +79,10 @@ function FriendListRow({
     <button
       type="button"
       onClick={onSelect}
-      className={`w-full rounded-2xl border p-3 text-left transition-colors ${
+      className={`theme-card-soft w-full rounded-2xl p-3 text-left transition-colors ${
         selected
           ? "border-[color:var(--theme-border-strong)] bg-[color:var(--theme-bg-card-hover)] shadow-[var(--theme-glow-sm)]"
-          : "border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-card)] hover:border-[color:var(--theme-border-strong)] hover:bg-[color:var(--theme-bg-card-hover)]"
+          : "hover:border-[color:var(--theme-border-strong)] hover:bg-[color:var(--theme-bg-card-hover)]"
       }`}
     >
       <div className="flex items-start gap-3">
@@ -138,7 +138,7 @@ export function FriendsView() {
   const setActiveView = useAppStore((s) => s.setActiveView);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const savedSidebarWidth = useAppStore((s) => s.preferences.display.friendsSidebarWidth) ?? DEFAULT_SIDEBAR_WIDTH;
-  const avatarTint = useAppStore((s) => s.preferences.display.friendAvatarTint) ?? DEFAULT_FRIEND_AVATAR_TINT;
+  const themeId = useAppStore((s) => s.preferences.display.themeId);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -296,7 +296,7 @@ export function FriendsView() {
 
   const renderOverviewSidebar = () => (
     <div className="flex h-full flex-col bg-[color:var(--theme-bg-deep)]">
-      <div className="border-b border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_94%,transparent)] px-4 py-3">
+      <div className="theme-dialog-divider bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_92%,transparent)] border-b px-4 py-3 backdrop-blur-md">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Friends</h2>
@@ -344,7 +344,7 @@ export function FriendsView() {
         </div>
       </div>
 
-      <div className="border-b border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_94%,transparent)] px-4 py-3">
+      <div className="theme-dialog-divider bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_92%,transparent)] border-b px-4 py-3 backdrop-blur-md">
         <div className="theme-warning-panel rounded-2xl p-3">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -359,7 +359,7 @@ export function FriendsView() {
                 setActiveFilters(new Set(["need_outreach"]));
                 setSortBy("last_contact");
               }}
-              className="rounded-lg border border-[#f59e0b]/20 px-3 py-1.5 text-xs text-[#fcd34d] transition-colors hover:bg-[#f59e0b]/10"
+              className="theme-card-soft rounded-lg border-[#f59e0b]/20 px-3 py-1.5 text-xs text-[#fcd34d] transition-colors hover:bg-[#f59e0b]/10"
             >
               Review
             </button>
@@ -403,7 +403,7 @@ export function FriendsView() {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {filteredOverviewEntries.length === 0 ? (
-          <div className="rounded-2xl border border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-card)] px-4 py-6 text-center">
+          <div className="theme-card-soft rounded-2xl px-4 py-6 text-center">
             <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">No friends match those filters</p>
             <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Try clearing a filter or changing the search query.</p>
           </div>
@@ -425,7 +425,7 @@ export function FriendsView() {
 
   const renderSelectedSidebar = () => (
     <div className="flex h-full flex-col bg-[color:var(--theme-bg-deep)]">
-      <div className="flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_94%,transparent)] px-4 py-3">
+      <div className="theme-dialog-divider flex items-center justify-between gap-3 border-b bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_92%,transparent)] px-4 py-3 backdrop-blur-md">
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
@@ -476,7 +476,7 @@ export function FriendsView() {
         <div className="relative min-h-0 min-w-0 flex-1">
           {friendList.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full border border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-card)]">
+                <div className="theme-card-soft flex h-16 w-16 items-center justify-center rounded-full">
                   <UsersIcon className="h-8 w-8 text-[color:var(--theme-text-muted)]" />
                 </div>
               <div>
@@ -499,7 +499,7 @@ export function FriendsView() {
               feedItems={feedItems}
               onSelectFriend={(friend) => handleSelectFriend(friend, false)}
               selectedFriendId={selectedId}
-              avatarTint={avatarTint}
+              themeId={themeId}
             />
           )}
         </div>
@@ -516,7 +516,7 @@ export function FriendsView() {
 
         <aside
           data-testid="friends-sidebar"
-          className={`${isMobile ? "h-[46dvh] w-full border-t" : "shrink-0 border-l"} border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-deep)_92%,transparent)] overflow-hidden`}
+          className={`${isMobile ? "h-[46dvh] w-full border-t" : "shrink-0 border-l"} theme-dialog-divider overflow-hidden bg-[color:color-mix(in_oklab,var(--theme-bg-deep)_88%,transparent)] backdrop-blur-xl`}
           style={isMobile ? undefined : { width: `${sidebarWidth}px` }}
         >
           {selectedFriend ? renderSelectedSidebar() : renderOverviewSidebar()}

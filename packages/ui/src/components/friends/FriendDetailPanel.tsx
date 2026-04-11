@@ -88,7 +88,7 @@ function TimelineItem({
 
   return (
     <button
-      className="group w-full border-b border-[color:var(--theme-border-subtle)] px-4 py-3 text-left transition-colors hover:bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.08)] last:border-0"
+      className="group w-full border-b border-[color:color-mix(in_oklab,var(--theme-border-subtle)_72%,transparent)] px-4 py-3 text-left transition-colors hover:bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.08)] last:border-0"
       onClick={onClick}
     >
       <div className="flex items-start gap-2">
@@ -219,7 +219,7 @@ export function FriendDetailPanel({
   return (
     <div className="flex h-full flex-col bg-[color:var(--theme-bg-deep)]">
       {/* Identity card */}
-      <div className="shrink-0 border-b border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_94%,transparent)] px-4 py-4">
+      <div className="theme-dialog-divider shrink-0 border-b bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_92%,transparent)] px-4 py-4 backdrop-blur-md">
         <div className="flex items-start gap-3">
           {/* Avatar */}
           <FriendAvatar
@@ -314,7 +314,7 @@ export function FriendDetailPanel({
       </div>
 
       {/* Reach out button / popover */}
-      <div className="shrink-0 border-b border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_92%,transparent)] px-4 py-3">
+      <div className="theme-dialog-divider shrink-0 border-b bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_90%,transparent)] px-4 py-3 backdrop-blur-md">
         {showReachOut ? (
           <ReachOutPopover
             onLog={handleLogReachOut}

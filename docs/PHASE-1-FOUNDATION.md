@@ -132,7 +132,7 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 - Public legal pages for Terms of Use, Privacy, and Desktop EULA
 - Versioned website clickwrap in the download modal for Terms of Use and Privacy before opening the PWA or downloading Freed Desktop
 - Shared cross-surface theme system for the marketing site, Freed Desktop, and the PWA
-- Five authored themes: Neon, Midas, Vesper, Ember, and Porcelain
+- Five authored themes: Neon, Midas, Vesper, Ember, and Scriptorium
 - Synced theme preference with `Neon` as the default for fresh installs
 - Mobile-responsive design
 - Glassmorphic dark theme

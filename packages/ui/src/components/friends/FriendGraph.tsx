@@ -21,6 +21,7 @@ import {
   type FriendAvatarPalette,
 } from "../../lib/friend-avatar-style.js";
 import { initialsForName } from "../../lib/friend-avatar.js";
+import type { ThemeId } from "@freed/shared/themes";
 
 export interface FriendGraphHandle {
   fitAll: () => void;
@@ -32,7 +33,7 @@ interface FriendGraphProps {
   feedItems: Record<string, FeedItem>;
   onSelectFriend: (friend: Friend) => void;
   selectedFriendId?: string | null;
-  avatarTint?: string;
+  themeId?: ThemeId;
 }
 
 interface DragState {
@@ -282,7 +283,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     feedItems,
     onSelectFriend,
     selectedFriendId,
-    avatarTint,
+    themeId,
   },
   ref
 ) {
@@ -298,8 +299,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const [canvasSize, setCanvasSize] = useState({ width: 900, height: DEFAULT_HEIGHT });
   const [isInteracting, setIsInteracting] = useState(false);
   const avatarPalette = useMemo(
-    () => createFriendAvatarPalette(avatarTint),
-    [avatarTint]
+    () => createFriendAvatarPalette(themeId),
+    [themeId]
   );
   const graphTheme = readFriendGraphTheme();
 
