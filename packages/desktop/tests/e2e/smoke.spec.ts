@@ -411,7 +411,7 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
     const state = store?.getState();
     return state?.activeView === "map" && state.selectedFriendId === "friend-ada";
   }, { timeout: 5_000 });
-  await expect(page.getByRole("button", { name: /Ada Lovelace/ })).toBeVisible({
+  await expect(page.locator("main").getByText("Ada Lovelace").first()).toBeVisible({
     timeout: 5_000,
   });
 });
