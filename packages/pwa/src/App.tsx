@@ -31,7 +31,7 @@ import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
 import { PwaSyncSettings } from "./components/PwaSyncSettings";
 import { PwaXSettings } from "./components/PwaXSettings";
 import { PwaLegalSettingsSection } from "./components/PwaLegalSettingsSection";
-import { initiateGDriveOAuth } from "./components/SyncConnectDialog";
+import { initiateGDriveOAuth } from "./lib/cloud-oauth";
 import { acceptPwaBundle, hasAcceptedPwaBundle } from "./lib/legal-consent";
 import { useBrowserNavigationHistory } from "./lib/navigation-history";
 import { pwaBugReporting } from "./lib/bug-report";

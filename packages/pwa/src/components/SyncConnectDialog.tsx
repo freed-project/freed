@@ -12,10 +12,8 @@ import {
 import { BottomSheet } from "@freed/ui/components/BottomSheet";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { CloudProviderCard } from "@freed/ui/components/CloudProviderCard";
+import { initiateGDriveOAuth } from "../lib/cloud-oauth";
 
-// ─── OAuth PKCE helpers ───────────────────────────────────────────────────────
-
-/** Generate a cryptographically random code verifier for PKCE. */
 function generateCodeVerifier(): string {
   const array = new Uint8Array(64);
   crypto.getRandomValues(array);
@@ -25,7 +23,6 @@ function generateCodeVerifier(): string {
     .replace(/=/g, "");
 }
 
-/** SHA-256 hash the verifier and base64url-encode it. */
 async function generateCodeChallenge(verifier: string): Promise<string> {
   const data = new TextEncoder().encode(verifier);
   const digest = await crypto.subtle.digest("SHA-256", data);
@@ -35,30 +32,8 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
     .replace(/=/g, "");
 }
 
-const GDRIVE_CLIENT_ID = import.meta.env.VITE_GDRIVE_CLIENT_ID ?? "";
 const DROPBOX_CLIENT_ID = import.meta.env.VITE_DROPBOX_CLIENT_ID ?? "";
 const OAUTH_REDIRECT_URI = `${window.location.origin}/oauth-callback`;
-
-export async function initiateGDriveOAuth(): Promise<void> {
-  const verifier = generateCodeVerifier();
-  const challenge = await generateCodeChallenge(verifier);
-  sessionStorage.setItem("freed_pkce_verifier", verifier);
-  sessionStorage.setItem("freed_pkce_provider", "gdrive");
-
-  const params = new URLSearchParams({
-    client_id: GDRIVE_CLIENT_ID,
-    redirect_uri: OAUTH_REDIRECT_URI,
-    response_type: "code",
-    scope: "https://www.googleapis.com/auth/drive.appdata https://www.googleapis.com/auth/contacts.readonly",
-    include_granted_scopes: "true",
-    code_challenge: challenge,
-    code_challenge_method: "S256",
-    access_type: "offline",
-    prompt: "consent",
-  });
-
-  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
-}
 
 async function initiateDropboxOAuth(): Promise<void> {
   const verifier = generateCodeVerifier();

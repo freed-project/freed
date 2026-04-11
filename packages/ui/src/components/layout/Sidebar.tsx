@@ -374,7 +374,6 @@ function SourceContextMenu({
 const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
 const DEFAULT_WIDTH = 256;
-const EMPTY_PROVIDER_SYNC_COUNTS: Partial<Record<string, number>> = {};
 
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { SourceIndicator, headerDragRegion, syncRssNow, syncSourceNow, getSourceStatus } = usePlatform();
