@@ -2,7 +2,7 @@
   "tag": "v26.4.1200",
   "version": "26.4.1200",
   "dayKey": "26.4.12",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-12T23:16:24.658Z",
   "model": "heuristic",
@@ -44,18 +44,18 @@
     ]
   },
   "release": {
-    "deck": "Unify themes across website and app, refreshed theme system and typography polish, and privacy policy callout border removed",
+    "deck": "Unified theming across the website and app, cleaner typography, smoother changelog browsing, and smoother update progress feedback",
     "features": [
       "Unify themes across website and app",
       "Refreshed theme system and typography polish"
     ],
     "fixes": [
-      "Reorder sidebar sources and unclipped qr heading",
-      "Static card hover states removed",
-      "Polish QR footer hover state",
-      "Refine sharing qr layout"
+      "Remove updater progress bar lag",
+      "Paginate the changelog and polish roadmap motion",
+      "Refine sharing QR layout and footer hover states",
+      "Reorder sidebar sources and fix the clipped QR heading"
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1200\n\nUnify themes across website and app, refreshed theme system and typography polish, and privacy policy callout border removed\n\n### Features\n\n- Unify themes across website and app\n- Refreshed theme system and typography polish\n\n### Fixes\n\n- Reorder sidebar sources and unclipped qr heading\n- Static card hover states removed\n- Polish QR footer hover state\n- Refine sharing qr layout\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1200\n\nUnified theming across the website and app, cleaner typography, smoother changelog browsing, and smoother update progress feedback\n\n### Features\n\n- Unify themes across website and app\n- Refreshed theme system and typography polish\n\n### Fixes\n\n- Remove updater progress bar lag\n- Paginate the changelog and polish roadmap motion\n- Refine sharing QR layout and footer hover states\n- Reorder sidebar sources and fix the clipped QR heading\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
