@@ -1,0 +1,88 @@
+{
+  "tag": "v26.4.1100",
+  "version": "26.4.1100",
+  "dayKey": "26.4.11",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-12T05:36:22.923Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.4.900",
+    "previousPublishedDayTag": "v26.4.109",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.1100"
+    ],
+    "prNumbers": [
+      156,
+      158,
+      161,
+      162,
+      165,
+      172,
+      173,
+      174,
+      175,
+      176,
+      177,
+      178,
+      179,
+      180,
+      181,
+      182
+    ],
+    "commitSubjects": [
+      "feat: unify theming across website and app (#178)",
+      "fix: stabilize desktop map and smoke assertions (#182)",
+      "release: approve v26.4.1000 notes",
+      "release: v26.4.1000",
+      "fix: handle empty release validation args (#181)",
+      "fix: support macOS bash in release publish (#180)",
+      "Add public-safe bug reporting (#156)",
+      "feat: add browser-style navigation history (#165)",
+      "feat: move feeds into source accordion (#179)",
+      "feat: finish Google Contacts settings and sync (#161)",
+      "feat: add rotating desktop snapshots (#162)",
+      "docs: approve release notes for v26.4.900",
+      "release: v26.4.900",
+      "feat: add provider health diagnostics and source management (#177)",
+      "fix: mark items read when scrolled past (#158)",
+      "fix: make browser session copy more accurate (#176)",
+      "fix: silence background social scrapers (#175)",
+      "release: approve v26.4.301 notes",
+      "release: v26.4.301",
+      "fix: redeploy website after release publish (#174)",
+      "release: approve v26.4.300 notes",
+      "release: v26.4.300",
+      "fix: overhaul changelog release notes and cards (#173)",
+      "fix: backfill concise historical changelog notes (#172)"
+    ]
+  },
+  "release": {
+    "deck": "Contacts settings and sync, rotating desktop snapshots, and unify theming across website and app",
+    "features": [
+      "Finish Google Contacts settings and sync",
+      "Rotating desktop snapshots",
+      "Unify theming across website and app"
+    ],
+    "fixes": [
+      "Desktop map and smoke assertions are now more stable",
+      "Handle empty release validation args",
+      "Support macOS bash in release publish",
+      "Mark items read when scrolled past",
+      "Make browser session copy more accurate",
+      "Silence background social scrapers",
+      "Redeploy website after release publish",
+      "Overhaul changelog release notes and cards",
+      "Backfill concise historical changelog notes"
+    ],
+    "followUps": [
+      "Public-safe bug reporting",
+      "Browser-style navigation history",
+      "Move feeds into source accordion",
+      "Provider health diagnostics and source management"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1100\n\nContacts settings and sync, rotating desktop snapshots, and unify theming across website and app\n\n### Features\n\n- Finish Google Contacts settings and sync\n- Rotating desktop snapshots\n- Unify theming across website and app\n\n### Fixes\n\n- Desktop map and smoke assertions are now more stable\n- Handle empty release validation args\n- Support macOS bash in release publish\n- Mark items read when scrolled past\n- Make browser session copy more accurate\n- Silence background social scrapers\n- Redeploy website after release publish\n- Overhaul changelog release notes and cards\n- Backfill concise historical changelog notes\n\n### Follow-ups\n\n- Public-safe bug reporting\n- Browser-style navigation history\n- Move feeds into source accordion\n- Provider health diagnostics and source management\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
