@@ -30,7 +30,7 @@ export default function UpdatesContent() {
           className="text-center mb-16 sm:mb-24"
         >
           <h1 className="theme-display-large text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
-            <span className="theme-heading-accent">Updates</span>
+            <span className="theme-page-heading-accent">Updates</span>
           </h1>
           <p className="text-text-secondary text-lg sm:text-xl mb-6">
             Latest transmissions from the Feed Liberation Front.
