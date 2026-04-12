@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useTheme } from "@/context/ThemeContext";
 import {
   slowHeroMotion,
@@ -50,21 +50,22 @@ const PLATFORMS = [
   },
 ];
 
-// Pre-compute logo positions and spin params
-const LOGOS = PLATFORMS.map((platform, i) => {
-  const angle = ((i * 360) / PLATFORMS.length - 90) * (Math.PI / 180);
-  return {
-    ...platform,
-    angle,
-    cx: CENTER + LOGO_RADIUS * Math.cos(angle),
-    cy: CENTER + LOGO_RADIUS * Math.sin(angle),
-    emitX: CENTER + RING_RADIUS * Math.cos(angle),
-    emitY: CENTER + RING_RADIUS * Math.sin(angle),
-    spinDuration: 25 + i * 5,
-    spinDirection: Math.random() > 0.5 ? 1 : -1,
-    flashDelay: Math.random() * 5,
-  };
-});
+function buildLogos() {
+  return PLATFORMS.map((platform, i) => {
+    const angle = ((i * 360) / PLATFORMS.length - 90) * (Math.PI / 180);
+    return {
+      ...platform,
+      angle,
+      cx: CENTER + LOGO_RADIUS * Math.cos(angle),
+      cy: CENTER + LOGO_RADIUS * Math.sin(angle),
+      emitX: CENTER + RING_RADIUS * Math.cos(angle),
+      emitY: CENTER + RING_RADIUS * Math.sin(angle),
+      spinDuration: 25 + i * 5,
+      spinDirection: Math.random() > 0.5 ? 1 : -1,
+      flashDelay: Math.random() * 5,
+    };
+  });
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Particle System (single animation loop for all particles)
@@ -92,7 +93,7 @@ const CYCLE_DURATION = slowHeroInterval(12000); // ms
 const MAX_AGE = Math.round(slowHeroMotion(600)); // frames
 const RED_BOUNCE_SPEED_LIMIT = slowHeroSpeed(0.6);
 
-function createParticle(logo: (typeof LOGOS)[0], isRed: boolean): Particle {
+function createParticle(logo: ReturnType<typeof buildLogos>[number], isRed: boolean): Particle {
   // Aim directly at center with small random spread (±5 degrees)
   const angleToCenter = Math.atan2(CENTER - logo.emitY, CENTER - logo.emitX);
   const spread = (Math.random() - 0.5) * 0.17; // ~±5 degrees
@@ -124,8 +125,8 @@ function clampRedBounceVelocity(value: number): number {
   );
 }
 
-function initParticles(): Particle[] {
-  return LOGOS.flatMap((logo) =>
+function initParticles(logos: ReturnType<typeof buildLogos>): Particle[] {
+  return logos.flatMap((logo) =>
     Array.from(
       { length: PARTICLES_PER_LOGO },
       (_, i) => createParticle(logo, i < 2) // First 2 particles per logo are red
@@ -133,8 +134,8 @@ function initParticles(): Particle[] {
   );
 }
 
-function useParticleSystem() {
-  const [particles, setParticles] = useState<Particle[]>(() => initParticles());
+function useParticleSystem(logos: ReturnType<typeof buildLogos>) {
+  const [particles, setParticles] = useState<Particle[]>(() => initParticles(logos));
   const startTimeRef = useRef(performance.now());
   const frameRef = useRef<number>(0);
 
@@ -200,20 +201,21 @@ function useParticleSystem() {
             const fromTop = y < BOX.top;
             const fromBottom = y > BOX.bottom;
 
+            // Preserve linear motion by keeping the particle on its natural
+            // next-frame position and only changing the outgoing velocity.
+            x = newX;
+            y = newY;
+
             if (fromLeft) {
-              x = BOX.left - 3;
               vx = -Math.abs(vx) * (0.6 + Math.random() * 0.15);
               vy += (Math.random() - 0.5) * 0.5;
             } else if (fromRight) {
-              x = BOX.right + 3;
               vx = Math.abs(vx) * (0.6 + Math.random() * 0.15);
               vy += (Math.random() - 0.5) * 0.5;
             } else if (fromTop) {
-              y = BOX.top - 3;
               vy = -Math.abs(vy) * (0.6 + Math.random() * 0.15);
               vx += (Math.random() - 0.5) * 0.5;
             } else if (fromBottom) {
-              y = BOX.bottom + 3;
               vy = Math.abs(vy) * (0.6 + Math.random() * 0.15);
               vx += (Math.random() - 0.5) * 0.5;
             }
@@ -280,6 +282,11 @@ function useParticleSystem() {
     return () => cancelAnimationFrame(frameRef.current);
   }, [tick]);
 
+  useEffect(() => {
+    setParticles(initParticles(logos));
+    startTimeRef.current = performance.now();
+  }, [logos]);
+
   return particles.filter((p) => p.state === "active" && p.opacity > 0);
 }
 
@@ -289,7 +296,8 @@ function useParticleSystem() {
 
 export default function HeroAnimation() {
   const { themeId } = useTheme();
-  const particles = useParticleSystem();
+  const logos = useMemo(() => buildLogos(), []);
+  const particles = useParticleSystem(logos);
 
   return (
     <div className="relative w-full aspect-square">
@@ -392,7 +400,7 @@ export default function HeroAnimation() {
         ))}
 
         {/* Platform logos */}
-        {LOGOS.map((logo) => (
+        {logos.map((logo) => (
           <g key={logo.id}>
             <motion.circle
               cx={logo.cx}

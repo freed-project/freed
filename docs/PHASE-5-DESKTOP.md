@@ -280,7 +280,7 @@ export async function captureDomFeed(
 > separate `Features`, `Fixes`, and `Follow-ups` sections so the card headline
 > can reinforce the theme without collapsing the details into one bucket. The
 > desktop updater now shows only that reviewed opener line when an update is
-> available. The public changelog now paginates in URL-addressable sets of 10
+> available. The public changelog now paginates in URL-addressable sets of 5
 > releases so older builds can be linked directly without turning the page
 > into a mile-long papyrus scroll, and card hover states now key off the
 > existing timeline lane instead of inventing a second internal accent rail.

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import changelogReleases from "@/content/changelog.generated.json";
 import type { ParsedRelease } from "@/content/changelog";
 
-export const CHANGELOG_PAGE_SIZE = 10;
+export const CHANGELOG_PAGE_SIZE = 5;
 
 const allReleases = changelogReleases as ParsedRelease[];
 
@@ -16,7 +16,7 @@ export function getChangelogTotalPages(): number {
 }
 
 export function getChangelogPageHref(page: number): string {
-  return page <= 1 ? "/changelog" : `/changelog/page/${page.toString()}`;
+  return page <= 1 ? "/changelog" : `/changelog/${page.toString()}`;
 }
 
 export function parseChangelogPage(value: string | number | undefined): number {
