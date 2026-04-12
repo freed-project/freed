@@ -53,22 +53,22 @@ export default function QrGallery() {
           <footer className="w-full text-center">
             <Link
               href="/"
-              className="inline-flex items-baseline gap-0.5 transition-opacity hover:opacity-80"
+              className="group inline-flex items-baseline gap-1 rounded-full px-4 py-2 transition-all duration-200 hover:scale-[1.04] hover:bg-[rgb(var(--theme-surface-elevated-rgb)/0.5)] focus-visible:scale-[1.04] focus-visible:bg-[rgb(var(--theme-surface-elevated-rgb)/0.5)] focus-visible:outline-none"
             >
-              <span className="relative text-[clamp(1.15rem,2vw,1.5rem)] font-bold text-text-primary font-logo">
+              <span className="relative text-[clamp(2.2rem,4.4vw,3rem)] font-bold text-text-primary font-logo transition-transform duration-200 group-hover:-translate-y-0.5 group-focus-visible:-translate-y-0.5">
                 FREED
                 <span
-                  className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
+                  className="absolute bottom-0 left-0 right-0 h-1 rounded-full transition-all duration-200 group-hover:h-1.5 group-hover:shadow-[0_0_20px_rgba(255,255,255,0.22)] group-focus-visible:h-1.5 group-focus-visible:shadow-[0_0_20px_rgba(255,255,255,0.22)]"
                   style={{
                     background: "var(--theme-logo-spectrum)",
                   }}
                 />
               </span>
-              <span className="text-[clamp(0.8rem,1.2vw,1rem)] font-bold gradient-text font-logo">
+              <span className="text-[clamp(1.55rem,2.8vw,2rem)] font-bold gradient-text font-logo transition-transform duration-200 group-hover:-translate-y-0.5 group-focus-visible:-translate-y-0.5">
                 .WTF
               </span>
             </Link>
-            <p className="mx-auto mt-[clamp(0.35rem,1.2dvh,0.7rem)] max-w-2xl text-[clamp(0.9rem,1.35vw,1rem)] leading-[1.45] text-text-secondary">
+            <p className="mx-auto mt-[clamp(0.45rem,1.6dvh,0.9rem)] max-w-2xl text-[clamp(1.25rem,1.875vw,1.5rem)] leading-[1.25] text-text-secondary">
               Built for humans, not algorithms.
             </p>
           </footer>
