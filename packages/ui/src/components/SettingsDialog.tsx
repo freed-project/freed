@@ -22,6 +22,7 @@ import {
 } from "../lib/provider-status.js";
 import { ProviderStatusIndicator } from "./ProviderStatusIndicator.js";
 import { toast } from "./Toast.js";
+import { UpdateProgressBar } from "./UpdateProgressBar.js";
 import {
   BASE_SECTION_METAS,
   UPDATES_SECTION_META,
@@ -865,12 +866,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   <p className="text-xs text-text-secondary">
                     Downloading... {Math.round(updateDownloadProgress.percent)}%
                   </p>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_86%,transparent)]">
-                    <div
-                      className="h-full rounded-full bg-[linear-gradient(90deg,var(--theme-accent-primary),var(--theme-accent-secondary),var(--theme-accent-tertiary))] transition-[width] duration-300"
-                      style={{ width: `${updateDownloadProgress.percent}%` }}
-                    />
-                  </div>
+                  <UpdateProgressBar percent={updateDownloadProgress.percent} />
                 </div>
               )}
               {updateDownloadProgress?.phase === "error" && (

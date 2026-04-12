@@ -15,6 +15,7 @@
     "./components/SettingsToggle": "./src/components/SettingsToggle.tsx",
     "./components/AddFeedDialog": "./src/components/AddFeedDialog.tsx",
     "./components/SettingsDialog": "./src/components/SettingsDialog.tsx",
+    "./components/UpdateProgressBar": "./src/components/UpdateProgressBar.tsx",
     "./components/settings/GoogleContactsSection": "./src/components/settings/GoogleContactsSection.tsx",
     "./components/BugReportBoundary": "./src/components/BugReportBoundary.tsx",
     "./components/FatalErrorScreen": "./src/components/FatalErrorScreen.tsx",
