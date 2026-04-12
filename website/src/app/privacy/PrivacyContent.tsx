@@ -28,7 +28,7 @@ export default function PrivacyContent() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15, duration: 0.5 }}
-            className="glass-card p-6 sm:p-8 mb-12 border-l-4 border-glow-purple"
+            className="glass-card p-6 sm:p-8 mb-12"
           >
             <h2 className="text-lg font-bold text-text-primary mb-3 mt-0">
               The short version
@@ -45,7 +45,7 @@ export default function PrivacyContent() {
             {/* 1. This Website */}
             <section>
               <h2 className="text-2xl font-bold text-text-primary mb-4">
-                This Website (freed.wtf)
+                This Website (Freed.wtf)
               </h2>
               <p>
                 This marketing site is a simple webapp hosted on an industry-standard platform known as
