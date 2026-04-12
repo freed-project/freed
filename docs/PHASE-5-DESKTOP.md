@@ -83,13 +83,13 @@ packages/desktop/
 
 **Three-column layout, dark theme, native vibrancy**
 
-| Element           | Implementation                                  |
-| ----------------- | ----------------------------------------------- |
-| Window background | Tauri `vibrancy: "under-window"` (native blur)  |
-| Sidebar           | Translucent, CSS `backdrop-filter` on dark base |
-| Buttons           | CSS glass approximation, SwiftUI later          |
+| Element           | Implementation                                                                 |
+| ----------------- | ------------------------------------------------------------------------------ |
+| Window background | Tauri `vibrancy: "under-window"` (native blur)                                 |
+| Sidebar           | Translucent, CSS `backdrop-filter` on dark base                                |
+| Buttons           | CSS glass approximation, SwiftUI later                                         |
 | Cards             | Dark cards with subtle borders, upper-right social actions, read-state dimming |
-| Reader pane       | Clean typography, large hero images, toolbar open action |
+| Reader pane       | Clean typography, large hero images, toolbar open action                       |
 
 ---
 
@@ -147,7 +147,7 @@ import { chromium } from "playwright-core";
 
 export async function captureDomFeed(
   platform: "facebook" | "instagram",
-  cookies: Cookie[]
+  cookies: Cookie[],
 ): Promise<FeedItem[]> {
   const browser = await chromium.launch({
     channel: "chrome", // Use system Chrome
@@ -171,32 +171,32 @@ export async function captureDomFeed(
 
 ### Desktop
 
-| Task | Description                        | Complexity |
-| ---- | ---------------------------------- | ---------- |
-| 5.1  | Tauri 2.0 project scaffold         | Medium     |
-| 5.2  | Embed PWA React app in WebView     | Medium     |
-| 5.3  | Native window vibrancy (macOS)     | Low        |
-| 5.4  | Menu bar icon + background mode    | Medium     |
-| 5.5  | Local WebSocket relay              | Medium     |
-| 5.6  | Playwright subprocess setup        | High       |
-| 5.7  | System tray with sync status       | Low        |
-| 5.8  | QR code display for phone pairing  | Low        |
-| 5.9  | Auto-launch on login (optional)    | Low        |
-| 5.10 | macOS notarization + DMG packaging | High       |
-| 5.11 | Windows installer                  | Medium     |
-| 5.12 | Linux AppImage/Flatpak             | Medium     |
-| 5.22 | Auto-updater (tauri-plugin-updater)| Medium     |
-| 5.23 | CI/CD release pipeline (GH Actions)| Medium     |
-| 5.24 | macOS code signing + notarization  | High       |
-| 5.25 | Windows code signing               | Medium     |
-| 5.26 | Independent update server domain   | Medium     |
-| 5.27 | First-run legal gate and local-only acceptance storage | Medium |
-| 5.28 | Provider-specific risk interstitials for social capture | Medium |
-| 5.29 | Internal serialized navigation history with `Cmd+[` / `Cmd+]` | Low |
-| 5.30 | Reviewed AI-assisted release notes and cumulative daily changelog cards | Medium |
-| 5.31 | Provider health dashboard, charts, and unsubscribe flow | Medium |
-| 5.32 | Rotating local database snapshots + restore UI | Medium |
-| 5.33 | Public-safe and private bug report bundles | Medium |
+| Task | Description                                                             | Complexity |
+| ---- | ----------------------------------------------------------------------- | ---------- |
+| 5.1  | Tauri 2.0 project scaffold                                              | Medium     |
+| 5.2  | Embed PWA React app in WebView                                          | Medium     |
+| 5.3  | Native window vibrancy (macOS)                                          | Low        |
+| 5.4  | Menu bar icon + background mode                                         | Medium     |
+| 5.5  | Local WebSocket relay                                                   | Medium     |
+| 5.6  | Playwright subprocess setup                                             | High       |
+| 5.7  | System tray with sync status                                            | Low        |
+| 5.8  | QR code display for phone pairing                                       | Low        |
+| 5.9  | Auto-launch on login (optional)                                         | Low        |
+| 5.10 | macOS notarization + DMG packaging                                      | High       |
+| 5.11 | Windows installer                                                       | Medium     |
+| 5.12 | Linux AppImage/Flatpak                                                  | Medium     |
+| 5.22 | Auto-updater (tauri-plugin-updater)                                     | Medium     |
+| 5.23 | CI/CD release pipeline (GH Actions)                                     | Medium     |
+| 5.24 | macOS code signing + notarization                                       | High       |
+| 5.25 | Windows code signing                                                    | Medium     |
+| 5.26 | Independent update server domain                                        | Medium     |
+| 5.27 | First-run legal gate and local-only acceptance storage                  | Medium     |
+| 5.28 | Provider-specific risk interstitials for social capture                 | Medium     |
+| 5.29 | Internal serialized navigation history with `Cmd+[` / `Cmd+]`           | Low        |
+| 5.30 | Reviewed AI-assisted release notes and cumulative daily changelog cards | Medium     |
+| 5.31 | Provider health dashboard, charts, and unsubscribe flow                 | Medium     |
+| 5.32 | Rotating local database snapshots + restore UI                          | Medium     |
+| 5.33 | Public-safe and private bug report bundles                              | Medium     |
 
 ---
 
@@ -280,7 +280,11 @@ export async function captureDomFeed(
 > separate `Features`, `Fixes`, and `Follow-ups` sections so the card headline
 > can reinforce the theme without collapsing the details into one bucket. The
 > desktop updater now shows only that reviewed opener line when an update is
-> available. After the GitHub release is published, the workflow now
+> available. The public changelog now paginates in URL-addressable sets of 10
+> releases so older builds can be linked directly without turning the page
+> into a mile-long papyrus scroll, and card hover states now key off the
+> existing timeline lane instead of inventing a second internal accent rail.
+> After the GitHub release is published, the workflow now
 > redeploys `freed.wtf` so the changelog snapshot rebuilds against the newly
 > published release instead of the earlier draft state. See
 > `RELEASE-SECRETS.md` for the full setup checklist.

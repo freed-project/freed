@@ -3,6 +3,12 @@
 import { motion } from "framer-motion";
 import { useNewsletter } from "@/context/NewsletterContext";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import {
+  slowHeroMotion,
+  slowHeroDelay,
+  slowHeroInterval,
+  slowHeroSpeed,
+} from "@/lib/motion";
 
 // Responsive layout hook
 function useIsMobile() {
@@ -79,19 +85,19 @@ const CAPTURE_ICONS = [
 
 const CLIENT_ICONS = [
   {
-    id: "desktop",
-    label: "Desktop",
-    path: "M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7v2H8v2h8v-2h-2v-2h7c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H3V4h18v12z",
-  },
-  {
     id: "mobile",
-    label: "PWA",
+    label: "Mobile",
     path: "M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z",
   },
   {
-    id: "extension",
-    label: "Extension",
-    path: "M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z",
+    id: "pwa",
+    label: "PWA",
+    path: "M21 3H3c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h7l-1.5 3h7L14 18h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 13H3V5h18v11zm-8-9h-2v3H8l4 4 4-4h-3V7z",
+  },
+  {
+    id: "desktop-viewer",
+    label: "Desktop Viewer",
+    path: "M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7v2H8v2h8v-2h-2v-2h7c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 13H3V4h18v11h-5l-2 2-2-2z",
   },
 ];
 
@@ -137,7 +143,7 @@ function useDataFlow(layout: (typeof LAYOUT)["desktop"]) {
         targetX: l.particles.syncTargetX,
         targetY: 125,
         progress: 0,
-        speed: 0.008 + Math.random() * 0.004,
+        speed: slowHeroSpeed(0.008 + Math.random() * 0.004) * 0.5,
         color: colors[Math.floor(Math.random() * colors.length)],
         size: 3 + Math.random() * 2,
         path: "capture-to-sync",
@@ -154,7 +160,7 @@ function useDataFlow(layout: (typeof LAYOUT)["desktop"]) {
         targetX: l.particles.clientTargetX,
         targetY: 60 + targetIndex * 65,
         progress: 0,
-        speed: 0.008 + Math.random() * 0.004,
+        speed: slowHeroSpeed(0.008 + Math.random() * 0.004) * 0.5,
         color: colors[Math.floor(Math.random() * colors.length)],
         size: 3 + Math.random() * 2,
         path: "sync-to-client",
@@ -181,7 +187,7 @@ function useDataFlow(layout: (typeof LAYOUT)["desktop"]) {
 
   useEffect(() => {
     frameRef.current = requestAnimationFrame(tick);
-    const spawnInterval = setInterval(spawnParticle, 200);
+    const spawnInterval = setInterval(spawnParticle, slowHeroInterval(200));
     return () => {
       cancelAnimationFrame(frameRef.current);
       clearInterval(spawnInterval);
@@ -219,8 +225,16 @@ function ArchitectureDiagram() {
             <stop offset="100%" stopColor="var(--theme-accent-tertiary)" />
           </linearGradient>
           <linearGradient id="syncGlow" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="var(--theme-accent-secondary)" stopOpacity="0.8" />
-            <stop offset="100%" stopColor="var(--theme-accent-primary)" stopOpacity="0.8" />
+            <stop
+              offset="0%"
+              stopColor="var(--theme-accent-secondary)"
+              stopOpacity="0.8"
+            />
+            <stop
+              offset="100%"
+              stopColor="var(--theme-accent-primary)"
+              stopOpacity="0.8"
+            />
           </linearGradient>
           <filter id="archGlow" x="-50%" y="-50%" width="200%" height="200%">
             <feGaussianBlur stdDeviation="3" result="blur" />
@@ -303,16 +317,22 @@ function ArchitectureDiagram() {
                 strokeWidth="1"
                 initial={{ opacity: 0.5 }}
                 animate={{ opacity: [0.5, 0.8, 0.5] }}
-                transition={{ duration: 2, repeat: Infinity, delay: i * 0.3 }}
+                transition={{
+                  duration: slowHeroMotion(2),
+                  repeat: Infinity,
+                  delay: slowHeroDelay(i * 0.3),
+                }}
               />
-              <g transform={`translate(${icon.offsetX}, ${icon.offsetY}) scale(${icon.scale})`}>
+              <g
+                transform={`translate(${icon.offsetX}, ${icon.offsetY}) scale(${icon.scale})`}
+              >
                 <path d={icon.path} fill="var(--theme-text-secondary)" />
               </g>
             </g>
           ))}
         </g>
 
-        {/* Sync Hub (Central) */}
+        {/* Freed Desktop (Central) */}
         <g transform={`translate(${layout.syncHub.x}, ${layout.syncHub.y})`}>
           <text
             x="50"
@@ -322,7 +342,7 @@ function ArchitectureDiagram() {
             fontWeight="600"
             textAnchor="middle"
           >
-            SYNC HUB
+            FREED DESKTOP
           </text>
 
           {/* Pulsing outer rings */}
@@ -339,7 +359,11 @@ function ArchitectureDiagram() {
               strokeWidth="1"
               initial={{ scale: 1, opacity: 0.6 }}
               animate={{ scale: [1, 1.15 + ring * 0.1], opacity: [0.4, 0] }}
-              transition={{ duration: 2, repeat: Infinity, delay: ring * 0.4 }}
+              transition={{
+                duration: slowHeroMotion(2),
+                repeat: Infinity,
+                delay: slowHeroDelay(ring * 0.4),
+              }}
               style={{ transformOrigin: "50px 50px" }}
             />
           ))}
@@ -357,22 +381,34 @@ function ArchitectureDiagram() {
             filter="url(#archGlow)"
           />
 
-          {/* Automerge CRDT text */}
+          {/* Freed Desktop text */}
           <text
             x="50"
-            y="42"
+            y="40"
             fill="var(--theme-text-primary)"
             fontSize="11"
             fontWeight="700"
             textAnchor="middle"
           >
-            Automerge
+            Freed
           </text>
-          <text x="50" y="56" fill="var(--theme-text-secondary)" fontSize="9" textAnchor="middle">
-            CRDT
+          <text
+            x="50"
+            y="54"
+            fill="var(--theme-text-secondary)"
+            fontSize="9"
+            textAnchor="middle"
+          >
+            Desktop
           </text>
-          <text x="50" y="72" fill="var(--theme-accent-secondary)" fontSize="8" textAnchor="middle">
-            Local + Cloud
+          <text
+            x="50"
+            y="70"
+            fill="var(--theme-accent-secondary)"
+            fontSize="8"
+            textAnchor="middle"
+          >
+            Capture + Sync
           </text>
         </g>
 
@@ -408,13 +444,21 @@ function ArchitectureDiagram() {
                 strokeWidth={i === 0 ? "2" : "1"}
                 initial={{ opacity: 0.5 }}
                 animate={{ opacity: [0.5, 0.9, 0.5] }}
-                transition={{ duration: 2.5, repeat: Infinity, delay: i * 0.4 }}
+                transition={{
+                  duration: slowHeroMotion(2.5),
+                  repeat: Infinity,
+                  delay: slowHeroDelay(i * 0.4),
+                }}
                 filter={i === 0 ? "url(#archGlow)" : undefined}
               />
               <g transform="translate(14.7, 9.7) scale(0.86)">
                 <path
                   d={icon.path}
-                  fill={i === 0 ? "var(--theme-accent-secondary)" : "var(--theme-text-secondary)"}
+                  fill={
+                    i === 0
+                      ? "var(--theme-accent-secondary)"
+                      : "var(--theme-text-secondary)"
+                  }
                 />
               </g>
               <text
@@ -510,7 +554,7 @@ const phases: Phase[] = [
     number: 5,
     title: "Desktop & Mobile App",
     description:
-      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, first-run legal gating, provider risk interstitials, browser-style back and forward shortcuts, local snapshot rollback for disaster recovery, a provider health dashboard, failing-feed unsubscribe tools, reviewed cumulative release headings, and public-safe bug reporting.",
+      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, first-run legal gating, provider risk interstitials, browser-style back and forward shortcuts, local snapshot rollback for disaster recovery, a provider health dashboard, failing-feed unsubscribe tools, reviewed cumulative release headings, paginated changelog history, and public-safe bug reporting.",
     status: "current",
     priority: true,
     planLink:
@@ -595,14 +639,17 @@ function PhaseCard({ phase, index }: { phase: Phase; index: number }) {
     complete: {
       border: "border-[color:var(--theme-status-complete-border)]",
       bg: "bg-[color:var(--theme-status-complete-bg)]",
-      badge: "bg-[color:var(--theme-status-complete-bg)] text-[color:var(--theme-status-complete-text)]",
+      badge:
+        "bg-[color:var(--theme-status-complete-bg)] text-[color:var(--theme-status-complete-text)]",
       badgeText: "✓ Complete",
       glow: "",
     },
     current: {
-      border: "border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_50%,transparent)]",
+      border:
+        "border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_50%,transparent)]",
       bg: "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_8%,transparent)]",
-      badge: "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent)] text-[var(--theme-accent-secondary)]",
+      badge:
+        "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent)] text-[var(--theme-accent-secondary)]",
       badgeText: "● In Progress",
       glow: "glow-sm",
     },

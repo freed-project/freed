@@ -1,21 +1,23 @@
 import type { Metadata } from "next";
-import changelogReleases from "@/content/changelog.generated.json";
-import type { ParsedRelease } from "@/content/changelog";
 import ChangelogContent from "./ChangelogContent";
+import {
+  buildChangelogMetadata,
+  getChangelogPageRange,
+  getChangelogPageSlice,
+  getChangelogTotalPages,
+} from "./pagination";
 
-export const metadata: Metadata = {
-  title: "Log | Freed",
-  description:
-    "Every release, every fix, every new feature. The full build history of Freed Desktop.",
-  openGraph: {
-    title: "Log | Freed",
-    description:
-      "Every release, every fix, every new feature. The full build history of Freed Desktop.",
-  },
-};
+export const metadata: Metadata = buildChangelogMetadata(1);
 
 export default function ChangelogPage() {
+  const currentPage = 1;
+
   return (
-    <ChangelogContent releases={changelogReleases as ParsedRelease[]} />
+    <ChangelogContent
+      releases={getChangelogPageSlice(currentPage)}
+      currentPage={currentPage}
+      totalPages={getChangelogTotalPages()}
+      pageRange={getChangelogPageRange(currentPage)}
+    />
   );
 }

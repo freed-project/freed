@@ -40,9 +40,21 @@ html[data-theme="neon"] {
 
   --theme-shell-rgb: 6 7 13;
   --theme-shell-background:
-    radial-gradient(circle at 12% 16%, rgb(59 130 246 / 0.18) 0, transparent 34%),
-    radial-gradient(circle at 84% 10%, rgb(139 92 246 / 0.22) 0, transparent 30%),
-    radial-gradient(circle at 76% 82%, rgb(6 182 212 / 0.14) 0, transparent 32%),
+    radial-gradient(
+      circle at 12% 16%,
+      rgb(59 130 246 / 0.18) 0,
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 84% 10%,
+      rgb(139 92 246 / 0.22) 0,
+      transparent 30%
+    ),
+    radial-gradient(
+      circle at 76% 82%,
+      rgb(6 182 212 / 0.14) 0,
+      transparent 32%
+    ),
     linear-gradient(180deg, #090a11 0%, #0a0a0f 34%, #090909 100%);
   --theme-atmosphere-overlay-background:
     radial-gradient(
@@ -57,16 +69,19 @@ html[data-theme="neon"] {
       rgb(var(--theme-accent-primary-rgb) / 0.04) 35%,
       transparent 65%
     ),
-    linear-gradient(180deg, transparent 0%, rgb(var(--theme-shell-rgb) / 0.08) 100%);
-
-  --theme-button-primary-background:
     linear-gradient(
-      135deg,
-      var(--theme-accent-primary),
-      var(--theme-accent-secondary)
+      180deg,
+      transparent 0%,
+      rgb(var(--theme-shell-rgb) / 0.08) 100%
     );
-  --theme-button-primary-shadow:
-    0 0 20px rgb(var(--theme-accent-secondary-rgb) / 0.3);
+
+  --theme-button-primary-background: linear-gradient(
+    135deg,
+    var(--theme-accent-primary),
+    var(--theme-accent-secondary)
+  );
+  --theme-button-primary-shadow: 0 0 20px
+    rgb(var(--theme-accent-secondary-rgb) / 0.3);
   --theme-button-primary-shadow-hover:
     0 0 16px rgb(var(--theme-accent-secondary-rgb) / 0.22),
     0 0 28px rgb(var(--theme-accent-secondary-rgb) / 0.12);
@@ -96,11 +111,19 @@ html[data-theme="neon"] {
     #8b5cf6,
     #ec4899
   );
-  --theme-media-icon: color-mix(in srgb, var(--theme-text-primary) 84%, var(--theme-accent-secondary) 16%);
+  --theme-media-icon: color-mix(
+    in srgb,
+    var(--theme-text-primary) 84%,
+    var(--theme-accent-secondary) 16%
+  );
   --theme-hero-media-icon: var(--theme-accent-primary);
   --theme-status-complete-border: rgb(var(--theme-accent-tertiary-rgb) / 0.32);
   --theme-status-complete-bg: rgb(var(--theme-accent-tertiary-rgb) / 0.1);
-  --theme-status-complete-text: color-mix(in srgb, var(--theme-accent-tertiary) 70%, white 30%);
+  --theme-status-complete-text: color-mix(
+    in srgb,
+    var(--theme-accent-tertiary) 70%,
+    white 30%
+  );
   --theme-header-background: rgb(10 10 10 / 0.7);
   --theme-header-border: rgb(255 255 255 / 0.08);
   --theme-header-shadow: 0 4px 30px rgb(0 0 0 / 0.5);
@@ -131,12 +154,18 @@ html[data-theme="neon"] {
   --theme-media-rss: var(--theme-media-icon);
   --theme-media-youtube: var(--theme-media-icon);
   --theme-media-linkedin: var(--theme-media-icon);
-  --theme-platform-surface-fill: color-mix(in srgb, var(--theme-accent-primary) 14%, var(--theme-bg-surface));
+  --theme-platform-surface-fill: color-mix(
+    in srgb,
+    var(--theme-accent-primary) 14%,
+    var(--theme-bg-surface)
+  );
   --theme-platform-surface-fill-active: var(--theme-platform-surface-fill);
   --theme-platform-ring-fill: var(--theme-platform-surface-fill);
   --theme-platform-ring-fill-active: var(--theme-platform-surface-fill-active);
   --theme-platform-ring-stroke: rgb(var(--theme-accent-primary-rgb) / 0.48);
-  --theme-platform-ring-stroke-active: rgb(var(--theme-accent-primary-rgb) / 0.58);
+  --theme-platform-ring-stroke-active: rgb(
+    var(--theme-accent-primary-rgb) / 0.58
+  );
 
   --theme-selection: rgb(var(--theme-accent-secondary-rgb) / 0.35);
   --theme-focus-ring: rgb(var(--theme-accent-secondary-rgb) / 0.55);
@@ -161,7 +190,8 @@ html[data-theme="neon"] {
 }
 
 html[data-theme="midas"] {
-  --font-body: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-body:
+    "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
   --font-logo: "Baskerville", "Didot", "Bodoni 72", "Times New Roman", serif;
   --font-display: var(--font-logo);
   --theme-body-letter-spacing: 0.004em;
@@ -198,18 +228,24 @@ html[data-theme="midas"] {
   --theme-atmosphere-base-opacity: 0.082;
   --theme-atmosphere-overlay-opacity: 0.42;
   --theme-shell-background:
-    radial-gradient(circle at 14% 14%, rgb(176 138 72 / 0.12) 0, transparent 36%),
+    radial-gradient(
+      circle at 14% 14%,
+      rgb(176 138 72 / 0.12) 0,
+      transparent 36%
+    ),
     radial-gradient(circle at 78% 8%, rgb(124 92 56 / 0.1) 0, transparent 32%),
     radial-gradient(circle at 78% 84%, rgb(95 74 50 / 0.08) 0, transparent 34%),
     linear-gradient(180deg, #2b231d 0%, #342a22 42%, #241d18 100%);
 
-  --theme-button-primary-background:
-    linear-gradient(135deg, #7c5c38, #b08a48 62%, #8d6b3e);
-  --theme-button-primary-shadow:
-    0 10px 28px rgb(176 138 72 / 0.22);
+  --theme-button-primary-background: linear-gradient(
+    135deg,
+    #7c5c38,
+    #b08a48 62%,
+    #8d6b3e
+  );
+  --theme-button-primary-shadow: 0 10px 28px rgb(176 138 72 / 0.22);
   --theme-button-primary-shadow-hover:
-    0 0 14px rgb(176 138 72 / 0.16),
-    0 0 24px rgb(176 138 72 / 0.1);
+    0 0 14px rgb(176 138 72 / 0.16), 0 0 24px rgb(176 138 72 / 0.1);
   --theme-gradient-text-start: #f0dec2;
   --theme-gradient-text-mid: #d0b89c;
   --theme-gradient-text-end: #b08a48;
@@ -232,7 +268,8 @@ html[data-theme="midas"] {
   --theme-feedback-success-rgb: 122 156 104;
   --theme-feedback-warning-rgb: 196 154 93;
   --theme-feedback-danger-rgb: 171 86 74;
-  --theme-map-canvas-filter: brightness(0.42) contrast(1.08) saturate(0.38) sepia(0.18);
+  --theme-map-canvas-filter: brightness(0.42) contrast(1.08) saturate(0.38)
+    sepia(0.18);
   --theme-map-accent-overlay-opacity: 0.1;
   --theme-map-grid-opacity: 0.12;
   --theme-map-fade-top-height: 6rem;
@@ -243,8 +280,16 @@ html[data-theme="midas"] {
   --theme-media-rss: var(--theme-media-icon);
   --theme-media-youtube: var(--theme-media-icon);
   --theme-media-linkedin: var(--theme-media-icon);
-  --theme-platform-surface-fill: color-mix(in srgb, var(--theme-accent-secondary) 10%, var(--theme-bg-surface));
-  --theme-platform-surface-fill-active: color-mix(in srgb, var(--theme-accent-secondary) 12%, var(--theme-bg-surface));
+  --theme-platform-surface-fill: color-mix(
+    in srgb,
+    var(--theme-accent-secondary) 10%,
+    var(--theme-bg-surface)
+  );
+  --theme-platform-surface-fill-active: color-mix(
+    in srgb,
+    var(--theme-accent-secondary) 12%,
+    var(--theme-bg-surface)
+  );
   --theme-platform-ring-fill: var(--theme-platform-surface-fill);
   --theme-platform-ring-fill-active: var(--theme-platform-surface-fill-active);
   --theme-control-accent: var(--theme-heading-accent-color);
@@ -255,7 +300,8 @@ html[data-theme="midas"] {
 }
 
 html[data-theme="ember"] {
-  --font-body: "Optima", "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-body:
+    "Optima", "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
   --font-logo: "Impact", "Arial Black", "Avenir Next Condensed", sans-serif;
   --font-display: "Avenir Next Condensed", "Impact", "Arial Black", sans-serif;
   --theme-body-letter-spacing: 0.012em;
@@ -291,18 +337,24 @@ html[data-theme="ember"] {
   --theme-atmosphere-base-opacity: 0.078;
   --theme-atmosphere-overlay-opacity: 0.4;
   --theme-shell-background:
-    radial-gradient(circle at 16% 14%, rgb(193 90 46 / 0.12) 0, transparent 36%),
+    radial-gradient(
+      circle at 16% 14%,
+      rgb(193 90 46 / 0.12) 0,
+      transparent 36%
+    ),
     radial-gradient(circle at 78% 8%, rgb(122 47 31 / 0.12) 0, transparent 30%),
     radial-gradient(circle at 74% 84%, rgb(91 23 17 / 0.08) 0, transparent 32%),
     linear-gradient(180deg, #160d0c 0%, #1d1210 44%, #130a09 100%);
 
-  --theme-button-primary-background:
-    linear-gradient(135deg, #8e3623, #c15a2e 58%, #e07a3a);
-  --theme-button-primary-shadow:
-    0 10px 28px rgb(193 90 46 / 0.24);
+  --theme-button-primary-background: linear-gradient(
+    135deg,
+    #8e3623,
+    #c15a2e 58%,
+    #e07a3a
+  );
+  --theme-button-primary-shadow: 0 10px 28px rgb(193 90 46 / 0.24);
   --theme-button-primary-shadow-hover:
-    0 0 15px rgb(193 90 46 / 0.18),
-    0 0 26px rgb(193 90 46 / 0.11);
+    0 0 15px rgb(193 90 46 / 0.18), 0 0 26px rgb(193 90 46 / 0.11);
   --theme-gradient-text-start: #f4c3a2;
   --theme-gradient-text-mid: #d9895a;
   --theme-gradient-text-end: #b44f2f;
@@ -325,7 +377,8 @@ html[data-theme="ember"] {
   --theme-feedback-success-rgb: 112 155 91;
   --theme-feedback-warning-rgb: 215 142 78;
   --theme-feedback-danger-rgb: 197 92 82;
-  --theme-map-canvas-filter: brightness(0.34) contrast(1.1) saturate(0.42) sepia(0.12);
+  --theme-map-canvas-filter: brightness(0.34) contrast(1.1) saturate(0.42)
+    sepia(0.12);
   --theme-map-accent-overlay-opacity: 0.11;
   --theme-map-grid-opacity: 0.14;
   --theme-map-fade-top-height: 6rem;
@@ -336,8 +389,16 @@ html[data-theme="ember"] {
   --theme-media-rss: var(--theme-media-icon);
   --theme-media-youtube: var(--theme-media-icon);
   --theme-media-linkedin: var(--theme-media-icon);
-  --theme-platform-ring-fill: color-mix(in srgb, var(--theme-hero-media-icon) 8%, var(--theme-bg-surface));
-  --theme-platform-ring-fill-active: color-mix(in srgb, var(--theme-hero-media-icon) 11%, var(--theme-bg-surface));
+  --theme-platform-ring-fill: color-mix(
+    in srgb,
+    var(--theme-hero-media-icon) 8%,
+    var(--theme-bg-surface)
+  );
+  --theme-platform-ring-fill-active: color-mix(
+    in srgb,
+    var(--theme-hero-media-icon) 11%,
+    var(--theme-bg-surface)
+  );
   --theme-control-accent: var(--theme-heading-accent-color);
   --theme-control-accent-rgb: var(--theme-accent-secondary-rgb);
   --theme-header-background: rgb(24 15 13 / 0.72);
@@ -346,9 +407,13 @@ html[data-theme="ember"] {
 }
 
 html[data-theme="scriptorium"] {
-  --font-body: "Baskerville", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-body:
+    "Baskerville", "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
+    Georgia, serif;
   --font-logo: "Baskerville", "Hoefler Text", "Iowan Old Style", Georgia, serif;
-  --font-display: "Baskerville", "Hoefler Text", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-display:
+    "Baskerville", "Hoefler Text", "Iowan Old Style", "Palatino Linotype",
+    Georgia, serif;
   --theme-body-letter-spacing: 0.002em;
   --theme-body-line-height: 1.58;
   --theme-body-font-weight: 430;
@@ -383,18 +448,32 @@ html[data-theme="scriptorium"] {
   --theme-atmosphere-base-opacity: 0.05;
   --theme-atmosphere-overlay-opacity: 0.1;
   --theme-shell-background:
-    radial-gradient(circle at 14% 14%, rgb(216 196 161 / 0.09) 0, transparent 34%),
-    radial-gradient(circle at 84% 10%, rgb(176 138 97 / 0.07) 0, transparent 28%),
-    radial-gradient(circle at 74% 84%, rgb(134 104 74 / 0.055) 0, transparent 26%),
+    radial-gradient(
+      circle at 14% 14%,
+      rgb(216 196 161 / 0.09) 0,
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 84% 10%,
+      rgb(176 138 97 / 0.07) 0,
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at 74% 84%,
+      rgb(134 104 74 / 0.055) 0,
+      transparent 26%
+    ),
     linear-gradient(180deg, #f5ecda 0%, #efe3ce 46%, #f7efdf 100%);
 
-  --theme-button-primary-background:
-    linear-gradient(135deg, #8b6843, #a47b53 60%, #b48b61);
-  --theme-button-primary-shadow:
-    0 3px 8px rgb(134 104 74 / 0.055);
+  --theme-button-primary-background: linear-gradient(
+    135deg,
+    #8b6843,
+    #a47b53 60%,
+    #b48b61
+  );
+  --theme-button-primary-shadow: 0 3px 8px rgb(134 104 74 / 0.055);
   --theme-button-primary-shadow-hover:
-    0 0 10px rgb(134 104 74 / 0.055),
-    0 0 18px rgb(134 104 74 / 0.035);
+    0 0 10px rgb(134 104 74 / 0.055), 0 0 18px rgb(134 104 74 / 0.035);
   --theme-button-primary-text: #fffaf2;
   --theme-button-secondary-background: rgb(84 58 35 / 0.03);
   --theme-button-secondary-hover: rgb(84 58 35 / 0.06);
@@ -429,7 +508,8 @@ html[data-theme="scriptorium"] {
   --theme-feedback-success-rgb: 47 122 87;
   --theme-feedback-warning-rgb: 176 138 97;
   --theme-feedback-danger-rgb: 183 79 67;
-  --theme-map-canvas-filter: brightness(0.92) contrast(0.96) saturate(0.52) sepia(0.18);
+  --theme-map-canvas-filter: brightness(0.92) contrast(0.96) saturate(0.52)
+    sepia(0.18);
   --theme-map-accent-overlay-opacity: 0.035;
   --theme-map-grid-opacity: 0.06;
   --theme-map-fade-top-height: 4.5rem;
@@ -489,33 +569,98 @@ html[data-theme="scriptorium"] {
   --theme-hero-accent-1: var(--theme-accent-primary);
   --theme-hero-accent-2: var(--theme-accent-secondary);
   --theme-hero-accent-3: var(--theme-accent-tertiary);
-  --theme-hero-accent-4: color-mix(in srgb, var(--theme-accent-primary) 65%, var(--theme-accent-secondary) 35%);
-  --theme-hero-accent-5: color-mix(in srgb, var(--theme-accent-secondary) 58%, var(--theme-accent-tertiary) 42%);
-  --theme-hero-warning: color-mix(in srgb, rgb(var(--theme-feedback-danger-rgb)) 78%, var(--theme-accent-secondary) 22%);
+  --theme-hero-accent-4: color-mix(
+    in srgb,
+    var(--theme-accent-primary) 65%,
+    var(--theme-accent-secondary) 35%
+  );
+  --theme-hero-accent-5: color-mix(
+    in srgb,
+    var(--theme-accent-secondary) 58%,
+    var(--theme-accent-tertiary) 42%
+  );
+  --theme-hero-warning: color-mix(
+    in srgb,
+    rgb(var(--theme-feedback-danger-rgb)) 78%,
+    var(--theme-accent-secondary) 22%
+  );
   --theme-platform-icon: var(--theme-hero-media-icon);
-  --theme-platform-surface-fill: color-mix(in srgb, var(--theme-bg-surface) 82%, transparent);
+  --theme-platform-surface-fill: color-mix(
+    in srgb,
+    var(--theme-bg-surface) 82%,
+    transparent
+  );
   --theme-platform-surface-fill-active: var(--theme-platform-surface-fill);
-  --theme-platform-ring-fill: color-mix(in srgb, var(--theme-hero-media-icon) 14%, var(--theme-bg-surface));
-  --theme-platform-ring-fill-active: color-mix(in srgb, var(--theme-hero-media-icon) 18%, var(--theme-bg-surface));
-  --theme-platform-ring-stroke: color-mix(in srgb, var(--theme-hero-media-icon) 48%, transparent);
-  --theme-platform-ring-stroke-active: color-mix(in srgb, var(--theme-hero-media-icon) 58%, transparent);
-  --theme-avatar-border-strong: color-mix(in srgb, var(--theme-accent-primary) 68%, var(--theme-text-primary));
+  --theme-platform-ring-fill: color-mix(
+    in srgb,
+    var(--theme-hero-media-icon) 14%,
+    var(--theme-bg-surface)
+  );
+  --theme-platform-ring-fill-active: color-mix(
+    in srgb,
+    var(--theme-hero-media-icon) 18%,
+    var(--theme-bg-surface)
+  );
+  --theme-platform-ring-stroke: color-mix(
+    in srgb,
+    var(--theme-hero-media-icon) 48%,
+    transparent
+  );
+  --theme-platform-ring-stroke-active: color-mix(
+    in srgb,
+    var(--theme-hero-media-icon) 58%,
+    transparent
+  );
+  --theme-avatar-border-strong: color-mix(
+    in srgb,
+    var(--theme-accent-primary) 68%,
+    var(--theme-text-primary)
+  );
   --theme-avatar-border-soft: rgb(var(--theme-accent-primary-rgb) / 0.24);
   --theme-avatar-glow: rgb(var(--theme-accent-secondary-rgb) / 0.3);
   --theme-avatar-glow-soft: rgb(var(--theme-accent-secondary-rgb) / 0.18);
   --theme-avatar-ring: rgb(var(--theme-accent-primary-rgb) / 0.2);
-  --theme-avatar-gradient-start: color-mix(in srgb, var(--theme-accent-primary) 68%, white 32%);
-  --theme-avatar-gradient-mid: color-mix(in srgb, var(--theme-accent-primary) 36%, var(--theme-accent-secondary) 64%);
-  --theme-avatar-gradient-end: color-mix(in srgb, var(--theme-bg-deep) 64%, var(--theme-accent-secondary) 36%);
-  --theme-avatar-image-overlay: radial-gradient(circle at 30% 28%, rgb(var(--theme-accent-primary-rgb) / 0.22), rgb(var(--theme-accent-secondary-rgb) / 0.2) 42%, rgb(var(--theme-shell-rgb) / 0.28) 100%);
+  --theme-avatar-gradient-start: color-mix(
+    in srgb,
+    var(--theme-accent-primary) 68%,
+    white 32%
+  );
+  --theme-avatar-gradient-mid: color-mix(
+    in srgb,
+    var(--theme-accent-primary) 36%,
+    var(--theme-accent-secondary) 64%
+  );
+  --theme-avatar-gradient-end: color-mix(
+    in srgb,
+    var(--theme-bg-deep) 64%,
+    var(--theme-accent-secondary) 36%
+  );
+  --theme-avatar-image-overlay: radial-gradient(
+    circle at 30% 28%,
+    rgb(var(--theme-accent-primary-rgb) / 0.22),
+    rgb(var(--theme-accent-secondary-rgb) / 0.2) 42%,
+    rgb(var(--theme-shell-rgb) / 0.28) 100%
+  );
   --theme-avatar-image-shadow: rgb(var(--theme-shell-rgb) / 0.36);
   --theme-avatar-image-highlight: rgb(var(--theme-accent-primary-rgb) / 0.16);
-  --theme-avatar-selection-stroke: color-mix(in srgb, var(--theme-accent-primary) 56%, white 44%);
-  --theme-avatar-selection-outer-stroke: color-mix(in srgb, var(--theme-accent-secondary) 72%, var(--theme-accent-primary) 28%);
+  --theme-avatar-selection-stroke: color-mix(
+    in srgb,
+    var(--theme-accent-primary) 56%,
+    white 44%
+  );
+  --theme-avatar-selection-outer-stroke: color-mix(
+    in srgb,
+    var(--theme-accent-secondary) 72%,
+    var(--theme-accent-primary) 28%
+  );
   --theme-avatar-label-border: rgb(var(--theme-accent-secondary-rgb) / 0.28);
   --theme-avatar-initials-shadow: rgb(var(--theme-accent-primary-rgb) / 0.42);
   --theme-avatar-text: var(--theme-button-primary-text);
-  --theme-graph-surface-fill: color-mix(in srgb, var(--theme-bg-surface) 96%, transparent);
+  --theme-graph-surface-fill: color-mix(
+    in srgb,
+    var(--theme-bg-surface) 96%,
+    transparent
+  );
   --theme-graph-text-primary: var(--theme-text-primary);
   --theme-graph-label-fill-start: var(--theme-bg-elevated);
   --theme-graph-label-fill-end: var(--theme-bg-surface);
@@ -531,9 +676,19 @@ html[data-theme="scriptorium"] {
     0 0 24px rgb(var(--theme-accent-secondary-rgb) / 0.28),
     0 20px 42px rgb(var(--theme-shell-rgb) / 0.76);
   --theme-map-fallback-card-background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.02) 28%, transparent),
-    color-mix(in oklab, var(--theme-accent-secondary) 18%, var(--theme-bg-surface));
-  --theme-map-fallback-card-shadow: 0 18px 34px rgb(var(--theme-shell-rgb) / 0.34);
+    linear-gradient(
+      180deg,
+      rgb(255 255 255 / 0.12),
+      rgb(255 255 255 / 0.02) 28%,
+      transparent
+    ),
+    color-mix(
+      in oklab,
+      var(--theme-accent-secondary) 18%,
+      var(--theme-bg-surface)
+    );
+  --theme-map-fallback-card-shadow: 0 18px 34px
+    rgb(var(--theme-shell-rgb) / 0.34);
 }
 
 html,
@@ -640,7 +795,8 @@ html[data-theme="scriptorium"] .theme-display {
   background:
     linear-gradient(180deg, rgb(255 255 255 / 0.035), transparent 20%),
     color-mix(in oklab, var(--theme-bg-surface) 88%, transparent);
-  border: 1px solid color-mix(in oklab, var(--theme-border-subtle) 78%, transparent);
+  border: 1px solid
+    color-mix(in oklab, var(--theme-border-subtle) 78%, transparent);
   border-radius: var(--card-radius);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.05),
@@ -684,7 +840,8 @@ html[data-theme="scriptorium"] .theme-panel-muted {
     color-mix(in oklab, var(--theme-bg-surface) 82%, transparent);
   backdrop-filter: blur(20px) saturate(145%);
   -webkit-backdrop-filter: blur(20px) saturate(145%);
-  border: 1px solid color-mix(in oklab, var(--theme-border-subtle) 74%, transparent);
+  border: 1px solid
+    color-mix(in oklab, var(--theme-border-subtle) 74%, transparent);
   border-radius: var(--card-radius);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.055),
@@ -705,12 +862,96 @@ html[data-theme="scriptorium"] .glass-card {
   background:
     linear-gradient(180deg, rgb(255 255 255 / 0.05), transparent 18%),
     color-mix(in oklab, var(--theme-bg-surface) 88%, transparent);
-  border-color: color-mix(in oklab, var(--theme-border-strong) 72%, var(--theme-border-subtle));
+  border-color: color-mix(
+    in oklab,
+    var(--theme-border-strong) 72%,
+    var(--theme-border-subtle)
+  );
 }
 
 html[data-theme="scriptorium"] .glass-card-interactive:hover {
   background: color-mix(in oklab, var(--theme-bg-surface) 95%, transparent);
-  border-color: color-mix(in oklab, var(--theme-border-strong) 52%, var(--theme-border-subtle));
+  border-color: color-mix(
+    in oklab,
+    var(--theme-border-strong) 52%,
+    var(--theme-border-subtle)
+  );
+}
+
+.release-card-shell {
+  backdrop-filter: blur(14px) saturate(128%);
+  -webkit-backdrop-filter: blur(14px) saturate(128%);
+}
+
+.release-entry:hover .release-card-shell,
+.release-entry:focus-within .release-card-shell {
+  border-color: color-mix(
+    in oklab,
+    var(--theme-heading-accent) 26%,
+    var(--theme-border-subtle)
+  );
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--theme-heading-accent) 10%, transparent) 0%,
+      transparent 5.5rem
+    ),
+    color-mix(in oklab, var(--theme-bg-card-hover) 54%, var(--theme-bg-surface));
+  box-shadow:
+    0 18px 42px rgb(var(--theme-shell-rgb) / 0.24),
+    0 0 0 1px color-mix(in srgb, var(--theme-heading-accent) 8%, transparent);
+}
+
+.release-entry:hover .release-card-version,
+.release-entry:focus-within .release-card-version {
+  color: color-mix(
+    in srgb,
+    var(--theme-text-primary) 82%,
+    var(--theme-heading-accent) 18%
+  );
+}
+
+.release-entry:hover .release-card-date,
+.release-entry:focus-within .release-card-date {
+  color: color-mix(
+    in srgb,
+    var(--theme-text-secondary) 76%,
+    var(--theme-heading-accent) 24%
+  );
+}
+
+.release-entry:hover .release-timeline-line,
+.release-entry:focus-within .release-timeline-line {
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--theme-heading-accent) 58%, transparent) 0%,
+    color-mix(in srgb, var(--theme-accent-tertiary) 26%, transparent) 100%
+  ) !important;
+  transform: translateX(3px);
+}
+
+.release-entry:hover .release-timeline-node,
+.release-entry:focus-within .release-timeline-node {
+  transform: scale(1.08);
+}
+
+.release-entry:hover .release-timeline-node > div:last-child,
+.release-entry:focus-within .release-timeline-node > div:last-child {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--theme-heading-accent) 12%, transparent),
+    0 0 16px rgb(var(--theme-accent-secondary-rgb) / 0.22);
+}
+
+html[data-theme="scriptorium"] .release-card-shell {
+  backdrop-filter: blur(8px) saturate(108%);
+  -webkit-backdrop-filter: blur(8px) saturate(108%);
+}
+
+html[data-theme="scriptorium"] .release-entry:hover .release-card-shell,
+html[data-theme="scriptorium"] .release-entry:focus-within .release-card-shell {
+  box-shadow:
+    0 14px 26px rgb(84 58 35 / 0.08),
+    0 0 0 1px color-mix(in srgb, var(--theme-heading-accent) 10%, transparent);
 }
 
 .theme-tooltip-panel {
@@ -721,7 +962,12 @@ html[data-theme="scriptorium"] .glass-card-interactive:hover {
   max-width: min(18rem, calc(100vw - 1.5rem));
   padding: 0.9rem 1rem;
   border-radius: 14px;
-  border: 1px solid color-mix(in oklab, var(--theme-border-strong) 48%, var(--theme-border-subtle));
+  border: 1px solid
+    color-mix(
+      in oklab,
+      var(--theme-border-strong) 48%,
+      var(--theme-border-subtle)
+    );
   background:
     linear-gradient(180deg, rgb(255 255 255 / 0.06), transparent 22%),
     color-mix(in oklab, var(--theme-bg-elevated) 94%, transparent);
@@ -771,7 +1017,12 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
 
 .theme-tooltip-shortcut {
   border-radius: 999px;
-  border: 1px solid color-mix(in oklab, var(--theme-border-strong) 42%, var(--theme-border-subtle));
+  border: 1px solid
+    color-mix(
+      in oklab,
+      var(--theme-border-strong) 42%,
+      var(--theme-border-subtle)
+    );
   background: color-mix(in oklab, var(--theme-bg-card) 90%, transparent);
   padding: 0.12rem 0.4rem;
   font-size: 10px;
@@ -790,7 +1041,12 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
   min-width: 1.2rem;
   height: 1.2rem;
   border-radius: 999px;
-  border: 1px solid color-mix(in oklab, var(--theme-border-strong) 42%, var(--theme-border-subtle));
+  border: 1px solid
+    color-mix(
+      in oklab,
+      var(--theme-border-strong) 42%,
+      var(--theme-border-subtle)
+    );
   background: color-mix(in oklab, var(--theme-bg-card-hover) 94%, transparent);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
   font-size: 10px;
@@ -801,13 +1057,12 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
   position: relative;
   border: 0;
   cursor: pointer;
-  background:
-    linear-gradient(
-      135deg,
-      rgb(255 255 255 / 0.58),
-      rgb(255 255 255 / 0.18) 52%,
-      rgb(255 255 255 / 0.42)
-    );
+  background: linear-gradient(
+    135deg,
+    rgb(255 255 255 / 0.58),
+    rgb(255 255 255 / 0.18) 52%,
+    rgb(255 255 255 / 0.42)
+  );
   padding: 1.5px;
   border-radius: 1.55rem;
   transition:
@@ -836,13 +1091,12 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
 }
 
 .theme-preview-button-active {
-  background:
-    linear-gradient(
-      135deg,
-      rgb(255 255 255 / 0.92),
-      rgb(var(--theme-accent-primary-rgb) / 0.92) 54%,
-      rgb(255 255 255 / 0.76)
-    );
+  background: linear-gradient(
+    135deg,
+    rgb(255 255 255 / 0.92),
+    rgb(var(--theme-accent-primary-rgb) / 0.92) 54%,
+    rgb(255 255 255 / 0.76)
+  );
   box-shadow:
     0 0 0 2px rgb(var(--theme-bg-root) / 0.38),
     0 0 0 4px rgb(var(--theme-accent-primary-rgb) / 0.68),
@@ -925,7 +1179,12 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
 
 .theme-preview-button-overlay {
   z-index: 1;
-  background: linear-gradient(180deg, rgb(255 255 255 / 0.18), rgb(255 255 255 / 0.04) 48%, rgb(0 0 0 / 0.08));
+  background: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 0.18),
+    rgb(255 255 255 / 0.04) 48%,
+    rgb(0 0 0 / 0.08)
+  );
 }
 
 .theme-preview-button-sheen {
@@ -935,7 +1194,11 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
   top: 3px;
   height: 38%;
   border-radius: 999px;
-  background: linear-gradient(180deg, rgb(255 255 255 / 0.28), rgb(255 255 255 / 0.04));
+  background: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 0.28),
+    rgb(255 255 255 / 0.04)
+  );
   opacity: 0.8;
   filter: blur(0.5px);
 }
@@ -946,7 +1209,12 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
   width: 10px;
   height: 10px;
   background: color-mix(in oklab, var(--theme-bg-elevated) 94%, transparent);
-  border: 1px solid color-mix(in oklab, var(--theme-border-strong) 48%, var(--theme-border-subtle));
+  border: 1px solid
+    color-mix(
+      in oklab,
+      var(--theme-border-strong) 48%,
+      var(--theme-border-subtle)
+    );
   transform: translateX(-50%) rotate(45deg);
 }
 
@@ -990,7 +1258,8 @@ html[data-theme="scriptorium"] .theme-tooltip-arrow {
   background:
     linear-gradient(180deg, rgb(255 255 255 / 0.03), transparent 18%),
     color-mix(in oklab, var(--theme-bg-surface) 90%, transparent);
-  border: 1px solid color-mix(in oklab, var(--theme-border-subtle) 72%, transparent);
+  border: 1px solid
+    color-mix(in oklab, var(--theme-border-subtle) 72%, transparent);
   border-radius: var(--card-radius);
   padding: 16px;
   box-shadow:
@@ -1013,7 +1282,11 @@ html[data-theme="scriptorium"] .feed-card {
   background:
     linear-gradient(180deg, rgb(255 255 255 / 0.04), transparent 18%),
     color-mix(in oklab, var(--theme-bg-surface) 94%, transparent);
-  border-color: color-mix(in oklab, var(--theme-border-strong) 68%, var(--theme-border-subtle));
+  border-color: color-mix(
+    in oklab,
+    var(--theme-border-strong) 68%,
+    var(--theme-border-subtle)
+  );
 }
 
 .theme-topbar {
@@ -1096,7 +1369,11 @@ html[data-theme="scriptorium"] .theme-topbar {
 
 .theme-icon-well-muted {
   background: color-mix(in oklab, var(--theme-bg-muted) 82%, transparent);
-  border-color: color-mix(in oklab, var(--theme-border-subtle) 75%, transparent);
+  border-color: color-mix(
+    in oklab,
+    var(--theme-border-subtle) 75%,
+    transparent
+  );
 }
 
 .theme-icon-well-info {
@@ -1155,7 +1432,11 @@ html[data-theme="scriptorium"] .theme-topbar {
   background: linear-gradient(
     135deg,
     var(--theme-accent-primary),
-    color-mix(in srgb, var(--theme-accent-secondary) 72%, var(--theme-accent-tertiary) 28%)
+    color-mix(
+      in srgb,
+      var(--theme-accent-secondary) 72%,
+      var(--theme-accent-tertiary) 28%
+    )
   );
   color: var(--theme-button-primary-text);
 }
@@ -1170,26 +1451,30 @@ html[data-theme="scriptorium"] .theme-topbar {
 
 .theme-elevated-overlay {
   background:
-    linear-gradient(180deg, rgb(var(--theme-shell-rgb) / 0.34), rgb(0 0 0 / 0.64)),
+    linear-gradient(
+      180deg,
+      rgb(var(--theme-shell-rgb) / 0.34),
+      rgb(0 0 0 / 0.64)
+    ),
     var(--theme-overlay-scrim);
   backdrop-filter: blur(18px) saturate(120%);
   -webkit-backdrop-filter: blur(18px) saturate(120%);
 }
 
 .theme-settings-overlay {
-  background:
-    linear-gradient(
-      180deg,
-      rgb(var(--theme-shell-rgb) / 0.08),
-      rgb(var(--theme-shell-rgb) / 0.18)
-    );
+  background: linear-gradient(
+    180deg,
+    rgb(var(--theme-shell-rgb) / 0.08),
+    rgb(var(--theme-shell-rgb) / 0.18)
+  );
 }
 
 .theme-dialog-shell {
   position: relative;
   overflow: hidden;
   border-radius: calc(var(--card-radius) + 8px);
-  border: 1px solid color-mix(in oklab, var(--theme-border-subtle) 70%, transparent);
+  border: 1px solid
+    color-mix(in oklab, var(--theme-border-subtle) 70%, transparent);
   background:
     linear-gradient(180deg, rgb(255 255 255 / 0.045), transparent 18%),
     color-mix(in oklab, var(--theme-bg-elevated) 86%, transparent);
@@ -1237,14 +1522,19 @@ html[data-theme="scriptorium"] .theme-dialog-shell::before {
 }
 
 .theme-dialog-divider {
-  border-color: color-mix(in oklab, var(--theme-border-subtle) 70%, transparent);
+  border-color: color-mix(
+    in oklab,
+    var(--theme-border-subtle) 70%,
+    transparent
+  );
 }
 
 .theme-dialog-section {
   background:
     linear-gradient(180deg, rgb(255 255 255 / 0.025), transparent 18%),
     color-mix(in oklab, var(--theme-bg-surface) 72%, transparent);
-  border: 1px solid color-mix(in oklab, var(--theme-border-subtle) 68%, transparent);
+  border: 1px solid
+    color-mix(in oklab, var(--theme-border-subtle) 68%, transparent);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
 }
 
@@ -1253,7 +1543,8 @@ html[data-theme="scriptorium"] .theme-dialog-shell::before {
   background:
     linear-gradient(180deg, rgb(255 255 255 / 0.03), transparent 18%),
     color-mix(in oklab, var(--theme-bg-surface) 78%, transparent);
-  border: 1px solid color-mix(in oklab, var(--theme-border-subtle) 58%, transparent);
+  border: 1px solid
+    color-mix(in oklab, var(--theme-border-subtle) 58%, transparent);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.045),
     0 16px 38px rgb(0 0 0 / 0.12);
@@ -1293,13 +1584,12 @@ html[data-theme="scriptorium"] .theme-card-soft {
   content: "";
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(
-      115deg,
-      transparent 0%,
-      rgb(255 255 255 / 0.18) 28%,
-      transparent 55%
-    );
+  background: linear-gradient(
+    115deg,
+    transparent 0%,
+    rgb(255 255 255 / 0.18) 28%,
+    transparent 55%
+  );
   transform: translateX(-140%);
   transition: transform 0.6s ease;
   z-index: -1;
@@ -1400,7 +1690,11 @@ html[data-theme="scriptorium"] .btn-primary:hover {
 
 .theme-chip-active {
   border-color: var(--theme-border-strong);
-  background: color-mix(in oklab, var(--theme-accent-secondary) 16%, var(--theme-bg-surface));
+  background: color-mix(
+    in oklab,
+    var(--theme-accent-secondary) 16%,
+    var(--theme-bg-surface)
+  );
   color: var(--theme-text-primary);
   box-shadow: var(--theme-glow-sm);
 }
@@ -1413,9 +1707,17 @@ html[data-theme="scriptorium"] .btn-primary:hover {
 .theme-warning-panel {
   border: 1px solid rgb(var(--theme-feedback-warning-rgb) / 0.22);
   background:
-    linear-gradient(180deg, rgb(var(--theme-feedback-warning-rgb) / 0.1), transparent),
+    linear-gradient(
+      180deg,
+      rgb(var(--theme-feedback-warning-rgb) / 0.1),
+      transparent
+    ),
     color-mix(in oklab, var(--theme-bg-surface) 96%, transparent);
-  color: color-mix(in oklab, var(--theme-text-primary) 82%, rgb(var(--theme-feedback-warning-rgb)) 18%);
+  color: color-mix(
+    in oklab,
+    var(--theme-text-primary) 82%,
+    rgb(var(--theme-feedback-warning-rgb)) 18%
+  );
 }
 
 .theme-feedback-panel-info,
@@ -1442,7 +1744,11 @@ html[data-theme="scriptorium"] .btn-primary:hover {
 .theme-feedback-panel-warning {
   --feedback-rgb: var(--theme-feedback-warning-rgb);
   border-color: rgb(var(--theme-feedback-warning-rgb) / 0.22);
-  color: color-mix(in oklab, var(--theme-text-primary) 82%, rgb(var(--theme-feedback-warning-rgb)) 18%);
+  color: color-mix(
+    in oklab,
+    var(--theme-text-primary) 82%,
+    rgb(var(--theme-feedback-warning-rgb)) 18%
+  );
 }
 
 .theme-feedback-panel-danger {
@@ -1459,11 +1765,19 @@ html[data-theme="scriptorium"] .btn-primary:hover {
 }
 
 .theme-feedback-text-warning {
-  color: color-mix(in oklab, var(--theme-text-primary) 70%, rgb(var(--theme-feedback-warning-rgb)) 30%);
+  color: color-mix(
+    in oklab,
+    var(--theme-text-primary) 70%,
+    rgb(var(--theme-feedback-warning-rgb)) 30%
+  );
 }
 
 .theme-feedback-text-warning-muted {
-  color: color-mix(in oklab, var(--theme-text-secondary) 82%, rgb(var(--theme-feedback-warning-rgb)) 18%);
+  color: color-mix(
+    in oklab,
+    var(--theme-text-secondary) 82%,
+    rgb(var(--theme-feedback-warning-rgb)) 18%
+  );
 }
 
 .theme-feedback-text-danger {
@@ -1504,18 +1818,36 @@ html[data-theme="scriptorium"] .btn-primary:hover {
 
 .theme-map-grid {
   background-image:
-    linear-gradient(rgb(var(--theme-accent-secondary-rgb) / 0.12) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(var(--theme-accent-secondary-rgb) / 0.08) 1px, transparent 1px);
+    linear-gradient(
+      rgb(var(--theme-accent-secondary-rgb) / 0.12) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgb(var(--theme-accent-secondary-rgb) / 0.08) 1px,
+      transparent 1px
+    );
 }
 
 .theme-map-grid-dense {
   background-image:
-    linear-gradient(rgb(var(--theme-accent-secondary-rgb) / 0.16) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(var(--theme-accent-secondary-rgb) / 0.12) 1px, transparent 1px);
+    linear-gradient(
+      rgb(var(--theme-accent-secondary-rgb) / 0.16) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgb(var(--theme-accent-secondary-rgb) / 0.12) 1px,
+      transparent 1px
+    );
 }
 
 .theme-map-fade-top {
-  background: linear-gradient(180deg, rgb(var(--theme-accent-secondary-rgb) / 0.12), transparent);
+  background: linear-gradient(
+    180deg,
+    rgb(var(--theme-accent-secondary-rgb) / 0.12),
+    transparent
+  );
 }
 
 .theme-map-fade-bottom {
