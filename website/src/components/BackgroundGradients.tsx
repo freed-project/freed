@@ -1,1 +1,1 @@
-export { BackgroundAtmosphere as default } from "../../../packages/ui/src/components/layout/BackgroundAtmosphere";
+export { BackgroundAtmosphere as default } from "@freed/ui/components/layout/BackgroundAtmosphere";

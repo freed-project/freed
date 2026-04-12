@@ -277,7 +277,7 @@ export const FeedItem = memo(function FeedItem({
                 <button
                   onClick={(e) => { e.stopPropagation(); onArchive(e); }}
                   title="Archive"
-                  className="p-1.5 rounded-lg bg-black/35 backdrop-blur-sm text-white/70 hover:text-green-400 transition-colors"
+                  className="p-1.5 rounded-lg bg-black/35 backdrop-blur-sm text-white/70 hover:text-[rgb(var(--theme-feedback-success-rgb))] transition-colors"
                 >
                   <TrashIcon className="w-3.5 h-3.5" />
                 </button>
@@ -368,12 +368,14 @@ export const FeedItem = memo(function FeedItem({
           className="absolute inset-y-0 right-0 flex items-center justify-end pr-5 rounded-2xl transition-colors"
           style={{
             width: `${Math.abs(swipeX) + 16}px`,
-            backgroundColor: pastThreshold ? "rgb(34 197 94 / 0.25)" : "rgb(34 197 94 / 0.12)",
+            backgroundColor: pastThreshold
+              ? "rgb(var(--theme-feedback-success-rgb) / 0.25)"
+              : "rgb(var(--theme-feedback-success-rgb) / 0.12)",
           }}
           aria-hidden
         >
           <TrashIcon
-            className="w-5 h-5 text-green-400 transition-transform"
+            className="h-5 w-5 text-[rgb(var(--theme-feedback-success-rgb))] transition-transform"
             style={{ transform: `scale(${0.7 + swipeProgress * 0.3})`, opacity: swipeProgress } as React.CSSProperties}
           />
         </div>
@@ -512,7 +514,7 @@ export const FeedItem = memo(function FeedItem({
               <button
                 onClick={onArchive}
                 title="Archive"
-                className="p-1.5 rounded-lg transition-colors text-[var(--theme-text-soft)] hover:text-green-400 opacity-0 group-hover:opacity-100"
+                className="p-1.5 rounded-lg transition-colors text-[var(--theme-text-soft)] hover:text-[rgb(var(--theme-feedback-success-rgb))] opacity-0 group-hover:opacity-100"
               >
                 <TrashIcon className="w-4 h-4" />
               </button>

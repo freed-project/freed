@@ -116,7 +116,7 @@ function FriendListRow({
             {entry.needsOutreach && (
               <>
                 <span className="text-[color:var(--theme-text-soft)]">•</span>
-                <span className="text-[#fbbf24]">Needs outreach</span>
+                <span className="theme-feedback-text-warning">Needs outreach</span>
               </>
             )}
           </div>
@@ -348,8 +348,8 @@ export function FriendsView() {
         <div className="theme-warning-panel rounded-2xl p-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#fbbf24]">Reconnect</p>
-              <p className="mt-1 text-sm font-medium text-white">
+              <p className="theme-feedback-text-warning text-[11px] font-semibold uppercase tracking-[0.14em]">Reconnect</p>
+              <p className="mt-1 text-sm font-medium text-[var(--theme-text-primary)]">
                 {reconnectCount.toLocaleString()} friend{reconnectCount === 1 ? "" : "s"} waiting on a follow-up
               </p>
             </div>
@@ -359,7 +359,7 @@ export function FriendsView() {
                 setActiveFilters(new Set(["need_outreach"]));
                 setSortBy("last_contact");
               }}
-              className="theme-card-soft rounded-lg border-[#f59e0b]/20 px-3 py-1.5 text-xs text-[#fcd34d] transition-colors hover:bg-[#f59e0b]/10"
+              className="theme-feedback-button-warning rounded-lg px-3 py-1.5 text-xs"
             >
               Review
             </button>

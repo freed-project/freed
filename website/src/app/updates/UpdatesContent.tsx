@@ -29,8 +29,8 @@ export default function UpdatesContent() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16 sm:mb-24"
         >
-          <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
-            <span className="gradient-text">Updates</span>
+          <h1 className="theme-display-large text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
+            <span className="theme-heading-accent">Updates</span>
           </h1>
           <p className="text-text-secondary text-lg sm:text-xl mb-6">
             Latest transmissions from the Feed Liberation Front.
@@ -42,7 +42,7 @@ export default function UpdatesContent() {
               href="/feed.xml"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 text-sm text-text-muted hover:text-glow-purple transition-colors"
+              className="flex items-center gap-2 text-sm text-text-secondary hover:text-[color:var(--theme-heading-accent)] transition-colors"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M6.18 15.64a2.18 2.18 0 0 1 2.18 2.18C8.36 19 7.38 20 6.18 20C5 20 4 19 4 17.82a2.18 2.18 0 0 1 2.18-2.18M4 4.44A15.56 15.56 0 0 1 19.56 20h-2.83A12.73 12.73 0 0 0 4 7.27V4.44m0 5.66a9.9 9.9 0 0 1 9.9 9.9h-2.83A7.07 7.07 0 0 0 4 12.93V10.1Z" />
@@ -52,7 +52,7 @@ export default function UpdatesContent() {
             <span className="text-text-muted hidden sm:inline">•</span>
             <button
               onClick={openModal}
-              className="text-sm text-glow-purple hover:text-glow-blue transition-colors"
+              className="text-sm font-medium text-[color:var(--theme-heading-accent)] hover:text-text-primary transition-colors"
             >
               Get email updates →
             </button>
@@ -93,7 +93,7 @@ export default function UpdatesContent() {
                   {post.title}
                 </h2>
                 <p className="text-text-secondary">{post.description}</p>
-                <span className="inline-block mt-4 text-sm text-glow-purple group-hover:text-white transition-colors">
+                <span className="inline-block mt-4 text-sm font-medium text-[color:var(--theme-heading-accent)] group-hover:text-text-primary transition-colors">
                   Read more →
                 </span>
               </Link>
@@ -130,7 +130,7 @@ export default function UpdatesContent() {
             onClick={openModal}
             className="btn-primary"
           >
-            Subscribe to Newsletter
+            Get Email Updates
           </motion.button>
         </motion.div>
       </div>

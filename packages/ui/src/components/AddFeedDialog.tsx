@@ -63,7 +63,7 @@ function AddUrlTab({ onClose }: { onClose: () => void }) {
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-xl text-red-400 text-sm">
+          <div className="theme-feedback-panel-danger mb-4 rounded-xl p-3 text-sm theme-feedback-text-danger">
             {error}
           </div>
         )}

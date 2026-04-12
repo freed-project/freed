@@ -1,9 +1,6 @@
-import { DEFAULT_THEME_ID, getThemeDefinition, type ThemeId } from "@freed/shared/themes";
-
-type Rgb = { r: number; g: number; b: number };
+import type { ThemeId } from "@freed/shared/themes";
 
 export interface FriendAvatarPalette {
-  tintHex: string;
   borderStrong: string;
   borderSoft: string;
   glow: string;
@@ -19,60 +16,122 @@ export interface FriendAvatarPalette {
   selectionOuterStroke: string;
   labelBorder: string;
   initialsShadow: string;
+  text: string;
 }
 
-function clampChannel(value: number): number {
-  return Math.max(0, Math.min(255, Math.round(value)));
+const FALLBACK_PALETTE: FriendAvatarPalette = {
+  borderStrong:
+    "color-mix(in srgb, var(--theme-accent-primary) 68%, var(--theme-text-primary))",
+  borderSoft: "rgb(var(--theme-accent-primary-rgb) / 0.24)",
+  glow: "rgb(var(--theme-accent-secondary-rgb) / 0.3)",
+  glowSoft: "rgb(var(--theme-accent-secondary-rgb) / 0.18)",
+  ring: "rgb(var(--theme-accent-primary-rgb) / 0.2)",
+  gradientStart:
+    "color-mix(in srgb, var(--theme-accent-primary) 68%, white 32%)",
+  gradientMid:
+    "color-mix(in srgb, var(--theme-accent-primary) 36%, var(--theme-accent-secondary) 64%)",
+  gradientEnd:
+    "color-mix(in srgb, var(--theme-bg-deep) 64%, var(--theme-accent-secondary) 36%)",
+  imageOverlay:
+    "radial-gradient(circle at 30% 28%, rgb(var(--theme-accent-primary-rgb) / 0.22), rgb(var(--theme-accent-secondary-rgb) / 0.2) 42%, rgb(var(--theme-shell-rgb) / 0.28) 100%)",
+  imageShadow: "rgb(var(--theme-shell-rgb) / 0.36)",
+  imageHighlight: "rgb(var(--theme-accent-primary-rgb) / 0.16)",
+  selectionStroke:
+    "color-mix(in srgb, var(--theme-accent-primary) 56%, white 44%)",
+  selectionOuterStroke:
+    "color-mix(in srgb, var(--theme-accent-secondary) 72%, var(--theme-accent-primary) 28%)",
+  labelBorder: "rgb(var(--theme-accent-secondary-rgb) / 0.28)",
+  initialsShadow: "rgb(var(--theme-accent-primary-rgb) / 0.42)",
+  text: "var(--theme-button-primary-text)",
+};
+
+function readThemeVar(
+  styles: CSSStyleDeclaration,
+  name: string,
+  fallback: string,
+): string {
+  const value = styles.getPropertyValue(name).trim();
+  return value || fallback;
 }
 
-function normalizeThemeId(input?: ThemeId | null): ThemeId {
-  return input ?? DEFAULT_THEME_ID;
-}
+export function createFriendAvatarPalette(
+  themeId?: ThemeId | null,
+): FriendAvatarPalette {
+  void themeId;
 
-function hexToRgb(hex: string): Rgb {
+  if (typeof document === "undefined") {
+    return FALLBACK_PALETTE;
+  }
+
+  const styles = getComputedStyle(document.documentElement);
   return {
-    r: parseInt(hex.slice(1, 3), 16),
-    g: parseInt(hex.slice(3, 5), 16),
-    b: parseInt(hex.slice(5, 7), 16),
-  };
-}
-
-function mix(a: Rgb, b: Rgb, ratio: number): Rgb {
-  return {
-    r: clampChannel(a.r + (b.r - a.r) * ratio),
-    g: clampChannel(a.g + (b.g - a.g) * ratio),
-    b: clampChannel(a.b + (b.b - a.b) * ratio),
-  };
-}
-
-function rgba(rgb: Rgb, alpha: number): string {
-  return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
-}
-
-export function createFriendAvatarPalette(themeId?: ThemeId | null): FriendAvatarPalette {
-  const tintHex = getThemeDefinition(normalizeThemeId(themeId)).avatarTint;
-  const base = hexToRgb(tintHex);
-  const light = mix(base, { r: 255, g: 255, b: 255 }, 0.26);
-  const bright = mix(base, { r: 255, g: 255, b: 255 }, 0.4);
-  const dark = mix(base, { r: 20, g: 14, b: 30 }, 0.56);
-  const deep = mix(base, { r: 10, g: 8, b: 16 }, 0.76);
-
-  return {
-    tintHex,
-    borderStrong: rgba(light, 0.82),
-    borderSoft: rgba(base, 0.24),
-    glow: rgba(base, 0.3),
-    glowSoft: rgba(base, 0.18),
-    ring: rgba(bright, 0.2),
-    gradientStart: rgba(bright, 0.96),
-    gradientMid: rgba(base, 0.9),
-    gradientEnd: rgba(deep, 0.98),
-    imageOverlay: `radial-gradient(circle at 30% 28%, ${rgba(bright, 0.22)}, ${rgba(base, 0.2)} 42%, ${rgba(dark, 0.28)} 100%)`,
-    imageShadow: rgba(deep, 0.36),
-    imageHighlight: rgba(bright, 0.16),
-    selectionStroke: rgba(bright, 0.96),
-    selectionOuterStroke: rgba(base, 0.9),
-    labelBorder: rgba(base, 0.28),
-    initialsShadow: rgba(bright, 0.42),
+    borderStrong: readThemeVar(
+      styles,
+      "--theme-avatar-border-strong",
+      FALLBACK_PALETTE.borderStrong,
+    ),
+    borderSoft: readThemeVar(
+      styles,
+      "--theme-avatar-border-soft",
+      FALLBACK_PALETTE.borderSoft,
+    ),
+    glow: readThemeVar(styles, "--theme-avatar-glow", FALLBACK_PALETTE.glow),
+    glowSoft: readThemeVar(
+      styles,
+      "--theme-avatar-glow-soft",
+      FALLBACK_PALETTE.glowSoft,
+    ),
+    ring: readThemeVar(styles, "--theme-avatar-ring", FALLBACK_PALETTE.ring),
+    gradientStart: readThemeVar(
+      styles,
+      "--theme-avatar-gradient-start",
+      FALLBACK_PALETTE.gradientStart,
+    ),
+    gradientMid: readThemeVar(
+      styles,
+      "--theme-avatar-gradient-mid",
+      FALLBACK_PALETTE.gradientMid,
+    ),
+    gradientEnd: readThemeVar(
+      styles,
+      "--theme-avatar-gradient-end",
+      FALLBACK_PALETTE.gradientEnd,
+    ),
+    imageOverlay: readThemeVar(
+      styles,
+      "--theme-avatar-image-overlay",
+      FALLBACK_PALETTE.imageOverlay,
+    ),
+    imageShadow: readThemeVar(
+      styles,
+      "--theme-avatar-image-shadow",
+      FALLBACK_PALETTE.imageShadow,
+    ),
+    imageHighlight: readThemeVar(
+      styles,
+      "--theme-avatar-image-highlight",
+      FALLBACK_PALETTE.imageHighlight,
+    ),
+    selectionStroke: readThemeVar(
+      styles,
+      "--theme-avatar-selection-stroke",
+      FALLBACK_PALETTE.selectionStroke,
+    ),
+    selectionOuterStroke: readThemeVar(
+      styles,
+      "--theme-avatar-selection-outer-stroke",
+      FALLBACK_PALETTE.selectionOuterStroke,
+    ),
+    labelBorder: readThemeVar(
+      styles,
+      "--theme-avatar-label-border",
+      FALLBACK_PALETTE.labelBorder,
+    ),
+    initialsShadow: readThemeVar(
+      styles,
+      "--theme-avatar-initials-shadow",
+      FALLBACK_PALETTE.initialsShadow,
+    ),
+    text: readThemeVar(styles, "--theme-avatar-text", FALLBACK_PALETTE.text),
   };
 }

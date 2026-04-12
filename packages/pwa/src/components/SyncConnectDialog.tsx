@@ -444,7 +444,9 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div
                 className={`h-48 w-48 rounded-2xl border-2 transition-colors ${
-                  scanStatus === "found" ? "border-green-400" : "border-[var(--theme-border-quiet)]"
+                  scanStatus === "found"
+                    ? "border-[rgb(var(--theme-feedback-success-rgb))]"
+                    : "border-[var(--theme-border-quiet)]"
                 }`}
               >
                 <div className="absolute top-0 left-0 h-6 w-6 rounded-tl-lg border-t-2 border-l-2 border-[var(--theme-accent-secondary)]" />
@@ -456,9 +458,9 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
             {scanStatus === "found" && (
               <div className="theme-elevated-overlay absolute inset-0 flex items-center justify-center">
                 <div className="flex flex-col items-center gap-2">
-                  <div className="w-12 h-12 rounded-full bg-green-500/20 border-2 border-green-400 flex items-center justify-center">
+                  <div className="theme-icon-well-success flex h-12 w-12 items-center justify-center rounded-full border-2">
                     <svg
-                      className="w-6 h-6 text-green-400"
+                      className="theme-icon-success h-6 w-6"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -471,7 +473,7 @@ export function SyncConnectContent({ onDone, initialMode = "cloud" }: SyncConnec
                       />
                     </svg>
                   </div>
-                  <p className="text-green-400 text-sm font-medium">
+                  <p className="theme-feedback-text-success text-sm font-medium">
                     Connecting...
                   </p>
                 </div>

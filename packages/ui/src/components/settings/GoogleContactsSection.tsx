@@ -16,14 +16,14 @@ function StatusPill({
 }) {
   const toneClass =
     tone === "success"
-      ? "bg-green-500/15 text-green-300"
+      ? "bg-[rgb(var(--theme-feedback-success-rgb)/0.15)] text-[rgb(var(--theme-feedback-success-rgb))]"
       : tone === "warning"
-        ? "bg-amber-500/15 text-amber-300"
+        ? "bg-[rgb(var(--theme-feedback-warning-rgb)/0.15)] text-[rgb(var(--theme-feedback-warning-rgb))]"
         : tone === "error"
-          ? "bg-red-500/15 text-red-300"
+          ? "bg-[rgb(var(--theme-feedback-danger-rgb)/0.15)] text-[rgb(var(--theme-feedback-danger-rgb))]"
           : tone === "syncing"
-            ? "bg-[#8b5cf6]/20 text-[#c4b5fd]"
-            : "bg-white/5 text-[#a1a1aa]";
+            ? "bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-accent-secondary)]"
+            : "bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-secondary)]";
 
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-1 text-[11px] font-medium ${toneClass}`}>
@@ -63,11 +63,11 @@ export function GoogleContactsSection() {
 
   return (
     <div className="space-y-4" data-testid="google-contacts-settings">
-      <div className="rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.06)] p-4 space-y-4">
+      <div className="theme-dialog-section rounded-xl p-4 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <p className="text-sm font-semibold text-white">Google Contacts</p>
+              <p className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Google Contacts</p>
               {isSyncing ? (
                 <StatusPill label="Syncing" tone="syncing" />
               ) : needsReconnect ? (
@@ -78,7 +78,7 @@ export function GoogleContactsSection() {
                 <StatusPill label="Not connected" tone="neutral" />
               )}
             </div>
-            <p className="text-xs text-[#71717a]">
+            <p className="text-xs text-[color:var(--theme-text-muted)]">
               Sync contact matches into Friends, auto-link obvious matches, and review the ambiguous ones.
             </p>
           </div>
@@ -88,28 +88,28 @@ export function GoogleContactsSection() {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)] px-3 py-2.5">
-            <p className="text-[11px] uppercase tracking-wider text-[#52525b]">Cached contacts</p>
-            <p className="mt-1 text-base font-semibold text-white">{cachedCount}</p>
+          <div className="theme-card-soft rounded-xl px-3 py-2.5">
+            <p className="text-[11px] uppercase tracking-wider text-[color:var(--theme-text-soft)]">Cached contacts</p>
+            <p className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">{cachedCount}</p>
           </div>
-          <div className="rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)] px-3 py-2.5">
-            <p className="text-[11px] uppercase tracking-wider text-[#52525b]">Needs review</p>
-            <p className="mt-1 text-base font-semibold text-white">{pendingCount}</p>
+          <div className="theme-card-soft rounded-xl px-3 py-2.5">
+            <p className="text-[11px] uppercase tracking-wider text-[color:var(--theme-text-soft)]">Needs review</p>
+            <p className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">{pendingCount}</p>
           </div>
-          <div className="rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)] px-3 py-2.5">
-            <p className="text-[11px] uppercase tracking-wider text-[#52525b]">Auto-linked</p>
-            <p className="mt-1 text-base font-semibold text-white">{autoLinkedCount}</p>
+          <div className="theme-card-soft rounded-xl px-3 py-2.5">
+            <p className="text-[11px] uppercase tracking-wider text-[color:var(--theme-text-soft)]">Auto-linked</p>
+            <p className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">{autoLinkedCount}</p>
           </div>
-          <div className="rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)] px-3 py-2.5">
-            <p className="text-[11px] uppercase tracking-wider text-[#52525b]">Auto-created</p>
-            <p className="mt-1 text-base font-semibold text-white">{autoCreatedCount}</p>
+          <div className="theme-card-soft rounded-xl px-3 py-2.5">
+            <p className="text-[11px] uppercase tracking-wider text-[color:var(--theme-text-soft)]">Auto-created</p>
+            <p className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">{autoCreatedCount}</p>
           </div>
         </div>
 
-        <div className="space-y-1 text-xs text-[#71717a]">
-          <p>Last successful sync: <span className="text-[#a1a1aa]">{formatSyncTime(syncState.lastSyncedAt)}</span></p>
+        <div className="space-y-1 text-xs text-[color:var(--theme-text-muted)]">
+          <p>Last successful sync: <span className="text-[color:var(--theme-text-secondary)]">{formatSyncTime(syncState.lastSyncedAt)}</span></p>
           {syncState.lastErrorMessage && (
-            <p className="text-red-300">
+            <p className="theme-feedback-text-danger">
               {syncState.lastErrorMessage}
             </p>
           )}
@@ -119,21 +119,21 @@ export function GoogleContactsSection() {
           <button
             onClick={handleConnect}
             disabled={!googleContacts || connecting || isSyncing}
-            className="text-sm px-3 py-1.5 rounded-lg bg-[#8b5cf6] hover:bg-[#7c3aed] text-white transition-colors disabled:opacity-50"
+            className="btn-primary rounded-lg px-3 py-1.5 text-sm disabled:opacity-50"
           >
             {connecting ? "Connecting..." : needsReconnect || !isConnected ? "Reconnect Google" : "Reconnect"}
           </button>
           <button
             onClick={handleSync}
             disabled={!googleContacts || connecting || isSyncing}
-            className="text-sm px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#a1a1aa] hover:text-white transition-colors disabled:opacity-50"
+            className="btn-secondary rounded-lg px-3 py-1.5 text-sm disabled:opacity-50"
           >
             {isSyncing ? "Syncing..." : "Sync Now"}
           </button>
           <button
             onClick={() => void openReview()}
             disabled={!googleContacts || connecting}
-            className="text-sm px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#a1a1aa] hover:text-white transition-colors disabled:opacity-50"
+            className="btn-secondary rounded-lg px-3 py-1.5 text-sm disabled:opacity-50"
           >
             Review Matches
           </button>

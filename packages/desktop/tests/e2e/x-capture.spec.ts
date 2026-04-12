@@ -132,6 +132,17 @@ test("X connect form accepts cookies and triggers sync", async ({
   );
 
   const { page } = app;
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    store.setState({
+      xAuth: {
+        isAuthenticated: false,
+      },
+    });
+  });
 
   // Open settings
   const settingsBtn = page
@@ -162,6 +173,9 @@ test("X connect form accepts cookies and triggers sync", async ({
 
   // Fill cookies once the form is visible (allow for state transition)
   await expect(page.getByPlaceholder("ct0 value")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByPlaceholder("auth_token value")).toBeVisible({
+    timeout: 5_000,
+  });
   await page.getByPlaceholder("ct0 value").fill("test_ct0_value");
   await page.getByPlaceholder("auth_token value").fill("test_auth_token_value");
 

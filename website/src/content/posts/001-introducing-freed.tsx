@@ -6,8 +6,8 @@ export default definePost(
     title: "Introducing Freed",
     description: "Your feeds, your way, on all your devices.",
     date: "2026-02-17",
-    // author: "Aubrey Falconer",
-    // authorUrl: "https://AubreyFalconer.com",
+    author: "Aubrey Falconer",
+    authorUrl: "https://AubreyFalconer.com",
     tags: ["announcement", "philosophy", "technical"],
   },
   <>

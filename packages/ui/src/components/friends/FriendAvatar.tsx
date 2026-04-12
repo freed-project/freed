@@ -28,7 +28,7 @@ export function FriendAvatar({
         width: `${size}px`,
         height: `${size}px`,
         border: `1px solid ${palette.borderStrong}`,
-        boxShadow: `0 0 0 1px ${palette.borderSoft}, 0 0 18px ${palette.glowSoft}, 0 10px 22px rgba(2,6,23,0.24)`,
+        boxShadow: `0 0 0 1px ${palette.borderSoft}, 0 0 18px ${palette.glowSoft}, var(--theme-marker-shadow-soft)`,
         background: `radial-gradient(circle at 30% 28%, ${palette.gradientStart}, ${palette.gradientMid} 34%, ${palette.gradientEnd} 100%)`,
       }}
     >
@@ -50,14 +50,15 @@ export function FriendAvatar({
             className="pointer-events-none absolute inset-[4px] rounded-full"
             style={{
               border: `1px solid ${palette.ring}`,
-              background: `radial-gradient(circle at 30% 30%, ${palette.imageHighlight}, rgba(255,255,255,0) 65%)`,
+              background: `radial-gradient(circle at 30% 30%, ${palette.imageHighlight}, transparent 65%)`,
             }}
           />
         </>
       ) : (
         <div
-          className="flex h-full w-full items-center justify-center font-semibold text-white"
+          className="flex h-full w-full items-center justify-center font-semibold"
           style={{
+            color: palette.text,
             textShadow: `0 0 14px ${palette.initialsShadow}`,
             fontSize: `${Math.max(14, Math.round(size * 0.38))}px`,
           }}

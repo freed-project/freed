@@ -31,8 +31,13 @@ const steps = [
 export default function HowItWorks() {
   return (
     <section className="py-16 sm:py-24 px-4 sm:px-6 md:px-12 lg:px-8 relative overflow-hidden">
-      {/* Background accent */}
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-glow-purple/5 to-transparent" />
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(to bottom, transparent, color-mix(in srgb, var(--theme-accent-secondary) 5%, transparent), transparent)",
+        }}
+      />
 
       <div className="max-w-6xl mx-auto relative z-10">
         {/* Section Header */}
@@ -43,8 +48,8 @@ export default function HowItWorks() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <h2 className="text-4xl md:text-5xl font-bold mb-4">
-            How It <span className="gradient-text">Works</span>
+          <h2 className="theme-display-large text-4xl md:text-5xl font-bold mb-4">
+            How It <span className="theme-heading-accent">Works</span>
           </h2>
           <p className="text-text-secondary text-lg max-w-2xl mx-auto">
             Four simple steps to digital sovereignty.
@@ -53,8 +58,13 @@ export default function HowItWorks() {
 
         {/* Steps */}
         <div className="relative">
-          {/* Connecting line */}
-          <div className="hidden lg:block absolute top-1/2 left-0 right-0 h-px bg-gradient-to-r from-transparent via-glow-purple/30 to-transparent -translate-y-1/2" />
+          <div
+            className="hidden lg:block absolute top-1/2 left-0 right-0 h-px -translate-y-1/2"
+            style={{
+              background:
+                "linear-gradient(to right, transparent, color-mix(in srgb, var(--theme-accent-secondary) 28%, transparent), transparent)",
+            }}
+          />
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {steps.map((step, index) => (
@@ -69,7 +79,10 @@ export default function HowItWorks() {
                 <div className="glass-card p-6 h-full">
                   {/* Step number */}
                   <div className="relative z-10 mb-4">
-                    <span className="text-5xl font-bold gradient-text opacity-50">
+                    <span
+                      className="text-5xl font-bold opacity-55"
+                      style={{ color: "var(--theme-heading-accent)" }}
+                    >
                       {step.number}
                     </span>
                   </div>
@@ -84,7 +97,10 @@ export default function HowItWorks() {
 
                 {/* Connector dot */}
                 {index < steps.length - 1 && (
-                  <div className="hidden lg:block absolute top-1/2 -right-5 w-2 h-2 rounded-full bg-glow-purple glow-sm -translate-y-1/2 z-20" />
+                  <div
+                    className="hidden lg:block absolute top-1/2 -right-5 h-2 w-2 rounded-full glow-sm -translate-y-1/2 z-20"
+                    style={{ background: "var(--theme-heading-accent)" }}
+                  />
                 )}
               </motion.div>
             ))}

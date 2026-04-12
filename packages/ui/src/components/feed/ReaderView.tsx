@@ -471,7 +471,7 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
               onClick={handleToggleArchived}
               className={`p-2 rounded-lg transition-colors ${
                 item.userState.archived
-                  ? "bg-green-500/20 text-green-400 hover:bg-green-500/30"
+                  ? "theme-status-pill-success hover:bg-[rgb(var(--theme-feedback-success-rgb)/0.18)]"
                   : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
               }`}
               style={headerDragRegion ? noDrag : undefined}
@@ -533,7 +533,7 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
             )}
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-bold mb-4 leading-tight">
+          <h1 className="theme-display-large text-2xl sm:text-3xl font-bold mb-4 leading-tight">
             {item.content.linkPreview?.title || item.content.text?.slice(0, 100)}
           </h1>
 

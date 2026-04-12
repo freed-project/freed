@@ -15,8 +15,8 @@ export default function PrivacyContent() {
         >
           {/* Header */}
           <header className="text-center mb-10 sm:mb-16">
-            <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
-              <span className="gradient-text">Privacy Policy</span>
+            <h1 className="theme-display-large text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
+              <span className="theme-heading-accent">Privacy Policy</span>
             </h1>
             <p className="text-text-secondary text-lg sm:text-xl">
               Effective March 31, 2026
@@ -28,7 +28,8 @@ export default function PrivacyContent() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15, duration: 0.5 }}
-            className="glass-card p-6 sm:p-8 mb-12 border-l-4 border-glow-purple"
+            className="glass-card p-6 sm:p-8 mb-12 border-l-4"
+            style={{ borderLeftColor: "var(--theme-heading-accent)" }}
           >
             <h2 className="text-lg font-bold text-text-primary mb-3 mt-0">
               The short version
@@ -271,7 +272,10 @@ export default function PrivacyContent() {
 
             {/* Closing quote */}
             <section className="pt-4">
-              <blockquote className="text-xl italic text-text-primary border-l-4 border-glow-purple pl-6">
+              <blockquote
+                className="text-xl italic text-text-primary border-l-4 pl-6"
+                style={{ borderLeftColor: "var(--theme-heading-accent)" }}
+              >
                 "Your data belongs to you."
                 <footer className="text-text-secondary text-base mt-2 not-italic">
                   - The Freed Manifesto

@@ -11,6 +11,7 @@ import {
 import {
   DEFAULT_THEME_ID,
   THEME_DEFINITIONS,
+  getThemeCssVariables,
   getThemeDefinition,
   resolveThemeId,
   type ThemeId,
@@ -34,8 +35,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = themeId;
-    document.documentElement.style.colorScheme = getThemeDefinition(themeId).surface;
+    const root = document.documentElement;
+    root.dataset.theme = themeId;
+    root.style.colorScheme = getThemeDefinition(themeId).surface;
+    const cssVariables = getThemeCssVariables(themeId);
+    for (const [name, value] of Object.entries(cssVariables)) {
+      root.style.setProperty(name, value);
+    }
     window.localStorage.setItem(THEME_STORAGE_KEY, themeId);
   }, [themeId]);
 

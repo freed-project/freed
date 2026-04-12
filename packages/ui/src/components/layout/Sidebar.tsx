@@ -9,6 +9,7 @@ import { useDebugStore } from "../../lib/debug-store.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
 import { TOP_SOURCE_ITEMS, type SourceNavigationItem } from "../../lib/source-navigation.js";
+import { SearchJumpField } from "./SearchJumpField.js";
 
 const compactNumberFormatter = new Intl.NumberFormat(undefined, {
   notation: "compact",
@@ -67,16 +68,16 @@ function SidebarSection({
     <div className="shrink-0 mb-2">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center px-3 py-1.5 rounded-lg border border-transparent group hover:bg-white/5 transition-colors"
+        className="w-full flex items-center px-3 py-1.5 rounded-lg border border-transparent group hover:bg-[color:var(--theme-bg-muted)] transition-colors"
       >
-        <span className="text-xs font-semibold text-[#71717a] uppercase tracking-wider flex-1 text-left leading-5">
+        <span className="text-xs font-semibold text-[color:var(--theme-text-muted)] uppercase tracking-wider flex-1 text-left leading-5">
           {title}
         </span>
         {!open && count !== undefined && count > 0 && (
-          <span className="text-[10px] tabular-nums text-[#52525b] mr-1.5">{count}</span>
+          <span className="text-[10px] tabular-nums text-[color:var(--theme-text-soft)] mr-1.5">{count}</span>
         )}
         <svg
-          className={`w-3 h-3 text-[#52525b] transition-transform shrink-0 ${open ? "rotate-90" : ""}`}
+          className={`w-3 h-3 text-[color:var(--theme-text-soft)] transition-transform shrink-0 ${open ? "rotate-90" : ""}`}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -101,11 +102,11 @@ function formatLastSync(lastFetched?: number): string {
 }
 
 function syncDotClass(lastFetched?: number): string {
-  if (!lastFetched) return "bg-[#52525b]";
+  if (!lastFetched) return "bg-[rgb(var(--theme-shell-rgb)/0.32)]";
   const diff = Date.now() - lastFetched;
-  if (diff < 60 * 60_000) return "bg-emerald-500";
-  if (diff < 24 * 60 * 60_000) return "bg-amber-500";
-  return "bg-red-500";
+  if (diff < 60 * 60_000) return "bg-[rgb(var(--theme-feedback-success-rgb)/0.92)]";
+  if (diff < 24 * 60 * 60_000) return "bg-[rgb(var(--theme-feedback-warning-rgb)/0.92)]";
+  return "bg-[rgb(var(--theme-feedback-danger-rgb)/0.92)]";
 }
 
 function syncStatusLabel(lastFetched?: number): string {
@@ -210,8 +211,8 @@ function FeedContextMenu({
       <div className="theme-dialog-divider border-b px-3 py-2.5">
         <div className="flex items-center gap-2">
           <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${syncDotClass(feed.lastFetched)}`} />
-          <span className="text-[11px] text-[#71717a]">{syncStatusLabel(feed.lastFetched)}</span>
-          <span className="text-[11px] text-[#52525b] ml-auto">{formatLastSync(feed.lastFetched)}</span>
+          <span className="text-[11px] text-[color:var(--theme-text-muted)]">{syncStatusLabel(feed.lastFetched)}</span>
+          <span className="ml-auto text-[11px] text-[color:var(--theme-text-soft)]">{formatLastSync(feed.lastFetched)}</span>
         </div>
       </div>
 
@@ -231,13 +232,13 @@ function FeedContextMenu({
                 }
               }}
               onBlur={handleRenameSubmit}
-              className="w-full bg-[#222] border border-[#8b5cf6]/50 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-[#8b5cf6] placeholder-[#52525b]"
+              className="theme-input w-full rounded-lg px-2.5 py-1.5 text-xs outline-none"
             />
           </div>
         ) : (
           <button
             onClick={() => setRenaming(true)}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-colors text-left"
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-colors text-left"
           >
             <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -247,7 +248,7 @@ function FeedContextMenu({
         )}
         <button
           onClick={onUnsubscribe}
-          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors text-left"
+          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[rgb(var(--theme-feedback-danger-rgb))] hover:bg-[rgb(var(--theme-feedback-danger-rgb)/0.1)] hover:text-[rgb(var(--theme-feedback-danger-rgb))] transition-colors text-left"
         >
           <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 4.411m0 0L21 21" />
@@ -300,15 +301,15 @@ function SourceContextMenu({
       onClose={onClose}
       testId={`source-context-menu-${sourceKey}`}
     >
-      <div className="px-3 py-2.5 border-b border-[rgba(255,255,255,0.07)]">
+      <div className="theme-dialog-divider border-b px-3 py-2.5">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-medium text-[#d4d4d8] truncate">{sourceLabel}</span>
-          <span className="text-[11px] text-[#52525b] ml-auto">{totalLabel}</span>
+          <span className="truncate text-[11px] font-medium text-[color:var(--theme-text-primary)]">{sourceLabel}</span>
+          <span className="ml-auto text-[11px] text-[color:var(--theme-text-soft)]">{totalLabel}</span>
         </div>
       </div>
 
       {status ? (
-        <div className="px-3 py-2.5 border-b border-[rgba(255,255,255,0.07)]">
+        <div className="theme-dialog-divider border-b px-3 py-2.5">
           <div className="flex items-center gap-2">
             <ProviderStatusIndicator
               tone={status.tone}
@@ -316,12 +317,12 @@ function SourceContextMenu({
               label={status.label}
               size="xs"
             />
-            <span className="text-xs font-medium text-[#d4d4d8]">
+            <span className="text-xs font-medium text-[color:var(--theme-text-primary)]">
               {status.syncing && status.tone === "healthy" ? "Syncing" : status.label}
             </span>
           </div>
           {status.detail ? (
-            <p className="mt-1.5 text-[11px] leading-4 text-[#8a8a93]">
+            <p className="mt-1.5 text-[11px] leading-4 text-[color:var(--theme-text-muted)]">
               {status.detail}
             </p>
           ) : null}
@@ -339,8 +340,8 @@ function SourceContextMenu({
             data-testid={`source-menu-sync-${sourceKey}`}
             className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors text-left ${
               syncInitiated
-                ? "bg-[#8b5cf6]/20 text-[#c4b5fd]"
-                : "text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                ? "bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-accent-secondary)]"
+                : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
             }`}
           >
             <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -357,7 +358,7 @@ function SourceContextMenu({
               onClose();
             }}
             data-testid={`source-menu-settings-${sourceKey}`}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-colors text-left"
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-colors text-left"
           >
             <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.25 3.75h1.5a1.5 1.5 0 011.5 1.5v.621a1.5 1.5 0 001.06 1.436l.587.196a1.5 1.5 0 001.63-.367l.44-.44a1.5 1.5 0 012.122 0l1.06 1.06a1.5 1.5 0 010 2.121l-.44.44a1.5 1.5 0 00-.366 1.63l.195.588a1.5 1.5 0 001.437 1.06h.62a1.5 1.5 0 011.5 1.5v1.5a1.5 1.5 0 01-1.5 1.5h-.62a1.5 1.5 0 00-1.437 1.06l-.195.587a1.5 1.5 0 00.366 1.63l.44.44a1.5 1.5 0 010 2.122l-1.06 1.06a1.5 1.5 0 01-2.121 0l-.44-.44a1.5 1.5 0 00-1.63-.366l-.588.195a1.5 1.5 0 00-1.06 1.437v.62a1.5 1.5 0 01-1.5 1.5h-1.5a1.5 1.5 0 01-1.5-1.5v-.62a1.5 1.5 0 00-1.06-1.437l-.587-.195a1.5 1.5 0 00-1.63.366l-.44.44a1.5 1.5 0 01-2.122 0l-1.06-1.06a1.5 1.5 0 010-2.121l.44-.44a1.5 1.5 0 00.366-1.63l-.195-.588A1.5 1.5 0 005.871 18h-.62a1.5 1.5 0 01-1.5-1.5V15a1.5 1.5 0 011.5-1.5h.62a1.5 1.5 0 001.437-1.06l.195-.587a1.5 1.5 0 00-.366-1.63l-.44-.44a1.5 1.5 0 010-2.122l1.06-1.06a1.5 1.5 0 012.121 0l.44.44a1.5 1.5 0 001.63.367l.588-.196a1.5 1.5 0 001.06-1.436V5.25a1.5 1.5 0 011.5-1.5z" />
@@ -538,6 +539,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     const startIndex = rssFeedPage * FEEDS_PAGE_SIZE;
     return visibleFeedList.slice(startIndex, startIndex + FEEDS_PAGE_SIZE);
   }, [rssFeedPage, visibleFeedList]);
+  const activeFeedVisibleInResults = !!(
+    activeFilter.feedUrl &&
+    visibleFeedList.some((feed) => feed.url === activeFilter.feedUrl)
+  );
+  const previousActiveFeedUrlRef = useRef<string | undefined>(undefined);
 
   const showFeed = useCallback((filter: FilterOptions) => {
     setActiveView("feed");
@@ -557,7 +563,9 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const isTopSourceActive = (source: SourceNavigationItem) => {
     if (!isFeedView) return false;
-    if (source.id === "rss" && activeFilter.platform === "rss") return true;
+    if (source.id === "rss" && activeFilter.platform === "rss") {
+      return !activeFilter.feedUrl;
+    }
     if (activeFilter.feedUrl) return false;
     if (activeFilter.archivedOnly) return false;
     if (activeFilter.savedOnly) return false;
@@ -622,14 +630,37 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   }, [rssFeedPage, totalFeedPages]);
 
   useEffect(() => {
+    if (activeFilter.feedUrl === previousActiveFeedUrlRef.current) return;
+    previousActiveFeedUrlRef.current = activeFilter.feedUrl;
     if (!activeFilter.feedUrl || visibleFeedList.length === 0) return;
     const index = visibleFeedList.findIndex((feed) => feed.url === activeFilter.feedUrl);
     if (index === -1) return;
-    const nextPage = Math.floor(index / FEEDS_PAGE_SIZE);
-    if (nextPage !== rssFeedPage) {
-      setRssFeedPage(nextPage);
+    setRssFeedPage(Math.floor(index / FEEDS_PAGE_SIZE));
+  }, [activeFilter.feedUrl, visibleFeedList]);
+
+  useEffect(() => {
+    if (activeFilter.platform !== "rss" || !activeFilter.feedUrl) return;
+    if (trimmedSearchQuery.length === 0) return;
+    if (activeFeedVisibleInResults) return;
+    setFilter({ platform: "rss" });
+  }, [
+    activeFeedVisibleInResults,
+    activeFilter.feedUrl,
+    activeFilter.platform,
+    setFilter,
+    trimmedSearchQuery,
+  ]);
+
+  const handleFeedPageChange = useCallback((direction: "prev" | "next") => {
+    if (activeFilter.feedUrl) {
+      setFilter({ platform: "rss" });
     }
-  }, [activeFilter.feedUrl, rssFeedPage, visibleFeedList]);
+    setRssFeedPage((page) =>
+      direction === "prev"
+        ? Math.max(0, page - 1)
+        : Math.min(totalFeedPages - 1, page + 1),
+    );
+  }, [activeFilter.feedUrl, setFilter, totalFeedPages]);
 
   return (
     <>
@@ -670,10 +701,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           className="flex-1 min-h-0 flex flex-col px-4 pt-4 overflow-y-auto minimal-scroll"
           style={{ paddingBottom: 'calc(1rem + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))' }}
         >
-          {/* Sources */}
-          <SidebarSection title="Sources">
-            <ul className="space-y-1">
-              {[allSource].map((source) => (
+          <SearchJumpField />
+
+          <ul className="space-y-1">
+            {[allSource].map((source) => (
                 <li
                   key={source.id ?? "all"}
                   className={`group/source flex items-stretch gap-2 rounded-lg border transition-all ${
@@ -732,7 +763,117 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   </div>
                 </li>
               ))}
-              {providerSourceItems.map((source) => {
+            <li>
+              <button
+                onClick={() => showFeed({ savedOnly: true })}
+                className={`
+                  w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
+                  text-left text-sm transition-all border
+                  ${
+                    isFeedView && activeFilter.savedOnly
+                      ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
+                      : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+                  }
+                `}
+              >
+                <span className="w-5 flex items-center justify-center"><BookmarkIcon /></span>
+                <span className="flex-1">Saved</span>
+                {savedCount > 0 && (
+                  <span className="text-[10px] tabular-nums text-[color:var(--theme-text-soft)]">{fmt(savedCount)}</span>
+                )}
+              </button>
+            </li>
+            <li>
+              <button
+                onClick={() => showFeed({ archivedOnly: true })}
+                className={`
+                  w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
+                  text-left text-sm transition-all border
+                  ${
+                    isFeedView && activeFilter.archivedOnly
+                      ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
+                      : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
+                  }
+                `}
+              >
+                <span className="w-5 flex items-center justify-center"><ArchiveIcon /></span>
+                <span className="flex-1">Archived</span>
+                {archivedCount > 0 && (
+                  <span className="text-[10px] tabular-nums text-[color:var(--theme-text-soft)]">{fmt(archivedCount)}</span>
+                )}
+              </button>
+            </li>
+            <li>
+              <button
+                onClick={() => {
+                  setActiveView("friends");
+                  setSelectedFriend(null);
+                  setSelectedItem(null);
+                  onClose();
+                }}
+                data-testid="source-row-friends"
+                className={`
+                  w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
+                  text-left text-sm transition-all border
+                  ${
+                    activeView === "friends"
+                      ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
+                      : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+                  }
+                `}
+              >
+                <span className="w-5 flex items-center justify-center"><UsersIcon /></span>
+                <span className="flex-1">Friends</span>
+                {pendingMatchCount > 0 && (
+                  <span className="shrink-0 rounded-full bg-[rgb(var(--theme-accent-secondary-rgb)/0.22)] px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-[var(--theme-text-primary)]">
+                    {fmt(pendingMatchCount)}
+                  </span>
+                )}
+                {friendCount > 0 && (
+                  <span
+                    className={`shrink-0 text-[10px] tabular-nums ${
+                      activeView === "friends" ? "text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"
+                    }`}
+                  >
+                    {fmt(friendCount)}
+                  </span>
+                )}
+              </button>
+            </li>
+            <li>
+              <button
+                onClick={() => {
+                  setActiveView("map");
+                  setSelectedFriend(null);
+                  setSelectedItem(null);
+                  setSearchQuery("");
+                  onClose();
+                }}
+                data-testid="source-row-map"
+                className={`
+                  w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
+                  text-left text-sm transition-all border
+                  ${
+                    activeView === "map"
+                      ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
+                      : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+                  }
+                `}
+              >
+                <span className="w-5 flex items-center justify-center"><MapPinIcon /></span>
+                <span className="flex-1">Map</span>
+                {mapFriendCount > 0 && (
+                  <span
+                    className={`shrink-0 text-[10px] tabular-nums ${
+                      activeView === "map" ? "text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"
+                    }`}
+                  >
+                    {fmt(mapFriendCount)}
+                  </span>
+                )}
+              </button>
+            </li>
+            {providerSourceItems.map((source) => {
                 const isRssSource = source.id === "rss" && feedList.length > 0;
                 const sourceStatus = getSourceStatus?.(source.id) ?? null;
 
@@ -742,54 +883,55 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                       <div
                         className={`group/source rounded-lg border transition-all ${
                           isTopSourceActive(source)
-                            ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
-                            : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                            ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
+                            : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
                         }`}
                       >
                         <div className="flex items-stretch gap-2">
-                          <button
-                            onClick={() => handleSourceClick(source)}
-                            data-testid={`source-row-${sourceKey(source)}`}
-                            className={`
-                              flex-1 flex items-center gap-3 pl-3 py-1.5 min-w-0
-                              text-left text-sm transition-all
-                              ${
-                                isTopSourceActive(source)
-                                  ? "text-white"
-                                  : "text-[#a1a1aa] group-hover/source:text-white"
-                              }
-                            `}
-                          >
-                            <span className="w-5 flex items-center justify-center">{source.icon}</span>
-                            <span className="min-w-0 flex-1 flex items-center gap-1.5 truncate">
-                              <span className="truncate">{source.label}</span>
-                              {sourceStatus ? (
-                                <ProviderStatusIndicator
-                                  tone={sourceStatus.tone}
-                                  syncing={sourceStatus.syncing}
-                                  label={sourceStatus.label}
-                                  size="xxs"
-                                  testId={`source-status-${sourceKey(source)}`}
-                                />
-                              ) : null}
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setRssFeedsOpen((value) => !value)}
-                            className="shrink-0 self-center p-1 rounded text-[#52525b] hover:text-[#a1a1aa] transition-colors"
-                            aria-label={rssFeedsOpen ? "Collapse feeds" : "Expand feeds"}
-                            aria-expanded={rssFeedsOpen}
-                          >
-                            <svg
-                              className={`w-3 h-3 transition-transform ${rssFeedsOpen ? "rotate-90" : ""}`}
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
+                          <div className="flex min-w-0 items-center gap-1.5 pl-3 py-1.5">
+                            <button
+                              onClick={() => handleSourceClick(source)}
+                              data-testid={`source-row-${sourceKey(source)}`}
+                              className={`
+                                flex min-w-0 items-center gap-3 text-left text-sm transition-all
+                                ${
+                                  isTopSourceActive(source)
+                                    ? "text-[color:var(--theme-text-primary)]"
+                                    : "text-[color:var(--theme-text-secondary)] group-hover/source:text-[color:var(--theme-text-primary)]"
+                                }
+                              `}
                             >
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </button>
+                              <span className="w-5 flex items-center justify-center">{source.icon}</span>
+                              <span className="min-w-0 flex items-center gap-1.5">
+                                <span className="truncate">{source.label}</span>
+                                {sourceStatus ? (
+                                  <ProviderStatusIndicator
+                                    tone={sourceStatus.tone}
+                                    syncing={sourceStatus.syncing}
+                                    label={sourceStatus.label}
+                                    size="xxs"
+                                    testId={`source-status-${sourceKey(source)}`}
+                                  />
+                                ) : null}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRssFeedsOpen((value) => !value)}
+                              className="shrink-0 rounded p-1 text-[color:var(--theme-text-soft)] transition-colors hover:text-[color:var(--theme-text-secondary)]"
+                              aria-label={rssFeedsOpen ? "Collapse feeds" : "Expand feeds"}
+                              aria-expanded={rssFeedsOpen}
+                            >
+                              <svg
+                                className={`h-3 w-3 transition-transform ${rssFeedsOpen ? "rotate-90" : ""}`}
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                          </div>
                           <div className="shrink-0 flex items-center pr-2">
                             <div className="relative ml-1.5 h-6 w-[54px] shrink-0">
                               {sourceTotalCount(source) > 0 && (
@@ -801,11 +943,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                       : "opacity-100 group-hover/source:pointer-events-none group-hover/source:translate-x-1 group-hover/source:opacity-0"
                                   }`}
                                 >
-                                  <span className={sourceUnreadCount(source) > 0 ? "text-[#8b5cf6] font-medium" : "text-[#52525b]"}>
+                                  <span className={sourceUnreadCount(source) > 0 ? "font-medium text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"}>
                                     {fmt(sourceUnreadCount(source))}
                                   </span>
-                                  <span className="text-[#3f3f46]">/</span>
-                                  <span className="text-[#52525b]">{fmt(sourceTotalCount(source))}</span>
+                                  <span className="text-[var(--theme-text-soft)]">/</span>
+                                  <span className="text-[var(--theme-text-soft)]">{fmt(sourceTotalCount(source))}</span>
                                 </span>
                               )}
                               {canShowSourceMenu(source) ? (
@@ -830,10 +972,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                       setSourceMenuAnchorElement(e.currentTarget);
                                     }
                                   }}
-                                  className={`absolute inset-y-0 right-0 flex items-center p-1 rounded-md transition-all duration-200 ease-in-out hover:text-white hover:bg-white/10 ${
+                                  className={`absolute inset-y-0 right-0 flex items-center p-1 rounded-md transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)] ${
                                     openMenuSourceKey === sourceKey(source)
-                                      ? "translate-x-0 bg-white/10 text-white opacity-100"
-                                      : "pointer-events-none translate-x-[-4px] text-[#71717a] opacity-0 group-hover/source:pointer-events-auto group-hover/source:translate-x-0 group-hover/source:opacity-100"
+                                      ? "translate-x-0 bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-primary)] opacity-100"
+                                      : "pointer-events-none translate-x-[-4px] text-[color:var(--theme-text-muted)] opacity-0 group-hover/source:pointer-events-auto group-hover/source:translate-x-0 group-hover/source:opacity-100"
                                   }`}
                                 >
                                   <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
@@ -846,7 +988,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                         </div>
 
                         {rssFeedsOpen && (
-                          <div className="mt-1 ml-8 border-l border-[rgba(255,255,255,0.06)] pl-2">
+                          <div className="mt-1 ml-8 border-l border-[color:var(--theme-border-subtle)] pl-2">
                             {visibleFeedList.length > 0 ? (
                               <>
                                 <ul className="space-y-0.5">
@@ -861,8 +1003,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                         key={feed.url}
                                         className={`group/feed flex items-stretch gap-2 rounded-lg border transition-all ${
                                           isActive
-                                            ? "bg-[#8b5cf6]/20 border-[#8b5cf6]/30 text-white"
-                                            : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                                            ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
+                                            : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
                                         }`}
                                       >
                                         <button
@@ -878,7 +1020,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                               className="w-4 h-4 rounded-sm shrink-0 object-cover"
                                             />
                                           ) : (
-                                            <RssIcon className="w-4 h-4 shrink-0 text-[#52525b]" />
+                                            <RssIcon className="w-4 h-4 shrink-0 text-[color:var(--theme-text-soft)]" />
                                           )}
                                           <span className="flex-1 truncate text-xs">{feed.title}</span>
                                         </button>
@@ -886,11 +1028,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                         <div className="shrink-0 flex items-center pr-2">
                                           {total > 0 && (
                                             <span className={`${menuOpen ? "hidden" : "flex group-hover/feed:hidden"} items-center gap-0.5 text-[10px] tabular-nums`}>
-                                              <span className={unread > 0 ? "text-[#8b5cf6] font-medium" : "text-[#52525b]"}>
+                                              <span className={unread > 0 ? "font-medium text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"}>
                                                 {fmt(unread)}
                                               </span>
-                                              <span className="text-[#3f3f46]">/</span>
-                                              <span className="text-[#52525b]">{fmt(total)}</span>
+                                              <span className="text-[var(--theme-text-soft)]">/</span>
+                                              <span className="text-[var(--theme-text-soft)]">{fmt(total)}</span>
                                             </span>
                                           )}
                                           <button
@@ -913,7 +1055,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                                 setMenuAnchorElement(e.currentTarget);
                                               }
                                             }}
-                                            className={`${menuOpen ? "flex bg-white/10 text-white" : "hidden group-hover/feed:flex text-[#71717a]"} items-center p-1 rounded-md hover:text-white hover:bg-white/10 transition-colors`}
+                                            className={`${menuOpen ? "flex bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-primary)]" : "hidden group-hover/feed:flex text-[color:var(--theme-text-muted)]"} items-center rounded-md p-1 transition-colors hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]`}
                                           >
                                             <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                                               <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
@@ -929,24 +1071,24 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                   <div className="mt-2 flex items-center justify-between gap-2 px-1">
                                     <button
                                       type="button"
-                                      onClick={() => setRssFeedPage((page) => Math.max(0, page - 1))}
+                                      onClick={() => handleFeedPageChange("prev")}
                                       disabled={rssFeedPage === 0}
                                       aria-label="Previous feeds page"
-                                      className="rounded-md px-2 py-1 text-[11px] font-medium text-[#a1a1aa] hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                      className="rounded-md px-2 py-1 text-[11px] font-medium text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
                                     >
                                       &lt;
                                     </button>
-                                    <span className="text-[10px] text-[#52525b]">
+                                    <span className="text-[10px] text-[color:var(--theme-text-soft)]">
                                       {(rssFeedPage * FEEDS_PAGE_SIZE + 1).toLocaleString()} to{" "}
                                       {Math.min((rssFeedPage + 1) * FEEDS_PAGE_SIZE, visibleFeedList.length).toLocaleString()} of{" "}
                                       {visibleFeedList.length.toLocaleString()}
                                     </span>
                                     <button
                                       type="button"
-                                      onClick={() => setRssFeedPage((page) => Math.min(totalFeedPages - 1, page + 1))}
+                                      onClick={() => handleFeedPageChange("next")}
                                       disabled={rssFeedPage >= totalFeedPages - 1}
                                       aria-label="Next feeds page"
-                                      className="rounded-md px-2 py-1 text-[11px] font-medium text-[#a1a1aa] hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                      className="rounded-md px-2 py-1 text-[11px] font-medium text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
                                     >
                                       &gt;
                                     </button>
@@ -954,7 +1096,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                 )}
                               </>
                             ) : (
-                              <p className="px-3 py-2 text-[11px] text-[#71717a]">
+                              <p className="px-3 py-2 text-[11px] text-[color:var(--theme-text-muted)]">
                                 No feeds match &ldquo;{searchQuery.trim()}&rdquo;.
                               </p>
                             )}
@@ -970,8 +1112,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     key={source.id ?? "all"}
                     className={`group/source flex items-stretch gap-2 rounded-lg border transition-all ${
                       isTopSourceActive(source)
-                        ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
-                        : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+                        ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
+                        : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
                     }`}
                   >
                     <button
@@ -982,8 +1124,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                         text-left text-sm transition-all
                         ${
                           isTopSourceActive(source)
-                            ? "text-white"
-                            : "text-[#a1a1aa] group-hover/source:text-white"
+                            ? "text-[color:var(--theme-text-primary)]"
+                            : "text-[color:var(--theme-text-secondary)] group-hover/source:text-[color:var(--theme-text-primary)]"
                         }
                       `}
                     >
@@ -1013,11 +1155,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                 : "opacity-100 group-hover/source:pointer-events-none group-hover/source:translate-x-1 group-hover/source:opacity-0"
                             }`}
                           >
-                            <span className={sourceUnreadCount(source) > 0 ? "text-[#8b5cf6] font-medium" : "text-[#52525b]"}>
+                            <span className={sourceUnreadCount(source) > 0 ? "font-medium text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"}>
                               {fmt(sourceUnreadCount(source))}
                             </span>
-                            <span className="text-[#3f3f46]">/</span>
-                            <span className="text-[#52525b]">{fmt(sourceTotalCount(source))}</span>
+                            <span className="text-[var(--theme-text-soft)]">/</span>
+                            <span className="text-[var(--theme-text-soft)]">{fmt(sourceTotalCount(source))}</span>
                           </span>
                         )}
                         {canShowSourceMenu(source) ? (
@@ -1042,10 +1184,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                 setSourceMenuAnchorElement(e.currentTarget);
                               }
                             }}
-                            className={`absolute inset-y-0 right-0 flex items-center p-1 rounded-md transition-all duration-200 ease-in-out hover:text-white hover:bg-white/10 ${
+                            className={`absolute inset-y-0 right-0 flex items-center p-1 rounded-md transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)] ${
                               openMenuSourceKey === sourceKey(source)
-                                ? "translate-x-0 bg-white/10 text-white opacity-100"
-                                : "pointer-events-none translate-x-[-4px] text-[#71717a] opacity-0 group-hover/source:pointer-events-auto group-hover/source:translate-x-0 group-hover/source:opacity-100"
+                                ? "translate-x-0 bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-primary)] opacity-100"
+                                : "pointer-events-none translate-x-[-4px] text-[color:var(--theme-text-muted)] opacity-0 group-hover/source:pointer-events-auto group-hover/source:translate-x-0 group-hover/source:opacity-100"
                             }`}
                           >
                             <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
@@ -1058,126 +1200,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   </li>
                 );
               })}
-              {/* Friends — active nav item */}
-              <li>
-                <button
-                  onClick={() => {
-                    setActiveView("friends");
-                    setSelectedFriend(null);
-                    setSelectedItem(null);
-                    onClose();
-                  }}
-                  data-testid="source-row-friends"
-                  className={`
-                    w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
-                    text-left text-sm transition-all border
-                    ${
-                      activeView === "friends"
-                        ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
-                        : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-                    }
-                  `}
-                >
-                  <span className="w-5 flex items-center justify-center"><UsersIcon /></span>
-                  <span className="flex-1">Friends</span>
-                  {pendingMatchCount > 0 && (
-                    <span className="shrink-0 rounded-full bg-[rgb(var(--theme-accent-secondary-rgb)/0.22)] px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-[var(--theme-text-primary)]">
-                      {fmt(pendingMatchCount)}
-                    </span>
-                  )}
-                  {friendCount > 0 && (
-                    <span
-                      className={`shrink-0 text-[10px] tabular-nums ${
-                        activeView === "friends" ? "text-[#c4b5fd]" : "text-[#52525b]"
-                      }`}
-                    >
-                      {fmt(friendCount)}
-                    </span>
-                  )}
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => {
-                    setActiveView("map");
-                    setSelectedFriend(null);
-                    setSelectedItem(null);
-                    setSearchQuery("");
-                    onClose();
-                  }}
-                  data-testid="source-row-map"
-                  className={`
-                    w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
-                    text-left text-sm transition-all border
-                    ${
-                      activeView === "map"
-                        ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
-                        : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-                    }
-                  `}
-                >
-                  <span className="w-5 flex items-center justify-center"><MapPinIcon /></span>
-                  <span className="flex-1">Map</span>
-                  {mapFriendCount > 0 && (
-                    <span
-                      className={`shrink-0 text-[10px] tabular-nums ${
-                        activeView === "map" ? "text-[#c4b5fd]" : "text-[#52525b]"
-                      }`}
-                    >
-                      {fmt(mapFriendCount)}
-                    </span>
-                  )}
-                </button>
-              </li>
-            </ul>
-          </SidebarSection>
-
-          {/* Library */}
-          <SidebarSection title="Library">
-            <ul className="space-y-1">
-              <li>
-                <button
-                  onClick={() => showFeed({ savedOnly: true })}
-                  className={`
-                    w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
-                    text-left text-sm transition-all border
-                    ${
-                      isFeedView && activeFilter.savedOnly
-                        ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
-                        : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-                    }
-                  `}
-                >
-                  <span className="w-5 flex items-center justify-center"><BookmarkIcon /></span>
-                  <span className="flex-1">Saved</span>
-                  {savedCount > 0 && (
-                    <span className="text-[10px] tabular-nums text-[#52525b]">{fmt(savedCount)}</span>
-                  )}
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => showFeed({ archivedOnly: true })}
-                  className={`
-                    w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
-                    text-left text-sm transition-all border
-                    ${
-                      isFeedView && activeFilter.archivedOnly
-                        ? "bg-[#8b5cf6]/20 text-white border-[#8b5cf6]/30"
-                        : "border-transparent text-[#a1a1aa] hover:bg-white/5 hover:text-white"
-                    }
-                  `}
-                >
-                  <span className="w-5 flex items-center justify-center"><ArchiveIcon /></span>
-                  <span className="flex-1">Archived</span>
-                  {archivedCount > 0 && (
-                    <span className="text-[10px] tabular-nums text-[#52525b]">{fmt(archivedCount)}</span>
-                  )}
-                </button>
-              </li>
-            </ul>
-
-          </SidebarSection>
+          </ul>
 
           {/* Tags */}
           {topLevelTags.length > 0 && (
@@ -1220,7 +1243,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           <div className="mt-auto shrink-0">
             <button
               onClick={openSettings}
-              className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-left text-sm text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-all"
+              className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-left text-sm text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all"
             >
               <span className="w-5 text-center">
                 <svg className="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1235,7 +1258,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
         {/* Resize handle — desktop only */}
         <div
-          className="hidden md:block absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-[#8b5cf6]/30 active:bg-[#8b5cf6]/50 transition-colors z-10"
+          className="hidden md:block absolute top-0 right-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.3)] active:bg-[rgb(var(--theme-accent-secondary-rgb)/0.5)]"
           onMouseDown={handleDragStart}
         />
       </aside>
@@ -1334,11 +1357,11 @@ function TagTreeNode({
           onClick={onClick}
           className={`flex-1 flex items-center gap-2 pl-3 pr-1 py-1.5 rounded-lg text-xs transition-all text-left ${
             active
-              ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
-              : "text-[#a1a1aa] hover:bg-white/5 hover:text-white"
+              ? "bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-accent-secondary)]"
+              : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
           }`}
         >
-          <svg className="w-3 h-3 shrink-0 text-[#52525b]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-3 h-3 shrink-0 text-[color:var(--theme-text-soft)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
           </svg>
           <span className="truncate">{label}</span>
@@ -1346,7 +1369,7 @@ function TagTreeNode({
         {hasChildren && (
           <button
             onClick={() => setOpen((v) => !v)}
-            className="p-1 rounded text-[#52525b] hover:text-[#a1a1aa] transition-colors"
+            className="rounded p-1 text-[color:var(--theme-text-soft)] transition-colors hover:text-[color:var(--theme-text-secondary)]"
             aria-label={open ? "Collapse" : "Expand"}
           >
             <svg
@@ -1361,7 +1384,7 @@ function TagTreeNode({
         )}
       </div>
       {hasChildren && open && (
-        <ul className="ml-4 mt-0.5 space-y-0.5 border-l border-[rgba(255,255,255,0.06)] pl-2">
+        <ul className="ml-4 mt-0.5 space-y-0.5 border-l border-[color:var(--theme-border-subtle)] pl-2">
           {children}
         </ul>
       )}

@@ -288,7 +288,7 @@ function ManagePane() {
                 type="checkbox"
                 checked={includeItems}
                 onChange={(e) => setIncludeItems(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-[var(--theme-border-quiet)] bg-[var(--theme-bg-input)] text-red-500 focus:ring-red-500 focus:ring-offset-0"
+                className="mt-0.5 h-4 w-4 rounded border-[var(--theme-border-quiet)] bg-[var(--theme-bg-input)] text-[var(--theme-control-accent)] focus:ring-[color:var(--theme-focus-ring)] focus:ring-offset-0"
               />
               <div>
                 <p className="text-sm text-[var(--theme-text-secondary)] transition-colors group-hover:text-[var(--theme-text-primary)]">
@@ -529,7 +529,7 @@ function ImportPane() {
                   </span>
                 )}
                 {isExisting && (
-                  <span className="flex-shrink-0 text-[10px] px-2 py-0.5 bg-green-500/10 text-green-400 rounded-full">
+                  <span className="theme-status-pill-success flex-shrink-0 rounded-full px-2 py-0.5 text-[10px]">
                     subscribed
                   </span>
                 )}
@@ -577,8 +577,8 @@ function ImportPane() {
     return (
       <div className="flex flex-col gap-4 py-2">
         <div className="flex justify-center">
-          <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center">
-            <svg className="w-6 h-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="theme-icon-well-success flex h-12 w-12 items-center justify-center rounded-full">
+            <svg className="theme-icon-success h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
@@ -587,7 +587,7 @@ function ImportPane() {
           <p className="text-lg font-semibold text-[var(--theme-text-primary)]">Import complete</p>
           <div className="flex justify-center gap-4 mt-3">
             <div className="text-center">
-              <p className="text-lg font-bold text-green-400">{progress.added.toLocaleString()}</p>
+              <p className="theme-feedback-text-success text-lg font-bold">{progress.added.toLocaleString()}</p>
                 <p className="text-xs text-[var(--theme-text-muted)]">added</p>
             </div>
             {progress.skipped > 0 && (
@@ -598,15 +598,15 @@ function ImportPane() {
             )}
             {progress.failed.length > 0 && (
               <div className="text-center">
-                <p className="text-lg font-bold text-red-400">{progress.failed.length.toLocaleString()}</p>
+                <p className="theme-feedback-text-danger text-lg font-bold">{progress.failed.length.toLocaleString()}</p>
                 <p className="text-xs text-[var(--theme-text-muted)]">failed</p>
               </div>
             )}
           </div>
         </div>
         {progress.failed.length > 0 && (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3">
-            <p className="text-xs text-red-400 font-medium mb-2">Failed to subscribe:</p>
+          <div className="theme-feedback-panel-danger rounded-xl p-3">
+            <p className="theme-feedback-text-danger mb-2 text-xs font-medium">Failed to subscribe:</p>
             {progress.failed.map((f: { url: string; error: string }) => (
               <p key={f.url} className="truncate text-xs text-[var(--theme-text-muted)]">
                 {f.url} — {f.error}

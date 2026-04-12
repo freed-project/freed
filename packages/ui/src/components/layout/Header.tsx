@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
 import { Tooltip } from "../Tooltip.js";
@@ -7,17 +7,6 @@ import {
   usePlatform,
   MACOS_TRAFFIC_LIGHT_INSET,
 } from "../../context/PlatformContext.js";
-import { useSettingsStore } from "../../lib/settings-store.js";
-import {
-  BASE_SECTION_METAS,
-  UPDATES_SECTION_META,
-  DANGER_SECTION_META,
-  X_SECTION_META,
-  FB_SECTION_META,
-  IG_SECTION_META,
-  LI_SECTION_META,
-  type SectionMeta,
-} from "../../lib/settings-sections.js";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -25,34 +14,6 @@ interface HeaderProps {
 
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 const dragStyle = { WebkitAppRegion: "drag" } as React.CSSProperties;
-
-// ── Command palette action type ───────────────────────────────────────────────
-// Foundation for a full in-app action launcher. Currently populated with
-// settings navigation actions. Future categories: navigation, feeds, content.
-
-interface CommandAction {
-  id: string;
-  /** Short human-readable label shown in the palette row. */
-  label: string;
-  /** Right-aligned breadcrumb hint, e.g. "Settings". */
-  hint: string;
-  /** Lowercase strings matched against the search query. */
-  keywords: string[];
-  onSelect: () => void;
-}
-
-function buildSettingsActions(
-  sections: readonly SectionMeta[],
-  openTo: (id: string) => void,
-): CommandAction[] {
-  return sections.map((s) => ({
-    id: `settings-${s.id}`,
-    label: s.label,
-    hint: "Settings",
-    keywords: s.keywords,
-    onSelect: () => openTo(s.id),
-  }));
-}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -64,15 +25,7 @@ export function Header({ onMenuClick }: HeaderProps) {
     saveUrl,
     importMarkdown,
     exportMarkdown,
-    checkForUpdates,
-    factoryReset,
-    XSettingsContent,
-    FacebookSettingsContent,
-    InstagramSettingsContent,
-    LinkedInSettingsContent,
   } = usePlatform();
-
-  const openSettingsTo = useSettingsStore((s) => s.openTo);
 
   const canAddRss = !!addRssFeed;
   const canSaveContent = !!(saveUrl || importMarkdown || exportMarkdown);
@@ -88,26 +41,6 @@ export function Header({ onMenuClick }: HeaderProps) {
     (s) => s.archivableCountByPlatform,
   );
   const archivableFeedCounts = useAppStore((s) => s.archivableFeedCounts);
-  const setSearchQuery = useAppStore((s) => s.setSearchQuery);
-
-  // inputValue drives the visible input; searchQuery in the store is debounced
-  // so MiniSearch isn't invoked on every keystroke.
-  const [inputValue, setInputValue] = useState("");
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    debounceRef.current = setTimeout(() => {
-      setSearchQuery(inputValue);
-    }, 150);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [inputValue, setSearchQuery]);
-
-  function clearSearch() {
-    setInputValue("");
-    setSearchQuery("");
-  }
 
   // Derive display count from pre-computed store values — no items iteration.
   // savedOnly and archivedOnly views don't show these actions.
@@ -155,87 +88,6 @@ export function Header({ onMenuClick }: HeaderProps) {
       document.removeEventListener("keydown", handleKey);
     };
   }, [dropdownOpen]);
-
-  // ── Command palette ────────────────────────────────────────────────────────
-
-  const [isFocused, setIsFocused] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(-1);
-
-  // All available command actions. Currently settings navigation only;
-  // future versions will include feed subscription, navigation, and more.
-  const allCommandActions = useMemo((): CommandAction[] => {
-    const sections: SectionMeta[] = [
-      ...BASE_SECTION_METAS,
-      ...(XSettingsContent ? [X_SECTION_META] : []),
-      ...(FacebookSettingsContent ? [FB_SECTION_META] : []),
-      ...(InstagramSettingsContent ? [IG_SECTION_META] : []),
-      ...(LinkedInSettingsContent ? [LI_SECTION_META] : []),
-      ...(checkForUpdates ? [UPDATES_SECTION_META] : []),
-      ...(factoryReset ? [DANGER_SECTION_META] : []),
-    ];
-    return buildSettingsActions(sections, openSettingsTo);
-  }, [
-    checkForUpdates,
-    factoryReset,
-    XSettingsContent,
-    FacebookSettingsContent,
-    InstagramSettingsContent,
-    LinkedInSettingsContent,
-    openSettingsTo,
-  ]);
-
-  const filteredActions = useMemo(() => {
-    const q = inputValue.toLowerCase().trim();
-    if (!q) return allCommandActions;
-    return allCommandActions
-      .filter(
-        (a) =>
-          a.label.toLowerCase().includes(q) ||
-          a.keywords.some((k) => k.includes(q)),
-      )
-      .slice(0, 6);
-  }, [inputValue, allCommandActions]);
-
-  // Reset keyboard selection whenever the filtered list changes.
-  useEffect(() => {
-    setActiveIndex(-1);
-  }, [inputValue]);
-
-  const showPalette = isFocused && filteredActions.length > 0;
-
-  function handleActionSelect(action: CommandAction) {
-    setIsFocused(false);
-    setActiveIndex(-1);
-    action.onSelect();
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Escape") {
-      // First Escape collapses the palette; second clears the query and blurs.
-      if (showPalette) {
-        setIsFocused(false);
-        setActiveIndex(-1);
-      } else {
-        clearSearch();
-        e.currentTarget.blur();
-      }
-      return;
-    }
-
-    if (!showPalette) return;
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setActiveIndex((i) => (i + 1) % filteredActions.length);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActiveIndex((i) => (i <= 0 ? filteredActions.length - 1 : i - 1));
-    } else if (e.key === "Enter" && activeIndex >= 0) {
-      e.preventDefault();
-      const action = filteredActions[activeIndex];
-      if (action) handleActionSelect(action);
-    }
-  }
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -298,129 +150,13 @@ export function Header({ onMenuClick }: HeaderProps) {
             </span>
           </div>
 
-          {/* Search / command bar — fills all remaining center space */}
+          {/* Spacer — search/jump now lives in the sidebar */}
           <div
             className="flex flex-1 items-center justify-center min-w-0 ml-2"
             {...(headerDragRegion
               ? { "data-tauri-drag-region": true, style: dragStyle }
               : {})}
-          >
-            <div
-              className="relative w-full"
-              style={headerDragRegion ? noDrag : undefined}
-            >
-              {/* Search icon */}
-              <svg
-                className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--theme-text-soft)]"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-
-              <input
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onFocus={() => setIsFocused(true)}
-                onBlur={() => {
-                  // Delay so onMouseDown on palette items fires first.
-                  setTimeout(() => setIsFocused(false), 150);
-                }}
-                onKeyDown={handleKeyDown}
-                placeholder="Search or jump to..."
-                aria-label="Search or run a command"
-                aria-expanded={showPalette}
-                aria-haspopup="listbox"
-                className="w-full rounded-lg border border-[var(--theme-border-subtle)] bg-transparent py-1.5 pl-8 pr-7 text-sm text-[var(--theme-text-secondary)] placeholder-transparent transition-colors hover:border-[var(--theme-border-quiet)] hover:bg-[var(--theme-bg-muted)] focus:bg-[var(--theme-bg-muted)] focus:outline-none focus:border-[var(--theme-border-strong)] sm:placeholder:text-[var(--theme-text-soft)]"
-              />
-
-              {/* Clear button — only visible when there's input */}
-              {inputValue && (
-                <button
-                  onClick={clearSearch}
-                  aria-label="Clear search"
-                  className="absolute right-2 top-1/2 rounded p-0.5 transition-colors hover:bg-[var(--theme-bg-muted)]"
-                >
-                  <svg
-                    className="h-3 w-3 text-[var(--theme-text-soft)]"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2.5}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              )}
-
-              {/* Command palette dropdown — desktop only; quick actions aren't useful on mobile */}
-              {showPalette && (
-                <div
-                  role="listbox"
-                  aria-label="Quick actions"
-                  className="absolute left-0 right-0 top-full z-50 mt-1.5 hidden overflow-hidden rounded-xl border border-[var(--theme-border-subtle)] bg-[color-mix(in_oklab,var(--theme-bg-surface)_95%,transparent)] py-1 shadow-2xl shadow-black/50 sm:block"
-                >
-                  {!inputValue && (
-                    <p className="px-3 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--theme-text-soft)]">
-                      Quick actions
-                    </p>
-                  )}
-                  {filteredActions.map((action, i) => (
-                    <button
-                      key={action.id}
-                      role="option"
-                      aria-selected={i === activeIndex}
-                      // preventDefault stops the input from losing focus before onClick fires.
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => handleActionSelect(action)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left transition-colors ${
-                        i === activeIndex
-                          ? "bg-[var(--theme-bg-muted)] text-[var(--theme-text-primary)]"
-                          : "text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-                      }`}
-                    >
-                      <svg
-                        className="h-3.5 w-3.5 shrink-0 text-[var(--theme-text-soft)]"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        aria-hidden="true"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                        />
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={1.5}
-                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                        />
-                      </svg>
-                      <span className="flex-1 truncate">{action.label}</span>
-                      <span className="shrink-0 text-xs text-[var(--theme-text-soft)]">
-                        {action.hint}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          />
 
           {/* Actions */}
           <div
@@ -535,7 +271,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                         className="w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                       >
                         <svg
-                          className="w-4 h-4 shrink-0 text-[var(--theme-media-rss)]"
+                          className="theme-icon-action w-4 h-4 shrink-0"
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
@@ -559,7 +295,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                         className="w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                       >
                         <svg
-                          className="w-4 h-4 shrink-0 text-[var(--theme-accent-secondary)]"
+                          className="theme-icon-action w-4 h-4 shrink-0"
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"

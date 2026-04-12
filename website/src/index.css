@@ -66,9 +66,12 @@ body {
   }
 }
 
-.glass-card-interactive:hover {
-  background: color-mix(in oklab, var(--theme-bg-surface) 94%, transparent);
-  border-color: var(--theme-border-strong);
+.btn-primary:hover {
+  transform: scale(1.05);
+}
+
+html[data-theme="scriptorium"] .btn-primary:hover {
+  transform: scale(1.05);
 }
 
 .gradient-border {
@@ -93,18 +96,5 @@ body {
 }
 
 .bg-gradient-orbs {
-  background:
-    radial-gradient(
-      ellipse 900px 900px at -10% -15%,
-      rgb(var(--theme-accent-secondary-rgb) / 0.17) 0%,
-      rgb(var(--theme-accent-secondary-rgb) / 0.05) 35%,
-      transparent 65%
-    ),
-    radial-gradient(
-      ellipse 800px 800px at 110% 110%,
-      rgb(var(--theme-accent-primary-rgb) / 0.14) 0%,
-      rgb(var(--theme-accent-primary-rgb) / 0.04) 35%,
-      transparent 65%
-    ),
-    linear-gradient(180deg, transparent 0%, rgb(var(--theme-shell-rgb) / 0.08) 100%);
+  background: var(--theme-atmosphere-overlay-background);
 }

@@ -16,22 +16,38 @@ export default function CTA() {
           transition={{ duration: 0.6 }}
           className="relative"
         >
-          {/* Glow background */}
-          <div className="absolute inset-0 bg-gradient-to-r from-glow-blue/20 via-glow-purple/20 to-glow-cyan/20 rounded-3xl blur-xl" />
+          <div
+            className="absolute inset-0 rounded-3xl blur-xl"
+            style={{
+              background:
+                "linear-gradient(135deg, color-mix(in srgb, var(--theme-accent-primary) 14%, transparent), color-mix(in srgb, var(--theme-accent-secondary) 12%, transparent), color-mix(in srgb, var(--theme-accent-tertiary) 10%, transparent))",
+            }}
+          />
 
           <div className="relative glass-card p-8 sm:p-12 md:p-16 text-center overflow-hidden">
-            {/* Decorative elements */}
-            <div className="absolute top-0 left-1/4 w-32 h-32 bg-glow-purple/10 rounded-full blur-3xl" />
-            <div className="absolute bottom-0 right-1/4 w-40 h-40 bg-glow-blue/10 rounded-full blur-3xl" />
+            <div
+              className="absolute top-0 left-1/4 h-32 w-32 rounded-full blur-3xl"
+              style={{
+                background:
+                  "color-mix(in srgb, var(--theme-accent-secondary) 10%, transparent)",
+              }}
+            />
+            <div
+              className="absolute bottom-0 right-1/4 h-40 w-40 rounded-full blur-3xl"
+              style={{
+                background:
+                  "color-mix(in srgb, var(--theme-accent-primary) 10%, transparent)",
+              }}
+            />
 
             <motion.h2
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: 0.2 }}
-              className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 relative z-10"
+              className="theme-display-large text-3xl sm:text-4xl md:text-5xl font-bold mb-4 relative z-10"
             >
-              Ready for <span className="gradient-text">Freed</span>om?
+              Ready for <span className="theme-heading-accent">Freed</span>om?
             </motion.h2>
 
             <motion.p

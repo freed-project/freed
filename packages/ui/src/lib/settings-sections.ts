@@ -34,7 +34,7 @@ export const BASE_SECTION_METAS: readonly SectionMeta[] = [
   {
     id: "appearance",
     label: "Appearance",
-    keywords: ["theme", "appearance", "style", "midas", "neon", "vesper", "ember", "scriptorium", "look"],
+    keywords: ["theme", "appearance", "style", "midas", "neon", "ember", "scriptorium", "look"],
   },
   {
     id: "legal",

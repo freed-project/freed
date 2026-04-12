@@ -46,21 +46,33 @@ const CAPTURE_ICONS = [
   {
     id: "x",
     label: "X",
+    scale: 0.86,
+    offsetX: 5.7,
+    offsetY: 5.7,
     path: "M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z",
   },
   {
     id: "rss",
     label: "RSS",
+    scale: 0.72,
+    offsetX: 7.35,
+    offsetY: 7.35,
     path: "M6.503 20.752c0 1.794-1.456 3.248-3.251 3.248-1.796 0-3.252-1.454-3.252-3.248 0-1.794 1.456-3.248 3.252-3.248 1.795.001 3.251 1.454 3.251 3.248zm-6.503-12.572v4.811c6.05.062 10.96 4.966 11.022 11.009h4.817c-.062-8.71-7.118-15.758-15.839-15.82zm0-3.368c10.58.046 19.152 8.594 19.183 19.188h4.817c-.03-13.231-10.755-23.954-24-24v4.812z",
   },
   {
     id: "save",
     label: "Save",
+    scale: 0.86,
+    offsetX: 5.7,
+    offsetY: 5.7,
     path: "M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z",
   },
   {
     id: "social",
     label: "Social",
+    scale: 0.86,
+    offsetX: 5.7,
+    offsetY: 5.7,
     path: "M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z",
   },
 ];
@@ -286,15 +298,15 @@ function ArchitectureDiagram() {
                 width="32"
                 height="32"
                 rx="8"
-                fill="rgba(255,255,255,0.03)"
-                stroke="rgba(139,92,246,0.3)"
+                fill="color-mix(in srgb, var(--theme-bg-surface) 72%, transparent)"
+                stroke="color-mix(in srgb, var(--theme-accent-secondary) 36%, transparent)"
                 strokeWidth="1"
                 initial={{ opacity: 0.5 }}
                 animate={{ opacity: [0.5, 0.8, 0.5] }}
                 transition={{ duration: 2, repeat: Infinity, delay: i * 0.3 }}
               />
-              <g transform="translate(4, 4) scale(1)">
-                <path d={icon.path} fill="var(--theme-text-secondary)" transform="scale(1)" />
+              <g transform={`translate(${icon.offsetX}, ${icon.offsetY}) scale(${icon.scale})`}>
+                <path d={icon.path} fill="var(--theme-text-secondary)" />
               </g>
             </g>
           ))}
@@ -339,7 +351,7 @@ function ArchitectureDiagram() {
             width="80"
             height="80"
             rx="16"
-            fill="rgba(139,92,246,0.1)"
+            fill="color-mix(in srgb, var(--theme-accent-secondary) 10%, transparent)"
             stroke="url(#archGradient)"
             strokeWidth="2"
             filter="url(#archGlow)"
@@ -387,9 +399,11 @@ function ArchitectureDiagram() {
                 width="50"
                 height="40"
                 rx="8"
-                fill="rgba(255,255,255,0.03)"
+                fill="color-mix(in srgb, var(--theme-bg-surface) 72%, transparent)"
                 stroke={
-                  i === 0 ? "rgba(139,92,246,0.5)" : "rgba(139,92,246,0.3)"
+                  i === 0
+                    ? "color-mix(in srgb, var(--theme-accent-secondary) 56%, transparent)"
+                    : "color-mix(in srgb, var(--theme-accent-secondary) 34%, transparent)"
                 }
                 strokeWidth={i === 0 ? "2" : "1"}
                 initial={{ opacity: 0.5 }}
@@ -397,11 +411,10 @@ function ArchitectureDiagram() {
                 transition={{ duration: 2.5, repeat: Infinity, delay: i * 0.4 }}
                 filter={i === 0 ? "url(#archGlow)" : undefined}
               />
-              <g transform="translate(13, 8) scale(1)">
+              <g transform="translate(14.7, 9.7) scale(0.86)">
                 <path
                   d={icon.path}
                   fill={i === 0 ? "var(--theme-accent-secondary)" : "var(--theme-text-secondary)"}
-                  transform="scale(1)"
                 />
               </g>
               <text
@@ -461,7 +474,7 @@ const phases: Phase[] = [
     number: 1,
     title: "Foundation",
     description:
-      "Marketing site, QR gallery, monorepo, Automerge schema, CI/CD, and public legal docs with download clickwrap.",
+      "Marketing site, QR gallery, monorepo, Automerge schema, CI/CD, public legal docs with download clickwrap, and a protected newsletter signup flow.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-1-FOUNDATION.md",
@@ -580,9 +593,9 @@ const phases: Phase[] = [
 function PhaseCard({ phase, index }: { phase: Phase; index: number }) {
   const statusStyles = {
     complete: {
-      border: "border-green-500/30",
-      bg: "bg-green-500/5",
-      badge: "bg-green-500/20 text-green-400",
+      border: "border-[color:var(--theme-status-complete-border)]",
+      bg: "bg-[color:var(--theme-status-complete-bg)]",
+      badge: "bg-[color:var(--theme-status-complete-bg)] text-[color:var(--theme-status-complete-text)]",
       badgeText: "✓ Complete",
       glow: "",
     },
@@ -688,8 +701,8 @@ export default function RoadmapContent() {
           transition={{ duration: 0.6 }}
           className="text-center mb-12 sm:mb-16"
         >
-          <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
-            <span className="gradient-text">Roadmap</span>
+          <h1 className="theme-display-large text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
+            <span className="theme-heading-accent">Roadmap</span>
           </h1>
           <p className="text-text-secondary text-base sm:text-lg mb-2">
             Built for humans, not algorithms.

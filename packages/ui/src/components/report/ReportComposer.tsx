@@ -42,16 +42,16 @@ function ArtifactToggle({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex items-start gap-3 rounded-xl border border-[rgba(255,255,255,0.08)] bg-white/[0.03] p-3 cursor-pointer">
+    <label className="theme-dialog-section flex cursor-pointer items-start gap-3 rounded-xl p-3">
       <input
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="mt-0.5 h-4 w-4 rounded border-[rgba(255,255,255,0.2)] bg-white/5 text-[#8b5cf6] focus:ring-[#8b5cf6] focus:ring-offset-0"
+        className="mt-0.5 h-4 w-4 rounded border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-input)] text-[var(--theme-accent-secondary)] focus:ring-[color:var(--theme-focus-ring)] focus:ring-offset-0"
       />
       <div className="min-w-0">
-        <p className="text-sm text-white">{artifact.label}</p>
-        <p className="mt-1 text-xs text-[#71717a]">{artifact.description}</p>
+        <p className="text-sm text-[color:var(--theme-text-primary)]">{artifact.label}</p>
+        <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{artifact.description}</p>
       </div>
     </label>
   );
@@ -196,23 +196,23 @@ export function ReportComposer({
   return (
     <div className="space-y-5">
       <div>
-        <h3 className="text-base font-semibold text-white">{title}</h3>
-        <p className="mt-1 text-sm text-[#71717a]">
+        <h3 className="text-base font-semibold text-[color:var(--theme-text-primary)]">{title}</h3>
+        <p className="mt-1 text-sm text-[color:var(--theme-text-muted)]">
           Default exports are safe for public GitHub issues. Private diagnostics are opt-in and should be emailed instead.
         </p>
       </div>
 
       <div
-        className={`rounded-2xl border px-4 py-3 ${
+        className={`px-4 py-3 ${
           privacyTier === "public-safe"
-            ? "border-emerald-500/20 bg-emerald-500/5"
-            : "border-amber-500/20 bg-amber-500/5"
+            ? "theme-feedback-panel-success"
+            : "theme-feedback-panel-warning"
         }`}
       >
-        <p className="text-sm font-medium text-white">
+        <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
           Privacy mode: {privacyTier === "public-safe" ? "Public-safe" : "Private"}
         </p>
-        <p className="mt-1 text-xs text-[#a1a1aa]">
+        <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
           {privacyTier === "public-safe"
             ? "This bundle is intended to be safe for a public GitHub issue."
             : "This bundle may include details you may not want to post publicly. Use email or private sharing."}
@@ -221,11 +221,11 @@ export function ReportComposer({
 
       <div className={`grid gap-3 ${compact ? "" : "sm:grid-cols-2"}`}>
         <label className="block">
-          <span className="mb-1 block text-xs text-[#71717a]">Issue type</span>
+          <span className="mb-1 block text-xs text-[color:var(--theme-text-muted)]">Issue type</span>
           <select
             value={draft.issueType}
             onChange={(event) => updateDraft("issueType", event.target.value as BugReportIssueType)}
-            className="w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-white/[0.03] px-3 py-2 text-sm text-white focus:border-[#8b5cf6]/50 focus:outline-none"
+            className="theme-input w-full rounded-xl px-3 py-2 text-sm focus:outline-none"
           >
             {issueTypeOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -236,13 +236,13 @@ export function ReportComposer({
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-xs text-[#71717a]">Title</span>
+          <span className="mb-1 block text-xs text-[color:var(--theme-text-muted)]">Title</span>
           <input
             type="text"
             value={draft.title}
             onChange={(event) => updateDraft("title", event.target.value)}
             placeholder="Short summary"
-            className="w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder-[#52525b] focus:border-[#8b5cf6]/50 focus:outline-none"
+            className="theme-input w-full rounded-xl px-3 py-2 text-sm focus:outline-none"
           />
         </label>
       </div>
@@ -278,8 +278,8 @@ export function ReportComposer({
 
       <div className="space-y-3">
         <div>
-          <p className="text-sm font-medium text-white">Included in the public-safe bundle</p>
-          <p className="mt-1 text-xs text-[#71717a]">These are enabled by default and designed for public sharing.</p>
+          <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">Included in the public-safe bundle</p>
+          <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">These are enabled by default and designed for public sharing.</p>
         </div>
         {PUBLIC_SAFE_ARTIFACTS.map((artifact) => (
           <ArtifactToggle
@@ -293,8 +293,8 @@ export function ReportComposer({
 
       <div className="space-y-3">
         <div>
-          <p className="text-sm font-medium text-white">Private diagnostics</p>
-          <p className="mt-1 text-xs text-[#71717a]">
+          <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">Private diagnostics</p>
+          <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
             Turning these on may expose more of your local environment. Email these bundles instead of posting them publicly.
           </p>
         </div>
@@ -306,18 +306,18 @@ export function ReportComposer({
             onChange={(checked) => toggleArtifact(artifact.id, checked)}
           />
         ))}
-        <div className="rounded-xl border border-[rgba(255,255,255,0.08)] bg-white/[0.03] p-3">
+        <div className="theme-dialog-section rounded-xl p-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-sm text-white">Screenshot</p>
-              <p className="mt-1 text-xs text-[#71717a]">
+              <p className="text-sm text-[color:var(--theme-text-primary)]">Screenshot</p>
+              <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                 Capture a screenshot only after reviewing what it shows.
               </p>
             </div>
             <button
               onClick={handleCaptureScreenshot}
               disabled={working === "screenshot" || !bugReporting.captureScreenshot}
-              className="rounded-lg bg-white/5 px-3 py-2 text-sm text-[#a1a1aa] transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="btn-secondary rounded-lg px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
             >
               {working === "screenshot" ? "Capturing..." : "Capture screenshot"}
             </button>
@@ -327,9 +327,9 @@ export function ReportComposer({
               <img
                 src={draft.screenshot.dataUrl}
                 alt="Captured screenshot preview"
-                className="max-h-56 w-full rounded-xl border border-[rgba(255,255,255,0.08)] object-contain"
+                className="max-h-56 w-full rounded-xl border border-[color:var(--theme-border-subtle)] object-contain"
               />
-              <label className="flex items-start gap-3 rounded-xl border border-[rgba(255,255,255,0.08)] bg-black/20 p-3">
+              <label className="theme-dialog-section flex items-start gap-3 rounded-xl p-3">
                 <input
                   type="checkbox"
                   checked={draft.screenshot.safeForPublic}
@@ -339,11 +339,11 @@ export function ReportComposer({
                       safeForPublic: event.target.checked,
                     })
                   }
-                  className="mt-0.5 h-4 w-4 rounded border-[rgba(255,255,255,0.2)] bg-white/5 text-[#8b5cf6] focus:ring-[#8b5cf6] focus:ring-offset-0"
+                  className="mt-0.5 h-4 w-4 rounded border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-input)] text-[var(--theme-accent-secondary)] focus:ring-[color:var(--theme-focus-ring)] focus:ring-offset-0"
                 />
                 <div>
-                  <p className="text-sm text-white">This screenshot is safe to post publicly.</p>
-                  <p className="mt-1 text-xs text-[#71717a]">
+                  <p className="text-sm text-[color:var(--theme-text-primary)]">This screenshot is safe to post publicly.</p>
+                  <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                     Leave this off if it shows private content, account names, or anything sensitive.
                   </p>
                 </div>
@@ -353,50 +353,50 @@ export function ReportComposer({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-white/[0.03] p-4">
-        <p className="text-sm font-medium text-white">Review before export</p>
-        <p className="mt-1 text-xs text-[#71717a]">
+      <div className="theme-dialog-section rounded-2xl p-4">
+        <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">Review before export</p>
+        <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
           Bundle type: {privacyTier === "public-safe" ? "Public-safe zip" : "Private zip"}
         </p>
-        <p className="mt-2 text-xs text-[#71717a]">
+        <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
           Included artifacts: {draft.selectedArtifacts.length.toLocaleString()}
         </p>
         {lastBundleName ? (
-          <p className="mt-2 text-xs text-[#71717a]">Last exported: {lastBundleName}</p>
+          <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">Last exported: {lastBundleName}</p>
         ) : null}
-        {statusMessage ? <p className="mt-2 text-xs text-[#8b5cf6]">{statusMessage}</p> : null}
+        {statusMessage ? <p className="theme-feedback-text-info mt-2 text-xs">{statusMessage}</p> : null}
       </div>
 
       <div className="flex flex-wrap gap-3">
         <button
           onClick={() => handleExport("public-safe")}
           disabled={working !== null}
-          className="rounded-xl bg-[#8b5cf6] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#7c3aed] disabled:cursor-not-allowed disabled:opacity-50"
+          className="btn-primary rounded-xl px-4 py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
           Export public-safe bundle
         </button>
         <button
           onClick={handleOpenGitHub}
           disabled={working !== null}
-          className="rounded-xl bg-white/5 px-4 py-2.5 text-sm text-[#a1a1aa] transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="btn-secondary rounded-xl px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
         >
           Open GitHub issue
         </button>
         <button
           onClick={handlePrivateShare}
           disabled={working !== null}
-          className="rounded-xl bg-amber-500/10 px-4 py-2.5 text-sm text-amber-300 transition-colors hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+          className="theme-feedback-button-warning rounded-xl px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
         >
           Export private bundle for email
         </button>
       </div>
 
       {privacyTier === "private" ? (
-        <p className="text-xs text-amber-300">
+        <p className="theme-feedback-text-warning text-xs">
           This bundle may include information you may not want to post publicly. Use email or private sharing, not a public GitHub attachment.
         </p>
       ) : (
-        <p className="text-xs text-[#71717a]">
+        <p className="text-xs text-[color:var(--theme-text-muted)]">
           GitHub issues created from this screen always use a sanitized public-safe summary.
         </p>
       )}
@@ -419,13 +419,13 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs text-[#71717a]">{label}</span>
+      <span className="mb-1 block text-xs text-[color:var(--theme-text-muted)]">{label}</span>
       <textarea
         value={value}
         rows={rows}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder-[#52525b] focus:border-[#8b5cf6]/50 focus:outline-none"
+        className="theme-input w-full rounded-xl px-3 py-2 text-sm focus:outline-none"
       />
     </label>
   );

@@ -33,8 +33,8 @@ export function PwaLegalSettingsSection() {
         </div>
       </div>
 
-      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-        <p className="text-sm text-amber-200">
+      <div className="theme-feedback-panel-warning rounded-xl p-4">
+        <p className="theme-feedback-text-warning text-sm">
           Provider-specific risk consent lives in Freed Desktop. The PWA only stores the first-run legal gate.
         </p>
       </div>

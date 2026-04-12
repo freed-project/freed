@@ -46,7 +46,7 @@ function OllamaStatus({ url }: { url: string }) {
   return (
     <span
       title={reachable ? "Ollama is running" : "Ollama not reachable"}
-      className={`inline-block h-2 w-2 rounded-full ${reachable ? "bg-emerald-500" : "bg-[var(--theme-text-soft)]"}`}
+      className={`inline-block h-2 w-2 rounded-full ${reachable ? "bg-[rgb(var(--theme-feedback-success-rgb)/0.92)]" : "bg-[var(--theme-text-soft)]"}`}
     />
   );
 }
@@ -117,7 +117,7 @@ function ApiKeyInput({
       ) : (
         <button
           onClick={handleClear}
-          className="px-3 py-1.5 text-xs rounded-lg text-[#71717a] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+          className="rounded-lg px-3 py-1.5 text-xs text-[color:var(--theme-text-muted)] transition-colors hover:bg-[rgb(var(--theme-feedback-danger-rgb)/0.1)] hover:text-[rgb(var(--theme-feedback-danger-rgb))]"
         >
           Clear
         </button>
@@ -232,7 +232,7 @@ export function AISection() {
         </div>
       )}
       {requiresKey && !secureStorage && (
-        <p className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-[var(--theme-text-muted)]">
+        <p className="theme-feedback-panel-warning theme-feedback-text-warning-muted rounded-lg px-3 py-2 text-xs">
           API key storage is only available in the desktop app. On the PWA, saves are sent to your desktop for AI processing.
         </p>
       )}

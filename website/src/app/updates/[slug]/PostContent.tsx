@@ -42,7 +42,7 @@ export default function PostContent({ post }: PostContentProps) {
         >
           <Link
             href="/updates"
-            className="text-sm text-text-muted hover:text-glow-purple transition-colors"
+            className="text-sm text-text-muted hover:text-[color:var(--theme-heading-accent)] transition-colors"
           >
             ‹ Back to Updates
           </Link>
@@ -68,7 +68,7 @@ export default function PostContent({ post }: PostContentProps) {
                       href={post.authorUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sm text-text-muted hover:text-glow-purple transition-colors"
+                      className="text-sm text-text-muted hover:text-[color:var(--theme-heading-accent)] transition-colors"
                     >
                       {post.author}
                     </a>
@@ -80,7 +80,7 @@ export default function PostContent({ post }: PostContentProps) {
                 </>
               )}
             </div>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-text-primary mb-4">
+            <h1 className="theme-display-large text-3xl sm:text-4xl md:text-5xl font-bold text-text-primary mb-4">
               {post.title}
             </h1>
             <p className="text-lg text-text-secondary">{post.description}</p>
@@ -99,7 +99,7 @@ export default function PostContent({ post }: PostContentProps) {
           </header>
 
           {/* Content */}
-          <div className="text-text-secondary space-y-6 [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:text-text-primary [&_h2]:mt-10 [&_h2]:mb-4 [&_h3]:text-xl [&_h3]:font-bold [&_h3]:text-text-primary [&_h3]:mt-8 [&_h3]:mb-3 [&_a]:text-glow-purple [&_a]:hover:text-glow-blue [&_a]:transition-colors [&_strong]:text-text-primary [&_em]:text-text-primary [&_ul]:space-y-2 [&_ul]:pl-6 [&_ul]:list-disc [&_ol]:space-y-2 [&_ol]:pl-6 [&_ol]:list-decimal [&_li]:text-text-secondary [&_blockquote]:border-l-4 [&_blockquote]:border-glow-purple [&_blockquote]:pl-6 [&_blockquote]:italic [&_blockquote]:text-text-primary [&_blockquote]:my-8 [&_code]:bg-freed-surface [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-sm [&_code]:text-glow-purple [&_pre]:bg-freed-surface [&_pre]:p-4 [&_pre]:rounded-lg [&_pre]:overflow-x-auto">
+          <div className="text-text-secondary space-y-6 [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:text-text-primary [&_h2]:mt-10 [&_h2]:mb-4 [&_h3]:text-xl [&_h3]:font-bold [&_h3]:text-text-primary [&_h3]:mt-8 [&_h3]:mb-3 [&_a]:text-[color:var(--theme-heading-accent)] [&_a]:hover:text-text-primary [&_a]:transition-colors [&_strong]:text-text-primary [&_em]:text-text-primary [&_ul]:space-y-2 [&_ul]:pl-6 [&_ul]:list-disc [&_ol]:space-y-2 [&_ol]:pl-6 [&_ol]:list-decimal [&_li]:text-text-secondary [&_blockquote]:border-l-4 [&_blockquote]:border-[color:var(--theme-heading-accent)] [&_blockquote]:pl-6 [&_blockquote]:italic [&_blockquote]:text-text-primary [&_blockquote]:my-8 [&_code]:bg-freed-surface [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-sm [&_code]:text-[color:var(--theme-heading-accent)] [&_pre]:bg-freed-surface [&_pre]:p-4 [&_pre]:rounded-lg [&_pre]:overflow-x-auto">
             {post.content}
           </div>
 
@@ -112,7 +112,7 @@ export default function PostContent({ post }: PostContentProps) {
           >
             <Link
               href="/updates"
-              className="text-sm text-glow-purple hover:text-glow-blue transition-colors"
+              className="text-sm text-[color:var(--theme-heading-accent)] hover:text-text-primary transition-colors"
             >
               ‹ Back to Updates
             </Link>
@@ -123,14 +123,14 @@ export default function PostContent({ post }: PostContentProps) {
                 )}&text=${encodeURIComponent(post.title)}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-glow-purple hover:text-glow-blue transition-colors"
+                className="text-[color:var(--theme-heading-accent)] hover:text-text-primary transition-colors"
               >
                 Share on X
               </a>
               <span className="mx-3 text-text-muted">•</span>
               <button
                 onClick={handleCopy}
-                className="text-glow-purple hover:text-glow-blue transition-colors relative cursor-pointer"
+                className="relative cursor-pointer text-[color:var(--theme-heading-accent)] transition-colors hover:text-text-primary"
               >
                 Copy link
                 <AnimatePresence>

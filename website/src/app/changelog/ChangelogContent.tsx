@@ -1,6 +1,7 @@
 "use client";
 
 import { motion, useInView } from "framer-motion";
+import type { CSSProperties } from "react";
 import { useRef } from "react";
 import type { ParsedRelease } from "@/content/changelog";
 
@@ -41,7 +42,7 @@ function ReleaseCard({
           className="absolute top-6 bottom-0 w-px last:hidden"
           style={{
             background:
-              "linear-gradient(to bottom, rgba(139,92,246,0.4) 0%, rgba(6,182,212,0.15) 100%)",
+              "linear-gradient(to bottom, color-mix(in srgb, var(--theme-accent-secondary) 40%, transparent) 0%, color-mix(in srgb, var(--theme-accent-tertiary) 15%, transparent) 100%)",
           }}
         />
 
@@ -52,13 +53,19 @@ function ReleaseCard({
               {/* Pulsing rings for latest release */}
               <motion.div
                 className="absolute inset-0 rounded-full"
-                style={{ background: "rgba(139,92,246,0.3)" }}
+                style={{
+                  background:
+                    "color-mix(in srgb, var(--theme-accent-secondary) 30%, transparent)",
+                }}
                 animate={{ scale: [1, 1.8], opacity: [0.6, 0] }}
                 transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
               />
               <motion.div
                 className="absolute inset-0 rounded-full"
-                style={{ background: "rgba(139,92,246,0.2)" }}
+                style={{
+                  background:
+                    "color-mix(in srgb, var(--theme-accent-secondary) 20%, transparent)",
+                }}
                 animate={{ scale: [1, 2.4], opacity: [0.4, 0] }}
                 transition={{
                   duration: 2,
@@ -68,14 +75,22 @@ function ReleaseCard({
                 }}
               />
               <div
-                className="w-4 h-4 rounded-full border-2 border-glow-purple"
-                style={{ background: "var(--color-glow-purple)" }}
+                className="w-4 h-4 rounded-full border-2"
+                style={{
+                  borderColor:
+                    "color-mix(in srgb, var(--theme-heading-accent) 62%, white 12%)",
+                  background: "var(--theme-heading-accent)",
+                }}
               />
             </>
           ) : (
             <div
-              className="w-3 h-3 rounded-full border border-[rgba(139,92,246,0.4)]"
-              style={{ background: "rgba(139,92,246,0.15)", marginTop: 2 }}
+              className="w-3 h-3 rounded-full border border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_40%,transparent)]"
+              style={{
+                background:
+                  "color-mix(in srgb, var(--theme-accent-secondary) 15%, transparent)",
+                marginTop: 2,
+              }}
             />
           )}
         </div>
@@ -89,18 +104,28 @@ function ReleaseCard({
         className="flex-1 min-w-0"
       >
         <div
-          className={`release-card-shell group relative overflow-hidden rounded-xl border transition-[border-color,background-color,box-shadow] duration-300 ${
-            isLatest
-              ? "border-glow-purple/40 bg-glow-purple/5"
-              : "border-freed-border bg-freed-surface/40"
-          }`}
+          className="release-card-shell group relative overflow-hidden rounded-xl border transition-[border-color,background-color,box-shadow] duration-300"
+          style={{
+            borderColor: isLatest
+              ? "color-mix(in srgb, var(--theme-heading-accent) 28%, var(--theme-border-subtle))"
+              : "var(--theme-border-subtle)",
+            background: isLatest
+              ? "color-mix(in srgb, var(--theme-heading-accent) 5%, var(--theme-bg-surface))"
+              : "color-mix(in srgb, var(--theme-bg-surface) 84%, transparent)",
+          }}
         >
           <a
             href={release.htmlUrl}
             target="_blank"
             rel="noopener noreferrer"
             aria-label={`Open GitHub release for v${release.version}`}
-            className="absolute inset-0 z-10 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-glow-purple/70 focus-visible:ring-offset-2 focus-visible:ring-offset-freed-black"
+            className="absolute inset-0 z-10 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            style={
+              {
+                "--tw-ring-color": "var(--theme-focus-ring)",
+                "--tw-ring-offset-color": "var(--theme-bg-root)",
+              } as CSSProperties
+            }
           />
 
           <div className="pointer-events-none relative z-20 p-5 sm:p-6">
@@ -110,12 +135,25 @@ function ReleaseCard({
               href={release.htmlUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="release-card-version pointer-events-auto inline-block text-xl font-bold font-logo tracking-tight underline-offset-4 decoration-glow-purple/70 decoration-1 transition-all group-hover:underline group-focus-within:underline"
+              className="release-card-version pointer-events-auto inline-block text-xl font-bold font-logo tracking-tight underline-offset-4 decoration-1 transition-all group-hover:underline group-focus-within:underline"
+              style={{
+                textDecorationColor:
+                  "color-mix(in srgb, var(--theme-heading-accent) 70%, transparent)",
+              }}
             >
               v{release.version}
             </a>
             {isLatest && (
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-glow-purple/20 text-glow-purple border border-glow-purple/30">
+              <span
+                className="px-2.5 py-0.5 rounded-full text-xs font-semibold border"
+                style={{
+                  background:
+                    "color-mix(in srgb, var(--theme-heading-accent) 14%, transparent)",
+                  color: "var(--theme-heading-accent)",
+                  borderColor:
+                    "color-mix(in srgb, var(--theme-heading-accent) 24%, transparent)",
+                }}
+              >
                 Latest
               </span>
             )}
@@ -161,7 +199,7 @@ function ReleaseCard({
                     href={build.htmlUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="pointer-events-auto text-xs text-text-muted hover:text-glow-purple transition-colors"
+                    className="pointer-events-auto text-xs text-text-muted transition-colors hover:text-text-primary"
                   >
                     v{build.version}
                   </a>
@@ -176,7 +214,7 @@ function ReleaseCard({
                       href={`https://github.com/freed-project/freed/pull/${num}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="pointer-events-auto text-xs text-text-muted hover:text-glow-purple transition-colors"
+                      className="pointer-events-auto text-xs text-text-muted transition-colors hover:text-text-primary"
                     >
                       #{num}
                     </a>
@@ -200,25 +238,25 @@ function Section({
   items: Array<{ text: string; prNumber?: number }>;
   accent: "purple" | "zinc";
 }) {
-  const dotColor = {
-    purple: "bg-glow-purple",
-    zinc: "bg-zinc-500",
-  }[accent];
+  const dotStyle =
+    accent === "purple"
+      ? { background: "var(--theme-heading-accent)" }
+      : { background: "color-mix(in srgb, var(--theme-text-muted) 78%, transparent)" };
 
-  const labelColor = {
-    purple: "text-glow-purple",
-    zinc: "text-text-muted",
-  }[accent];
+  const labelStyle =
+    accent === "purple"
+      ? { color: "var(--theme-heading-accent)" }
+      : { color: "var(--theme-text-muted)" };
 
   return (
     <div>
-      <h3 className={`text-xs font-semibold uppercase tracking-wider mb-2 ${labelColor}`}>
+      <h3 className="text-xs font-semibold uppercase tracking-wider mb-2" style={labelStyle}>
         {title}
       </h3>
       <ul className="space-y-1">
         {items.map((item, i) => (
           <li key={i} className="flex gap-2.5 text-[13px] leading-5 text-text-secondary">
-            <span className={`mt-[6px] h-1.5 w-1.5 rounded-full shrink-0 ${dotColor} opacity-70`} />
+            <span className="mt-[6px] h-1.5 w-1.5 rounded-full shrink-0 opacity-70" style={dotStyle} />
             <span>{item.text}</span>
           </li>
         ))}
@@ -244,8 +282,8 @@ export default function ChangelogContent({
           transition={{ duration: 0.6 }}
           className="text-center mb-16 sm:mb-20"
         >
-          <h1 className="text-3xl sm:text-5xl font-bold mb-4">
-            <span className="gradient-text">Changelog</span>
+          <h1 className="theme-display-large text-3xl sm:text-5xl font-bold mb-4">
+            <span className="theme-heading-accent">Changelog</span>
           </h1>
           <p className="text-text-secondary text-base sm:text-lg">
             Even death stars have an exhaust vent.
@@ -271,7 +309,7 @@ export default function ChangelogContent({
               className="absolute left-[11px] top-2 bottom-0 w-px pointer-events-none"
               style={{
                 background:
-                  "linear-gradient(to bottom, rgba(139,92,246,0.12) 0%, rgba(6,182,212,0.04) 100%)",
+                  "linear-gradient(to bottom, color-mix(in srgb, var(--theme-accent-secondary) 12%, transparent) 0%, color-mix(in srgb, var(--theme-accent-tertiary) 4%, transparent) 100%)",
               }}
             />
 
@@ -300,7 +338,7 @@ export default function ChangelogContent({
               href="https://github.com/freed-project/freed/releases"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm text-text-muted hover:text-glow-purple transition-colors"
+              className="text-sm text-text-muted transition-colors hover:text-text-primary"
             >
               View all releases on GitHub →
             </a>

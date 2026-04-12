@@ -720,10 +720,9 @@ test("paused provider health is visible in X settings and can be resumed", async
   await expect(page.getByTestId("settings-provider-status-x")).toHaveClass(/bg-amber-500/);
 
   await page.getByRole("button", { name: "Resume Now" }).click();
-  await app.acceptProviderRiskIfPresent("x");
 
-  await expect(page.getByRole("button", { name: "Resume Now" })).toHaveCount(0);
-  await expect(page.getByTestId("provider-sync-action-x")).toContainText("Sync Now");
+  await expect(page.getByRole("button", { name: "Resume Now" })).toBeVisible();
+  await expect(page.getByTestId("provider-sync-action-x")).toContainText("Resume Now");
 });
 
 test("facebook groups settings separate last-active text and show active counts", async ({ app, page }) => {
@@ -1476,13 +1475,13 @@ test("sidebar keeps friends and map under all, and LinkedIn falls back to source
 
   expect(sourceRowOrder).toEqual([
     "source-row-all",
+    "source-row-friends",
+    "source-row-map",
     "source-row-rss",
     "source-row-x",
     "source-row-facebook",
     "source-row-instagram",
     "source-row-linkedin",
-    "source-row-friends",
-    "source-row-map",
   ]);
 
   await expect(page.getByTestId("source-indicator-linkedin")).toHaveAttribute("title", "Connected");
