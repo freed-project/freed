@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { motion, useInView } from "framer-motion";
-import type { CSSProperties } from "react";
-import { useMemo, useRef } from "react";
+import type { CSSProperties, MouseEvent } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { ParsedRelease } from "@/content/changelog";
+
+const CHANGELOG_SMOOTH_SCROLL_KEY = "freed-changelog-smooth-scroll";
 
 function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -36,15 +38,30 @@ function shouldAnimateChangelogHeader(pathname: string): boolean {
   }
 }
 
+function shouldHandleSmoothPaginationClick(event: MouseEvent<HTMLAnchorElement>) {
+  return !(
+    event.defaultPrevented ||
+    event.button !== 0 ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.altKey
+  );
+}
+
 function PaginationNav({
   currentPage,
   totalPages,
   className = "",
+  smoothScrollOnNavigate = false,
 }: {
   currentPage: number;
   totalPages: number;
   className?: string;
+  smoothScrollOnNavigate?: boolean;
 }) {
+  const router = useRouter();
+
   if (totalPages <= 1) {
     return null;
   }
@@ -54,7 +71,7 @@ function PaginationNav({
       aria-label="Changelog pagination"
       className={`text-sm text-text-muted ${className}`.trim()}
     >
-      <div className="flex flex-wrap items-center justify-center gap-x-1 gap-y-2">
+      <div className="flex flex-wrap items-center justify-center gap-x-0.5 gap-y-2">
         {Array.from({ length: totalPages }, (_, index) => {
           const page = index + 1;
           const isCurrent = page === currentPage;
@@ -65,7 +82,7 @@ function PaginationNav({
               {isCurrent ? (
                 <span
                   aria-current="page"
-                  className="rounded-md px-2 py-1 text-text-primary underline underline-offset-4 decoration-1"
+                  className="rounded-md px-1.5 py-1 text-text-primary underline underline-offset-4 decoration-1"
                   style={{
                     textDecorationColor:
                       "color-mix(in srgb, var(--theme-heading-accent) 72%, transparent)",
@@ -76,7 +93,28 @@ function PaginationNav({
               ) : (
                 <Link
                   href={getPageHref(page)}
-                  className="rounded-md px-2 py-1 transition-colors hover:text-text-primary"
+                  scroll={!smoothScrollOnNavigate}
+                  className="rounded-md px-1.5 py-1 transition-colors hover:text-text-primary"
+                  onClick={(event) => {
+                    if (!smoothScrollOnNavigate) {
+                      return;
+                    }
+
+                    if (!shouldHandleSmoothPaginationClick(event)) {
+                      return;
+                    }
+
+                    event.preventDefault();
+
+                    try {
+                      sessionStorage.setItem(
+                        CHANGELOG_SMOOTH_SCROLL_KEY,
+                        getPageHref(page)
+                      );
+                    } catch {}
+
+                    router.push(getPageHref(page), { scroll: false });
+                  }}
                 >
                   {label}
                 </Link>
@@ -194,14 +232,7 @@ function ReleaseCard({
         className="flex-1 min-w-0"
       >
         <div
-          className="release-card-shell group relative overflow-hidden rounded-xl border transition-[transform,border-color,background-color,box-shadow] duration-300"
-          style={{
-            borderColor:
-              "color-mix(in srgb, var(--theme-border-subtle) 92%, transparent)",
-            boxShadow: isLatest
-              ? "0 16px 34px rgb(var(--theme-shell-rgb) / 0.22)"
-              : "0 12px 26px rgb(var(--theme-shell-rgb) / 0.16)",
-          }}
+          className="glass-card glass-card-interactive group relative overflow-hidden rounded-xl"
         >
           <a
             href={release.htmlUrl}
@@ -217,14 +248,14 @@ function ReleaseCard({
             }
           />
 
-          <div className="pointer-events-none relative z-20 p-5 sm:p-6">
+          <div className="pointer-events-none relative z-20 p-6 sm:p-7">
             {/* Header */}
             <div className="flex flex-wrap items-center gap-3 mb-3">
               <a
                 href={release.htmlUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="release-card-version pointer-events-auto inline-block text-xl font-bold font-logo tracking-tight underline-offset-4 decoration-1 transition-all group-hover:underline group-focus-within:underline"
+                className="pointer-events-auto inline-block text-xl font-bold font-logo tracking-tight underline-offset-4 decoration-1 transition-all group-hover:underline group-focus-within:underline"
                 style={{
                   textDecorationColor:
                     "color-mix(in srgb, var(--theme-heading-accent) 70%, transparent)",
@@ -246,7 +277,7 @@ function ReleaseCard({
                   Latest
                 </span>
               )}
-              <time className="release-card-date ml-auto text-sm text-text-muted transition-colors duration-300">
+              <time className="ml-auto text-sm text-text-muted transition-colors duration-300">
                 {formatDate(release.date)}
               </time>
             </div>
@@ -267,13 +298,13 @@ function ReleaseCard({
                   />
                 )}
                 {release.fixes.length > 0 && (
-                  <Section title="Fixes" items={release.fixes} accent="zinc" />
+                  <Section title="Fixes" items={release.fixes} accent="purple" />
                 )}
                 {release.followUps.length > 0 && (
                   <Section
                     title="Follow-ups"
                     items={release.followUps}
-                    accent="zinc"
+                    accent="purple"
                   />
                 )}
               </div>
@@ -389,9 +420,22 @@ export default function ChangelogContent({
     [pathname]
   );
 
+  useEffect(() => {
+    try {
+      const targetPath = sessionStorage.getItem(CHANGELOG_SMOOTH_SCROLL_KEY);
+
+      if (targetPath !== pathname) {
+        return;
+      }
+
+      sessionStorage.removeItem(CHANGELOG_SMOOTH_SCROLL_KEY);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch {}
+  }, [pathname]);
+
   return (
     <section className="py-24 sm:py-32 px-4 sm:px-6 md:px-12 lg:px-8">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-3xl mx-auto">
         {/* Header */}
         <motion.header
           initial={shouldAnimateHeader ? { opacity: 0, y: 20 } : false}
@@ -400,7 +444,7 @@ export default function ChangelogContent({
           className="text-center mb-10 sm:mb-12"
         >
           <h1 className="theme-display-large text-3xl sm:text-5xl font-bold mb-4">
-            <span className="theme-heading-accent">Changelog</span>
+            <span className="theme-page-heading-accent">Changelog</span>
           </h1>
           <p className="text-text-secondary text-base sm:text-lg">
             Even death stars have an exhaust vent.
@@ -422,6 +466,7 @@ export default function ChangelogContent({
           currentPage={currentPage}
           totalPages={totalPages}
           className="mb-6"
+          smoothScrollOnNavigate
         />
 
         {/* Timeline */}
@@ -444,6 +489,7 @@ export default function ChangelogContent({
           currentPage={currentPage}
           totalPages={totalPages}
           className="mt-8"
+          smoothScrollOnNavigate
         />
 
         {/* Footer CTA */}

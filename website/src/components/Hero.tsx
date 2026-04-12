@@ -40,7 +40,7 @@ export default function Hero() {
             animate={{ opacity: 1, y: 0 }}
             transition={{
               duration: slowHeroMotion(0.5),
-              delay: slowHeroDelay(0.3),
+              delay: slowHeroDelay(0.08),
             }}
           >
             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-freed-border bg-freed-surface/50">
@@ -60,7 +60,7 @@ export default function Hero() {
           animate={{ opacity: 1, scale: 1 }}
           transition={{
             duration: slowHeroMotion(0.8),
-            delay: slowHeroDelay(0.2),
+            delay: slowHeroDelay(0.16),
           }}
           className="relative order-1 w-full lg:order-2"
           style={{
@@ -76,8 +76,8 @@ export default function Hero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{
-            duration: slowHeroMotion(0.8),
-            delay: slowHeroDelay(0.3),
+            duration: slowHeroMotion(0.55),
+            delay: slowHeroDelay(0.04),
           }}
           className="order-2 text-center lg:order-1 lg:pl-10 lg:text-left"
         >
