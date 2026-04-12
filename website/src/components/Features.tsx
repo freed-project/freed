@@ -6,8 +6,10 @@ import { motion } from "framer-motion";
 const PrivacyIcon = () => (
   <div className="w-12 h-12 flex items-center justify-center">
     <div
-      className="w-10 h-10 bg-gradient-to-br from-blue-500 to-violet-500"
+      className="w-10 h-10"
       style={{
+        background:
+          "linear-gradient(135deg, var(--theme-accent-primary), var(--theme-accent-secondary))",
         WebkitMaskImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath fill-rule='evenodd' d='M12.516 2.17a.75.75 0 00-1.032 0 11.209 11.209 0 01-7.877 3.08.75.75 0 00-.722.515A12.74 12.74 0 002.25 9.75c0 5.942 4.064 10.933 9.563 12.348a.749.749 0 00.374 0c5.499-1.415 9.563-6.406 9.563-12.348 0-1.39-.223-2.73-.635-3.985a.75.75 0 00-.722-.516 11.209 11.209 0 01-7.877-3.08zm3.274 7.04a.75.75 0 00-1.06-1.06L11 11.88l-1.47-1.47a.75.75 0 00-1.06 1.06l2 2a.75.75 0 001.06 0l4.26-4.26z' clip-rule='evenodd'/%3E%3C/svg%3E")`,
         WebkitMaskSize: "contain",
         WebkitMaskRepeat: "no-repeat",
@@ -23,8 +25,10 @@ const PrivacyIcon = () => (
 const UnifiedFeedIcon = () => (
   <div className="w-12 h-12 flex items-center justify-center">
     <div
-      className="w-10 h-10 bg-gradient-to-tr from-blue-500 via-indigo-500 to-purple-500"
+      className="w-10 h-10"
       style={{
+        background:
+          "linear-gradient(145deg, var(--theme-accent-primary), var(--theme-accent-secondary) 55%, var(--theme-accent-tertiary))",
         WebkitMaskImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1'/%3E%3Cpath d='M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1'/%3E%3Cpath d='M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1'/%3E%3C/svg%3E")`,
         WebkitMaskSize: "contain",
         WebkitMaskRepeat: "no-repeat",
@@ -41,8 +45,8 @@ const FriendMapIcon = () => (
     <svg viewBox="0 0 48 48" className="w-10 h-10">
       <defs>
         <linearGradient id="mapGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#3b82f6" />
-          <stop offset="100%" stopColor="#8b5cf6" />
+          <stop offset="0%" stopColor="var(--theme-accent-primary)" />
+          <stop offset="100%" stopColor="var(--theme-accent-secondary)" />
         </linearGradient>
       </defs>
       <path
@@ -54,9 +58,9 @@ const FriendMapIcon = () => (
         strokeLinejoin="round"
       />
       <circle cx="24" cy="18" r="5" fill="url(#mapGrad)" />
-      <circle cx="12" cy="36" r="2" fill="#6366f1" opacity="0.6" />
-      <circle cx="36" cy="32" r="2" fill="#a855f7" opacity="0.6" />
-      <circle cx="40" cy="40" r="1.5" fill="#8b5cf6" opacity="0.4" />
+      <circle cx="12" cy="36" r="2" fill="var(--theme-accent-tertiary)" opacity="0.6" />
+      <circle cx="36" cy="32" r="2" fill="var(--theme-accent-secondary)" opacity="0.6" />
+      <circle cx="40" cy="40" r="1.5" fill="var(--theme-accent-secondary)" opacity="0.4" />
     </svg>
   </div>
 );
@@ -67,12 +71,12 @@ const UlyssesIcon = () => (
     <svg viewBox="950 450 600 700" className="w-12 h-12">
       <defs>
         <linearGradient id="ulyssesGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#6366f1" />
-          <stop offset="100%" stopColor="#a855f7" />
+          <stop offset="0%" stopColor="var(--theme-accent-primary)" />
+          <stop offset="100%" stopColor="var(--theme-accent-secondary)" />
         </linearGradient>
         <linearGradient id="ulyssesShadow" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#4f46e5" />
-          <stop offset="100%" stopColor="#7c3aed" />
+          <stop offset="0%" stopColor="var(--theme-accent-primary)" />
+          <stop offset="100%" stopColor="var(--theme-accent-secondary)" />
         </linearGradient>
       </defs>
       {/* Main flowing hair and face */}
@@ -135,8 +139,10 @@ const UlyssesIcon = () => (
 const SyncIcon = () => (
   <div className="w-12 h-12 flex items-center justify-center">
     <div
-      className="w-10 h-10 bg-gradient-to-br from-blue-500 to-violet-500"
+      className="w-10 h-10"
       style={{
+        background:
+          "linear-gradient(135deg, var(--theme-accent-primary), var(--theme-accent-secondary))",
         WebkitMaskImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8'/%3E%3Cpath d='M21 3v5h-5'/%3E%3Cpath d='M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16'/%3E%3Cpath d='M3 21v-5h5'/%3E%3C/svg%3E")`,
         WebkitMaskSize: "contain",
         WebkitMaskRepeat: "no-repeat",
@@ -153,8 +159,8 @@ const OpenSourceIcon = () => (
     <svg viewBox="4 6 40 40" className="w-10 h-10">
       <defs>
         <linearGradient id="ossGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#8b5cf6" />
-          <stop offset="100%" stopColor="#a855f7" />
+          <stop offset="0%" stopColor="var(--theme-accent-secondary)" />
+          <stop offset="100%" stopColor="var(--theme-accent-tertiary)" />
         </linearGradient>
       </defs>
       <path

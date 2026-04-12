@@ -16,6 +16,7 @@ import {
 } from "@freed/shared/google-contacts-automation";
 import { applyThemeToDocument, persistTheme } from "../../lib/theme.js";
 import { MapView } from "../map/MapView.js";
+import { BackgroundAtmosphere } from "./BackgroundAtmosphere.js";
 
 const DEFAULT_DEBUG_WIDTH = 320;
 const MIN_DEBUG_WIDTH = 280;
@@ -152,10 +153,11 @@ export function AppShell({ children }: AppShellProps) {
     {/* On mobile (<md), the layout flows naturally in the document so Safari can
         collapse its address bar when the feed scrolls. min-h-0 and overflow-hidden
         are desktop-only; they lock the layout to 100dvh for in-element scrolling. */}
-    <div className="app-theme-shell flex-1 md:min-h-0 flex flex-col">
+    <div className="app-theme-shell relative flex flex-1 flex-col md:min-h-0">
+      <BackgroundAtmosphere />
       <Header onMenuClick={() => setSidebarOpen(true)} />
 
-      <div className="flex-1 md:min-h-0 flex md:overflow-hidden">
+      <div className="relative z-10 flex flex-1 md:min-h-0 md:overflow-hidden">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <main className="flex-1 md:min-h-0 md:overflow-hidden">
           {activeView === "friends"
@@ -178,7 +180,7 @@ export function AppShell({ children }: AppShellProps) {
           {/* Left-edge resize handle - drag left to widen, drag right to narrow */}
           {debugVisible && (
             <div
-              className="absolute left-0 top-0 w-1 h-full cursor-col-resize hover:bg-[#8b5cf6]/30 active:bg-[#8b5cf6]/50 transition-colors z-10"
+              className="absolute left-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.24)] active:bg-[rgb(var(--theme-accent-secondary-rgb)/0.4)]"
               onMouseDown={handleDebugDragStart}
             />
           )}

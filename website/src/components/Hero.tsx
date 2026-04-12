@@ -59,7 +59,7 @@ export default function Hero() {
           transition={{ duration: 0.8, delay: 0.3 }}
           className="order-2 lg:order-1 text-center lg:text-left lg:pl-10"
         >
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.05] mb-10 sm:mb-12 lg:-ml-2">
+          <h1 className="theme-display-large text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.05] mb-10 sm:mb-12 lg:-ml-2">
             <span className="text-text-primary">Take Back</span>
             <br />
             <span className="text-text-primary">Your </span>
@@ -80,10 +80,10 @@ export default function Hero() {
           </h1>
 
           <p className="inline-flex items-center gap-3 text-xl sm:text-2xl text-text-primary font-medium mb-2 sm:mb-3">
-            <FaFacebook className="text-text-primary shrink-0" />
-            <FaInstagram className="text-text-primary shrink-0" />
-            <FaXTwitter className="text-text-primary shrink-0" />
-            <FaRss className="text-text-primary shrink-0" />
+            <FaFacebook className="shrink-0 text-[var(--theme-media-facebook)]" />
+            <FaInstagram className="shrink-0 text-[var(--theme-media-instagram)]" />
+            <FaXTwitter className="shrink-0 text-[var(--theme-media-x)]" />
+            <FaRss className="shrink-0 text-[var(--theme-media-rss)]" />
             <span>in one local app.</span>
           </p>
 

@@ -1,5 +1,90 @@
 [
   {
+    "version": "26.4.900",
+    "tagName": "v26.4.900",
+    "date": "2026-04-10T04:38:56Z",
+    "deck": "Provider health diagnostics and quieter background scrapers",
+    "features": [
+      {
+        "text": "New provider health diagnostics make it easier to spot auth issues and source problems."
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Items now mark as read when you scroll past them."
+      },
+      {
+        "text": "Browser session copy is more accurate."
+      },
+      {
+        "text": "Background social scrapers stay quieter when they do not need attention."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.900",
+    "prNumbers": [
+      158,
+      175,
+      176,
+      177
+    ],
+    "builds": [
+      "26.4.900"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.900",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.900"
+      }
+    ]
+  },
+  {
+    "version": "26.4.301",
+    "tagName": "v26.4.301",
+    "date": "2026-04-03T21:30:37Z",
+    "deck": "Website changelog catches same-day releases",
+    "features": [],
+    "fixes": [
+      {
+        "text": "freed.wtf now redeploys after a release publishes so the changelog includes the newly shipped build"
+      },
+      {
+        "text": "Release notes and changelog cards now use cleaner reviewed summaries"
+      },
+      {
+        "text": "Historical releases now keep concise daily rollups without losing major highlights"
+      },
+      {
+        "text": "Freed Desktop update prompts now show a cleaner single-line release summary"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Sharper release messaging"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.301",
+    "prNumbers": [
+      172,
+      173,
+      174
+    ],
+    "builds": [
+      "26.4.300",
+      "26.4.301"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.300",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.300"
+      },
+      {
+        "version": "26.4.301",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.301"
+      }
+    ]
+  },
+  {
     "version": "26.4.109",
     "tagName": "v26.4.109",
     "date": "2026-04-02T02:49:52Z",

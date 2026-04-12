@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { LocationMarkerSummary } from "@freed/shared";
+import type { ThemeId } from "@freed/shared/themes";
 import { createMarkerElement } from "./MarkerElement.js";
 import { createFriendAvatarPalette } from "../../lib/friend-avatar-style.js";
 
@@ -39,7 +40,7 @@ interface MapSurfaceProps {
   markers: LocationMarkerSummary[];
   focusedMarkerKey?: string | null;
   interactive?: boolean;
-  avatarTint?: string;
+  themeId?: ThemeId;
   onOpenFriend?: (marker: LocationMarkerSummary) => void;
   onOpenPost?: (marker: LocationMarkerSummary) => void;
   emptyTitle?: string;
@@ -415,7 +416,7 @@ export function MapSurface({
   markers,
   focusedMarkerKey,
   interactive = true,
-  avatarTint,
+  themeId,
   onOpenFriend,
   onOpenPost,
   emptyTitle = "No geo-tagged posts yet.",
@@ -436,8 +437,8 @@ export function MapSurface({
     [markers]
   );
   const avatarPalette = useMemo(
-    () => createFriendAvatarPalette(avatarTint),
-    [avatarTint]
+    () => createFriendAvatarPalette(themeId),
+    [themeId]
   );
   const selectedFallbackMarker = useMemo(
     () => stableMarkers.find((marker) => marker.key === selectedFallbackMarkerKey) ?? null,
@@ -572,8 +573,14 @@ export function MapSurface({
               <button
                 key={marker.key}
                 type="button"
-                className="freed-map-marker absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-[color:var(--theme-border-strong)] bg-[color:color-mix(in_oklab,var(--theme-accent-secondary)_24%,var(--theme-bg-surface))] px-2.5 py-1.5 text-[11px] text-[color:var(--theme-text-primary)] shadow-[0_14px_28px_rgba(2,6,23,0.38)] backdrop-blur-md"
-                style={position}
+                className="freed-map-marker absolute -translate-x-1/2 -translate-y-1/2 rounded-full px-2.5 py-1.5 text-[11px] text-[color:var(--theme-text-primary)] backdrop-blur-xl"
+                style={{
+                  ...position,
+                  border: "1px solid color-mix(in oklab, var(--theme-border-strong) 78%, transparent)",
+                  background:
+                    "linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.02) 28%, transparent), color-mix(in oklab, var(--theme-accent-secondary) 18%, var(--theme-bg-surface))",
+                  boxShadow: "0 18px 34px rgba(2,6,23,0.34)",
+                }}
                 onClick={() => setSelectedFallbackMarkerKey((current) => current === marker.key ? null : marker.key)}
                 aria-label={fallbackLabel(marker)}
               >
@@ -583,11 +590,11 @@ export function MapSurface({
           })}
 
           {interactive && selectedFallbackMarker && (
-            <div data-testid="map-fallback-popup" className="absolute bottom-4 left-4 w-[min(480px,calc(100%-2rem))] rounded-[24px] border border-[color:var(--theme-border-strong)] bg-[color:color-mix(in_oklab,var(--theme-bg-elevated)_96%,transparent)] p-5 shadow-[0_24px_60px_rgba(2,6,23,0.72)] backdrop-blur-xl">
+            <div data-testid="map-fallback-popup" className="theme-dialog-shell absolute bottom-4 left-4 w-[min(480px,calc(100%-2rem))] p-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-[color:var(--theme-border-strong)] bg-[color:color-mix(in_oklab,var(--theme-accent-secondary)_16%,var(--theme-bg-surface))] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)]">
+                    <span className="theme-card-soft rounded-full border-[color:var(--theme-border-strong)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)]">
                       {popupKicker(selectedFallbackMarker)}
                     </span>
                     <span className="text-[11px] text-[color:var(--theme-text-muted)]">
@@ -603,7 +610,7 @@ export function MapSurface({
                     </p>
                   )}
                   {popupSnippet(selectedFallbackMarker.item.content.text) && (
-                    <div className="mt-4 rounded-2xl border border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-card)] p-3">
+                    <div className="theme-card-soft mt-4 rounded-2xl p-3">
                       <p className="text-sm leading-6 text-[color:var(--theme-text-secondary)]">
                         {popupSnippet(selectedFallbackMarker.item.content.text)}
                       </p>
@@ -620,13 +627,13 @@ export function MapSurface({
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <div className="rounded-2xl border border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-card)] px-3 py-2.5">
+                <div className="theme-card-soft rounded-2xl px-3 py-2.5">
                   <p className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">Seen</p>
                   <p className="mt-1 text-sm font-semibold text-[color:var(--theme-text-primary)]">
                     {popupRelativeTime(selectedFallbackMarker.seenAt)}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-card)] px-3 py-2.5">
+                <div className="theme-card-soft rounded-2xl px-3 py-2.5">
                   <p className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">Source</p>
                   <p className="mt-1 text-sm font-semibold capitalize text-[color:var(--theme-text-primary)]">
                     {selectedFallbackMarker.item.platform}

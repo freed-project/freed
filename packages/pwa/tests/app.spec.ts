@@ -874,7 +874,7 @@ test.describe("FREED PWA", () => {
 
       const sidebar = page.locator("aside");
 
-      await sidebar.getByRole("button", { name: /^RSS/ }).click();
+      await sidebar.getByTestId("source-row-rss").click();
       await expect.poll(() => new URL(page.url()).search).toBe("?platform=rss");
 
       await sidebar.getByRole("button", { name: "Saved" }).click();

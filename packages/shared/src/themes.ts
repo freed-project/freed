@@ -7,6 +7,7 @@ export interface ThemeDefinition {
   tagline: string;
   description: string;
   previewGradient: string;
+  avatarTint: string;
   surface: "dark" | "light";
   effects: "dramatic" | "restrained";
 }
@@ -21,6 +22,7 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
     description:
       "Freed in its original high-voltage form. Blue, purple, cyan, and a little bit of trouble.",
     previewGradient: "linear-gradient(135deg, #3b82f6, #8b5cf6 55%, #06b6d4)",
+    avatarTint: "#7d8dff",
     surface: "dark",
     effects: "dramatic",
   },
@@ -31,36 +33,40 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
     description:
       "Parchment, bronze, and old-world warmth. Elegant, ceremonial, and quietly grand.",
     previewGradient: "linear-gradient(135deg, #7c5c38, #b08a48 55%, #5f4a32)",
+    avatarTint: "#b89452",
     surface: "dark",
     effects: "dramatic",
   },
   {
     id: "vesper",
     name: "Vesper",
-    tagline: "Precise, modern, and professionally dangerous.",
+    tagline: "Calm slate, clear thought, and no unnecessary drama.",
     description:
-      "Slate, pearl, and surgical restraint. Built for focus without feeling sterile.",
-    previewGradient: "linear-gradient(135deg, #4f6a7a, #90a4b4 55%, #d8dee5)",
+      "Neutral slate, smoke, and restrained contrast. Clean enough for work, warm enough to stay human.",
+    previewGradient: "linear-gradient(135deg, #46535d, #6f7a81 55%, #8f969a)",
+    avatarTint: "#7b8b90",
     surface: "dark",
     effects: "restrained",
   },
   {
     id: "ember",
     name: "Ember",
-    tagline: "Banked coals, iron tools, and a long memory.",
+    tagline: "Iron, soot, and a hand that means it.",
     description:
-      "Volcanic charcoal with ember-orange heat. Serious, tactile, and quietly alive.",
+      "Volcanic charcoal with ember-orange heat. Heavier, sharper, and built like forged metal.",
     previewGradient: "linear-gradient(135deg, #7a2f1f, #c15a2e 55%, #5b1711)",
+    avatarTint: "#cb6939",
     surface: "dark",
     effects: "dramatic",
   },
   {
-    id: "porcelain",
-    name: "Porcelain",
-    tagline: "Minimal, lucid, and impossible to clutter.",
+    id: "scriptorium",
+    name: "Scriptorium",
+    tagline: "Warm paper, dark ink, and a mind finally left alone.",
     description:
-      "Ivory, graphite, and pale mineral accents. Calm enough to think in, sharp enough to ship in.",
-    previewGradient: "linear-gradient(135deg, #f2eee6, #d8d2c6 55%, #8a857d)",
+      "A low-blue-light editorial theme for long reading sessions. Vellum, walnut, and quietly dignified typography.",
+    previewGradient: "linear-gradient(135deg, #f4ead7, #d8c4a1 55%, #86684a)",
+    avatarTint: "#9b7655",
     surface: "light",
     effects: "restrained",
   },

@@ -81,8 +81,8 @@ export function LegalGate({
   return (
     <div className="fixed inset-0 z-[120] app-theme-shell text-text-primary">
       <div className="flex min-h-full items-start justify-center overflow-y-auto px-4 py-4 sm:items-center sm:px-6 sm:py-8 lg:px-8">
-        <div className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-[color:var(--theme-border)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_92%,rgba(10,10,14,0.16))] shadow-[0_24px_80px_rgba(0,0,0,0.45)] sm:max-h-[calc(100dvh-3rem)]">
-          <div className="shrink-0 border-b border-[color:var(--theme-border)] bg-[linear-gradient(90deg,color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent),color-mix(in_srgb,var(--theme-bg-surface)_92%,transparent),color-mix(in_srgb,var(--theme-accent-tertiary)_12%,transparent))] px-6 py-5 sm:px-8 sm:py-7">
+        <div className="theme-dialog-shell flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col sm:max-h-[calc(100dvh-3rem)]">
+          <div className="theme-dialog-divider shrink-0 border-b bg-[linear-gradient(90deg,color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent),color-mix(in_srgb,var(--theme-bg-surface)_92%,transparent),color-mix(in_srgb,var(--theme-accent-tertiary)_12%,transparent))] px-6 py-5 sm:px-8 sm:py-7">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--theme-accent-secondary)]">
               Before You Continue
             </p>
@@ -97,7 +97,7 @@ export function LegalGate({
           </div>
 
           <div className="overflow-y-auto px-6 py-6 sm:px-8 sm:py-7 space-y-6">
-            <div className="rounded-2xl border border-amber-500/25 bg-amber-500/8 p-4">
+            <div className="theme-dialog-section rounded-2xl p-4">
               <p className="text-sm font-semibold text-amber-300">
                 What you are agreeing to
               </p>
@@ -109,7 +109,7 @@ export function LegalGate({
               </ul>
             </div>
 
-            <div className="rounded-2xl border border-[color:var(--theme-border)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_76%,transparent)] p-4">
+            <div className="theme-dialog-section rounded-2xl p-4">
               <p className="text-sm font-semibold text-text-primary">
                 Read these documents
               </p>
@@ -123,7 +123,7 @@ export function LegalGate({
               </div>
             </div>
 
-            <label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_84%,transparent)] p-4">
+            <label className="theme-card-soft flex cursor-pointer items-start gap-3 rounded-2xl p-4">
               <input
                 type="checkbox"
                 checked={checked}

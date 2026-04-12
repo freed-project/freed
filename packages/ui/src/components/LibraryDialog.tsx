@@ -84,16 +84,16 @@ export function LibraryDialog({
       }}
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60" />
+      <div className="theme-elevated-overlay absolute inset-0" />
 
       {/* Dialog */}
-      <div className="relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col bg-[#161616] border border-[rgba(255,255,255,0.1)] rounded-2xl shadow-2xl shadow-black/80 overflow-hidden">
+      <div className="relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] shadow-2xl shadow-black/40">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[rgba(255,255,255,0.08)]">
-          <h2 className="text-base font-semibold text-[#fafafa]">Library</h2>
+        <div className="flex items-center justify-between border-b border-[var(--theme-border-subtle)] px-5 py-4">
+          <h2 className="text-base font-semibold text-[var(--theme-text-primary)]">Library</h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-[#71717a] hover:text-[#a1a1aa]"
+            className="rounded-lg p-1.5 text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-secondary)]"
             aria-label="Close"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -110,8 +110,8 @@ export function LibraryDialog({
               onClick={() => { setTab(t); setSummary(null); }}
               className={`px-4 py-1.5 text-sm font-medium rounded-lg transition-colors capitalize ${
                 tab === t
-                  ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
-                  : "text-[#71717a] hover:text-[#a1a1aa] hover:bg-white/5"
+                  ? "theme-accent-button"
+                  : "text-[var(--theme-text-muted)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-secondary)]"
               }`}
             >
               {t}
@@ -123,8 +123,8 @@ export function LibraryDialog({
         <div className="overflow-y-auto px-5 py-5">
           {tab === "import" ? (
             <div>
-              <p className="text-sm text-[#71717a] mb-4">
-                Import a Freed Markdown archive. Select a folder of <code className="text-[#8b5cf6] bg-white/5 px-1 rounded">.md</code> files exported from Freed or another read-later app.
+              <p className="mb-4 text-sm text-[var(--theme-text-muted)]">
+                Import a Freed Markdown archive. Select a folder of <code className="rounded bg-[var(--theme-bg-muted)] px-1 text-[var(--theme-accent-secondary)]">.md</code> files exported from Freed or another read-later app.
               </p>
 
               {importMarkdown ? (
@@ -140,7 +140,7 @@ export function LibraryDialog({
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={importing}
-                    className="w-full py-2.5 rounded-xl border border-dashed border-[rgba(255,255,255,0.15)] text-[#a1a1aa] text-sm hover:border-[#8b5cf6]/50 hover:text-[#8b5cf6] hover:bg-[#8b5cf6]/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full rounded-xl border border-dashed border-[var(--theme-border-quiet)] py-2.5 text-sm text-[var(--theme-text-secondary)] transition-colors hover:border-[var(--theme-border-strong)] hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.06)] hover:text-[var(--theme-accent-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {importing ? "Importing..." : "Select Markdown files"}
                   </button>
@@ -148,13 +148,13 @@ export function LibraryDialog({
                   {/* Progress bar */}
                   {importing && progress && (
                     <div className="mt-4">
-                      <div className="flex justify-between text-xs text-[#71717a] mb-1.5">
+                      <div className="mb-1.5 flex justify-between text-xs text-[var(--theme-text-muted)]">
                         <span>{progress.current} / {progress.total} files</span>
                         <span>{percent}%</span>
                       </div>
-                      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                      <div className="h-1.5 overflow-hidden rounded-full bg-[var(--theme-bg-muted)]">
                         <div
-                          className="h-full bg-[#8b5cf6] rounded-full transition-all duration-300"
+                          className="h-full rounded-full bg-[var(--theme-accent-secondary)] transition-all duration-300"
                           style={{ width: `${percent}%` }}
                         />
                       </div>
@@ -163,14 +163,14 @@ export function LibraryDialog({
 
                   {/* Summary */}
                   {summary && !importing && (
-                    <div className="mt-4 p-3 rounded-xl bg-white/5 border border-[rgba(255,255,255,0.08)]">
-                      <p className="text-sm font-medium text-[#fafafa] mb-2">Import complete</p>
+                    <div className="mt-4 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-3">
+                      <p className="mb-2 text-sm font-medium text-[var(--theme-text-primary)]">Import complete</p>
                       <div className="flex gap-4 text-sm">
                         <span className="text-emerald-400">
                           {summary.imported} imported
                         </span>
                         {summary.skipped > 0 && (
-                          <span className="text-[#71717a]">
+                          <span className="text-[var(--theme-text-muted)]">
                             {summary.skipped} skipped
                           </span>
                         )}
@@ -182,7 +182,7 @@ export function LibraryDialog({
                       </div>
                       {summary.errors.length > 0 && (
                         <details className="mt-2">
-                          <summary className="text-xs text-[#71717a] cursor-pointer">
+                          <summary className="cursor-pointer text-xs text-[var(--theme-text-muted)]">
                             Show errors
                           </summary>
                           <ul className="mt-1 space-y-0.5 max-h-32 overflow-y-auto">
@@ -198,14 +198,14 @@ export function LibraryDialog({
                   )}
                 </>
               ) : (
-                <div className="py-4 text-center text-sm text-[#52525b]">
+                <div className="py-4 text-center text-sm text-[var(--theme-text-soft)]">
                   Import is only available in the desktop app.
                 </div>
               )}
             </div>
           ) : (
             <div>
-              <p className="text-sm text-[#71717a] mb-4">
+              <p className="mb-4 text-sm text-[var(--theme-text-muted)]">
                 Download your entire library as a zip archive of Freed Markdown files. Includes full article text where available.
               </p>
 
@@ -213,11 +213,11 @@ export function LibraryDialog({
                 <button
                   onClick={handleExport}
                   disabled={exporting}
-                  className="w-full py-2.5 rounded-xl bg-[#8b5cf6]/20 text-[#8b5cf6] text-sm font-medium hover:bg-[#8b5cf6]/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="theme-accent-button flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {exporting ? (
                     <>
-                      <div className="w-4 h-4 border border-[#8b5cf6]/30 border-t-[#8b5cf6] rounded-full animate-spin" />
+                      <div className="h-4 w-4 animate-spin rounded-full border border-[rgb(var(--theme-accent-secondary-rgb)/0.3)] border-t-[var(--theme-accent-secondary)]" />
                       Preparing export...
                     </>
                   ) : (
@@ -230,7 +230,7 @@ export function LibraryDialog({
                   )}
                 </button>
               ) : (
-                <div className="py-4 text-center text-sm text-[#52525b]">
+                <div className="py-4 text-center text-sm text-[var(--theme-text-soft)]">
                   Export is only available in the desktop app.
                 </div>
               )}

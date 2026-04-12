@@ -57,7 +57,7 @@ function SaveUrlTab({ onClose }: { onClose: () => void }) {
   return (
     <form onSubmit={handleSubmit}>
       <div className="mb-4">
-        <label htmlFor="save-url-input" className="block text-sm text-[#a1a1aa] mb-2">
+        <label htmlFor="save-url-input" className="mb-2 block text-sm text-[var(--theme-text-secondary)]">
           Article or page URL
         </label>
         <input
@@ -66,7 +66,7 @@ function SaveUrlTab({ onClose }: { onClose: () => void }) {
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           placeholder="https://example.com/article"
-          className="w-full px-4 py-3 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-xl focus:outline-none focus:border-[#8b5cf6] text-white placeholder-[#71717a] transition-colors"
+          className="w-full rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-4 py-3 text-[var(--theme-text-primary)] placeholder-[var(--theme-text-muted)] transition-colors focus:outline-none focus:border-[var(--theme-border-strong)]"
           disabled={loading}
           autoFocus
         />

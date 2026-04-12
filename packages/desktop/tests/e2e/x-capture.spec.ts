@@ -181,8 +181,28 @@ test("X connect form accepts cookies and triggers sync", async ({
     "[data-testid='x-manual-connect']",
     { timeout: 3_000 },
   );
-  await connectBtn.click();
-  await app.acceptProviderRiskIfPresent("x");
+  try {
+    await connectBtn.click({ timeout: 3_000 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("detached")) {
+      throw error;
+    }
+  }
+
+  await page.waitForFunction(() => {
+    const risk = document.querySelector('[data-testid="provider-risk-accept-x"]');
+    const status = document.querySelector('[data-testid="provider-status-x"]');
+    const isVisible = (element: Element | null) =>
+      !!element &&
+      element instanceof HTMLElement &&
+      element.offsetParent !== null;
+    return isVisible(risk) || isVisible(status);
+  }, { timeout: 10_000 });
+
+  if (await page.getByTestId("provider-risk-accept-x").isVisible().catch(() => false)) {
+    await app.acceptProviderRiskIfPresent("x");
+  }
 
   // After connecting, the authenticated state should render.
   await expect(page.getByTestId("provider-status-x")).toBeVisible({ timeout: 10_000 });

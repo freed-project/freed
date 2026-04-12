@@ -98,7 +98,7 @@ export default function RootLayout({
             try {
               var theme = localStorage.getItem("freed-theme") || "neon";
               document.documentElement.dataset.theme = theme;
-              document.documentElement.style.colorScheme = theme === "porcelain" ? "light" : "dark";
+              document.documentElement.style.colorScheme = theme === "scriptorium" ? "light" : "dark";
             } catch (error) {}
           })();
         `}</Script>

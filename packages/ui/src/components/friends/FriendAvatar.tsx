@@ -1,4 +1,3 @@
-import { DEFAULT_FRIEND_AVATAR_TINT } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { initialsForName } from "../../lib/friend-avatar.js";
 import { createFriendAvatarPalette } from "../../lib/friend-avatar-style.js";
@@ -16,8 +15,8 @@ export function FriendAvatar({
   size,
   className = "",
 }: FriendAvatarProps) {
-  const avatarTint = useAppStore((state) => state.preferences.display.friendAvatarTint) ?? DEFAULT_FRIEND_AVATAR_TINT;
-  const palette = createFriendAvatarPalette(avatarTint);
+  const themeId = useAppStore((state) => state.preferences.display.themeId);
+  const palette = createFriendAvatarPalette(themeId);
   const initials = initialsForName(name);
 
   return (

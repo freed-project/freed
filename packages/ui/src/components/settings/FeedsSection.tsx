@@ -40,15 +40,15 @@ function TabBar({
   onChange: (id: FeedTab) => void;
 }) {
   return (
-    <div className="flex gap-0.5 bg-white/[0.04] rounded-xl p-1 mb-5">
+    <div className="mb-5 flex gap-0.5 rounded-xl bg-[var(--theme-bg-muted)] p-1">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onChange(tab.id)}
           className={`flex-1 py-1.5 px-3 text-sm font-medium rounded-lg transition-all whitespace-nowrap ${
             active === tab.id
-              ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
-              : "text-[#a1a1aa] hover:text-white"
+              ? "theme-accent-button"
+              : "text-[var(--theme-text-secondary)] hover:text-[var(--theme-text-primary)]"
           }`}
         >
           {tab.label}
@@ -144,8 +144,8 @@ function ManagePane() {
   if (feedList.length === 0) {
     return (
       <div className="text-center py-8">
-        <p className="text-sm text-[#71717a]">No feeds subscribed yet.</p>
-        <p className="text-xs text-[#52525b] mt-1">Add a feed URL to get started.</p>
+        <p className="text-sm text-[var(--theme-text-muted)]">No feeds subscribed yet.</p>
+        <p className="mt-1 text-xs text-[var(--theme-text-soft)]">Add a feed URL to get started.</p>
       </div>
     );
   }
@@ -161,7 +161,7 @@ function ManagePane() {
   return (
     <>
       <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex gap-1 rounded-xl bg-white/[0.04] p-1">
+        <div className="flex gap-1 rounded-xl bg-[var(--theme-bg-muted)] p-1">
           {[
             { id: "all" as const, label: `All (${feedList.length.toLocaleString()})` },
             {
@@ -174,8 +174,8 @@ function ManagePane() {
               onClick={() => setFeedFilter(filter.id)}
               className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
                 feedFilter === filter.id
-                  ? "bg-[#8b5cf6]/20 text-[#8b5cf6]"
-                  : "text-[#a1a1aa] hover:text-white"
+                  ? "theme-accent-button"
+                  : "text-[var(--theme-text-secondary)] hover:text-[var(--theme-text-primary)]"
               }`}
             >
               {filter.label}
@@ -193,8 +193,8 @@ function ManagePane() {
       </div>
 
       {filteredFeedList.length === 0 ? (
-        <div className="rounded-xl border border-white/[0.05] bg-white/[0.03] px-4 py-6 text-center">
-          <p className="text-sm text-[#71717a]">
+          <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] px-4 py-6 text-center">
+          <p className="text-sm text-[var(--theme-text-muted)]">
             {feedFilter === "problem"
               ? "No problem feeds right now."
               : "No feeds subscribed yet."}
@@ -211,20 +211,20 @@ function ManagePane() {
           return (
             <div
               key={feed.url}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-[rgba(255,255,255,0.05)]"
+              className="flex items-center gap-3 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] px-3 py-2.5"
             >
               {feed.imageUrl ? (
                 <img src={feed.imageUrl} alt="" className="w-8 h-8 rounded-md flex-shrink-0 object-cover" />
               ) : (
-                <div className="w-8 h-8 rounded-md bg-[#8b5cf6]/10 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-4 h-4 text-[#8b5cf6]/60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-[rgb(var(--theme-accent-secondary-rgb)/0.1)]">
+                  <svg className="h-4 w-4 text-[rgb(var(--theme-accent-secondary-rgb)/0.75)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7M6 17a1 1 0 110-2 1 1 0 010 2z" />
                   </svg>
                 </div>
               )}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 min-w-0">
-                  <p className="text-sm text-white truncate">{feed.title}</p>
+                  <p className="truncate text-sm text-[var(--theme-text-primary)]">{feed.title}</p>
                   {failingFeed ? (
                     <span
                       className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${
@@ -237,7 +237,7 @@ function ManagePane() {
                     </span>
                   ) : null}
                 </div>
-                <p className="text-xs text-[#52525b] truncate">{feed.url}</p>
+                <p className="truncate text-xs text-[var(--theme-text-soft)]">{feed.url}</p>
                 {failingFeed?.lastError ? (
                   <p className="mt-1 text-xs text-amber-300 truncate">
                     {failingFeed.lastError}
@@ -247,7 +247,7 @@ function ManagePane() {
               <button
                 onClick={() => handleRemove(feed.url)}
                 disabled={removing === feed.url}
-                className="flex-shrink-0 p-1.5 rounded-lg hover:bg-red-500/20 text-[#71717a] hover:text-red-400 transition-colors disabled:opacity-50"
+                className="flex-shrink-0 rounded-lg p-1.5 text-[var(--theme-text-muted)] transition-colors hover:bg-red-500/20 hover:text-red-400 disabled:opacity-50"
                 aria-label={`Remove ${feed.title}`}
               >
                 {removing === feed.url ? (
@@ -267,8 +267,8 @@ function ManagePane() {
       )}
 
       {showRemoveAll && (
-        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4 bg-black/60 sm:items-center">
-          <div className="my-auto w-full max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded-2xl p-6 shadow-2xl">
+        <div className="theme-elevated-overlay fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4 sm:items-center">
+          <div className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto rounded-2xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-6 shadow-2xl">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center flex-shrink-0">
                 <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -276,8 +276,8 @@ function ManagePane() {
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-semibold text-white">{bulkUnsubscribeTitle}</p>
-                <p className="text-xs text-[#71717a] mt-0.5">
+                <p className="text-sm font-semibold text-[var(--theme-text-primary)]">{bulkUnsubscribeTitle}</p>
+                <p className="mt-0.5 text-xs text-[var(--theme-text-muted)]">
                   Unsubscribes from {filteredFeedList.length.toLocaleString()} shown feed{filteredFeedList.length === 1 ? "" : "s"} on every synced device.
                 </p>
               </div>
@@ -288,13 +288,13 @@ function ManagePane() {
                 type="checkbox"
                 checked={includeItems}
                 onChange={(e) => setIncludeItems(e.target.checked)}
-                className="mt-0.5 w-4 h-4 rounded border-[rgba(255,255,255,0.2)] bg-white/5 text-red-500 focus:ring-red-500 focus:ring-offset-0"
+                className="mt-0.5 h-4 w-4 rounded border-[var(--theme-border-quiet)] bg-[var(--theme-bg-input)] text-red-500 focus:ring-red-500 focus:ring-offset-0"
               />
               <div>
-                <p className="text-sm text-[#a1a1aa] group-hover:text-white transition-colors">
+                <p className="text-sm text-[var(--theme-text-secondary)] transition-colors group-hover:text-[var(--theme-text-primary)]">
                   Also delete all articles and reading history
                 </p>
-                <p className="text-xs text-[#52525b] mt-0.5">Cannot be undone</p>
+                <p className="mt-0.5 text-xs text-[var(--theme-text-soft)]">Cannot be undone</p>
               </div>
             </label>
 
@@ -302,7 +302,7 @@ function ManagePane() {
               <button
                 onClick={() => { setShowRemoveAll(false); setIncludeItems(false); }}
                 disabled={removingAll}
-                className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-[#a1a1aa] hover:text-white transition-colors text-sm disabled:opacity-50"
+                className="flex-1 rounded-xl bg-[var(--theme-bg-muted)] py-2.5 text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-card-hover)] hover:text-[var(--theme-text-primary)] disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -436,18 +436,18 @@ function ImportPane() {
           onClick={() => fileInputRef.current?.click()}
           className={`flex flex-col items-center justify-center gap-3 p-8 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
             isDragOver
-              ? "border-[#8b5cf6] bg-[#8b5cf6]/10"
-              : "border-[rgba(255,255,255,0.12)] hover:border-[rgba(255,255,255,0.25)] bg-white/[0.02]"
+              ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.08)]"
+              : "border-[var(--theme-border-quiet)] bg-[var(--theme-bg-card)] hover:border-[var(--theme-border-subtle)]"
           }`}
         >
-          <svg className="w-10 h-10 text-[#71717a]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="h-10 w-10 text-[var(--theme-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
           </svg>
           <div className="text-center">
-            <p className="text-sm text-white">
-              Drop an OPML file here or <span className="text-[#8b5cf6]">browse</span>
+            <p className="text-sm text-[var(--theme-text-primary)]">
+              Drop an OPML file here or <span className="text-[var(--theme-accent-secondary)]">browse</span>
             </p>
-            <p className="text-xs text-[#71717a] mt-1">Supports .opml and .xml files</p>
+            <p className="mt-1 text-xs text-[var(--theme-text-muted)]">Supports .opml and .xml files</p>
           </div>
           <input
             ref={fileInputRef}
@@ -464,7 +464,7 @@ function ImportPane() {
           </div>
         )}
 
-        <p className="mt-4 text-xs text-[#71717a] leading-relaxed">
+        <p className="mt-4 text-xs leading-relaxed text-[var(--theme-text-muted)]">
           OPML is a standard format used by most RSS readers. Export from Feedly,
           Inoreader, NetNewsWire, and others, then drop the file here.
         </p>
@@ -477,26 +477,26 @@ function ImportPane() {
       <>
         <div className="flex items-center gap-3 mb-4">
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-white">
+            <p className="text-sm text-[var(--theme-text-primary)]">
               <span className="font-semibold">{parsedFeeds.length.toLocaleString()}</span>{" "}
               feed{parsedFeeds.length !== 1 ? "s" : ""} found
               {duplicateCount > 0 && (
-                <span className="text-[#71717a]"> · {duplicateCount.toLocaleString()} already subscribed</span>
+                <span className="text-[var(--theme-text-muted)]"> · {duplicateCount.toLocaleString()} already subscribed</span>
               )}
             </p>
             {folders.length > 0 && (
-              <p className="text-xs text-[#71717a] mt-0.5 truncate">
+              <p className="mt-0.5 truncate text-xs text-[var(--theme-text-muted)]">
                 Folders: {folders.join(", ")}
               </p>
             )}
           </div>
-          <button onClick={handleReset} className="text-xs text-[#a1a1aa] hover:text-white transition-colors px-2 py-1">
+          <button onClick={handleReset} className="px-2 py-1 text-xs text-[var(--theme-text-secondary)] transition-colors hover:text-[var(--theme-text-primary)]">
             Change file
           </button>
         </div>
 
         {newCount > 0 && (
-          <button onClick={toggleAll} className="mb-3 text-xs text-[#8b5cf6] hover:text-[#a78bfa] transition-colors">
+          <button onClick={toggleAll} className="mb-3 text-xs text-[var(--theme-accent-secondary)] transition-colors hover:text-[var(--theme-text-primary)]">
             {selected.size === newCount ? "Deselect all" : "Select all"}
           </button>
         )}
@@ -509,7 +509,7 @@ function ImportPane() {
               <label
                 key={feed.url + i}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors cursor-pointer ${
-                  isExisting ? "opacity-50 cursor-default" : isSelected ? "bg-white/5" : "hover:bg-white/[0.03]"
+                  isExisting ? "cursor-default opacity-50" : isSelected ? "bg-[var(--theme-bg-muted)]" : "hover:bg-[var(--theme-bg-card)]"
                 }`}
               >
                 <input
@@ -517,14 +517,14 @@ function ImportPane() {
                   checked={isSelected}
                   onChange={() => !isExisting && toggleFeed(i)}
                   disabled={isExisting}
-                  className="w-4 h-4 rounded border-[rgba(255,255,255,0.2)] bg-white/5 text-[#8b5cf6] focus:ring-[#8b5cf6] focus:ring-offset-0 disabled:opacity-40"
+                  className="h-4 w-4 rounded border-[var(--theme-border-quiet)] bg-[var(--theme-bg-input)] text-[var(--theme-accent-secondary)] focus:ring-[var(--theme-accent-secondary)] focus:ring-offset-0 disabled:opacity-40"
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-white truncate">{feed.title}</p>
-                  <p className="text-xs text-[#71717a] truncate">{feed.url}</p>
+                  <p className="truncate text-sm text-[var(--theme-text-primary)]">{feed.title}</p>
+                  <p className="truncate text-xs text-[var(--theme-text-muted)]">{feed.url}</p>
                 </div>
                 {feed.folder && (
-                  <span className="flex-shrink-0 text-[10px] px-2 py-0.5 bg-white/5 rounded-full text-[#a1a1aa]">
+                  <span className="flex-shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2 py-0.5 text-[10px] text-[var(--theme-text-secondary)]">
                     {feed.folder}
                   </span>
                 )}
@@ -538,8 +538,8 @@ function ImportPane() {
           })}
         </div>
 
-        <div className="flex gap-3 justify-end mt-4 pt-4 border-t border-[rgba(255,255,255,0.08)]">
-          <button onClick={handleReset} className="px-4 py-2.5 text-[#a1a1aa] hover:text-white transition-colors text-sm">
+        <div className="mt-4 flex justify-end gap-3 border-t border-[var(--theme-border-subtle)] pt-4">
+          <button onClick={handleReset} className="px-4 py-2.5 text-sm text-[var(--theme-text-secondary)] transition-colors hover:text-[var(--theme-text-primary)]">
             Change file
           </button>
           <button
@@ -558,15 +558,15 @@ function ImportPane() {
     const pct = Math.round((progress.completed / progress.total) * 100);
     return (
       <div className="flex flex-col items-center gap-4 py-4">
-        <div className="w-full bg-white/5 rounded-full h-2 overflow-hidden">
-          <div className="h-full bg-[#8b5cf6] rounded-full transition-all duration-300" style={{ width: `${pct}%` }} />
+        <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--theme-bg-muted)]">
+          <div className="h-full rounded-full bg-[var(--theme-accent-secondary)] transition-all duration-300" style={{ width: `${pct}%` }} />
         </div>
         <div className="text-center">
-          <p className="text-sm text-white">
+          <p className="text-sm text-[var(--theme-text-primary)]">
             Subscribing... {progress.completed.toLocaleString()}/{progress.total.toLocaleString()}
           </p>
           {progress.current && (
-            <p className="text-xs text-[#71717a] mt-1 truncate max-w-xs">{progress.current}</p>
+            <p className="mt-1 max-w-xs truncate text-xs text-[var(--theme-text-muted)]">{progress.current}</p>
           )}
         </div>
       </div>
@@ -584,22 +584,22 @@ function ImportPane() {
           </div>
         </div>
         <div className="text-center">
-          <p className="text-lg font-semibold text-white">Import complete</p>
+          <p className="text-lg font-semibold text-[var(--theme-text-primary)]">Import complete</p>
           <div className="flex justify-center gap-4 mt-3">
             <div className="text-center">
               <p className="text-lg font-bold text-green-400">{progress.added.toLocaleString()}</p>
-              <p className="text-xs text-[#71717a]">added</p>
+                <p className="text-xs text-[var(--theme-text-muted)]">added</p>
             </div>
             {progress.skipped > 0 && (
               <div className="text-center">
-                <p className="text-lg font-bold text-[#a1a1aa]">{progress.skipped.toLocaleString()}</p>
-                <p className="text-xs text-[#71717a]">skipped</p>
+                <p className="text-lg font-bold text-[var(--theme-text-secondary)]">{progress.skipped.toLocaleString()}</p>
+                <p className="text-xs text-[var(--theme-text-muted)]">skipped</p>
               </div>
             )}
             {progress.failed.length > 0 && (
               <div className="text-center">
                 <p className="text-lg font-bold text-red-400">{progress.failed.length.toLocaleString()}</p>
-                <p className="text-xs text-[#71717a]">failed</p>
+                <p className="text-xs text-[var(--theme-text-muted)]">failed</p>
               </div>
             )}
           </div>
@@ -608,17 +608,17 @@ function ImportPane() {
           <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3">
             <p className="text-xs text-red-400 font-medium mb-2">Failed to subscribe:</p>
             {progress.failed.map((f: { url: string; error: string }) => (
-              <p key={f.url} className="text-xs text-[#71717a] truncate">
+              <p key={f.url} className="truncate text-xs text-[var(--theme-text-muted)]">
                 {f.url} — {f.error}
               </p>
             ))}
           </div>
         )}
         {progress.added > 0 && (
-          <p className="text-xs text-[#71717a] text-center">Fetching items in the background...</p>
+          <p className="text-center text-xs text-[var(--theme-text-muted)]">Fetching items in the background...</p>
         )}
         <div className="flex justify-center">
-          <button onClick={handleReset} className="px-4 py-2.5 text-[#a1a1aa] hover:text-white transition-colors text-sm">
+          <button onClick={handleReset} className="px-4 py-2.5 text-sm text-[var(--theme-text-secondary)] transition-colors hover:text-[var(--theme-text-primary)]">
             Import more
           </button>
         </div>
@@ -640,27 +640,27 @@ function ExportPane() {
   if (feedList.length === 0) {
     return (
       <div className="text-center py-6">
-        <p className="text-sm text-[#71717a]">No feed subscriptions to export.</p>
-        <p className="text-xs text-[#71717a] mt-1">Add some feeds first, then come back here.</p>
+        <p className="text-sm text-[var(--theme-text-muted)]">No feed subscriptions to export.</p>
+        <p className="mt-1 text-xs text-[var(--theme-text-muted)]">Add some feeds first, then come back here.</p>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="bg-white/[0.03] rounded-xl p-4 flex items-center justify-between">
+      <div className="flex items-center justify-between rounded-xl bg-[var(--theme-bg-card)] p-4">
         <div>
-          <p className="text-sm text-white">
+          <p className="text-sm text-[var(--theme-text-primary)]">
             <span className="font-semibold">{feedList.length.toLocaleString()}</span>{" "}
             feed{feedList.length !== 1 ? "s" : ""}
           </p>
           {folders.length > 0 && (
-            <p className="text-xs text-[#71717a] mt-0.5">
+            <p className="mt-0.5 text-xs text-[var(--theme-text-muted)]">
               in {folders.length.toLocaleString()} folder{folders.length !== 1 ? "s" : ""}
             </p>
           )}
         </div>
-        <svg className="w-8 h-8 text-[#71717a]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="h-8 w-8 text-[var(--theme-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
       </div>
@@ -668,12 +668,12 @@ function ExportPane() {
       <div className="max-h-48 overflow-y-auto space-y-1">
         {feedList.map((feed) => (
           <div key={feed.url} className="flex items-center gap-2 px-3 py-2 rounded-lg">
-            <svg className="w-3.5 h-3.5 text-[#8b5cf6]/60 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-3.5 w-3.5 flex-shrink-0 text-[rgb(var(--theme-accent-secondary-rgb)/0.75)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7M6 17a1 1 0 110-2 1 1 0 010 2z" />
             </svg>
-            <span className="text-sm text-white truncate flex-1">{feed.title}</span>
+            <span className="flex-1 truncate text-sm text-[var(--theme-text-primary)]">{feed.title}</span>
             {feed.folder && (
-              <span className="flex-shrink-0 text-[10px] px-2 py-0.5 bg-white/5 rounded-full text-[#a1a1aa]">
+              <span className="flex-shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2 py-0.5 text-[10px] text-[var(--theme-text-secondary)]">
                 {feed.folder}
               </span>
             )}
@@ -688,7 +688,7 @@ function ExportPane() {
         Download OPML
       </button>
 
-      <p className="text-xs text-[#71717a] text-center">
+      <p className="text-center text-xs text-[var(--theme-text-muted)]">
         Compatible with Feedly, Inoreader, NetNewsWire, and other RSS readers.
       </p>
     </div>

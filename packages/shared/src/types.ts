@@ -471,7 +471,7 @@ export type ThemeId =
   | "midas"
   | "vesper"
   | "ember"
-  | "porcelain";
+  | "scriptorium";
 
 /**
  * Reading enhancements configuration
@@ -496,11 +496,6 @@ export interface ReadingEnhancements {
   dualColumnMode: boolean;
 }
 
-/**
- * Display preferences
- */
-export const DEFAULT_FRIEND_AVATAR_TINT = "#b79cff";
-
 export interface DisplayPreferences {
   /** Items per page */
   itemsPerPage: number;
@@ -523,7 +518,7 @@ export interface DisplayPreferences {
   /** Friends workspace sidebar width in pixels (default: 360, min: 280, max: 520) */
   friendsSidebarWidth?: number;
 
-  /** Shared tint used for friend avatars in Friends and Map views */
+  /** @deprecated Friend avatar tint is now derived from the active theme. */
   friendAvatarTint?: string;
 
   /** Debug panel width in pixels (default: 320, min: 280, max: 600) */
@@ -678,7 +673,6 @@ export function createDefaultPreferences(): UserPreferences {
         markReadOnScroll: true,
         dualColumnMode: true,
       },
-      friendAvatarTint: DEFAULT_FRIEND_AVATAR_TINT,
       archivePruneDays: 30,
     },
     xCapture: {

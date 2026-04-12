@@ -61,7 +61,7 @@ export function DurationSelect({
       value={value}
       aria-label={ariaLabel}
       onChange={(event) => onChange(event.target.value as HealthChartRange)}
-      className="shrink-0 bg-[#18181b] border border-[rgba(255,255,255,0.1)] rounded-lg text-xs text-white px-2.5 py-1.5 focus:outline-none focus:border-[#8b5cf6]/50 cursor-pointer"
+      className="shrink-0 cursor-pointer rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-2.5 py-1.5 text-xs text-[var(--theme-text-primary)] focus:outline-none focus:border-[var(--theme-border-strong)]"
     >
       <option value="daily">Last 7 days</option>
       <option value="hourly">Last 24 hours</option>
@@ -71,7 +71,7 @@ export function DurationSelect({
 
 export function HealthStatusBadge({ snapshot }: { snapshot: ProviderHealthSnapshot }) {
   const styles = {
-    idle: "bg-white/5 text-[#71717a]",
+    idle: "bg-[var(--theme-bg-muted)] text-[var(--theme-text-muted)]",
     healthy: "bg-green-500/15 text-green-400",
     degraded: "bg-amber-500/15 text-amber-400",
     paused: "bg-amber-500/15 text-amber-400",
@@ -127,7 +127,7 @@ export function VolumeBars({
   return (
     <div className="space-y-1">
       {title && (
-        <p className="text-[10px] uppercase tracking-widest text-[#52525b]">
+        <p className="text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">
           {title}
         </p>
       )}
@@ -138,7 +138,7 @@ export function VolumeBars({
           return (
             <div key={key} className="flex h-full items-end">
               <div
-                className="w-full rounded-t bg-[#8b5cf6]/80"
+                className="w-full rounded-t bg-[var(--theme-accent-secondary)]"
                 style={{ height: barHeight(value, maxValue) }}
                 title={`${key}: ${value.toLocaleString()}`}
               />
@@ -157,24 +157,24 @@ function RecentAttemptsList({
 }) {
   return (
     <div className="space-y-2">
-      <p className="text-[10px] uppercase tracking-widest text-[#52525b]">
+      <p className="text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">
         Recent Attempts
       </p>
       {attempts.length === 0 ? (
-        <p className="text-xs text-[#71717a]">No attempts recorded yet.</p>
+        <p className="text-xs text-[var(--theme-text-muted)]">No attempts recorded yet.</p>
       ) : (
         attempts.slice(0, 5).map((attempt) => (
-          <div key={attempt.id} className="rounded-lg bg-white/5 p-2 text-xs">
+          <div key={attempt.id} className="rounded-lg bg-[var(--theme-bg-muted)] p-2 text-xs">
             <div className="flex items-center justify-between gap-3">
-              <span className="font-mono text-[#a1a1aa]">
+              <span className="font-mono text-[var(--theme-text-secondary)]">
                 {new Date(attempt.finishedAt).toLocaleTimeString([], {
                   hour: "numeric",
                   minute: "2-digit",
                 })}
               </span>
-              <span className="text-[#71717a]">{attempt.outcome}</span>
+              <span className="text-[var(--theme-text-muted)]">{attempt.outcome}</span>
             </div>
-            <p className="text-[#52525b]">
+            <p className="text-[var(--theme-text-soft)]">
               pulled {attempt.itemsSeen.toLocaleString()}, added {attempt.itemsAdded.toLocaleString()}
             </p>
             {attempt.reason && (
@@ -225,16 +225,16 @@ export function ProviderHealthSummary({
       <div className="flex items-center justify-between gap-3">
         {showProviderInfo ? (
           <div>
-            <p className="text-sm font-medium text-white">
+            <p className="text-sm font-medium text-[var(--theme-text-primary)]">
               {providerHealthLabel(snapshot.provider)}
             </p>
-            <p className="text-[11px] text-[#71717a]">
+            <p className="text-[11px] text-[var(--theme-text-muted)]">
               Last success {formatHealthRelative(snapshot.lastSuccessfulAt)}
             </p>
           </div>
         ) : (
           <div className="min-w-0">
-            <p className="text-[11px] text-[#71717a]">
+            <p className="text-[11px] text-[var(--theme-text-muted)]">
               Last success {formatHealthRelative(snapshot.lastSuccessfulAt)}
             </p>
           </div>
@@ -265,22 +265,22 @@ export function ProviderHealthSummary({
       </div>
 
       <div className="space-y-1">
-        <p className="text-[10px] uppercase tracking-widest text-[#52525b]">
+        <p className="text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">
           Reliability (7d)
         </p>
         <ReliabilityBars dailyBuckets={snapshot.dailyBuckets} />
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-xs">
-        <div className="rounded-lg bg-white/5 p-2">
-          <p className="text-[#52525b]">Seen ({rangeLabel})</p>
-          <p className="font-mono text-[#a1a1aa]">
+        <div className="rounded-lg bg-[var(--theme-bg-muted)] p-2">
+          <p className="text-[var(--theme-text-soft)]">Seen ({rangeLabel})</p>
+          <p className="font-mono text-[var(--theme-text-secondary)]">
             {totalSeen.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-lg bg-white/5 p-2">
-          <p className="text-[#52525b]">Added ({rangeLabel})</p>
-          <p className="font-mono text-[#a1a1aa]">
+        <div className="rounded-lg bg-[var(--theme-bg-muted)] p-2">
+          <p className="text-[var(--theme-text-soft)]">Added ({rangeLabel})</p>
+          <p className="font-mono text-[var(--theme-text-secondary)]">
             {totalAdded.toLocaleString()}
           </p>
         </div>
@@ -297,7 +297,7 @@ export function ProviderHealthSummary({
       )}
 
       {showCurrentMessage && (
-        <p className="text-xs text-[#71717a]">{snapshot.currentMessage}</p>
+        <p className="text-xs text-[var(--theme-text-muted)]">{snapshot.currentMessage}</p>
       )}
       {snapshot.lastError && (
         <p className="text-xs text-amber-400">{snapshot.lastError}</p>

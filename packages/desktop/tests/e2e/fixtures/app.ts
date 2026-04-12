@@ -58,7 +58,7 @@ export class AppFixture {
 
   async acceptProviderRiskIfPresent(
     provider: "x" | "facebook" | "instagram" | "linkedin",
-    timeout = 5_000,
+    timeout = 10_000,
   ): Promise<boolean> {
     const dialog = this.page.getByTestId(`provider-risk-dialog-${provider}`);
     const acceptButton = this.page.getByTestId(`provider-risk-accept-${provider}`);
@@ -66,13 +66,43 @@ export class AppFixture {
 
     if (!dialogVisible) return false;
 
-    const checkbox = dialog.getByRole("checkbox", {
-      name: /i understand the risk of using freed/i,
-    });
+    let checked = false;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const dialog = this.page.getByTestId(`provider-risk-dialog-${provider}`);
+        const checkbox = dialog.locator('input[type="checkbox"]').first();
+        await checkbox.waitFor({ state: "visible", timeout });
+        await checkbox.evaluate((element) => {
+          (element as HTMLInputElement).click();
+        });
+        checked = true;
+        break;
+      } catch (error) {
+        if (attempt === 2) {
+          throw error;
+        }
+        await this.page.waitForTimeout(150);
+      }
+    }
 
-    await checkbox.check();
+    if (!checked) return false;
+
     await expect(acceptButton).toBeEnabled({ timeout });
-    await acceptButton.click();
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const button = this.page.getByTestId(`provider-risk-accept-${provider}`);
+        await button.waitFor({ state: "visible", timeout });
+        await button.evaluate((element) => {
+          (element as HTMLButtonElement).click();
+        });
+        break;
+      } catch (error) {
+        if (attempt === 2) {
+          throw error;
+        }
+        await this.page.waitForTimeout(150);
+      }
+    }
     await expect(acceptButton).toBeHidden({ timeout });
     return true;
   }

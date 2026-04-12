@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { DEFAULT_FRIEND_AVATAR_TINT } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useResolvedLocations } from "../../hooks/useResolvedLocations.js";
 import { openFriendFromMap, openPostFromMap } from "../../lib/map-navigation.js";
@@ -14,7 +13,7 @@ export function MapView() {
   const setActiveView = useAppStore((state) => state.setActiveView);
   const setFilter = useAppStore((state) => state.setFilter);
   const setSearchQuery = useAppStore((state) => state.setSearchQuery);
-  const avatarTint = useAppStore((state) => state.preferences.display.friendAvatarTint) ?? DEFAULT_FRIEND_AVATAR_TINT;
+  const themeId = useAppStore((state) => state.preferences.display.themeId);
 
   const { markers } = useResolvedLocations(items, friends);
 
@@ -27,7 +26,7 @@ export function MapView() {
       <MapSurface
         markers={markers}
         focusedMarkerKey={focusedMarker?.key ?? null}
-        avatarTint={avatarTint}
+        themeId={themeId}
         onOpenFriend={(marker) => {
           openFriendFromMap(marker, {
             setActiveView,

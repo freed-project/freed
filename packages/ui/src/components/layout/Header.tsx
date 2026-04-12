@@ -242,7 +242,7 @@ export function Header({ onMenuClick }: HeaderProps) {
   return (
     <>
       <header
-        className={`sticky top-0 z-30 flex-shrink-0 border-b border-[var(--theme-border-subtle)] bg-[color-mix(in_oklab,var(--theme-bg-root)_84%,transparent)] backdrop-blur-xl ${
+        className={`theme-topbar sticky top-0 z-30 flex-shrink-0 border-b ${
           headerDragRegion ? "" : "pt-[env(safe-area-inset-top)]"
         } px-1`}
         {...(headerDragRegion
@@ -488,7 +488,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                 <Tooltip label="Add new content">
                   <button
                     onClick={() => setDropdownOpen((v) => !v)}
-                    className="flex items-center gap-2 rounded-lg bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] px-3 py-1.5 text-[var(--theme-accent-secondary)] transition-colors hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.28)]"
+                    className="theme-accent-button flex items-center gap-2 rounded-lg px-3 py-1.5 transition-colors"
                     aria-haspopup="true"
                     aria-expanded={dropdownOpen}
                   >
@@ -525,17 +525,17 @@ export function Header({ onMenuClick }: HeaderProps) {
                 </Tooltip>
 
                 {dropdownOpen && (
-                  <div className="absolute right-0 top-full mt-1.5 w-44 bg-[#161616] border border-[rgba(255,255,255,0.1)] rounded-xl shadow-2xl shadow-black/70 overflow-hidden z-50 py-1">
+                  <div className="absolute right-0 top-full z-50 mt-1.5 w-44 overflow-hidden rounded-xl border border-[var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_95%,transparent)] py-1 shadow-2xl shadow-black/40">
                     {canAddRss && (
                       <button
                         onClick={() => {
                           setDropdownOpen(false);
                           setAddFeedOpen(true);
                         }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-colors text-left"
+                        className="w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                       >
                         <svg
-                          className="w-4 h-4 text-orange-400 shrink-0"
+                          className="w-4 h-4 shrink-0 text-[var(--theme-media-rss)]"
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
@@ -556,10 +556,10 @@ export function Header({ onMenuClick }: HeaderProps) {
                           setDropdownOpen(false);
                           setSavedContentOpen(true);
                         }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-[#a1a1aa] hover:bg-white/5 hover:text-white transition-colors text-left"
+                        className="w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                       >
                         <svg
-                          className="w-4 h-4 text-[#8b5cf6] shrink-0"
+                          className="w-4 h-4 shrink-0 text-[var(--theme-accent-secondary)]"
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"

@@ -125,9 +125,9 @@ test("Facebook connect form accepts cookies and triggers sync", async ({
   });
 
   // After auth state updates, the section should expose the sync action.
-  await expect(page.getByTestId("provider-sync-action-facebook")).toBeVisible({
-    timeout: 5_000,
-  });
+  await expect(
+    page.getByTestId("provider-sync-action-facebook"),
+  ).toBeVisible({ timeout: 5_000 });
 });
 
 test("Facebook sync excludes posts from filtered groups", async ({
@@ -268,11 +268,12 @@ test("Facebook sync excludes posts from filtered groups", async ({
     }));
   });
 
-  await expect(page.getByTestId("provider-sync-action-facebook")).toBeVisible({
+  const syncNowButton = page.getByTestId("provider-sync-action-facebook");
+  await expect(syncNowButton).toBeVisible({
     timeout: 5_000,
   });
 
-  await page.getByTestId("provider-sync-action-facebook").click();
+  await syncNowButton.click();
   await app.acceptProviderRiskIfPresent("facebook");
 
   await page.waitForFunction(() => {

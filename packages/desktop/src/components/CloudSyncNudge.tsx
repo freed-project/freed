@@ -29,10 +29,10 @@ export function CloudSyncNudge() {
   if (dismissed || hasAnyCloudProvider()) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-40 flex items-center gap-3 px-4 py-3 rounded-xl bg-[#1c1c1e] border border-[rgba(255,255,255,0.1)] shadow-2xl text-sm max-w-sm sm:left-auto sm:right-4 sm:w-full">
+    <div className="fixed bottom-4 left-1/2 z-40 flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 items-center gap-3 rounded-xl border border-[var(--theme-border-subtle)] bg-[color-mix(in_oklab,var(--theme-bg-surface)_92%,transparent)] px-4 py-3 text-sm shadow-[var(--theme-header-shadow)] backdrop-blur-sm">
       {/* Cloud icon */}
       <svg
-        className="w-4 h-4 text-[#8b5cf6] flex-shrink-0"
+        className="h-4 w-4 flex-shrink-0 text-[var(--theme-accent-secondary)]"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
@@ -45,13 +45,13 @@ export function CloudSyncNudge() {
         />
       </svg>
 
-      <p className="flex-1 text-[#a1a1aa] leading-snug">
-        No cloud sync — your feed won't reach mobile.
+      <p className="flex-1 leading-snug text-[var(--theme-text-secondary)]">
+        No cloud sync, your feed won't reach mobile.
       </p>
 
       <button
         onClick={handleSetUp}
-        className="text-xs font-medium text-[#8b5cf6] hover:text-[#a78bfa] transition-colors whitespace-nowrap"
+        className="whitespace-nowrap text-xs font-medium text-[var(--theme-accent-secondary)] transition-colors hover:text-[var(--theme-text-primary)]"
       >
         Set up
       </button>
@@ -59,7 +59,7 @@ export function CloudSyncNudge() {
       <button
         onClick={handleDismiss}
         aria-label="Dismiss"
-        className="text-[#52525b] hover:text-[#71717a] transition-colors"
+        className="text-[var(--theme-text-soft)] transition-colors hover:text-[var(--theme-text-muted)]"
       >
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

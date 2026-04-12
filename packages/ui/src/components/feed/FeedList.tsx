@@ -461,15 +461,15 @@ export function FeedList({
     if (isSearching) {
       return (
         <div className="flex flex-col items-center justify-center flex-1 min-h-0 overflow-auto text-center px-6 py-12">
-          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#3b82f6]/20 to-[#8b5cf6]/20 flex items-center justify-center mb-4">
+          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[var(--theme-border-subtle)] bg-[radial-gradient(circle_at_top,var(--theme-bg-card-hover),transparent_72%),linear-gradient(135deg,rgb(var(--theme-accent-primary-rgb)/0.16),rgb(var(--theme-accent-secondary-rgb)/0.14))]">
             <svg className="w-7 h-7 text-[#3b82f6]/60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
           </div>
           <p className="text-lg font-medium mb-2">No results</p>
-          <p className="text-sm text-[#71717a] max-w-xs">
-            Nothing matched{searchQuery ? <> &ldquo;<span className="text-white/60">{searchQuery}</span>&rdquo;</> : ""}.
-            Try a different term, or switch to <span className="text-white/60">All Sources</span> in the sidebar to search everywhere.
+          <p className="max-w-xs text-sm text-[var(--theme-text-muted)]">
+            Nothing matched{searchQuery ? <> &ldquo;<span className="text-[var(--theme-text-secondary)]">{searchQuery}</span>&rdquo;</> : ""}.
+            Try a different term, or switch to <span className="text-[var(--theme-text-secondary)]">All Sources</span> in the sidebar to search everywhere.
           </p>
         </div>
       );
@@ -485,24 +485,24 @@ export function FeedList({
 
     return (
       <div className="flex flex-col items-center justify-center flex-1 min-h-0 overflow-auto text-center px-6 py-12">
-        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#3b82f6]/20 to-[#8b5cf6]/20 flex items-center justify-center mb-4">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[var(--theme-border-subtle)] bg-[radial-gradient(circle_at_top,var(--theme-bg-card-hover),transparent_72%),linear-gradient(135deg,rgb(var(--theme-accent-primary-rgb)/0.16),rgb(var(--theme-accent-secondary-rgb)/0.14))]">
           <span className="text-2xl">📡</span>
         </div>
         {hasFeedsSubscribed ? (
           <>
             <p className="text-lg font-medium mb-2">All caught up!</p>
-            <p className="text-sm text-[#71717a]">No new items to show.</p>
+            <p className="text-sm text-[var(--theme-text-muted)]">No new items to show.</p>
           </>
         ) : (
           <>
             <p className="text-lg font-medium mb-2">Welcome to Freed</p>
-            <p className="text-sm text-[#71717a] mb-6 max-w-xs">
+            <p className="mb-6 max-w-xs text-sm text-[var(--theme-text-muted)]">
               Add RSS feeds to start reading.
             </p>
             {onAddFeed && (
               <button
                 onClick={onAddFeed}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors font-medium text-sm"
+                className="theme-accent-button flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

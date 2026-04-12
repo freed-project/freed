@@ -29,7 +29,7 @@ export default function CTA() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: 0.2 }}
-              className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 relative z-10"
+              className="theme-display-large text-3xl sm:text-4xl md:text-5xl font-bold mb-4 relative z-10"
             >
               Ready for <span className="gradient-text">Freed</span>om?
             </motion.h2>

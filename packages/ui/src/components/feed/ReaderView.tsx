@@ -177,12 +177,12 @@ function htmlToPlainText(html: string): string {
 // ─── Heading size classes by level ───────────────────────────────────────────
 
 const HEADING_CLASSES: Record<number, string> = {
-  1: "text-2xl font-semibold text-[#fafafa] mt-8 mb-3",
-  2: "text-xl font-semibold text-[#fafafa] mt-8 mb-3",
-  3: "text-lg font-semibold text-[#fafafa] mt-6 mb-2",
-  4: "text-base font-semibold text-[#fafafa] mt-4 mb-2",
-  5: "text-base font-medium text-[#fafafa] mt-4 mb-2",
-  6: "text-sm font-medium text-[#fafafa] mt-4 mb-2",
+  1: "mt-8 mb-3 text-2xl font-semibold text-[var(--theme-text-primary)]",
+  2: "mt-8 mb-3 text-xl font-semibold text-[var(--theme-text-primary)]",
+  3: "mt-6 mb-2 text-lg font-semibold text-[var(--theme-text-primary)]",
+  4: "mt-4 mb-2 text-base font-semibold text-[var(--theme-text-primary)]",
+  5: "mt-4 mb-2 text-base font-medium text-[var(--theme-text-primary)]",
+  6: "mt-4 mb-2 text-sm font-medium text-[var(--theme-text-primary)]",
 };
 
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
@@ -364,11 +364,11 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
   );
 
   return (
-    <div className={dualColumn ? "flex-1 min-w-0 bg-[#0a0a0a] overflow-auto" : "fixed inset-0 z-50 bg-[#0a0a0a] overflow-auto"}>
+    <div className={dualColumn ? "flex-1 min-w-0 overflow-auto bg-[var(--theme-bg-root)]" : "fixed inset-0 z-50 overflow-auto bg-[var(--theme-bg-root)]"}>
       {/* Header */}
       <header
-        className={`sticky top-0 z-10 bg-[#0a0a0a] border-b border-[rgba(255,255,255,0.08)]${
-          dualColumn ? " border-l border-l-[rgba(255,255,255,0.08)] rounded-bl-2xl" : ""
+        className={`theme-topbar sticky top-0 z-10 border-b${
+          dualColumn ? " border-l rounded-bl-2xl" : ""
         }`}
         {...(headerDragRegion
           ? {
@@ -383,19 +383,19 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
         >
           <button
             onClick={onClose}
-            className="flex items-center gap-2 min-w-0 max-w-[50%] -ml-1 px-2 py-2 rounded-lg hover:bg-white/10 transition-colors group"
+            className="group -ml-1 flex min-w-0 max-w-[50%] items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-[var(--theme-bg-muted)]"
             style={headerDragRegion ? noDrag : undefined}
             aria-label="Back"
           >
             <svg
-              className="w-5 h-5 shrink-0 text-[#71717a] group-hover:text-[#a1a1aa] transition-colors"
+              className="w-5 h-5 shrink-0 text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            <span className="text-sm text-[#71717a] group-hover:text-[#a1a1aa] truncate transition-colors">
+            <span className="truncate text-sm text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]">
               {item.author.displayName}
             </span>
           </button>
@@ -420,7 +420,7 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
 
           {isCaching && (
             <Tooltip label="Loading full article">
-              <div className="w-4 h-4 border border-[#52525b] border-t-[#8b5cf6] rounded-full animate-spin" />
+              <div className="w-4 h-4 rounded-full border border-[var(--theme-text-soft)] border-t-[var(--theme-accent-secondary)] animate-spin" />
             </Tooltip>
           )}
 
@@ -430,8 +430,8 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
               onClick={toggleFocus}
               className={`p-2 rounded-lg transition-colors text-sm font-bold ${
                 focusOptions.enabled
-                  ? "bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30"
-                  : "hover:bg-white/10 text-[#71717a]"
+                  ? "theme-accent-button"
+                  : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
               }`}
               style={headerDragRegion ? noDrag : undefined}
               aria-pressed={focusOptions.enabled}
@@ -449,8 +449,8 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
               onClick={handleToggleSaved}
               className={`p-2 rounded-lg transition-colors ${
                 item.userState.saved
-                  ? "bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30"
-                  : "hover:bg-white/10 text-[#a1a1aa]"
+                  ? "theme-accent-button"
+                  : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
               }`}
               style={headerDragRegion ? noDrag : undefined}
               aria-label={item.userState.saved ? "Unsave" : "Save"}
@@ -472,7 +472,7 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
               className={`p-2 rounded-lg transition-colors ${
                 item.userState.archived
                   ? "bg-green-500/20 text-green-400 hover:bg-green-500/30"
-                  : "hover:bg-white/10 text-[#a1a1aa]"
+                  : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
               }`}
               style={headerDragRegion ? noDrag : undefined}
               aria-label={item.userState.archived ? "Unarchive" : "Archive"}
@@ -484,7 +484,7 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
           {onOpenUrl && item.sourceUrl && (
             <button
               onClick={() => onOpenUrl(item.sourceUrl!)}
-              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm text-[#71717a] hover:bg-white/10 hover:text-white transition-colors"
+              className="theme-subtle-button inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm"
               style={headerDragRegion ? noDrag : undefined}
               aria-label="Open"
             >
@@ -499,8 +499,8 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
               onClick={toggleDualColumn}
               className={`hidden md:flex p-2 rounded-lg transition-colors ${
                 dualColumn
-                  ? "bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30"
-                  : "hover:bg-white/10 text-[#71717a]"
+                  ? "theme-accent-button"
+                  : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
               }`}
               style={headerDragRegion ? noDrag : undefined}
               aria-pressed={dualColumn}
@@ -521,8 +521,8 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
       <article className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-20">
         {/* Meta */}
         <div className="mb-6">
-          <div className="flex items-center gap-3 text-sm text-[#71717a] mb-4 flex-wrap">
-            <span className="font-medium text-[#a1a1aa]">{item.author.displayName}</span>
+          <div className="mb-4 flex flex-wrap items-center gap-3 text-sm text-[var(--theme-text-muted)]">
+            <span className="font-medium text-[var(--theme-text-secondary)]">{item.author.displayName}</span>
             <span>•</span>
             <span>{timeAgo}</span>
             {item.preservedContent?.readingTime && (
@@ -533,7 +533,7 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
             )}
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-bold mb-4 leading-tight">
+          <h1 className="theme-display-large text-2xl sm:text-3xl font-bold mb-4 leading-tight">
             {item.content.linkPreview?.title || item.content.text?.slice(0, 100)}
           </h1>
 
@@ -542,7 +542,7 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
               href={articleUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-[#8b5cf6] hover:text-[#a78bfa] text-sm font-medium transition-colors"
+              className="inline-flex items-center gap-1 text-sm font-medium text-[var(--theme-accent-secondary)] transition-colors hover:opacity-80"
             >
               View original
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -559,25 +559,25 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
             alt=""
             loading="lazy"
             decoding="async"
-            className="w-full rounded-xl mb-8 bg-white/5 ring-1 ring-white/5"
+            className="mb-8 w-full rounded-xl bg-[var(--theme-bg-muted)] ring-1 ring-[var(--theme-border-subtle)]"
           />
         )}
 
         {/* Content */}
         {isLoading ? (
           <div className="flex justify-center py-16">
-            <div className="w-8 h-8 border-2 border-[#27272a] border-t-[#8b5cf6] rounded-full animate-spin" />
+            <div className="w-8 h-8 rounded-full border-2 border-[var(--theme-border-quiet)] border-t-[var(--theme-accent-secondary)] animate-spin" />
           </div>
         ) : focusOptions.enabled ? (
-          <div className="text-[#a1a1aa] text-lg leading-relaxed">
+          <div className="text-lg leading-relaxed text-[var(--theme-text-secondary)]">
             <FocusText text={plainText ?? ""} options={focusOptions} />
           </div>
         ) : articleBlocks.length > 0 ? (
           <ArticleContent blocks={articleBlocks} />
         ) : (
-          <div className="text-[#a1a1aa] text-lg leading-relaxed">
+          <div className="text-lg leading-relaxed text-[var(--theme-text-secondary)]">
             {item.content.text || (
-              <span className="text-[#52525b] italic">
+              <span className="italic text-[var(--theme-text-soft)]">
                 No content available. Connect to the internet to load this article.
               </span>
             )}
@@ -586,13 +586,13 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
 
         {/* Tags */}
         {item.userState.tags.length > 0 && (
-          <div className="mt-8 pt-8 border-t border-[rgba(255,255,255,0.08)]">
-            <h3 className="text-sm font-medium text-[#71717a] mb-3">Tags</h3>
+          <div className="mt-8 border-t border-[var(--theme-border-subtle)] pt-8">
+            <h3 className="mb-3 text-sm font-medium text-[var(--theme-text-muted)]">Tags</h3>
             <div className="flex flex-wrap gap-2">
               {item.userState.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="px-3 py-1.5 text-sm rounded-full bg-[#8b5cf6]/20 text-[#8b5cf6]"
+                  className="theme-accent-tag rounded-full px-3 py-1.5 text-sm"
                 >
                   {tag}
                 </span>
@@ -617,7 +617,7 @@ function ArticleContent({ blocks }: { blocks: ContentBlock[] }) {
         switch (block.kind) {
           case "text":
             return (
-              <p key={i} className="text-[#a1a1aa] text-lg leading-relaxed">
+              <p key={i} className="text-lg leading-relaxed text-[var(--theme-text-secondary)]">
                 {block.content}
               </p>
             );
@@ -639,7 +639,7 @@ function ArticleContent({ blocks }: { blocks: ContentBlock[] }) {
                   loading="lazy"
                 />
                 {block.caption && (
-                  <figcaption className="text-sm text-[#71717a] mt-2 text-center">
+                  <figcaption className="mt-2 text-center text-sm text-[var(--theme-text-muted)]">
                     {block.caption}
                   </figcaption>
                 )}
@@ -649,7 +649,7 @@ function ArticleContent({ blocks }: { blocks: ContentBlock[] }) {
             return (
               <blockquote
                 key={i}
-                className="border-l-2 border-[#8b5cf6] pl-4 py-3 text-[#a1a1aa] bg-white/5 rounded-r-xl italic"
+                className="rounded-r-xl border-l-2 border-[var(--theme-accent-secondary)] bg-[var(--theme-bg-muted)] py-3 pl-4 italic text-[var(--theme-text-secondary)]"
               >
                 {block.content}
               </blockquote>
@@ -658,9 +658,9 @@ function ArticleContent({ blocks }: { blocks: ContentBlock[] }) {
             return (
               <pre
                 key={i}
-                className="bg-[#141414] border border-[rgba(255,255,255,0.08)] rounded-xl p-4 overflow-x-auto"
+                className="overflow-x-auto rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-code-background)] p-4"
               >
-                <code className="text-[#8b5cf6] text-sm font-mono whitespace-pre-wrap">
+                <code className="whitespace-pre-wrap text-sm font-mono text-[var(--theme-accent-secondary)]">
                   {block.content}
                 </code>
               </pre>
@@ -670,7 +670,7 @@ function ArticleContent({ blocks }: { blocks: ContentBlock[] }) {
             return (
               <Tag
                 key={i}
-                className={`text-[#a1a1aa] text-lg leading-relaxed pl-6 space-y-1 ${
+                className={`space-y-1 pl-6 text-lg leading-relaxed text-[var(--theme-text-secondary)] ${
                   block.ordered ? "list-decimal" : "list-disc"
                 }`}
               >
@@ -697,7 +697,7 @@ function FocusText({ text, options }: { text: string; options: FocusOptions }) {
     const segments = applyFocusMode(text, options);
     return segments.map((seg, i) =>
       seg.emphasis
-        ? <strong key={i} className="text-[#fafafa] font-bold">{seg.text}</strong>
+        ? <strong key={i} className="font-bold text-[var(--theme-text-primary)]">{seg.text}</strong>
         : <span key={i}>{seg.text}</span>,
     );
   }, [text, options]);

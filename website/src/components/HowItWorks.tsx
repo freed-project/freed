@@ -43,7 +43,7 @@ export default function HowItWorks() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <h2 className="text-4xl md:text-5xl font-bold mb-4">
+          <h2 className="theme-display-large text-4xl md:text-5xl font-bold mb-4">
             How It <span className="gradient-text">Works</span>
           </h2>
           <p className="text-text-secondary text-lg max-w-2xl mx-auto">

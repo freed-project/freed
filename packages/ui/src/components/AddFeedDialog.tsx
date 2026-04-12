@@ -47,7 +47,7 @@ function AddUrlTab({ onClose }: { onClose: () => void }) {
     <>
       <form onSubmit={handleSubmit}>
         <div className="mb-4">
-          <label htmlFor="feed-url" className="block text-sm text-[#a1a1aa] mb-2">
+          <label htmlFor="feed-url" className="mb-2 block text-sm text-[var(--theme-text-secondary)]">
             Feed URL
           </label>
           <input
@@ -56,7 +56,7 @@ function AddUrlTab({ onClose }: { onClose: () => void }) {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://example.com/feed.xml"
-            className="w-full px-4 py-3 bg-white/5 border border-[rgba(255,255,255,0.08)] rounded-xl focus:outline-none focus:border-[#8b5cf6] text-white placeholder-[#71717a] transition-colors"
+            className="w-full rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-4 py-3 text-[var(--theme-text-primary)] placeholder-[var(--theme-text-muted)] transition-colors focus:outline-none focus:border-[var(--theme-border-strong)]"
             disabled={loading}
             autoFocus
           />
@@ -79,8 +79,8 @@ function AddUrlTab({ onClose }: { onClose: () => void }) {
         </div>
       </form>
 
-      <div className="mt-6 pt-4 border-t border-[rgba(255,255,255,0.08)]">
-        <p className="text-xs text-[#71717a] mb-3">Try these example feeds:</p>
+      <div className="mt-6 border-t border-[var(--theme-border-subtle)] pt-4">
+        <p className="mb-3 text-xs text-[var(--theme-text-muted)]">Try these example feeds:</p>
         <div className="flex flex-wrap gap-2">
           {[
             "https://simonwillison.net/atom/everything/",
@@ -91,7 +91,7 @@ function AddUrlTab({ onClose }: { onClose: () => void }) {
               key={exampleUrl}
               type="button"
               onClick={() => setUrl(exampleUrl)}
-              className="text-xs px-3 py-1.5 bg-white/5 hover:bg-[#8b5cf6]/20 hover:text-[#8b5cf6] rounded-lg text-[#a1a1aa] transition-colors"
+              className="rounded-lg bg-[var(--theme-bg-muted)] px-3 py-1.5 text-xs text-[var(--theme-text-secondary)] transition-colors hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.14)] hover:text-[var(--theme-accent-secondary)]"
             >
               {new URL(exampleUrl).hostname}
             </button>

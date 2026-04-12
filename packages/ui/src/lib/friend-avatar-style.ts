@@ -1,4 +1,4 @@
-import { DEFAULT_FRIEND_AVATAR_TINT } from "@freed/shared";
+import { DEFAULT_THEME_ID, getThemeDefinition, type ThemeId } from "@freed/shared/themes";
 
 type Rgb = { r: number; g: number; b: number };
 
@@ -25,21 +25,15 @@ function clampChannel(value: number): number {
   return Math.max(0, Math.min(255, Math.round(value)));
 }
 
-function normalizeTintHex(input?: string | null): string {
-  if (!input) return DEFAULT_FRIEND_AVATAR_TINT;
-  const trimmed = input.trim();
-  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) {
-    return trimmed.toLowerCase();
-  }
-  return DEFAULT_FRIEND_AVATAR_TINT;
+function normalizeThemeId(input?: ThemeId | null): ThemeId {
+  return input ?? DEFAULT_THEME_ID;
 }
 
 function hexToRgb(hex: string): Rgb {
-  const normalized = normalizeTintHex(hex);
   return {
-    r: parseInt(normalized.slice(1, 3), 16),
-    g: parseInt(normalized.slice(3, 5), 16),
-    b: parseInt(normalized.slice(5, 7), 16),
+    r: parseInt(hex.slice(1, 3), 16),
+    g: parseInt(hex.slice(3, 5), 16),
+    b: parseInt(hex.slice(5, 7), 16),
   };
 }
 
@@ -55,8 +49,8 @@ function rgba(rgb: Rgb, alpha: number): string {
   return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
 }
 
-export function createFriendAvatarPalette(tint?: string | null): FriendAvatarPalette {
-  const tintHex = normalizeTintHex(tint);
+export function createFriendAvatarPalette(themeId?: ThemeId | null): FriendAvatarPalette {
+  const tintHex = getThemeDefinition(normalizeThemeId(themeId)).avatarTint;
   const base = hexToRgb(tintHex);
   const light = mix(base, { r: 255, g: 255, b: 255 }, 0.26);
   const bright = mix(base, { r: 255, g: 255, b: 255 }, 0.4);

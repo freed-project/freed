@@ -17,7 +17,7 @@ import { useSettingsStore } from "@freed/ui/lib/settings-store";
 import { resetProviderPauseState } from "../lib/provider-health";
 
 const XIcon = () => (
-  <svg className="w-7 h-7 text-[#a1a1aa]" viewBox="0 0 24 24" fill="currentColor">
+  <svg className="h-7 w-7 text-[var(--theme-media-x)]" viewBox="0 0 24 24" fill="currentColor">
     <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.747l7.73-8.835L1.254 2.25H8.08l4.259 5.63 5.905-5.63zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
   </svg>
 );
@@ -60,11 +60,11 @@ export function XFeedEmptyState() {
   if (activeFilter.platform !== "x") {
     return (
       <>
-        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#3b82f6]/20 to-[#8b5cf6]/20 flex items-center justify-center mb-4">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.14)]">
           <span className="text-2xl">📡</span>
         </div>
         <p className="text-lg font-medium mb-2">All caught up!</p>
-        <p className="text-sm text-[#71717a]">No new items to show.</p>
+        <p className="text-sm text-[var(--theme-text-muted)]">No new items to show.</p>
       </>
     );
   }
@@ -73,20 +73,20 @@ export function XFeedEmptyState() {
   if (xAuth.isAuthenticated) {
     return (
       <>
-        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#3b82f6]/20 to-[#8b5cf6]/20 flex items-center justify-center mb-4">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.14)]">
           <XIcon />
         </div>
         <p className="text-lg font-medium mb-2">All caught up!</p>
-        <p className="text-sm text-[#71717a] mb-6">Your X timeline is up to date.</p>
+        <p className="mb-6 text-sm text-[var(--theme-text-muted)]">Your X timeline is up to date.</p>
         <div className="flex gap-3">
           <button
             onClick={handleSync}
             disabled={syncing || isLoading}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 disabled:opacity-50 transition-colors font-medium text-sm"
+            className="theme-accent-button flex items-center gap-2 rounded-xl px-5 py-2.5 font-medium text-sm transition-colors disabled:opacity-50"
           >
             {syncing ? (
               <>
-                <div className="w-3.5 h-3.5 border-2 border-[#8b5cf6] border-t-transparent rounded-full animate-spin" />
+                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--theme-accent-secondary)] border-t-transparent" />
                 Syncing…
               </>
             ) : (
@@ -119,16 +119,16 @@ export function XFeedEmptyState() {
   // X not connected — invite to settings
   return (
     <>
-      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#3b82f6]/20 to-[#8b5cf6]/20 flex items-center justify-center mb-4">
-        <XIcon />
-      </div>
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.14)]">
+          <XIcon />
+        </div>
       <p className="text-lg font-medium mb-2">Connect X / Twitter</p>
-      <p className="text-sm text-[#71717a] mb-6 max-w-xs text-center">
+      <p className="mb-6 max-w-xs text-center text-sm text-[var(--theme-text-muted)]">
         Pull your home timeline into Freed. Set it up in Sources settings.
       </p>
       <button
         onClick={() => openSettings("x")}
-        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 transition-colors font-medium text-sm"
+        className="theme-accent-button flex items-center gap-2 rounded-xl px-5 py-2.5 font-medium text-sm transition-colors"
       >
         Open Settings
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

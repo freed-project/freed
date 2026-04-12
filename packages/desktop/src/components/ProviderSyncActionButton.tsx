@@ -20,7 +20,7 @@ export function ProviderSyncActionButton({
       onClick={onClick}
       disabled={disabled}
       data-testid={testId}
-      className="flex flex-1 items-center justify-center gap-2 text-sm px-3 py-2 rounded-xl bg-[#8b5cf6]/15 text-[#8b5cf6] hover:bg-[#8b5cf6]/25 disabled:opacity-50 transition-colors"
+      className="theme-accent-button flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm transition-colors disabled:opacity-50"
     >
       {busy ? (
         <>

@@ -36,8 +36,8 @@ export function ScraperWindowModeControl({
   return (
     <div className="space-y-2">
       <div>
-        <p className="text-sm text-[#a1a1aa]">Scraper window mode</p>
-        <p className="text-xs text-[#52525b] mt-0.5">
+        <p className="text-sm text-[var(--theme-text-secondary)]">Scraper window mode</p>
+        <p className="mt-0.5 text-xs text-[var(--theme-text-soft)]">
           Choose how the {sourceLabel} browser window behaves during sync.
         </p>
       </div>
@@ -58,21 +58,21 @@ export function ScraperWindowModeControl({
               onClick={() => onChange(option.mode)}
               className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${
                 active
-                  ? "border-[#8b5cf6]/60 bg-[#8b5cf6]/10"
-                  : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
+                  ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.12)]"
+                  : "border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] hover:bg-[var(--theme-bg-card)]"
               }`}
             >
               <div className="flex items-center justify-between gap-3">
-                <span className={active ? "text-[#d8ccff]" : "text-[#d4d4d8]"}>
+                <span className={active ? "text-[var(--theme-text-primary)]" : "text-[var(--theme-text-secondary)]"}>
                   {option.label}
                 </span>
                 <span
                   className={`h-2.5 w-2.5 rounded-full ${
-                    active ? "bg-[#8b5cf6]" : "bg-white/15"
+                    active ? "bg-[var(--theme-accent-secondary)]" : "bg-[var(--theme-border-quiet)]"
                   }`}
                 />
               </div>
-              <p className="mt-1 text-xs text-[#71717a]">{option.blurb}</p>
+              <p className="mt-1 text-xs text-[var(--theme-text-muted)]">{option.blurb}</p>
             </button>
           );
         })}
