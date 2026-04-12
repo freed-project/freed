@@ -26,8 +26,8 @@ export default function QrGallery() {
           <div aria-hidden="true" />
 
           <header className="w-full text-center">
-            <h1 className="theme-display-large mx-auto max-w-5xl text-[clamp(2.15rem,6vw,5.1rem)] font-black leading-[0.88] tracking-[-0.065em]">
-              <span className="gradient-text inline-block">Scan to take back your feed</span>
+            <h1 className="theme-display-large mx-auto max-w-5xl overflow-visible text-[clamp(2.15rem,6vw,5.1rem)] font-black leading-[0.88] tracking-[-0.065em]">
+              <span className="gradient-text inline-block pb-[0.08em]">Scan to take back your feed</span>
             </h1>
           </header>
 

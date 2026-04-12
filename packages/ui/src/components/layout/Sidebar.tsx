@@ -586,6 +586,25 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const allSource = TOP_SOURCE_ITEMS[0];
   const providerSourceItems = TOP_SOURCE_ITEMS.slice(1);
 
+  const sourceOrderClass = (source: SourceNavigationItem) => {
+    switch (source.id) {
+      case undefined:
+        return "order-1";
+      case "x":
+        return "order-6";
+      case "facebook":
+        return "order-7";
+      case "instagram":
+        return "order-8";
+      case "linkedin":
+        return "order-9";
+      case "rss":
+        return "order-10";
+      default:
+        return "";
+    }
+  };
+
   const settingsSectionForSource = (source: SourceNavigationItem) => {
     if (source.id === undefined) return null;
     if (source.id === "rss") return "feeds";
@@ -703,11 +722,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         >
           <SearchJumpField />
 
-          <ul className="space-y-1">
+          <ul className="flex flex-col gap-1">
             {[allSource].map((source) => (
                 <li
                   key={source.id ?? "all"}
-                  className={`group/source flex items-stretch gap-2 rounded-lg border transition-all ${
+                  className={`order-1 group/source flex items-stretch gap-2 rounded-lg border transition-all ${
                     isTopSourceActive(source)
                       ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
                       : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
@@ -763,7 +782,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   </div>
                 </li>
               ))}
-            <li>
+            <li className="order-4">
               <button
                 onClick={() => showFeed({ savedOnly: true })}
                 className={`
@@ -783,7 +802,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 )}
               </button>
             </li>
-            <li>
+            <li className="order-5">
               <button
                 onClick={() => showFeed({ archivedOnly: true })}
                 className={`
@@ -803,7 +822,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 )}
               </button>
             </li>
-            <li>
+            <li className="order-2">
               <button
                 onClick={() => {
                   setActiveView("friends");
@@ -840,7 +859,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 )}
               </button>
             </li>
-            <li>
+            <li className="order-3">
               <button
                 onClick={() => {
                   setActiveView("map");
@@ -879,15 +898,16 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
                 if (isRssSource) {
                   return (
-                    <li key={sourceKey(source)}>
-                      <div
-                        className={`group/source rounded-lg border transition-all ${
+                    <li key={sourceKey(source)} className={sourceOrderClass(source)}>
+                      <div className="space-y-1">
+                        <div
+                          className={`group/source rounded-lg border transition-all ${
                           isTopSourceActive(source)
                             ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
                             : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
-                        }`}
-                      >
-                        <div className="flex items-stretch gap-2">
+                          }`}
+                        >
+                          <div className="flex items-stretch gap-2">
                           <div className="flex min-w-0 items-center gap-1.5 pl-3 py-1.5">
                             <button
                               onClick={() => handleSourceClick(source)}
@@ -985,10 +1005,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                               ) : null}
                             </div>
                           </div>
+                          </div>
                         </div>
 
                         {rssFeedsOpen && (
-                          <div className="mt-1 ml-8 border-l border-[color:var(--theme-border-subtle)] pl-2">
+                          <div className="ml-8 border-l border-[color:var(--theme-border-subtle)] pl-2">
                             {visibleFeedList.length > 0 ? (
                               <>
                                 <ul className="space-y-0.5">
@@ -1110,7 +1131,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 return (
                   <li
                     key={source.id ?? "all"}
-                    className={`group/source flex items-stretch gap-2 rounded-lg border transition-all ${
+                    className={`${sourceOrderClass(source)} group/source flex items-stretch gap-2 rounded-lg border transition-all ${
                       isTopSourceActive(source)
                         ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
                         : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
