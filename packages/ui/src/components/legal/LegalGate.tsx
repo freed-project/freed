@@ -97,11 +97,11 @@ export function LegalGate({
           </div>
 
           <div className="overflow-y-auto px-6 py-6 sm:px-8 sm:py-7 space-y-6">
-            <div className="theme-dialog-section rounded-2xl p-4">
-              <p className="text-sm font-semibold text-amber-300">
+            <div className="theme-feedback-panel-warning rounded-2xl p-4">
+              <p className="theme-feedback-text-warning text-sm font-semibold">
                 What you are agreeing to
               </p>
-              <ul className="mt-3 space-y-2 text-sm text-amber-100/85">
+              <ul className="theme-feedback-text-warning-muted mt-3 space-y-2 text-sm">
                 <li>You are using experimental software that may break or change without notice.</li>
                 <li>You are responsible for deciding whether to connect any account or provider.</li>
                 <li>Some social features can trigger throttling, forced logouts, temporary locks, or permanent bans.</li>

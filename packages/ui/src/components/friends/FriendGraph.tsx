@@ -64,6 +64,8 @@ interface FriendGraphTheme {
   labelFillEnd: string;
   labelShadow: string;
   labelBorderSoft: string;
+  reconnectGlow: string;
+  reconnectStroke: string;
 }
 
 function loadAvatar(url: string): HTMLImageElement | null {
@@ -83,23 +85,27 @@ function clampScale(scale: number): number {
 function readFriendGraphTheme(): FriendGraphTheme {
   if (typeof document === "undefined") {
     return {
-      surfaceFill: "rgba(15,15,20,0.96)",
-      textPrimary: "rgba(255,255,255,0.92)",
-      labelFillStart: "rgba(24,17,32,0.94)",
-      labelFillEnd: "rgba(15,15,20,0.96)",
-      labelShadow: "rgba(0,0,0,0.28)",
-      labelBorderSoft: "rgba(255,255,255,0.08)",
+      surfaceFill: "color-mix(in srgb, var(--theme-bg-surface) 96%, transparent)",
+      textPrimary: "var(--theme-text-primary)",
+      labelFillStart: "var(--theme-bg-elevated)",
+      labelFillEnd: "var(--theme-bg-surface)",
+      labelShadow: "rgb(var(--theme-shell-rgb) / 0.28)",
+      labelBorderSoft: "var(--theme-border-subtle)",
+      reconnectGlow: "rgb(var(--theme-feedback-warning-rgb) / 0.34)",
+      reconnectStroke: "rgb(var(--theme-feedback-warning-rgb) / 0.9)",
     };
   }
 
   const styles = getComputedStyle(document.documentElement);
   return {
-    surfaceFill: styles.getPropertyValue("--theme-bg-surface").trim() || "rgba(15,15,20,0.96)",
-    textPrimary: styles.getPropertyValue("--theme-text-primary").trim() || "rgba(255,255,255,0.92)",
-    labelFillStart: styles.getPropertyValue("--theme-bg-elevated").trim() || "rgba(24,17,32,0.94)",
-    labelFillEnd: styles.getPropertyValue("--theme-bg-surface").trim() || "rgba(15,15,20,0.96)",
-    labelShadow: styles.getPropertyValue("--theme-focus-ring").trim() || "rgba(0,0,0,0.28)",
-    labelBorderSoft: styles.getPropertyValue("--theme-border-subtle").trim() || "rgba(255,255,255,0.08)",
+    surfaceFill: styles.getPropertyValue("--theme-graph-surface-fill").trim() || "color-mix(in srgb, var(--theme-bg-surface) 96%, transparent)",
+    textPrimary: styles.getPropertyValue("--theme-graph-text-primary").trim() || "var(--theme-text-primary)",
+    labelFillStart: styles.getPropertyValue("--theme-graph-label-fill-start").trim() || "var(--theme-bg-elevated)",
+    labelFillEnd: styles.getPropertyValue("--theme-graph-label-fill-end").trim() || "var(--theme-bg-surface)",
+    labelShadow: styles.getPropertyValue("--theme-graph-label-shadow").trim() || "rgb(var(--theme-shell-rgb) / 0.28)",
+    labelBorderSoft: styles.getPropertyValue("--theme-graph-label-border-soft").trim() || "var(--theme-border-subtle)",
+    reconnectGlow: styles.getPropertyValue("--theme-graph-reconnect-glow").trim() || "rgb(var(--theme-feedback-warning-rgb) / 0.34)",
+    reconnectStroke: styles.getPropertyValue("--theme-graph-reconnect-stroke").trim() || "rgb(var(--theme-feedback-warning-rgb) / 0.9)",
   };
 }
 
@@ -167,7 +173,7 @@ function drawNode(
   ctx.save();
 
   if (node.inReconnectZone) {
-    ctx.shadowColor = "rgba(251,191,36,0.34)";
+    ctx.shadowColor = graphTheme.reconnectGlow;
     ctx.shadowBlur = 18;
   }
 
@@ -199,7 +205,7 @@ function drawNode(
     ctx.drawImage(avatarImg, x - radius, y - radius, radius * 2, radius * 2);
     const imageOverlay = ctx.createRadialGradient(x - radius * 0.18, y - radius * 0.24, 0, x, y, radius);
     imageOverlay.addColorStop(0, avatarPalette.imageHighlight);
-    imageOverlay.addColorStop(0.5, "rgba(0,0,0,0)");
+    imageOverlay.addColorStop(0.5, "transparent");
     imageOverlay.addColorStop(1, avatarPalette.imageShadow);
     ctx.fillStyle = imageOverlay;
     ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
@@ -216,7 +222,7 @@ function drawNode(
     ctx.restore();
     ctx.save();
     ctx.globalAlpha = node.opacity;
-    ctx.fillStyle = graphTheme.textPrimary;
+    ctx.fillStyle = avatarPalette.text;
     ctx.font = `600 ${Math.max(10, radius * 0.52)}px system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -240,7 +246,7 @@ function drawNode(
     ctx.globalAlpha = 0.26 * pulse;
     ctx.beginPath();
     ctx.arc(x, y, radius + 8, 0, Math.PI * 2);
-    ctx.strokeStyle = node.inReconnectZone ? "rgba(251,191,36,0.9)" : avatarPalette.selectionOuterStroke;
+    ctx.strokeStyle = node.inReconnectZone ? graphTheme.reconnectStroke : avatarPalette.selectionOuterStroke;
     ctx.lineWidth = 1.5;
     ctx.stroke();
     ctx.restore();

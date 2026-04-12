@@ -58,8 +58,6 @@ const MAPLIBRE_CSS_PATH =
     import.meta.url
   ).href;
 const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/positron";
-const MAP_CANVAS_FILTER =
-  "brightness(0.26) contrast(1.24) saturate(0.24)";
 
 let mapLibreLoader: Promise<MapLibreModule> | null = null;
 let mapLibreCssLoaded = false;
@@ -311,7 +309,7 @@ function mapStyles(interactive: boolean) {
     }
 
     .freed-map-shell .maplibregl-canvas {
-      filter: ${MAP_CANVAS_FILTER};
+      filter: var(--theme-map-canvas-filter);
     }
 
     .freed-map-shell .maplibregl-control-container,
@@ -329,7 +327,7 @@ function mapStyles(interactive: boolean) {
       border: 1px solid var(--theme-border-strong);
       border-radius: 24px;
       box-shadow:
-        0 20px 48px rgba(2, 6, 23, 0.74),
+        var(--theme-map-popup-shadow),
         0 0 0 1px var(--theme-border-subtle);
       backdrop-filter: blur(18px);
       overflow: hidden;
@@ -352,8 +350,7 @@ function mapStyles(interactive: boolean) {
       filter: brightness(1.06);
       box-shadow:
         0 0 0 1px var(--theme-border-strong),
-        0 0 24px rgb(var(--theme-accent-secondary-rgb) / 0.28),
-        0 20px 42px rgba(2, 6, 23, 0.76);
+        var(--theme-map-marker-hover-shadow);
     }
 
     .freed-map-fallback-scan {
@@ -557,10 +554,22 @@ export function MapSurface({
         ref={containerRef}
         className={`h-full w-full ${showFallback ? "invisible" : "visible"}`}
       />
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgb(var(--theme-accent-secondary-rgb)/0.16),transparent_34%)]" />
-      <div className="theme-map-grid pointer-events-none absolute inset-0 opacity-20 [background-size:84px_84px]" />
-      <div className="theme-map-fade-top pointer-events-none absolute inset-x-0 top-0 h-28" />
-      <div className="theme-map-fade-bottom pointer-events-none absolute inset-x-0 bottom-0 h-28" />
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgb(var(--theme-accent-secondary-rgb)/1),transparent_34%)]"
+        style={{ opacity: "var(--theme-map-accent-overlay-opacity)" }}
+      />
+      <div
+        className="theme-map-grid pointer-events-none absolute inset-0 [background-size:84px_84px]"
+        style={{ opacity: "var(--theme-map-grid-opacity)" }}
+      />
+      <div
+        className="theme-map-fade-top pointer-events-none absolute inset-x-0 top-0"
+        style={{ height: "var(--theme-map-fade-top-height)" }}
+      />
+      <div
+        className="theme-map-fade-bottom pointer-events-none absolute inset-x-0 bottom-0"
+        style={{ height: "var(--theme-map-fade-bottom-height)" }}
+      />
 
       {showFallback && stableMarkers.length > 0 && (
         <div className="freed-map-fallback-scan absolute inset-0 overflow-hidden">
@@ -577,9 +586,8 @@ export function MapSurface({
                 style={{
                   ...position,
                   border: "1px solid color-mix(in oklab, var(--theme-border-strong) 78%, transparent)",
-                  background:
-                    "linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.02) 28%, transparent), color-mix(in oklab, var(--theme-accent-secondary) 18%, var(--theme-bg-surface))",
-                  boxShadow: "0 18px 34px rgba(2,6,23,0.34)",
+                  background: "var(--theme-map-fallback-card-background)",
+                  boxShadow: "var(--theme-map-fallback-card-shadow)",
                 }}
                 onClick={() => setSelectedFallbackMarkerKey((current) => current === marker.key ? null : marker.key)}
                 aria-label={fallbackLabel(marker)}

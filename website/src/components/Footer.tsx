@@ -18,8 +18,7 @@ export default function Footer() {
                 <span
                   className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
                   style={{
-                    background:
-                      "linear-gradient(90deg, var(--theme-accent-primary), var(--theme-accent-secondary), var(--theme-accent-tertiary))",
+                    background: "var(--theme-logo-spectrum)",
                   }}
                 />
               </span>
@@ -27,11 +26,7 @@ export default function Footer() {
                 .WTF
               </span>
             </Link>
-            <p className="text-text-secondary text-sm max-w-md">
-              Take back your feed. Freed is open-source software that helps you
-              read on your own terms.
-            </p>
-            <div className="mt-6 max-w-[13rem]">
+            <div className="mt-6 max-w-[18rem]">
               <ThemeSelector compact />
             </div>
           </div>
@@ -123,6 +118,14 @@ export default function Footer() {
                   Desktop EULA
                 </Link>
               </li>
+              <li>
+                <Link
+                  href="/qr"
+                  className="text-text-secondary text-sm hover:text-text-primary transition-colors"
+                >
+                  Sharing QR
+                </Link>
+              </li>
             </ul>
           </div>
         </div>
@@ -130,12 +133,12 @@ export default function Footer() {
         {/* Bottom */}
         <div className="mt-12 pt-8 border-t border-freed-border flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
           <p className="text-text-muted text-sm">
-            &copy; {new Date().getFullYear()} Freed. Open source under MIT
+            &copy; 2025-{new Date().getFullYear()} Freed contributors. Open source under MIT
             License.
           </p>
           <p className="text-text-muted text-sm">
             Built for humans, not algorithms.
-            {/* <br />
+            <br />
             An{" "}
             <a
               href="https://AubreyFalconer.com"
@@ -145,7 +148,7 @@ export default function Footer() {
             >
               Aubrey Falconer
             </a>{" "}
-            project. */}
+            project.
           </p>
         </div>
       </div>

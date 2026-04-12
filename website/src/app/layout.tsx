@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope, Space_Grotesk } from "next/font/google";
 import Script from "next/script";
+import {
+  THEME_DEFINITIONS,
+  getThemeCssVariables,
+} from "@freed/shared/themes";
 import { NewsletterProvider } from "@/context/NewsletterContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import SiteShell from "@/components/SiteShell";
@@ -17,6 +21,10 @@ const spaceGrotesk = Space_Grotesk({
   display: "swap",
   variable: "--font-space-grotesk",
 });
+
+const THEME_BOOTSTRAP_VARS = Object.fromEntries(
+  THEME_DEFINITIONS.map((theme) => [theme.id, getThemeCssVariables(theme.id)]),
+);
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -97,8 +105,14 @@ export default function RootLayout({
           (function() {
             try {
               var theme = localStorage.getItem("freed-theme") || "neon";
-              document.documentElement.dataset.theme = theme;
-              document.documentElement.style.colorScheme = theme === "scriptorium" ? "light" : "dark";
+              var root = document.documentElement;
+              var themeVars = ${JSON.stringify(THEME_BOOTSTRAP_VARS)};
+              root.dataset.theme = theme;
+              root.style.colorScheme = theme === "scriptorium" ? "light" : "dark";
+              var vars = themeVars[theme] || themeVars.neon;
+              Object.keys(vars).forEach(function(name) {
+                root.style.setProperty(name, vars[name]);
+              });
             } catch (error) {}
           })();
         `}</Script>
@@ -107,7 +121,8 @@ export default function RootLayout({
             {/* Skip to main content link for accessibility */}
             <a
               href="#main-content"
-              className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-glow-purple focus:text-text-primary focus:rounded-lg focus:outline-none"
+              className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:text-text-primary focus:rounded-lg focus:outline-none"
+              style={{ background: "var(--theme-heading-accent)" }}
             >
               Skip to main content
             </a>

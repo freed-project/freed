@@ -46,25 +46,28 @@ function formatRelative(ts: number): string {
 
 // Colour coding by event kind
 const KIND_STYLES: Record<SyncEventKind, { badge: string; dot: string; label: string }> = {
-  connected:          { badge: "bg-green-500/20 text-green-400 border-green-500/30",    dot: "bg-green-400",    label: "connected" },
-  disconnected:       { badge: "bg-red-500/20 text-red-400 border-red-500/30",          dot: "bg-red-400",      label: "disconnected" },
-  reconnecting:       { badge: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30", dot: "bg-yellow-400",   label: "reconnecting" },
-  sent:               { badge: "bg-blue-500/20 text-blue-400 border-blue-500/30",        dot: "bg-blue-400",     label: "sent" },
-  received:           { badge: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",        dot: "bg-cyan-400",     label: "received" },
-  merge_ok:           { badge: "bg-green-500/20 text-green-400 border-green-500/30",    dot: "bg-green-400",    label: "merge ok" },
-  merge_err:          { badge: "bg-red-500/20 text-red-400 border-red-500/30",          dot: "bg-red-400",      label: "merge err" },
-  init:               { badge: "bg-purple-500/20 text-purple-400 border-purple-500/30", dot: "bg-purple-400",   label: "init" },
-  change:             { badge: "bg-[#52525b]/40 text-[#a1a1aa] border-[#52525b]/30",    dot: "bg-[#71717a]",    label: "change" },
-  error:              { badge: "bg-red-500/20 text-red-400 border-red-500/30",          dot: "bg-red-400",      label: "error" },
-  mixed_content_warn: { badge: "bg-orange-500/20 text-orange-400 border-orange-500/30", dot: "bg-orange-400",   label: "mixed content" },
-  camera_started:     { badge: "bg-[#52525b]/40 text-[#a1a1aa] border-[#52525b]/30",   dot: "bg-[#71717a]",    label: "camera" },
-  camera_denied:      { badge: "bg-red-500/20 text-red-400 border-red-500/30",          dot: "bg-red-400",      label: "cam denied" },
-  qr_decoded:         { badge: "bg-purple-500/20 text-purple-400 border-purple-500/30", dot: "bg-purple-400",   label: "qr decoded" },
-  connect_attempt:    { badge: "bg-blue-500/20 text-blue-400 border-blue-500/30",        dot: "bg-blue-400",     label: "connecting" },
-  connect_timeout:    { badge: "bg-red-500/20 text-red-400 border-red-500/30",          dot: "bg-red-400",      label: "timeout" },
+  connected:          { badge: "theme-status-pill-success", dot: "bg-[rgb(var(--theme-feedback-success-rgb))]", label: "connected" },
+  disconnected:       { badge: "theme-status-pill-danger", dot: "bg-[rgb(var(--theme-feedback-danger-rgb))]", label: "disconnected" },
+  reconnecting:       { badge: "theme-status-pill-warning", dot: "bg-[rgb(var(--theme-feedback-warning-rgb))]", label: "reconnecting" },
+  sent:               { badge: "theme-status-pill-info", dot: "bg-[rgb(var(--theme-feedback-info-rgb))]", label: "sent" },
+  received:           { badge: "theme-status-pill-info", dot: "bg-[rgb(var(--theme-feedback-info-rgb))]", label: "received" },
+  merge_ok:           { badge: "theme-status-pill-success", dot: "bg-[rgb(var(--theme-feedback-success-rgb))]", label: "merge ok" },
+  merge_err:          { badge: "theme-status-pill-danger", dot: "bg-[rgb(var(--theme-feedback-danger-rgb))]", label: "merge err" },
+  init:               { badge: "theme-status-pill-info", dot: "bg-[rgb(var(--theme-feedback-info-rgb))]", label: "init" },
+  change:             { badge: "border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card-hover)] text-[var(--theme-text-muted)]",    dot: "bg-[var(--theme-text-soft)]",    label: "change" },
+  error:              { badge: "theme-status-pill-danger", dot: "bg-[rgb(var(--theme-feedback-danger-rgb))]", label: "error" },
+  mixed_content_warn: { badge: "theme-status-pill-warning", dot: "bg-[rgb(var(--theme-feedback-warning-rgb))]", label: "mixed content" },
+  camera_started:     { badge: "border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card-hover)] text-[var(--theme-text-muted)]",   dot: "bg-[var(--theme-text-soft)]",    label: "camera" },
+  camera_denied:      { badge: "theme-status-pill-danger", dot: "bg-[rgb(var(--theme-feedback-danger-rgb))]", label: "cam denied" },
+  qr_decoded:         { badge: "theme-status-pill-info", dot: "bg-[rgb(var(--theme-feedback-info-rgb))]", label: "qr decoded" },
+  connect_attempt:    { badge: "theme-status-pill-info", dot: "bg-[rgb(var(--theme-feedback-info-rgb))]", label: "connecting" },
+  connect_timeout:    { badge: "theme-status-pill-danger", dot: "bg-[rgb(var(--theme-feedback-danger-rgb))]", label: "timeout" },
 };
 
 const EMPTY_PROVIDER_SYNC_COUNTS: Partial<Record<HealthProviderId, number>> = {};
+const DEBUG_CARD_CLASS = "theme-card-soft rounded-xl p-3";
+const DEBUG_LABEL_CLASS = "mb-1 text-[10px] uppercase tracking-wider text-[var(--theme-text-soft)]";
+const DEBUG_BUTTON_CLASS = "btn-secondary px-2.5 py-1 text-xs";
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -73,8 +76,8 @@ const EMPTY_PROVIDER_SYNC_COUNTS: Partial<Record<HealthProviderId, number>> = {}
 function EventRow({ event }: { event: SyncEvent }) {
   const style = KIND_STYLES[event.kind];
   return (
-    <div className="flex items-start gap-2.5 py-2 border-b border-white/5 last:border-0">
-      <span className="text-[10px] text-[#52525b] tabular-nums shrink-0 mt-0.5 font-mono">
+    <div className="flex items-start gap-2.5 border-b border-[var(--theme-border-subtle)] py-2 last:border-0">
+      <span className="mt-0.5 shrink-0 font-mono text-[10px] tabular-nums text-[var(--theme-text-soft)]">
         {formatTs(event.ts)}
       </span>
       <span className={`shrink-0 mt-0.5 text-[10px] px-1.5 py-0.5 rounded border font-mono ${style.badge}`}>
@@ -82,10 +85,10 @@ function EventRow({ event }: { event: SyncEvent }) {
       </span>
       <div className="flex-1 min-w-0">
         {event.detail && (
-          <p className="text-xs text-[#a1a1aa] truncate font-mono">{event.detail}</p>
+          <p className="truncate font-mono text-xs text-[var(--theme-text-muted)]">{event.detail}</p>
         )}
         {event.bytes !== undefined && (
-          <p className="text-[10px] text-[#52525b] font-mono">{formatBytes(event.bytes)}</p>
+          <p className="font-mono text-[10px] text-[var(--theme-text-soft)]">{formatBytes(event.bytes)}</p>
         )}
       </div>
     </div>
@@ -98,10 +101,10 @@ const CLOUD_STATUS_STYLES: Record<
   CloudSyncStatus,
   { dot: string; label: string; labelColor: string }
 > = {
-  idle:       { dot: "bg-[#52525b]",  label: "Not connected", labelColor: "text-[#71717a]" },
-  connecting: { dot: "bg-yellow-400 animate-pulse", label: "Connecting…",    labelColor: "text-yellow-400" },
-  connected:  { dot: "bg-green-400",  label: "Connected",     labelColor: "text-green-400" },
-  error:      { dot: "bg-red-400",    label: "Error",         labelColor: "text-red-400" },
+  idle:       { dot: "bg-[var(--theme-text-soft)]",  label: "Not connected", labelColor: "text-[var(--theme-text-muted)]" },
+  connecting: { dot: "bg-[rgb(var(--theme-feedback-warning-rgb))] animate-pulse", label: "Connecting…", labelColor: "theme-feedback-text-warning" },
+  connected:  { dot: "bg-[rgb(var(--theme-feedback-success-rgb))]", label: "Connected", labelColor: "theme-feedback-text-success" },
+  error:      { dot: "bg-[rgb(var(--theme-feedback-danger-rgb))]", label: "Error", labelColor: "theme-feedback-text-danger" },
 };
 
 function CloudProviderRow({
@@ -117,17 +120,17 @@ function CloudProviderRow({
 }) {
   const s = CLOUD_STATUS_STYLES[status];
   return (
-    <div className="bg-white/5 rounded-xl p-3">
+    <div className={DEBUG_CARD_CLASS}>
       <div className="flex items-center gap-2 mb-1">
         <span className="shrink-0 opacity-70">{icon}</span>
-        <p className="text-[10px] text-[#52525b] uppercase tracking-wider">{name}</p>
+        <p className={DEBUG_LABEL_CLASS}>{name}</p>
       </div>
       <div className="flex items-center gap-1.5">
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
         <span className={`text-xs font-medium ${s.labelColor}`}>{s.label}</span>
       </div>
       {error && (
-        <p className="text-[10px] text-red-400 font-mono mt-1 break-all leading-snug">{error}</p>
+        <p className="theme-feedback-text-danger mt-1 break-all font-mono text-[10px] leading-snug">{error}</p>
       )}
     </div>
   );
@@ -135,17 +138,17 @@ function CloudProviderRow({
 
 // Minimal inline SVG icons for Dropbox and Google Drive
 const DropboxIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="text-[#0061FF]">
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="theme-icon-media">
     <path d="M6 2L0 6l6 4 6-4zm12 0l-6 4 6 4 6-4zM0 14l6 4 6-4-6-4zm18-4l-6 4 6 4 6-4zM6 19.5L12 23l6-3.5-6-4z"/>
   </svg>
 );
 
 const GDriveIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-    <path d="M4.5 20L9 12 0 12z" fill="#4285F4"/>
-    <path d="M19.5 20L15 12l9 0z" fill="#FBBC04"/>
-    <path d="M9 12L4.5 20h15L15 12z" fill="#34A853"/>
-    <path d="M12 2L9 12h6z" fill="#EA4335"/>
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="theme-icon-media">
+    <path d="M4.5 20L9 12 0 12z" />
+    <path d="M19.5 20L15 12l9 0z" opacity="0.64" />
+    <path d="M9 12L4.5 20h15L15 12z" opacity="0.8" />
+    <path d="M12 2L9 12h6z" opacity="0.92" />
   </svg>
 );
 
@@ -179,7 +182,7 @@ function ConnectionTab() {
 
       {/* ── Cloud Sync ─────────────────────────────────────────────────────── */}
       <div>
-        <p className="text-[10px] text-[#52525b] uppercase tracking-widest mb-2 px-0.5">
+        <p className="mb-2 px-0.5 text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">
           Cloud Sync
         </p>
         <div className="grid grid-cols-2 gap-2">
@@ -200,16 +203,16 @@ function ConnectionTab() {
 
       {/* ── Local Sync ─────────────────────────────────────────────────────── */}
       <div>
-        <p className="text-[10px] text-[#52525b] uppercase tracking-widest mb-2 px-0.5">
+        <p className="mb-2 px-0.5 text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">
           Local Sync
         </p>
 
         <div className="space-y-2">
           {/* Mixed content warning */}
           {mixedContentRisk && (
-            <div className="p-3 bg-orange-500/15 border border-orange-500/40 rounded-xl">
-              <p className="text-xs font-semibold text-orange-400 mb-1">HTTPS → ws:// Mixed Content</p>
-              <p className="text-xs text-orange-300/80">
+            <div className="theme-feedback-panel-warning rounded-xl p-3">
+              <p className="theme-feedback-text-warning mb-1 text-xs font-semibold">HTTPS → ws:// Mixed Content</p>
+              <p className="theme-feedback-text-warning-muted text-xs">
                 This page is served over HTTPS. Safari and Chrome block plain{" "}
                 <code className="font-mono">ws://</code> connections from HTTPS pages - this is
                 almost certainly why sync fails on iPhone. The desktop relay works, but the
@@ -220,53 +223,53 @@ function ConnectionTab() {
 
           {/* Status grid */}
           <div className="grid grid-cols-2 gap-2">
-            <div className="bg-white/5 rounded-xl p-3">
-              <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Status</p>
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Status</p>
               <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${isConnected ? "bg-green-400" : "bg-[#52525b]"}`} />
-                <span className={`text-sm font-medium ${isConnected ? "text-green-400" : "text-[#71717a]"}`}>
+                <span className={`h-2 w-2 shrink-0 rounded-full ${isConnected ? "bg-[rgb(var(--theme-feedback-success-rgb))]" : "bg-[var(--theme-text-soft)]"}`} />
+                <span className={`text-sm font-medium ${isConnected ? "theme-feedback-text-success" : "text-[var(--theme-text-muted)]"}`}>
                   {isConnected ? "Connected" : "Offline"}
                 </span>
               </div>
             </div>
 
-            <div className="bg-white/5 rounded-xl p-3">
-              <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Reconnects</p>
-              <p className="text-sm font-medium text-[#a1a1aa] font-mono">{reconnects.toLocaleString()}</p>
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Reconnects</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">{reconnects.toLocaleString()}</p>
             </div>
 
-            <div className="bg-white/5 rounded-xl p-3">
-              <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Page Protocol</p>
-              <p className={`text-sm font-medium font-mono ${proto === "https:" ? "text-orange-400" : "text-green-400"}`}>
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Page Protocol</p>
+              <p className={`font-mono text-sm font-medium ${proto === "https:" ? "theme-feedback-text-warning" : "theme-feedback-text-success"}`}>
                 {proto || "-"}
               </p>
             </div>
 
-            <div className="bg-white/5 rounded-xl p-3">
-              <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Doc Size</p>
-              <p className="text-sm font-medium text-[#a1a1aa] font-mono">
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Doc Size</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
                 {docSnapshot ? formatBytes(docSnapshot.binarySize) : "-"}
               </p>
             </div>
           </div>
 
           {/* Relay URL */}
-          <div className="bg-white/5 rounded-xl p-3">
-            <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Relay URL</p>
-            <p className="text-xs text-[#a1a1aa] font-mono break-all">{relayUrl}</p>
+          <div className={DEBUG_CARD_CLASS}>
+            <p className={DEBUG_LABEL_CLASS}>Relay URL</p>
+            <p className="break-all font-mono text-xs text-[var(--theme-text-muted)]">{relayUrl}</p>
           </div>
 
           {/* Transfer stats */}
           <div className="grid grid-cols-2 gap-2">
-            <div className="bg-white/5 rounded-xl p-3">
-              <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Last Sent</p>
-              <p className="text-xs text-blue-400 font-mono">{lastSent ? formatBytes(lastSent.bytes ?? 0) : "-"}</p>
-              {lastSent && <p className="text-[10px] text-[#52525b] font-mono mt-0.5">{formatRelative(lastSent.ts)}</p>}
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Last Sent</p>
+              <p className="theme-feedback-text-info font-mono text-xs">{lastSent ? formatBytes(lastSent.bytes ?? 0) : "-"}</p>
+              {lastSent && <p className="mt-0.5 font-mono text-[10px] text-[var(--theme-text-soft)]">{formatRelative(lastSent.ts)}</p>}
             </div>
-            <div className="bg-white/5 rounded-xl p-3">
-              <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Last Received</p>
-              <p className="text-xs text-cyan-400 font-mono">{lastReceived ? formatBytes(lastReceived.bytes ?? 0) : "-"}</p>
-              {lastReceived && <p className="text-[10px] text-[#52525b] font-mono mt-0.5">{formatRelative(lastReceived.ts)}</p>}
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Last Received</p>
+              <p className="theme-feedback-text-info font-mono text-xs">{lastReceived ? formatBytes(lastReceived.bytes ?? 0) : "-"}</p>
+              {lastReceived && <p className="mt-0.5 font-mono text-[10px] text-[var(--theme-text-soft)]">{formatRelative(lastReceived.ts)}</p>}
             </div>
           </div>
         </div>
@@ -290,17 +293,17 @@ function EventsTab() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between mb-3 shrink-0">
-        <p className="text-xs text-[#52525b]">{events.length.toLocaleString()} events (last 200)</p>
+        <p className="text-xs text-[var(--theme-text-soft)]">{events.length.toLocaleString()} events (last 200)</p>
         <div className="flex gap-2">
           <button
             onClick={copyAll}
-            className="text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+            className={DEBUG_BUTTON_CLASS}
           >
             Copy All
           </button>
           <button
             onClick={clearEvents}
-            className="text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-red-500/20 text-[#71717a] hover:text-red-400 transition-colors"
+            className="theme-feedback-button-danger px-2.5 py-1 text-xs"
           >
             Clear
           </button>
@@ -309,7 +312,7 @@ function EventsTab() {
 
       <div className="flex-1 overflow-y-auto min-h-0">
         {events.length === 0 ? (
-          <p className="text-xs text-[#52525b] text-center py-8">No events yet. Try connecting.</p>
+          <p className="py-8 text-center text-xs text-[var(--theme-text-soft)]">No events yet. Try connecting.</p>
         ) : (
           events.map((e) => <EventRow key={e.id} event={e} />)
         )}
@@ -345,7 +348,7 @@ function DocumentTab() {
 
   if (!docSnapshot) {
     return (
-      <p className="text-xs text-[#52525b] text-center py-8">
+      <p className="py-8 text-center text-xs text-[var(--theme-text-soft)]">
         Document not yet initialized.
       </p>
     );
@@ -355,46 +358,46 @@ function DocumentTab() {
     <div className="space-y-4">
       {/* Summary grid */}
       <div className="grid grid-cols-2 gap-2">
-        <div className="bg-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Device ID</p>
-          <p className="text-xs text-[#a1a1aa] font-mono">...{docSnapshot.deviceId.slice(-8)}</p>
+        <div className={DEBUG_CARD_CLASS}>
+          <p className={DEBUG_LABEL_CLASS}>Device ID</p>
+          <p className="font-mono text-xs text-[var(--theme-text-muted)]">...{docSnapshot.deviceId.slice(-8)}</p>
         </div>
-        <div className="bg-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Doc Size</p>
-          <p className="text-xs text-[#a1a1aa] font-mono">{formatBytes(docSnapshot.binarySize)}</p>
+        <div className={DEBUG_CARD_CLASS}>
+          <p className={DEBUG_LABEL_CLASS}>Doc Size</p>
+          <p className="font-mono text-xs text-[var(--theme-text-muted)]">{formatBytes(docSnapshot.binarySize)}</p>
         </div>
-        <div className="bg-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Feed Items</p>
-          <p className="text-sm font-semibold text-white font-mono">{docSnapshot.itemCount.toLocaleString()}</p>
+        <div className={DEBUG_CARD_CLASS}>
+          <p className={DEBUG_LABEL_CLASS}>Feed Items</p>
+          <p className="font-mono text-sm font-semibold text-[var(--theme-text-primary)]">{docSnapshot.itemCount.toLocaleString()}</p>
         </div>
-        <div className="bg-white/5 rounded-xl p-3">
-          <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">RSS Feeds</p>
-          <p className="text-sm font-semibold text-white font-mono">{docSnapshot.feedCount.toLocaleString()}</p>
+        <div className={DEBUG_CARD_CLASS}>
+          <p className={DEBUG_LABEL_CLASS}>RSS Feeds</p>
+          <p className="font-mono text-sm font-semibold text-[var(--theme-text-primary)]">{docSnapshot.feedCount.toLocaleString()}</p>
         </div>
       </div>
 
-      <div className="bg-white/5 rounded-xl p-3">
-        <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">Snapshot Taken</p>
-        <p className="text-xs text-[#a1a1aa] font-mono">{new Date(docSnapshot.savedAt).toLocaleTimeString()}</p>
+      <div className={DEBUG_CARD_CLASS}>
+        <p className={DEBUG_LABEL_CLASS}>Snapshot Taken</p>
+        <p className="font-mono text-xs text-[var(--theme-text-muted)]">{new Date(docSnapshot.savedAt).toLocaleTimeString()}</p>
       </div>
 
       {/* Actions */}
       <div className="space-y-2">
         <button
           onClick={copyJson}
-          className="w-full py-2.5 rounded-xl bg-[#8b5cf6]/20 text-[#8b5cf6] hover:bg-[#8b5cf6]/30 text-sm font-medium transition-colors border border-[#8b5cf6]/20"
+          className="btn-primary w-full py-2.5 text-sm"
         >
           {copied ? "Copied!" : "Copy Doc as JSON"}
         </button>
         <button
           onClick={downloadBinary}
-          className="w-full py-2.5 rounded-xl bg-white/5 text-[#a1a1aa] hover:bg-white/10 hover:text-white text-sm font-medium transition-colors"
+          className="btn-secondary w-full py-2.5 text-sm"
         >
           Download .automerge Binary
         </button>
       </div>
 
-      <p className="text-[10px] text-[#52525b] text-center">
+      <p className="text-center text-[10px] text-[var(--theme-text-soft)]">
         Or run <code className="font-mono">window.__freed.getDocJson()</code> in DevTools
       </p>
     </div>
@@ -425,7 +428,7 @@ function Sparkline({ frameTimes }: { frameTimes: number[] }) {
       <polyline
         points={pts}
         fill="none"
-        stroke="#8b5cf6"
+        stroke="rgb(var(--theme-feedback-info-rgb))"
         strokeWidth="1.5"
         strokeLinejoin="round"
         strokeLinecap="round"
@@ -433,7 +436,7 @@ function Sparkline({ frameTimes }: { frameTimes: number[] }) {
       <line
         x1="0" y1={budgetY.toFixed(1)}
         x2={W} y2={budgetY.toFixed(1)}
-        stroke="#ef4444"
+        stroke="rgb(var(--theme-feedback-danger-rgb))"
         strokeWidth="0.75"
         strokeDasharray="3 2"
       />
@@ -443,23 +446,27 @@ function Sparkline({ frameTimes }: { frameTimes: number[] }) {
 
 function FpsDisplay({ fps }: { fps: number }) {
   const color =
-    fps >= 55 ? "text-green-400" : fps >= 30 ? "text-yellow-400" : "text-red-400";
+    fps >= 55
+      ? "theme-feedback-text-success"
+      : fps >= 30
+        ? "theme-feedback-text-warning"
+        : "theme-feedback-text-danger";
   return (
     <div className="text-center">
       <p className={`text-4xl font-bold font-mono tabular-nums ${color}`}>
         {fps.toLocaleString()}
       </p>
-      <p className="text-[10px] text-[#52525b] uppercase tracking-widest mt-0.5">fps</p>
+      <p className="mt-0.5 text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">fps</p>
     </div>
   );
 }
 
 function StatCell({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="bg-white/5 rounded-xl p-3">
-      <p className="text-[10px] text-[#52525b] uppercase tracking-wider mb-1">{label}</p>
-      <p className="text-sm font-semibold text-white font-mono tabular-nums">{value}</p>
-      {sub && <p className="text-[10px] text-[#52525b] font-mono mt-0.5">{sub}</p>}
+    <div className={DEBUG_CARD_CLASS}>
+      <p className={DEBUG_LABEL_CLASS}>{label}</p>
+      <p className="font-mono text-sm font-semibold tabular-nums text-[var(--theme-text-primary)]">{value}</p>
+      {sub && <p className="mt-0.5 font-mono text-[10px] text-[var(--theme-text-soft)]">{sub}</p>}
     </div>
   );
 }
@@ -469,7 +476,7 @@ function PerformanceTabContent({ snap }: { snap: FpsSnapshot | null }) {
 
   if (!snap) {
     return (
-      <p className="text-xs text-[#52525b] text-center py-8">
+      <p className="py-8 text-center text-xs text-[var(--theme-text-soft)]">
         Measuring… one moment.
       </p>
     );
@@ -507,21 +514,21 @@ function PerformanceTabContent({ snap }: { snap: FpsSnapshot | null }) {
       {/* Sparkline */}
       <div>
         <div className="flex items-center justify-between mb-1">
-          <p className="text-[10px] text-[#52525b] uppercase tracking-wider">
+          <p className="text-[10px] uppercase tracking-wider text-[var(--theme-text-soft)]">
             Frame Times (2s)
           </p>
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1">
-              <span className="inline-block w-3 border-t border-[#8b5cf6]" />
-              <span className="text-[9px] text-[#52525b]">actual</span>
+              <span className="inline-block w-3 border-t border-[rgb(var(--theme-feedback-info-rgb))]" />
+              <span className="text-[9px] text-[var(--theme-text-soft)]">actual</span>
             </span>
             <span className="flex items-center gap-1">
-              <span className="inline-block w-3 border-t border-dashed border-red-400" />
-              <span className="text-[9px] text-[#52525b]">32 ms</span>
+              <span className="inline-block w-3 border-t border-dashed border-[rgb(var(--theme-feedback-danger-rgb))]" />
+              <span className="text-[9px] text-[var(--theme-text-soft)]">32 ms</span>
             </span>
           </div>
         </div>
-        <div className="bg-white/5 rounded-xl p-2">
+        <div className="theme-card-soft rounded-xl p-2">
           <Sparkline frameTimes={snap.frameTimes} />
         </div>
       </div>
@@ -529,7 +536,7 @@ function PerformanceTabContent({ snap }: { snap: FpsSnapshot | null }) {
       {/* Reset button */}
       <button
         onClick={resetPerfSnapshot}
-        className="w-full py-2 rounded-xl bg-white/5 text-[#71717a] hover:bg-white/10 hover:text-white text-xs font-medium transition-colors"
+        className="btn-secondary w-full py-2 text-xs"
       >
         Reset Counters
       </button>
@@ -573,7 +580,7 @@ function HealthTab() {
 
   if (!health) {
     return (
-      <p className="text-xs text-[#52525b] text-center py-8">
+      <p className="py-8 text-center text-xs text-[var(--theme-text-soft)]">
         Health snapshots are loading.
       </p>
     );
@@ -619,12 +626,12 @@ function HealthTab() {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <p className="text-[10px] text-[#52525b] uppercase tracking-widest">
+        <p className="text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">
           Provider Health
         </p>
         <button
           onClick={copySnapshot}
-          className="text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+          className={DEBUG_BUTTON_CLASS}
         >
           Copy Snapshot
         </button>
@@ -644,7 +651,7 @@ function HealthTab() {
                     void syncRssNow();
                   }}
                   disabled={providerSyncing}
-                  className="inline-flex items-center gap-2 text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors disabled:opacity-50"
+                  className={`${DEBUG_BUTTON_CLASS} inline-flex items-center gap-2 disabled:opacity-50`}
                 >
                   {providerSyncing ? (
                     <>
@@ -674,7 +681,7 @@ function HealthTab() {
                       });
                     }}
                     disabled={pendingAction === "sync"}
-                    className="inline-flex items-center gap-2 text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors disabled:opacity-50"
+                    className={`${DEBUG_BUTTON_CLASS} inline-flex items-center gap-2 disabled:opacity-50`}
                   >
                     {pendingAction === "sync" ? (
                       <>
@@ -702,7 +709,7 @@ function HealthTab() {
                       });
                     }}
                     disabled={pendingAction === "reconnect"}
-                    className="inline-flex items-center gap-2 text-xs px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[#71717a] hover:text-white transition-colors disabled:opacity-50"
+                    className={`${DEBUG_BUTTON_CLASS} inline-flex items-center gap-2 disabled:opacity-50`}
                   >
                     {pendingAction === "reconnect" ? (
                       <>
@@ -734,28 +741,28 @@ function HealthTab() {
       </div>
 
       <div className="space-y-3">
-        <p className="text-[10px] text-[#52525b] uppercase tracking-widest">
+        <p className="text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">
           Failing RSS Feeds
         </p>
         {health.failingRssFeeds.length === 0 ? (
-          <p className="text-xs text-[#71717a]">No failing feeds right now.</p>
+          <p className="text-xs text-[var(--theme-text-muted)]">No failing feeds right now.</p>
         ) : (
           health.failingRssFeeds.map((feed) => {
             const selectedRange = feedRangeByUrl[feed.feedUrl] ?? "daily";
             const bars = selectedRange === "hourly" ? feed.hourlyBuckets : feed.dailyBuckets;
             return (
-              <div key={feed.feedUrl} className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 space-y-3">
+              <div key={feed.feedUrl} className="theme-feedback-panel-warning space-y-3 rounded-xl p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm text-white">{feed.feedTitle}</p>
-                    <p className="text-xs text-[#71717a] break-all">{feed.feedUrl}</p>
-                    <p className="text-xs text-amber-400 mt-1">
+                    <p className="text-sm text-[var(--theme-text-primary)]">{feed.feedTitle}</p>
+                    <p className="break-all text-xs text-[var(--theme-text-muted)]">{feed.feedUrl}</p>
+                    <p className="theme-feedback-text-warning mt-1 text-xs">
                       Failing for {feed.outageSince ? formatHealthRelative(feed.outageSince) : "a while"}
                     </p>
                     {feed.lastError && (
-                      <p className="text-xs text-amber-300 mt-1">{feed.lastError}</p>
+                      <p className="theme-feedback-text-warning-muted mt-1 text-xs">{feed.lastError}</p>
                     )}
-                    <p className="text-[11px] text-[#71717a] mt-1">
+                    <p className="mt-1 text-[11px] text-[var(--theme-text-muted)]">
                       Last success {formatHealthRelative(feed.lastSuccessfulAt)}
                     </p>
                   </div>
@@ -772,7 +779,7 @@ function HealthTab() {
                     />
                     <button
                       onClick={() => setPendingRemoval(feed)}
-                      className="text-xs px-2.5 py-1 rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-400 transition-colors"
+                      className="theme-feedback-button-danger px-2.5 py-1 text-xs"
                     >
                       Unsubscribe
                     </button>
@@ -790,14 +797,14 @@ function HealthTab() {
       </div>
 
       {pendingRemoval && (
-        <div className="fixed inset-0 z-[260] flex items-start justify-center overflow-y-auto bg-black/70 p-4 sm:items-center">
-          <div className="my-auto w-full max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-white/10 bg-[#111111] p-5 space-y-4">
+        <div className="theme-elevated-overlay fixed inset-0 z-[260] flex items-start justify-center overflow-y-auto p-4 sm:items-center">
+          <div className="theme-dialog-shell my-auto max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto p-5 space-y-4">
             <div>
-              <p className="text-sm font-semibold text-white">Unsubscribe failing feed?</p>
-              <p className="text-xs text-[#71717a] mt-1">{pendingRemoval.feedTitle}</p>
-              <p className="text-xs text-[#52525b] mt-1 break-all">{pendingRemoval.feedUrl}</p>
+              <p className="text-sm font-semibold text-[var(--theme-text-primary)]">Unsubscribe failing feed?</p>
+              <p className="mt-1 text-xs text-[var(--theme-text-muted)]">{pendingRemoval.feedTitle}</p>
+              <p className="mt-1 break-all text-xs text-[var(--theme-text-soft)]">{pendingRemoval.feedUrl}</p>
             </div>
-            <label className="flex items-start gap-3 text-sm text-[#a1a1aa]">
+            <label className="flex items-start gap-3 text-sm text-[var(--theme-text-muted)]">
               <input
                 type="checkbox"
                 checked={includeItems}
@@ -812,7 +819,7 @@ function HealthTab() {
                   setPendingRemoval(null);
                   setIncludeItems(false);
                 }}
-                className="flex-1 rounded-xl bg-white/5 py-2 text-sm text-[#a1a1aa] hover:bg-white/10 hover:text-white transition-colors"
+                className="btn-secondary flex-1 py-2 text-sm"
               >
                 Cancel
               </button>
@@ -821,7 +828,7 @@ function HealthTab() {
                   void confirmRemoval();
                 }}
                 disabled={removingFeed}
-                className="flex-1 rounded-xl bg-red-500/15 py-2 text-sm text-red-400 hover:bg-red-500/25 transition-colors disabled:opacity-50"
+                className="theme-feedback-button-danger flex-1 py-2 text-sm disabled:opacity-50"
               >
                 {removingFeed ? "Removing..." : "Unsubscribe"}
               </button>
@@ -859,16 +866,16 @@ function PanelContent({
   return (
     <>
       {/* Header - subtle bg tint creates section rhythm without a hard border line */}
-      <div className="flex items-center justify-between px-5 py-4 bg-white/[0.03] shrink-0">
+      <div className="theme-dialog-divider flex shrink-0 items-center justify-between px-5 py-4">
         <div className="flex items-center gap-2.5">
-          <span className="text-xs font-mono px-2 py-0.5 rounded bg-[#8b5cf6]/20 text-[#8b5cf6] border border-[#8b5cf6]/30">
+          <span className="theme-status-pill-info rounded px-2 py-0.5 font-mono text-xs">
             DEBUG
           </span>
-          <h2 className="text-sm font-semibold text-white">Sync Diagnostics</h2>
+          <h2 className="text-sm font-semibold text-[var(--theme-text-primary)]">Sync Diagnostics</h2>
         </div>
         <button
           onClick={onClose}
-          className="p-1.5 rounded-lg hover:bg-white/10 text-[#71717a] hover:text-white transition-colors"
+          className="rounded-lg p-1.5 text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-card-hover)] hover:text-[var(--theme-text-primary)]"
           aria-label="Close debug panel"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -878,15 +885,15 @@ function PanelContent({
       </div>
 
       {/* Tabs - active underline provides visual separation; no additional border needed */}
-      <div className="flex shrink-0">
+      <div className="theme-dialog-divider flex shrink-0">
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
             className={`flex-1 py-2.5 text-xs font-medium transition-colors ${
               tab === t.id
-                ? "text-[#8b5cf6] border-b-2 border-[#8b5cf6]"
-                : "text-[#71717a] hover:text-white"
+                ? "border-b-2 border-[var(--theme-accent-secondary)] text-[var(--theme-accent-secondary)]"
+                : "text-[var(--theme-text-muted)] hover:text-[var(--theme-text-primary)]"
             }`}
           >
             {t.label}
@@ -904,8 +911,8 @@ function PanelContent({
       </div>
 
       {/* Footer - subtle bg tint mirrors the header */}
-      <div className="px-5 py-3 bg-white/[0.03] shrink-0">
-        <p className="text-[10px] text-[#52525b] text-center font-mono">
+      <div className="theme-dialog-divider shrink-0 px-5 py-3">
+        <p className="text-center font-mono text-[10px] text-[var(--theme-text-soft)]">
           Esc to close · Cmd+Shift+D to toggle · window.__freed in DevTools
         </p>
       </div>
@@ -929,7 +936,7 @@ export function DebugPanel({ variant = "overlay" }: { variant?: PanelVariant }) 
     // Desktop: fills the width-animated wrapper in AppShell.
     // Border is here (not on the wrapper) so it's clipped when width is 0.
     return (
-      <div className="w-full h-full bg-[#111111] border-l border-white/[0.06] flex flex-col">
+      <div className="app-theme-shell flex h-full w-full flex-col border-l border-[var(--theme-border-subtle)]">
         {content}
       </div>
     );
@@ -937,9 +944,9 @@ export function DebugPanel({ variant = "overlay" }: { variant?: PanelVariant }) 
 
   // Mobile overlay: bottom-sheet anchored to the viewport
   return (
-    <div className="fixed inset-0 z-[200] flex items-end bg-black/60">
+    <div className="theme-elevated-overlay fixed inset-0 z-[200] flex items-end">
       <div
-        className="w-full bg-[#111111] border border-[rgba(255,255,255,0.1)] rounded-t-2xl shadow-2xl flex flex-col"
+        className="theme-dialog-shell flex w-full flex-col rounded-t-2xl"
         style={{ maxHeight: "85vh" }}
       >
         {content}

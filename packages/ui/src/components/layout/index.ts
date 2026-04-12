@@ -1,2 +1,2 @@
-export { AppShell } from "./AppShell.js";
-export { BackgroundAtmosphere } from "./BackgroundAtmosphere.js";
+export { AppShell } from "./AppShell";
+export { BackgroundAtmosphere } from "./BackgroundAtmosphere";

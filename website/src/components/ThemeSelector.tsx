@@ -1,5 +1,7 @@
 "use client";
 
+import { ThemePreviewButton } from "@freed/ui/components/ThemePreviewButton";
+import { Tooltip } from "@freed/ui/components/Tooltip";
 import { THEME_DEFINITIONS, useTheme } from "@/context/ThemeContext";
 
 interface ThemeSelectorProps {
@@ -8,25 +10,31 @@ interface ThemeSelectorProps {
 
 export default function ThemeSelector({ compact = false }: ThemeSelectorProps) {
   const { themeId, setThemeId } = useTheme();
+  const gapClassName = compact ? "gap-2" : "gap-3";
 
   return (
-    <label className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2">
       <span className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
         Theme
       </span>
-      <select
-        value={themeId}
-        onChange={(event) => setThemeId(event.target.value as typeof themeId)}
-        className={`rounded-xl border border-freed-border bg-freed-surface/70 text-text-primary focus:outline-none focus:border-glow-purple ${
-          compact ? "px-3 py-2 text-sm" : "px-4 py-3 text-sm"
-        }`}
-      >
+      <div className={`flex flex-wrap items-center ${gapClassName}`}>
         {THEME_DEFINITIONS.map((theme) => (
-          <option key={theme.id} value={theme.id}>
-            {theme.name}
-          </option>
+          <Tooltip
+            key={theme.id}
+            side="top"
+            label={theme.name}
+            description={theme.description}
+            className="h-[2.2rem] items-center sm:h-[2.4rem]"
+          >
+            <ThemePreviewButton
+              theme={theme}
+              active={themeId === theme.id}
+              variant="compact"
+              onClick={() => setThemeId(theme.id)}
+            />
+          </Tooltip>
         ))}
-      </select>
-    </label>
+      </div>
+    </div>
   );
 }

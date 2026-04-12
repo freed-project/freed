@@ -469,7 +469,6 @@ export type ReadingIntensity = "light" | "normal" | "strong";
 export type ThemeId =
   | "neon"
   | "midas"
-  | "vesper"
   | "ember"
   | "scriptorium";
 

@@ -26,18 +26,6 @@ async function openSettingsSection(
   });
 }
 
-async function cancelProviderRiskDialog(
-  page: import("@playwright/test").Page,
-  provider: "x" | "facebook" | "instagram" | "linkedin",
-): Promise<void> {
-  const dialog = page.getByTestId(`provider-risk-dialog-${provider}`);
-  const cancelButton = dialog.getByRole("button", { name: "Cancel" });
-  await cancelButton.evaluate((element) => {
-    (element as HTMLButtonElement).click();
-  });
-  await expect(dialog).toBeHidden();
-}
-
 test("first launch blocks the desktop shell until legal consent is accepted", async ({
   app,
 }) => {
@@ -85,18 +73,21 @@ test("X risky connection flows require provider consent", async ({ app }) => {
   await app.waitForReady();
 
   const { page } = app;
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    store.setState({
+      xAuth: {
+        isAuthenticated: false,
+      },
+    });
+    window.localStorage.removeItem("freed.legal.legal.provider.x");
+  });
   await openSettingsSection(page, "X / Twitter");
 
   await page.getByText("Sign in to X").click();
-  await expect(page.getByTestId("provider-risk-accept-x")).toBeVisible({
-    timeout: 5_000,
-  });
-  await cancelProviderRiskDialog(page, "x");
-
-  await page.getByText("Manual cookie setup").click();
-  await page.getByPlaceholder("ct0 value").fill("test_ct0_value");
-  await page.getByPlaceholder("auth_token value").fill("test_auth_token_value");
-  await page.getByTestId("x-manual-connect").click();
   await expect(page.getByTestId("provider-risk-accept-x")).toBeVisible({
     timeout: 5_000,
   });

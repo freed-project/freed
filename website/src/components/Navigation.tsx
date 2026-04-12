@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect, useRef, useLayoutEffect } from "react";
+import { Tooltip } from "@freed/ui/components/Tooltip";
 import { useNewsletter } from "@/context/NewsletterContext";
 
 const WTF_CAPTIONS = [
@@ -54,7 +55,6 @@ export default function Navigation() {
   const pathname = usePathname();
   const { openModal } = useNewsletter();
   const [captionIndex, setCaptionIndex] = useState(0);
-  const [isHovering, setIsHovering] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const navRefs = useRef<(HTMLAnchorElement | null)[]>([]);
@@ -104,45 +104,30 @@ export default function Navigation() {
 
   const handleMouseEnter = () => {
     setCaptionIndex((prev) => (prev + 1) % WTF_CAPTIONS.length);
-    setIsHovering(true);
   };
 
   const logoElement = (
-    <Link
-      href="/"
-      className="flex items-baseline gap-0.5 group relative"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={() => setIsHovering(false)}
-    >
-      <span className="relative text-xl sm:text-2xl font-bold text-text-primary font-logo">
-        FREED
-        <span
-          className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
-          style={{
-            background:
-              "linear-gradient(to right, var(--theme-accent-primary), var(--theme-accent-primary), var(--theme-accent-secondary), var(--theme-accent-tertiary), var(--theme-accent-secondary), var(--theme-accent-primary))",
-          }}
-        />
-      </span>
-      <span className="text-sm sm:text-base font-bold gradient-text relative font-logo">
-        .WTF
-      </span>
-
-      {/* WTF caption tooltip - changes on each hover, hidden on mobile */}
-      {isHovering && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="hidden sm:block absolute top-full left-1/2 -translate-x-1/2 mt-3 px-3 py-1.5 rounded-lg bg-freed-surface border border-freed-border whitespace-nowrap"
-        >
-          {/* Tooltip tail */}
-          <div className="absolute -top-[7px] left-1/2 -translate-x-1/2 w-3 h-3 bg-freed-surface border-l border-t border-freed-border rotate-45" />
-          <span className="relative text-sm text-text-secondary">
-            {WTF_CAPTIONS[captionIndex]}
-          </span>
-        </motion.div>
-      )}
-    </Link>
+    <Tooltip side="bottom" label={WTF_CAPTIONS[captionIndex]}>
+      <Link
+        href="/"
+        className="flex items-baseline gap-0.5 group relative"
+        onMouseEnter={handleMouseEnter}
+        onFocus={handleMouseEnter}
+      >
+        <span className="relative text-xl sm:text-2xl font-bold text-text-primary font-logo">
+          FREED
+          <span
+            className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
+            style={{
+              background: "var(--theme-logo-spectrum)",
+            }}
+          />
+        </span>
+        <span className="text-sm sm:text-base font-bold gradient-text relative font-logo">
+          .WTF
+        </span>
+      </Link>
+    </Tooltip>
   );
 
   const desktopLinks = (
@@ -272,9 +257,7 @@ export default function Navigation() {
         <div className="hidden md:block px-4 py-4">
           <div
             className={`max-w-[calc(72rem+2rem)] mx-auto px-4 py-[13px] rounded-2xl border transition-all duration-300 ${
-              scrolled
-                ? "bg-freed-black/70 border-freed-border shadow-[0_4px_30px_rgba(0,0,0,0.5)]"
-                : "bg-transparent border-transparent"
+              scrolled ? "theme-topbar" : "bg-transparent border-transparent shadow-none"
             }`}
           >
             <div className="max-w-6xl mx-auto flex items-center justify-between">

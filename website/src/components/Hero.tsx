@@ -80,10 +80,10 @@ export default function Hero() {
           </h1>
 
           <p className="inline-flex items-center gap-3 text-xl sm:text-2xl text-text-primary font-medium mb-2 sm:mb-3">
-            <FaFacebook className="shrink-0 text-[var(--theme-media-facebook)]" />
-            <FaInstagram className="shrink-0 text-[var(--theme-media-instagram)]" />
-            <FaXTwitter className="shrink-0 text-[var(--theme-media-x)]" />
-            <FaRss className="shrink-0 text-[var(--theme-media-rss)]" />
+            <FaFacebook className="shrink-0 text-[var(--theme-media-icon)]" />
+            <FaInstagram className="shrink-0 text-[var(--theme-media-icon)]" />
+            <FaXTwitter className="shrink-0 text-[var(--theme-media-icon)]" />
+            <FaRss className="shrink-0 text-[var(--theme-media-icon)]" />
             <span>in one local app.</span>
           </p>
 
@@ -95,7 +95,7 @@ export default function Hero() {
 
           <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center lg:justify-start">
             <motion.button
-              whileHover={{ scale: 1.02 }}
+              whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.98 }}
               onClick={openModal}
               className="btn-primary text-base px-8 py-3 w-full sm:w-auto"
@@ -117,7 +117,10 @@ export default function Hero() {
           {/* Stats */}
           <div className="flex justify-center lg:justify-start gap-6 sm:gap-8 mt-8 sm:mt-12 pt-6 sm:pt-8 border-t border-freed-border">
             <div className="text-center lg:text-left">
-              <p className="text-2xl sm:text-3xl font-bold text-text-primary">
+              <p
+                className="text-2xl sm:text-3xl font-bold"
+                style={{ color: "var(--theme-metric-value)" }}
+              >
                 100%
               </p>
               <p className="text-xs sm:text-sm text-text-secondary">
@@ -125,7 +128,10 @@ export default function Hero() {
               </p>
             </div>
             <div className="text-center lg:text-left">
-              <p className="text-2xl sm:text-3xl font-bold text-text-primary">
+              <p
+                className="text-2xl sm:text-3xl font-bold"
+                style={{ color: "var(--theme-metric-value)" }}
+              >
                 0
               </p>
               <p className="text-xs sm:text-sm text-text-secondary">
@@ -133,7 +139,10 @@ export default function Hero() {
               </p>
             </div>
             <div className="text-center lg:text-left">
-              <p className="text-2xl sm:text-3xl font-bold text-text-primary">
+              <p
+                className="text-2xl sm:text-3xl font-bold"
+                style={{ color: "var(--theme-metric-value)" }}
+              >
                 ∞
               </p>
               <p className="text-xs sm:text-sm text-text-secondary">Freedom</p>

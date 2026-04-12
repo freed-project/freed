@@ -1,6 +1,7 @@
 import {
   DEFAULT_THEME_ID,
   THEME_DEFINITIONS,
+  getThemeCssVariables,
   getThemeDefinition,
   resolveThemeId,
   type ThemeDefinition,
@@ -24,8 +25,13 @@ export function getStoredThemeId(): ThemeId {
 
 export function applyThemeToDocument(themeId: ThemeId): void {
   if (typeof document === "undefined") return;
-  document.documentElement.dataset.theme = themeId;
-  document.documentElement.style.colorScheme = getThemeDefinition(themeId).surface;
+  const root = document.documentElement;
+  root.dataset.theme = themeId;
+  root.style.colorScheme = getThemeDefinition(themeId).surface;
+  const cssVariables = getThemeCssVariables(themeId);
+  for (const [name, value] of Object.entries(cssVariables)) {
+    root.style.setProperty(name, value);
+  }
 }
 
 export function persistTheme(themeId: ThemeId): void {

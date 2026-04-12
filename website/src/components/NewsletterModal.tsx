@@ -1,18 +1,10 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  useFloating,
-  useClientPoint,
-  useInteractions,
-  useHover,
-  offset,
-  shift,
-  arrow,
-  FloatingArrow,
-} from "@floating-ui/react";
 import { LEGAL_BUNDLE_VERSION, LEGAL_DOCS } from "@freed/shared/legal";
+import TurnstileWidget from "@/components/TurnstileWidget";
 import { useNewsletter } from "@/context/NewsletterContext";
 import {
   acceptWebsiteBundle,
@@ -20,8 +12,7 @@ import {
   hasAcceptedWebsiteBundle,
 } from "@/lib/legal-consent";
 
-type SubmitState = "idle" | "loading" | "success" | "error";
-type InstallNoteVariant = "callout" | "inline";
+type SubmitState = "idle" | "loading" | "error";
 
 const RELEASE_BASE =
   "https://github.com/freed-project/freed/releases/latest/download";
@@ -47,11 +38,61 @@ const DOWNLOADS: Record<DownloadKey, { label: string; file: string }> = {
   },
 };
 
-const INSTALL_NOTE_VARIANT: InstallNoteVariant = "inline";
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
+const PHONE_REGEX = /^\+?[0-9()\s.-]{7,20}$/;
 
 function isValidEmailAddress(email: string): boolean {
   return EMAIL_REGEX.test(email);
+}
+
+function inferNameFromEmail(email: string): string {
+  const localPart = email.split("@")[0] ?? "";
+  const cleaned = localPart
+    .replace(/\+.*/, "")
+    .replace(/[0-9]+/g, " ")
+    .replace(/[._-]+/g, " ")
+    .trim();
+
+  if (!cleaned) return "";
+
+  return cleaned
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function normalizePhoneNumber(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const hasLeadingPlus = trimmed.startsWith("+");
+  const digitsOnly = trimmed.replace(/\D/g, "");
+  if (!digitsOnly) return "";
+
+  if (hasLeadingPlus) {
+    return `+${digitsOnly}`;
+  }
+
+  if (digitsOnly.length === 10) {
+    return `+1${digitsOnly}`;
+  }
+
+  if (digitsOnly.length === 11 && digitsOnly.startsWith("1")) {
+    return `+${digitsOnly}`;
+  }
+
+  return `+${digitsOnly}`;
+}
+
+function isValidPhoneNumber(value: string): boolean {
+  if (!value.trim()) return true;
+  if (!PHONE_REGEX.test(value.trim())) return false;
+
+  const normalized = normalizePhoneNumber(value);
+  const digits = normalized.replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 15;
 }
 
 function detectDownloadKey(): DownloadKey {
@@ -86,52 +127,28 @@ function detectDownloadKey(): DownloadKey {
 export default function NewsletterModal() {
   const { isOpen, closeModal } = useNewsletter();
   const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [company, setCompany] = useState("");
   const [state, setState] = useState<SubmitState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
   const [selectedPlatform, setSelectedPlatform] =
     useState<DownloadKey>("mac-arm");
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [isTooltipOpen, setIsTooltipOpen] = useState(false);
+  const [dropdownMenuStyle, setDropdownMenuStyle] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
   const [acceptedBundle, setAcceptedBundle] = useState(false);
   const [legalChecked, setLegalChecked] = useState(false);
-  const [arrowElement, setArrowElement] = useState<SVGSVGElement | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  const {
-    refs,
-    floatingStyles,
-    context: floatingCtx,
-  } = useFloating({
-    open: isTooltipOpen,
-    onOpenChange: setIsTooltipOpen,
-    placement: "top",
-    middleware: [
-      offset(12),
-      shift({ padding: 8 }),
-      arrow({ element: arrowElement }),
-    ],
-  });
-
-  const setTooltipReference = useCallback(
-    (node: HTMLDivElement | null) => {
-      refs.setReference(node);
-    },
-    [refs],
-  );
-
-  const setTooltipFloating = useCallback(
-    (node: HTMLDivElement | null) => {
-      refs.setFloating(node);
-    },
-    [refs],
-  );
-
-  const clientPoint = useClientPoint(floatingCtx);
-  const hover = useHover(floatingCtx);
-  const { getReferenceProps, getFloatingProps } = useInteractions([
-    clientPoint,
-    hover,
-  ]);
+  const dropdownMenuRef = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
     setSelectedPlatform(detectDownloadKey());
@@ -142,7 +159,15 @@ export default function NewsletterModal() {
     if (!isOpen) return;
     setAcceptedBundle(hasAcceptedWebsiteBundle());
     setLegalChecked(false);
+    setDetailsOpen(false);
+    setTurnstileToken("");
+    setTurnstileResetKey((current) => current + 1);
   }, [isOpen]);
+
+  useEffect(() => {
+    if (nameManuallyEdited) return;
+    setName(inferNameFromEmail(email));
+  }, [email, nameManuallyEdited]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -150,7 +175,8 @@ export default function NewsletterModal() {
     const handler = (e: MouseEvent) => {
       if (
         dropdownRef.current &&
-        !dropdownRef.current.contains(e.target as Node)
+        !dropdownRef.current.contains(e.target as Node) &&
+        !dropdownMenuRef.current?.contains(e.target as Node)
       ) {
         setDropdownOpen(false);
       }
@@ -159,26 +185,88 @@ export default function NewsletterModal() {
     return () => document.removeEventListener("mousedown", handler);
   }, [dropdownOpen]);
 
+  useEffect(() => {
+    if (!dropdownOpen) return;
+
+    const updateDropdownPosition = () => {
+      const rect = dropdownRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setDropdownMenuStyle({
+        top: rect.bottom + 6,
+        left: rect.left,
+        width: rect.width,
+      });
+    };
+
+    updateDropdownPosition();
+    window.addEventListener("resize", updateDropdownPosition);
+    window.addEventListener("scroll", updateDropdownPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateDropdownPosition);
+      window.removeEventListener("scroll", updateDropdownPosition, true);
+    };
+  }, [dropdownOpen]);
+
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!email || state === "loading") return;
       const normalizedEmail = email.trim().toLowerCase();
+      const normalizedName = name.trim();
+      const normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
 
       if (!normalizedEmail || !isValidEmailAddress(normalizedEmail)) {
         setState("error");
         setErrorMessage("Please enter a valid email address.");
+        setSuccessMessage("");
+        return;
+      }
+
+      if (!detailsOpen) {
+        setDetailsOpen(true);
+        setState("idle");
+        setErrorMessage("");
+        setSuccessMessage("");
+        return;
+      }
+
+      if (!normalizedName) {
+        setState("error");
+        setErrorMessage("Please tell us your name.");
+        setSuccessMessage("");
+        return;
+      }
+
+      if (!isValidPhoneNumber(phoneNumber)) {
+        setState("error");
+        setErrorMessage("Please enter a valid phone number or leave it blank.");
+        setSuccessMessage("");
+        return;
+      }
+
+      if (!turnstileToken) {
+        setState("error");
+        setErrorMessage("Please complete the human check.");
+        setSuccessMessage("");
         return;
       }
 
       setState("loading");
       setErrorMessage("");
+      setSuccessMessage("");
 
       try {
         const response = await fetch("/api/subscribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: normalizedEmail }),
+          body: JSON.stringify({
+            email: normalizedEmail,
+            name: normalizedName,
+            phoneNumber: normalizedPhoneNumber,
+            company,
+            turnstileToken,
+          }),
         });
 
         const data = (await response.json().catch(() => ({}))) as {
@@ -187,30 +275,47 @@ export default function NewsletterModal() {
           message?: string;
         };
 
-        const nextState = response.ok && data.success ? "success" : "error";
-        setState(nextState);
-
         if (response.ok && data.success) {
           setEmail("");
+          setName("");
+          setPhoneNumber("");
+          setCompany("");
+          setDetailsOpen(false);
+          setNameManuallyEdited(false);
+          setState("idle");
+          setSuccessMessage(
+            "You are subscribed. We will email you about new builds and major progress."
+          );
           return;
         }
 
+        setState("error");
         setErrorMessage(
           data.error ?? "Something went wrong. Please try again in a moment."
         );
       } catch {
         setState("error");
         setErrorMessage("Network error. Please try again.");
+      } finally {
+        setTurnstileToken("");
+        setTurnstileResetKey((current) => current + 1);
       }
     },
-    [email, state],
+    [company, detailsOpen, email, name, phoneNumber, state, turnstileToken],
   );
 
   const handleClose = () => {
     if (state !== "loading") {
       setState("idle");
       setErrorMessage("");
+      setSuccessMessage("");
       setDropdownOpen(false);
+      setDetailsOpen(false);
+      setName("");
+      setPhoneNumber("");
+      setNameManuallyEdited(false);
+      setTurnstileToken("");
+      setTurnstileResetKey((current) => current + 1);
     }
     closeModal();
   };
@@ -221,6 +326,7 @@ export default function NewsletterModal() {
   const storedAcceptance = getWebsiteBundleAcceptance();
   const normalizedEmailInput = email.trim().toLowerCase();
   const isEmailInputValid = isValidEmailAddress(normalizedEmailInput);
+  const isPhoneInputValid = isValidPhoneNumber(phoneNumber);
 
   const ensureAccepted = useCallback(() => {
     if (acceptedBundle) return true;
@@ -232,9 +338,8 @@ export default function NewsletterModal() {
   }, [acceptedBundle, legalChecked]);
 
   const handleOpenWebApp = useCallback(() => {
-    if (!ensureAccepted()) return;
     window.open("https://app.freed.wtf", "_blank", "noopener,noreferrer");
-  }, [ensureAccepted]);
+  }, []);
 
   const handleDownload = useCallback(() => {
     if (!ensureAccepted()) return;
@@ -263,10 +368,21 @@ export default function NewsletterModal() {
             transition={{ type: "spring", duration: 0.5 }}
             className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-5xl px-4"
           >
-            <div className="relative p-6 sm:p-10 md:p-12 overflow-hidden rounded-2xl bg-freed-black/80 backdrop-blur-xl border border-freed-border shadow-[0_4px_30px_rgba(0,0,0,0.5)]">
-              {/* Decorative glows */}
-              <div className="absolute top-0 left-1/4 w-32 h-32 bg-glow-purple/20 rounded-full blur-3xl" />
-              <div className="absolute bottom-0 right-1/4 w-40 h-40 bg-glow-blue/20 rounded-full blur-3xl" />
+            <div className="theme-panel relative overflow-visible rounded-2xl p-6 sm:p-10 md:p-12">
+              <div
+                className="absolute top-0 left-1/4 h-32 w-32 rounded-full blur-3xl"
+                style={{
+                  background:
+                    "color-mix(in srgb, var(--theme-accent-secondary) 14%, transparent)",
+                }}
+              />
+              <div
+                className="absolute bottom-0 right-1/4 h-40 w-40 rounded-full blur-3xl"
+                style={{
+                  background:
+                    "color-mix(in srgb, var(--theme-accent-primary) 12%, transparent)",
+                }}
+              />
 
               <button
                 onClick={handleClose}
@@ -288,68 +404,59 @@ export default function NewsletterModal() {
               </button>
 
               <div className="relative z-10">
-                {state === "success" ? (
-                  <SuccessView onClose={handleClose} />
-                ) : (
-                  <>
-                    <div className="text-center mb-8">
-                      <h3
-                        id="get-freed-title"
-                        className="text-5xl font-bold text-text-primary mb-2"
-                      >
-                        Get <span className="gradient-text">Freed</span>
-                      </h3>
-                      <p className="text-text-secondary text-base mt-2">
-                        Open-source. Free forever. Take back your feed.
-                      </p>
-                    </div>
+                <>
+                  <div className="text-center mb-8">
+                    <h3
+                      id="get-freed-title"
+                      className="text-5xl font-bold text-text-primary mb-2"
+                    >
+                      Get <span className="theme-heading-accent">Freed</span>
+                    </h3>
+                    <p className="text-text-secondary text-base mt-2">
+                      Open-source. Free forever. Take back your feed.
+                    </p>
+                  </div>
 
-                    <div className="grid gap-0 lg:grid-cols-2 lg:items-start">
-                      <div className="py-2 sm:py-4 lg:pr-8">
-                        <div className="mb-6 max-w-md">
-                          <h4 className="text-3xl font-bold text-text-primary">
-                            Email Updates
-                          </h4>
-                          <p className="mt-2 text-base leading-relaxed text-text-secondary">
-                            Occasional updates on new builds, major fixes, and
-                            meaningful progress as Freed settles down.
-                          </p>
-                        </div>
+                  <div className="grid gap-0 lg:grid-cols-2 lg:items-start">
+                    <div className="py-2 sm:py-4 lg:pr-8">
+                      <div className="mb-6 max-w-md">
+                        <h4 className="flex items-center gap-3 text-3xl font-bold text-text-primary">
+                          <CircledStepNumber number={1} />
+                          <span>Email Updates</span>
+                        </h4>
+                        <p className="mt-2 text-base leading-relaxed text-text-secondary">
+                          Track our development of new builds, major fixes, and
+                          progress on liberating legacy social media.
+                        </p>
+                      </div>
 
-                        <div
-                          className="relative"
-                          ref={setTooltipReference}
-                          {...getReferenceProps()}
-                        >
-                          <AnimatePresence>
-                            {isTooltipOpen && (
-                              <motion.div
-                                ref={setTooltipFloating}
-                                style={floatingStyles}
-                                {...getFloatingProps()}
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="z-[60] pointer-events-none px-3 py-1.5 rounded-lg text-xs font-medium bg-freed-black border border-freed-border text-text-primary shadow-lg whitespace-nowrap"
-                              >
-                                <span>We just launched! 🚀</span>{" "}
-                                <span className="text-text-muted">
-                                  Email updates are now live.
-                                </span>
-                                <FloatingArrow
-                                  ref={setArrowElement}
-                                  context={floatingCtx}
-                                  fill="var(--color-freed-black)"
-                                  strokeWidth={1}
-                                  stroke="var(--freed-border, #1f1f1f)"
-                                />
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-
-                          <form onSubmit={handleSubmit} className="space-y-3">
+                      <div className="relative">
+                        <form onSubmit={handleSubmit} className="space-y-3">
+                          <div
+                            aria-hidden="true"
+                            className="absolute left-[-9999px] top-auto h-px w-px overflow-hidden"
+                          >
+                            <label htmlFor="newsletter-company">Company</label>
+                            <input
+                              id="newsletter-company"
+                              name="company"
+                              type="text"
+                              tabIndex={-1}
+                              autoComplete="off"
+                              value={company}
+                              onChange={(event) => setCompany(event.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label
+                              htmlFor="newsletter-email"
+                              className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted"
+                            >
+                              Email
+                            </label>
                             <div className="flex flex-col gap-2 sm:flex-row">
                               <input
+                                id="newsletter-email"
                                 type="email"
                                 value={email}
                                 onChange={(e) => {
@@ -358,9 +465,20 @@ export default function NewsletterModal() {
                                     setState("idle");
                                     setErrorMessage("");
                                   }
+                                  if (successMessage) {
+                                    setSuccessMessage("");
+                                  }
                                 }}
                                 placeholder="your@email.com"
-                                className="min-w-0 flex-1 px-3 sm:px-4 py-2.5 rounded-lg bg-freed-surface/70 border border-freed-border/70 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-glow-purple/50 focus:ring-1 focus:ring-glow-purple/50 transition-colors"
+                                className="min-w-0 flex-1 rounded-lg border px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted transition-colors focus:outline-none focus:border-[color:var(--theme-heading-accent)] focus:ring-2 focus:ring-[color:var(--theme-heading-accent)]/18 sm:px-4"
+                                style={{
+                                  background:
+                                    "color-mix(in srgb, var(--theme-bg-elevated) 96%, transparent)",
+                                  borderColor:
+                                    "color-mix(in srgb, var(--theme-border-strong) 82%, transparent)",
+                                  boxShadow:
+                                    "0 0 0 1px rgb(255 255 255 / 0.04), inset 0 1px 0 rgb(255 255 255 / 0.05)",
+                                }}
                                 autoComplete="email"
                                 inputMode="email"
                                 aria-describedby={
@@ -374,21 +492,152 @@ export default function NewsletterModal() {
                                 maxLength={254}
                                 required
                               />
-                              <motion.button
-                                type="submit"
-                                disabled={state === "loading" || !isEmailInputValid}
-                                className="btn-primary shrink-0 px-5 py-2.5 text-sm whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {state === "loading" ? "Subscribing..." : "Subscribe"}
-                              </motion.button>
+                              {!detailsOpen && (
+                                <motion.button
+                                  type="submit"
+                                  disabled={state === "loading"}
+                                  className="btn-primary flex min-w-[8.5rem] shrink-0 items-center justify-center gap-2 px-5 py-2.5 text-sm whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-70"
+                                >
+                                  Continue
+                                </motion.button>
+                              )}
+                            </div>
                           </div>
 
+                          <AnimatePresence initial={false}>
+                            {detailsOpen && (
+                              <motion.div
+                                initial={{ opacity: 0, height: 0, y: -6 }}
+                                animate={{ opacity: 1, height: "auto", y: 0 }}
+                                exit={{ opacity: 0, height: 0, y: -6 }}
+                                transition={{ duration: 0.18 }}
+                                className="space-y-3 overflow-visible"
+                              >
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                  <div className="space-y-1">
+                                    <label
+                                      htmlFor="newsletter-name"
+                                      className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted"
+                                    >
+                                      Name
+                                    </label>
+                                    <input
+                                      id="newsletter-name"
+                                      type="text"
+                                      value={name}
+                                      onChange={(event) => {
+                                        setName(event.target.value);
+                                        setNameManuallyEdited(true);
+                                        if (state === "error") {
+                                          setState("idle");
+                                          setErrorMessage("");
+                                        }
+                                      }}
+                                      placeholder="Your name"
+                                      className="min-w-0 w-full rounded-lg border px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted transition-colors focus:outline-none focus:border-[color:var(--theme-heading-accent)] focus:ring-2 focus:ring-[color:var(--theme-heading-accent)]/18 sm:px-4"
+                                      style={{
+                                        background:
+                                          "color-mix(in srgb, var(--theme-bg-elevated) 96%, transparent)",
+                                        borderColor:
+                                          "color-mix(in srgb, var(--theme-border-strong) 82%, transparent)",
+                                        boxShadow:
+                                          "0 0 0 1px rgb(255 255 255 / 0.04), inset 0 1px 0 rgb(255 255 255 / 0.05)",
+                                      }}
+                                      autoComplete="name"
+                                      name="name"
+                                      maxLength={120}
+                                      required
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label
+                                      htmlFor="newsletter-phone"
+                                      className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted"
+                                    >
+                                      Phone Number
+                                    </label>
+                                    <input
+                                      id="newsletter-phone"
+                                      type="tel"
+                                      value={phoneNumber}
+                                      onChange={(event) => {
+                                        setPhoneNumber(event.target.value);
+                                        if (state === "error") {
+                                          setState("idle");
+                                          setErrorMessage("");
+                                        }
+                                      }}
+                                      placeholder="Phone number, optional"
+                                      className="min-w-0 w-full rounded-lg border px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted transition-colors focus:outline-none focus:border-[color:var(--theme-heading-accent)] focus:ring-2 focus:ring-[color:var(--theme-heading-accent)]/18 sm:px-4"
+                                      style={{
+                                        background:
+                                          "color-mix(in srgb, var(--theme-bg-elevated) 96%, transparent)",
+                                        borderColor:
+                                          "color-mix(in srgb, var(--theme-border-strong) 82%, transparent)",
+                                        boxShadow:
+                                          "0 0 0 1px rgb(255 255 255 / 0.04), inset 0 1px 0 rgb(255 255 255 / 0.05)",
+                                      }}
+                                      autoComplete="tel"
+                                      inputMode="tel"
+                                      aria-invalid={!!phoneNumber && !isPhoneInputValid}
+                                      name="phone"
+                                      maxLength={32}
+                                    />
+                                  </div>
+                                </div>
+
+                                <TurnstileWidget
+                                  siteKey={TURNSTILE_SITE_KEY}
+                                  resetKey={turnstileResetKey}
+                                  disabled={state === "loading"}
+                                  onTokenChange={(token) => {
+                                    setTurnstileToken(token);
+                                    if (token && state === "error") {
+                                      setState("idle");
+                                      setErrorMessage("");
+                                    }
+                                  }}
+                                />
+
+                                {turnstileToken ? (
+                                  <motion.button
+                                    type="submit"
+                                    disabled={state === "loading"}
+                                    className="btn-primary flex min-w-[12rem] items-center justify-center gap-2 px-5 py-2.5 text-sm whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-70"
+                                  >
+                                    {state === "loading" ? (
+                                      <>
+                                        <Spinner />
+                                        <span>Submitting</span>
+                                      </>
+                                    ) : (
+                                      "Confirm subscription"
+                                    )}
+                                  </motion.button>
+                                ) : (
+                                  <p className="text-xs leading-relaxed text-text-muted">
+                                    Complete the human check to confirm your subscription.
+                                  </p>
+                                )}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+
+                          {successMessage && (
+                            <p
+                              role="status"
+                              aria-live="polite"
+                              className="text-xs leading-relaxed text-[rgb(var(--theme-feedback-success-rgb))]"
+                            >
+                              {successMessage}
+                            </p>
+                          )}
                           {state === "error" && (
                             <p
                               id="newsletter-error"
                               role="status"
                               aria-live="polite"
-                              className="text-xs leading-relaxed text-red-300"
+                              className="text-xs leading-relaxed text-[rgb(var(--theme-feedback-danger-rgb))]"
                             >
                               {errorMessage}
                             </p>
@@ -397,57 +646,18 @@ export default function NewsletterModal() {
                             No spam. Unsubscribe anytime. We respect your privacy.
                           </p>
                         </form>
-                        </div>
                       </div>
+                    </div>
 
-                      <div className="space-y-5 py-2 sm:py-4 lg:pl-8 lg:border-l lg:border-freed-border">
+                    <div className="space-y-5 py-2 sm:py-4 lg:pl-8 lg:border-l lg:border-freed-border">
                         <div className="max-w-lg">
-                          <h4 className="text-3xl font-bold text-text-primary">
-                            Install Freed Desktop
+                          <h4 className="flex items-center gap-3 text-3xl font-bold text-text-primary">
+                            <CircledStepNumber number={2} />
+                            <span>Install Freed Desktop</span>
                           </h4>
-                          <p className="mt-2 text-base leading-relaxed text-text-secondary">
-                            Start with Freed Desktop. The web app becomes useful
-                            after your feed is running locally and syncing.
-                          </p>
-                          {INSTALL_NOTE_VARIANT === "inline" && (
-                            <p className="mt-3 text-xs leading-relaxed text-text-muted">
-                              Freed is experimental software under active
-                              development. You may still hit bugs or unfinished
-                              edges, but stability is improving quickly and new
-                              builds ship{" "}
-                              <a
-                                href="/changelog"
-                                className="underline underline-offset-2 hover:text-text-primary transition-colors"
-                              >
-                                most days
-                              </a>
-                              .
-                            </p>
-                          )}
                         </div>
 
-                        {INSTALL_NOTE_VARIANT === "callout" && (
-                          <div className="rounded-2xl border border-glow-purple/30 bg-glow-purple/8 px-4 py-4">
-                            <p className="text-sm font-semibold text-glow-purple">
-                              Early experimental build
-                            </p>
-                            <p className="mt-2 text-xs leading-relaxed text-text-muted">
-                              Freed is experimental software under active
-                              development. You may still hit bugs or unfinished
-                              edges, but stability is improving quickly and new
-                              builds ship{" "}
-                              <a
-                                href="/changelog"
-                                className="underline underline-offset-2 hover:text-text-primary transition-colors"
-                              >
-                                most days
-                              </a>
-                              .
-                            </p>
-                          </div>
-                        )}
-
-                        <div className="rounded-2xl bg-freed-surface/80 p-4">
+                        <div className="p-0">
                           {acceptedBundle ? (
                             <p className="text-xs leading-relaxed text-text-muted">
                               Legal terms already accepted for bundle {LEGAL_BUNDLE_VERSION}
@@ -457,12 +667,12 @@ export default function NewsletterModal() {
                               .
                             </p>
                           ) : (
-                            <label className="flex items-start gap-3 text-xs sm:text-sm leading-relaxed text-text-secondary cursor-pointer">
+                            <label className="flex items-start gap-3 rounded-xl px-2 py-2 text-xs sm:text-sm leading-relaxed text-text-secondary cursor-pointer transition-colors hover:bg-[rgb(var(--theme-control-accent-rgb)/0.08)]">
                               <input
                                 type="checkbox"
                                 checked={legalChecked}
                                 onChange={(event) => setLegalChecked(event.target.checked)}
-                                className="mt-0.5 h-4 w-4 rounded border-freed-border bg-freed-surface text-glow-purple focus:ring-glow-purple"
+                                className="mt-0.5 h-4 w-4 rounded border-freed-border bg-transparent text-[color:var(--theme-control-accent)] focus:ring-[color:var(--theme-focus-ring)]"
                               />
                               <span>
                                 I have read and agree to the{" "}
@@ -484,15 +694,28 @@ export default function NewsletterModal() {
                                   {LEGAL_DOCS.privacy.label}
                                 </a>
                                 . I understand that Freed is experimental software
-                                under active development. The desktop app will show
-                                additional license and risk terms on first launch.
+                                under active development.
                               </span>
                             </label>
                           )}
                         </div>
 
-                        <div className="relative" ref={dropdownRef}>
-                          <div className="flex items-center rounded-xl border border-freed-border hover:border-glow-purple/40 bg-freed-surface/35 hover:bg-freed-surface/60 transition-all">
+                        <div className="relative group/download" ref={dropdownRef}>
+                          {!canProceed && (
+                            <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover/download:opacity-100">
+                              <div className="rounded-lg border border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-elevated)] px-3 py-1.5 text-xs text-text-secondary shadow-lg">
+                                Accept the terms above
+                              </div>
+                            </div>
+                          )}
+                          <div
+                            className="flex items-center rounded-xl border transition-all hover:border-[color:var(--theme-border-strong)]"
+                            style={{
+                              borderColor: "var(--theme-border-subtle)",
+                              background:
+                                "color-mix(in srgb, var(--theme-bg-surface) 62%, transparent)",
+                            }}
+                          >
                             <button
                               type="button"
                               onClick={handleDownload}
@@ -500,7 +723,14 @@ export default function NewsletterModal() {
                               data-testid="website-legal-download"
                               className="group flex items-center gap-4 p-4 flex-1 min-w-0 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              <div className="shrink-0 w-10 h-10 rounded-lg bg-freed-surface border border-freed-border flex items-center justify-center">
+                              <div
+                                className="shrink-0 flex h-10 w-10 items-center justify-center rounded-lg border"
+                                style={{
+                                  background:
+                                    "color-mix(in srgb, var(--theme-bg-surface) 88%, transparent)",
+                                  borderColor: "var(--theme-border-subtle)",
+                                }}
+                              >
                                 <svg
                                   className="w-5 h-5 text-text-secondary"
                                   fill="none"
@@ -545,55 +775,6 @@ export default function NewsletterModal() {
                             </button>
                           </div>
 
-                          <AnimatePresence>
-                            {dropdownOpen && (
-                              <motion.ul
-                                initial={{ opacity: 0, y: -4 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -4 }}
-                                transition={{ duration: 0.15 }}
-                                className="absolute left-0 right-0 mt-1.5 rounded-xl border border-freed-border bg-freed-black/95 backdrop-blur-xl shadow-lg overflow-hidden z-20"
-                              >
-                                {(
-                                  Object.entries(DOWNLOADS) as [
-                                    DownloadKey,
-                                    (typeof DOWNLOADS)[DownloadKey],
-                                  ][]
-                                ).map(([key, dl]) => (
-                                  <li key={key}>
-                                    <button
-                                      onClick={() => {
-                                        setSelectedPlatform(key);
-                                        setDropdownOpen(false);
-                                      }}
-                                      className={`w-full text-left px-4 py-3 text-sm transition-colors flex items-center justify-between ${
-                                        key === selectedPlatform
-                                          ? "text-text-primary bg-freed-surface/60"
-                                          : "text-text-secondary hover:text-text-primary hover:bg-freed-surface/40"
-                                      }`}
-                                    >
-                                      <span>{dl.label}</span>
-                                      {key === selectedPlatform && (
-                                        <svg
-                                          className="w-4 h-4 text-glow-purple"
-                                          fill="none"
-                                          viewBox="0 0 24 24"
-                                          stroke="currentColor"
-                                          strokeWidth={2}
-                                        >
-                                          <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            d="M4.5 12.75l6 6 9-13.5"
-                                          />
-                                        </svg>
-                                      )}
-                                    </button>
-                                  </li>
-                                ))}
-                              </motion.ul>
-                            )}
-                          </AnimatePresence>
                         </div>
 
                         <div className="space-y-3">
@@ -609,57 +790,144 @@ export default function NewsletterModal() {
                           <button
                             type="button"
                             onClick={handleOpenWebApp}
-                            disabled={!canProceed}
                             data-testid="website-legal-open-web-app"
-                            className="text-sm text-text-muted underline underline-offset-4 transition-colors hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="inline-flex items-center gap-2 rounded-lg bg-transparent px-2 py-1.5 text-sm text-text-muted underline decoration-current underline-offset-4 transition-colors hover:bg-[rgb(var(--theme-control-accent-rgb)/0.08)] hover:text-text-primary"
                           >
-                            Already running Freed Desktop? Open the web app.
+                            <svg
+                              aria-hidden="true"
+                              className="h-4 w-4"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M9 6l6 6-6 6M14 6l6 6-6 6"
+                              />
+                            </svg>
+                            <span>Already running Freed Desktop? Open the web app.</span>
                           </button>
                         </div>
                       </div>
                     </div>
-                  </>
-                )}
+                </>
               </div>
             </div>
           </motion.div>
+          {typeof document !== "undefined" &&
+            dropdownOpen &&
+            dropdownMenuStyle &&
+            createPortal(
+              <AnimatePresence>
+                <motion.ul
+                  ref={dropdownMenuRef}
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.15 }}
+                  className="fixed z-[70] overflow-hidden rounded-xl border shadow-lg"
+                  style={{
+                    top: dropdownMenuStyle.top,
+                    left: dropdownMenuStyle.left,
+                    width: dropdownMenuStyle.width,
+                    borderColor: "var(--theme-border-subtle)",
+                    background: "var(--theme-bg-elevated)",
+                  }}
+                >
+                  {(
+                    Object.entries(DOWNLOADS) as [
+                      DownloadKey,
+                      (typeof DOWNLOADS)[DownloadKey],
+                    ][]
+                  ).map(([key, dl]) => (
+                    <li key={key}>
+                      <button
+                        onClick={() => {
+                          setSelectedPlatform(key);
+                          setDropdownOpen(false);
+                        }}
+                        className={`flex w-full items-center justify-between px-4 py-3 text-left text-sm transition-colors ${
+                          key === selectedPlatform
+                            ? "text-text-primary"
+                            : "text-text-secondary hover:text-text-primary"
+                        }`}
+                        style={
+                          key === selectedPlatform
+                            ? {
+                                background:
+                                  "color-mix(in srgb, var(--theme-heading-accent) 12%, transparent)",
+                              }
+                            : undefined
+                        }
+                      >
+                        <span>{dl.label}</span>
+                        {key === selectedPlatform && (
+                          <svg
+                            className="w-4 h-4 text-[color:var(--theme-heading-accent)]"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M4.5 12.75l6 6 9-13.5"
+                            />
+                          </svg>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </motion.ul>
+              </AnimatePresence>,
+              document.body,
+            )}
         </>
       )}
     </AnimatePresence>
   );
 }
 
-function SuccessView({ onClose }: { onClose: () => void }) {
+function Spinner() {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="text-center py-6"
-    >
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-glow-purple/20 flex items-center justify-center">
-        <svg
-          className="w-8 h-8 text-glow-purple"
-          fill="none"
-          viewBox="0 0 24 24"
+    <span
+      aria-hidden="true"
+      className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent"
+    />
+  );
+}
+
+function CircledStepNumber({ number }: { number: 1 | 2 }) {
+  return (
+    <span className="inline-flex h-[1em] w-[1em] items-center justify-center text-[1em] leading-none">
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 32 32"
+        className="h-[1em] w-[1em]"
+        fill="none"
+      >
+        <circle
+          cx="16"
+          cy="16"
+          r="14.5"
           stroke="currentColor"
+          strokeWidth="1.5"
+        />
+        <text
+          x="16"
+          y="20"
+          textAnchor="middle"
+          fill="currentColor"
+          fontSize="13"
+          fontWeight="700"
+          fontFamily="var(--font-space-grotesk), sans-serif"
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M5 13l4 4L19 7"
-          />
-        </svg>
-      </div>
-      <h3 className="text-2xl font-bold text-text-primary mb-2">
-        You&apos;re In!
-      </h3>
-      <p className="text-text-secondary">
-        We&apos;ll keep you posted on new releases and updates.
-      </p>
-      <button onClick={onClose} className="mt-6 btn-primary px-8 py-2">
-        Close
-      </button>
-    </motion.div>
+          {number}
+        </text>
+      </svg>
+    </span>
   );
 }

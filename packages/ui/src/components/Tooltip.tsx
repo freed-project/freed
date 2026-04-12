@@ -1,72 +1,131 @@
-import type { ReactNode } from "react";
+"use client";
+
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
 
 interface TooltipProps {
-  /** The element the tooltip is attached to */
   children: ReactNode;
-  /** Tooltip text */
   label: string;
-  /** Optional keyboard shortcut hint shown after the label */
+  description?: string;
   shortcut?: string;
-  /** Placement relative to the trigger. Default: "bottom" */
   side?: "top" | "bottom";
-  /** Extra classes on the outer wrapper */
   className?: string;
+  badge?: ReactNode;
 }
 
-/**
- * Lightweight animated tooltip using pure CSS (group-hover).
- *
- * Wrap any interactive element. The tooltip fades/scales in after a short
- * delay and positions itself above or below the trigger via absolute
- * positioning. No JS timers, no portals, no layout thrash.
- */
+interface TooltipPosition {
+  left: number;
+  top: number;
+}
+
+const TOOLTIP_OFFSET = 12;
+
 export function Tooltip({
   children,
   label,
+  description,
   shortcut,
   side = "bottom",
   className = "",
+  badge,
 }: TooltipProps) {
-  const isTop = side === "top";
+  const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [position, setPosition] = useState<TooltipPosition>({ left: 0, top: 0 });
+  const triggerRef = useRef<HTMLSpanElement | null>(null);
+  const tooltipId = useId();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const updatePosition = () => {
+    if (!triggerRef.current) {
+      return;
+    }
+
+    const rect = triggerRef.current.getBoundingClientRect();
+    setPosition({
+      left: rect.left + rect.width / 2,
+      top: side === "top" ? rect.top - TOOLTIP_OFFSET : rect.bottom + TOOLTIP_OFFSET,
+    });
+  };
+
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    updatePosition();
+    const closeTooltip = () => setOpen(false);
+    const refreshPosition = () => updatePosition();
+    window.addEventListener("scroll", refreshPosition, true);
+    window.addEventListener("resize", refreshPosition);
+    window.addEventListener("blur", closeTooltip);
+    return () => {
+      window.removeEventListener("scroll", refreshPosition, true);
+      window.removeEventListener("resize", refreshPosition);
+      window.removeEventListener("blur", closeTooltip);
+    };
+  }, [open, side]);
 
   return (
-    <div className={`relative group/tip ${className}`}>
-      {children}
-      <div
-        role="tooltip"
-        className={`
-          pointer-events-none absolute left-1/2 -translate-x-1/2 z-[100]
-          px-2.5 py-1 rounded-lg
-          bg-[#1c1c1c] border border-white/[0.08]
-          shadow-xl shadow-black/50
-          text-[11px] font-medium text-[#d4d4d8] whitespace-nowrap
-          opacity-0 scale-95
-          group-hover/tip:opacity-100 group-hover/tip:scale-100
-          transition-all duration-150 delay-75
-          origin-center
-          ${isTop ? "bottom-full mb-2" : "top-full mt-2"}
-        `}
+    <>
+      <span
+        ref={triggerRef}
+        aria-describedby={open ? tooltipId : undefined}
+        className={["relative inline-flex", className].filter(Boolean).join(" ")}
+        onMouseEnter={() => {
+          updatePosition();
+          setOpen(true);
+        }}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => {
+          updatePosition();
+          setOpen(true);
+        }}
+        onBlur={() => setOpen(false)}
       >
-        {/* Caret arrow */}
-        <span
-          className={`
-            absolute left-1/2 -translate-x-1/2 w-2 h-2
-            bg-[#1c1c1c] border-white/[0.08] rotate-45
-            ${isTop
-              ? "top-full -mt-1 border-r border-b"
-              : "bottom-full -mb-1 border-l border-t"
-            }
-          `}
-        />
-        <span className="relative">
-          {label}
-          {shortcut && (
-            <kbd className="ml-1.5 px-1 py-0.5 rounded bg-white/[0.06] text-[10px] text-[#71717a] font-mono">
-              {shortcut}
-            </kbd>
-          )}
-        </span>
-      </div>
-    </div>
+        {children}
+      </span>
+      {mounted && open
+        ? createPortal(
+            <div
+              id={tooltipId}
+              role="tooltip"
+              className="theme-tooltip-panel"
+              style={{
+                left: position.left,
+                top: position.top,
+                transform:
+                  side === "top"
+                    ? "translate(-50%, calc(-100% - 2px))"
+                    : "translate(-50%, 2px)",
+              }}
+            >
+              {badge ? <span className="theme-tooltip-badge">{badge}</span> : null}
+              <div className="theme-tooltip-body">
+                <span className="theme-tooltip-label">
+                  {label}
+                  {shortcut ? <kbd className="theme-tooltip-shortcut">{shortcut}</kbd> : null}
+                </span>
+                {description ? (
+                  <span className="theme-tooltip-description">{description}</span>
+                ) : null}
+              </div>
+              <span
+                className={`theme-tooltip-arrow ${side === "top" ? "theme-tooltip-arrow-top" : "theme-tooltip-arrow-bottom"}`}
+              />
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }

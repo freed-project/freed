@@ -2,30 +2,19 @@
 
 import { motion } from "framer-motion";
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useTheme } from "@/context/ThemeContext";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
-const COLORS = {
-  accents: [
-    "var(--theme-accent-primary)",
-    "var(--theme-accent-secondary)",
-    "var(--theme-accent-tertiary)",
-    "color-mix(in srgb, var(--theme-accent-primary) 65%, var(--theme-accent-secondary) 35%)",
-    "color-mix(in srgb, var(--theme-accent-secondary) 58%, var(--theme-accent-tertiary) 42%)",
-  ],
-  warning: "#ef4444",
-  logoAccent: "var(--theme-accent-primary)",
-};
-
-const PLATFORM_COLORS: Record<string, string> = {
-  x: "var(--theme-media-x)",
-  facebook: "var(--theme-media-facebook)",
-  instagram: "var(--theme-media-instagram)",
-  youtube: "var(--theme-media-youtube)",
-  linkedin: "var(--theme-media-linkedin)",
-};
+const HERO_ACCENTS = [
+  "var(--theme-hero-accent-1)",
+  "var(--theme-hero-accent-2)",
+  "var(--theme-hero-accent-3)",
+  "var(--theme-hero-accent-4)",
+  "var(--theme-hero-accent-5)",
+];
 
 const CENTER = 200;
 const RING_RADIUS = 175;
@@ -111,8 +100,8 @@ function createParticle(logo: (typeof LOGOS)[0], isRed: boolean): Particle {
     scale: 1,
     isRed,
     color: isRed
-      ? COLORS.warning
-      : COLORS.accents[Math.floor(Math.random() * COLORS.accents.length)],
+      ? "var(--theme-hero-warning)"
+      : HERO_ACCENTS[Math.floor(Math.random() * HERO_ACCENTS.length)],
     startX: logo.emitX,
     startY: logo.emitY,
     delay: Math.random() * CYCLE_DURATION,
@@ -283,11 +272,12 @@ function useParticleSystem() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function HeroAnimation() {
+  const { themeId } = useTheme();
   const particles = useParticleSystem();
 
   return (
     <div className="relative w-full aspect-square">
-      <svg viewBox="-50 -50 500 500" className="w-full h-full">
+      <svg key={themeId} viewBox="-50 -50 500 500" className="w-full h-full">
         <defs>
           <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="var(--theme-accent-primary)" stopOpacity="0.3" />
@@ -301,7 +291,7 @@ export default function HeroAnimation() {
             x2="100%"
             y2="100%"
           >
-            {COLORS.accents.map((c, i) => (
+            {HERO_ACCENTS.map((c, i) => (
               <stop key={i} offset={`${i * 25}%`} stopColor={c} />
             ))}
           </linearGradient>
@@ -384,29 +374,16 @@ export default function HeroAnimation() {
               cx={logo.cx}
               cy={logo.cy}
               r="22"
+              fill="var(--theme-platform-ring-fill)"
+              stroke="var(--theme-platform-ring-stroke)"
               strokeWidth="2"
               filter="url(#glow)"
-              animate={{
-                fill: [
-                  `color-mix(in srgb, ${COLORS.logoAccent} 20%, transparent)`,
-                  `color-mix(in srgb, ${COLORS.logoAccent} 20%, transparent)`,
-                  `color-mix(in srgb, ${COLORS.logoAccent} 20%, transparent)`,
-                  `color-mix(in srgb, ${COLORS.warning} 20%, transparent)`,
-                  `color-mix(in srgb, ${COLORS.logoAccent} 20%, transparent)`,
-                ],
-                stroke: [
-                  `color-mix(in srgb, ${COLORS.logoAccent} 50%, transparent)`,
-                  `color-mix(in srgb, ${COLORS.logoAccent} 50%, transparent)`,
-                  `color-mix(in srgb, ${COLORS.logoAccent} 50%, transparent)`,
-                  `color-mix(in srgb, ${COLORS.warning} 50%, transparent)`,
-                  `color-mix(in srgb, ${COLORS.logoAccent} 50%, transparent)`,
-                ],
-              }}
+              animate={{ opacity: [0.9, 1, 0.9] }}
               transition={{
                 duration: 5,
                 repeat: Infinity,
                 delay: logo.flashDelay,
-                times: [0, 0.7, 0.8, 0.85, 1],
+                times: [0, 0.5, 1],
               }}
             />
             <motion.g
@@ -423,23 +400,9 @@ export default function HeroAnimation() {
                   20 / 24
                 })`}
               >
-                <motion.path
+                <path
                   d={logo.path}
-                  animate={{
-                    fill: [
-                      PLATFORM_COLORS[logo.id] ?? COLORS.logoAccent,
-                      PLATFORM_COLORS[logo.id] ?? COLORS.logoAccent,
-                      PLATFORM_COLORS[logo.id] ?? COLORS.logoAccent,
-                      COLORS.warning,
-                      PLATFORM_COLORS[logo.id] ?? COLORS.logoAccent,
-                    ],
-                  }}
-                  transition={{
-                    duration: 5,
-                    repeat: Infinity,
-                    delay: logo.flashDelay,
-                    times: [0, 0.7, 0.8, 0.85, 1],
-                  }}
+                  fill="var(--theme-platform-icon)"
                 />
               </g>
             </motion.g>
@@ -465,7 +428,7 @@ export default function HeroAnimation() {
           width="90"
           height="90"
           rx="16"
-          fill="color-mix(in srgb, var(--theme-bg-surface) 82%, transparent)"
+          fill="var(--theme-platform-surface-fill)"
         />
         <rect
           x="155"
