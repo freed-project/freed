@@ -1,0 +1,61 @@
+{
+  "tag": "v26.4.1200",
+  "version": "26.4.1200",
+  "dayKey": "26.4.12",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-12T23:16:24.658Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.4.1100",
+    "previousPublishedDayTag": "v26.4.1100",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.1200"
+    ],
+    "prNumbers": [
+      184,
+      185,
+      186,
+      187,
+      188,
+      190,
+      191,
+      192,
+      193,
+      194,
+      195,
+      196
+    ],
+    "commitSubjects": [
+      "fix: remove updater progress bar lag (#196)",
+      "fix: polish website roadmap and changelog (#195)",
+      "fix: polish roadmap icons, hero motion, and changelog pagination (#194)",
+      "fix: paginate changelog and polish theme motion (#193)",
+      "feat: unify themes across website and app (#191)",
+      "fix: reorder sidebar sources and unclipped qr heading (#192)",
+      "fix: remove privacy page callout border (#190)",
+      "feat: unify themes across website and app (#188)",
+      "fix: remove static card hover states (#187)",
+      "fix: polish QR footer hover state (#186)",
+      "feat: ship refreshed theme system and typography polish (#185)",
+      "fix: refine sharing qr layout (#184)"
+    ]
+  },
+  "release": {
+    "deck": "Unify themes across website and app, refreshed theme system and typography polish, and privacy policy callout border removed",
+    "features": [
+      "Unify themes across website and app",
+      "Refreshed theme system and typography polish"
+    ],
+    "fixes": [
+      "Reorder sidebar sources and unclipped qr heading",
+      "Static card hover states removed",
+      "Polish QR footer hover state",
+      "Refine sharing qr layout"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1200\n\nUnify themes across website and app, refreshed theme system and typography polish, and privacy policy callout border removed\n\n### Features\n\n- Unify themes across website and app\n- Refreshed theme system and typography polish\n\n### Fixes\n\n- Reorder sidebar sources and unclipped qr heading\n- Static card hover states removed\n- Polish QR footer hover state\n- Refine sharing qr layout\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
