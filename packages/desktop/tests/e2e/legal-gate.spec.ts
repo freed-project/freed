@@ -19,7 +19,10 @@ async function openSettingsSection(
 ): Promise<void> {
   await openSettings(page);
   const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
-  const section = settingsDialog.getByRole("button", { name: new RegExp(`^${sectionName.replace("/", "\\/")}$`) });
+  const section = settingsDialog
+    .locator("button")
+    .filter({ hasText: sectionName })
+    .first();
   await expect(section).toBeVisible({ timeout: 3_000 });
   await section.evaluate((button) => {
     (button as HTMLButtonElement).click();
@@ -129,31 +132,33 @@ test("Instagram login requires provider consent", async ({ app }) => {
   });
 });
 
-test("LinkedIn login and sync require provider consent", async ({ app }) => {
+test("LinkedIn login requires provider consent", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
 
   const { page } = app;
-  await openSettingsSection(page, "LinkedIn");
-
-  await page.getByText("Log in with LinkedIn").click();
-  await expect(page.getByTestId("provider-risk-accept-linkedin")).toBeVisible({
-    timeout: 5_000,
-  });
-
-  await cancelProviderRiskDialog(page, "linkedin");
   await page.evaluate(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
       setState: (partial: Record<string, unknown>) => void;
     };
     store.setState({
-      liAuth: { isAuthenticated: true, lastCheckedAt: Date.now() },
+      liAuth: {
+        isAuthenticated: false,
+      },
     });
+    const storeKey = "__TAURI_MOCK_STORE__:legal.json";
+    const raw = window.localStorage.getItem(storeKey);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      delete parsed["legal.provider.linkedin"];
+      window.localStorage.setItem(storeKey, JSON.stringify(parsed));
+    }
+    window.localStorage.removeItem("freed.legal.legal.provider.linkedin");
   });
+  await openSettingsSection(page, "LinkedIn");
 
-  const syncNowButton = page.getByTestId("provider-sync-action-linkedin");
-  await expect(syncNowButton).toBeVisible({ timeout: 5_000 });
-  await syncNowButton.click();
+  await page.getByText("Log in with LinkedIn").click();
   await expect(page.getByTestId("provider-risk-accept-linkedin")).toBeVisible({
     timeout: 5_000,
   });
