@@ -400,8 +400,8 @@ function ImportPane() {
   return (
     <div className="flex flex-col gap-4 py-2">
       <div className="flex justify-center">
-        <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center">
-          <svg className="w-6 h-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="theme-icon-well-success flex h-12 w-12 items-center justify-center rounded-full">
+          <svg className="theme-icon-success h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
@@ -411,7 +411,7 @@ function ImportPane() {
         <p className="text-lg font-semibold text-[var(--theme-text-primary)]">Import complete</p>
         <div className="flex justify-center gap-6 mt-3">
           <div className="text-center">
-            <p className="text-2xl font-bold text-green-400">{summary?.imported.toLocaleString()}</p>
+            <p className="theme-feedback-text-success text-2xl font-bold">{summary?.imported.toLocaleString()}</p>
               <p className="text-xs text-[var(--theme-text-muted)]">imported</p>
           </div>
           {(summary?.skipped ?? 0) > 0 && (
@@ -422,7 +422,7 @@ function ImportPane() {
           )}
           {(summary?.errors.length ?? 0) > 0 && (
             <div className="text-center">
-              <p className="text-2xl font-bold text-red-400">{summary!.errors.length.toLocaleString()}</p>
+              <p className="theme-feedback-text-danger text-2xl font-bold">{summary!.errors.length.toLocaleString()}</p>
               <p className="text-xs text-[var(--theme-text-muted)]">errors</p>
             </div>
           )}
@@ -430,13 +430,13 @@ function ImportPane() {
       </div>
 
       {(summary?.errors.length ?? 0) > 0 && (
-        <details className="bg-red-500/10 border border-red-500/20 rounded-xl p-3">
-          <summary className="text-xs text-red-400 font-medium cursor-pointer">
+        <details className="theme-feedback-panel-danger rounded-xl p-3">
+          <summary className="theme-feedback-text-danger cursor-pointer text-xs font-medium">
             Show {summary!.errors.length.toLocaleString()} error{summary!.errors.length !== 1 ? "s" : ""}
           </summary>
           <ul className="mt-2 space-y-0.5 max-h-32 overflow-y-auto">
             {summary!.errors.map((err, i) => (
-              <li key={i} className="text-xs text-red-400 font-mono truncate">{err}</li>
+              <li key={i} className="theme-feedback-text-danger truncate text-xs font-mono">{err}</li>
             ))}
           </ul>
         </details>

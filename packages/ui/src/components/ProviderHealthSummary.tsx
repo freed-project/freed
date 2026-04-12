@@ -72,9 +72,9 @@ export function DurationSelect({
 export function HealthStatusBadge({ snapshot }: { snapshot: ProviderHealthSnapshot }) {
   const styles = {
     idle: "bg-[var(--theme-bg-muted)] text-[var(--theme-text-muted)]",
-    healthy: "bg-green-500/15 text-green-400",
-    degraded: "bg-amber-500/15 text-amber-400",
-    paused: "bg-amber-500/15 text-amber-400",
+    healthy: "theme-status-pill-success",
+    degraded: "theme-status-pill-warning",
+    paused: "theme-status-pill-warning",
   }[snapshot.status];
 
   const label =
@@ -100,9 +100,9 @@ export function ReliabilityBars({
         const failure = bucket.failures > 0;
         const success = bucket.successes > 0;
         const bg = failure
-          ? "bg-amber-500/80"
+          ? "bg-[rgb(var(--theme-feedback-warning-rgb)/0.82)]"
           : success
-            ? "bg-green-500/80"
+            ? "bg-[rgb(var(--theme-feedback-success-rgb)/0.82)]"
             : "bg-white/10";
         return (
           <div key={bucket.dateKey} className={`h-2 rounded-full ${bg}`} title={`${bucket.dateKey}: ${bucket.successes.toLocaleString()} ok, ${bucket.failures.toLocaleString()} fail`} />

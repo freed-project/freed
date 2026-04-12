@@ -1,5 +1,76 @@
 [
   {
+    "version": "26.4.1100",
+    "tagName": "v26.4.1100",
+    "date": "2026-04-12T06:06:18Z",
+    "deck": "Contacts settings and sync, rotating desktop snapshots, and unify theming across website and app",
+    "features": [
+      {
+        "text": "Finish Google Contacts settings and sync"
+      },
+      {
+        "text": "Rotating desktop snapshots"
+      },
+      {
+        "text": "Unify theming across website and app"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Desktop map and smoke assertions are now more stable"
+      },
+      {
+        "text": "Handle empty release validation args"
+      },
+      {
+        "text": "Support macOS bash in release publish"
+      },
+      {
+        "text": "Mark items read when scrolled past"
+      },
+      {
+        "text": "Make browser session copy more accurate"
+      },
+      {
+        "text": "Silence background social scrapers"
+      },
+      {
+        "text": "Redeploy website after release publish"
+      },
+      {
+        "text": "Overhaul changelog release notes and cards"
+      },
+      {
+        "text": "Backfill concise historical changelog notes"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Public-safe bug reporting"
+      },
+      {
+        "text": "Browser-style navigation history"
+      },
+      {
+        "text": "Move feeds into source accordion"
+      },
+      {
+        "text": "Provider health diagnostics and source management"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1100",
+    "prNumbers": [],
+    "builds": [
+      "26.4.1100"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.1100",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1100"
+      }
+    ]
+  },
+  {
     "version": "26.4.900",
     "tagName": "v26.4.900",
     "date": "2026-04-10T04:38:56Z",

@@ -38,6 +38,7 @@ import { FeedsSection } from "./settings/FeedsSection.js";
 import { SavedSection } from "./settings/SavedSection.js";
 import { SettingsToggle } from "./SettingsToggle.js";
 import { ReportComposer } from "./report/ReportComposer.js";
+import { ThemePreviewButton } from "./ThemePreviewButton.js";
 
 const SAMPLE_SEED_FEED_COUNT = 10;
 const SAMPLE_SEED_ITEM_COUNT = 155;
@@ -651,45 +652,17 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <>
             <SectionHeading label="Appearance" />
             <div className="grid gap-3 sm:grid-cols-2">
-                {THEME_DEFINITIONS.map((theme) => {
-                  const isActive = display.themeId === theme.id;
-                  return (
-                    <button
-                      key={theme.id}
-                      type="button"
-                      onClick={() => handleDisplayChange({ themeId: theme.id as ThemeId })}
-                      className={`rounded-2xl border p-3 text-left transition-all ${
-                        isActive
-                          ? "border-[var(--theme-border-strong)] bg-[var(--theme-bg-card-hover)] shadow-[var(--theme-glow-sm)]"
-                          : "border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] hover:border-[var(--theme-border-strong)] hover:bg-[var(--theme-bg-card-hover)]"
-                      }`}
-                    >
-                      <div
-                        className="h-20 rounded-xl border border-white/10"
-                        style={{ background: theme.previewGradient }}
-                        aria-hidden="true"
-                      />
-                      <div className="mt-3 flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-[var(--theme-text-primary)]">
-                            {theme.name}
-                          </p>
-                          <p className="mt-1 text-xs text-[var(--theme-text-muted)]">
-                            {theme.tagline}
-                          </p>
-                        </div>
-                        {isActive ? (
-                          <span className="rounded-full bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--theme-accent-secondary)]">
-                            Active
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="mt-2 text-xs leading-relaxed text-[var(--theme-text-secondary)]">
-                        {theme.description}
-                      </p>
-                    </button>
-                  );
-                })}
+              {THEME_DEFINITIONS.map((theme) => {
+                const isActive = display.themeId === theme.id;
+                return (
+                  <ThemePreviewButton
+                    key={theme.id}
+                    theme={theme}
+                    active={isActive}
+                    onClick={() => handleDisplayChange({ themeId: theme.id as ThemeId })}
+                  />
+                );
+              })}
             </div>
           </>
         );
@@ -883,7 +856,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                     </span>
                   )}
                   {updateState.status === "error" && (
-                    <span className="text-xs text-red-400">Check failed</span>
+                    <span className="theme-feedback-text-danger text-xs">Check failed</span>
                   )}
                 </div>
               )}
@@ -901,7 +874,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 </div>
               )}
               {updateDownloadProgress?.phase === "error" && (
-                <p className="text-xs text-red-400">{updateDownloadProgress.message}</p>
+                <p className="theme-feedback-text-danger text-xs">{updateDownloadProgress.message}</p>
               )}
             </div>
           </>
@@ -928,41 +901,41 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               <button
                 onClick={requestSeedSampleData}
                 disabled={seeding}
-                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/10 hover:border-amber-500/20 transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                className="theme-feedback-panel-warning w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <div>
-                  <p className="text-sm text-amber-400">
+                  <p className="theme-feedback-text-warning text-sm">
                     {seedDone ? "Add more sample data" : seeding ? "Populating\u2026" : "Populate sample data"}
                   </p>
-                  <p className="text-xs text-amber-400/50 mt-0.5">
+                  <p className="theme-feedback-text-warning-muted mt-0.5 text-xs">
                     {seedDone
                       ? `Adds another ${SAMPLE_SEED_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SEED_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SEED_FRIEND_COUNT.toLocaleString()} friends, and map-ready social activity`
                       : `Adds ${SAMPLE_SEED_FEED_COUNT.toLocaleString()} RSS feeds, ${SAMPLE_SEED_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SEED_FRIEND_COUNT.toLocaleString()} friends, and location-linked social data`}
                   </p>
                 </div>
                 {seedDone ? (
-                  <svg className="w-4 h-4 text-amber-400/60 shrink-0 ml-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="theme-feedback-text-warning-muted ml-3 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 ) : seeding ? (
-                  <svg className="w-4 h-4 text-amber-400/40 shrink-0 ml-3 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="theme-feedback-text-warning-muted ml-3 h-4 w-4 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
                 ) : (
-                  <svg className="w-4 h-4 text-amber-400/40 shrink-0 ml-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="theme-feedback-text-warning-muted ml-3 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 )}
               </button>
               <button
                 onClick={() => setShowResetConfirm(true)}
-                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-red-500/5 hover:bg-red-500/10 border border-red-500/10 hover:border-red-500/20 transition-colors text-left"
+                className="theme-feedback-panel-danger w-full flex items-center justify-between rounded-xl px-3 py-2.5 text-left transition-colors"
               >
                 <div>
-                  <p className="text-sm text-red-400">Reset this device</p>
-                  <p className="text-xs text-red-400/50 mt-0.5">Wipes all local data and restarts fresh</p>
+                  <p className="theme-feedback-text-danger text-sm">Reset this device</p>
+                  <p className="mt-0.5 text-xs text-[rgb(var(--theme-feedback-danger-rgb)/0.72)]">Wipes all local data and restarts fresh</p>
                 </div>
-                <svg className="w-4 h-4 text-red-400/40 shrink-0 ml-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="ml-3 h-4 w-4 shrink-0 text-[rgb(var(--theme-feedback-danger-rgb)/0.56)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               </button>
@@ -995,11 +968,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           isActive
             ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_15%,transparent)] text-[var(--theme-accent-secondary)]"
             : isDanger
-            ? "text-red-400/70 hover:text-red-400 hover:bg-red-500/5"
+            ? "text-[rgb(var(--theme-feedback-danger-rgb)/0.72)] hover:text-[rgb(var(--theme-feedback-danger-rgb))] hover:bg-[rgb(var(--theme-feedback-danger-rgb)/0.05)]"
             : "text-text-secondary hover:text-text-primary hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)]"
         }`}
       >
-        <span className={`shrink-0 ${isActive ? "text-[var(--theme-accent-secondary)]" : isDanger ? "text-red-400/60" : "text-text-muted"}`}>
+        <span className={`shrink-0 ${isActive ? "text-[var(--theme-accent-secondary)]" : isDanger ? "text-[rgb(var(--theme-feedback-danger-rgb)/0.64)]" : "text-text-muted"}`}>
           {section.icon}
         </span>
         <span>{section.label}</span>
@@ -1219,8 +1192,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         <div className="theme-elevated-overlay absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-4 sm:items-center">
           <div className="theme-dialog-shell my-auto max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[rgb(var(--theme-feedback-danger-rgb)/0.15)]">
+                <svg className="h-5 w-5 theme-feedback-text-danger" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
@@ -1239,7 +1212,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   type="checkbox"
                   checked={deleteFromCloud}
                   onChange={(e) => setDeleteFromCloud(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-[var(--theme-border-quiet)] bg-[var(--theme-bg-input)] text-red-500 focus:ring-red-500 focus:ring-offset-0"
+                  className="mt-0.5 h-4 w-4 rounded border-[var(--theme-border-quiet)] bg-[var(--theme-bg-input)] text-[rgb(var(--theme-feedback-danger-rgb))] focus:ring-[rgb(var(--theme-feedback-danger-rgb))] focus:ring-offset-0"
                 />
                 <div>
                   <p className="text-sm text-text-secondary transition-colors group-hover:text-text-primary">
@@ -1261,11 +1234,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               <button
                 onClick={handleReset}
                 disabled={resetting}
-                className="flex-1 py-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 hover:text-red-300 transition-colors text-sm font-medium disabled:opacity-50"
+                className="theme-feedback-button-danger flex-1 py-2.5 text-sm font-medium disabled:opacity-50"
               >
                 {resetting ? (
                   <span className="flex items-center justify-center gap-2">
-                    <span className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-[rgb(var(--theme-feedback-danger-rgb))] border-t-transparent" />
                     Resetting&hellip;
                   </span>
                 ) : (
@@ -1281,8 +1254,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         <div className="theme-elevated-overlay absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-4 sm:items-center">
           <div className="theme-dialog-shell my-auto max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[rgb(var(--theme-feedback-warning-rgb)/0.15)]">
+                <svg className="h-5 w-5 theme-feedback-text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 4h.01m-7.938 4h15.876c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L2.33 17c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
@@ -1294,8 +1267,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               </div>
             </div>
 
-            <div className="theme-dialog-section mb-5 rounded-xl px-4 py-3">
-              <p className="text-xs text-amber-200/85 leading-5">
+            <div className="theme-feedback-panel-warning mb-5 rounded-xl px-4 py-3">
+              <p className="theme-feedback-text-warning text-xs leading-5">
                 Existing library contents detected:
                 {" "}
                 {existingFeedCount.toLocaleString()} feeds,
@@ -1304,7 +1277,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 {" "}
                 {existingFriendCount.toLocaleString()} friends.
               </p>
-              <p className="text-xs text-amber-200/65 mt-2 leading-5">
+              <p className="theme-feedback-text-warning-muted mt-2 text-xs leading-5">
                 Continue only if you intend to append a fresh sample batch on this device.
               </p>
             </div>
@@ -1323,7 +1296,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   setShowSampleSeedConfirm(false);
                   void handleSeedSampleData();
                 }}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-amber-500/15 border border-amber-500/20 text-amber-300 hover:bg-amber-500/20 transition-colors"
+                className="theme-feedback-button-warning flex-1 px-4 py-2.5"
               >
                 Populate anyway
               </button>
@@ -1362,13 +1335,13 @@ function UpToDateBadge() {
       <span className="_utd-badge flex items-center gap-2">
         <span className="relative flex items-center justify-center w-[18px] h-[18px] shrink-0">
           {/* Ripple ring */}
-          <span className="_utd-ring absolute inset-0 rounded-full bg-green-400/25" />
+          <span className="_utd-ring absolute inset-0 rounded-full bg-[rgb(var(--theme-feedback-success-rgb)/0.25)]" />
           {/* Circle + animated check */}
           <svg viewBox="0 0 18 18" fill="none" className="w-[18px] h-[18px]">
-            <circle cx="9" cy="9" r="8" stroke="rgb(74 222 128 / 0.35)" strokeWidth="1.5" />
+            <circle cx="9" cy="9" r="8" stroke="rgb(var(--theme-feedback-success-rgb) / 0.35)" strokeWidth="1.5" />
             <path
               d="M5.5 9l2.5 2.5 4.5-5"
-              stroke="rgb(74 222 128)"
+              stroke="rgb(var(--theme-feedback-success-rgb))"
               strokeWidth="1.75"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -1376,7 +1349,7 @@ function UpToDateBadge() {
             />
           </svg>
         </span>
-        <span className="text-xs text-green-400">You're up to date</span>
+        <span className="text-xs text-[rgb(var(--theme-feedback-success-rgb))]">You're up to date</span>
       </span>
     </>
   );
@@ -1388,7 +1361,7 @@ function SectionHeading({ label, danger }: { label: string; danger?: boolean }) 
   return (
     <h3
       className={`text-sm font-semibold uppercase tracking-wide mb-5 ${
-        danger ? "text-red-400/60" : "text-text-muted"
+        danger ? "text-[rgb(var(--theme-feedback-danger-rgb)/0.64)]" : "text-text-muted"
       }`}
     >
       {label}

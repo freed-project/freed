@@ -50,7 +50,7 @@ export function createMarkerElement(
     "position:relative",
     "border-radius:999px",
     `border:1px solid ${avatarPalette.borderStrong}`,
-    `box-shadow:0 0 0 1px ${avatarPalette.borderSoft},0 0 18px ${avatarPalette.glow},0 12px 28px rgba(2,6,23,0.52)`,
+    `box-shadow:0 0 0 1px ${avatarPalette.borderSoft},0 0 18px ${avatarPalette.glow},var(--theme-marker-shadow)`,
     "overflow:hidden",
     "display:flex",
     "align-items:center",
@@ -59,7 +59,7 @@ export function createMarkerElement(
     `background:radial-gradient(circle at 30% 28%,${avatarPalette.gradientStart},${avatarPalette.gradientMid} 34%,${avatarPalette.gradientEnd} 100%)`,
     `font-size:${Math.max(8, px * 0.35)}px`,
     "font-weight:700",
-    "color:white",
+    `color:${avatarPalette.text}`,
     "font-family:system-ui,sans-serif",
     "letter-spacing:0.04em",
   ].join(";");
@@ -71,7 +71,7 @@ export function createMarkerElement(
     "inset:-6px",
     "border-radius:999px",
     `border:1px solid ${avatarPalette.ring}`,
-    `background:radial-gradient(circle,${avatarPalette.glowSoft},rgba(0,0,0,0) 72%)`,
+    `background:radial-gradient(circle,${avatarPalette.glowSoft},transparent 72%)`,
     "pointer-events:none",
     "z-index:0",
   ].join(";");
@@ -110,7 +110,7 @@ export function createMarkerElement(
       "inset:4px",
       "border-radius:999px",
       `border:1px solid ${avatarPalette.ring}`,
-      `background:radial-gradient(circle at 30% 30%, ${avatarPalette.imageHighlight}, rgba(255,255,255,0) 65%)`,
+      `background:radial-gradient(circle at 30% 30%, ${avatarPalette.imageHighlight}, transparent 65%)`,
       "pointer-events:none",
       "z-index:3",
     ].join(";");
@@ -138,10 +138,10 @@ export function createMarkerElement(
       "justify-content:center",
       "font-size:10px",
       "font-weight:700",
-      "color:white",
+      `color:${avatarPalette.text}`,
       "background:var(--theme-button-primary-background)",
       `border:1px solid ${avatarPalette.borderSoft}`,
-      "box-shadow:0 10px 22px rgba(2,6,23,0.42)",
+      "box-shadow:var(--theme-marker-badge-shadow)",
     ].join(";");
     body.appendChild(badge);
   }

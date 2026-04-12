@@ -126,12 +126,15 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 **Features:**
 
 - Static Site Generation (SSG) for SEO
-- Newsletter signup (Brevo via Next.js Route Handler)
+- Newsletter signup (Brevo via Next.js Route Handler with staged email capture, Turnstile, and optional phone collection)
 - Auto-generated sitemap.xml
 - RSS/Atom feed generation at build time
 - Public legal pages for Terms of Use, Privacy, and Desktop EULA
 - Versioned website clickwrap in the download modal for Terms of Use and Privacy before opening the PWA or downloading Freed Desktop
 - Shared cross-surface theme system for the marketing site, Freed Desktop, and the PWA
+- Theme-aware form controls across the marketing site and shared UI package
+- Shared theme-aware tooltip primitive across the marketing site and shared UI package
+- Homepage footer theme picker uses the same preview swatches as Freed Desktop, with hover tooltips for each theme
 - Five authored themes: Neon, Midas, Vesper, Ember, and Scriptorium
 - Synced theme preference with `Neon` as the default for fresh installs
 - Mobile-responsive design
@@ -148,10 +151,12 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 - [x] Finish the manifesto
 - [ ] Complete newsletter subscription system:
   - [x] Wire `NewsletterModal` form to `POST /api/subscribe`
-  - [ ] Finalize Brevo list mapping and list settings
+  - [x] Finalize Brevo list mapping and list settings
   - [ ] Import existing 90k subscribers
   - [ ] Add one-click endpoint smoke test before release
-  - [ ] Set `BREVO_API_KEY` and `BREVO_LIST_ID` in Vercel
+  - [x] Set `BREVO_API_KEY` and `BREVO_LIST_ID` in Vercel
+  - [x] Add Turnstile verification, a honeypot field, and basic abuse throttling to `/api/subscribe`
+  - [ ] Set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` in `freed-www`
   - [ ] Configure freed.wtf domain in Vercel
 - [ ] Send our first email newsletter
 - [ ] Fix navigation bar vertical clipping on overscroll (iOS/macOS bounce)
@@ -160,12 +165,12 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 
 #### Newsletter Infrastructure
 
-The newsletter system uses Brevo for contact management and email delivery, proxied through a Next.js Route Handler to keep API keys server-side.
+The newsletter system uses Brevo for contact management and email delivery, proxied through a Next.js Route Handler to keep API keys server-side. The public signup route now uses a staged flow that asks for email first, then name, optional phone, and Cloudflare Turnstile verification before the final confirmation step. It also uses a honeypot field and light server throttling to cut down on bot abuse.
 
 **Setup:**
 
 1. Brevo account with API key and contact list
-2. Vercel project with environment variables: `BREVO_API_KEY`, `BREVO_LIST_ID`
+2. Vercel project with environment variables: `BREVO_API_KEY`, `BREVO_LIST_ID`, `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`
 3. Frontend calls `/api/subscribe` (same domain, no CORS)
 4. Use this smoke command to verify the endpoint before launch:
 
@@ -185,6 +190,7 @@ curl -X POST http://localhost:3000/api/subscribe \
 | -------------------------------------------- | ----------------------------- |
 | `website/src/app/api/subscribe/route.ts`     | Next.js Route Handler (Brevo) |
 | `website/src/components/NewsletterModal.tsx` | Modal component               |
+| `website/src/components/TurnstileWidget.tsx` | Signup protection widget      |
 | `website/src/context/NewsletterContext.tsx`  | Modal state management        |
 
 **Cost:** Free tier for both Brevo (contact storage) and Vercel (Hobby plan). ~$10-25 per bulk email send.
@@ -206,7 +212,7 @@ Two Vercel projects, both auto-deploy on push to `main` with preview deploys on 
 
 | Project      | Root Directory   | Domain                                          |
 | ------------ | ---------------- | ------------------------------------------------ |
-| `freed`      | `website/`       | [freed.wtf](https://freed.wtf)                   |
+| `freed-www`  | `website/`       | [freed.wtf](https://freed.wtf)                   |
 | `freed-pwa`  | `packages/pwa/`  | [app.freed.wtf](https://app.freed.wtf)           |
 
 Manual preview deploys for this monorepo now go through `./scripts/vercel-deploy-preview.sh website` and `./scripts/vercel-deploy-preview.sh pwa`. The helper stages a temporary monorepo slice with shared workspace packages before uploading to Vercel, which avoids the broken `npm install` failures caused by raw subdirectory deploys.

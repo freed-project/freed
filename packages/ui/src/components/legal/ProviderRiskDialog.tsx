@@ -76,8 +76,8 @@ export function ProviderRiskDialog({
           data-testid={`provider-risk-dialog-body-${provider}`}
           className="overflow-y-auto px-6 py-6 space-y-5"
         >
-          <div className="theme-dialog-section rounded-2xl p-4">
-            <p className="text-sm text-amber-100/90">
+          <div className="theme-feedback-panel-warning rounded-2xl p-4">
+            <p className="theme-feedback-text-warning text-sm">
               Use Freed only with accounts and content you are authorized to access. Do not use it on employer,
               client, school, or regulated accounts unless you are fully prepared for the fallout.
             </p>

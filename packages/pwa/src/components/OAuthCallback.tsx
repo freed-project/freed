@@ -177,8 +177,8 @@ export function OAuthCallback() {
 
         {status === "success" && (
           <>
-            <div className="w-12 h-12 rounded-full bg-green-500/20 border-2 border-green-400 flex items-center justify-center mx-auto mb-5">
-              <svg className="w-6 h-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="theme-icon-well-success mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full border-2">
+              <svg className="theme-icon-success h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
@@ -189,8 +189,8 @@ export function OAuthCallback() {
 
         {status === "error" && (
           <>
-            <div className="w-12 h-12 rounded-full bg-red-500/20 border-2 border-red-400 flex items-center justify-center mx-auto mb-5">
-              <svg className="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="theme-icon-well-danger mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full border-2">
+              <svg className="theme-icon-danger h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>

@@ -111,9 +111,12 @@ async function waitForPwaReady(
   page: import("@playwright/test").Page,
 ): Promise<void> {
   await page.waitForFunction(() => {
-    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
       getState: () => { isInitialized: boolean };
-    };
+        }
+      | undefined;
+    if (!store) return false;
     return store.getState().isInitialized === true;
   });
 }
@@ -729,9 +732,9 @@ test.describe("FREED PWA", () => {
     // Should show the header and primary action menu
     await expect(page.getByRole("button", { name: /new/i })).toBeVisible();
 
-    // Should show the sidebar
-    await expect(page.getByRole("button", { name: "Sources" })).toBeVisible();
+    // Should show the sidebar navigation
     await expect(page.getByRole("button", { name: /^All$/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
   });
 
   test("shows empty state when no feeds", async ({ page }) => {
@@ -822,6 +825,41 @@ test.describe("FREED PWA", () => {
     await expect(page.getByText("11 to 12 of 12")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Next feeds page" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Alpha Dispatch" })).toHaveCount(0);
+  });
+
+  test("feed pagination clears an off-page feed selection back to top-level feeds", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await acceptLegalGate(page);
+    await seedSidebarFeeds(page);
+
+    await page.getByRole("button", { name: "Expand feeds" }).click();
+    await page.getByRole("button", { name: "Alpha Dispatch" }).click();
+
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("feed"))
+      .toBe("https://example.com/feeds/1.xml");
+
+    await page.getByRole("button", { name: "Next feeds page" }).click();
+
+    await expect(page.getByText("11 to 12 of 12")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Alpha Dispatch" })).toHaveCount(0);
+    await expect
+      .poll(() => ({
+        platform: new URL(page.url()).searchParams.get("platform"),
+        feed: new URL(page.url()).searchParams.get("feed"),
+      }))
+      .toEqual({ platform: "rss", feed: null });
+
+    await page.getByRole("textbox", { name: "Search or run a command" }).fill("needle");
+    await expect(page.getByRole("button", { name: "Needle Feed" })).toBeVisible();
+    await expect
+      .poll(() => ({
+        platform: new URL(page.url()).searchParams.get("platform"),
+        feed: new URL(page.url()).searchParams.get("feed"),
+      }))
+      .toEqual({ platform: "rss", feed: null });
   });
 
   test.describe.serial("URL history", () => {
@@ -1115,9 +1153,14 @@ test.describe("FREED PWA", () => {
     await page.mouse.move(handleBox!.x - 48, handleBox!.y + handleBox!.height / 2, { steps: 8 });
     await page.mouse.up();
 
+    await expect
+      .poll(async () => {
+        const afterResize = await sidebar.boundingBox();
+        return afterResize ? Math.round(afterResize.width) : null;
+      })
+      .toBeGreaterThan(Math.round(before!.width));
     const afterResize = await sidebar.boundingBox();
     expect(afterResize).not.toBeNull();
-    expect(Math.round(afterResize!.width)).toBeGreaterThan(Math.round(before!.width));
 
     await page.getByRole("button", { name: "Map" }).click();
     await page.getByRole("button", { name: "Friends" }).click();

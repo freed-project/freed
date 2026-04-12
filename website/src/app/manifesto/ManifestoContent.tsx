@@ -18,7 +18,7 @@ export default function ManifestoContent() {
           {/* Header */}
           <header className="text-center mb-10 sm:mb-16">
             <h1 className="theme-display-large text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
-              <span className="gradient-text">The Freed Manifesto</span>
+              <span className="theme-heading-accent">The Freed Manifesto</span>
             </h1>
             <p className="text-text-secondary text-lg sm:text-xl">
               A declaration of digital independence.
@@ -160,10 +160,10 @@ export default function ManifestoContent() {
                     href={item.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="group flex flex-col gap-1 p-4 rounded-xl border border-freed-border hover:border-glow-purple/50 bg-freed-surface/30 hover:bg-freed-surface/60 transition-all duration-200"
+                    className="group flex flex-col gap-1 rounded-xl border border-freed-border bg-freed-surface/30 p-4 transition-all duration-200 hover:border-[color:var(--theme-heading-accent)] hover:bg-freed-surface/60"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <span className="text-sm font-semibold text-text-primary group-hover:text-white transition-colors leading-snug">
+                      <span className="text-sm font-semibold leading-snug text-text-primary transition-colors group-hover:text-[color:var(--theme-heading-accent)]">
                         {item.title}
                       </span>
                       <svg

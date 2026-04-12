@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  getThemeDefinition,
+  resolveThemeId,
+  type ThemeId,
+  type ThemeBackgroundRecipe,
+} from "@freed/shared/themes";
 
 const channels = {
   secondary: { rgbVar: "--theme-accent-secondary-rgb", intensity: 1.0 },
@@ -14,7 +20,6 @@ const MAX_HEIGHT = 2500;
 const VERTICAL_SPACING = 600;
 const HERO_ZONE_HEIGHT = 800;
 const MOBILE_BREAKPOINT = 768;
-const BASE_COLOR_INTENSITY = 0.12;
 
 interface Orb {
   channel: ChannelName;
@@ -24,36 +29,41 @@ interface Orb {
   intensity: number;
 }
 
-function generateOrbs(): Orb[] {
-  const orbs: Orb[] = [];
-  const names: ChannelName[] = ["secondary", "primary", "tertiary"];
+function randomInRange(min: number, range: number): number {
+  return min + Math.random() * range;
+}
 
-  orbs.push({
-    channel: "secondary",
-    x: 15 + Math.random() * 35,
-    y: 100 + Math.random() * 300,
-    size: 600 + Math.random() * 400,
-    intensity: 1.2,
-  });
-  orbs.push({
-    channel: "primary",
-    x: 50 + Math.random() * 35,
-    y: 200 + Math.random() * 400,
-    size: 550 + Math.random() * 400,
-    intensity: 1.0,
+function generateOrbs(recipe: ThemeBackgroundRecipe): Orb[] {
+  const orbs: Orb[] = [];
+  const rowRecipe = recipe.rowOrbs;
+
+  recipe.heroOrbs.forEach((heroOrb) => {
+    orbs.push({
+      channel: heroOrb.channel,
+      x: randomInRange(heroOrb.xMin, heroOrb.xRange),
+      y: randomInRange(heroOrb.yMin, heroOrb.yRange),
+      size: randomInRange(heroOrb.sizeMin, heroOrb.sizeRange),
+      intensity: heroOrb.intensity,
+    });
   });
 
   const numRows =
     Math.ceil((MAX_HEIGHT - HERO_ZONE_HEIGHT) / VERTICAL_SPACING) + 1;
   for (let row = 0; row < numRows; row++) {
     const baseY = HERO_ZONE_HEIGHT + row * VERTICAL_SPACING;
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < rowRecipe.countPerRow; i++) {
       orbs.push({
-        channel: names[Math.floor(Math.random() * names.length)],
-        x: Math.random() * 80 + 10,
-        y: baseY + Math.random() * VERTICAL_SPACING * 0.5,
-        size: 500 + Math.random() * 400,
-        intensity: 0.6 + Math.random() * 0.6,
+        channel:
+          rowRecipe.channels[
+            Math.floor(Math.random() * rowRecipe.channels.length)
+          ],
+        x: randomInRange(rowRecipe.xMin, rowRecipe.xRange),
+        y: baseY + Math.random() * VERTICAL_SPACING * rowRecipe.yRangeFactor,
+        size: randomInRange(rowRecipe.sizeMin, rowRecipe.sizeRange),
+        intensity: randomInRange(
+          rowRecipe.intensityMin,
+          rowRecipe.intensityRange,
+        ),
       });
     }
   }
@@ -61,35 +71,69 @@ function generateOrbs(): Orb[] {
   return orbs;
 }
 
-function buildBackground(orbs: Orb[], intensityMultiplier: number): string {
-  return orbs
+function buildBackground(
+  orbs: Orb[],
+  intensityMultiplier: number,
+  recipe: ThemeBackgroundRecipe,
+): string {
+  const gradients = orbs
     .map((orb) => {
       const { rgbVar, intensity } = channels[orb.channel];
-      const opacity =
-        BASE_COLOR_INTENSITY *
-        orb.intensity *
-        intensity *
-        intensityMultiplier;
-      return `radial-gradient(${orb.size}px ${orb.size}px at ${orb.x}% ${orb.y}px, rgb(var(${rgbVar}) / ${opacity}), transparent)`;
+      const opacityMultiplier = Number(
+        (orb.intensity * intensity * intensityMultiplier).toFixed(3),
+      );
+      return `radial-gradient(${orb.size}px ${orb.size}px at ${orb.x}% ${orb.y}px, rgb(var(${rgbVar}) / ${recipe.baseOpacity * opacityMultiplier}), transparent)`;
     })
     .join(", ");
+  const textures = recipe.textures.map((texture) => texture.image);
+  return [...textures, gradients].join(", ");
 }
 
-function buildRepeatValues(count: number): string {
-  return Array(count).fill("no-repeat").join(", ");
+function buildRepeatValues(
+  count: number,
+  recipe: ThemeBackgroundRecipe,
+): string {
+  return [
+    ...recipe.textures.map((texture) => texture.repeat),
+    ...Array(count).fill("no-repeat"),
+  ].join(", ");
 }
 
-function buildSizeValues(count: number): string {
-  return Array(count).fill("auto").join(", ");
+function buildSizeValues(count: number, recipe: ThemeBackgroundRecipe): string {
+  return [
+    ...recipe.textures.map((texture) => texture.size),
+    ...Array(count).fill("auto"),
+  ].join(", ");
 }
 
 export function BackgroundAtmosphere() {
   const [orbs, setOrbs] = useState<Orb[] | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [themeId, setThemeId] = useState<ThemeId>("neon");
+  const themeRecipe = useMemo(
+    () => getThemeDefinition(themeId).background,
+    [themeId],
+  );
 
   useEffect(() => {
-    setOrbs(generateOrbs());
+    const initialThemeId = resolveThemeId(
+      document.documentElement.dataset.theme || "neon",
+    );
+    setOrbs(generateOrbs(getThemeDefinition(initialThemeId).background));
     setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    setThemeId(initialThemeId);
+
+    const observer = new MutationObserver(() => {
+      const nextThemeId = resolveThemeId(
+        document.documentElement.dataset.theme || "neon",
+      );
+      setThemeId(nextThemeId);
+      setOrbs(generateOrbs(getThemeDefinition(nextThemeId).background));
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
 
     let rafId = 0;
     const onResize = () => {
@@ -102,20 +146,21 @@ export function BackgroundAtmosphere() {
     return () => {
       window.removeEventListener("resize", onResize);
       cancelAnimationFrame(rafId);
+      observer.disconnect();
     };
   }, []);
 
   const backgroundImage = useMemo(
-    () => (orbs ? buildBackground(orbs, isMobile ? 0.5 : 1) : ""),
-    [orbs, isMobile],
+    () => (orbs ? buildBackground(orbs, isMobile ? 0.5 : 1, themeRecipe) : ""),
+    [orbs, isMobile, themeRecipe],
   );
   const backgroundRepeat = useMemo(
-    () => (orbs ? buildRepeatValues(orbs.length) : ""),
-    [orbs],
+    () => (orbs ? buildRepeatValues(orbs.length, themeRecipe) : ""),
+    [orbs, themeRecipe],
   );
   const backgroundSize = useMemo(
-    () => (orbs ? buildSizeValues(orbs.length) : ""),
-    [orbs],
+    () => (orbs ? buildSizeValues(orbs.length, themeRecipe) : ""),
+    [orbs, themeRecipe],
   );
 
   if (!orbs) return null;
@@ -133,19 +178,8 @@ export function BackgroundAtmosphere() {
         }}
       />
       <div
-        className="absolute inset-0 opacity-60"
-        style={{
-          backgroundImage: [
-            "radial-gradient(circle at 20% 20%, rgb(255 255 255 / 0.04) 0.7px, transparent 1px)",
-            "radial-gradient(circle at 80% 30%, rgb(var(--theme-accent-secondary-rgb) / 0.04) 0.8px, transparent 1.1px)",
-            "radial-gradient(circle at 30% 70%, rgb(var(--theme-accent-primary-rgb) / 0.03) 0.7px, transparent 1px)",
-          ].join(", "),
-          backgroundSize: "24px 24px, 32px 32px, 28px 28px",
-          backgroundPosition: "0 0, 13px 9px, 7px 17px",
-          mixBlendMode: "screen",
-        }}
+        className="bg-gradient-orbs absolute inset-0"
       />
-      <div className="bg-gradient-orbs absolute inset-0 opacity-90" />
     </div>
   );
 }

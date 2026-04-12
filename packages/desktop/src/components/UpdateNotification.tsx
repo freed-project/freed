@@ -75,25 +75,25 @@ export function UpdateNotification({
 function UpdateIcon({ phase }: { phase: UpdateState["phase"] }) {
   if (phase === "error") {
     return (
-      <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center">
-        <span className="text-red-400 text-sm font-bold">!</span>
+      <div className="theme-icon-well-danger flex h-8 w-8 items-center justify-center rounded-full">
+        <span className="theme-icon-danger text-sm font-bold">!</span>
       </div>
     );
   }
   if (phase === "ready") {
     return (
-      <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center">
+      <div className="theme-icon-well-success flex h-8 w-8 items-center justify-center rounded-full">
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path d="M3 8l3.5 3.5L13 5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M3 8l3.5 3.5L13 5" stroke="var(--theme-icon-success)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </div>
     );
   }
   return (
-    <div className="w-8 h-8 rounded-full bg-[rgba(139,92,246,0.2)] flex items-center justify-center">
+    <div className="theme-icon-well-info flex h-8 w-8 items-center justify-center rounded-full">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-        <path d="M8 2v8M4 7l4 4 4-4" stroke="var(--glow-purple)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M2 13h12" stroke="var(--glow-purple)" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M8 2v8M4 7l4 4 4-4" stroke="var(--theme-icon-info)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M2 13h12" stroke="var(--theme-icon-info)" strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     </div>
   );
