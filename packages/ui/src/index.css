@@ -475,7 +475,7 @@ html[data-theme="midas"] .theme-display-large {
     0 22px 56px rgb(0 0 0 / 0.18);
 }
 
-.glass-card:hover {
+.glass-card-interactive:hover {
   background:
     linear-gradient(
       180deg,
