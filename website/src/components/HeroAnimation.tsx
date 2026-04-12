@@ -294,10 +294,16 @@ function useParticleSystem(logos: ReturnType<typeof buildLogos>) {
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function HeroAnimation() {
+export default function HeroAnimation({
+  compact = false,
+}: {
+  compact?: boolean;
+}) {
   const { themeId } = useTheme();
   const logos = useMemo(() => buildLogos(), []);
   const particles = useParticleSystem(logos);
+  const platformRadius = compact ? 26 : 22;
+  const platformIconSize = compact ? 24 : 20;
 
   return (
     <div className="relative w-full aspect-square">
@@ -405,7 +411,7 @@ export default function HeroAnimation() {
             <motion.circle
               cx={logo.cx}
               cy={logo.cy}
-              r="22"
+              r={platformRadius}
               fill="var(--theme-platform-ring-fill)"
               stroke="var(--theme-platform-ring-stroke)"
               strokeWidth="2"
@@ -428,8 +434,10 @@ export default function HeroAnimation() {
               style={{ transformOrigin: `${logo.cx}px ${logo.cy}px` }}
             >
               <g
-                transform={`translate(${logo.cx - 10}, ${logo.cy - 10}) scale(${
-                  20 / 24
+                transform={`translate(${logo.cx - platformIconSize / 2}, ${
+                  logo.cy - platformIconSize / 2
+                }) scale(${
+                  platformIconSize / 24
                 })`}
               >
                 <path

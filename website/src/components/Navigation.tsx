@@ -243,7 +243,7 @@ export default function Navigation() {
       >
         {/* Mobile: solid full-width bar */}
         <div
-          className={`md:hidden bg-freed-black px-4 py-4 ${
+          className={`md:hidden bg-freed-black px-8 py-4 ${
             mobileMenuOpen ? "" : "border-b border-freed-border"
           }`}
         >

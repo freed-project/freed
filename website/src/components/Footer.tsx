@@ -5,7 +5,7 @@ export default function Footer() {
   return (
     <footer
       aria-label="Site footer"
-      className="relative z-10 border-t border-freed-border pt-8 sm:pt-12 px-8 sm:px-8 md:px-12 lg:px-8 bg-freed-black"
+      className="relative z-10 border-t border-freed-border bg-freed-black px-8 pt-8 sm:px-8 sm:pt-12 md:px-12 lg:px-8"
       style={{ paddingBottom: "calc(2rem + env(safe-area-inset-bottom))" }}
     >
       <div className="max-w-6xl mx-auto">
@@ -31,102 +31,84 @@ export default function Footer() {
             </div>
           </div>
 
-          {/* Links */}
-          <div>
-            <h4 className="text-text-primary font-semibold mb-4">Product</h4>
-            <ul className="space-y-2">
-              <li>
-                <Link
-                  href="/"
-                  className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                >
-                  Home
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/manifesto"
-                  className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                >
-                  Manifesto
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/roadmap"
-                  className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                >
-                  Roadmap
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/updates"
-                  className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                >
-                  Updates
-                </Link>
-              </li>
-            </ul>
-          </div>
+          <div className="grid grid-cols-2 gap-8 md:contents">
+            {/* Links */}
+            <div>
+              <h4 className="text-text-primary font-semibold mb-4">Product</h4>
+              <ul className="space-y-2">
+                <li>
+                  <Link
+                    href="/"
+                    className="text-text-secondary text-sm hover:text-text-primary transition-colors"
+                  >
+                    Home
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/manifesto"
+                    className="text-text-secondary text-sm hover:text-text-primary transition-colors"
+                  >
+                    Manifesto
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/roadmap"
+                    className="text-text-secondary text-sm hover:text-text-primary transition-colors"
+                  >
+                    Roadmap
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/updates"
+                    className="text-text-secondary text-sm hover:text-text-primary transition-colors"
+                  >
+                    Updates
+                  </Link>
+                </li>
+              </ul>
+            </div>
 
-          {/* Resources */}
-          <div>
-            <h4 className="text-text-primary font-semibold mb-4">Resources</h4>
-            <ul className="space-y-2">
-              {/* <li>
-                <a
-                  href="https://github.com/freed-project/freed"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                >
-                  GitHub
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/feed.xml"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                >
-                  RSS Feed
-                </a>
-              </li> */}
-              <li>
-                <Link
-                  href="/terms"
-                  className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                >
-                  Terms of Use
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/privacy"
-                  className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                >
-                  Privacy Policy
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/eula"
-                  className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                >
-                  Desktop EULA
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/qr"
-                  className="text-text-secondary text-sm hover:text-text-primary transition-colors"
-                >
-                  Sharing QR
-                </Link>
-              </li>
-            </ul>
+            {/* Resources */}
+            <div>
+              <h4 className="text-text-primary font-semibold mb-4">Resources</h4>
+              <ul className="space-y-2">
+                <li>
+                  <Link
+                    href="/terms"
+                    className="text-text-secondary text-sm hover:text-text-primary transition-colors"
+                  >
+                    Terms of Use
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/privacy"
+                    className="text-text-secondary text-sm hover:text-text-primary transition-colors"
+                  >
+                    Privacy Policy
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/eula"
+                    className="text-text-secondary text-sm hover:text-text-primary transition-colors"
+                  >
+                    Desktop EULA
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    href="/qr"
+                    className="text-text-secondary text-sm hover:text-text-primary transition-colors"
+                  >
+                    Sharing QR
+                  </Link>
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
 
