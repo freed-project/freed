@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
@@ -13,6 +14,18 @@ export default function SiteShell({
 }) {
   const pathname = usePathname();
   const isQrGallery = pathname === "/qr";
+
+  useEffect(() => {
+    try {
+      const currentPath = sessionStorage.getItem("freed-current-path");
+
+      if (currentPath && currentPath !== pathname) {
+        sessionStorage.setItem("freed-previous-path", currentPath);
+      }
+
+      sessionStorage.setItem("freed-current-path", pathname);
+    } catch {}
+  }, [pathname]);
 
   return (
     <>

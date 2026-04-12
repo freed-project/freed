@@ -87,19 +87,181 @@ const CLIENT_ICONS = [
   {
     id: "mobile",
     label: "Mobile",
-    path: "M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z",
+    kind: "phone" as const,
   },
   {
     id: "pwa",
     label: "PWA",
-    path: "M21 3H3c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h7l-1.5 3h7L14 18h7c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 13H3V5h18v11zm-8-9h-2v3H8l4 4 4-4h-3V7z",
+    kind: "browser" as const,
   },
   {
     id: "desktop-viewer",
     label: "Desktop Viewer",
-    path: "M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7v2H8v2h8v-2h-2v-2h7c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 13H3V4h18v11h-5l-2 2-2-2z",
+    kind: "viewer" as const,
   },
 ];
+
+function FreedDesktopIcon() {
+  return (
+    <g aria-hidden="true">
+      <rect
+        x="22"
+        y="23"
+        width="56"
+        height="38"
+        rx="8"
+        fill="none"
+        stroke="var(--theme-text-primary)"
+        strokeWidth="2"
+      />
+      <text
+        x="50"
+        y="52"
+        fill="var(--theme-text-primary)"
+        fontSize="27"
+        fontWeight="700"
+        textAnchor="middle"
+      >
+        F
+      </text>
+      <rect
+        x="44"
+        y="62"
+        width="12"
+        height="4"
+        rx="2"
+        fill="var(--theme-text-primary)"
+      />
+      <rect
+        x="38"
+        y="66.5"
+        width="24"
+        height="3"
+        rx="1.5"
+        fill="var(--theme-text-primary)"
+      />
+    </g>
+  );
+}
+
+function ClientIcon({
+  kind,
+}: {
+  kind: "phone" | "browser" | "viewer";
+}) {
+  const color = "var(--theme-text-secondary)";
+
+  if (kind === "phone") {
+    const phoneColor = "var(--theme-text-primary)";
+    return (
+      <g aria-hidden="true">
+        <rect
+          x="15.5"
+          y="5.5"
+          width="19"
+          height="29"
+          rx="4"
+          fill="none"
+          stroke={phoneColor}
+          strokeWidth="2"
+        />
+        <path
+          d="M22 10.5h6"
+          fill="none"
+          stroke={phoneColor}
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+        <rect
+          x="19"
+          y="13.5"
+          width="12"
+          height="13"
+          rx="2.2"
+          fill="none"
+          stroke={phoneColor}
+          strokeWidth="1.6"
+        />
+        <circle cx="25" cy="29.8" r="1.1" fill={phoneColor} />
+      </g>
+    );
+  }
+
+  if (kind === "browser") {
+    return (
+      <g aria-hidden="true">
+        <rect
+          x="7"
+          y="8"
+          width="36"
+          height="24"
+          rx="5"
+          fill="none"
+          stroke={color}
+          strokeWidth="2"
+        />
+        <path
+          d="M9.5 14h31"
+          fill="none"
+          stroke={color}
+          strokeWidth="1.8"
+          strokeLinecap="round"
+        />
+        <circle cx="13" cy="11.2" r="1.1" fill={color} />
+        <circle cx="17" cy="11.2" r="1.1" fill={color} />
+        <circle cx="21" cy="11.2" r="1.1" fill={color} />
+        <circle
+          cx="25"
+          cy="23"
+          r="6.5"
+          fill="none"
+          stroke={color}
+          strokeWidth="1.6"
+        />
+        <path
+          d="M18.5 23h13M25 16.7c2.4 2.8 2.4 12.5 0 12.5M25 16.7c-2.4 2.8-2.4 12.5 0 12.5"
+          fill="none"
+          stroke={color}
+          strokeWidth="1.4"
+          strokeLinecap="round"
+        />
+      </g>
+    );
+  }
+
+  return (
+    <g aria-hidden="true">
+      <rect
+        x="8"
+        y="8"
+        width="34"
+        height="22"
+        rx="4"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+      />
+      <rect x="22" y="30" width="6" height="3" rx="1.5" fill={color} />
+      <rect x="18" y="33" width="14" height="2.5" rx="1.25" fill={color} />
+      <path
+        d="M25 12a6.8 6.8 0 1 1-3.7 12.6l-2.8 1.6.9-3.1A6.8 6.8 0 0 1 25 12z"
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <circle cx="23.2" cy="16.6" r="0.95" fill={color} />
+      <circle cx="28.2" cy="16.6" r="0.95" fill={color} />
+      <path
+        d="M22.8 19.5c1.4 1.3 4.8 1.3 6.2 0"
+        fill="none"
+        stroke={color}
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </g>
+  );
+}
 
 interface DataParticle {
   id: number;
@@ -118,10 +280,32 @@ interface DataParticle {
 
 function useDataFlow(layout: (typeof LAYOUT)["desktop"]) {
   const [particles, setParticles] = useState<DataParticle[]>([]);
+  const [capturePulseKeys, setCapturePulseKeys] = useState<number[]>(() =>
+    CAPTURE_ICONS.map(() => 0),
+  );
+  const [clientPulseKeys, setClientPulseKeys] = useState<number[]>(() =>
+    CLIENT_ICONS.map(() => 0),
+  );
   const nextId = useRef(0);
   const frameRef = useRef<number>(0);
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
+
+  const pulseCapture = useCallback((index: number) => {
+    setCapturePulseKeys((prev) => {
+      const next = [...prev];
+      next[index] += 1;
+      return next;
+    });
+  }, []);
+
+  const pulseClient = useCallback((index: number) => {
+    setClientPulseKeys((prev) => {
+      const next = [...prev];
+      next[index] += 1;
+      return next;
+    });
+  }, []);
 
   const spawnParticle = useCallback(() => {
     const isCapture = Math.random() > 0.3;
@@ -136,6 +320,7 @@ function useDataFlow(layout: (typeof LAYOUT)["desktop"]) {
 
     if (isCapture) {
       const sourceIndex = Math.floor(Math.random() * 4);
+      pulseCapture(sourceIndex);
       const particle: DataParticle = {
         id: nextId.current++,
         x: 60,
@@ -169,21 +354,39 @@ function useDataFlow(layout: (typeof LAYOUT)["desktop"]) {
       };
       setParticles((prev) => [...prev, particle]);
     }
-  }, []);
+  }, [pulseCapture]);
 
   const tick = useCallback(() => {
+    const completedClientTargets: number[] = [];
+
     setParticles((prev) =>
       prev
-        .map((p) => ({
-          ...p,
-          progress: p.progress + p.speed,
-          x: p.x + (p.targetX - p.x) * p.speed * 3,
-          y: p.y + (p.targetY - p.y) * p.speed * 3,
-        }))
-        .filter((p) => p.progress < 1),
+        .map((p) => {
+          const progress = p.progress + p.speed;
+          return {
+            ...p,
+            progress,
+            x: p.x + (p.targetX - p.x) * p.speed * 3,
+            y: p.y + (p.targetY - p.y) * p.speed * 3,
+          };
+        })
+        .filter((p) => {
+          const isComplete = p.progress >= 1;
+          if (isComplete && p.path === "sync-to-client") {
+            completedClientTargets.push(p.targetIndex);
+          }
+          return !isComplete;
+        }),
     );
+
+    if (completedClientTargets.length > 0) {
+      completedClientTargets.forEach((targetIndex) => {
+        pulseClient(targetIndex);
+      });
+    }
+
     frameRef.current = requestAnimationFrame(tick);
-  }, []);
+  }, [pulseClient]);
 
   useEffect(() => {
     frameRef.current = requestAnimationFrame(tick);
@@ -194,13 +397,13 @@ function useDataFlow(layout: (typeof LAYOUT)["desktop"]) {
     };
   }, [tick, spawnParticle]);
 
-  return particles;
+  return { particles, capturePulseKeys, clientPulseKeys };
 }
 
 function ArchitectureDiagram() {
   const isMobile = useIsMobile();
   const layout = isMobile ? LAYOUT.mobile : LAYOUT.desktop;
-  const particles = useDataFlow(layout);
+  const { particles, capturePulseKeys, clientPulseKeys } = useDataFlow(layout);
 
   // Memoize path calculations
   const { capturePathTarget, clientPathConfig } = useMemo(
@@ -306,7 +509,7 @@ function ArchitectureDiagram() {
           </text>
           {CAPTURE_ICONS.map((icon, i) => (
             <g key={icon.id} transform={`translate(30, ${30 + i * 50})`}>
-              <motion.rect
+              <rect
                 x="0"
                 y="0"
                 width="32"
@@ -315,14 +518,24 @@ function ArchitectureDiagram() {
                 fill="color-mix(in srgb, var(--theme-bg-surface) 72%, transparent)"
                 stroke="color-mix(in srgb, var(--theme-accent-secondary) 36%, transparent)"
                 strokeWidth="1"
-                initial={{ opacity: 0.5 }}
-                animate={{ opacity: [0.5, 0.8, 0.5] }}
-                transition={{
-                  duration: slowHeroMotion(2),
-                  repeat: Infinity,
-                  delay: slowHeroDelay(i * 0.3),
-                }}
               />
+              {capturePulseKeys[i] > 0 && (
+                <motion.rect
+                  key={`capture-pulse-${icon.id}-${capturePulseKeys[i]}`}
+                  x="0"
+                  y="0"
+                  width="32"
+                  height="32"
+                  rx="8"
+                  fill="none"
+                  stroke="var(--theme-accent-secondary)"
+                  strokeWidth="1.5"
+                  filter="url(#archGlow)"
+                  initial={{ scale: 1, opacity: 0 }}
+                  animate={{ scale: [1, 1.06, 1], opacity: [0, 0.85, 0] }}
+                  transition={{ duration: slowHeroMotion(0.8), ease: "easeOut" }}
+                />
+              )}
               <g
                 transform={`translate(${icon.offsetX}, ${icon.offsetY}) scale(${icon.scale})`}
               >
@@ -336,7 +549,7 @@ function ArchitectureDiagram() {
         <g transform={`translate(${layout.syncHub.x}, ${layout.syncHub.y})`}>
           <text
             x="50"
-            y="-10"
+            y="-17"
             fill="var(--theme-text-muted)"
             fontSize="10"
             fontWeight="600"
@@ -381,35 +594,7 @@ function ArchitectureDiagram() {
             filter="url(#archGlow)"
           />
 
-          {/* Freed Desktop text */}
-          <text
-            x="50"
-            y="40"
-            fill="var(--theme-text-primary)"
-            fontSize="11"
-            fontWeight="700"
-            textAnchor="middle"
-          >
-            Freed
-          </text>
-          <text
-            x="50"
-            y="54"
-            fill="var(--theme-text-secondary)"
-            fontSize="9"
-            textAnchor="middle"
-          >
-            Desktop
-          </text>
-          <text
-            x="50"
-            y="70"
-            fill="var(--theme-accent-secondary)"
-            fontSize="8"
-            textAnchor="middle"
-          >
-            Capture + Sync
-          </text>
+          <FreedDesktopIcon />
         </g>
 
         {/* Clients */}
@@ -429,38 +614,34 @@ function ArchitectureDiagram() {
               key={icon.id}
               transform={`translate(${layout.clients.x}, ${40 + i * 65})`}
             >
-              <motion.rect
+              <rect
                 x="0"
                 y="0"
                 width="50"
                 height="40"
                 rx="8"
                 fill="color-mix(in srgb, var(--theme-bg-surface) 72%, transparent)"
-                stroke={
-                  i === 0
-                    ? "color-mix(in srgb, var(--theme-accent-secondary) 56%, transparent)"
-                    : "color-mix(in srgb, var(--theme-accent-secondary) 34%, transparent)"
-                }
-                strokeWidth={i === 0 ? "2" : "1"}
-                initial={{ opacity: 0.5 }}
-                animate={{ opacity: [0.5, 0.9, 0.5] }}
-                transition={{
-                  duration: slowHeroMotion(2.5),
-                  repeat: Infinity,
-                  delay: slowHeroDelay(i * 0.4),
-                }}
-                filter={i === 0 ? "url(#archGlow)" : undefined}
+                stroke="color-mix(in srgb, var(--theme-accent-secondary) 34%, transparent)"
+                strokeWidth="1"
               />
-              <g transform="translate(14.7, 9.7) scale(0.86)">
-                <path
-                  d={icon.path}
-                  fill={
-                    i === 0
-                      ? "var(--theme-accent-secondary)"
-                      : "var(--theme-text-secondary)"
-                  }
+              {clientPulseKeys[i] > 0 && (
+                <motion.rect
+                  key={`client-pulse-${icon.id}-${clientPulseKeys[i]}`}
+                  x="0"
+                  y="0"
+                  width="50"
+                  height="40"
+                  rx="8"
+                  fill="none"
+                  stroke="var(--theme-accent-secondary)"
+                  strokeWidth="1.5"
+                  filter="url(#archGlow)"
+                  initial={{ scale: 1, opacity: 0 }}
+                  animate={{ scale: [1, 1.05, 1], opacity: [0, 0.85, 0] }}
+                  transition={{ duration: slowHeroMotion(0.8), ease: "easeOut" }}
                 />
-              </g>
+              )}
+              <ClientIcon kind={icon.kind} />
               <text
                 x="25"
                 y="52"
@@ -637,8 +818,9 @@ const phases: Phase[] = [
 function PhaseCard({ phase, index }: { phase: Phase; index: number }) {
   const statusStyles = {
     complete: {
-      border: "border-[color:var(--theme-status-complete-border)]",
-      bg: "bg-[color:var(--theme-status-complete-bg)]",
+      border:
+        "phase-card-complete border-[color:var(--theme-status-complete-border)]",
+      bg: "phase-card-complete bg-[color:var(--theme-status-complete-bg)]",
       badge:
         "bg-[color:var(--theme-status-complete-bg)] text-[color:var(--theme-status-complete-text)]",
       badgeText: "✓ Complete",
@@ -646,16 +828,16 @@ function PhaseCard({ phase, index }: { phase: Phase; index: number }) {
     },
     current: {
       border:
-        "border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_50%,transparent)]",
-      bg: "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_8%,transparent)]",
+        "phase-card-current border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_50%,transparent)]",
+      bg: "phase-card-current bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_8%,transparent)]",
       badge:
         "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent)] text-[var(--theme-accent-secondary)]",
       badgeText: "● In Progress",
       glow: "glow-sm",
     },
     upcoming: {
-      border: "border-freed-border",
-      bg: "bg-freed-surface/50",
+      border: "phase-card-upcoming border-freed-border",
+      bg: "phase-card-upcoming bg-freed-surface/50",
       badge: "bg-freed-surface text-text-muted",
       badgeText: "Upcoming",
       glow: "",
@@ -798,7 +980,7 @@ export default function RoadmapContent() {
               initial={{ width: 0 }}
               animate={{ width: `${(activeCount / totalCount) * 100}%` }}
               transition={{ duration: 1, delay: 0.6 }}
-              className="h-full bg-zinc-600"
+              className="h-full bg-[color:var(--theme-status-active-progress)]"
             />
           </div>
         </motion.div>

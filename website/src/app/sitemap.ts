@@ -56,7 +56,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const changelogPages: MetadataRoute.Sitemap = Array.from(
     { length: Math.max(0, getChangelogTotalPages() - 1) },
     (_, index) => ({
-      url: `${baseUrl}/changelog/page/${(index + 2).toString()}`,
+      url: `${baseUrl}/changelog/${(index + 2).toString()}`,
       lastModified: new Date(),
       changeFrequency: "weekly" as const,
       priority: 0.7,
