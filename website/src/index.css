@@ -74,6 +74,49 @@ html[data-theme="scriptorium"] .btn-primary:hover {
   transform: scale(1.05);
 }
 
+.hero-manifesto-button {
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--theme-bg-surface) 80%, white) 0%,
+    color-mix(in oklab, var(--theme-bg-surface) 94%, white) 24%,
+    color-mix(in oklab, var(--theme-bg-surface) 90%, black) 100%
+  );
+  border-color: color-mix(
+    in oklab,
+    var(--theme-border-subtle) 82%,
+    var(--theme-border-strong)
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    inset 0 0 0 0.5px rgb(255 255 255 / 0.03),
+    0 14px 30px rgb(0 0 0 / 0.14);
+}
+
+.hero-manifesto-button:hover {
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--theme-bg-surface) 76%, white) 0%,
+    color-mix(in oklab, var(--theme-bg-surface) 92%, white) 24%,
+    color-mix(in oklab, var(--theme-bg-surface) 88%, black) 100%
+  );
+  border-color: color-mix(
+    in oklab,
+    var(--theme-border-strong) 62%,
+    var(--theme-border-subtle)
+  );
+}
+
+html[data-theme="scriptorium"] .hero-manifesto-button {
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--theme-bg-surface) 82%, white) 0%,
+    color-mix(in oklab, var(--theme-bg-surface) 94%, black) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.04),
+    0 10px 24px rgb(84 58 35 / 0.06);
+}
+
 .gradient-border {
   position: relative;
   background: var(--theme-bg-surface);

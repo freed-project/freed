@@ -16,8 +16,10 @@ type SubmitState = "idle" | "loading" | "error";
 
 const RELEASE_BASE =
   "https://github.com/freed-project/freed/releases/latest/download";
+const FREED_WEB_URL = "https://app.freed.wtf";
 
 type DownloadKey = "mac-arm" | "mac-intel" | "windows" | "linux";
+type InstallTarget = DownloadKey | "web";
 
 const DOWNLOADS: Record<DownloadKey, { label: string; file: string }> = {
   "mac-arm": {
@@ -124,6 +126,35 @@ function detectDownloadKey(): DownloadKey {
   return "mac-arm";
 }
 
+function isMobileDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+
+  const navWithUAData = navigator as Navigator & {
+    userAgentData?: { mobile?: boolean };
+  };
+
+  if (navWithUAData.userAgentData?.mobile === true) {
+    return true;
+  }
+
+  const ua = navigator.userAgent.toLowerCase();
+  if (
+    /\b(iphone|ipod|ipad|android|windows phone|mobile)\b/.test(ua)
+  ) {
+    return true;
+  }
+
+  return navigator.maxTouchPoints > 1 && ua.includes("macintosh");
+}
+
+function detectDefaultInstallTarget(): InstallTarget {
+  if (isMobileDevice()) {
+    return "web";
+  }
+
+  return detectDownloadKey();
+}
+
 export default function NewsletterModal() {
   const { isOpen, closeModal } = useNewsletter();
   const [email, setEmail] = useState("");
@@ -137,8 +168,7 @@ export default function NewsletterModal() {
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
-  const [selectedPlatform, setSelectedPlatform] =
-    useState<DownloadKey>("mac-arm");
+  const [selectedTarget, setSelectedTarget] = useState<InstallTarget>("mac-arm");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [dropdownMenuStyle, setDropdownMenuStyle] = useState<{
     top: number;
@@ -151,7 +181,7 @@ export default function NewsletterModal() {
   const dropdownMenuRef = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
-    setSelectedPlatform(detectDownloadKey());
+    setSelectedTarget(detectDefaultInstallTarget());
     setAcceptedBundle(hasAcceptedWebsiteBundle());
   }, []);
 
@@ -320,8 +350,14 @@ export default function NewsletterModal() {
     closeModal();
   };
 
-  const currentDownload = DOWNLOADS[selectedPlatform];
-  const downloadUrl = `${RELEASE_BASE}/${currentDownload.file}`;
+  const currentDownload =
+    selectedTarget === "web" ? null : DOWNLOADS[selectedTarget];
+  const downloadUrl = currentDownload
+    ? `${RELEASE_BASE}/${currentDownload.file}`
+    : null;
+  const selectedTargetLabel =
+    selectedTarget === "web" ? "Freed Web" : currentDownload?.label ?? "";
+  const isWebTarget = selectedTarget === "web";
   const canProceed = acceptedBundle || legalChecked;
   const storedAcceptance = getWebsiteBundleAcceptance();
   const normalizedEmailInput = email.trim().toLowerCase();
@@ -337,14 +373,25 @@ export default function NewsletterModal() {
     return !!record;
   }, [acceptedBundle, legalChecked]);
 
-  const handleOpenWebApp = useCallback(() => {
-    window.open("https://app.freed.wtf", "_blank", "noopener,noreferrer");
-  }, []);
+  const handleOpenFreedWeb = useCallback(() => {
+    if (!ensureAccepted()) return;
+    window.open(FREED_WEB_URL, "_blank", "noopener,noreferrer");
+  }, [ensureAccepted]);
 
   const handleDownload = useCallback(() => {
     if (!ensureAccepted()) return;
+    if (!downloadUrl) return;
     window.open(downloadUrl, "_blank", "noopener,noreferrer");
   }, [downloadUrl, ensureAccepted]);
+
+  const handlePrimaryAction = useCallback(() => {
+    if (isWebTarget) {
+      handleOpenFreedWeb();
+      return;
+    }
+
+    handleDownload();
+  }, [handleDownload, handleOpenFreedWeb, isWebTarget]);
 
   return (
     <AnimatePresence>
@@ -366,9 +413,13 @@ export default function NewsletterModal() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ type: "spring", duration: 0.5 }}
-            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-5xl px-4"
+            className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-4 sm:items-center sm:py-6"
+            style={{
+              paddingTop: "calc(env(safe-area-inset-top) + 1rem)",
+              paddingBottom: "calc(env(safe-area-inset-bottom) + 1rem)",
+            }}
           >
-            <div className="theme-panel relative overflow-visible rounded-2xl p-6 sm:p-10 md:p-12">
+            <div className="theme-panel relative w-full max-w-5xl overflow-hidden rounded-2xl">
               <div
                 className="absolute top-0 left-1/4 h-32 w-32 rounded-full blur-3xl"
                 style={{
@@ -403,12 +454,18 @@ export default function NewsletterModal() {
                 </svg>
               </button>
 
-              <div className="relative z-10">
+              <div
+                className="relative z-10 overflow-y-auto px-6 py-6 sm:px-10 sm:py-10 md:px-12 md:py-12"
+                style={{
+                  maxHeight:
+                    "calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2rem)",
+                }}
+              >
                 <>
                   <div className="text-center mb-8">
                     <h3
                       id="get-freed-title"
-                      className="text-5xl font-bold text-text-primary mb-2"
+                      className="mb-2 text-4xl font-bold text-text-primary sm:text-5xl"
                     >
                       Get <span className="theme-heading-accent">Freed</span>
                     </h3>
@@ -651,9 +708,9 @@ export default function NewsletterModal() {
 
                     <div className="space-y-5 py-2 sm:py-4 lg:pl-8 lg:border-l lg:border-freed-border">
                         <div className="max-w-lg">
-                          <h4 className="flex items-center gap-3 text-3xl font-bold text-text-primary">
+                          <h4 className="flex items-center gap-3 text-2xl font-bold text-text-primary sm:text-3xl">
                             <CircledStepNumber number={2} />
-                            <span>Install Freed Desktop</span>
+                            <span>Launch or Install Freed</span>
                           </h4>
                         </div>
 
@@ -718,7 +775,7 @@ export default function NewsletterModal() {
                           >
                             <button
                               type="button"
-                              onClick={handleDownload}
+                              onClick={handlePrimaryAction}
                               disabled={!canProceed}
                               data-testid="website-legal-download"
                               className="group flex items-center gap-4 p-4 flex-1 min-w-0 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -741,16 +798,24 @@ export default function NewsletterModal() {
                                   <path
                                     strokeLinecap="round"
                                     strokeLinejoin="round"
-                                    d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                                    d={
+                                      isWebTarget
+                                        ? "M13.5 6H19.5V12M10.5 18L19.5 9M4.5 7.5A1.5 1.5 0 016 6h6M4.5 10.5v7.5A1.5 1.5 0 006 19.5h7.5"
+                                        : "M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                                    }
                                   />
                                 </svg>
                               </div>
                               <div className="flex-1 min-w-0 text-left">
                                 <p className="text-sm font-semibold text-text-primary group-hover:text-text-primary transition-colors">
-                                  Download for {currentDownload.label}
+                                  {isWebTarget
+                                    ? "Launch Freed Web"
+                                    : `Download for ${selectedTargetLabel}`}
                                 </p>
                                 <p className="text-xs text-text-muted">
-                                  Runs in background to subscribe and monitor
+                                  {isWebTarget
+                                    ? "Open the mobile reader instantly in your browser"
+                                    : "Runs in background to subscribe and monitor"}
                                 </p>
                               </div>
                             </button>
@@ -778,37 +843,39 @@ export default function NewsletterModal() {
                         </div>
 
                         <div className="space-y-3">
-                          {(selectedPlatform === "windows" ||
-                            selectedPlatform === "linux") && (
+                          {(selectedTarget === "windows" ||
+                            selectedTarget === "linux") && (
                             <p className="text-xs leading-relaxed text-text-muted">
-                              {selectedPlatform === "windows"
+                              {selectedTarget === "windows"
                                 ? "Windows will probably warn before opening this unsigned installer. Click More info, then Run anyway."
                                 : "Before running on Linux, make the AppImage executable with chmod +x Freed-Linux-x64.AppImage."}
                             </p>
                           )}
 
-                          <button
-                            type="button"
-                            onClick={handleOpenWebApp}
-                            data-testid="website-legal-open-web-app"
-                            className="inline-flex items-center gap-2 rounded-lg bg-transparent px-2 py-1.5 text-sm text-text-muted underline decoration-current underline-offset-4 transition-colors hover:bg-[rgb(var(--theme-control-accent-rgb)/0.08)] hover:text-text-primary"
-                          >
-                            <svg
-                              aria-hidden="true"
-                              className="h-4 w-4"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                              strokeWidth={2}
+                          {!isWebTarget && (
+                            <button
+                              type="button"
+                              onClick={handleOpenFreedWeb}
+                              data-testid="website-legal-open-web-app"
+                              className="inline-flex items-center gap-2 rounded-lg bg-transparent px-2 py-1.5 text-sm text-text-muted underline decoration-current underline-offset-4 transition-colors hover:bg-[rgb(var(--theme-control-accent-rgb)/0.08)] hover:text-text-primary"
                             >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M9 6l6 6-6 6M14 6l6 6-6 6"
-                              />
-                            </svg>
-                            <span>Already running Freed Desktop? Open the web app.</span>
-                          </button>
+                              <svg
+                                aria-hidden="true"
+                                className="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M9 6l6 6-6 6M14 6l6 6-6 6"
+                                />
+                              </svg>
+                              <span>Already running Freed Desktop? Launch Freed Web.</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -836,25 +903,26 @@ export default function NewsletterModal() {
                     background: "var(--theme-bg-elevated)",
                   }}
                 >
-                  {(
-                    Object.entries(DOWNLOADS) as [
+                  {([
+                    ["web", { label: "Freed Web" }],
+                    ...(Object.entries(DOWNLOADS) as [
                       DownloadKey,
                       (typeof DOWNLOADS)[DownloadKey],
-                    ][]
-                  ).map(([key, dl]) => (
+                    ][]),
+                  ] as [InstallTarget, { label: string }][]).map(([key, dl]) => (
                     <li key={key}>
                       <button
                         onClick={() => {
-                          setSelectedPlatform(key);
+                          setSelectedTarget(key);
                           setDropdownOpen(false);
                         }}
                         className={`flex w-full items-center justify-between px-4 py-3 text-left text-sm transition-colors ${
-                          key === selectedPlatform
+                          key === selectedTarget
                             ? "text-text-primary"
                             : "text-text-secondary hover:text-text-primary"
                         }`}
                         style={
-                          key === selectedPlatform
+                          key === selectedTarget
                             ? {
                                 background:
                                   "color-mix(in srgb, var(--theme-heading-accent) 12%, transparent)",
@@ -863,7 +931,7 @@ export default function NewsletterModal() {
                         }
                       >
                         <span>{dl.label}</span>
-                        {key === selectedPlatform && (
+                        {key === selectedTarget && (
                           <svg
                             className="w-4 h-4 text-[color:var(--theme-heading-accent)]"
                             fill="none"

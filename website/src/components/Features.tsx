@@ -2,11 +2,15 @@
 
 import { motion } from "framer-motion";
 
+const ICON_FRAME_CLASS =
+  "flex h-9 w-9 items-center justify-center sm:h-12 sm:w-12";
+const ICON_GLYPH_CLASS = "h-7 w-7 sm:h-10 sm:w-10";
+
 // Shield icon with gradient fill - using Heroicons 2 ShieldCheck SVG path
 const PrivacyIcon = () => (
-  <div className="w-12 h-12 flex items-center justify-center">
+  <div className={ICON_FRAME_CLASS}>
     <div
-      className="w-10 h-10"
+      className={ICON_GLYPH_CLASS}
       style={{
         background:
           "linear-gradient(135deg, var(--theme-accent-primary), var(--theme-accent-secondary))",
@@ -23,9 +27,9 @@ const PrivacyIcon = () => (
 
 // Wave icon with gradient - styled like 🌊 emoji
 const UnifiedFeedIcon = () => (
-  <div className="w-12 h-12 flex items-center justify-center">
+  <div className={ICON_FRAME_CLASS}>
     <div
-      className="w-10 h-10"
+      className={ICON_GLYPH_CLASS}
       style={{
         background:
           "linear-gradient(145deg, var(--theme-accent-primary), var(--theme-accent-secondary) 55%, var(--theme-accent-tertiary))",
@@ -41,8 +45,8 @@ const UnifiedFeedIcon = () => (
 );
 
 const FriendMapIcon = () => (
-  <div className="w-12 h-12 flex items-center justify-center">
-    <svg viewBox="0 0 48 48" className="w-10 h-10">
+  <div className={ICON_FRAME_CLASS}>
+    <svg viewBox="0 0 48 48" className={ICON_GLYPH_CLASS}>
       <defs>
         <linearGradient id="mapGrad" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="var(--theme-accent-primary)" />
@@ -67,8 +71,8 @@ const FriendMapIcon = () => (
 
 // Siren face - elegant woman's profile with flowing hair (LoDi design)
 const UlyssesIcon = () => (
-  <div className="w-12 h-12">
-    <svg viewBox="950 450 600 700" className="w-12 h-12">
+  <div className={ICON_FRAME_CLASS}>
+    <svg viewBox="950 450 600 700" className="h-8 w-8 sm:h-12 sm:w-12">
       <defs>
         <linearGradient id="ulyssesGrad" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="var(--theme-accent-primary)" />
@@ -137,9 +141,9 @@ const UlyssesIcon = () => (
 
 // Sync icon - using Lucide RefreshCw pattern with gradient
 const SyncIcon = () => (
-  <div className="w-12 h-12 flex items-center justify-center">
+  <div className={ICON_FRAME_CLASS}>
     <div
-      className="w-10 h-10"
+      className={ICON_GLYPH_CLASS}
       style={{
         background:
           "linear-gradient(135deg, var(--theme-accent-primary), var(--theme-accent-secondary))",
@@ -155,8 +159,8 @@ const SyncIcon = () => (
 );
 
 const OpenSourceIcon = () => (
-  <div className="w-12 h-12 flex items-center justify-center">
-    <svg viewBox="4 6 40 40" className="w-10 h-10">
+  <div className={ICON_FRAME_CLASS}>
+    <svg viewBox="4 6 40 40" className={ICON_GLYPH_CLASS}>
       <defs>
         <linearGradient id="ossGrad" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="var(--theme-accent-secondary)" />
@@ -214,11 +218,11 @@ export default function Features() {
   return (
     <section
       id="features"
-      className="py-16 sm:py-24 px-4 sm:px-6 md:px-12 lg:px-8"
+      className="px-8 py-8 sm:px-6 sm:py-24 md:px-12 lg:px-8"
     >
       <div className="max-w-6xl mx-auto">
         {/* Feature Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
           {features.map((feature, index) => (
             <motion.div
               key={feature.title}
@@ -227,12 +231,16 @@ export default function Features() {
               viewport={{ once: true }}
               transition={{ duration: 0.5, delay: index * 0.1 }}
             >
-              <div className="glass-card p-6 h-full">
-                <div className="mb-4">{feature.icon}</div>
-                <h3 className="text-xl font-semibold text-text-primary mb-2">
-                  {feature.title}
-                </h3>
-                <p className="text-text-secondary">{feature.description}</p>
+              <div className="glass-card h-full p-5 sm:p-6">
+                <div className="mb-3 flex items-center gap-3 sm:mb-4 sm:flex-col sm:items-start">
+                  <div className="shrink-0">{feature.icon}</div>
+                  <h3 className="text-lg font-semibold leading-tight text-text-primary sm:text-xl">
+                    {feature.title}
+                  </h3>
+                </div>
+                <p className="text-sm text-text-secondary sm:text-base">
+                  {feature.description}
+                </p>
               </div>
             </motion.div>
           ))}

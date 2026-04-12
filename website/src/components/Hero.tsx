@@ -13,6 +13,7 @@ const ROTATING_WORDS = ["Feed", "Life", "Mind"];
 export default function Hero() {
   const { openModal } = useNewsletter();
   const [wordIndex, setWordIndex] = useState(0);
+  const [compactHeroAnimation, setCompactHeroAnimation] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -21,8 +22,16 @@ export default function Hero() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(max-width: 639px)");
+    const updateCompactHero = () => setCompactHeroAnimation(mediaQuery.matches);
+    updateCompactHero();
+    mediaQuery.addEventListener("change", updateCompactHero);
+    return () => mediaQuery.removeEventListener("change", updateCompactHero);
+  }, []);
+
   return (
-    <section className="relative min-h-viewport-safe flex items-start justify-center px-4 sm:px-6 pb-16 pt-24 md:pt-[clamp(7rem,_25vh,_50rem)]">
+    <section className="relative min-h-viewport-safe flex items-start justify-center px-8 sm:px-6 pb-8 pt-24 sm:pb-16 md:pt-[clamp(7rem,_25vh,_50rem)]">
       {/* Open Source badge - aligned with nav container right edge, hidden on mobile */}
       <div className="hidden lg:block absolute top-20 left-0 right-0 mt-4 px-4 sm:px-6">
         <div className="max-w-6xl mx-auto flex justify-end">
@@ -44,7 +53,7 @@ export default function Hero() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_1.5fr] gap-8 lg:gap-4 items-center">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 items-center gap-4 sm:gap-8 lg:grid-cols-[1fr_1.5fr] lg:gap-4">
         {/* Animation - shows first on mobile */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
@@ -53,10 +62,13 @@ export default function Hero() {
             duration: slowHeroMotion(0.8),
             delay: slowHeroDelay(0.2),
           }}
-          className="relative order-1 lg:order-2 w-full"
-          style={{ maxWidth: "425px", margin: "0 auto" }}
+          className="relative order-1 w-full lg:order-2"
+          style={{
+            maxWidth: compactHeroAnimation ? "212px" : "425px",
+            margin: "0 auto",
+          }}
         >
-          <HeroAnimation />
+          <HeroAnimation compact={compactHeroAnimation} />
         </motion.div>
 
         {/* Text Content */}
@@ -67,9 +79,9 @@ export default function Hero() {
             duration: slowHeroMotion(0.8),
             delay: slowHeroDelay(0.3),
           }}
-          className="order-2 lg:order-1 text-center lg:text-left lg:pl-10"
+          className="order-2 text-center lg:order-1 lg:pl-10 lg:text-left"
         >
-          <h1 className="theme-display-large text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.05] mb-10 sm:mb-12 lg:-ml-2">
+          <h1 className="theme-display-large mb-6 text-4xl font-bold leading-[1.05] sm:mb-12 sm:text-5xl md:text-6xl lg:-ml-2 lg:text-7xl">
             <span className="text-text-primary">Take Back</span>
             <br />
             <span className="text-text-primary">Your </span>
@@ -92,7 +104,7 @@ export default function Hero() {
             </span>
           </h1>
 
-          <p className="inline-flex items-center gap-3 text-xl sm:text-2xl text-text-primary font-medium mb-2 sm:mb-3">
+          <p className="mb-2 inline-flex items-center gap-3 text-xl font-medium text-text-primary sm:mb-3 sm:text-2xl">
             <FaFacebook className="shrink-0 text-[var(--theme-media-icon)]" />
             <FaInstagram className="shrink-0 text-[var(--theme-media-icon)]" />
             <FaXTwitter className="shrink-0 text-[var(--theme-media-icon)]" />
@@ -100,13 +112,13 @@ export default function Hero() {
             <span>in one local app.</span>
           </p>
 
-          <p className="text-base sm:text-lg text-text-secondary max-w-xl mx-auto lg:mx-0 mb-6 sm:mb-8">
+          <p className="mb-6 max-w-xl mx-auto text-base text-text-secondary sm:mb-8 sm:text-lg lg:mx-0">
             Mental sovereignty. Digital dignity. Your feed, your rules. Torch
             the ads, tune your algo, and connect IRL with a live map of your
             people.
           </p>
 
-          <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4 justify-center lg:justify-start">
+          <div className="flex flex-col flex-wrap justify-center gap-3 sm:flex-row sm:gap-4 lg:justify-start">
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.98 }}
@@ -120,7 +132,7 @@ export default function Hero() {
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="btn-secondary text-base px-8 py-3 w-full"
+                className="btn-secondary hero-manifesto-button text-base px-8 py-3 w-full"
               >
                 Read the Manifesto
               </motion.button>
@@ -128,7 +140,7 @@ export default function Hero() {
           </div>
 
           {/* Stats */}
-          <div className="flex justify-center lg:justify-start gap-6 sm:gap-8 mt-8 sm:mt-12 pt-6 sm:pt-8 border-t border-freed-border">
+          <div className="mt-6 flex justify-center gap-6 border-t border-freed-border pt-5 sm:mt-12 sm:gap-8 sm:pt-8 lg:justify-start">
             <div className="text-center lg:text-left">
               <p
                 className="text-2xl sm:text-3xl font-bold"

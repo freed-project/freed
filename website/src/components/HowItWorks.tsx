@@ -30,7 +30,7 @@ const steps = [
 
 export default function HowItWorks() {
   return (
-    <section className="py-16 sm:py-24 px-4 sm:px-6 md:px-12 lg:px-8 relative overflow-hidden">
+    <section className="relative overflow-hidden px-8 py-8 sm:px-6 sm:py-24 md:px-12 lg:px-8">
       <div
         className="absolute inset-0"
         style={{
@@ -46,12 +46,12 @@ export default function HowItWorks() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="text-center mb-16"
+          className="mb-8 text-center sm:mb-16"
         >
-          <h2 className="theme-display-large text-4xl md:text-5xl font-bold mb-4">
+          <h2 className="theme-display-large mb-3 text-4xl font-bold md:text-5xl sm:mb-4">
             How It <span className="theme-heading-accent">Works</span>
           </h2>
-          <p className="text-text-secondary text-lg max-w-2xl mx-auto">
+          <p className="max-w-2xl mx-auto text-base text-text-secondary sm:text-lg">
             Four simple steps to digital sovereignty.
           </p>
         </motion.div>
@@ -66,7 +66,7 @@ export default function HowItWorks() {
             }}
           />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 gap-4 sm:gap-8 md:grid-cols-2 lg:grid-cols-4">
             {steps.map((step, index) => (
               <motion.div
                 key={step.number}
@@ -76,21 +76,19 @@ export default function HowItWorks() {
                 transition={{ duration: 0.5, delay: index * 0.15 }}
                 className="relative"
               >
-                <div className="glass-card p-6 h-full">
-                  {/* Step number */}
-                  <div className="relative z-10 mb-4">
+                <div className="glass-card h-full p-5 sm:p-6">
+                  <div className="relative z-10 mb-3 flex items-center gap-3 sm:mb-4 sm:block">
                     <span
-                      className="text-5xl font-bold opacity-55"
+                      className="shrink-0 text-3xl font-bold leading-none opacity-55 sm:text-5xl"
                       style={{ color: "var(--theme-heading-accent)" }}
                     >
                       {step.number}
                     </span>
+                    <h3 className="text-lg font-semibold leading-tight text-text-primary sm:mt-4 sm:text-xl">
+                      {step.title}
+                    </h3>
                   </div>
-
-                  <h3 className="text-xl font-semibold text-text-primary mb-2">
-                    {step.title}
-                  </h3>
-                  <p className="text-text-secondary text-sm">
+                  <p className="text-sm text-text-secondary">
                     {step.description}
                   </p>
                 </div>
