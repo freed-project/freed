@@ -198,8 +198,6 @@ function ReleaseCard({
           style={{
             borderColor:
               "color-mix(in srgb, var(--theme-border-subtle) 92%, transparent)",
-            background:
-              "linear-gradient(180deg, color-mix(in srgb, var(--theme-heading-accent) 7%, transparent) 0%, transparent 5rem), color-mix(in srgb, var(--theme-bg-surface) 88%, transparent)",
             boxShadow: isLatest
               ? "0 16px 34px rgb(var(--theme-shell-rgb) / 0.22)"
               : "0 12px 26px rgb(var(--theme-shell-rgb) / 0.16)",
