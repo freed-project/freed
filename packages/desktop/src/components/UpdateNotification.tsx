@@ -1,4 +1,5 @@
 import type { Update } from "@tauri-apps/plugin-updater";
+import { UpdateProgressBar } from "@freed/ui/components/UpdateProgressBar";
 import { extractUpdatePreviewLine } from "../lib/update-release-preview";
 
 export type UpdateState =
@@ -60,12 +61,11 @@ export function UpdateNotification({
         </div>
 
         {state.phase === "downloading" && (
-          <div className="mt-3 h-1.5 rounded-full bg-[rgba(255,255,255,0.08)] overflow-hidden">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-[var(--glow-blue)] to-[var(--glow-purple)] transition-[width] duration-300"
-              style={{ width: `${state.percent}%` }}
-            />
-          </div>
+          <UpdateProgressBar
+            percent={state.percent}
+            trackClassName="mt-3 h-1.5 overflow-hidden rounded-full bg-[rgba(255,255,255,0.08)]"
+            fillClassName="h-full rounded-full bg-gradient-to-r from-[var(--glow-blue)] to-[var(--glow-purple)]"
+          />
         )}
       </div>
     </div>

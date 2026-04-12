@@ -34,4 +34,22 @@ Map view, refined consent gates, and signed macOS installs
     expect(html).not.toContain("<ul");
     expect(html).not.toContain("Shared map and friends workspace");
   });
+
+  it("renders the shared progress bar without width animation during downloads", () => {
+    const html = renderToStaticMarkup(
+      <UpdateNotification
+        state={{ phase: "downloading", percent: 100 }}
+        onInstall={() => {}}
+        onRelaunch={() => {}}
+        onDismiss={() => {}}
+      />,
+    );
+
+    expect(html).toContain("Downloading... 100%");
+    expect(html).toContain('role="progressbar"');
+    expect(html).toContain('aria-valuenow="100"');
+    expect(html).toContain('style="width:100%"');
+    expect(html).not.toContain("transition-[width]");
+    expect(html).not.toContain("duration-300");
+  });
 });
