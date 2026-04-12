@@ -8,6 +8,9 @@ html[data-theme="neon"] {
   --font-body: "Manrope", system-ui, -apple-system, sans-serif;
   --font-logo: "Space Grotesk", system-ui, sans-serif;
   --font-display: "Space Grotesk", "Manrope", system-ui, sans-serif;
+  --theme-body-letter-spacing: 0;
+  --theme-body-line-height: 1.5;
+  --theme-body-font-weight: 400;
 
   --theme-bg-root: #0a0a0a;
   --theme-bg-deep: #0f0f15;
@@ -91,7 +94,12 @@ html[data-theme="neon"] {
 }
 
 html[data-theme="midas"] {
-  --font-display: "Space Grotesk", "Manrope", system-ui, sans-serif;
+  --font-body: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-logo: "Baskerville", "Didot", "Bodoni 72", "Times New Roman", serif;
+  --font-display: var(--font-logo);
+  --theme-body-letter-spacing: 0.004em;
+  --theme-body-line-height: 1.56;
+  --theme-body-font-weight: 430;
 
   --theme-bg-root: #2b231d;
   --theme-bg-deep: #352b23;
@@ -189,9 +197,12 @@ html[data-theme="vesper"] {
 }
 
 html[data-theme="ember"] {
-  --font-body: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-body: "Optima", "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
   --font-logo: "Impact", "Arial Black", "Avenir Next Condensed", sans-serif;
   --font-display: "Avenir Next Condensed", "Impact", "Arial Black", sans-serif;
+  --theme-body-letter-spacing: 0.012em;
+  --theme-body-line-height: 1.52;
+  --theme-body-font-weight: 430;
   --theme-bg-root: #180f0d;
   --theme-bg-deep: #221411;
   --theme-bg-surface: #2a1a16;
@@ -240,9 +251,12 @@ html[data-theme="ember"] {
 }
 
 html[data-theme="scriptorium"] {
-  --font-body: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
-  --font-logo: "Baskerville", "Iowan Old Style", Georgia, serif;
-  --font-display: "Baskerville", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-body: "Baskerville", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-logo: "Baskerville", "Hoefler Text", "Iowan Old Style", Georgia, serif;
+  --font-display: "Baskerville", "Hoefler Text", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --theme-body-letter-spacing: 0.002em;
+  --theme-body-line-height: 1.58;
+  --theme-body-font-weight: 430;
 
   --theme-bg-root: #f4ead7;
   --theme-bg-deep: #ece0ca;
@@ -343,11 +357,34 @@ body {
 
 body {
   font-family: var(--font-body);
+  letter-spacing: var(--theme-body-letter-spacing);
+  line-height: var(--theme-body-line-height);
+  font-weight: var(--theme-body-font-weight);
 }
 
 .font-logo {
   font-family: var(--font-logo);
   letter-spacing: -0.02em;
+}
+
+html[data-theme="midas"] .font-logo {
+  letter-spacing: -0.035em;
+  font-weight: 700;
+}
+
+html[data-theme="midas"] h1,
+html[data-theme="midas"] h2,
+html[data-theme="midas"] h3,
+html[data-theme="midas"] .theme-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.03em;
+  font-weight: 700;
+}
+
+html[data-theme="midas"] .theme-display-large {
+  font-family: var(--font-display);
+  letter-spacing: -0.022em;
+  font-weight: 600;
 }
 
 .gradient-text {

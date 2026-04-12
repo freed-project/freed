@@ -15,7 +15,7 @@ export default function PrivacyContent() {
         >
           {/* Header */}
           <header className="text-center mb-10 sm:mb-16">
-            <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
+            <h1 className="theme-display-large text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
               <span className="gradient-text">Privacy Policy</span>
             </h1>
             <p className="text-text-secondary text-lg sm:text-xl">

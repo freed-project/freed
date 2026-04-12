@@ -80,7 +80,7 @@ export default function PostContent({ post }: PostContentProps) {
                 </>
               )}
             </div>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-text-primary mb-4">
+            <h1 className="theme-display-large text-3xl sm:text-4xl md:text-5xl font-bold text-text-primary mb-4">
               {post.title}
             </h1>
             <p className="text-lg text-text-secondary">{post.description}</p>

@@ -59,7 +59,7 @@ export default function Hero() {
           transition={{ duration: 0.8, delay: 0.3 }}
           className="order-2 lg:order-1 text-center lg:text-left lg:pl-10"
         >
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.05] mb-10 sm:mb-12 lg:-ml-2">
+          <h1 className="theme-display-large text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.05] mb-10 sm:mb-12 lg:-ml-2">
             <span className="text-text-primary">Take Back</span>
             <br />
             <span className="text-text-primary">Your </span>

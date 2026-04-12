@@ -533,7 +533,7 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
             )}
           </div>
 
-          <h1 className="text-2xl sm:text-3xl font-bold mb-4 leading-tight">
+          <h1 className="theme-display-large text-2xl sm:text-3xl font-bold mb-4 leading-tight">
             {item.content.linkPreview?.title || item.content.text?.slice(0, 100)}
           </h1>
 
