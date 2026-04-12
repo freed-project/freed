@@ -59,7 +59,24 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1100",
-    "prNumbers": [],
+    "prNumbers": [
+      156,
+      158,
+      161,
+      162,
+      165,
+      172,
+      173,
+      174,
+      175,
+      176,
+      177,
+      178,
+      179,
+      180,
+      181,
+      182
+    ],
     "builds": [
       "26.4.1100"
     ],

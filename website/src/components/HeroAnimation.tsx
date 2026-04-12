@@ -3,6 +3,12 @@
 import { motion } from "framer-motion";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTheme } from "@/context/ThemeContext";
+import {
+  slowHeroMotion,
+  slowHeroDelay,
+  slowHeroInterval,
+  slowHeroSpeed,
+} from "@/lib/motion";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -80,10 +86,11 @@ interface Particle {
   state: "waiting" | "active" | "dead";
 }
 
-const PARTICLE_SPEED = 0.66;
+const PARTICLE_SPEED = slowHeroSpeed(0.66);
 const PARTICLES_PER_LOGO = 12;
-const CYCLE_DURATION = 12000; // ms
-const MAX_AGE = 600; // frames
+const CYCLE_DURATION = slowHeroInterval(12000); // ms
+const MAX_AGE = Math.round(slowHeroMotion(600)); // frames
+const RED_BOUNCE_SPEED_LIMIT = slowHeroSpeed(0.6);
 
 function createParticle(logo: (typeof LOGOS)[0], isRed: boolean): Particle {
   // Aim directly at center with small random spread (±5 degrees)
@@ -108,6 +115,13 @@ function createParticle(logo: (typeof LOGOS)[0], isRed: boolean): Particle {
     age: 0,
     state: "waiting",
   };
+}
+
+function clampRedBounceVelocity(value: number): number {
+  return Math.max(
+    -RED_BOUNCE_SPEED_LIMIT,
+    Math.min(RED_BOUNCE_SPEED_LIMIT, value),
+  );
 }
 
 function initParticles(): Particle[] {
@@ -188,21 +202,23 @@ function useParticleSystem() {
 
             if (fromLeft) {
               x = BOX.left - 3;
-              vx = -Math.abs(vx) * (0.9 + Math.random() * 0.3);
-              vy += (Math.random() - 0.5) * 1.5;
+              vx = -Math.abs(vx) * (0.6 + Math.random() * 0.15);
+              vy += (Math.random() - 0.5) * 0.5;
             } else if (fromRight) {
               x = BOX.right + 3;
-              vx = Math.abs(vx) * (0.9 + Math.random() * 0.3);
-              vy += (Math.random() - 0.5) * 1.5;
+              vx = Math.abs(vx) * (0.6 + Math.random() * 0.15);
+              vy += (Math.random() - 0.5) * 0.5;
             } else if (fromTop) {
               y = BOX.top - 3;
-              vy = -Math.abs(vy) * (0.9 + Math.random() * 0.3);
-              vx += (Math.random() - 0.5) * 1.5;
+              vy = -Math.abs(vy) * (0.6 + Math.random() * 0.15);
+              vx += (Math.random() - 0.5) * 0.5;
             } else if (fromBottom) {
               y = BOX.bottom + 3;
-              vy = Math.abs(vy) * (0.9 + Math.random() * 0.3);
-              vx += (Math.random() - 0.5) * 1.5;
+              vy = Math.abs(vy) * (0.6 + Math.random() * 0.15);
+              vx += (Math.random() - 0.5) * 0.5;
             }
+            vx = clampRedBounceVelocity(vx);
+            vy = clampRedBounceVelocity(vy);
             opacity = 0.99; // Mark as bounced
           } else if (opacity === 1) {
             x = newX;
@@ -215,8 +231,8 @@ function useParticleSystem() {
 
           // Fade out after bounce (slower to last longer)
           if (opacity < 1) {
-            opacity = Math.max(0, opacity - 0.015);
-            scale = Math.max(0, scale - 0.01);
+            opacity = Math.max(0, opacity - slowHeroSpeed(0.015));
+            scale = Math.max(0, scale - slowHeroSpeed(0.01));
           }
         } else {
           // Blue: move straight toward center, absorbed into box
@@ -225,12 +241,12 @@ function useParticleSystem() {
 
           if (inBox) {
             // Inside box: viscous drag and pull toward center
-            vx *= 0.92;
-            vy *= 0.92;
-            vx += (CENTER - x) * 0.02;
-            vy += (CENTER - y) * 0.02;
-            scale *= 0.94;
-            opacity *= 0.96;
+            vx *= 1 - slowHeroSpeed(0.08);
+            vy *= 1 - slowHeroSpeed(0.08);
+            vx += (CENTER - x) * slowHeroSpeed(0.02);
+            vy += (CENTER - y) * slowHeroSpeed(0.02);
+            scale *= 1 - slowHeroSpeed(0.06);
+            opacity *= 1 - slowHeroSpeed(0.04);
           }
 
           const dist = Math.hypot(x - CENTER, y - CENTER);
@@ -332,7 +348,11 @@ export default function HeroAnimation() {
           strokeWidth="1"
           strokeDasharray="15 8"
           animate={{ rotate: 360 }}
-          transition={{ duration: 90, repeat: Infinity, ease: "linear" }}
+          transition={{
+            duration: slowHeroMotion(90),
+            repeat: Infinity,
+            ease: "linear",
+          }}
           style={{ transformOrigin: `${CENTER}px ${CENTER}px` }}
         />
 
@@ -348,7 +368,11 @@ export default function HeroAnimation() {
             strokeWidth="1"
             transform={`rotate(${angle} ${CENTER} ${CENTER})`}
             animate={{ opacity: [0, 0.4, 0] }}
-            transition={{ duration: 3, repeat: Infinity, delay: angle / 120 }}
+            transition={{
+              duration: slowHeroMotion(3),
+              repeat: Infinity,
+              delay: slowHeroDelay(angle / 120),
+            }}
           />
         ))}
 
@@ -380,9 +404,9 @@ export default function HeroAnimation() {
               filter="url(#glow)"
               animate={{ opacity: [0.9, 1, 0.9] }}
               transition={{
-                duration: 5,
+                duration: slowHeroMotion(5),
                 repeat: Infinity,
-                delay: logo.flashDelay,
+                delay: slowHeroDelay(logo.flashDelay),
                 times: [0, 0.5, 1],
               }}
             />
@@ -418,7 +442,11 @@ export default function HeroAnimation() {
           opacity="0.08"
           filter="url(#glow)"
           animate={{ r: [55, 62, 55], opacity: [0.08, 0.15, 0.08] }}
-          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+          transition={{
+            duration: slowHeroMotion(2),
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
         />
 
         {/* Center box */}
@@ -467,9 +495,9 @@ export default function HeroAnimation() {
             strokeWidth="2"
             animate={{ scale: [1, 1.8 + i * 0.3], opacity: [0.6, 0] }}
             transition={{
-              duration: 2.5,
+              duration: slowHeroMotion(2.5),
               repeat: Infinity,
-              delay: i * 0.5,
+              delay: slowHeroDelay(i * 0.5),
               ease: "easeOut",
             }}
             style={{ transformOrigin: `${CENTER}px ${CENTER}px` }}
