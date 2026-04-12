@@ -66,11 +66,6 @@ body {
   }
 }
 
-.glass-card-interactive:hover {
-  background: color-mix(in oklab, var(--theme-bg-surface) 94%, transparent);
-  border-color: var(--theme-border-strong);
-}
-
 .gradient-border {
   position: relative;
   background: var(--theme-bg-surface);
