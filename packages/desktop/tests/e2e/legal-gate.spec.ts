@@ -26,6 +26,16 @@ async function openSettingsSection(
   });
 }
 
+async function cancelProviderRiskDialog(
+  page: import("@playwright/test").Page,
+  provider: "x" | "facebook" | "instagram" | "linkedin",
+): Promise<void> {
+  const dialog = page.getByTestId(`provider-risk-dialog-${provider}`);
+  await expect(dialog).toBeVisible({ timeout: 5_000 });
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden({ timeout: 5_000 });
+}
+
 test("first launch blocks the desktop shell until legal consent is accepted", async ({
   app,
 }) => {
