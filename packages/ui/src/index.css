@@ -127,16 +127,6 @@ html[data-theme="neon"] {
   --theme-status-active-progress: rgb(113 113 122 / 0.9);
   --theme-card-top-glint: rgb(255 255 255 / 0.022);
   --theme-card-top-glint-hover: rgb(255 255 255 / 0.03);
-  --theme-card-top-accent: color-mix(
-    in srgb,
-    var(--theme-heading-accent) 4%,
-    transparent
-  );
-  --theme-card-top-accent-hover: color-mix(
-    in srgb,
-    var(--theme-heading-accent) 6%,
-    transparent
-  );
   --theme-header-background: rgb(10 10 10 / 0.7);
   --theme-header-border: rgb(255 255 255 / 0.08);
   --theme-header-shadow: 0 4px 30px rgb(0 0 0 / 0.5);
@@ -284,16 +274,6 @@ html[data-theme="midas"] {
   );
   --theme-card-top-glint: rgb(255 255 255 / 0.04);
   --theme-card-top-glint-hover: rgb(255 255 255 / 0.05);
-  --theme-card-top-accent: color-mix(
-    in srgb,
-    var(--theme-heading-accent) 7%,
-    transparent
-  );
-  --theme-card-top-accent-hover: color-mix(
-    in srgb,
-    var(--theme-heading-accent) 10%,
-    transparent
-  );
   --theme-feedback-info-rgb: 176 138 72;
   --theme-feedback-success-rgb: 122 156 104;
   --theme-feedback-warning-rgb: 196 154 93;
@@ -410,16 +390,6 @@ html[data-theme="ember"] {
   );
   --theme-card-top-glint: rgb(255 255 255 / 0.04);
   --theme-card-top-glint-hover: rgb(255 255 255 / 0.05);
-  --theme-card-top-accent: color-mix(
-    in srgb,
-    var(--theme-heading-accent) 7%,
-    transparent
-  );
-  --theme-card-top-accent-hover: color-mix(
-    in srgb,
-    var(--theme-heading-accent) 10%,
-    transparent
-  );
   --theme-feedback-info-rgb: 193 90 46;
   --theme-feedback-success-rgb: 112 155 91;
   --theme-feedback-warning-rgb: 215 142 78;
@@ -549,16 +519,6 @@ html[data-theme="scriptorium"] {
   );
   --theme-card-top-glint: rgb(255 255 255 / 0.04);
   --theme-card-top-glint-hover: rgb(255 255 255 / 0.05);
-  --theme-card-top-accent: color-mix(
-    in srgb,
-    var(--theme-heading-accent) 7%,
-    transparent
-  );
-  --theme-card-top-accent-hover: color-mix(
-    in srgb,
-    var(--theme-heading-accent) 10%,
-    transparent
-  );
   --theme-header-background: rgb(249 241 226 / 0.985);
   --theme-header-border: rgb(132 100 68 / 0.12);
   --theme-header-shadow: 0 4px 10px rgb(84 58 35 / 0.035);
@@ -829,6 +789,22 @@ html[data-theme="scriptorium"] .theme-display {
   -webkit-text-fill-color: var(--theme-heading-accent-text-fill);
 }
 
+.theme-page-heading-accent {
+  color: var(--theme-heading-accent-color);
+  background: var(--theme-heading-accent-fill);
+  -webkit-background-clip: var(--theme-heading-accent-clip);
+  background-clip: var(--theme-heading-accent-clip);
+  -webkit-text-fill-color: var(--theme-heading-accent-text-fill);
+}
+
+html[data-theme="scriptorium"] .theme-page-heading-accent {
+  color: var(--theme-text-primary);
+  background: none;
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+  -webkit-text-fill-color: currentColor;
+}
+
 .glow-sm {
   box-shadow: var(--theme-glow-sm);
 }
@@ -942,48 +918,6 @@ html[data-theme="scriptorium"] .glass-card-interactive:hover {
   );
 }
 
-.release-card-shell {
-  backdrop-filter: blur(14px) saturate(128%);
-  -webkit-backdrop-filter: blur(14px) saturate(128%);
-}
-
-.release-entry:hover .release-card-shell,
-.release-entry:focus-within .release-card-shell {
-  border-color: color-mix(
-    in oklab,
-    var(--theme-heading-accent) 26%,
-    var(--theme-border-subtle)
-  );
-  background:
-    linear-gradient(
-      180deg,
-      var(--theme-card-top-accent-hover) 0%,
-      transparent 5.5rem
-    ),
-    color-mix(in oklab, var(--theme-bg-card-hover) 54%, var(--theme-bg-surface));
-  box-shadow:
-    0 18px 42px rgb(var(--theme-shell-rgb) / 0.24),
-    0 0 0 1px color-mix(in srgb, var(--theme-heading-accent) 8%, transparent);
-}
-
-.release-entry:hover .release-card-version,
-.release-entry:focus-within .release-card-version {
-  color: color-mix(
-    in srgb,
-    var(--theme-text-primary) 82%,
-    var(--theme-heading-accent) 18%
-  );
-}
-
-.release-entry:hover .release-card-date,
-.release-entry:focus-within .release-card-date {
-  color: color-mix(
-    in srgb,
-    var(--theme-text-secondary) 76%,
-    var(--theme-heading-accent) 24%
-  );
-}
-
 .release-timeline-line-base,
 .release-timeline-line-hover {
   transition: opacity 300ms ease;
@@ -1008,18 +942,6 @@ html[data-theme="scriptorium"] .glass-card-interactive:hover {
   box-shadow:
     0 0 0 3px color-mix(in srgb, var(--theme-heading-accent) 12%, transparent),
     0 0 16px rgb(var(--theme-accent-secondary-rgb) / 0.22);
-}
-
-html[data-theme="scriptorium"] .release-card-shell {
-  backdrop-filter: blur(8px) saturate(108%);
-  -webkit-backdrop-filter: blur(8px) saturate(108%);
-}
-
-html[data-theme="scriptorium"] .release-entry:hover .release-card-shell,
-html[data-theme="scriptorium"] .release-entry:focus-within .release-card-shell {
-  box-shadow:
-    0 14px 26px rgb(84 58 35 / 0.08),
-    0 0 0 1px color-mix(in srgb, var(--theme-heading-accent) 10%, transparent);
 }
 
 html[data-theme="scriptorium"] .phase-card-upcoming {
@@ -1080,13 +1002,9 @@ html[data-theme="scriptorium"] .phase-card-complete {
       var(--theme-border-strong) 48%,
       var(--theme-border-subtle)
     );
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.06), transparent 22%),
-    color-mix(in oklab, var(--theme-bg-elevated) 94%, transparent);
+  background: color-mix(in oklab, var(--theme-bg-elevated) 94%, transparent);
   color: var(--theme-text-primary);
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.06),
-    inset 0 0 0 0.5px rgb(255 255 255 / 0.03),
     0 18px 42px rgb(0 0 0 / 0.24);
   backdrop-filter: blur(18px) saturate(138%);
   -webkit-backdrop-filter: blur(18px) saturate(138%);
@@ -1095,9 +1013,7 @@ html[data-theme="scriptorium"] .phase-card-complete {
 
 html[data-theme="scriptorium"] .theme-tooltip-panel {
   background: color-mix(in oklab, var(--theme-bg-surface) 97%, transparent);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.03),
-    0 10px 26px rgb(84 58 35 / 0.08);
+  box-shadow: 0 10px 26px rgb(84 58 35 / 0.08);
   backdrop-filter: blur(8px) saturate(108%);
   -webkit-backdrop-filter: blur(8px) saturate(108%);
 }
@@ -1112,11 +1028,14 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding-right: 1.5rem;
   font-size: 13px;
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: 0.01em;
+}
+
+.theme-tooltip-panel:has(.theme-tooltip-badge) .theme-tooltip-label {
+  padding-right: 1.5rem;
 }
 
 .theme-tooltip-description {

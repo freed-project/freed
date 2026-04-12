@@ -338,6 +338,7 @@ function useDataFlow(layout: (typeof LAYOUT)["desktop"]) {
       setParticles((prev) => [...prev, particle]);
     } else {
       const targetIndex = Math.floor(Math.random() * 3);
+      pulseClient(targetIndex);
       const particle: DataParticle = {
         id: nextId.current++,
         x: l.particles.clientStartX,
@@ -354,7 +355,7 @@ function useDataFlow(layout: (typeof LAYOUT)["desktop"]) {
       };
       setParticles((prev) => [...prev, particle]);
     }
-  }, [pulseCapture]);
+  }, [pulseCapture, pulseClient]);
 
   const tick = useCallback(() => {
     const completedClientTargets: number[] = [];
@@ -931,7 +932,7 @@ export default function RoadmapContent() {
           className="text-center mb-12 sm:mb-16"
         >
           <h1 className="theme-display-large text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
-            <span className="theme-heading-accent">Roadmap</span>
+            <span className="theme-page-heading-accent">Roadmap</span>
           </h1>
           <p className="text-text-secondary text-base sm:text-lg mb-2">
             Built for humans, not algorithms.
