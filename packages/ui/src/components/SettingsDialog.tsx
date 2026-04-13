@@ -16,6 +16,7 @@ import { useAppStore, usePlatform } from "../context/PlatformContext.js";
 import { useDebugStore } from "../lib/debug-store.js";
 import { useSettingsStore } from "../lib/settings-store.js";
 import { refreshSampleLibraryData } from "../lib/sample-library-seed.js";
+import { applyThemeToDocument, persistTheme } from "../lib/theme.js";
 import {
   getProviderStatusLabel,
   getProviderStatusTone,
@@ -316,7 +317,18 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     (update: Partial<typeof display>) => {
       setDisplay((prev) => {
         const next = { ...prev, ...update };
-        updatePreferences({ display: next });
+        if (update.themeId && update.themeId !== prev.themeId) {
+          applyThemeToDocument(update.themeId);
+          persistTheme(update.themeId);
+        }
+        void updatePreferences({ display: next }).catch(() => {
+          if (update.themeId && update.themeId !== prev.themeId) {
+            applyThemeToDocument(prev.themeId);
+            persistTheme(prev.themeId);
+            setDisplay(prev);
+          }
+          toast.error("Could not save settings");
+        });
         return next;
       });
     },
