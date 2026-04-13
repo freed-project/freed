@@ -1054,7 +1054,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       {/* Panel */}
       <div
         className={`
-          theme-dialog-shell relative z-10 flex w-full flex-col
+          theme-dialog-shell theme-settings-shell relative z-10 flex w-full flex-col
           h-[92dvh] rounded-t-2xl
           sm:rounded-[28px]
           sm:flex-row sm:max-w-3xl sm:h-[80vh] sm:max-h-[700px]
