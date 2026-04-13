@@ -57,18 +57,25 @@ export default function Navigation() {
   const [captionIndex, setCaptionIndex] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [homePageScrolledPastFold, setHomePageScrolledPastFold] = useState(false);
   const navRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 });
-  const showMobileTopCta = pathname !== "/" || scrolled;
+  const showMobileTopCta =
+    !mobileMenuOpen && (pathname !== "/" || homePageScrolledPastFold);
 
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 20);
+      setHomePageScrolledPastFold(window.scrollY > window.innerHeight);
     };
     handleScroll(); // Check initial position
     window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+    window.addEventListener("resize", handleScroll);
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleScroll);
+    };
+  }, [pathname]);
 
   // Update underline position when pathname changes
   useLayoutEffect(() => {
@@ -244,20 +251,19 @@ export default function Navigation() {
       >
         {/* Mobile: solid full-width bar */}
         <div
-          className={`lg:hidden bg-freed-black pl-8 pr-5 py-4 ${
+          className={`lg:hidden bg-freed-black pl-8 pr-5 py-3 ${
             mobileMenuOpen ? "" : "border-b border-freed-border"
           }`}
         >
           <div className="flex items-center justify-between">
             {logoElement}
             <div className="flex items-center gap-4">
-              {mobileHamburger}
               <motion.div
                 initial={false}
                 animate={{
                   maxWidth: showMobileTopCta ? 144 : 0,
                   opacity: showMobileTopCta ? 1 : 0,
-                  marginLeft: showMobileTopCta ? 4 : 0,
+                  marginRight: showMobileTopCta ? 4 : 0,
                 }}
                 transition={{ duration: 0.24, ease: "easeInOut" }}
                 className="overflow-hidden"
@@ -265,11 +271,12 @@ export default function Navigation() {
               >
                 <button
                   onClick={openModal}
-                  className="btn-primary shrink-0 text-sm px-4 !py-2 whitespace-nowrap"
+                  className="btn-primary shrink-0 text-sm px-4 !py-1.5 whitespace-nowrap"
                 >
                   Get Freed
                 </button>
               </motion.div>
+              {mobileHamburger}
             </div>
           </div>
         </div>
@@ -314,7 +321,7 @@ export default function Navigation() {
                     <Link
                       href={item.path}
                       onClick={() => setMobileMenuOpen(false)}
-                      className={`text-2xl font-medium transition-colors ${
+                      className={`text-lg font-medium transition-colors ${
                         isActive(item.path, pathname)
                           ? "text-text-primary underline underline-offset-8 decoration-2"
                           : "text-text-secondary"
@@ -332,7 +339,7 @@ export default function Navigation() {
                   href="https://github.com/freed-project/freed"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-2xl font-medium text-text-secondary"
+                  className="text-lg font-medium text-text-secondary"
                 >
                   GitHub
                 </motion.a>
