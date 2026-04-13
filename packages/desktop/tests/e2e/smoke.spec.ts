@@ -105,6 +105,63 @@ test("main content area renders", async ({ app }) => {
   await expect(app.page.locator("main")).toBeVisible();
 });
 
+test("keyboard focus scrolling keeps a full row visible past the focused item", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(12);
+
+  for (let i = 0; i < 6; i += 1) {
+    await page.keyboard.press("ArrowDown");
+  }
+
+  await page.waitForFunction(() => {
+    const container = document.querySelector('[data-testid="feed-list-scroll-container"]') as HTMLElement | null;
+    const focusedItem = container?.querySelector('[data-focused="true"]') as HTMLElement | null;
+    const focusedRow = focusedItem?.closest('[data-feed-row-index]') as HTMLElement | null;
+    if (!container || !focusedRow) return false;
+
+    const rowIndex = Number(focusedRow.dataset.feedRowIndex);
+    const nextRow = container.querySelector(`[data-feed-row-index="${rowIndex + 1}"]`) as HTMLElement | null;
+    if (!nextRow) return false;
+
+    const containerRect = container.getBoundingClientRect();
+    const nextRowRect = nextRow.getBoundingClientRect();
+
+    return nextRowRect.top >= containerRect.top && nextRowRect.bottom <= containerRect.bottom;
+  });
+
+  const metrics = await page.evaluate(() => {
+    const container = document.querySelector('[data-testid="feed-list-scroll-container"]') as HTMLElement | null;
+    const focusedItem = container?.querySelector('[data-focused="true"]') as HTMLElement | null;
+    const focusedRow = focusedItem?.closest('[data-feed-row-index]') as HTMLElement | null;
+    if (!container || !focusedRow) {
+      throw new Error("Focused feed row was not found");
+    }
+
+    const rowIndex = Number(focusedRow.dataset.feedRowIndex);
+    const nextRow = container.querySelector(`[data-feed-row-index="${rowIndex + 1}"]`) as HTMLElement | null;
+    if (!nextRow) {
+      throw new Error("Next feed row was not found");
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const nextRowRect = nextRow.getBoundingClientRect();
+
+    return {
+      scrollTop: container.scrollTop,
+      nextRowTop: nextRowRect.top,
+      nextRowBottom: nextRowRect.bottom,
+      containerTop: containerRect.top,
+      containerBottom: containerRect.bottom,
+    };
+  });
+
+  expect(metrics.scrollTop).toBeGreaterThan(0);
+  expect(metrics.nextRowTop).toBeGreaterThanOrEqual(metrics.containerTop);
+  expect(metrics.nextRowBottom).toBeLessThanOrEqual(metrics.containerBottom);
+});
+
 test("sidebar resize holds the dragged width after mouseup", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();

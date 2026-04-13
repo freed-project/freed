@@ -1,4 +1,4 @@
-import { useRef, memo, useCallback, useEffect, useMemo, useState } from "react";
+import { useRef, memo, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useVirtualizer, useWindowVirtualizer } from "@tanstack/react-virtual";
 import { FeedItem } from "./FeedItem.js";
 import { FeedItemSkeleton } from "./FeedItemSkeleton.js";
@@ -96,6 +96,7 @@ interface FeedListProps {
   items: FeedItemType[];
   onItemClick?: (item: FeedItemType) => void;
   focusedIndex?: number;
+  focusMoveDirection?: -1 | 0 | 1;
   onFocusChange?: (index: number) => void;
   /** Called when user clicks "Add Feed" from the empty state */
   onAddFeed?: () => void;
@@ -222,6 +223,7 @@ export function FeedList({
   items,
   onItemClick,
   focusedIndex = -1,
+  focusMoveDirection = 0,
   onFocusChange,
   onAddFeed,
   hasFeedsSubscribed = false,
@@ -342,6 +344,55 @@ export function FeedList({
     // header so items are offset correctly as window.scrollY changes.
     scrollMargin: windowListRef.current?.offsetTop ?? 0,
   });
+
+  useLayoutEffect(() => {
+    if (isMobile || focusMoveDirection === 0 || focusedIndex < 0) return;
+
+    const container = parentRef.current;
+    if (!container) return;
+
+    const focusedRowIndex = itemIndexToRowIndex.get(focusedIndex);
+    if (focusedRowIndex === undefined) return;
+
+    const lookaheadRowIndex =
+      focusMoveDirection > 0
+        ? Math.min(focusedRowIndex + 1, rows.length - 1)
+        : Math.max(focusedRowIndex - 1, 0);
+    const scrollPadding = 16;
+    const lookaheadRow = container.querySelector(
+      `[data-feed-row-index="${lookaheadRowIndex}"]`,
+    ) as HTMLElement | null;
+
+    if (!lookaheadRow) {
+      elementVirtualizer.scrollToIndex(lookaheadRowIndex, {
+        align: focusMoveDirection > 0 ? "end" : "start",
+      });
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const rowRect = lookaheadRow.getBoundingClientRect();
+
+    if (focusMoveDirection > 0) {
+      const overflow = rowRect.bottom - (containerRect.bottom - scrollPadding);
+      if (overflow > 0) {
+        container.scrollBy({ top: overflow, behavior: "auto" });
+      }
+      return;
+    }
+
+    const overflow = containerRect.top + scrollPadding - rowRect.top;
+    if (overflow > 0) {
+      container.scrollBy({ top: -overflow, behavior: "auto" });
+    }
+  }, [
+    elementVirtualizer,
+    focusMoveDirection,
+    focusedIndex,
+    isMobile,
+    itemIndexToRowIndex,
+    rows.length,
+  ]);
 
   const listKey = useMemo(
     () => JSON.stringify({ activeFilter, searchQuery: searchQuery.trim() }),
@@ -537,6 +588,7 @@ export function FeedList({
             return (
               <div
                 key={virtualItem.key}
+                data-feed-row-index={virtualItem.index}
                 data-index={virtualItem.index}
                 ref={windowVirtualizer.measureElement}
                 style={{
@@ -593,6 +645,7 @@ export function FeedList({
   return (
     <div
       ref={parentRef}
+      data-testid="feed-list-scroll-container"
       className="flex-1 min-h-0 overflow-auto overscroll-none minimal-scroll"
     >
       <div
@@ -605,6 +658,7 @@ export function FeedList({
           return (
             <div
               key={virtualItem.key}
+              data-feed-row-index={virtualItem.index}
               data-index={virtualItem.index}
               ref={elementVirtualizer.measureElement}
               style={{

@@ -190,6 +190,8 @@ export const FeedItem = memo(function FeedItem({
 
     return (
       <div
+        data-feed-item-id={item.globalId}
+        data-focused={focused ? "true" : "false"}
         className={`relative overflow-hidden rounded-2xl cursor-pointer group select-none w-full transition-opacity ${
           isRead ? "grayscale opacity-60" : ""
         }`}
@@ -293,6 +295,8 @@ export const FeedItem = memo(function FeedItem({
     return (
       <div className="relative overflow-hidden rounded-xl">
         <article
+          data-feed-item-id={item.globalId}
+          data-focused={focused ? "true" : "false"}
           className={`feed-card group cursor-pointer aspect-square overflow-hidden p-3 flex flex-col transition-colors ${
             selected
               ? "border-l-2 border-l-[var(--theme-accent-secondary)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)]"
@@ -382,6 +386,8 @@ export const FeedItem = memo(function FeedItem({
       )}
 
       <article
+        data-feed-item-id={item.globalId}
+        data-focused={focused ? "true" : "false"}
         className={`feed-card group cursor-pointer active:scale-[0.99] transition-transform ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${isRead ? "grayscale opacity-60" : ""}`}
         style={{
           transform: swipeX !== 0 ? `translateX(${swipeX}px)` : undefined,

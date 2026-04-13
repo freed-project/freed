@@ -265,6 +265,7 @@ export function FeedView() {
     [filteredItems, selectedItemId],
   );
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const [keyboardFocusDirection, setKeyboardFocusDirection] = useState<-1 | 0 | 1>(0);
 
   const openItem = useCallback(
     (item: FeedItem) => {
@@ -295,9 +296,11 @@ export function FeedView() {
 
       if (e.key === "j" || e.key === "ArrowDown") {
         e.preventDefault();
+        setKeyboardFocusDirection(1);
         setFocusedIndex((prev) => Math.min(prev + 1, filteredItems.length - 1));
       } else if (e.key === "k" || e.key === "ArrowUp") {
         e.preventDefault();
+        setKeyboardFocusDirection(-1);
         setFocusedIndex((prev) => Math.max(prev - 1, 0));
       } else if ((e.key === "Enter" || e.key === "o") && focusedIndex >= 0) {
         const item = filteredItems[focusedIndex];
@@ -311,8 +314,14 @@ export function FeedView() {
 
   // Reset keyboard focus when the active filter or search query changes.
   useEffect(() => {
+    setKeyboardFocusDirection(0);
     setFocusedIndex(-1);
   }, [activeFilter, searchQuery]);
+
+  const handleFocusChange = useCallback((index: number) => {
+    setKeyboardFocusDirection(0);
+    setFocusedIndex(index);
+  }, []);
 
   // ─── Dual-column drag-resize ───────────────────────────────────────────────
 
@@ -445,7 +454,8 @@ export function FeedView() {
         items={filteredItems}
         onItemClick={openItem}
         focusedIndex={focusedIndex}
-        onFocusChange={setFocusedIndex}
+        focusMoveDirection={keyboardFocusDirection}
+        onFocusChange={handleFocusChange}
         onAddFeed={canAddFeeds ? () => setAddFeedOpen(true) : undefined}
         hasFeedsSubscribed={Object.keys(feeds).length > 0}
         onItemSave={handleItemSave}
