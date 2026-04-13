@@ -698,11 +698,10 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
   }, [activeFilter.feedUrl, setFilter, totalFeedPages]);
 
   const sidebarBody = (
-    <>
-      <nav
-        className="flex-1 min-h-0 flex flex-col px-4 pt-4 overflow-y-auto minimal-scroll"
-        style={{ paddingBottom: "calc(1rem + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))" }}
-      >
+    <nav
+      className="flex-1 min-h-0 flex flex-col px-4 pt-4 overflow-y-auto minimal-scroll"
+      style={{ paddingBottom: "calc(1rem + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))" }}
+    >
           <SearchJumpField />
 
           <ul className="flex flex-col gap-1">
@@ -1250,14 +1249,7 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
               <span>Settings</span>
             </button>
           </div>
-      </nav>
-
-      <div
-        data-testid="app-sidebar-resize-handle"
-        className="hidden md:block absolute top-0 right-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.3)] active:bg-[rgb(var(--theme-accent-secondary-rgb)/0.5)]"
-        onMouseDown={handleDragStart}
-      />
-    </>
+    </nav>
   );
 
   return (
@@ -1273,18 +1265,25 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
         data-testid="app-sidebar-shell"
         className="hidden md:flex flex-none overflow-hidden"
         style={{
-          width: desktopExpanded ? width : 0,
+          width: desktopExpanded ? width + 12 : 0,
           opacity: desktopExpanded ? 1 : 0,
           transition: dragging.current ? "none" : "width 220ms ease, opacity 180ms ease",
         }}
       >
-        <aside
-          data-testid="app-sidebar"
-          className="theme-floating-panel relative z-10 flex h-full min-h-0 flex-col overflow-hidden"
-          style={{ width: `${width}px` }}
-        >
-          {sidebarBody}
-        </aside>
+        <div className="flex h-full w-full items-stretch">
+          <aside
+            data-testid="app-sidebar"
+            className="theme-floating-panel relative z-10 flex h-full min-h-0 flex-col overflow-hidden"
+            style={{ width: `${width}px` }}
+          >
+            {sidebarBody}
+          </aside>
+          <div
+            data-testid="app-sidebar-resize-handle"
+            className="theme-resize-gap-handle h-full w-3 shrink-0"
+            onMouseDown={handleDragStart}
+          />
+        </div>
       </div>
 
       <aside

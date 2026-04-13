@@ -200,11 +200,11 @@ export function AppShell({ children }: AppShellProps) {
               transition: dragging.current ? "none" : "width 300ms ease-in-out, opacity 180ms ease-in-out",
             }}
           >
-            <div className="relative flex h-full w-full pl-3">
+            <div className="relative flex h-full w-full items-stretch">
               {debugVisible && (
                 <div
                   data-testid="debug-panel-resize-handle"
-                  className="absolute left-3 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.24)] active:bg-[rgb(var(--theme-accent-secondary-rgb)/0.4)]"
+                  className="theme-resize-gap-handle h-full w-3 shrink-0"
                   onMouseDown={handleDebugDragStart}
                 />
               )}

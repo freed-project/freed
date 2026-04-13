@@ -500,7 +500,7 @@ export function FriendsView() {
 
         {!isMobile && (
           <div
-            className="w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.24)] active:bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.34)]"
+            className="theme-resize-gap-handle w-3 shrink-0"
             onMouseDown={handleSidebarDragStart}
             role="separator"
             aria-orientation="vertical"

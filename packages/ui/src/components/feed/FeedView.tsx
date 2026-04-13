@@ -490,9 +490,8 @@ export function FeedView() {
             onItemClick={openItemDirect}
             width={panelWidth}
           />
-          {/* Draggable column separator -- zero visible width, padding provides the hit area */}
           <div
-            className="w-0 px-0.5 shrink-0 cursor-col-resize hover:bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.2)] active:bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.3)] transition-colors -mx-0.5 z-10"
+            className="theme-resize-gap-handle h-full w-3 shrink-0"
             onPointerDown={handleDragStart}
             onPointerMove={handleDragMove}
             onPointerUp={handleDragEnd}

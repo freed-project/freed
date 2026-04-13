@@ -320,7 +320,7 @@ test("sidebar resize holds the dragged width after mouseup", async ({ app, page 
 
     const savedWidth = store?.getState().preferences.display.sidebarWidth ?? 0;
     return Math.abs(savedWidth - expectedWidth) <= 2;
-  }, Math.round(settledWidth));
+  }, Math.round(settledWidth - 12));
 });
 
 test("debug panel resize holds the dragged width after mouseup", async ({ app, page }) => {
