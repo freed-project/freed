@@ -16,7 +16,7 @@ const MIN_PANEL_WIDTH = 100;
 const MAX_PANEL_WIDTH = 500;
 const DEFAULT_PANEL_WIDTH = 150;
 const NARROW_THRESHOLD = 150;
-const COMPACT_CARD_GAP = 10;
+const COMPACT_CARD_GAP = 8;
 
 // Card geometry: all cards are square (width × width), including story tiles.
 // Wrapper padding and row spacing match the nav-button radius token at 10px.

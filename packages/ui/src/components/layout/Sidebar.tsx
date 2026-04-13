@@ -1275,6 +1275,7 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
         style={{
           width: desktopExpanded ? width + 12 : 0,
           opacity: desktopExpanded ? 1 : 0,
+          paddingTop: desktopExpanded ? "var(--feed-card-gap, 8px)" : 0,
           transition: dragging.current ? "none" : "width 220ms ease, opacity 180ms ease",
         }}
       >

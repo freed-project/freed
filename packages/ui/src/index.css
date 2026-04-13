@@ -157,8 +157,8 @@ html[data-theme="neon"] {
   --sidebar-width: 240px;
   --card-radius: 16px;
   --button-radius: 10px;
-  --feed-card-radius: var(--button-radius);
-  --feed-card-gap: var(--button-radius);
+  --feed-card-radius: 8px;
+  --feed-card-gap: var(--feed-card-radius);
 }
 
 html[data-theme="midas"] {

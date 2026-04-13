@@ -15,7 +15,7 @@ import { useIsMobile } from "../../hooks/useIsMobile.js";
 
 // ── Story grouping ────────────────────────────────────────────────────────────
 
-const FEED_CARD_GAP = 10;
+const FEED_CARD_GAP = 8;
 const TILE_GAP = FEED_CARD_GAP;
 const MIN_TILE_W = 80; // minimum tile width before a column wraps
 const MAX_TILE_H = 288;
