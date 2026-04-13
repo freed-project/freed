@@ -2,7 +2,7 @@
   "tag": "v26.4.1202",
   "version": "26.4.1202",
   "dayKey": "26.4.12",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-13T02:21:49.360Z",
   "model": "heuristic",
