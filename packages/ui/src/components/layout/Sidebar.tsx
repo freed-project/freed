@@ -496,6 +496,14 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
 
   const width = dragWidth ?? committedWidth;
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.style.setProperty(
+      "--freed-sidebar-card-width",
+      desktopExpanded ? `${width}px` : "0px",
+    );
+  }, [desktopExpanded, width]);
+
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();

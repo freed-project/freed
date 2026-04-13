@@ -839,6 +839,66 @@ test("dual-column reader arrow navigation cycles tiles and keeps the next tile v
   expect(metrics.nextRowBottom).toBeLessThanOrEqual(metrics.containerBottom);
 });
 
+test("dual-column reader toolbar controls stay aligned with the sidebar and rail", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(8);
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+
+    void store?.getState().updatePreferences({
+      display: {
+        reading: {
+          dualColumnMode: true,
+        },
+      },
+    });
+  });
+
+  await page.getByText("Article 0:", { exact: false }).click();
+  await expect(page.getByLabel("Back to list")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
+
+  const alignment = await page.evaluate(() => {
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    const sidebarToggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
+    const dualColumnToggle = document.querySelector('[aria-label="Toggle dual column layout"]') as HTMLElement | null;
+    const backButton = document.querySelector('[aria-label="Back to list"]') as HTMLElement | null;
+    const compactRail = document.querySelector('[data-testid="compact-feed-panel-scroll-container"]') as HTMLElement | null;
+
+    if (!sidebar || !sidebarToggle || !dualColumnToggle || !backButton || !compactRail) {
+      throw new Error("Dual-column toolbar alignment elements were not found");
+    }
+
+    const sidebarRect = sidebar.getBoundingClientRect();
+    const sidebarToggleRect = sidebarToggle.getBoundingClientRect();
+    const dualColumnToggleRect = dualColumnToggle.getBoundingClientRect();
+    const backButtonRect = backButton.getBoundingClientRect();
+    const compactRailRect = compactRail.getBoundingClientRect();
+
+    return {
+      sidebarRight: sidebarRect.right,
+      sidebarToggleRight: sidebarToggleRect.right,
+      compactRailLeft: compactRailRect.left,
+      compactRailRight: compactRailRect.right,
+      dualColumnToggleLeft: dualColumnToggleRect.left,
+      backButtonLeft: backButtonRect.left,
+    };
+  });
+
+  expect(Math.abs(alignment.sidebarToggleRight - alignment.sidebarRight)).toBeLessThanOrEqual(2);
+  expect(Math.abs(alignment.dualColumnToggleLeft - alignment.compactRailLeft)).toBeLessThanOrEqual(2);
+  expect(Math.abs(alignment.backButtonLeft - alignment.compactRailRight)).toBeLessThanOrEqual(2);
+});
+
 test("dual-column reader toggles use shared view transitions when supported", async ({ app, page }) => {
   await page.setViewportSize({ width: 1280, height: 600 });
   await app.goto();

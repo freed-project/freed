@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, type CSSProperties } from "react";
 import { countFriendsWithRecentLocationUpdates } from "@freed/shared";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
@@ -17,8 +17,8 @@ interface HeaderProps {
   onSidebarToggle: () => void;
 }
 
-const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
-const dragStyle = { WebkitAppRegion: "drag" } as React.CSSProperties;
+const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
+const dragStyle = { WebkitAppRegion: "drag" } as CSSProperties;
 
 function formatItemCount(count: number): string {
   return `${count.toLocaleString()} item${count === 1 ? "" : "s"}`;
@@ -184,6 +184,28 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     window.open(selectedItem.sourceUrl, "_blank", "noopener,noreferrer");
   }, [openUrl, selectedItem]);
 
+  const showReaderRailToolbar =
+    !isMobile &&
+    activeView === "feed" &&
+    !!selectedItem &&
+    display.reading.dualColumnMode;
+  const sidebarSlotStyle =
+    !isMobile && sidebarExpanded
+      ? ({ width: "calc(var(--freed-sidebar-card-width, 240px) + 12px)", paddingRight: "12px" } as CSSProperties)
+      : undefined;
+  const leftToolbarStyle = sidebarSlotStyle
+    ? {
+        ...sidebarSlotStyle,
+        ...(headerDragRegion ? noDrag : {}),
+      }
+    : (headerDragRegion ? noDrag : undefined);
+  const readerRailSlotStyle = showReaderRailToolbar
+    ? ({
+        width: "var(--freed-reader-rail-width, 0px)",
+        ...(headerDragRegion ? noDrag : {}),
+      } as CSSProperties)
+    : undefined;
+
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [addFeedOpen, setAddFeedOpen] = useState(false);
   const [savedContentOpen, setSavedContentOpen] = useState(false);
@@ -219,7 +241,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
       >
         <div
           data-testid="workspace-toolbar"
-          className="theme-floating-panel flex min-h-[58px] items-center gap-3 px-3 sm:px-4"
+          className={`theme-floating-panel flex min-h-[58px] items-center px-0 ${showReaderRailToolbar ? "gap-0" : "gap-3"}`}
           {...(headerDragRegion
             ? {
                 "data-tauri-drag-region": true,
@@ -228,41 +250,67 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
             : {})}
         >
           <div
-            className="flex shrink-0 items-center gap-2"
-            style={headerDragRegion ? noDrag : undefined}
+            className={`flex shrink-0 items-center ${showReaderRailToolbar ? "gap-0" : "gap-2"}`}
           >
-            <Tooltip label="Menu" className="md:hidden">
-              <button
-                onClick={onMenuClick}
-                className="rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)]"
-                aria-label="Open menu"
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              </button>
-            </Tooltip>
+            <div
+              className={`flex shrink-0 items-center gap-2 pl-3 sm:pl-4 ${sidebarSlotStyle ? "justify-between" : ""}`}
+              style={leftToolbarStyle}
+            >
+              <Tooltip label="Menu" className="md:hidden">
+                <button
+                  onClick={onMenuClick}
+                  className="rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)]"
+                  aria-label="Open menu"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                </button>
+              </Tooltip>
 
-            <span className="text-lg font-bold gradient-text font-logo">FREED</span>
+              <span className="text-lg font-bold gradient-text font-logo">FREED</span>
 
-            <Tooltip label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"} className="hidden md:flex">
-              <button
-                onClick={onSidebarToggle}
-                data-testid="desktop-sidebar-toggle"
-                className={`rounded-lg p-1.5 transition-colors ${
-                  sidebarExpanded
-                    ? "theme-accent-button"
-                    : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
-                }`}
-                aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
-                aria-pressed={sidebarExpanded}
-              >
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 4v16" />
-                </svg>
-              </button>
-            </Tooltip>
+              <Tooltip label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"} className="hidden md:flex">
+                <button
+                  onClick={onSidebarToggle}
+                  data-testid="desktop-sidebar-toggle"
+                  className={`rounded-lg p-1.5 transition-colors ${
+                    sidebarExpanded
+                      ? "theme-accent-button"
+                      : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                  }`}
+                  aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
+                  aria-pressed={sidebarExpanded}
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 4v16" />
+                  </svg>
+                </button>
+              </Tooltip>
+            </div>
+
+            {showReaderRailToolbar && (
+              <div className="hidden shrink-0 md:flex items-center" style={readerRailSlotStyle}>
+                <Tooltip label={display.reading.dualColumnMode ? "Single column" : "Dual column"}>
+                  <button
+                    onClick={handleToggleDualColumn}
+                    className={`rounded-lg p-2 transition-colors ${
+                      display.reading.dualColumnMode
+                        ? "theme-accent-button"
+                        : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                    }`}
+                    aria-pressed={display.reading.dualColumnMode}
+                    aria-label="Toggle dual column layout"
+                  >
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 4v16" />
+                    </svg>
+                  </button>
+                </Tooltip>
+              </div>
+            )}
           </div>
 
           <div
@@ -298,7 +346,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
           </div>
 
           <div
-            className="flex shrink-0 items-center gap-2"
+            className="flex shrink-0 items-center gap-2 pr-3 sm:pr-4"
             style={headerDragRegion ? noDrag : undefined}
           >
             {selectedItem ? (
@@ -371,7 +419,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
                   </button>
                 )}
 
-                {!isMobile && (
+                {!isMobile && !showReaderRailToolbar && (
                   <Tooltip label={display.reading.dualColumnMode ? "Single column" : "Dual column"}>
                     <button
                       onClick={handleToggleDualColumn}

@@ -432,6 +432,14 @@ export function FeedView() {
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(0);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.style.setProperty(
+      "--freed-reader-rail-width",
+      showDualColumn ? `${panelWidth}px` : "0px",
+    );
+  }, [panelWidth, showDualColumn]);
+
   const handleDragStart = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault();
