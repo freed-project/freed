@@ -8,7 +8,6 @@ import { useIsMobile } from "../../hooks/useIsMobile.js";
 import {
   useAppStore,
   usePlatform,
-  MACOS_TRAFFIC_LIGHT_INSET,
 } from "../../context/PlatformContext.js";
 import { getFilterLabel } from "../../lib/feed-view-labels.js";
 

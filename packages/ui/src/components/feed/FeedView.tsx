@@ -289,10 +289,6 @@ export function FeedView() {
   const { filteredItems, isSearching, resultCount } = useSearchResults(items, searchQuery, activeFilter);
 
   const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds), [activeFilter, feeds]);
-  const feedSubtitle = isSearching
-    ? `${resultCount.toLocaleString()} result${resultCount === 1 ? "" : "s"} in ${scopeLabel}`
-    : `${filteredItems.length.toLocaleString()} item${filteredItems.length === 1 ? "" : "s"}`;
-
   const dualColumnMode = useAppStore((s) => s.preferences.display.reading.dualColumnMode);
   const isMobile = useIsMobile();
   const showDualColumn = dualColumnMode && !!selectedItemId && !isMobile;
