@@ -25,6 +25,7 @@ const CARD_V_GAP = 8;
 interface CompactFeedPanelProps {
   items: FeedItem[];
   selectedId: string;
+  selectionMoveDirection?: -1 | 0 | 1;
   onItemClick: (item: FeedItem) => void;
   width: number;
 }
@@ -32,6 +33,7 @@ interface CompactFeedPanelProps {
 const CompactFeedPanel = memo(function CompactFeedPanel({
   items,
   selectedId,
+  selectionMoveDirection = 0,
   onItemClick,
   width,
 }: CompactFeedPanelProps) {
@@ -111,18 +113,62 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     [items, selectedId],
   );
   const didInitialScroll = useRef(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (selectedIndex < 0) return;
-    virtualizer.scrollToIndex(selectedIndex, {
-      align: "center",
-      behavior: didInitialScroll.current ? "smooth" : "auto",
-    });
+    const behavior = didInitialScroll.current ? "smooth" : "auto";
+
+    if (selectionMoveDirection === 0) {
+      virtualizer.scrollToIndex(selectedIndex, {
+        align: "center",
+        behavior,
+      });
+      didInitialScroll.current = true;
+      return;
+    }
+
+    const el = parentRef.current;
+    if (!el) return;
+
+    const lookaheadIndex =
+      selectionMoveDirection > 0
+        ? Math.min(selectedIndex + 1, items.length - 1)
+        : Math.max(selectedIndex - 1, 0);
+    const scrollPadding = CARD_V_GAP;
+    const lookaheadStart =
+      lookaheadIndex === 0
+        ? 0
+        : firstItemHeight + (lookaheadIndex - 1) * itemHeight;
+    const lookaheadSize = lookaheadIndex === 0 ? firstItemHeight : itemHeight;
+    const lookaheadEnd = lookaheadStart + lookaheadSize;
+    const visibleTop = el.scrollTop;
+    const visibleBottom = visibleTop + el.clientHeight;
+
+    if (selectionMoveDirection > 0) {
+      const nextTop = lookaheadEnd - (el.clientHeight - scrollPadding);
+      if (lookaheadEnd > visibleBottom - scrollPadding) {
+        el.scrollTo({ top: Math.max(0, nextTop), behavior });
+      }
+    } else {
+      const nextTop = lookaheadStart - scrollPadding;
+      if (lookaheadStart < visibleTop + scrollPadding) {
+        el.scrollTo({ top: Math.max(0, nextTop), behavior });
+      }
+    }
+
     didInitialScroll.current = true;
-  }, [selectedIndex, virtualizer]);
+  }, [
+    firstItemHeight,
+    itemHeight,
+    items.length,
+    selectedIndex,
+    selectionMoveDirection,
+    virtualizer,
+  ]);
 
   return (
     <div
       ref={parentRef}
+      data-testid="compact-feed-panel-scroll-container"
       className="shrink-0 min-h-0 overflow-y-auto minimal-scroll bg-[var(--theme-bg-root)]"
       style={{ width }}
     >
@@ -135,6 +181,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
           return (
             <div
               key={vi.key}
+              data-compact-panel-index={vi.index}
               data-index={vi.index}
               style={{
                 position: "absolute",
@@ -256,6 +303,8 @@ export function FeedView() {
     : `${filteredItems.length.toLocaleString()} item${filteredItems.length === 1 ? "" : "s"}`;
 
   const dualColumnMode = useAppStore((s) => s.preferences.display.reading.dualColumnMode);
+  const isMobile = useIsMobile();
+  const showDualColumn = dualColumnMode && !!selectedItemId && !isMobile;
 
   // Store only the ID so the rendered item stays in sync with the store.
   // Holding the full FeedItem in state would freeze userState (saved, archived,
@@ -266,6 +315,7 @@ export function FeedView() {
   );
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const [keyboardFocusDirection, setKeyboardFocusDirection] = useState<-1 | 0 | 1>(0);
+  const [compactSelectionDirection, setCompactSelectionDirection] = useState<-1 | 0 | 1>(0);
 
   const openItem = useCallback(
     (item: FeedItem) => {
@@ -275,7 +325,13 @@ export function FeedView() {
     [markAsRead, setSelectedItem],
   );
 
+  const openItemDirect = useCallback((item: FeedItem) => {
+    setCompactSelectionDirection(0);
+    openItem(item);
+  }, [openItem]);
+
   const closeItem = useCallback(() => {
+    setCompactSelectionDirection(0);
     setSelectedItem(null);
   }, [setSelectedItem]);
 
@@ -290,6 +346,21 @@ export function FeedView() {
         return;
 
       if (selectedItem) {
+        if (showDualColumn && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+          e.preventDefault();
+          const currentIndex = filteredItems.findIndex((item) => item.globalId === selectedItem.globalId);
+          if (currentIndex < 0) return;
+
+          const direction = e.key === "ArrowDown" ? 1 : -1;
+          const nextIndex = Math.max(0, Math.min(currentIndex + direction, filteredItems.length - 1));
+          if (nextIndex === currentIndex) return;
+
+          setCompactSelectionDirection(direction);
+          setFocusedIndex(nextIndex);
+          openItem(filteredItems[nextIndex]);
+          return;
+        }
+
         if (e.key === "Escape") closeItem();
         return;
       }
@@ -304,16 +375,17 @@ export function FeedView() {
         setFocusedIndex((prev) => Math.max(prev - 1, 0));
       } else if ((e.key === "Enter" || e.key === "o") && focusedIndex >= 0) {
         const item = filteredItems[focusedIndex];
-        if (item) openItem(item);
+        if (item) openItemDirect(item);
       }
     };
 
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [selectedItem, filteredItems, focusedIndex, openItem, closeItem]);
+  }, [selectedItem, showDualColumn, filteredItems, focusedIndex, openItem, openItemDirect, closeItem]);
 
   // Reset keyboard focus when the active filter or search query changes.
   useEffect(() => {
+    setCompactSelectionDirection(0);
     setKeyboardFocusDirection(0);
     setFocusedIndex(-1);
   }, [activeFilter, searchQuery]);
@@ -359,10 +431,7 @@ export function FeedView() {
 
   // ─── Layout decision ────────────────────────────────────────────────────────
 
-  const isMobile = useIsMobile();
-  const showDualColumn = dualColumnMode && !!selectedItem && !isMobile;
-
-  if (showDualColumn) {
+  if (showDualColumn && selectedItem) {
     return (
       <div className="h-full flex flex-col overflow-hidden">
         <ContentHeader title={scopeLabel} subtitle={feedSubtitle} />
@@ -388,7 +457,8 @@ export function FeedView() {
           <CompactFeedPanel
             items={filteredItems}
             selectedId={selectedItem.globalId}
-            onItemClick={openItem}
+            selectionMoveDirection={compactSelectionDirection}
+            onItemClick={openItemDirect}
             width={panelWidth}
           />
           {/* Draggable column separator -- zero visible width, padding provides the hit area */}
@@ -452,7 +522,7 @@ export function FeedView() {
 
       <FeedList
         items={filteredItems}
-        onItemClick={openItem}
+        onItemClick={openItemDirect}
         focusedIndex={focusedIndex}
         focusMoveDirection={keyboardFocusDirection}
         onFocusChange={handleFocusChange}

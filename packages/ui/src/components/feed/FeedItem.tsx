@@ -297,6 +297,7 @@ export const FeedItem = memo(function FeedItem({
         <article
           data-feed-item-id={item.globalId}
           data-focused={focused ? "true" : "false"}
+          data-selected={selected ? "true" : "false"}
           className={`feed-card group cursor-pointer aspect-square overflow-hidden p-3 flex flex-col transition-colors ${
             selected
               ? "border-l-2 border-l-[var(--theme-accent-secondary)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)]"

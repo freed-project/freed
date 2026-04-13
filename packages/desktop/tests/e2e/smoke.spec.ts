@@ -555,6 +555,92 @@ test("desktop reader history supports Cmd+[ and Cmd+] for open items", async ({ 
   await expect(page.getByLabel("Back")).toBeVisible({ timeout: 5_000 });
 });
 
+test("dual-column reader arrow navigation cycles tiles and keeps the next tile visible", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(12);
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+
+    void store?.getState().updatePreferences({
+      display: {
+        reading: {
+          dualColumnMode: true,
+        },
+      },
+    });
+  });
+
+  await page.getByText("Article 0:", { exact: false }).click();
+  await expect(page.getByLabel("Back")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
+
+  for (let i = 0; i < 6; i += 1) {
+    await page.keyboard.press("ArrowDown");
+  }
+
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { selectedItemId: string | null } }
+      | undefined;
+    return store?.getState().selectedItemId?.endsWith("bench-item-6") === true;
+  }, { timeout: 5_000 });
+
+  await page.waitForFunction(() => {
+    const container = document.querySelector('[data-testid="compact-feed-panel-scroll-container"]') as HTMLElement | null;
+    const selectedItem = container?.querySelector('[data-selected="true"]') as HTMLElement | null;
+    const selectedRow = selectedItem?.closest('[data-compact-panel-index]') as HTMLElement | null;
+    if (!container || !selectedRow) return false;
+
+    const rowIndex = Number(selectedRow.dataset.compactPanelIndex);
+    const nextRow = container.querySelector(`[data-compact-panel-index="${rowIndex + 1}"]`) as HTMLElement | null;
+    if (!nextRow) return false;
+
+    const containerRect = container.getBoundingClientRect();
+    const nextRowRect = nextRow.getBoundingClientRect();
+
+    return nextRowRect.top >= containerRect.top && nextRowRect.bottom <= containerRect.bottom;
+  }, { timeout: 5_000 });
+
+  const metrics = await page.evaluate(() => {
+    const container = document.querySelector('[data-testid="compact-feed-panel-scroll-container"]') as HTMLElement | null;
+    const selectedItem = container?.querySelector('[data-selected="true"]') as HTMLElement | null;
+    const selectedRow = selectedItem?.closest('[data-compact-panel-index]') as HTMLElement | null;
+    if (!container || !selectedRow) {
+      throw new Error("Selected compact panel row was not found");
+    }
+
+    const rowIndex = Number(selectedRow.dataset.compactPanelIndex);
+    const nextRow = container.querySelector(`[data-compact-panel-index="${rowIndex + 1}"]`) as HTMLElement | null;
+    if (!nextRow) {
+      throw new Error("Next compact panel row was not found");
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const nextRowRect = nextRow.getBoundingClientRect();
+
+    return {
+      scrollTop: container.scrollTop,
+      nextRowTop: nextRowRect.top,
+      nextRowBottom: nextRowRect.bottom,
+      containerTop: containerRect.top,
+      containerBottom: containerRect.bottom,
+    };
+  });
+
+  expect(metrics.scrollTop).toBeGreaterThan(0);
+  expect(metrics.nextRowTop).toBeGreaterThanOrEqual(metrics.containerTop);
+  expect(metrics.nextRowBottom).toBeLessThanOrEqual(metrics.containerBottom);
+});
+
 test("Friends workspace keeps a visible sidebar and supports back navigation", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
