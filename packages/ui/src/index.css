@@ -105,11 +105,6 @@ html[data-theme="neon"] {
   --theme-feedback-success-rgb: 34 197 94;
   --theme-feedback-warning-rgb: 245 158 11;
   --theme-feedback-danger-rgb: 239 68 68;
-  --theme-map-canvas-filter: brightness(0.26) contrast(1.24) saturate(0.24);
-  --theme-map-accent-overlay-opacity: 0.16;
-  --theme-map-grid-opacity: 0.2;
-  --theme-map-fade-top-height: 7rem;
-  --theme-map-fade-bottom-height: 7rem;
   --theme-icon-media: var(--theme-media-icon);
   --theme-icon-action: var(--theme-accent-secondary);
   --theme-icon-muted: var(--theme-text-soft);
@@ -247,12 +242,6 @@ html[data-theme="midas"] {
   --theme-feedback-success-rgb: 122 156 104;
   --theme-feedback-warning-rgb: 196 154 93;
   --theme-feedback-danger-rgb: 171 86 74;
-  --theme-map-canvas-filter: brightness(0.42) contrast(1.08) saturate(0.38)
-    sepia(0.18);
-  --theme-map-accent-overlay-opacity: 0.1;
-  --theme-map-grid-opacity: 0.12;
-  --theme-map-fade-top-height: 6rem;
-  --theme-map-fade-bottom-height: 6rem;
   --theme-media-facebook: var(--theme-media-icon);
   --theme-media-instagram: var(--theme-media-icon);
   --theme-media-x: var(--theme-media-icon);
@@ -363,12 +352,6 @@ html[data-theme="ember"] {
   --theme-feedback-success-rgb: 112 155 91;
   --theme-feedback-warning-rgb: 215 142 78;
   --theme-feedback-danger-rgb: 197 92 82;
-  --theme-map-canvas-filter: brightness(0.34) contrast(1.1) saturate(0.42)
-    sepia(0.12);
-  --theme-map-accent-overlay-opacity: 0.11;
-  --theme-map-grid-opacity: 0.14;
-  --theme-map-fade-top-height: 6rem;
-  --theme-map-fade-bottom-height: 6rem;
   --theme-media-facebook: var(--theme-media-icon);
   --theme-media-instagram: var(--theme-media-icon);
   --theme-media-x: var(--theme-media-icon);
@@ -394,8 +377,7 @@ html[data-theme="ember"] {
 
 html[data-theme="scriptorium"] {
   --font-body:
-    "Baskerville", "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
-    Georgia, serif;
+    "Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-logo: "Baskerville", "Hoefler Text", "Iowan Old Style", Georgia, serif;
   --font-display:
     "Baskerville", "Hoefler Text", "Iowan Old Style", "Palatino Linotype",
@@ -501,13 +483,6 @@ html[data-theme="scriptorium"] {
   --theme-feedback-success-rgb: 47 122 87;
   --theme-feedback-warning-rgb: 176 138 97;
   --theme-feedback-danger-rgb: 183 79 67;
-  --theme-map-canvas-filter: brightness(0.92) contrast(0.96) saturate(0.52)
-    sepia(0.18);
-  --theme-map-accent-overlay-opacity: 0.035;
-  --theme-map-grid-opacity: 0.06;
-  --theme-map-fade-top-height: 4.5rem;
-  --theme-map-fade-bottom-height: 4.5rem;
-
   --theme-media-facebook: var(--theme-media-icon);
   --theme-media-instagram: var(--theme-media-icon);
   --theme-media-x: var(--theme-media-icon);
@@ -2014,35 +1989,6 @@ html[data-theme="scriptorium"] .btn-primary:hover {
       rgb(var(--theme-accent-secondary-rgb) / 0.08) 1px,
       transparent 1px
     );
-}
-
-.theme-map-grid-dense {
-  background-image:
-    linear-gradient(
-      rgb(var(--theme-accent-secondary-rgb) / 0.16) 1px,
-      transparent 1px
-    ),
-    linear-gradient(
-      90deg,
-      rgb(var(--theme-accent-secondary-rgb) / 0.12) 1px,
-      transparent 1px
-    );
-}
-
-.theme-map-fade-top {
-  background: linear-gradient(
-    180deg,
-    rgb(var(--theme-accent-secondary-rgb) / 0.12),
-    transparent
-  );
-}
-
-.theme-map-fade-bottom {
-  background: linear-gradient(
-    0deg,
-    color-mix(in oklab, var(--theme-bg-root) 96%, transparent),
-    transparent
-  );
 }
 
 ::selection {
