@@ -30,7 +30,7 @@ const steps = [
 
 export default function HowItWorks() {
   return (
-    <section className="relative overflow-hidden px-8 py-8 sm:px-6 sm:py-24 md:px-12 lg:px-8">
+    <section className="relative overflow-hidden px-8 py-8 sm:px-6 sm:py-24 lg:px-8 xl:px-12">
       <div
         className="absolute inset-0"
         style={{
@@ -48,7 +48,7 @@ export default function HowItWorks() {
           transition={{ duration: 0.6 }}
           className="mb-8 text-center sm:mb-16"
         >
-          <h2 className="theme-display-large mb-3 text-4xl font-bold md:text-5xl sm:mb-4">
+          <h2 className="theme-display-large mb-3 text-4xl font-bold sm:mb-4 lg:text-5xl">
             How It <span className="theme-heading-accent">Works</span>
           </h2>
           <p className="max-w-2xl mx-auto text-base text-text-secondary sm:text-lg">
@@ -66,7 +66,7 @@ export default function HowItWorks() {
             }}
           />
 
-          <div className="grid grid-cols-1 gap-4 sm:gap-8 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:gap-8 lg:grid-cols-2 xl:grid-cols-4">
             {steps.map((step, index) => (
               <motion.div
                 key={step.number}

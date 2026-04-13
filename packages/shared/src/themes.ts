@@ -7,6 +7,8 @@ export interface ThemeBackgroundTextureLayer {
   image: string;
   size: string;
   repeat: "repeat" | "no-repeat";
+  compactSize?: string;
+  compactOpacity?: number;
 }
 
 export interface ThemeBackgroundHeroOrb {
@@ -39,6 +41,8 @@ export interface ThemeBackgroundRecipe {
   textures: readonly ThemeBackgroundTextureLayer[];
   heroOrbs: readonly ThemeBackgroundHeroOrb[];
   rowOrbs: ThemeBackgroundRowOrb;
+  renderer?: "legacy" | "responsive";
+  overlayEnabled?: boolean;
 }
 
 export interface ThemeDefinition {
@@ -87,8 +91,6 @@ const DEFAULT_HERO_ORBS: readonly ThemeBackgroundHeroOrb[] = [
   },
 ] as const;
 
-const NEON_HERO_ORBS: readonly ThemeBackgroundHeroOrb[] = [] as const;
-
 const DEFAULT_ROW_ORBS: ThemeBackgroundRowOrb = {
   countPerRow: 2,
   channels: ["secondary", "primary", "tertiary"] as const,
@@ -121,24 +123,7 @@ const DEFAULT_OVERLAY_BACKGROUND = `radial-gradient(
     ),
     linear-gradient(180deg, transparent 0%, rgb(var(--theme-shell-rgb) / 0.05) 100%)`;
 
-const NEON_SHELL_BACKGROUND = `radial-gradient(circle at 12% 16%, rgb(59 130 246 / 0.18) 0, transparent 34%),
-    radial-gradient(circle at 84% 10%, rgb(139 92 246 / 0.22) 0, transparent 30%),
-    radial-gradient(circle at 76% 82%, rgb(6 182 212 / 0.14) 0, transparent 32%),
-    linear-gradient(180deg, #090a11 0%, #0a0a0f 34%, #090909 100%)`;
-
-const NEON_OVERLAY_BACKGROUND = `radial-gradient(
-      ellipse 900px 900px at -10% -15%,
-      rgb(var(--theme-accent-secondary-rgb) / 0.17) 0%,
-      rgb(var(--theme-accent-secondary-rgb) / 0.05) 35%,
-      transparent 65%
-    ),
-    radial-gradient(
-      ellipse 800px 800px at 110% 110%,
-      rgb(var(--theme-accent-primary-rgb) / 0.14) 0%,
-      rgb(var(--theme-accent-primary-rgb) / 0.04) 35%,
-      transparent 65%
-    ),
-    linear-gradient(180deg, transparent 0%, rgb(var(--theme-shell-rgb) / 0.08) 100%)`;
+const NEON_SHELL_BACKGROUND = `linear-gradient(180deg, #090a11 0%, #0a0a0f 34%, #090909 100%)`;
 
 const MIDAS_SHELL_BACKGROUND = `radial-gradient(circle at 14% 14%, rgb(176 138 72 / 0.12) 0, transparent 36%),
     radial-gradient(circle at 78% 8%, rgb(124 92 56 / 0.1) 0, transparent 32%),
@@ -171,11 +156,13 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
     effects: "dramatic",
     background: {
       shellBackground: NEON_SHELL_BACKGROUND,
-      overlayBackground: NEON_OVERLAY_BACKGROUND,
+      overlayBackground: "none",
       baseOpacity: 0.12,
       textures: [{ image: NOISE_TEXTURE, size: "256px 256px", repeat: "repeat" }],
-      heroOrbs: NEON_HERO_ORBS,
+      heroOrbs: DEFAULT_HERO_ORBS,
       rowOrbs: DEFAULT_ROW_ORBS,
+      renderer: "legacy",
+      overlayEnabled: false,
     },
   },
   {

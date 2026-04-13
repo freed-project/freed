@@ -130,9 +130,13 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 - Auto-generated sitemap.xml
 - RSS/Atom feed generation at build time
 - Public legal pages for Terms of Use, Privacy, and Desktop EULA
-- Versioned website clickwrap in the download modal for Terms of Use and Privacy before opening the PWA or downloading Freed Desktop
-- Get Freed modal now scrolls internally on small screens and defaults real mobile devices to a `Freed Web` launch target while still offering every desktop download explicitly
+- Get Freed modal now scrolls internally on small screens, removes the extra mobile subtitle under the main title, keeps the mobile signup and launch headings on matching vertical spacing, simplifies the mobile section copy, gives the mobile launch CTA a primary-tinted treatment, closes reliably from the `X` button even on direct `/get` visits, and defaults real mobile devices to a `Freed Web` launch target while still offering every desktop download explicitly
+- Mobile nav header now keeps a top-level `Get Freed` CTA beside the hamburger once the user scrolls away from the top of the homepage or lands on any non-home page, animating it in smoothly while the full mobile menu still exposes the same primary action inside the drawer
+- Marketing homepage now stays in its single-column mobile layout through tablet widths, including the mobile nav, compact hero treatment, and stacked content grids, before switching to desktop layouts at `lg`
+- Marketing-site manifesto buttons now use the shared theme secondary button treatment consistently, including both `Read the Manifesto` and `Why We Built This`
 - Shared cross-surface theme system for the marketing site, Freed Desktop, and the PWA
+- Neon now uses the original randomized marketing-site background logic as the canonical shared theme background across the marketing site, Freed Desktop, and Freed Web, while the other themes keep their current shared rendering
+- Marketing site no longer inherits the shared app scrollbar chrome, while Freed Desktop and Freed Web keep the themed scrollbar treatment inside app shells and dialogs
 - Theme-aware form controls across the marketing site and shared UI package
 - Shared theme-aware tooltip primitive across the marketing site and shared UI package
 - Homepage footer theme picker uses the same preview swatches as Freed Desktop, with hover tooltips for each theme

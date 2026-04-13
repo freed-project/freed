@@ -3,14 +3,8 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { LEGAL_BUNDLE_VERSION, LEGAL_DOCS } from "@freed/shared/legal";
 import TurnstileWidget from "@/components/TurnstileWidget";
 import { useNewsletter } from "@/context/NewsletterContext";
-import {
-  acceptWebsiteBundle,
-  getWebsiteBundleAcceptance,
-  hasAcceptedWebsiteBundle,
-} from "@/lib/legal-consent";
 
 type SubmitState = "idle" | "loading" | "error";
 
@@ -175,20 +169,15 @@ export default function NewsletterModal() {
     left: number;
     width: number;
   } | null>(null);
-  const [acceptedBundle, setAcceptedBundle] = useState(false);
-  const [legalChecked, setLegalChecked] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dropdownMenuRef = useRef<HTMLUListElement>(null);
 
   useEffect(() => {
     setSelectedTarget(detectDefaultInstallTarget());
-    setAcceptedBundle(hasAcceptedWebsiteBundle());
   }, []);
 
   useEffect(() => {
     if (!isOpen) return;
-    setAcceptedBundle(hasAcceptedWebsiteBundle());
-    setLegalChecked(false);
     setDetailsOpen(false);
     setTurnstileToken("");
     setTurnstileResetKey((current) => current + 1);
@@ -358,31 +347,18 @@ export default function NewsletterModal() {
   const selectedTargetLabel =
     selectedTarget === "web" ? "Freed Web" : currentDownload?.label ?? "";
   const isWebTarget = selectedTarget === "web";
-  const canProceed = acceptedBundle || legalChecked;
-  const storedAcceptance = getWebsiteBundleAcceptance();
   const normalizedEmailInput = email.trim().toLowerCase();
   const isEmailInputValid = isValidEmailAddress(normalizedEmailInput);
   const isPhoneInputValid = isValidPhoneNumber(phoneNumber);
 
-  const ensureAccepted = useCallback(() => {
-    if (acceptedBundle) return true;
-    if (!legalChecked) return false;
-    const record = acceptWebsiteBundle();
-    setAcceptedBundle(!!record);
-    setLegalChecked(false);
-    return !!record;
-  }, [acceptedBundle, legalChecked]);
-
   const handleOpenFreedWeb = useCallback(() => {
-    if (!ensureAccepted()) return;
     window.open(FREED_WEB_URL, "_blank", "noopener,noreferrer");
-  }, [ensureAccepted]);
+  }, []);
 
   const handleDownload = useCallback(() => {
-    if (!ensureAccepted()) return;
     if (!downloadUrl) return;
     window.open(downloadUrl, "_blank", "noopener,noreferrer");
-  }, [downloadUrl, ensureAccepted]);
+  }, [downloadUrl]);
 
   const handlePrimaryAction = useCallback(() => {
     if (isWebTarget) {
@@ -462,29 +438,25 @@ export default function NewsletterModal() {
                 }}
               >
                 <>
-                  <div className="text-center mb-8">
+                  <div className="text-center mb-10 sm:mb-8">
                     <h3
                       id="get-freed-title"
                       className="mb-2 text-4xl font-bold text-text-primary sm:text-5xl"
                     >
                       Get <span className="theme-heading-accent">Freed</span>
                     </h3>
-                    <p className="text-text-secondary text-base mt-2">
+                    <p className="mt-2 hidden text-base text-text-secondary sm:block">
                       Open-source. Free forever. Take back your feed.
                     </p>
                   </div>
 
                   <div className="grid gap-0 lg:grid-cols-2 lg:items-start">
-                    <div className="py-2 sm:py-4 lg:pr-8">
+                    <div className="pb-2 sm:py-4 lg:pr-8">
                       <div className="mb-6 max-w-md">
-                        <h4 className="flex items-center gap-3 text-3xl font-bold text-text-primary">
+                        <h4 className="flex items-center gap-3 text-2xl font-bold text-text-primary sm:text-3xl">
                           <CircledStepNumber number={1} />
                           <span>Email Updates</span>
                         </h4>
-                        <p className="mt-2 text-base leading-relaxed text-text-secondary">
-                          Track our development of new builds, major fixes, and
-                          progress on liberating legacy social media.
-                        </p>
                       </div>
 
                       <div className="relative">
@@ -706,67 +678,23 @@ export default function NewsletterModal() {
                       </div>
                     </div>
 
-                    <div className="space-y-5 py-2 sm:py-4 lg:pl-8 lg:border-l lg:border-freed-border">
-                        <div className="max-w-lg">
+                    <div className="space-y-5 pt-10 pb-2 sm:py-4 lg:pt-4 lg:pl-8 lg:border-l lg:border-freed-border">
+                        <div className="max-w-lg space-y-2">
                           <h4 className="flex items-center gap-3 text-2xl font-bold text-text-primary sm:text-3xl">
                             <CircledStepNumber number={2} />
-                            <span>Launch or Install Freed</span>
+                            <span>{isWebTarget ? "Launch Freed" : "Download Freed"}</span>
                           </h4>
-                        </div>
-
-                        <div className="p-0">
-                          {acceptedBundle ? (
-                            <p className="text-xs leading-relaxed text-text-muted">
-                              Legal terms already accepted for bundle {LEGAL_BUNDLE_VERSION}
-                              {storedAcceptance?.acceptedAt
-                                ? ` on ${new Date(storedAcceptance.acceptedAt).toLocaleString()}`
-                                : ""}
-                              .
+                          {!isWebTarget && (
+                            <p className="text-sm leading-relaxed text-text-secondary">
+                              Install Freed Desktop first, then launch Freed Web on your
+                              mobile device.
                             </p>
-                          ) : (
-                            <label className="flex items-start gap-3 rounded-xl px-2 py-2 text-xs sm:text-sm leading-relaxed text-text-secondary cursor-pointer transition-colors hover:bg-[rgb(var(--theme-control-accent-rgb)/0.08)]">
-                              <input
-                                type="checkbox"
-                                checked={legalChecked}
-                                onChange={(event) => setLegalChecked(event.target.checked)}
-                                className="mt-0.5 h-4 w-4 rounded border-freed-border bg-transparent text-[color:var(--theme-control-accent)] focus:ring-[color:var(--theme-focus-ring)]"
-                              />
-                              <span>
-                                I have read and agree to the{" "}
-                                <a
-                                  href={LEGAL_DOCS.terms.path}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="underline underline-offset-2 hover:text-text-primary transition-colors"
-                                >
-                                  {LEGAL_DOCS.terms.label}
-                                </a>{" "}
-                                and{" "}
-                                <a
-                                  href={LEGAL_DOCS.privacy.path}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="underline underline-offset-2 hover:text-text-primary transition-colors"
-                                >
-                                  {LEGAL_DOCS.privacy.label}
-                                </a>
-                                . I understand that Freed is experimental software
-                                under active development.
-                              </span>
-                            </label>
                           )}
                         </div>
 
-                        <div className="relative group/download" ref={dropdownRef}>
-                          {!canProceed && (
-                            <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 -translate-x-1/2 opacity-0 transition-opacity duration-150 group-hover/download:opacity-100">
-                              <div className="rounded-lg border border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-elevated)] px-3 py-1.5 text-xs text-text-secondary shadow-lg">
-                                Accept the terms above
-                              </div>
-                            </div>
-                          )}
+                        <div className="relative" ref={dropdownRef}>
                           <div
-                            className="flex items-center rounded-xl border transition-all hover:border-[color:var(--theme-border-strong)]"
+                            className="get-freed-launch-cta flex items-center rounded-xl border transition-all hover:border-[color:var(--theme-border-strong)]"
                             style={{
                               borderColor: "var(--theme-border-subtle)",
                               background:
@@ -776,12 +704,11 @@ export default function NewsletterModal() {
                             <button
                               type="button"
                               onClick={handlePrimaryAction}
-                              disabled={!canProceed}
-                              data-testid="website-legal-download"
-                              className="group flex items-center gap-4 p-4 flex-1 min-w-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                              data-testid="website-primary-action"
+                              className="get-freed-launch-cta__primary group flex min-w-0 flex-1 items-center gap-4 p-4"
                             >
                               <div
-                                className="shrink-0 flex h-10 w-10 items-center justify-center rounded-lg border"
+                                className="get-freed-launch-cta__icon flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border"
                                 style={{
                                   background:
                                     "color-mix(in srgb, var(--theme-bg-surface) 88%, transparent)",
@@ -807,12 +734,12 @@ export default function NewsletterModal() {
                                 </svg>
                               </div>
                               <div className="flex-1 min-w-0 text-left">
-                                <p className="text-sm font-semibold text-text-primary group-hover:text-text-primary transition-colors">
+                                <p className="get-freed-launch-cta__title text-sm font-semibold text-text-primary transition-colors group-hover:text-text-primary">
                                   {isWebTarget
                                     ? "Launch Freed Web"
                                     : `Download for ${selectedTargetLabel}`}
                                 </p>
-                                <p className="text-xs text-text-muted">
+                                <p className="get-freed-launch-cta__subtitle text-xs text-text-muted">
                                   {isWebTarget
                                     ? "Open the mobile reader instantly in your browser"
                                     : "Runs in background to subscribe and monitor"}
@@ -822,7 +749,7 @@ export default function NewsletterModal() {
                             <button
                               onClick={() => setDropdownOpen((o) => !o)}
                               aria-label="Choose a different platform"
-                              className="shrink-0 self-stretch border-l border-freed-border px-3 text-text-muted transition-colors hover:text-text-primary"
+                              className="get-freed-launch-cta__toggle shrink-0 self-stretch border-l border-freed-border px-3 text-text-muted transition-colors hover:text-text-primary"
                             >
                               <svg
                                 className={`w-4 h-4 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
@@ -856,7 +783,7 @@ export default function NewsletterModal() {
                             <button
                               type="button"
                               onClick={handleOpenFreedWeb}
-                              data-testid="website-legal-open-web-app"
+                              data-testid="website-open-web-app"
                               className="inline-flex items-center gap-2 rounded-lg bg-transparent px-2 py-1.5 text-sm text-text-muted underline decoration-current underline-offset-4 transition-colors hover:bg-[rgb(var(--theme-control-accent-rgb)/0.08)] hover:text-text-primary"
                             >
                               <svg

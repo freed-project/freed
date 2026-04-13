@@ -23,7 +23,7 @@ export default function Hero() {
   }, []);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(max-width: 639px)");
+    const mediaQuery = window.matchMedia("(max-width: 1023px)");
     const updateCompactHero = () => setCompactHeroAnimation(mediaQuery.matches);
     updateCompactHero();
     mediaQuery.addEventListener("change", updateCompactHero);
@@ -31,7 +31,7 @@ export default function Hero() {
   }, []);
 
   return (
-    <section className="relative min-h-viewport-safe flex items-start justify-center px-8 sm:px-6 pb-8 pt-24 sm:pb-16 md:pt-[clamp(7rem,_25vh,_50rem)]">
+    <section className="relative min-h-viewport-safe flex items-start justify-center px-8 sm:px-6 pb-8 pt-24 sm:pb-16 lg:pt-[clamp(7rem,_25vh,_50rem)]">
       {/* Open Source badge - aligned with nav container right edge, hidden on mobile */}
       <div className="hidden lg:block absolute top-20 left-0 right-0 mt-4 px-4 sm:px-6">
         <div className="max-w-6xl mx-auto flex justify-end">
@@ -64,7 +64,7 @@ export default function Hero() {
           }}
           className="relative order-1 w-full lg:order-2"
           style={{
-            maxWidth: compactHeroAnimation ? "212px" : "425px",
+            maxWidth: compactHeroAnimation ? "282px" : "425px",
             margin: "0 auto",
           }}
         >
@@ -81,7 +81,7 @@ export default function Hero() {
           }}
           className="order-2 text-center lg:order-1 lg:pl-10 lg:text-left"
         >
-          <h1 className="theme-display-large mb-6 text-4xl font-bold leading-[1.05] sm:mb-12 sm:text-5xl md:text-6xl lg:-ml-2 lg:text-7xl">
+          <h1 className="theme-display-large mb-6 text-4xl font-bold leading-[1.05] sm:mb-12 sm:text-5xl lg:-ml-2 lg:text-7xl">
             <span className="text-text-primary">Take Back</span>
             <br />
             <span className="text-text-primary">Your </span>
@@ -132,7 +132,7 @@ export default function Hero() {
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="btn-secondary hero-manifesto-button text-base px-8 py-3 w-full"
+                className="btn-secondary text-base px-8 py-3 w-full"
               >
                 Read the Manifesto
               </motion.button>

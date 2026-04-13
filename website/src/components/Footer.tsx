@@ -5,11 +5,11 @@ export default function Footer() {
   return (
     <footer
       aria-label="Site footer"
-      className="relative z-10 border-t border-freed-border bg-freed-black px-8 pt-8 sm:px-8 sm:pt-12 md:px-12 lg:px-8"
+      className="relative z-10 border-t border-freed-border bg-freed-black px-8 pt-8 sm:px-8 sm:pt-12 lg:px-8 xl:px-12"
       style={{ paddingBottom: "calc(2rem + env(safe-area-inset-bottom))" }}
     >
       <div className="max-w-6xl mx-auto">
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
           {/* Brand */}
           <div>
             <Link
@@ -34,7 +34,7 @@ export default function Footer() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-8 md:contents">
+          <div className="grid grid-cols-2 gap-8 lg:contents">
             {/* Links */}
             <div>
               <h4 className="text-text-primary font-semibold mb-4">Product</h4>
@@ -116,7 +116,7 @@ export default function Footer() {
         </div>
 
         {/* Bottom */}
-        <div className="mt-12 pt-8 border-t border-freed-border flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
+        <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-freed-border pt-8 text-center lg:flex-row lg:text-left">
           <p className="text-text-muted text-sm">
             &copy; 2025-{new Date().getFullYear()} Freed contributors. Open source under MIT
             License.

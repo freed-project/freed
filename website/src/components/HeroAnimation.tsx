@@ -302,12 +302,30 @@ export default function HeroAnimation({
   const { themeId } = useTheme();
   const logos = useMemo(() => buildLogos(), []);
   const particles = useParticleSystem(logos);
-  const platformRadius = compact ? 26 : 22;
-  const platformIconSize = compact ? 24 : 20;
+  const viewBoxInset = compact ? 78 : 50;
+  const viewBoxMin = -viewBoxInset;
+  const viewBoxSize = 400 + viewBoxInset * 2;
+  const platformRadius = compact ? 39 : 22;
+  const platformIconSize = compact ? 36 : 20;
+  const centerGlowRadius = compact ? 69 : 55;
+  const centerGlowExpandedRadius = compact ? 78 : 62;
+  const centerGlowOpacity = compact ? 0.11 : 0.08;
+  const centerGlowExpandedOpacity = compact ? 0.18 : 0.15;
+  const centerBoxSize = compact ? 112.5 : 90;
+  const centerBoxInset = CENTER - centerBoxSize / 2;
+  const centerBoxRadius = compact ? 20 : 16;
+  const centerStrokeWidth = compact ? 3.75 : 3;
+  const centerFontSize = compact ? 60 : 48;
+  const centerTextY = compact ? 221 : 215;
+  const pulseStrokeWidth = compact ? 2.5 : 2;
 
   return (
     <div className="relative w-full aspect-square">
-      <svg key={themeId} viewBox="-50 -50 500 500" className="w-full h-full">
+      <svg
+        key={themeId}
+        viewBox={`${viewBoxMin} ${viewBoxMin} ${viewBoxSize} ${viewBoxSize}`}
+        className="w-full h-full"
+      >
         <defs>
           <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="var(--theme-accent-primary)" stopOpacity="0.3" />
@@ -453,11 +471,18 @@ export default function HeroAnimation({
         <motion.circle
           cx={CENTER}
           cy={CENTER}
-          r="55"
+          r={centerGlowRadius}
           fill="url(#centerGradient)"
-          opacity="0.08"
+          opacity={centerGlowOpacity}
           filter="url(#glow)"
-          animate={{ r: [55, 62, 55], opacity: [0.08, 0.15, 0.08] }}
+          animate={{
+            r: [centerGlowRadius, centerGlowExpandedRadius, centerGlowRadius],
+            opacity: [
+              centerGlowOpacity,
+              centerGlowExpandedOpacity,
+              centerGlowOpacity,
+            ],
+          }}
           transition={{
             duration: slowHeroMotion(2),
             repeat: Infinity,
@@ -467,30 +492,30 @@ export default function HeroAnimation({
 
         {/* Center box */}
         <rect
-          x="155"
-          y="155"
-          width="90"
-          height="90"
-          rx="16"
+          x={centerBoxInset}
+          y={centerBoxInset}
+          width={centerBoxSize}
+          height={centerBoxSize}
+          rx={centerBoxRadius}
           fill="var(--theme-platform-surface-fill)"
         />
         <rect
-          x="155"
-          y="155"
-          width="90"
-          height="90"
-          rx="16"
+          x={centerBoxInset}
+          y={centerBoxInset}
+          width={centerBoxSize}
+          height={centerBoxSize}
+          rx={centerBoxRadius}
           fill="none"
           stroke="url(#centerGradient)"
-          strokeWidth="3"
+          strokeWidth={centerStrokeWidth}
           filter="url(#glow)"
         />
         <text
           x={CENTER}
-          y="215"
+          y={centerTextY}
           textAnchor="middle"
           fill="var(--theme-text-primary)"
-          fontSize="48"
+          fontSize={centerFontSize}
           fontWeight="bold"
           fontFamily="system-ui"
         >
@@ -501,14 +526,14 @@ export default function HeroAnimation({
         {[1, 2, 3].map((i) => (
           <motion.rect
             key={i}
-            x="155"
-            y="155"
-            width="90"
-            height="90"
-            rx="16"
+            x={centerBoxInset}
+            y={centerBoxInset}
+            width={centerBoxSize}
+            height={centerBoxSize}
+            rx={centerBoxRadius}
             fill="none"
             stroke="var(--theme-accent-secondary)"
-            strokeWidth="2"
+            strokeWidth={pulseStrokeWidth}
             animate={{ scale: [1, 1.8 + i * 0.3], opacity: [0.6, 0] }}
             transition={{
               duration: slowHeroMotion(2.5),
