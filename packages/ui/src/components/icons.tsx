@@ -160,6 +160,20 @@ export function UsersIcon({ className = "w-4 h-4", style }: IconProps) {
   );
 }
 
+/** Contact card with profile and address rows for Google Contacts. */
+export function GoogleContactsIcon({ className = "w-4 h-4", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
+      <rect x="4" y="3.5" width="16" height="17" rx="2.5" />
+      <path d="M8.75 9a2.25 2.25 0 104.5 0 2.25 2.25 0 00-4.5 0z" />
+      <path d="M7.75 14c.83-1.25 2.12-1.88 3.75-1.88S14.42 12.75 15.25 14" />
+      <path d="M16.5 8.25h1.75" />
+      <path d="M16.5 11.25h1.75" />
+      <path d="M8 17.25h10.25" />
+    </svg>
+  );
+}
+
 /** Reddit alien head (Simple Icons path). */
 export function RedditIcon({ className = "w-4 h-4", style }: IconProps) {
   return (

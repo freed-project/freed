@@ -42,6 +42,7 @@ import { SettingsToggle } from "./SettingsToggle.js";
 import { ReportComposer } from "./report/ReportComposer.js";
 import { SearchField } from "./SearchField.js";
 import { ThemePreviewButton } from "./ThemePreviewButton.js";
+import { GoogleContactsIcon } from "./icons.js";
 
 const SAMPLE_SEED_FEED_COUNT = 10;
 const SAMPLE_SEED_ITEM_COUNT = 155;
@@ -229,11 +230,7 @@ const ICONS: Record<SectionId, ReactNode> = {
     </svg>
   ),
   googleContacts: (
-    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a4 4 0 10-6 3.465V17a1 1 0 001 1h4a1 1 0 001-1v-2.535A4 4 0 0015 11z" />
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20h6" />
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18 8h3M3 8h3M16.95 3.05l2.12-2.12M4.93 5.17L2.81 3.05" />
-    </svg>
+    <GoogleContactsIcon />
   ),
 };
 
