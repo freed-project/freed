@@ -15,7 +15,7 @@ html[data-theme="neon"] {
   --theme-bg-root: #0a0a0a;
   --theme-bg-deep: #0f0f15;
   --theme-bg-surface: #14141b;
-  --theme-bg-elevated: rgba(21, 21, 30, 0.9);
+  --theme-bg-elevated: #15151e;
   --theme-bg-card: rgba(255, 255, 255, 0.035);
   --theme-bg-card-hover: rgba(255, 255, 255, 0.06);
   --theme-bg-input: rgba(255, 255, 255, 0.05);
@@ -171,7 +171,7 @@ html[data-theme="midas"] {
   --theme-bg-root: #2b231d;
   --theme-bg-deep: #352b23;
   --theme-bg-surface: #3e3229;
-  --theme-bg-elevated: rgb(55 45 36 / 0.92);
+  --theme-bg-elevated: rgb(55 45 36);
   --theme-bg-card: rgb(243 233 218 / 0.04);
   --theme-bg-card-hover: rgb(243 233 218 / 0.07);
   --theme-bg-input: rgb(243 233 218 / 0.06);
@@ -287,7 +287,7 @@ html[data-theme="ember"] {
   --theme-bg-root: #180f0d;
   --theme-bg-deep: #221411;
   --theme-bg-surface: #2a1a16;
-  --theme-bg-elevated: rgb(39 24 20 / 0.93);
+  --theme-bg-elevated: rgb(39 24 20);
   --theme-bg-card: rgb(255 237 220 / 0.03);
   --theme-bg-card-hover: rgb(255 237 220 / 0.05);
   --theme-bg-input: rgb(255 237 220 / 0.05);
@@ -405,7 +405,7 @@ html[data-theme="scriptorium"] {
   --theme-bg-root: #f4ead7;
   --theme-bg-deep: #ece0ca;
   --theme-bg-surface: #f8efdf;
-  --theme-bg-elevated: rgb(250 242 228 / 0.96);
+  --theme-bg-elevated: rgb(250 242 228);
   --theme-bg-card: rgb(255 251 244 / 0.76);
   --theme-bg-card-hover: rgb(255 251 244 / 0.9);
   --theme-bg-input: rgb(255 249 239 / 0.88);
@@ -969,12 +969,7 @@ html[data-theme="scriptorium"] .phase-card-complete {
       var(--theme-border-strong) 48%,
       var(--theme-border-subtle)
     );
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--theme-bg-surface) 82%, white) 0%,
-    color-mix(in oklab, var(--theme-bg-surface) 96%, white) 22%,
-    color-mix(in oklab, var(--theme-bg-surface) 88%, black) 100%
-  );
+  background: color-mix(in oklab, var(--theme-bg-surface) 94%, black);
   color: var(--theme-text-primary);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.06),
@@ -986,11 +981,7 @@ html[data-theme="scriptorium"] .phase-card-complete {
 }
 
 html[data-theme="scriptorium"] .theme-tooltip-panel {
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--theme-bg-surface) 88%, white) 0%,
-    color-mix(in oklab, var(--theme-bg-surface) 96%, black) 100%
-  );
+  background: color-mix(in oklab, var(--theme-bg-surface) 96%, black);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.03),
     0 10px 26px rgb(84 58 35 / 0.08);
@@ -1488,7 +1479,7 @@ html[data-theme="scriptorium"] .theme-topbar {
     color-mix(in oklab, var(--theme-border-subtle) 70%, transparent);
   background:
     linear-gradient(180deg, rgb(255 255 255 / 0.045), transparent 18%),
-    color-mix(in oklab, var(--theme-bg-elevated) 86%, transparent);
+    var(--theme-bg-elevated);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.06),
     inset 0 0 0 0.5px rgb(255 255 255 / 0.028),
@@ -1628,6 +1619,40 @@ html[data-theme="scriptorium"] .btn-primary:hover {
 
 .btn-primary:active {
   transform: scale(0.985);
+}
+
+.nav-mobile-cta.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: max-content;
+  margin-block: 0;
+  padding: 0.32rem 0.9rem;
+  line-height: 1;
+  border-radius: var(--button-radius);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 8px 18px rgb(0 0 0 / 0.22);
+  transition:
+    box-shadow 0.2s ease,
+    filter 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.nav-mobile-cta.btn-primary:hover,
+.nav-mobile-cta.btn-primary:active {
+  transform: none;
+  border-radius: var(--button-radius);
+}
+
+.newsletter-modal .btn-primary:hover,
+.newsletter-modal .btn-primary:active {
+  transform: none;
+}
+
+.newsletter-modal-download-cta.btn-primary {
+  border-color: rgb(255 255 255 / 0.08);
+  box-shadow: var(--theme-button-primary-shadow);
 }
 
 .btn-secondary,

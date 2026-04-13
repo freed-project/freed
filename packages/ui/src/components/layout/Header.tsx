@@ -261,7 +261,7 @@ export function Header({ onMenuClick }: HeaderProps) {
                 </Tooltip>
 
                 {dropdownOpen && (
-                  <div className="absolute right-0 top-full z-50 mt-1.5 w-44 overflow-hidden rounded-xl border border-[var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_95%,transparent)] py-1 shadow-2xl shadow-black/40">
+                  <div className="absolute right-0 top-full z-50 mt-1.5 w-44 overflow-hidden rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] py-1 shadow-2xl shadow-black/40">
                     {canAddRss && (
                       <button
                         onClick={() => {

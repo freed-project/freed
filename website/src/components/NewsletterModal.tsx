@@ -168,9 +168,11 @@ export default function NewsletterModal() {
     top: number;
     left: number;
     width: number;
+    openUpward: boolean;
   } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dropdownMenuRef = useRef<HTMLUListElement>(null);
+  const modalPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSelectedTarget(detectDefaultInstallTarget());
@@ -181,6 +183,26 @@ export default function NewsletterModal() {
     setDetailsOpen(false);
     setTurnstileToken("");
     setTurnstileResetKey((current) => current + 1);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const body = document.body;
+    const root = document.documentElement;
+    const previousBodyOverflow = body.style.overflow;
+    const previousRootOverflow = root.style.overflow;
+    const previousBodyTouchAction = body.style.touchAction;
+
+    body.style.overflow = "hidden";
+    root.style.overflow = "hidden";
+    body.style.touchAction = "none";
+
+    return () => {
+      body.style.overflow = previousBodyOverflow;
+      root.style.overflow = previousRootOverflow;
+      body.style.touchAction = previousBodyTouchAction;
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -210,10 +232,34 @@ export default function NewsletterModal() {
     const updateDropdownPosition = () => {
       const rect = dropdownRef.current?.getBoundingClientRect();
       if (!rect) return;
+
+      const menuHeight =
+        dropdownMenuRef.current?.getBoundingClientRect().height || 0;
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+      const fallbackMenuHeight = 240;
+      const effectiveMenuHeight = menuHeight || fallbackMenuHeight;
+      const availableTop = 8;
+      const availableBottom = viewportHeight - 8;
+      const downSpace = availableBottom - rect.bottom - 6;
+      const upSpace = rect.top - availableTop - 6;
+      const canOpenDown = downSpace >= effectiveMenuHeight;
+      const canOpenUp = upSpace >= effectiveMenuHeight;
+      const openUpward = !canOpenDown && canOpenUp;
+      const unclampedTop = openUpward
+        ? rect.top - effectiveMenuHeight - 6
+        : rect.bottom + 6;
+      const maxTop = availableBottom - effectiveMenuHeight;
+      const minTop = availableTop;
+      const top = Math.max(minTop, Math.min(unclampedTop, maxTop));
+      const maxLeft = Math.max(8, viewportWidth - rect.width - 8);
+      const left = Math.max(8, Math.min(rect.left, maxLeft));
+
       setDropdownMenuStyle({
-        top: rect.bottom + 6,
-        left: rect.left,
-        width: rect.width,
+        top,
+        left,
+        width: Math.min(rect.width, viewportWidth - 16),
+        openUpward,
       });
     };
 
@@ -323,7 +369,7 @@ export default function NewsletterModal() {
     [company, detailsOpen, email, name, phoneNumber, state, turnstileToken],
   );
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     if (state !== "loading") {
       setState("idle");
       setErrorMessage("");
@@ -337,7 +383,22 @@ export default function NewsletterModal() {
       setTurnstileResetKey((current) => current + 1);
     }
     closeModal();
-  };
+  }, [closeModal, state]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        handleClose();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [handleClose, isOpen]);
 
   const currentDownload =
     selectedTarget === "web" ? null : DOWNLOADS[selectedTarget];
@@ -377,7 +438,26 @@ export default function NewsletterModal() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={handleClose}
+            onPointerDown={(event) => {
+              const target = event.target as Node | null;
+              const panel = modalPanelRef.current;
+
+              if (panel && target && panel.contains(target)) {
+                return;
+              }
+
+              handleClose();
+            }}
+            onTouchStart={(event) => {
+              const target = event.target as Node | null;
+              const panel = modalPanelRef.current;
+
+              if (panel && target && panel.contains(target)) {
+                return;
+              }
+
+              handleClose();
+            }}
             className="theme-elevated-overlay fixed inset-0 z-50 backdrop-blur-sm"
           />
 
@@ -389,13 +469,28 @@ export default function NewsletterModal() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ type: "spring", duration: 0.5 }}
-            className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-4 sm:items-center sm:py-6"
+            className="fixed inset-0 z-50 flex items-center justify-center px-4 pt-4 sm:items-center sm:py-6"
             style={{
               paddingTop: "calc(env(safe-area-inset-top) + 1rem)",
               paddingBottom: "calc(env(safe-area-inset-bottom) + 1rem)",
             }}
+            onPointerDown={(event) => {
+              const target = event.target as Node | null;
+              const panel = modalPanelRef.current;
+              if (panel && target && panel.contains(target)) return;
+              handleClose();
+            }}
+            onTouchStart={(event) => {
+              const target = event.target as Node | null;
+              const panel = modalPanelRef.current;
+              if (panel && target && panel.contains(target)) return;
+              handleClose();
+            }}
           >
-            <div className="theme-panel relative w-full max-w-5xl overflow-hidden rounded-2xl">
+            <div
+              ref={modalPanelRef}
+              className="newsletter-modal theme-panel relative w-full max-w-5xl overflow-hidden rounded-2xl"
+            >
               <div
                 className="absolute top-0 left-1/4 h-32 w-32 rounded-full blur-3xl"
                 style={{
@@ -412,11 +507,15 @@ export default function NewsletterModal() {
               />
 
               <button
+                type="button"
+                aria-label="Close"
                 onClick={handleClose}
-                className="absolute top-5 right-5 text-text-muted hover:text-text-primary transition-colors"
+                onPointerDown={(event) => event.stopPropagation()}
+                onTouchStart={(event) => event.stopPropagation()}
+                className="absolute top-5 right-5 z-30 inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-full bg-[color-mix(in srgb,var(--theme-bg-card) 86%,transparent)] p-0 text-text-muted transition-colors hover:text-text-primary"
               >
                 <svg
-                  className="w-6 h-6"
+                  className="h-6 w-6"
                   fill="none"
                   viewBox="0 0 24 24"
                   stroke="currentColor"
@@ -431,7 +530,7 @@ export default function NewsletterModal() {
               </button>
 
               <div
-                className="relative z-10 overflow-y-auto px-6 py-6 sm:px-10 sm:py-10 md:px-12 md:py-12"
+                className="relative z-10 overflow-y-auto px-6 pt-6 pb-8 sm:px-10 sm:pt-10 sm:pb-12 md:px-12 md:pt-12 md:pb-14"
                 style={{
                   maxHeight:
                     "calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2rem)",
@@ -525,7 +624,7 @@ export default function NewsletterModal() {
                                 <motion.button
                                   type="submit"
                                   disabled={state === "loading"}
-                                  className="btn-primary flex min-w-[8.5rem] shrink-0 items-center justify-center gap-2 px-5 py-2.5 text-sm whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-70"
+                                  className="btn-primary flex min-w-[8.5rem] shrink-0 items-center justify-center gap-2 px-5 py-2.5 text-sm whitespace-nowrap hover:!scale-100 active:!scale-100 disabled:cursor-not-allowed disabled:opacity-70"
                                 >
                                   Continue
                                 </motion.button>
@@ -632,7 +731,7 @@ export default function NewsletterModal() {
                                   <motion.button
                                     type="submit"
                                     disabled={state === "loading"}
-                                    className="btn-primary flex min-w-[12rem] items-center justify-center gap-2 px-5 py-2.5 text-sm whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-70"
+                                    className="btn-primary flex min-w-[12rem] items-center justify-center gap-2 px-5 py-2.5 text-sm whitespace-nowrap hover:!scale-100 active:!scale-100 disabled:cursor-not-allowed disabled:opacity-70"
                                   >
                                     {state === "loading" ? (
                                       <>
@@ -694,29 +793,19 @@ export default function NewsletterModal() {
 
                         <div className="relative" ref={dropdownRef}>
                           <div
-                            className="get-freed-launch-cta flex items-center rounded-xl border transition-all hover:border-[color:var(--theme-border-strong)]"
-                            style={{
-                              borderColor: "var(--theme-border-subtle)",
-                              background:
-                                "color-mix(in srgb, var(--theme-bg-surface) 62%, transparent)",
-                            }}
+                            className="newsletter-modal-download-cta btn-primary get-freed-launch-cta flex items-center rounded-xl !p-0 hover:!scale-100 active:!scale-100"
                           >
                             <button
                               type="button"
                               onClick={handlePrimaryAction}
                               data-testid="website-primary-action"
-                              className="get-freed-launch-cta__primary group flex min-w-0 flex-1 items-center gap-4 p-4"
+                              className="get-freed-launch-cta__primary group flex min-w-0 flex-1 items-center gap-4 p-4 text-left cursor-pointer"
                             >
                               <div
-                                className="get-freed-launch-cta__icon flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border"
-                                style={{
-                                  background:
-                                    "color-mix(in srgb, var(--theme-bg-surface) 88%, transparent)",
-                                  borderColor: "var(--theme-border-subtle)",
-                                }}
+                                className="get-freed-launch-cta__icon flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-white/12"
                               >
                                 <svg
-                                  className="w-5 h-5 text-text-secondary"
+                                  className="w-5 h-5 text-white"
                                   fill="none"
                                   viewBox="0 0 24 24"
                                   stroke="currentColor"
@@ -734,12 +823,12 @@ export default function NewsletterModal() {
                                 </svg>
                               </div>
                               <div className="flex-1 min-w-0 text-left">
-                                <p className="get-freed-launch-cta__title text-sm font-semibold text-text-primary transition-colors group-hover:text-text-primary">
+                                <p className="get-freed-launch-cta__title text-sm font-semibold text-white transition-colors group-hover:text-white">
                                   {isWebTarget
                                     ? "Launch Freed Web"
                                     : `Download for ${selectedTargetLabel}`}
                                 </p>
-                                <p className="get-freed-launch-cta__subtitle text-xs text-text-muted">
+                                <p className="get-freed-launch-cta__subtitle text-xs text-white/80">
                                   {isWebTarget
                                     ? "Open the mobile reader instantly in your browser"
                                     : "Runs in background to subscribe and monitor"}
@@ -747,9 +836,10 @@ export default function NewsletterModal() {
                               </div>
                             </button>
                             <button
+                              type="button"
                               onClick={() => setDropdownOpen((o) => !o)}
                               aria-label="Choose a different platform"
-                              className="get-freed-launch-cta__toggle shrink-0 self-stretch border-l border-freed-border px-3 text-text-muted transition-colors hover:text-text-primary"
+                              className="get-freed-launch-cta__toggle shrink-0 self-stretch border-l border-white/15 px-4 text-white/90 transition-colors hover:bg-white/10 hover:text-white cursor-pointer"
                             >
                               <svg
                                 className={`w-4 h-4 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
@@ -784,7 +874,7 @@ export default function NewsletterModal() {
                               type="button"
                               onClick={handleOpenFreedWeb}
                               data-testid="website-open-web-app"
-                              className="inline-flex items-center gap-2 rounded-lg bg-transparent px-2 py-1.5 text-sm text-text-muted underline decoration-current underline-offset-4 transition-colors hover:bg-[rgb(var(--theme-control-accent-rgb)/0.08)] hover:text-text-primary"
+                              className="flex w-full cursor-pointer items-center justify-start gap-2 rounded-lg bg-transparent px-3 py-2.5 text-left text-sm text-text-muted underline decoration-current underline-offset-4 transition-colors hover:bg-[rgb(var(--theme-control-accent-rgb)/0.08)] hover:text-text-primary hover:no-underline"
                             >
                               <svg
                                 aria-hidden="true"
@@ -800,7 +890,7 @@ export default function NewsletterModal() {
                                   d="M9 6l6 6-6 6M14 6l6 6-6 6"
                                 />
                               </svg>
-                              <span>Already running Freed Desktop? Launch Freed Web.</span>
+                              <span>Already running Freed Desktop? Launch Freed Web here.</span>
                             </button>
                           )}
                         </div>
@@ -817,9 +907,15 @@ export default function NewsletterModal() {
               <AnimatePresence>
                 <motion.ul
                   ref={dropdownMenuRef}
-                  initial={{ opacity: 0, y: -4 }}
+                  initial={{
+                    opacity: 0,
+                    y: dropdownMenuStyle?.openUpward ? 4 : -4,
+                  }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -4 }}
+                  exit={{
+                    opacity: 0,
+                    y: dropdownMenuStyle?.openUpward ? 4 : -4,
+                  }}
                   transition={{ duration: 0.15 }}
                   className="fixed z-[70] overflow-hidden rounded-xl border shadow-lg"
                   style={{

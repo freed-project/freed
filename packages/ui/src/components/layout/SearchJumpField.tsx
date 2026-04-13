@@ -167,7 +167,7 @@ export function SearchJumpField() {
         <div
           role="listbox"
           aria-label="Quick actions"
-          className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-xl border border-[var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_95%,transparent)] py-1 shadow-2xl shadow-black/50"
+          className="absolute left-0 right-0 top-full z-50 mt-1.5 overflow-hidden rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] py-1 shadow-2xl shadow-black/50"
         >
           {!inputValue && (
             <p className="px-3 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--theme-text-soft)]">

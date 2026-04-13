@@ -432,7 +432,7 @@ export const FeedItem = memo(function FeedItem({
             {onLike && (
               <div className="relative group/reactions">
                 {hasReactionPalette && (
-                  <div className="pointer-events-none absolute right-0 bottom-full mb-2 flex translate-y-1 rounded-xl border border-[var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_96%,transparent)] p-1 opacity-0 shadow-lg shadow-black/30 transition-all group-hover/reactions:pointer-events-auto group-hover/reactions:translate-y-0 group-hover/reactions:opacity-100 group-focus-within/reactions:pointer-events-auto group-focus-within/reactions:translate-y-0 group-focus-within/reactions:opacity-100">
+                  <div className="pointer-events-none absolute right-0 bottom-full mb-2 flex translate-y-1 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-1 opacity-0 shadow-lg shadow-black/30 transition-all group-hover/reactions:pointer-events-auto group-hover/reactions:translate-y-0 group-hover/reactions:opacity-100 group-focus-within/reactions:pointer-events-auto group-focus-within/reactions:translate-y-0 group-focus-within/reactions:opacity-100">
                     {reactions.map((reaction) => (
                       <button
                         key={reaction.label}
