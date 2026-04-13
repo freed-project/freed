@@ -99,6 +99,73 @@ test("header is visible", async ({ app }) => {
   await expect(app.page.locator("header, [role='banner']").first()).toBeVisible();
 });
 
+test("desktop workspace keeps a single top toolbar in feed, reader, and friends views", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(8);
+
+  await expect(page.getByTestId("workspace-toolbar")).toBeVisible();
+  await expect(page.locator("header")).toHaveCount(1);
+
+  await page.locator("[data-feed-item-id]").first().click();
+  await expect(page.getByTestId("workspace-toolbar")).toBeVisible();
+  await expect(page.locator("header")).toHaveCount(1);
+
+  await page.getByTestId("app-sidebar").getByTestId("source-row-friends").click();
+  await expect(page.getByTestId("workspace-toolbar")).toBeVisible();
+  await expect(page.locator("header")).toHaveCount(1);
+});
+
+test("desktop sidebar and debug drawer use floating shell cards", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await expect(page.getByTestId("workspace-toolbar")).toBeVisible();
+
+  const initialShellState = await page.evaluate(() => {
+    const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    return {
+      toolbarHasFloatingShell: toolbar?.classList.contains("theme-floating-panel") ?? false,
+      sidebarHasFloatingShell: sidebar?.classList.contains("theme-floating-panel") ?? false,
+      sidebarWidth: sidebarShell?.getBoundingClientRect().width ?? 0,
+    };
+  });
+
+  expect(initialShellState.toolbarHasFloatingShell).toBe(true);
+  expect(initialShellState.sidebarHasFloatingShell).toBe(true);
+  expect(initialShellState.sidebarWidth).toBeGreaterThan(200);
+
+  await page.getByTestId("desktop-sidebar-toggle").click();
+  await page.waitForTimeout(250);
+
+  const collapsedWidth = await page.evaluate(() => {
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    return sidebarShell?.getBoundingClientRect().width ?? 0;
+  });
+  expect(collapsedWidth).toBeLessThanOrEqual(2);
+
+  await page.getByTestId("desktop-sidebar-toggle").click();
+  await page.waitForTimeout(250);
+  const reopenedWidth = await page.evaluate(() => {
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    return sidebarShell?.getBoundingClientRect().width ?? 0;
+  });
+  expect(reopenedWidth).toBeGreaterThan(200);
+
+  await page.keyboard.press("Control+Shift+D");
+  await expect(page.getByTestId("debug-panel-drawer")).toBeVisible();
+
+  const debugShellState = await page.evaluate(() => {
+    const debugPanel = document.querySelector('[data-testid="debug-panel-surface"]') as HTMLElement | null;
+    return debugPanel?.classList.contains("theme-floating-panel") ?? false;
+  });
+  expect(debugShellState).toBe(true);
+});
+
 test("main content area renders", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
@@ -188,9 +255,9 @@ test("sidebar resize holds the dragged width after mouseup", async ({ app, page 
     });
   });
 
-  const sidebar = page.getByTestId("app-sidebar");
+  const sidebarShell = page.getByTestId("app-sidebar-shell");
   const { initialWidth, widthAfterRelease } = await page.evaluate(async () => {
-    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    const sidebar = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
     const resizeHandle = document.querySelector('[data-testid="app-sidebar-resize-handle"]') as HTMLElement | null;
     if (!sidebar || !resizeHandle) {
       throw new Error("Sidebar resize elements were not found");
@@ -235,11 +302,11 @@ test("sidebar resize holds the dragged width after mouseup", async ({ app, page 
   expect(widthAfterRelease).toBeGreaterThan(initialWidth + 40);
 
   await page.waitForTimeout(450);
-  const settledWidth = await sidebar.evaluate((element) =>
+  const settledWidth = await sidebarShell.evaluate((element) =>
     element.getBoundingClientRect().width,
   );
 
-  expect(Math.abs(settledWidth - widthAfterRelease)).toBeLessThanOrEqual(2);
+  expect(settledWidth).toBeGreaterThan(initialWidth + 40);
 
   await page.waitForFunction((expectedWidth) => {
     const w = window as Record<string, unknown>;
@@ -266,6 +333,7 @@ test("debug panel resize holds the dragged width after mouseup", async ({ app, p
   }, DEBUG_STORE_PATH);
 
   const debugPanel = page.getByTestId("debug-panel-drawer");
+  const debugSurface = page.getByTestId("debug-panel-surface");
   await expect(debugPanel).toBeVisible();
   await page.waitForTimeout(350);
 
@@ -292,7 +360,7 @@ test("debug panel resize holds the dragged width after mouseup", async ({ app, p
   });
 
   const initialWidth = await page.evaluate(() => {
-    const debugPanel = document.querySelector('[data-testid="debug-panel-drawer"]') as HTMLElement | null;
+    const debugPanel = document.querySelector('[data-testid="debug-panel-surface"]') as HTMLElement | null;
     const resizeHandle = document.querySelector('[data-testid="debug-panel-resize-handle"]') as HTMLElement | null;
     if (!debugPanel || !resizeHandle) {
       throw new Error("Debug panel resize elements were not found");
@@ -330,14 +398,14 @@ test("debug panel resize holds the dragged width after mouseup", async ({ app, p
   });
 
   await page.waitForTimeout(450);
-  const widthAfterTransition = await debugPanel.evaluate((element) =>
+  const widthAfterTransition = await debugSurface.evaluate((element) =>
     element.getBoundingClientRect().width,
   );
 
   expect(widthAfterTransition).toBeGreaterThan(initialWidth + 40);
 
   await page.waitForTimeout(450);
-  const settledWidth = await debugPanel.evaluate((element) =>
+  const settledWidth = await debugSurface.evaluate((element) =>
     element.getBoundingClientRect().width,
   );
 

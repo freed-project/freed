@@ -4,11 +4,11 @@ import { FeedList } from "./FeedList.js";
 import { ReaderView } from "./ReaderView.js";
 import { FeedItem as FeedItemCard } from "./FeedItem.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
-import { ContentHeader } from "../layout/ContentHeader.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
-import { PLATFORM_LABELS, type FeedItem, type RssFeed, type FilterOptions } from "@freed/shared";
+import type { FeedItem } from "@freed/shared";
+import { getFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
 
 // ─── Compact sidebar panel for dual-column mode ────────────────────────────
 
@@ -218,23 +218,6 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
 });
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-/** Human-readable retention message for the archive toolbar. */
-function getRetentionLabel(pruneDays: number): string {
-  if (pruneDays === 0) return "Archived content is kept forever";
-  if (pruneDays === 1) return "Archived content deleted after 1 day";
-  return `Archived content deleted after ${pruneDays} days`;
-}
-
-/** Human-readable label for the scope currently active in the sidebar. */
-function getFilterLabel(filter: FilterOptions, feeds: Record<string, RssFeed>): string {
-  if (filter.savedOnly) return "Saved";
-  if (filter.archivedOnly) return "Archived";
-  if (filter.feedUrl) return feeds[filter.feedUrl]?.title ?? "this feed";
-  if (filter.platform === "rss") return "Feeds";
-  if (filter.platform) return PLATFORM_LABELS[filter.platform as keyof typeof PLATFORM_LABELS] ?? filter.platform;
-  return "All Sources";
-}
 
 export function FeedView() {
   const { addRssFeed } = usePlatform();
@@ -485,7 +468,6 @@ export function FeedView() {
   if (showDualColumn && selectedItem) {
     return (
       <div className="h-full flex flex-col overflow-hidden">
-        <ContentHeader title={scopeLabel} subtitle={feedSubtitle} />
         {/* Archive retention toolbar — only shown in the archived view */}
         {activeFilter.archivedOnly && (
           <div className="flex-shrink-0 px-4 py-2 border-b border-[var(--theme-header-border)] flex items-center justify-between gap-4">
@@ -532,7 +514,6 @@ export function FeedView() {
 
   return (
     <div className="h-full flex flex-col">
-      <ContentHeader title={scopeLabel} subtitle={feedSubtitle} />
       {/* Archive retention toolbar — only shown in the archived view */}
       {activeFilter.archivedOnly && (
         <div className="flex-shrink-0 px-4 py-2 border-b border-[var(--theme-header-border)] flex items-center justify-between gap-4">

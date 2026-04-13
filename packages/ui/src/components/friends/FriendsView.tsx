@@ -12,7 +12,6 @@ import { FriendDetailPanel } from "./FriendDetailPanel.js";
 import { FriendEditor } from "./FriendEditor.js";
 import { SearchField } from "../SearchField.js";
 import { UsersIcon, MapPinIcon } from "../icons.js";
-import { ContentHeader } from "../layout/ContentHeader.js";
 import {
   buildFriendOverviewEntries,
   filterAndSortFriendOverview,
@@ -467,8 +466,6 @@ export function FriendsView() {
 
   return (
     <div className="app-theme-shell flex h-full flex-col overflow-hidden">
-      <ContentHeader title="Friends" />
-
       <div className={`flex min-h-0 flex-1 ${isMobile ? "flex-col" : "flex-row"}`}>
         <div className="relative min-h-0 min-w-0 flex-1">
           {friendList.length === 0 ? (

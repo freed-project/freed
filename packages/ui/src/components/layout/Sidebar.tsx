@@ -50,6 +50,7 @@ function scoreFeedMatch(feed: RssFeed, queryTerms: string[]): number {
 interface SidebarProps {
   open: boolean;
   onClose: () => void;
+  desktopExpanded?: boolean;
 }
 
 function SidebarSection({
@@ -376,7 +377,7 @@ const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
 const DEFAULT_WIDTH = 256;
 
-export function Sidebar({ open, onClose }: SidebarProps) {
+export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps) {
   const { SourceIndicator, headerDragRegion, syncRssNow, syncSourceNow, getSourceStatus } = usePlatform();
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
@@ -515,8 +516,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       const onUp = (ev: MouseEvent) => {
         dragging.current = false;
         const final = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startW + ev.clientX - startX));
-        setDragWidth(null);
         setCommittedWidth(final);
+        setDragWidth(null);
         void updatePreferences({ display: { sidebarWidth: final } } as Parameters<typeof updatePreferences>[0]);
         document.body.style.cursor = previousCursor;
         document.body.style.userSelect = previousUserSelect;
@@ -696,46 +697,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     );
   }, [activeFilter.feedUrl, setFilter, totalFeedPages]);
 
-  return (
+  const sidebarBody = (
     <>
-      {/* Mobile overlay */}
-      {open && (
-        <div
-          className="fixed inset-0 bg-black/60 z-40 md:hidden"
-          onClick={onClose}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside
-        data-testid="app-sidebar"
-        className={`
-          fixed inset-y-0 left-0 md:relative z-50 md:z-auto
-          h-full
-          bg-[color-mix(in_oklab,var(--theme-bg-root)_88%,transparent)] md:bg-[color-mix(in_oklab,var(--theme-bg-deep)_88%,transparent)]
-          border-r border-[var(--theme-border-subtle)]
-          transform transition-transform duration-200 ease-in-out
-          ${open ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-          flex flex-col min-h-0
-        `}
-        style={{ width: `${width}px` }}
+      <nav
+        className="flex-1 min-h-0 flex flex-col px-4 pt-4 overflow-y-auto minimal-scroll"
+        style={{ paddingBottom: "calc(1rem + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))" }}
       >
-        {/* Mobile header with close button */}
-        <div className="md:hidden flex shrink-0 items-center justify-between border-b border-[var(--theme-border-subtle)] p-4 pt-[calc(env(safe-area-inset-top)+1rem)]">
-          {!headerDragRegion && (
-            <span className="text-lg font-bold gradient-text font-logo">FREED</span>
-          )}
-          <button onClick={onClose} className="ml-auto rounded-lg p-2 transition-colors hover:bg-[var(--theme-bg-muted)]">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <nav
-          className="flex-1 min-h-0 flex flex-col px-4 pt-4 overflow-y-auto minimal-scroll"
-          style={{ paddingBottom: 'calc(1rem + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))' }}
-        >
           <SearchJumpField />
 
           <ul className="flex flex-col gap-1">
@@ -1283,14 +1250,63 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               <span>Settings</span>
             </button>
           </div>
-        </nav>
+      </nav>
 
-        {/* Resize handle — desktop only */}
+      <div
+        data-testid="app-sidebar-resize-handle"
+        className="hidden md:block absolute top-0 right-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.3)] active:bg-[rgb(var(--theme-accent-secondary-rgb)/0.5)]"
+        onMouseDown={handleDragStart}
+      />
+    </>
+  );
+
+  return (
+    <>
+      {open && (
         <div
-          data-testid="app-sidebar-resize-handle"
-          className="hidden md:block absolute top-0 right-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.3)] active:bg-[rgb(var(--theme-accent-secondary-rgb)/0.5)]"
-          onMouseDown={handleDragStart}
+          className="fixed inset-0 z-40 bg-black/60 md:hidden"
+          onClick={onClose}
         />
+      )}
+
+      <div
+        data-testid="app-sidebar-shell"
+        className="hidden md:flex flex-none overflow-hidden"
+        style={{
+          width: desktopExpanded ? width : 0,
+          opacity: desktopExpanded ? 1 : 0,
+          transition: dragging.current ? "none" : "width 220ms ease, opacity 180ms ease",
+        }}
+      >
+        <aside
+          data-testid="app-sidebar"
+          className="theme-floating-panel relative z-10 flex h-full min-h-0 flex-col overflow-hidden"
+          style={{ width: `${width}px` }}
+        >
+          {sidebarBody}
+        </aside>
+      </div>
+
+      <aside
+        data-testid="app-sidebar-mobile"
+        className={`
+          fixed inset-y-0 left-0 z-50 flex min-h-0 h-full flex-col overflow-hidden bg-[color-mix(in_oklab,var(--theme-bg-root)_88%,transparent)]
+          transform transition-transform duration-200 ease-in-out md:hidden
+          ${open ? "translate-x-0" : "-translate-x-full"}
+        `}
+        style={{ width: `${width}px` }}
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-[var(--theme-border-subtle)] p-4 pt-[calc(env(safe-area-inset-top)+1rem)]">
+          {!headerDragRegion && (
+            <span className="text-lg font-bold gradient-text font-logo">FREED</span>
+          )}
+          <button onClick={onClose} className="ml-auto rounded-lg p-2 transition-colors hover:bg-[var(--theme-bg-muted)]">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        {sidebarBody}
       </aside>
 
       <SettingsDialog open={showSettings} onClose={closeSettings} />
