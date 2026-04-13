@@ -1068,6 +1068,33 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
   });
 });
 
+test("Friends view uses the floating detail drawer shell", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+
+  await page.getByRole("button", { name: /^Friends\b/ }).click();
+  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
+
+  const shellState = await page.evaluate(() => {
+    const sidebar = document.querySelector('[data-testid="friends-sidebar"]') as HTMLElement | null;
+    const shell = document.querySelector('[data-testid="friends-sidebar-shell"]') as HTMLElement | null;
+    const handle = document.querySelector('[aria-label="Resize friends sidebar"]') as HTMLElement | null;
+
+    return {
+      sidebarIsFloating: sidebar?.classList.contains("theme-floating-panel") ?? false,
+      shellWidth: shell?.getBoundingClientRect().width ?? 0,
+      sidebarWidth: sidebar?.getBoundingClientRect().width ?? 0,
+      handleUsesGapGrip: handle?.classList.contains("theme-resize-gap-handle") ?? false,
+    };
+  });
+
+  expect(shellState.sidebarIsFloating).toBe(true);
+  expect(shellState.handleUsesGapGrip).toBe(true);
+  expect(shellState.shellWidth).toBeGreaterThan(shellState.sidebarWidth);
+});
+
 // ---------------------------------------------------------------------------
 // Settings panel
 // ---------------------------------------------------------------------------

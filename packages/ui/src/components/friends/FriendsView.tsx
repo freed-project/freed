@@ -148,6 +148,7 @@ export function FriendsView() {
   const [activeFilters, setActiveFilters] = useState<Set<FriendOverviewFilter>>(new Set());
   const [sortBy, setSortBy] = useState<FriendOverviewSort>("recent_activity");
   const [dragWidth, setDragWidth] = useState<number | null>(null);
+  const [committedSidebarWidth, setCommittedSidebarWidth] = useState(savedSidebarWidth);
 
   const graphRef = useRef<FriendGraphHandle>(null);
   const isDraggingSidebar = useRef(false);
@@ -188,7 +189,12 @@ export function FriendsView() {
     [activeFilters, overviewEntries, searchQuery, sortBy]
   );
 
-  const sidebarWidth = dragWidth ?? savedSidebarWidth;
+  useEffect(() => {
+    if (isDraggingSidebar.current || dragWidth !== null) return;
+    setCommittedSidebarWidth(savedSidebarWidth);
+  }, [dragWidth, savedSidebarWidth]);
+
+  const sidebarWidth = dragWidth ?? committedSidebarWidth;
   const handleSelectFriend = useCallback((friend: Friend, focusGraph: boolean = false) => {
     setSelectedId(friend.id);
     setSelectedFriend(friend.id);
@@ -269,6 +275,11 @@ export function FriendsView() {
     isDraggingSidebar.current = true;
     const startX = event.clientX;
     const startWidth = sidebarWidth;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
 
     const onMove = (moveEvent: MouseEvent) => {
       if (!isDraggingSidebar.current) return;
@@ -284,8 +295,11 @@ export function FriendsView() {
         MAX_SIDEBAR_WIDTH,
         Math.max(MIN_SIDEBAR_WIDTH, startWidth - (upEvent.clientX - startX))
       );
+      setCommittedSidebarWidth(finalWidth);
       setDragWidth(null);
       void updatePreferences({ display: { friendsSidebarWidth: finalWidth } } as Parameters<typeof updatePreferences>[0]);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     };
@@ -508,13 +522,28 @@ export function FriendsView() {
           />
         )}
 
-        <aside
-          data-testid="friends-sidebar"
-          className={`${isMobile ? "h-[46dvh] w-full border-t" : "shrink-0 border-l"} theme-dialog-divider overflow-hidden bg-[color:color-mix(in_oklab,var(--theme-bg-deep)_88%,transparent)] backdrop-blur-xl`}
-          style={isMobile ? undefined : { width: `${sidebarWidth}px` }}
-        >
-          {selectedFriend ? renderSelectedSidebar() : renderOverviewSidebar()}
-        </aside>
+        {isMobile ? (
+          <aside
+            data-testid="friends-sidebar"
+            className="theme-dialog-divider h-[46dvh] w-full overflow-hidden border-t bg-[color:color-mix(in_oklab,var(--theme-bg-deep)_88%,transparent)] backdrop-blur-xl"
+          >
+            {selectedFriend ? renderSelectedSidebar() : renderOverviewSidebar()}
+          </aside>
+        ) : (
+          <div
+            data-testid="friends-sidebar-shell"
+            className="flex shrink-0 overflow-hidden"
+            style={{ width: `${sidebarWidth + 12}px` }}
+          >
+            <aside
+              data-testid="friends-sidebar"
+              className="theme-floating-panel flex h-full min-h-0 w-full flex-col overflow-hidden"
+              style={{ width: `${sidebarWidth}px` }}
+            >
+              {selectedFriend ? renderSelectedSidebar() : renderOverviewSidebar()}
+            </aside>
+          </div>
+        )}
       </div>
 
       {editorTarget !== null && (
