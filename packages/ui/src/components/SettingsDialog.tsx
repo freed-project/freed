@@ -278,25 +278,25 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const sectionById = Object.fromEntries(allSections.map((s) => [s.id, s])) as Record<SectionId, Section>;
   const navStructure: NavStructureItem[] = [
     sectionById.appearance,
-    sectionById.legal,
-    sectionById.support,
     sectionById.sync,
     {
       kind: "group",
       label: "Sources",
       icon: ICON_SOURCES,
       children: [
-        sectionById.saved,
         sectionById.feeds,
         ...(XSettingsContent ? [sectionById.x] : []),
         ...(FacebookSettingsContent ? [sectionById.facebook] : []),
         ...(InstagramSettingsContent ? [sectionById.instagram] : []),
         ...(LinkedInSettingsContent ? [sectionById.linkedin] : []),
         ...(GoogleContactsSettingsContent ? [sectionById.googleContacts] : []),
+        sectionById.saved,
       ],
     },
     // sectionById.ai, // AI coming soon -- do not delete
     ...(checkForUpdates ? [sectionById.updates] : []),
+    sectionById.legal,
+    sectionById.support,
     ...(factoryReset ? [sectionById.danger] : []),
   ];
 
