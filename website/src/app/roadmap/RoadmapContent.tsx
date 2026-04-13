@@ -703,7 +703,7 @@ const phases: Phase[] = [
       "Marketing site, QR gallery, monorepo, Automerge schema, CI/CD, public legal docs with download clickwrap, and a protected newsletter signup flow.",
     status: "complete",
     planLink:
-      "https://github.com/freed-project/freed/blob/main/docs/PHASE-1-FOUNDATION.md",
+      "https://github.com/freed-project/freed/blob/dev/docs/PHASE-1-FOUNDATION.md",
   },
   {
     number: 2,
@@ -712,7 +712,7 @@ const phases: Phase[] = [
       "RSS and X capture complete. Freed Markdown import/export, batch library management.",
     status: "complete",
     planLink:
-      "https://github.com/freed-project/freed/blob/main/docs/PHASE-2-CAPTURE-SKILLS.md",
+      "https://github.com/freed-project/freed/blob/dev/docs/PHASE-2-CAPTURE-SKILLS.md",
   },
   {
     number: 3,
@@ -721,7 +721,7 @@ const phases: Phase[] = [
       "Save any URL from desktop or mobile. Full offline reading with layered content cache. AI summarization and tag navigation.",
     status: "complete",
     planLink:
-      "https://github.com/freed-project/freed/blob/main/docs/PHASE-3-SAVE-FOR-LATER.md",
+      "https://github.com/freed-project/freed/blob/dev/docs/PHASE-3-SAVE-FOR-LATER.md",
   },
   {
     number: 4,
@@ -730,26 +730,26 @@ const phases: Phase[] = [
       "Local relay and GDrive/Dropbox sync are working, with cloud health diagnostics, retry and reconnect actions, debug charts, and desktop snapshot restore. iCloud remains the open item.",
     status: "current",
     planLink:
-      "https://github.com/freed-project/freed/blob/main/docs/PHASE-4-SYNC.md",
+      "https://github.com/freed-project/freed/blob/dev/docs/PHASE-4-SYNC.md",
   },
   {
     number: 5,
     title: "Desktop & Mobile App",
     description:
-      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, first-run legal gating, provider risk interstitials, browser-style back and forward shortcuts, local snapshot rollback for disaster recovery, a provider health dashboard, failing-feed unsubscribe tools, renderer heartbeat diagnostics in the local log, reviewed cumulative release headings, paginated changelog history, and public-safe bug reporting.",
+      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, a Freed-owned updater endpoint, local production or dev release-channel switching, first-run legal gating, provider risk interstitials, browser-style back and forward shortcuts, local snapshot rollback for disaster recovery, a provider health dashboard, failing-feed unsubscribe tools, renderer heartbeat diagnostics in the local log, reviewed cumulative release headings, paginated changelog history, and public-safe bug reporting.",
     status: "current",
     priority: true,
     planLink:
-      "https://github.com/freed-project/freed/blob/main/docs/PHASE-5-DESKTOP.md",
+      "https://github.com/freed-project/freed/blob/dev/docs/PHASE-5-DESKTOP.md",
   },
   {
     number: 6,
     title: "PWA Reader",
     description:
-      "Primary mobile surface with first-run legal gating, URL-backed view state, and public-safe bug reporting. Read your feed anywhere, synced to Freed Desktop.",
+      "Primary mobile surface with first-run legal gating, URL-backed view state, public-safe bug reporting, and switchable production or dev update channels across `app.freed.wtf` and `dev-app.freed.wtf`.",
     status: "complete",
     planLink:
-      "https://github.com/freed-project/freed/blob/main/docs/PHASE-6-PWA.md",
+      "https://github.com/freed-project/freed/blob/dev/docs/PHASE-6-PWA.md",
   },
   {
     number: 7,
@@ -758,7 +758,7 @@ const phases: Phase[] = [
       "Facebook and Instagram integrated via Tauri WebView scraping, with suggested-post filtering, hardened story capture, silent background media guarding, serialized background scraper sessions, Facebook group controls, provider health summaries, and smart backoff when sync looks rate-limited.",
     status: "current",
     planLink:
-      "https://github.com/freed-project/freed/blob/main/docs/PHASE-7-SOCIAL-CAPTURE.md",
+      "https://github.com/freed-project/freed/blob/dev/docs/PHASE-7-SOCIAL-CAPTURE.md",
   },
   {
     number: 8,
@@ -767,7 +767,7 @@ const phases: Phase[] = [
       "A friend CRM with a stable pan-and-zoom graph workspace, a permanent resizable reconnect sidebar, Google Contacts sync and review, shared purple avatar styling across Friends and Map, and a dark map that shows each friend's latest known location with time-aware popovers. Unify profiles across platforms into one identity per person, track relationship health, restore Google contact matches from desktop snapshots, and keep growing the map into a richer view of where friends were, are, and plan to be.",
     status: "current",
     planLink:
-      "https://github.com/freed-project/freed/blob/main/docs/PHASE-8-FRIENDS.md",
+      "https://github.com/freed-project/freed/blob/dev/docs/PHASE-8-FRIENDS.md",
   },
   {
     number: 9,
@@ -776,7 +776,7 @@ const phases: Phase[] = [
       "Chrome, Firefox, and Safari extensions. Quick saves and Ulysses mode.",
     status: "upcoming",
     planLink:
-      "https://github.com/freed-project/freed/blob/main/docs/PHASE-9-BROWSER-EXTENSION.md",
+      "https://github.com/freed-project/freed/blob/dev/docs/PHASE-9-BROWSER-EXTENSION.md",
   },
   {
     number: 10,
@@ -785,7 +785,7 @@ const phases: Phase[] = [
       "Onboarding, statistics, AI features, plugin API, community infrastructure, and deeper crash recovery hardening.",
     status: "upcoming",
     planLink:
-      "https://github.com/freed-project/freed/blob/main/docs/PHASE-10-POLISH.md",
+      "https://github.com/freed-project/freed/blob/dev/docs/PHASE-10-POLISH.md",
   },
   {
     number: 11,
@@ -794,7 +794,7 @@ const phases: Phase[] = [
       'Headless capture for power users via OpenClaw CLI. Plus bidirectional Omi wearable integration: say "Hey Freed" to save a voice note, and your reading activity enriches Omi\'s memory.',
     status: "upcoming",
     planLink:
-      "https://github.com/freed-project/freed/blob/main/docs/PHASE-11-OPENCLAW.md",
+      "https://github.com/freed-project/freed/blob/dev/docs/PHASE-11-OPENCLAW.md",
   },
   {
     number: 12,
@@ -803,7 +803,7 @@ const phases: Phase[] = [
       "LinkedIn is in, including matching desktop scraper window controls, silent background media guarding, and the shared provider health and pause-state surfaces. Next up: Mozi for social planning, then TikTok, Threads, Bluesky, Reddit, and YouTube.",
     status: "current",
     planLink:
-      "https://github.com/freed-project/freed/blob/main/docs/PHASE-12-ADDITIONAL-PLATFORMS.md",
+      "https://github.com/freed-project/freed/blob/dev/docs/PHASE-12-ADDITIONAL-PLATFORMS.md",
   },
   {
     number: 13,
@@ -812,7 +812,7 @@ const phases: Phase[] = [
       "Compose and publish through your own site. Complete the sovereignty loop.",
     status: "upcoming",
     planLink:
-      "https://github.com/freed-project/freed/blob/main/docs/PHASE-13-POSSE.md",
+      "https://github.com/freed-project/freed/blob/dev/docs/PHASE-13-POSSE.md",
   },
 ];
 

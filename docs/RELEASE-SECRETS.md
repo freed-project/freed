@@ -62,8 +62,8 @@ Options:
 ## Automatic website + PWA deploys
 
 `VERCEL_TOKEN` is required if you want the release workflow to deploy
-`freed.wtf` and `app.freed.wtf` automatically after a desktop release is
-published.
+`freed.wtf` and `app.freed.wtf` automatically after a production desktop
+release is published.
 
 Without it, the release still completes and publishes on GitHub, but the
 workflow will skip the website and PWA deploy steps.
@@ -73,7 +73,8 @@ workflow will skip the website and PWA deploy steps.
 `./scripts/release.sh` now prepares a release in two stages:
 
 ```bash
-./scripts/release.sh
+./scripts/release.sh --channel=production
+./scripts/release.sh --channel=dev
 ```
 
 That command:
@@ -92,7 +93,7 @@ Review and edit:
 
 - `release-notes/releases/vX.Y.Z.json`
 - `release-notes/releases/vX.Y.Z.md`
-- `release-notes/daily/YY.M.D.json`
+- `release-notes/daily/<channel>/YY.M.D.json`
 
 Set `"approved": true` in the release JSON once the copy is ready, then commit
 that review change.
@@ -119,7 +120,7 @@ render release bullets inside the install toast.
 ## How to publish a reviewed release
 
 ```bash
-./scripts/release.sh 26.4.107
+./scripts/release.sh 26.4.107 --channel=production
 # review the generated release-notes files
 git add release-notes
 git commit -m "docs: review release notes for v26.4.107"
@@ -132,12 +133,15 @@ creates a **draft** GitHub Release using the approved checked-in release body.
 After all platform builds succeed, the workflow publishes that release
 automatically.
 
-If `VERCEL_TOKEN` is configured, the workflow then:
+If `VERCEL_TOKEN` is configured, production releases then:
 
 - redeploys `website/` so `freed.wtf/changelog` rebuilds its checked-in
   snapshot against the published GitHub release
 - deploys `packages/pwa/` so the PWA version stays aligned with the shipped
   desktop release
+
+Dev releases are published as GitHub prereleases with a `-dev` suffix and do
+not trigger the production Vercel deploy steps.
 
 The in-app updater will pick the new GitHub release up automatically.
 

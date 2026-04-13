@@ -9,16 +9,17 @@
 #   ./scripts/worktree-cleanup.sh --yes    # non-interactive: removes everything
 #
 # How it works:
-#   1. Lists every git worktree (except the primary one on main).
+#   1. Lists every git worktree except the primary one.
 #   2. For each worktree's branch, checks whether a PR with that head branch
 #      has been merged on GitHub (via `gh pr list --state merged`).
 #   3. If merged, removes the worktree directory and force-deletes the local
 #      branch.
 #
 # Why -D (force) instead of -d for branch deletion:
-#   Squash merges create a new commit hash on main. The original branch commits
-#   are never reachable from main's history, so git -d always rejects them
-#   even though the content is already shipped. -D is correct here.
+#   Squash merges create a new commit hash on the target branch. The original
+#   branch commits are never reachable from the target branch history, so
+#   git -d always rejects them even though the content is already shipped.
+#   -D is correct here.
 
 set -euo pipefail
 
@@ -87,7 +88,8 @@ for i in "${!PATHS[@]}"; do
 
   if confirm "Remove worktree '$path' and delete branch '$branch'?"; then
     git worktree remove --force "$path"
-    # -D because squash merges leave branch commits unreachable from main.
+    # -D because squash merges leave branch commits unreachable from the
+    # target branch.
     git branch -D "$branch" 2>/dev/null || true
     echo "  Removed."
     removed=$((removed + 1))
@@ -102,7 +104,7 @@ done
 echo "Checking for stale local branches (no worktree, remote gone) ..."
 while IFS= read -r line; do
   branch=$(echo "$line" | awk '{print $1}')
-  [[ -z "$branch" || "$branch" == "main" ]] && continue
+  [[ -z "$branch" || "$branch" == "main" || "$branch" == "dev" ]] && continue
 
   pr_info=$(gh pr list --state merged --head "$branch" --json number --limit 1 2>/dev/null || true)
   pr_number=$(echo "$pr_info" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d[0]['number'] if d else '')" 2>/dev/null || true)

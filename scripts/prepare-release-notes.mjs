@@ -24,6 +24,7 @@ const REPO_ROOT = path.resolve(__dirname, "..");
 const RELEASE_NOTES_DIR = path.join(REPO_ROOT, "release-notes");
 const RELEASES_DIR = path.join(RELEASE_NOTES_DIR, "releases");
 const DAILY_DIR = path.join(RELEASE_NOTES_DIR, "daily");
+const DEV_SUFFIX = "-dev";
 
 const GITHUB_API = "https://api.github.com";
 const OPENAI_API = "https://api.openai.com/v1/chat/completions";
@@ -267,12 +268,28 @@ function releasePaths(tag) {
   };
 }
 
-function dailyPath(dayKey) {
+function channelFromVersion(version) {
+  return String(version ?? "").endsWith(DEV_SUFFIX) ? "dev" : "production";
+}
+
+function dailyPath(dayKey, channel) {
+  return path.join(DAILY_DIR, channel, `${dayKey}.json`);
+}
+
+function legacyDailyPath(dayKey) {
   return path.join(DAILY_DIR, `${dayKey}.json`);
 }
 
-function defaultDailyEditorial(dayKey, version) {
+function readDailyArtifact(dayKey, channel) {
+  return (
+    readJsonIfExists(dailyPath(dayKey, channel)) ??
+    (channel === "production" ? readJsonIfExists(legacyDailyPath(dayKey)) : null)
+  );
+}
+
+function defaultDailyEditorial(dayKey, version, channel) {
   return {
+    channel,
     dayKey,
     date: dayDateFromVersion(version),
     preferredDeck: null,
@@ -287,16 +304,18 @@ function defaultDailyEditorial(dayKey, version) {
   };
 }
 
-function defaultReleaseArtifact(tag, version, dayKey) {
+function defaultReleaseArtifact(tag, version, dayKey, channel) {
   return {
     tag,
     version,
+    channel,
     dayKey,
     approved: false,
     editorialNotes: [],
     generatedAt: null,
     model: null,
     source: {
+      channel,
       previousPublishedTag: null,
       previousPublishedDayTag: null,
       compareRef: "HEAD",
@@ -433,6 +452,7 @@ function releaseArtifactsMatch(existingArtifact, nextRelease, nextSource) {
 
   const existingRelease = sanitizeReleaseShape(existingArtifact.release ?? {});
   const existingSource = {
+    channel: existingArtifact.source?.channel ?? existingArtifact.channel ?? "production",
     previousPublishedTag: existingArtifact.source?.previousPublishedTag ?? null,
     previousPublishedDayTag: existingArtifact.source?.previousPublishedDayTag ?? null,
     compareRef: existingArtifact.source?.compareRef ?? "HEAD",
@@ -452,7 +472,7 @@ function compareReleases(a, b) {
   return compareTags(a.tag_name, b.tag_name);
 }
 
-async function listPublishedReleases() {
+async function listPublishedReleases(channel) {
   const headers = githubHeaders();
   const releases = await fetchJson(
     `${GITHUB_API}/repos/freed-project/freed/releases?per_page=100`,
@@ -460,7 +480,17 @@ async function listPublishedReleases() {
   );
 
   return releases
-    .filter((release) => !release.draft && !release.prerelease)
+    .filter((release) => {
+      if (release.draft) {
+        return false;
+      }
+
+      if (channel === "dev") {
+        return release.prerelease && release.tag_name.endsWith(DEV_SUFFIX);
+      }
+
+      return !release.prerelease && !release.tag_name.endsWith(DEV_SUFFIX);
+    })
     .sort(compareReleases);
 }
 
@@ -537,8 +567,8 @@ function collectPriorSameDayReleases(tag, dayKey, publishedReleases) {
   );
 }
 
-async function collectReleaseContext(tag, version) {
-  const publishedReleases = await listPublishedReleases();
+async function collectReleaseContext(tag, version, channel) {
+  const publishedReleases = await listPublishedReleases(channel);
   const dayKey = versionDayKey(version);
   const sameDayPublished = publishedReleases.filter(
     (release) => versionDayKey(release.tag_name.replace(/^v/, "")) === dayKey,
@@ -613,6 +643,7 @@ async function collectReleaseContext(tag, version) {
   return {
     tag,
     version,
+    channel,
     dayKey,
     compareRef,
     isLatestOfDay,
@@ -798,10 +829,12 @@ async function main() {
   const { input, force } = parseArguments(process.argv.slice(2));
 
   mkdirp(RELEASES_DIR);
-  mkdirp(DAILY_DIR);
+  mkdirp(path.join(DAILY_DIR, "production"));
+  mkdirp(path.join(DAILY_DIR, "dev"));
 
   const version = input.replace(/^v/, "");
   const tag = `v${version}`;
+  const channel = channelFromVersion(version);
   const dayKey = versionDayKey(version);
   const releaseFile = releasePaths(tag);
   const existingRelease = readJsonIfExists(releaseFile.json);
@@ -811,8 +844,9 @@ async function main() {
     return;
   }
 
-  const existingDaily = readJsonIfExists(dailyPath(dayKey)) ?? defaultDailyEditorial(dayKey, version);
-  const context = await collectReleaseContext(tag, version);
+  const existingDaily =
+    readDailyArtifact(dayKey, channel) ?? defaultDailyEditorial(dayKey, version, channel);
+  const context = await collectReleaseContext(tag, version, channel);
   const existingSeedRelease = releaseFromArtifact(existingRelease);
   const heuristicRelease = buildHeuristicRelease(context, existingDaily);
   const draftSeedRelease = releaseHasContent(heuristicRelease)
@@ -833,6 +867,7 @@ async function main() {
     release: {
       tag,
       version,
+      channel,
       dayKey,
       isLatestOfDay: context.isLatestOfDay,
       previousPublishedTag: context.previousPublishedTag,
@@ -884,6 +919,7 @@ async function main() {
   }
 
   const nextSource = {
+    channel,
     previousPublishedTag: context.previousPublishedTag,
     previousPublishedDayTag: context.previousPublishedDayTag,
     compareRef: context.compareRef,
@@ -901,9 +937,10 @@ async function main() {
   );
 
   const releaseArtifact = {
-    ...(existingRelease ?? defaultReleaseArtifact(tag, version, dayKey)),
+    ...(existingRelease ?? defaultReleaseArtifact(tag, version, dayKey, channel)),
     tag,
     version,
+    channel,
     dayKey,
     approved: Boolean(existingRelease?.approved) && shouldKeepApproval,
     editorialNotes: existingRelease?.editorialNotes ?? [],
@@ -915,10 +952,13 @@ async function main() {
   };
 
   const dailyArtifact = {
+    channel,
     dayKey,
     date: existingDaily.date ?? dayDateFromVersion(version),
     preferredDeck: existingDaily.preferredDeck ?? null,
-    editorialGuidance: existingDaily.editorialGuidance ?? defaultDailyEditorial(dayKey, version).editorialGuidance,
+    editorialGuidance:
+      existingDaily.editorialGuidance ??
+      defaultDailyEditorial(dayKey, version, channel).editorialGuidance,
     pinnedHighlights: existingDaily.pinnedHighlights ?? [],
     editorialNotes: existingDaily.editorialNotes ?? [],
     updatedAt: new Date().toISOString(),
@@ -926,12 +966,12 @@ async function main() {
 
   writeFileSync(releaseFile.json, `${JSON.stringify(releaseArtifact, null, 2)}\n`);
   writeFileSync(releaseFile.markdown, releaseArtifact.releaseBody);
-  writeFileSync(dailyPath(dayKey), `${JSON.stringify(dailyArtifact, null, 2)}\n`);
+  writeFileSync(dailyPath(dayKey, channel), `${JSON.stringify(dailyArtifact, null, 2)}\n`);
 
   console.log(`Prepared release notes for ${tag}`);
   console.log(`- ${path.relative(REPO_ROOT, releaseFile.json)}`);
   console.log(`- ${path.relative(REPO_ROOT, releaseFile.markdown)}`);
-  console.log(`- ${path.relative(REPO_ROOT, dailyPath(dayKey))}`);
+  console.log(`- ${path.relative(REPO_ROOT, dailyPath(dayKey, channel))}`);
 }
 
 main().catch((error) => {

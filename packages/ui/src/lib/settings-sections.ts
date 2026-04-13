@@ -76,7 +76,7 @@ export const BASE_SECTION_METAS: readonly SectionMeta[] = [
 export const UPDATES_SECTION_META: SectionMeta = {
   id: "updates",
   label: "Updates",
-  keywords: ["update", "version", "upgrade", "check for updates", "install", "restart", "release"],
+  keywords: ["update", "version", "upgrade", "check for updates", "install", "restart", "release", "production", "dev", "channel"],
 };
 
 /** Shown only when the platform provides an X/Twitter settings component (desktop). */

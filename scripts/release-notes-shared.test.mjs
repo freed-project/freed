@@ -3,9 +3,12 @@ import assert from "node:assert/strict";
 
 import {
   buildReleaseDeck,
+  compareTags,
   coerceReleaseShape,
+  dayDateFromVersion,
   renderReleaseBody,
   validateReleaseShape,
+  versionDayKey,
 } from "./release-notes-shared.mjs";
 
 test("coerceReleaseShape supports legacy fields", () => {
@@ -165,4 +168,15 @@ test("buildReleaseDeck honors a preferred deck override", () => {
   );
 
   assert.equal(deck, "Map view, refined consent gates, and signed macOS installs");
+});
+
+test("compareTags sorts dev releases before production for the same base version", () => {
+  assert.equal(compareTags("v26.4.1200-dev", "v26.4.1200"), -1);
+  assert.equal(compareTags("v26.4.1200", "v26.4.1200-dev"), 1);
+  assert.equal(compareTags("v26.4.1201-dev", "v26.4.1200"), 1);
+});
+
+test("day helpers ignore the dev suffix", () => {
+  assert.equal(versionDayKey("26.4.1207-dev"), "26.4.12");
+  assert.equal(dayDateFromVersion("26.4.1207-dev"), "2026-04-12");
 });

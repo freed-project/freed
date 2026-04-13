@@ -11,6 +11,8 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { getPwaHostForChannel } from "@freed/shared";
+import { usePlatform } from "@freed/ui/context";
 import { invoke } from "@tauri-apps/api/core";
 import QRCode from "react-qr-code";
 import {
@@ -58,6 +60,7 @@ function looksLikeVpn(iface: NetworkInterface): boolean {
 type Tab = "cloud" | "qr" | "manual";
 
 export function MobileSyncTab() {
+  const { releaseChannel } = usePlatform();
   const [activeTab, setActiveTab] = useState<Tab>("cloud");
   const [syncUrl, setSyncUrl] = useState<string>("");
   const [clientCount, setClientCount] = useState(0);
@@ -89,6 +92,7 @@ export function MobileSyncTab() {
 
   const hasVpn = allIPs.some(looksLikeVpn);
   const multipleIPs = allIPs.length > 1;
+  const pwaHost = getPwaHostForChannel(releaseChannel ?? "production");
 
   const makeCopyHandler = (text: string, setFlash: (v: boolean) => void) =>
     async () => {
@@ -191,7 +195,7 @@ export function MobileSyncTab() {
           </div>
         )}
         <p className="mt-3 text-center text-xs text-[var(--theme-text-muted)]">
-          Open <span className="text-[var(--theme-accent-secondary)]">app.freed.wtf</span> on your
+          Open <span className="text-[var(--theme-accent-secondary)]">{pwaHost}</span> on your
           phone,
           <br />
           then scan this QR code

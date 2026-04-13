@@ -10,6 +10,11 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  RELEASE_CHANNEL_LABELS,
+  RELEASE_CHANNELS,
+  type ReleaseChannel,
+} from "@freed/shared";
 import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
 import { createPortal } from "react-dom";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
@@ -263,6 +268,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     factoryReset,
     activeCloudProviderLabel,
     seedSocialConnections,
+    releaseChannel,
+    setReleaseChannel,
     updateDownloadProgress,
   } = usePlatform();
   const preferences = useAppStore((s) => s.preferences);
@@ -838,6 +845,37 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 Current version:{" "}
                 <span className="text-sm font-bold font-mono">v{__APP_VERSION__}</span>
               </p>
+              {releaseChannel && setReleaseChannel && (
+                <div className="space-y-2 rounded-xl border border-[color:var(--theme-border)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_68%,transparent)] p-3">
+                  <div>
+                    <p className="text-sm text-text-primary">Release channel</p>
+                    <p className="mt-1 text-xs text-text-muted">
+                      Production is the default. Dev follows the latest changes from the dev branch.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {RELEASE_CHANNELS.map((channel) => {
+                      const isActive = releaseChannel === channel;
+                      return (
+                        <button
+                          key={channel}
+                          type="button"
+                          onClick={() => {
+                            void setReleaseChannel(channel as ReleaseChannel);
+                          }}
+                          className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                            isActive
+                              ? "border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_55%,transparent)] bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent)] text-[var(--theme-accent-secondary)]"
+                              : "border-[color:var(--theme-border)] bg-[var(--theme-bg-root)] text-text-secondary hover:text-text-primary"
+                          }`}
+                        >
+                          {RELEASE_CHANNEL_LABELS[channel]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               {checkForUpdates && (
                 <div ref={checkButtonRef} className="flex items-center gap-3">
                   <button

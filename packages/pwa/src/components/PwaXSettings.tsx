@@ -5,9 +5,13 @@
  * Shows synced stats when X content is present; otherwise a download CTA.
  */
 
+import { getWebsiteHostForChannel } from "@freed/shared";
+import { usePlatform } from "@freed/ui/context";
 import { useAppStore } from "../lib/store";
 
 export function PwaXSettings() {
+  const { releaseChannel } = usePlatform();
+  const websiteGetUrl = `https://${getWebsiteHostForChannel(releaseChannel ?? "production")}/get`;
   // Return primitives so Zustand's reference-equality check never fires spuriously.
   // Returning a filtered array would create a new reference every render → infinite loop.
   const xCount = useAppStore((s) =>
@@ -45,7 +49,7 @@ export function PwaXSettings() {
             </p>
           </div>
           <a
-            href="https://freed.wtf/get"
+            href={websiteGetUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="theme-accent-button rounded-lg px-4 py-2 text-xs transition-colors"
@@ -62,7 +66,7 @@ export function PwaXSettings() {
             </p>
           </div>
           <a
-            href="https://freed.wtf/get"
+            href={websiteGetUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="theme-accent-button rounded-lg px-4 py-2 text-xs transition-colors"

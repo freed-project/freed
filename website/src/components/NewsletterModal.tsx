@@ -1,6 +1,11 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
+import {
+  getPwaHostForChannel,
+  inferReleaseChannelFromHostname,
+  type ReleaseChannel,
+} from "@freed/shared";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import TurnstileWidget from "@/components/TurnstileWidget";
@@ -8,29 +13,21 @@ import { useNewsletter } from "@/context/NewsletterContext";
 
 type SubmitState = "idle" | "loading" | "error";
 
-const RELEASE_BASE =
-  "https://github.com/freed-project/freed/releases/latest/download";
-const FREED_WEB_URL = "https://app.freed.wtf";
-
 type DownloadKey = "mac-arm" | "mac-intel" | "windows" | "linux";
 type InstallTarget = DownloadKey | "web";
 
-const DOWNLOADS: Record<DownloadKey, { label: string; file: string }> = {
+const DOWNLOADS: Record<DownloadKey, { label: string }> = {
   "mac-arm": {
     label: "macOS (Apple Silicon)",
-    file: "Freed-macOS-arm64.dmg",
   },
   "mac-intel": {
     label: "macOS (Intel)",
-    file: "Freed-macOS-x64.dmg",
   },
   windows: {
     label: "Windows",
-    file: "Freed-Windows-x64-setup.exe",
   },
   linux: {
     label: "Linux",
-    file: "Freed-Linux-x64.AppImage",
   },
 };
 
@@ -160,6 +157,8 @@ export default function NewsletterModal() {
   const [successMessage, setSuccessMessage] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
   const [turnstileResetKey, setTurnstileResetKey] = useState(0);
+  const [websiteChannel, setWebsiteChannel] =
+    useState<ReleaseChannel>("production");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
   const [selectedTarget, setSelectedTarget] = useState<InstallTarget>("mac-arm");
@@ -174,6 +173,12 @@ export default function NewsletterModal() {
 
   useEffect(() => {
     setSelectedTarget(detectDefaultInstallTarget());
+  }, []);
+
+  useEffect(() => {
+    setWebsiteChannel(
+      inferReleaseChannelFromHostname(window.location.hostname) ?? "production",
+    );
   }, []);
 
   useEffect(() => {
@@ -342,8 +347,9 @@ export default function NewsletterModal() {
   const currentDownload =
     selectedTarget === "web" ? null : DOWNLOADS[selectedTarget];
   const downloadUrl = currentDownload
-    ? `${RELEASE_BASE}/${currentDownload.file}`
+    ? `/api/downloads/${selectedTarget}`
     : null;
+  const freedWebUrl = `https://${getPwaHostForChannel(websiteChannel)}`;
   const selectedTargetLabel =
     selectedTarget === "web" ? "Freed Web" : currentDownload?.label ?? "";
   const isWebTarget = selectedTarget === "web";
@@ -352,8 +358,8 @@ export default function NewsletterModal() {
   const isPhoneInputValid = isValidPhoneNumber(phoneNumber);
 
   const handleOpenFreedWeb = useCallback(() => {
-    window.open(FREED_WEB_URL, "_blank", "noopener,noreferrer");
-  }, []);
+    window.open(freedWebUrl, "_blank", "noopener,noreferrer");
+  }, [freedWebUrl]);
 
   const handleDownload = useCallback(() => {
     if (!downloadUrl) return;

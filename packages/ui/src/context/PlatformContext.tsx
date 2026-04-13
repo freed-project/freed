@@ -23,7 +23,7 @@ import type {
   ImportProgress,
   ReportPrivacyTier,
 } from "@freed/shared";
-import type { OPMLFeedEntry } from "@freed/shared";
+import type { OPMLFeedEntry, ReleaseChannel } from "@freed/shared";
 import type { ImportSummary, ProgressFn } from "../components/LibraryDialog.types.js";
 import type { ProviderStatusTone } from "../lib/provider-status.js";
 
@@ -164,6 +164,12 @@ export interface PlatformConfig {
 
   /** Apply a detected update (PWA: reload, Desktop: handled by UpdateNotification). */
   applyUpdate?: () => void;
+
+  /** Current locally-selected update channel for this install or browser. */
+  releaseChannel?: ReleaseChannel;
+
+  /** Persist a new update channel for this install or browser. */
+  setReleaseChannel?: (channel: ReleaseChannel) => Promise<void> | void;
 
   /**
    * Live download progress when an update is being installed.

@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
+import {
+  getWebsiteHostForChannel,
+  type ReleaseChannel,
+} from "@freed/shared";
 import { AppShell } from "@freed/ui/components/layout";
 import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
 import { FeedView } from "@freed/ui/components/feed";
@@ -36,6 +40,11 @@ import { acceptPwaBundle, hasAcceptedPwaBundle } from "./lib/legal-consent";
 import { useBrowserNavigationHistory } from "./lib/navigation-history";
 import { pwaBugReporting } from "./lib/bug-report";
 import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
+import {
+  bootstrapReleaseChannel,
+  buildPwaReleaseChannelUrl,
+  persistReleaseChannel,
+} from "@freed/ui/lib/release-channel";
 
 function OAuthRouter() {
   if (window.location.pathname === "/oauth-callback") {
@@ -53,6 +62,9 @@ function App() {
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
   const [legalResolved, setLegalResolved] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
+  const [releaseChannel, setReleaseChannelState] = useState<ReleaseChannel>(() =>
+    bootstrapReleaseChannel(),
+  );
   const fatalError = useFatalRuntimeError();
 
   useBrowserNavigationHistory(legalAccepted);
@@ -107,6 +119,19 @@ function App() {
   }, [legalAccepted]);
 
   const checkForUpdates = useCallback(() => checkForPwaUpdate(), []);
+  const setReleaseChannel = useCallback((channel: ReleaseChannel) => {
+    if (channel === releaseChannel) {
+      return;
+    }
+
+    persistReleaseChannel(channel);
+    setReleaseChannelState(channel);
+
+    const nextUrl = buildPwaReleaseChannelUrl(window.location.href, channel);
+    if (nextUrl !== window.location.href) {
+      window.location.assign(nextUrl);
+    }
+  }, [releaseChannel]);
 
   const handleFactoryReset = useCallback(async (deleteFromCloud: boolean) => {
     const provider = getCloudProvider();
@@ -140,6 +165,8 @@ function App() {
       GoogleContactsSettingsContent: GoogleContactsSection,
       checkForUpdates,
       applyUpdate: applyPwaUpdate,
+      releaseChannel,
+      setReleaseChannel,
       factoryReset: handleFactoryReset,
       activeCloudProviderLabel: () => {
         const p = getCloudProvider();
@@ -172,7 +199,7 @@ function App() {
       openUrl: (url: string) => { window.open(url, "_blank", "noopener,noreferrer"); },
       bugReporting: pwaBugReporting,
     }),
-    [checkForUpdates, handleFactoryReset],
+    [checkForUpdates, handleFactoryReset, releaseChannel, setReleaseChannel],
   );
 
   if (!legalResolved) {
@@ -190,7 +217,9 @@ function App() {
           setLegalAccepted(true);
         }}
         onDecline={() => {
-          window.location.assign("https://freed.wtf");
+          window.location.assign(
+            `https://${getWebsiteHostForChannel(releaseChannel)}`,
+          );
         }}
       />
     );

@@ -10,6 +10,11 @@ VERSION="${1#v}"
 TAG="v${VERSION}"
 RELEASE_FILE="release-notes/releases/${TAG}.json"
 NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
+CHANNEL="production"
+
+if [[ "$VERSION" == *-dev ]]; then
+  CHANNEL="dev"
+fi
 
 if [[ -z "${NODE_BIN}" && -x "${HOME}/.nvm/versions/node/v22.12.0/bin/node" ]]; then
   NODE_BIN="${HOME}/.nvm/versions/node/v22.12.0/bin/node"
@@ -27,6 +32,17 @@ fi
 
 if [[ ! -f "$RELEASE_FILE" ]]; then
   echo "Error: ${RELEASE_FILE} does not exist." >&2
+  exit 1
+fi
+
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+EXPECTED_BRANCH="main"
+if [[ "$CHANNEL" == "dev" ]]; then
+  EXPECTED_BRANCH="dev"
+fi
+
+if [[ "$CURRENT_BRANCH" != "$EXPECTED_BRANCH" ]]; then
+  echo "Error: ${CHANNEL} releases must be published from the ${EXPECTED_BRANCH} branch." >&2
   exit 1
 fi
 
@@ -72,4 +88,4 @@ git tag -a "${TAG}" -m "Release ${TAG}"
 
 echo "==> Created tag ${TAG}"
 echo "==> To trigger the release workflow, run:"
-echo "    git push origin main --follow-tags"
+echo "    git push origin ${EXPECTED_BRANCH} --follow-tags"

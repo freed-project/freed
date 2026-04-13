@@ -10,6 +10,8 @@
  */
 
 import { useMemo } from "react";
+import { getWebsiteHostForChannel } from "@freed/shared";
+import { usePlatform } from "@freed/ui/context";
 import { useAppStore } from "../lib/store";
 import {
   getCloudProvider,
@@ -73,9 +75,11 @@ function ProviderLogo({ provider }: { provider: Provider }) {
 }
 
 export function PwaSyncSettings() {
+  const { releaseChannel } = usePlatform();
   const syncConnected = useAppStore((s) => s.syncConnected);
   const isSyncing = useAppStore((s) => s.isSyncing);
   const feeds = useAppStore((s) => s.feeds);
+  const websiteGetUrl = `https://${getWebsiteHostForChannel(releaseChannel ?? "production")}/get`;
 
   const lastSyncTime = useMemo(() => {
     const times = Object.values(feeds)
@@ -129,7 +133,7 @@ export function PwaSyncSettings() {
                 First time? Install Freed Desktop to track your feeds and sync them here.
               </p>
               <a
-                href="https://freed.wtf/get"
+                href={websiteGetUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-1 inline-block text-xs font-semibold text-[var(--theme-accent-secondary)] transition-colors hover:text-[var(--theme-text-primary)]"

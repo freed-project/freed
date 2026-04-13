@@ -12,7 +12,7 @@ import {
   formatHealthRelative,
   type HealthChartRange,
 } from "../ProviderHealthSummary.js";
-import type { FeedItem } from "@freed/shared";
+import { getWebsiteHostForChannel, type FeedItem } from "@freed/shared";
 
 type SavedTab = "overview" | "import" | "export";
 
@@ -454,9 +454,10 @@ function ImportPane() {
 // ── Export pane (Markdown zip) ────────────────────────────────────────────────
 
 function ExportPane() {
-  const { exportMarkdown } = usePlatform();
+  const { exportMarkdown, releaseChannel } = usePlatform();
   const items = useAppStore((s) => s.items);
   const [exporting, setExporting] = useState(false);
+  const websiteGetUrl = `https://${getWebsiteHostForChannel(releaseChannel ?? "production")}/get`;
 
   // Export is a desktop-only capability. Show a CTA on the PWA.
   if (!exportMarkdown) {
@@ -472,7 +473,7 @@ function ExportPane() {
           </p>
         </div>
         <a
-          href="https://freed.wtf/get"
+          href={websiteGetUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="theme-accent-button rounded-lg px-4 py-2 text-xs transition-colors"

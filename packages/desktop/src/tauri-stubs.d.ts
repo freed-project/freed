@@ -70,7 +70,13 @@ declare module "@tauri-apps/plugin-updater" {
     close(): Promise<void>;
   }
 
-  export function check(): Promise<Update | null>;
+  export interface CheckOptions {
+    target?: string;
+    timeout?: number;
+    headers?: Record<string, string>;
+  }
+
+  export function check(options?: CheckOptions): Promise<Update | null>;
 }
 
 declare module "@tauri-apps/plugin-fs" {
