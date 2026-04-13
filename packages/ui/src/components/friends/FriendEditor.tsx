@@ -23,6 +23,7 @@ import {
   BookmarkIcon,
 } from "../icons.js";
 import type { ReactNode } from "react";
+import { SearchField } from "../SearchField.js";
 
 // ---------------------------------------------------------------------------
 // Platform icon map
@@ -489,12 +490,13 @@ export function FriendEditor({
             )}
 
             {/* Search + candidates */}
-            <input
-              type="text"
+            <SearchField
               value={sourceSearch}
               onChange={(e) => setSourceSearch(e.target.value)}
+              onClear={() => setSourceSearch("")}
               placeholder="Search profiles in your feed..."
-              className="theme-input mb-2 w-full rounded-lg px-3 py-2 text-sm"
+              aria-label="Search profiles in your feed"
+              containerClassName="mb-2"
             />
 
             {filteredCandidates.length === 0 && (

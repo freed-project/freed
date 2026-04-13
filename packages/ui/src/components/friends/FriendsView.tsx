@@ -10,6 +10,7 @@ import { FriendAvatar } from "./FriendAvatar.js";
 import { FriendGraph } from "./FriendGraph.js";
 import { FriendDetailPanel } from "./FriendDetailPanel.js";
 import { FriendEditor } from "./FriendEditor.js";
+import { SearchField } from "../SearchField.js";
 import { UsersIcon, MapPinIcon } from "../icons.js";
 import { ContentHeader } from "../layout/ContentHeader.js";
 import {
@@ -329,18 +330,14 @@ export function FriendsView() {
         </div>
 
         <div className="mt-3">
-          <div className="relative">
-            <svg className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--theme-text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search friends"
-              className="theme-input w-full rounded-xl py-2 pl-9 pr-3 text-sm"
-            />
-          </div>
+          <SearchField
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            onClear={() => setSearchQuery("")}
+            placeholder="Search friends"
+            aria-label="Search friends"
+            inputClassName="rounded-xl"
+          />
         </div>
       </div>
 

@@ -40,6 +40,7 @@ import { FeedsSection } from "./settings/FeedsSection.js";
 import { SavedSection } from "./settings/SavedSection.js";
 import { SettingsToggle } from "./SettingsToggle.js";
 import { ReportComposer } from "./report/ReportComposer.js";
+import { SearchField } from "./SearchField.js";
 import { ThemePreviewButton } from "./ThemePreviewButton.js";
 
 const SAMPLE_SEED_FEED_COUNT = 10;
@@ -1078,29 +1079,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
           {/* Search */}
           <div className="px-3 pb-2 pt-2 shrink-0">
-            <div className="relative">
-              <svg className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search settings"
-                className={`theme-card-soft w-full rounded-lg py-1.5 pl-8 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_40%,transparent)] transition-colors ${search ? "pr-7" : "pr-3"}`}
-              />
-              {search && (
-                <button
-                  onClick={() => setSearch("")}
-                  aria-label="Clear search"
-                  className="absolute right-2 top-1/2 flex h-4 w-4 -translate-y-1/2 items-center justify-center rounded-full bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_82%,transparent)] text-text-muted transition-colors hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_94%,transparent)] hover:text-text-primary"
-                >
-                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
-            </div>
+            <SearchField
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onClear={() => setSearch("")}
+              placeholder="Search settings"
+              aria-label="Search settings"
+              density="compact"
+            />
           </div>
 
           <NavList />
