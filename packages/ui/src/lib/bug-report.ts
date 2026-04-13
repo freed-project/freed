@@ -103,6 +103,11 @@ const listeners = new Set<() => void>();
 let captureInstalled = false;
 let consoleCaptureInstalled = false;
 
+const BENIGN_WINDOW_ERROR_PATTERNS = [
+  /^ResizeObserver loop completed with undelivered notifications\.?$/i,
+  /^ResizeObserver loop limit exceeded\.?$/i,
+];
+
 function emitChange() {
   listeners.forEach((listener) => listener());
 }
@@ -114,6 +119,11 @@ function subscribe(listener: () => void) {
 
 function getSnapshot(): ReportStore {
   return store;
+}
+
+function isBenignWindowErrorMessage(message: string | undefined): boolean {
+  if (!message) return false;
+  return BENIGN_WINDOW_ERROR_PATTERNS.some((pattern) => pattern.test(message.trim()));
 }
 
 function stableHash(input: string): string {
@@ -261,6 +271,15 @@ export function installGlobalBugReportCapture(source: string): void {
 
   window.addEventListener("error", (event) => {
     const error = event.error ?? new Error(event.message);
+    const message = error instanceof Error ? error.message : event.message;
+    if (isBenignWindowErrorMessage(message)) {
+      recordBugReportEvent(
+        `${source}:window.error`,
+        "warn",
+        message,
+      );
+      return;
+    }
     recordRuntimeError({ source: `${source}:window.error`, error, fatal: true });
   });
 

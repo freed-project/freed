@@ -402,7 +402,18 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Preference actions
   updatePreferences: async (update) => {
-    await docUpdatePreferences(update);
+    try {
+      await docUpdatePreferences(update);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      recordRuntimeError({ source: "desktop:updatePreferences", error, fatal: false });
+      recordBugReportEvent(
+        "desktop:updatePreferences",
+        "error",
+        "Preference update failed",
+        detail,
+      );
+    }
   },
 
   // X auth actions

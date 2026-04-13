@@ -54,6 +54,20 @@ import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types"
 const storage = new IndexedDBStorage();
 let currentDoc: FreedDoc | null = null;
 let relayClientCount = 0;
+let queuedRequestCount = 0;
+let requestChain: Promise<void> = Promise.resolve();
+
+const SLOW_QUEUE_WAIT_MS = 1_000;
+const SLOW_REQUEST_PROCESS_MS = 5_000;
+const SLOW_SAVE_AND_BROADCAST_MS = 2_000;
+
+interface RequestTrace {
+  reqId: number;
+  opType: WorkerRequest["type"];
+  enqueuedAt: number;
+  startedAt: number;
+  queuedBeforeStart: number;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -65,6 +79,17 @@ function send(msg: WorkerResponse): void {
 
 function ack(reqId: number, error?: string): void {
   send({ reqId, type: "ACK", error });
+}
+
+function formatMs(ms: number): string {
+  return Math.round(ms).toLocaleString();
+}
+
+function emitWorkerTrace(
+  detail: string,
+  kind: Extract<WorkerResponse, { type: "DEBUG_EVENT" }>["kind"] = "change",
+): void {
+  send({ type: "DEBUG_EVENT", kind, detail });
 }
 
 /**
@@ -182,17 +207,23 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
  * a broadcast_doc IPC call from the main thread. The Array.from(binary) here
  * is the key optimization — it runs in the worker, not the main thread.
  */
-async function saveAndBroadcast(): Promise<void> {
-  if (!currentDoc) return;
-  const binary = A.save(currentDoc);
+async function saveAndBroadcast(trace?: RequestTrace): Promise<void> {
+  const doc = currentDoc;
+  if (!doc) return;
+
+  const startedAt = performance.now();
+  const binary = A.save(doc);
+  const afterSerializeAt = performance.now();
   await storage.save(binary);
-  const state = hydrateFromDoc(currentDoc);
+  const afterPersistAt = performance.now();
+  const state = hydrateFromDoc(doc);
+  const afterHydrateAt = performance.now();
 
   const snapshot: Extract<WorkerResponse, { type: "DEBUG_SNAPSHOT" }> = {
     type: "DEBUG_SNAPSHOT",
-    deviceId: (currentDoc.meta?.deviceId as string | undefined) ?? "unknown",
-    itemCount: Object.keys(currentDoc.feedItems ?? {}).length,
-    feedCount: Object.keys(currentDoc.rssFeeds ?? {}).length,
+    deviceId: (doc.meta?.deviceId as string | undefined) ?? "unknown",
+    itemCount: Object.keys(doc.feedItems ?? {}).length,
+    feedCount: Object.keys(doc.rssFeeds ?? {}).length,
     binarySize: binary.byteLength,
   };
   send(snapshot);
@@ -203,34 +234,64 @@ async function saveAndBroadcast(): Promise<void> {
   if (relayClientCount > 0) {
     send({ type: "BROADCAST_REQUEST", data: Array.from(binary) });
   }
+
+  const completedAt = performance.now();
+  const totalMs = completedAt - startedAt;
+  if (
+    trace &&
+    (trace.opType === "UPDATE_PREFERENCES" || totalMs >= SLOW_SAVE_AND_BROADCAST_MS)
+  ) {
+    emitWorkerTrace(
+      `[automerge-worker] save op=${trace.opType} reqId=${trace.reqId}` +
+        ` serialize_ms=${formatMs(afterSerializeAt - startedAt)}` +
+        ` persist_ms=${formatMs(afterPersistAt - afterSerializeAt)}` +
+        ` hydrate_ms=${formatMs(afterHydrateAt - afterPersistAt)}` +
+        ` emit_ms=${formatMs(completedAt - afterHydrateAt)}` +
+        ` total_ms=${formatMs(totalMs)}` +
+        ` bytes=${binary.byteLength.toLocaleString()}`,
+    );
+  }
 }
 
 async function applyChange(
   changeFn: (doc: FreedDoc) => void,
   message: string,
+  trace?: RequestTrace,
 ): Promise<void> {
   if (!currentDoc) throw new Error("Document not initialized");
   currentDoc = A.change(currentDoc, message, changeFn);
   send({ type: "DEBUG_EVENT", kind: "change", detail: message });
-  await saveAndBroadcast();
+  await saveAndBroadcast(trace);
 }
 
-// ---------------------------------------------------------------------------
-// Message handler
-// ---------------------------------------------------------------------------
+async function handleRequest(
+  req: WorkerRequest,
+  enqueuedAt: number,
+): Promise<void> {
+  const startedAt = performance.now();
+  const trace: RequestTrace = {
+    reqId: req.reqId,
+    opType: req.type,
+    enqueuedAt,
+    startedAt,
+    queuedBeforeStart: Math.max(0, queuedRequestCount - 1),
+  };
+  const waitMs = startedAt - enqueuedAt;
+  if (req.type === "UPDATE_PREFERENCES" || waitMs >= SLOW_QUEUE_WAIT_MS) {
+    emitWorkerTrace(
+      `[automerge-worker] start op=${req.type} reqId=${req.reqId}` +
+        ` wait_ms=${formatMs(waitMs)}` +
+        ` queued=${trace.queuedBeforeStart.toLocaleString()}`,
+    );
+  }
 
-self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
-  const req = event.data;
+  const applyRequestChange = (
+    changeFn: (doc: FreedDoc) => void,
+    message: string,
+  ) => applyChange(changeFn, message, trace);
 
   try {
     switch (req.type) {
-      // ─── Relay management (fire-and-forget) ─────────────────────────────
-      case "UPDATE_RELAY_CLIENT_COUNT":
-        relayClientCount = req.count;
-        ack(req.reqId);
-        break;
-
-      // ─── Lifecycle ────────────────────────────────────────────────────────
       case "INIT": {
         const saved = await storage.load();
         if (saved) {
@@ -248,7 +309,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         }
         const deviceId = (currentDoc.meta?.deviceId as string | undefined) ?? "unknown";
         send({ type: "DEBUG_EVENT", kind: "init", detail: `device ...${deviceId.slice(-8)}` });
-        await saveAndBroadcast();
+        await saveAndBroadcast(trace);
         ack(req.reqId);
         break;
       }
@@ -262,7 +323,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       case "REPLACE_DOC":
         currentDoc = A.load<FreedDoc>(req.binary);
         await storage.save(req.binary);
-        await saveAndBroadcast();
+        await saveAndBroadcast(trace);
         ack(req.reqId);
         break;
 
@@ -279,19 +340,18 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           detail: delta !== 0 ? `${delta > 0 ? "+" : ""}${delta} items` : "no new items",
           bytes: req.binary.byteLength,
         });
-        await saveAndBroadcast();
+        await saveAndBroadcast(trace);
         ack(req.reqId);
         break;
       }
 
-      // ─── Item mutations ───────────────────────────────────────────────────
       case "MARK_AS_READ":
-        await applyChange((doc) => markAsRead(doc, req.globalId), "Mark as read");
+        await applyRequestChange((doc) => markAsRead(doc, req.globalId), "Mark as read");
         ack(req.reqId);
         break;
 
       case "MARK_ITEMS_AS_READ":
-        await applyChange(
+        await applyRequestChange(
           (doc) => markItemsAsRead(doc, req.globalIds),
           `Mark ${req.globalIds.length.toLocaleString()} items as read`,
         );
@@ -299,7 +359,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "MARK_ALL_AS_READ":
-        await applyChange((doc) => {
+        await applyRequestChange((doc) => {
           const now = Date.now();
           for (const item of Object.values(doc.feedItems) as FeedItem[]) {
             if (item.userState.readAt) continue;
@@ -312,22 +372,22 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "TOGGLE_SAVED":
-        await applyChange((doc) => toggleSaved(doc, req.globalId), "Toggle saved");
+        await applyRequestChange((doc) => toggleSaved(doc, req.globalId), "Toggle saved");
         ack(req.reqId);
         break;
 
       case "TOGGLE_ARCHIVED":
-        await applyChange((doc) => toggleArchived(doc, req.globalId), "Toggle archived");
+        await applyRequestChange((doc) => toggleArchived(doc, req.globalId), "Toggle archived");
         ack(req.reqId);
         break;
 
       case "TOGGLE_LIKED":
-        await applyChange((doc) => toggleLiked(doc, req.globalId), "Toggle liked");
+        await applyRequestChange((doc) => toggleLiked(doc, req.globalId), "Toggle liked");
         ack(req.reqId);
         break;
 
       case "CONFIRM_LIKED_SYNCED":
-        await applyChange(
+        await applyRequestChange(
           (doc) => confirmLikedSynced(doc, req.globalId, req.syncedAt),
           "Confirm liked synced",
         );
@@ -335,7 +395,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "CONFIRM_SEEN_SYNCED":
-        await applyChange(
+        await applyRequestChange(
           (doc) => confirmSeenSynced(doc, req.globalId, req.syncedAt),
           "Confirm seen synced",
         );
@@ -343,14 +403,14 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "ADD_FEED_ITEM":
-        await applyChange((doc) => {
+        await applyRequestChange((doc) => {
           if (!doc.feedItems[req.item.globalId]) addFeedItem(doc, req.item);
         }, "Add feed item");
         ack(req.reqId);
         break;
 
       case "ADD_FEED_ITEMS":
-        await applyChange((doc) => {
+        await applyRequestChange((doc) => {
           for (const item of req.items) {
             if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
           }
@@ -359,12 +419,12 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "REMOVE_FEED_ITEM":
-        await applyChange((doc) => removeFeedItem(doc, req.globalId), "Remove feed item");
+        await applyRequestChange((doc) => removeFeedItem(doc, req.globalId), "Remove feed item");
         ack(req.reqId);
         break;
 
       case "UPDATE_FEED_ITEM":
-        await applyChange(
+        await applyRequestChange(
           (doc) => updateFeedItem(doc, req.globalId, req.updates),
           "Update feed item",
         );
@@ -372,7 +432,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "ARCHIVE_ALL_READ_UNSAVED":
-        await applyChange(
+        await applyRequestChange(
           (doc) => archiveAllReadUnsaved(doc, req.platform, req.feedUrl),
           "Archive all read",
         );
@@ -380,7 +440,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "PRUNE_ARCHIVED_ITEMS":
-        await applyChange(
+        await applyRequestChange(
           (doc) => pruneArchivedItems(doc, req.maxAgeMs),
           "Prune archived items",
         );
@@ -388,21 +448,20 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "DELETE_ALL_ARCHIVED":
-        await applyChange(
+        await applyRequestChange(
           (doc) => deleteAllArchivedItems(doc),
           "Delete all archived items",
         );
         ack(req.reqId);
         break;
 
-      // ─── Feed mutations ───────────────────────────────────────────────────
       case "ADD_RSS_FEED":
-        await applyChange((doc) => addRssFeed(doc, req.feed), "Add RSS feed");
+        await applyRequestChange((doc) => addRssFeed(doc, req.feed), "Add RSS feed");
         ack(req.reqId);
         break;
 
       case "REMOVE_RSS_FEED":
-        await applyChange(
+        await applyRequestChange(
           (doc) => removeRssFeed(doc, req.url, req.includeItems),
           req.includeItems ? "Remove RSS feed and articles" : "Remove RSS feed",
         );
@@ -410,7 +469,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "UPDATE_RSS_FEED":
-        await applyChange(
+        await applyRequestChange(
           (doc) => updateRssFeed(doc, req.url, req.updates as Parameters<typeof updateRssFeed>[2]),
           "Update RSS feed",
         );
@@ -418,16 +477,15 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "REMOVE_ALL_FEEDS":
-        await applyChange(
+        await applyRequestChange(
           (doc) => removeAllFeeds(doc, req.includeItems),
           req.includeItems ? "Remove all feeds and articles" : "Remove all feeds",
         );
         ack(req.reqId);
         break;
 
-      // ─── Preferences + sync ───────────────────────────────────────────────
       case "UPDATE_PREFERENCES":
-        await applyChange(
+        await applyRequestChange(
           (doc) => updatePreferences(doc, req.updates),
           "Update preferences",
         );
@@ -435,18 +493,17 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "UPDATE_LAST_SYNC":
-        await applyChange((doc) => updateLastSync(doc), "Update last sync");
+        await applyRequestChange((doc) => updateLastSync(doc), "Update last sync");
         ack(req.reqId);
         break;
 
-      // ─── Friend mutations ─────────────────────────────────────────────────
       case "ADD_FRIEND":
-        await applyChange((doc) => addFriend(doc, req.friend), "Add friend");
+        await applyRequestChange((doc) => addFriend(doc, req.friend), "Add friend");
         ack(req.reqId);
         break;
 
       case "ADD_FRIENDS":
-        await applyChange((doc) => {
+        await applyRequestChange((doc) => {
           for (const friend of req.friends) {
             addFriend(doc, friend);
           }
@@ -455,7 +512,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "UPDATE_FRIEND":
-        await applyChange(
+        await applyRequestChange(
           (doc) => updateFriend(doc, req.friendId, req.updates as Partial<Friend>),
           "Update friend",
         );
@@ -463,21 +520,20 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "REMOVE_FRIEND":
-        await applyChange((doc) => removeFriend(doc, req.friendId), "Remove friend");
+        await applyRequestChange((doc) => removeFriend(doc, req.friendId), "Remove friend");
         ack(req.reqId);
         break;
 
       case "LOG_REACH_OUT":
-        await applyChange(
+        await applyRequestChange(
           (doc) => logReachOut(doc, req.friendId, req.entry),
           "Log reach-out",
         );
         ack(req.reqId);
         break;
 
-      // ─── Desktop-specific mutations ───────────────────────────────────────
       case "BATCH_REFRESH_FEEDS":
-        await applyChange((doc) => {
+        await applyRequestChange((doc) => {
           for (const feed of req.feeds) {
             const stored = doc.rssFeeds[feed.url] as RssFeed | undefined;
             if (!stored) continue;
@@ -513,7 +569,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         for (let i = 0; i < items.length; i += CHUNK) {
           const chunkIndex = Math.floor(i / CHUNK);
           const chunk = items.slice(i, i + CHUNK);
-          await applyChange((doc) => {
+          await applyRequestChange((doc) => {
             for (const item of chunk) {
               if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
             }
@@ -525,7 +581,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       }
 
       case "HEAL_UNTITLED_FEEDS":
-        await applyChange((doc) => {
+        await applyRequestChange((doc) => {
           for (const feed of Object.values(doc.rssFeeds) as RssFeed[]) {
             const isUntitled = feed.title === "Untitled Feed" || feed.title === feed.url;
             if (!isUntitled) continue;
@@ -538,7 +594,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "DEDUPLICATE_ITEMS":
-        await applyChange((doc) => {
+        await applyRequestChange((doc) => {
           const linkToIds = new Map<string, string[]>();
           for (const [id, item] of Object.entries(doc.feedItems) as [string, FeedItem][]) {
             const url = item.content.linkPreview?.url;
@@ -574,8 +630,63 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       }
     }
   } catch (err) {
-    ack(req.reqId, err instanceof Error ? err.message : String(err));
+    const message = err instanceof Error ? err.message : String(err);
+    emitWorkerTrace(
+      `[automerge-worker] error op=${req.type} reqId=${req.reqId}` +
+        ` wait_ms=${formatMs(waitMs)}` +
+        ` process_ms=${formatMs(performance.now() - startedAt)}` +
+        ` message=${message}`,
+      "error",
+    );
+    ack(req.reqId, message);
+    return;
   }
+
+  const processMs = performance.now() - startedAt;
+  if (
+    req.type === "UPDATE_PREFERENCES" ||
+    waitMs >= SLOW_QUEUE_WAIT_MS ||
+    processMs >= SLOW_REQUEST_PROCESS_MS
+  ) {
+    emitWorkerTrace(
+      `[automerge-worker] complete op=${req.type} reqId=${req.reqId}` +
+        ` wait_ms=${formatMs(waitMs)}` +
+        ` process_ms=${formatMs(processMs)}` +
+        ` total_ms=${formatMs(performance.now() - enqueuedAt)}`,
+    );
+  }
+}
+
+function enqueueRequest(req: WorkerRequest): void {
+  const enqueuedAt = performance.now();
+  queuedRequestCount += 1;
+  requestChain = requestChain
+    .then(() => handleRequest(req, enqueuedAt))
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      emitWorkerTrace(
+        `[automerge-worker] queue failure op=${req.type} reqId=${req.reqId} message=${message}`,
+        "error",
+      );
+      ack(req.reqId, message);
+    })
+    .finally(() => {
+      queuedRequestCount = Math.max(0, queuedRequestCount - 1);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Message handler
+// ---------------------------------------------------------------------------
+
+self.onmessage = (event: MessageEvent<WorkerRequest>) => {
+  const req = event.data;
+  if (req.type === "UPDATE_RELAY_CLIENT_COUNT") {
+    relayClientCount = req.count;
+    return;
+  }
+
+  enqueueRequest(req);
 };
 
 // Signal the main thread that the module finished loading and the onmessage
