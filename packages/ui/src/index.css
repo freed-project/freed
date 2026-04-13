@@ -1648,9 +1648,7 @@ html[data-theme="scriptorium"] .btn-primary:hover {
   padding: 0.32rem 0.9rem;
   line-height: 1;
   border-radius: var(--button-radius);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.08),
-    0 8px 18px rgb(0 0 0 / 0.22);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
   transition:
     box-shadow 0.2s ease,
     filter 0.2s ease,
@@ -1661,6 +1659,7 @@ html[data-theme="scriptorium"] .btn-primary:hover {
 .nav-mobile-cta.btn-primary:active {
   transform: none;
   border-radius: var(--button-radius);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
 }
 
 .newsletter-modal .btn-primary:hover,
