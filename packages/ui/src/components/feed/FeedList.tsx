@@ -15,11 +15,12 @@ import { useIsMobile } from "../../hooks/useIsMobile.js";
 
 // ── Story grouping ────────────────────────────────────────────────────────────
 
-const TILE_GAP = 8;   // gap-2 = 8px
+const FEED_CARD_GAP = 10;
+const TILE_GAP = FEED_CARD_GAP;
 const MIN_TILE_W = 80; // minimum tile width before a column wraps
 const MAX_TILE_H = 288;
-// Tailwind max-w-2xl = 42rem = 672px. Story rows are wrapped in
-// "px-4 max-w-2xl mx-auto", so the usable tile area is at most 640px
+// Tailwind max-w-2xl = 42rem = 672px. Story rows are wrapped in a centered
+// container with 10px side gutters, so the usable tile area is at most 652px
 // regardless of how wide the scroll container actually is.
 const MAX_CONTENT_W = 672;
 
@@ -200,8 +201,8 @@ const StoryGroupRow = memo(function StoryGroupRow({
 }: StoryGroupRowProps) {
   return (
     <div
-      className="grid gap-2"
-      style={{ gridTemplateColumns: `repeat(${numCols}, 1fr)` }}
+      className="grid"
+      style={{ gap: `${TILE_GAP}px`, gridTemplateColumns: `repeat(${numCols}, 1fr)` }}
     >
       {storyItems.map((item) => (
         <FeedItem
@@ -290,9 +291,9 @@ export function FeedList({
       // reconnected at most a handful of times.
 
   // Max grid columns based on current container width (capped at 3).
-  // Inner width = containerWidth minus px-4 on each side (32px total).
+  // Inner width = containerWidth minus the feed-card gutter on each side.
   const maxCols = useMemo(() => {
-    const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - 32, 0);
+    const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - FEED_CARD_GAP * 2, 0);
     return Math.max(1, Math.min(3, Math.floor((inner + TILE_GAP) / (MIN_TILE_W + TILE_GAP))));
   }, [containerWidth]);
 
@@ -319,11 +320,11 @@ export function FeedList({
     (index: number) => {
       const row = rows[index];
       if (!row || row.type !== "stories") return 220;
-      const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - 32, 0);
+      const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - FEED_CARD_GAP * 2, 0);
       const nc = row.numCols;
       const tileWidth = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
       const tileHeight = Math.min(tileWidth * storyHeightRatio(nc), MAX_TILE_H);
-      return Math.round(tileHeight + 24); // +pb-6; story rows are always 1 CSS row tall
+      return Math.round(tileHeight + FEED_CARD_GAP + (index === 0 ? FEED_CARD_GAP : 0));
     },
     [rows, containerWidth],
   );
@@ -498,9 +499,18 @@ export function FeedList({
   if (isLoading && items.length === 0) {
     return (
       <div className="flex-1 min-h-0 overflow-auto overscroll-none minimal-scroll">
-        <div className="px-4 pt-4 space-y-4 max-w-2xl mx-auto">
+        <div
+          className="max-w-2xl mx-auto"
+          style={{
+            paddingInline: `${FEED_CARD_GAP}px`,
+            paddingTop: `${FEED_CARD_GAP}px`,
+            paddingBottom: `${FEED_CARD_GAP}px`,
+          }}
+        >
           {Array.from({ length: SKELETON_COUNT }, (_, i) => (
-            <FeedItemSkeleton key={i} />
+            <div key={i} style={{ marginTop: i === 0 ? 0 : `${FEED_CARD_GAP}px` }}>
+              <FeedItemSkeleton />
+            </div>
           ))}
         </div>
       </div>
@@ -601,9 +611,16 @@ export function FeedList({
                   transform: `translateY(${virtualItem.start - windowVirtualizer.options.scrollMargin}px)`,
                 }}
               >
-                <div className={`px-3 pb-3 max-w-2xl mx-auto${virtualItem.index === 0 ? " pt-3" : ""}`}>
+                <div
+                  className="max-w-2xl mx-auto"
+                  style={{
+                    paddingInline: `${FEED_CARD_GAP}px`,
+                    paddingBottom: `${FEED_CARD_GAP}px`,
+                    paddingTop: virtualItem.index === 0 ? `${FEED_CARD_GAP}px` : undefined,
+                  }}
+                >
                   {row.type === "stories" ? (() => {
-                    const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - 32, 0);
+                    const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - FEED_CARD_GAP * 2, 0);
                     const nc = row.numCols;
                     const tw = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
                     const th = Math.round(Math.min(tw * storyHeightRatio(nc), MAX_TILE_H));
@@ -669,9 +686,16 @@ export function FeedList({
                 transform: `translateY(${virtualItem.start}px)`,
               }}
             >
-              <div className={`px-4 max-w-2xl mx-auto${virtualItem.index === 0 ? " pt-4" : ""} ${row.type === "stories" ? "pb-6" : "pb-4"}`}>
+              <div
+                className="max-w-2xl mx-auto"
+                style={{
+                  paddingInline: `${FEED_CARD_GAP}px`,
+                  paddingBottom: `${FEED_CARD_GAP}px`,
+                  paddingTop: virtualItem.index === 0 ? `${FEED_CARD_GAP}px` : undefined,
+                }}
+              >
                 {row.type === "stories" ? (() => {
-                  const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - 32, 0);
+                  const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - FEED_CARD_GAP * 2, 0);
                   const nc = row.numCols;
                   const tw = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
                   const th = Math.round(Math.min(tw * storyHeightRatio(nc), MAX_TILE_H));

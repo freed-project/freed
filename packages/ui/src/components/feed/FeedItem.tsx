@@ -199,7 +199,7 @@ export const FeedItem = memo(function FeedItem({
       <div
         data-feed-item-id={item.globalId}
         data-focused={focused ? "true" : "false"}
-        className={`relative overflow-hidden rounded-2xl cursor-pointer group select-none w-full transition-opacity ${
+        className={`relative overflow-hidden rounded-[var(--feed-card-radius)] cursor-pointer group select-none w-full transition-opacity ${
           isRead ? "grayscale opacity-60" : ""
         }`}
         style={{ height: storyHeight }}
@@ -300,7 +300,7 @@ export const FeedItem = memo(function FeedItem({
 
   if (compact) {
     return (
-      <div className="relative overflow-hidden rounded-xl" style={sharedTransitionStyle}>
+      <div className="relative overflow-hidden rounded-[var(--feed-card-radius)]" style={sharedTransitionStyle}>
         <article
           data-feed-item-id={item.globalId}
           data-focused={focused ? "true" : "false"}
@@ -374,10 +374,10 @@ export const FeedItem = memo(function FeedItem({
   const likeLabel = getLikeLabel(item, likeStatus);
 
   return (
-    <div className="relative overflow-hidden rounded-2xl" style={sharedTransitionStyle}>
+    <div className="relative overflow-hidden rounded-[var(--feed-card-radius)]" style={sharedTransitionStyle}>
       {enableSwipe && swipeX < 0 && (
         <div
-          className="absolute inset-y-0 right-0 flex items-center justify-end pr-5 rounded-2xl transition-colors"
+          className="absolute inset-y-0 right-0 flex items-center justify-end pr-5 rounded-[var(--feed-card-radius)] transition-colors"
           style={{
             width: `${Math.abs(swipeX) + 16}px`,
             backgroundColor: pastThreshold

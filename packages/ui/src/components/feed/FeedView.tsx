@@ -16,11 +16,12 @@ const MIN_PANEL_WIDTH = 100;
 const MAX_PANEL_WIDTH = 500;
 const DEFAULT_PANEL_WIDTH = 150;
 const NARROW_THRESHOLD = 150;
+const COMPACT_CARD_GAP = 10;
 
 // Card geometry: all cards are square (width × width), including story tiles.
-// Wrapper padding: px-2 (8px each side = 16px total), pb-2 (8px), first item gets pt-2 (8px).
-const CARD_H_PAD = 16;
-const CARD_V_GAP = 8;
+// Wrapper padding and row spacing match the nav-button radius token at 10px.
+const CARD_H_PAD = COMPACT_CARD_GAP * 2;
+const CARD_V_GAP = COMPACT_CARD_GAP;
 
 type ViewTransitionLike = {
   finished: Promise<void>;
@@ -199,7 +200,13 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
                 transform: `translateY(${vi.start}px)`,
               }}
             >
-              <div className={`px-2 pb-2${vi.index === 0 ? " pt-2" : ""}`}>
+              <div
+                style={{
+                  paddingInline: `${COMPACT_CARD_GAP}px`,
+                  paddingBottom: `${COMPACT_CARD_GAP}px`,
+                  paddingTop: vi.index === 0 ? `${COMPACT_CARD_GAP}px` : undefined,
+                }}
+              >
                 <FeedItemCard
                   item={item}
                   compact
