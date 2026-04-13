@@ -12,7 +12,10 @@ export default function Footer() {
         <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
           {/* Brand */}
           <div>
-            <Link href="/" className="inline-flex items-baseline gap-0.5 mb-4">
+            <Link
+              href="/"
+              className="mb-4 hidden items-baseline gap-0.5 sm:inline-flex"
+            >
               <span className="relative text-xl font-bold text-text-primary font-logo">
                 FREED
                 <span
@@ -26,7 +29,7 @@ export default function Footer() {
                 .WTF
               </span>
             </Link>
-            <div className="mt-6 max-w-[18rem]">
+            <div className="max-w-[18rem] sm:mt-6">
               <ThemeSelector compact />
             </div>
           </div>
