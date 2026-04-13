@@ -429,6 +429,136 @@ test("settings nav highlight follows scroll position", async ({ app, page }) => 
   await expect(syncButton).toHaveCount(1);
 });
 
+test("provider settings do not remount when health updates arrive", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async ({ settingsStorePath, debugStorePath }) => {
+    const makeDailyBuckets = () =>
+      Array.from({ length: 7 }, (_, index) => ({
+        dateKey: `2026-04-0${index + 1}`,
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+      }));
+    const makeHourlyBuckets = () =>
+      Array.from({ length: 24 }, (_, index) => ({
+        hourKey: `2026-04-12T${String(index).padStart(2, "0")}`,
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+      }));
+    const makeSnapshot = (
+      provider: "rss" | "x" | "facebook" | "instagram" | "linkedin" | "gdrive" | "dropbox",
+    ) => ({
+      provider,
+      status: provider === "x" ? "degraded" : "idle",
+      lastAttemptAt: provider === "x" ? Date.now() : undefined,
+      lastSuccessfulAt: provider === "x" ? Date.now() - 120_000 : undefined,
+      lastOutcome: provider === "x" ? "error" : undefined,
+      lastError: provider === "x" ? "Transient timeout" : undefined,
+      currentMessage: provider === "x" ? "Transient timeout" : undefined,
+      pause: null,
+      dailyBuckets: makeDailyBuckets(),
+      hourlyBuckets: makeHourlyBuckets(),
+      latestAttempts: [],
+      totalSeen7d: 0,
+      totalAdded7d: 0,
+      totalBytes7d: 0,
+    });
+
+    const settingsMod = await import(settingsStorePath);
+    const debugMod = await import(debugStorePath);
+
+    settingsMod.useSettingsStore.getState().openTo("x");
+    debugMod.useDebugStore.getState().setHealth({
+      providers: {
+        rss: makeSnapshot("rss"),
+        x: makeSnapshot("x"),
+        facebook: makeSnapshot("facebook"),
+        instagram: makeSnapshot("instagram"),
+        linkedin: makeSnapshot("linkedin"),
+        gdrive: makeSnapshot("gdrive"),
+        dropbox: makeSnapshot("dropbox"),
+      },
+      failingRssFeeds: [],
+      updatedAt: Date.now(),
+    });
+  }, { settingsStorePath: SETTINGS_STORE_PATH, debugStorePath: DEBUG_STORE_PATH });
+
+  await expect(page.getByText("X / Twitter").first()).toBeVisible({ timeout: 5_000 });
+  await page.getByRole("button", { name: "Manual cookie setup" }).click();
+
+  const ct0Input = page.getByPlaceholder("ct0 value");
+  await expect(ct0Input).toBeVisible();
+  await ct0Input.fill("sticky-cookie");
+
+  await page.evaluate(async (debugStorePath) => {
+    const makeDailyBuckets = () =>
+      Array.from({ length: 7 }, (_, index) => ({
+        dateKey: `2026-04-0${index + 1}`,
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+      }));
+    const makeHourlyBuckets = () =>
+      Array.from({ length: 24 }, (_, index) => ({
+        hourKey: `2026-04-12T${String(index).padStart(2, "0")}`,
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+      }));
+    const makeSnapshot = (
+      provider: "rss" | "x" | "facebook" | "instagram" | "linkedin" | "gdrive" | "dropbox",
+    ) => ({
+      provider,
+      status: provider === "x" ? "degraded" : "idle",
+      lastAttemptAt: provider === "x" ? Date.now() : undefined,
+      lastSuccessfulAt: provider === "x" ? Date.now() - 60_000 : undefined,
+      lastOutcome: provider === "x" ? "error" : undefined,
+      lastError: provider === "x" ? "Retrying after timeout" : undefined,
+      currentMessage: provider === "x" ? "Retrying after timeout" : undefined,
+      pause: null,
+      dailyBuckets: makeDailyBuckets(),
+      hourlyBuckets: makeHourlyBuckets(),
+      latestAttempts: [],
+      totalSeen7d: 0,
+      totalAdded7d: 0,
+      totalBytes7d: 0,
+    });
+
+    const debugMod = await import(debugStorePath);
+    debugMod.useDebugStore.getState().setHealth({
+      providers: {
+        rss: makeSnapshot("rss"),
+        x: makeSnapshot("x"),
+        facebook: makeSnapshot("facebook"),
+        instagram: makeSnapshot("instagram"),
+        linkedin: makeSnapshot("linkedin"),
+        gdrive: makeSnapshot("gdrive"),
+        dropbox: makeSnapshot("dropbox"),
+      },
+      failingRssFeeds: [],
+      updatedAt: Date.now(),
+    });
+  }, DEBUG_STORE_PATH);
+
+  await expect(ct0Input).toBeVisible();
+  await expect(ct0Input).toHaveValue("sticky-cookie");
+});
+
 test("provider risk dialog scrolls vertically on tiny mobile screens", async ({ app, page }) => {
   await page.setViewportSize({ width: 320, height: 360 });
   await app.goto();

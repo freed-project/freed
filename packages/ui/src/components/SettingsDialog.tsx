@@ -9,7 +9,7 @@
  * "pushes" to that section's content with a back button (iOS-style).
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
 import { createPortal } from "react-dom";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
@@ -632,15 +632,15 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // ── Section content renderer ──────────────────────────────────────────────
 
-  function SectionBlock({ id }: { id: SectionId }) {
+  function renderSectionBlock(id: SectionId) {
     const isVisible = visibleSections.some((s) => s.id === id);
     if (!isVisible) return null;
 
-    // SectionContent is called as a plain function (not as a JSX component)
-    // because it is defined inside SettingsDialog. If rendered as
-    // <SectionContent />, React would see a new component type on every
-    // SettingsDialog re-render and unmount/remount the entire subtree,
-    // destroying local state in nested components like XSettingsSection.
+    // SectionContent and this wrapper both stay plain function calls because
+    // they are defined inside SettingsDialog. Rendering either as JSX would
+    // create a fresh component type on each parent re-render and remount the
+    // active subtree, which is visible as periodic flicker in provider sections
+    // when sync health updates land.
     return (
       <section data-section={id} className="pb-8 min-h-full flex flex-col">
         {SectionContent({ id })}
@@ -1162,7 +1162,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               </div>
             ) : (
               allSections.map((section) => (
-                <SectionBlock key={section.id} id={section.id} />
+                <Fragment key={section.id}>{renderSectionBlock(section.id)}</Fragment>
               ))
             )}
 
