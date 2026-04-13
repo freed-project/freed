@@ -232,9 +232,9 @@ export default function Features() {
               transition={{ duration: 0.5, delay: index * 0.1 }}
             >
               <div className="glass-card h-full p-5 sm:p-6">
-                <div className="mb-3 flex items-center gap-3 sm:mb-4 sm:flex-col sm:items-start">
+                <div className="mb-3 flex items-center gap-3 sm:mb-4">
                   <div className="shrink-0">{feature.icon}</div>
-                  <h3 className="text-lg font-semibold leading-tight text-text-primary sm:text-xl">
+                  <h3 className="text-lg font-semibold leading-tight text-text-primary sm:text-xl lg:text-[1.35rem]">
                     {feature.title}
                   </h3>
                 </div>

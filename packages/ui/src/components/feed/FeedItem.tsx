@@ -42,6 +42,10 @@ interface FeedItemProps {
   storyHeight?: number;
 }
 
+function feedCardTransitionName(globalId: string): string {
+  return `feed-card-${globalId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
 const cls = "w-3.5 h-3.5";
 const SWIPE_THRESHOLD = 72;
 
@@ -132,6 +136,9 @@ export const FeedItem = memo(function FeedItem({
   storyHeight = 288,
 }: FeedItemProps) {
   const { feedMediaPreviews = "inline" } = usePlatform();
+  const sharedTransitionStyle = {
+    viewTransitionName: feedCardTransitionName(item.globalId),
+  } as React.CSSProperties;
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
   const platformIcon = platformIcons[item.platform] ?? <span className="text-xs">📄</span>;
   const isRead = Boolean(item.userState.readAt);
@@ -190,6 +197,8 @@ export const FeedItem = memo(function FeedItem({
 
     return (
       <div
+        data-feed-item-id={item.globalId}
+        data-focused={focused ? "true" : "false"}
         className={`relative overflow-hidden rounded-2xl cursor-pointer group select-none w-full transition-opacity ${
           isRead ? "grayscale opacity-60" : ""
         }`}
@@ -291,8 +300,11 @@ export const FeedItem = memo(function FeedItem({
 
   if (compact) {
     return (
-      <div className="relative overflow-hidden rounded-xl">
+      <div className="relative overflow-hidden rounded-xl" style={sharedTransitionStyle}>
         <article
+          data-feed-item-id={item.globalId}
+          data-focused={focused ? "true" : "false"}
+          data-selected={selected ? "true" : "false"}
           className={`feed-card group cursor-pointer aspect-square overflow-hidden p-3 flex flex-col transition-colors ${
             selected
               ? "border-l-2 border-l-[var(--theme-accent-secondary)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)]"
@@ -362,7 +374,7 @@ export const FeedItem = memo(function FeedItem({
   const likeLabel = getLikeLabel(item, likeStatus);
 
   return (
-    <div className="relative overflow-hidden rounded-2xl">
+    <div className="relative overflow-hidden rounded-2xl" style={sharedTransitionStyle}>
       {enableSwipe && swipeX < 0 && (
         <div
           className="absolute inset-y-0 right-0 flex items-center justify-end pr-5 rounded-2xl transition-colors"
@@ -382,6 +394,8 @@ export const FeedItem = memo(function FeedItem({
       )}
 
       <article
+        data-feed-item-id={item.globalId}
+        data-focused={focused ? "true" : "false"}
         className={`feed-card group cursor-pointer active:scale-[0.99] transition-transform ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${isRead ? "grayscale opacity-60" : ""}`}
         style={{
           transform: swipeX !== 0 ? `translateX(${swipeX}px)` : undefined,
@@ -432,7 +446,7 @@ export const FeedItem = memo(function FeedItem({
             {onLike && (
               <div className="relative group/reactions">
                 {hasReactionPalette && (
-                  <div className="pointer-events-none absolute right-0 bottom-full mb-2 flex translate-y-1 rounded-xl border border-[var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_96%,transparent)] p-1 opacity-0 shadow-lg shadow-black/30 transition-all group-hover/reactions:pointer-events-auto group-hover/reactions:translate-y-0 group-hover/reactions:opacity-100 group-focus-within/reactions:pointer-events-auto group-focus-within/reactions:translate-y-0 group-focus-within/reactions:opacity-100">
+                  <div className="pointer-events-none absolute right-0 bottom-full mb-2 flex translate-y-1 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-1 opacity-0 shadow-lg shadow-black/30 transition-all group-hover/reactions:pointer-events-auto group-hover/reactions:translate-y-0 group-hover/reactions:opacity-100 group-focus-within/reactions:pointer-events-auto group-focus-within/reactions:translate-y-0 group-focus-within/reactions:opacity-100">
                     {reactions.map((reaction) => (
                       <button
                         key={reaction.label}

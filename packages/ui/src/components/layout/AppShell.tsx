@@ -41,12 +41,19 @@ export function AppShell({ children }: AppShellProps) {
   // interval and focus listener run regardless of which view is active.
   const contactSync = useContactSync();
   const [showContactReview, setShowContactReview] = useState(false);
-  const savedDebugWidth = useAppStore((s) => s.preferences.display.debugPanelWidth) ?? DEFAULT_DEBUG_WIDTH;
+  const persistedDebugWidth =
+    useAppStore((s) => s.preferences.display.debugPanelWidth) ?? DEFAULT_DEBUG_WIDTH;
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const [dragWidth, setDragWidth] = useState<number | null>(null);
+  const [committedDebugWidth, setCommittedDebugWidth] = useState(persistedDebugWidth);
   const dragging = useRef(false);
 
-  const debugWidth = dragWidth ?? savedDebugWidth;
+  useEffect(() => {
+    if (dragging.current || dragWidth !== null) return;
+    setCommittedDebugWidth(persistedDebugWidth);
+  }, [dragWidth, persistedDebugWidth]);
+
+  const debugWidth = dragWidth ?? committedDebugWidth;
 
   const handleDebugDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -54,6 +61,11 @@ export function AppShell({ children }: AppShellProps) {
       dragging.current = true;
       const startX = e.clientX;
       const startW = debugWidth;
+      const previousCursor = document.body.style.cursor;
+      const previousUserSelect = document.body.style.userSelect;
+
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
 
       const onMove = (ev: MouseEvent) => {
         if (!dragging.current) return;
@@ -65,7 +77,10 @@ export function AppShell({ children }: AppShellProps) {
         dragging.current = false;
         const final = Math.min(MAX_DEBUG_WIDTH, Math.max(MIN_DEBUG_WIDTH, startW - (ev.clientX - startX)));
         setDragWidth(null);
-        updatePreferences({ display: { debugPanelWidth: final } } as Parameters<typeof updatePreferences>[0]);
+        setCommittedDebugWidth(final);
+        void updatePreferences({ display: { debugPanelWidth: final } } as Parameters<typeof updatePreferences>[0]);
+        document.body.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
       };
@@ -171,6 +186,7 @@ export function AppShell({ children }: AppShellProps) {
             The DebugPanel's own border-l is clipped by overflow-hidden when width is 0.
             Width is user-draggable; animated only when toggling open/closed. */}
         <div
+          data-testid="debug-panel-drawer"
           className="hidden sm:flex flex-none overflow-hidden relative"
           style={{
             width: debugVisible ? debugWidth : 0,
@@ -180,6 +196,7 @@ export function AppShell({ children }: AppShellProps) {
           {/* Left-edge resize handle - drag left to widen, drag right to narrow */}
           {debugVisible && (
             <div
+              data-testid="debug-panel-resize-handle"
               className="absolute left-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.24)] active:bg-[rgb(var(--theme-accent-secondary-rgb)/0.4)]"
               onMouseDown={handleDebugDragStart}
             />

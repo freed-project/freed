@@ -58,7 +58,9 @@ export default function Navigation() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [homePageScrolledPastFold, setHomePageScrolledPastFold] = useState(false);
+  const [mobileMenuTopOffset, setMobileMenuTopOffset] = useState(64);
   const navRefs = useRef<(HTMLAnchorElement | null)[]>([]);
+  const mobileTopBarRef = useRef<HTMLDivElement | null>(null);
   const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 });
   const showMobileTopCta =
     !mobileMenuOpen && (pathname !== "/" || homePageScrolledPastFold);
@@ -109,6 +111,27 @@ export default function Navigation() {
       document.body.style.overflow = "";
     };
   }, [mobileMenuOpen]);
+
+  useLayoutEffect(() => {
+    const updateMobileTopOffset = () => {
+      if (!mobileTopBarRef.current) return;
+      const { height } = mobileTopBarRef.current.getBoundingClientRect();
+      setMobileMenuTopOffset(Math.max(0, Math.ceil(height)));
+    };
+
+    updateMobileTopOffset();
+    window.addEventListener("resize", updateMobileTopOffset);
+
+    const observer = new ResizeObserver(updateMobileTopOffset);
+    if (mobileTopBarRef.current) {
+      observer.observe(mobileTopBarRef.current);
+    }
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateMobileTopOffset);
+    };
+  }, []);
 
   const handleMouseEnter = () => {
     setCaptionIndex((prev) => (prev + 1) % WTF_CAPTIONS.length);
@@ -251,31 +274,43 @@ export default function Navigation() {
       >
         {/* Mobile: solid full-width bar */}
         <div
-          className={`lg:hidden bg-freed-black pl-8 pr-5 py-3 ${
+          ref={mobileTopBarRef}
+          className={`lg:hidden bg-freed-black pl-8 pr-4 py-3 ${
             mobileMenuOpen ? "" : "border-b border-freed-border"
           }`}
         >
           <div className="flex items-center justify-between">
             {logoElement}
-            <div className="flex items-center gap-4">
-              <motion.div
-                initial={false}
-                animate={{
-                  maxWidth: showMobileTopCta ? 144 : 0,
-                  opacity: showMobileTopCta ? 1 : 0,
-                  marginRight: showMobileTopCta ? 4 : 0,
-                }}
-                transition={{ duration: 0.24, ease: "easeInOut" }}
-                className="overflow-hidden"
-                style={{ pointerEvents: showMobileTopCta ? "auto" : "none" }}
-              >
-                <button
-                  onClick={openModal}
-                  className="btn-primary shrink-0 text-sm px-4 !py-1.5 whitespace-nowrap"
-                >
-                  Get Freed
-                </button>
-              </motion.div>
+            <div className="flex items-center gap-3">
+              <AnimatePresence initial={false}>
+                {showMobileTopCta && (
+                  <motion.div
+                    key="mobile-top-cta"
+                    initial={{ width: 0 }}
+                    animate={{ width: "auto" }}
+                    exit={{ width: 0 }}
+                    transition={{ duration: 0.2, ease: "easeInOut" }}
+                    className="overflow-hidden pr-4"
+                    style={{
+                      WebkitMaskImage:
+                        "linear-gradient(to right, black 0, black calc(100% - 18px), transparent 100%)",
+                      maskImage:
+                        "linear-gradient(to right, black 0, black calc(100% - 18px), transparent 100%)",
+                    }}
+                  >
+                    <motion.button
+                      onClick={openModal}
+                      initial={{ opacity: 0, x: 8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 8 }}
+                      transition={{ duration: 0.2, ease: "easeInOut" }}
+                      className="btn-primary nav-mobile-cta my-0 shrink-0 whitespace-nowrap text-[0.765rem]"
+                    >
+                      Get Freed
+                    </motion.button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
               {mobileHamburger}
             </div>
           </div>
@@ -306,7 +341,7 @@ export default function Navigation() {
               className="lg:hidden fixed left-0 right-0 bottom-0 bg-freed-black z-40"
               style={{
                 // Overlap navbar by 1px to eliminate sub-pixel rendering gaps
-                top: "calc(64px + env(safe-area-inset-top))",
+                top: `calc(${Math.max(0, mobileMenuTopOffset - 1)}px + env(safe-area-inset-top))`,
                 paddingBottom: "env(safe-area-inset-bottom)",
               }}
             >
@@ -321,7 +356,7 @@ export default function Navigation() {
                     <Link
                       href={item.path}
                       onClick={() => setMobileMenuOpen(false)}
-                      className={`text-lg font-medium transition-colors ${
+                      className={`text-[1.238rem] font-medium transition-colors ${
                         isActive(item.path, pathname)
                           ? "text-text-primary underline underline-offset-8 decoration-2"
                           : "text-text-secondary"
@@ -339,7 +374,7 @@ export default function Navigation() {
                   href="https://github.com/freed-project/freed"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-lg font-medium text-text-secondary"
+                  className="text-[1.238rem] font-medium text-text-secondary"
                 >
                   GitHub
                 </motion.a>
@@ -351,7 +386,7 @@ export default function Navigation() {
                     openModal();
                     setMobileMenuOpen(false);
                   }}
-                  className="btn-primary text-lg px-12 py-4 mt-4"
+                  className="btn-primary text-[1.0125rem] px-12 py-4 mt-4"
                 >
                   Get Freed
                 </motion.button>

@@ -399,7 +399,8 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       ((s as unknown as { providerSyncCounts?: Partial<Record<string, number>> })
         .providerSyncCounts ?? EMPTY_PROVIDER_SYNC_COUNTS) as Partial<Record<string, number>>,
   );
-  const sidebarWidth = useAppStore((s) => s.preferences.display.sidebarWidth) ?? DEFAULT_WIDTH;
+  const persistedSidebarWidth =
+    useAppStore((s) => s.preferences.display.sidebarWidth) ?? DEFAULT_WIDTH;
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const items = useAppStore((s) => s.items);
   const activeView = useAppStore((s) => s.activeView);
@@ -417,6 +418,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   const { open: showSettings, openDefault: openSettings, close: closeSettings } = useSettingsStore();
   const [dragWidth, setDragWidth] = useState<number | null>(null);
+  const [committedWidth, setCommittedWidth] = useState(persistedSidebarWidth);
   const [rssFeedsOpen, setRssFeedsOpen] = useState(false);
   const [rssFeedPage, setRssFeedPage] = useState(0);
 
@@ -486,7 +488,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     return childTagsOf(tag).some((t) => active.includes(t));
   };
 
-  const width = dragWidth ?? sidebarWidth;
+  useEffect(() => {
+    if (dragging.current || dragWidth !== null) return;
+    setCommittedWidth(persistedSidebarWidth);
+  }, [dragWidth, persistedSidebarWidth]);
+
+  const width = dragWidth ?? committedWidth;
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -494,6 +501,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       dragging.current = true;
       const startX = e.clientX;
       const startW = width;
+      const previousCursor = document.body.style.cursor;
+      const previousUserSelect = document.body.style.userSelect;
+
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
 
       const onMove = (ev: MouseEvent) => {
         if (!dragging.current) return;
@@ -504,7 +516,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         dragging.current = false;
         const final = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startW + ev.clientX - startX));
         setDragWidth(null);
-        updatePreferences({ display: { sidebarWidth: final } } as Parameters<typeof updatePreferences>[0]);
+        setCommittedWidth(final);
+        void updatePreferences({ display: { sidebarWidth: final } } as Parameters<typeof updatePreferences>[0]);
+        document.body.style.cursor = previousCursor;
+        document.body.style.userSelect = previousUserSelect;
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
       };
@@ -693,6 +708,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
       {/* Sidebar */}
       <aside
+        data-testid="app-sidebar"
         className={`
           fixed inset-y-0 left-0 md:relative z-50 md:z-auto
           h-full
@@ -752,11 +768,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     {SourceIndicator ? (
                       <span
                         data-testid={`source-indicator-slot-${sourceKey(source)}`}
-                        className={`flex h-4 w-4 shrink-0 items-center justify-center transition-transform duration-200 ease-in-out ${
-                          openMenuSourceKey === sourceKey(source)
-                            ? "translate-x-1"
-                            : "group-hover/source:translate-x-1"
-                        }`}
+                        className="flex h-4 w-4 shrink-0 items-center justify-center"
                       >
                         <SourceIndicator sourceId={source.id ?? "all"} />
                       </span>
@@ -908,12 +920,12 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                           }`}
                         >
                           <div className="flex items-stretch gap-2">
-                          <div className="flex min-w-0 items-center gap-1.5 pl-3 py-1.5">
+                          <div className="flex min-w-0 flex-1 items-center gap-1.5 pl-3 py-1.5">
                             <button
                               onClick={() => handleSourceClick(source)}
                               data-testid={`source-row-${sourceKey(source)}`}
                               className={`
-                                flex min-w-0 items-center gap-3 text-left text-sm transition-all
+                                flex min-w-0 flex-1 items-center gap-3 text-left text-sm transition-all
                                 ${
                                   isTopSourceActive(source)
                                     ? "text-[color:var(--theme-text-primary)]"
@@ -922,18 +934,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                               `}
                             >
                               <span className="w-5 flex items-center justify-center">{source.icon}</span>
-                              <span className="min-w-0 flex items-center gap-1.5">
-                                <span className="truncate">{source.label}</span>
-                                {sourceStatus ? (
-                                  <ProviderStatusIndicator
-                                    tone={sourceStatus.tone}
-                                    syncing={sourceStatus.syncing}
-                                    label={sourceStatus.label}
-                                    size="xxs"
-                                    testId={`source-status-${sourceKey(source)}`}
-                                  />
-                                ) : null}
-                              </span>
+                              <span className="min-w-0 flex-1 truncate">{source.label}</span>
                             </button>
                             <button
                               type="button"
@@ -953,6 +954,17 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                             </button>
                           </div>
                           <div className="shrink-0 flex items-center pr-2">
+                            {sourceStatus ? (
+                              <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                                <ProviderStatusIndicator
+                                  tone={sourceStatus.tone}
+                                  syncing={sourceStatus.syncing}
+                                  label={sourceStatus.label}
+                                  size="xxs"
+                                  testId={`source-status-${sourceKey(source)}`}
+                                />
+                              </span>
+                            ) : null}
                             <div className="relative ml-1.5 h-6 w-[54px] shrink-0">
                               {sourceTotalCount(source) > 0 && (
                                 <span
@@ -1157,11 +1169,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                       {SourceIndicator ? (
                         <span
                           data-testid={`source-indicator-slot-${sourceKey(source)}`}
-                          className={`flex h-4 w-4 shrink-0 items-center justify-center transition-transform duration-200 ease-in-out ${
-                            openMenuSourceKey === sourceKey(source)
-                              ? "translate-x-0 bg-[var(--theme-bg-muted)] text-[var(--theme-text-primary)] opacity-100"
-                              : "pointer-events-none translate-x-[-4px] text-[var(--theme-text-muted)] opacity-0 group-hover/source:pointer-events-auto group-hover/source:translate-x-0 group-hover/source:opacity-100"
-                          }`}
+                          className="flex h-4 w-4 shrink-0 items-center justify-center"
                         >
                           <SourceIndicator sourceId={source.id ?? "all"} />
                         </span>
@@ -1279,6 +1287,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
         {/* Resize handle — desktop only */}
         <div
+          data-testid="app-sidebar-resize-handle"
           className="hidden md:block absolute top-0 right-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.3)] active:bg-[rgb(var(--theme-accent-secondary-rgb)/0.5)]"
           onMouseDown={handleDragStart}
         />

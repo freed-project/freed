@@ -71,10 +71,10 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
 
   const bgColor = {
     success:
-      "bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_94%,transparent)] ring-1 ring-[rgb(var(--theme-feedback-success-rgb)/0.3)] border-[rgb(var(--theme-feedback-success-rgb)/0.3)]",
+      "bg-[var(--theme-bg-elevated)] ring-1 ring-[rgb(var(--theme-feedback-success-rgb)/0.3)] border-[rgb(var(--theme-feedback-success-rgb)/0.3)]",
     error:
-      "bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_94%,transparent)] ring-1 ring-[rgb(var(--theme-feedback-danger-rgb)/0.3)] border-[rgb(var(--theme-feedback-danger-rgb)/0.3)]",
-    info: "bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_94%,transparent)] ring-1 ring-[color:color-mix(in_srgb,var(--theme-accent-secondary)_30%,transparent)] border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_30%,transparent)]",
+      "bg-[var(--theme-bg-elevated)] ring-1 ring-[rgb(var(--theme-feedback-danger-rgb)/0.3)] border-[rgb(var(--theme-feedback-danger-rgb)/0.3)]",
+    info: "bg-[var(--theme-bg-elevated)] ring-1 ring-[color:color-mix(in_srgb,var(--theme-accent-secondary)_30%,transparent)] border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_30%,transparent)]",
   }[toast.type];
 
   const textColor = {

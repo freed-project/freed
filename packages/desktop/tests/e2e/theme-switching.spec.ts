@@ -19,11 +19,7 @@ test("switching themes in settings applies the selected theme immediately", asyn
   const initialThemeId = await page.evaluate(() => document.documentElement.dataset.theme);
   expect(initialThemeId).toBe("neon");
 
-  await page
-    .locator("button")
-    .filter({ has: page.getByText("Scriptorium", { exact: true }) })
-    .first()
-    .click();
+  await page.getByRole("button", { name: /^Scriptorium\./ }).click();
 
   await expect.poll(async () => {
     return page.evaluate(() => document.documentElement.dataset.theme);
@@ -62,11 +58,7 @@ test("theme switching repaints the app even before preferences finish saving", a
     });
   });
 
-  await page
-    .locator("button")
-    .filter({ has: page.getByText("Scriptorium", { exact: true }) })
-    .first()
-    .click();
+  await page.getByRole("button", { name: /^Scriptorium\./ }).click();
 
   await expect.poll(async () => {
     return page.evaluate(() => document.documentElement.dataset.theme);
@@ -81,4 +73,47 @@ test("theme switching repaints the app even before preferences finish saving", a
       return store?.getState().preferences.display.themeId;
     });
   }).toBe("neon");
+});
+
+test("settings switches render with a full track and knob", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async (settingsStorePath) => {
+    const mod = await import(settingsStorePath);
+    mod.useSettingsStore.getState().openTo("appearance");
+  }, SETTINGS_STORE_PATH);
+
+  await expect(page.getByText("Appearance").first()).toBeVisible({ timeout: 5_000 });
+
+  const metrics = await page.evaluate(() => {
+    const button = document.querySelector('button[role="switch"][aria-label="Mark read on scroll"]') as HTMLButtonElement | null;
+    const track = button?.firstElementChild as HTMLElement | null;
+    const knob = track?.firstElementChild as HTMLElement | null;
+
+    if (!button || !track || !knob) {
+      throw new Error("Settings switch elements were not found");
+    }
+
+    const trackRect = track.getBoundingClientRect();
+    const knobRect = knob.getBoundingClientRect();
+
+    return {
+      trackWidth: trackRect.width,
+      trackHeight: trackRect.height,
+      knobWidth: knobRect.width,
+      knobHeight: knobRect.height,
+      knobWithinTrack:
+        knobRect.left >= trackRect.left - 0.5 &&
+        knobRect.right <= trackRect.right + 0.5 &&
+        knobRect.top >= trackRect.top - 0.5 &&
+        knobRect.bottom <= trackRect.bottom + 0.5,
+    };
+  });
+
+  expect(metrics.trackWidth).toBeGreaterThanOrEqual(34);
+  expect(metrics.trackHeight).toBeGreaterThanOrEqual(18);
+  expect(metrics.knobWidth).toBeGreaterThanOrEqual(14);
+  expect(metrics.knobHeight).toBeGreaterThanOrEqual(14);
+  expect(metrics.knobWithinTrack).toBe(true);
 });
