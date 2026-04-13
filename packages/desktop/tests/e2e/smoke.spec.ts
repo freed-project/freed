@@ -37,6 +37,10 @@ const SETTINGS_STORE_PATH = resolveViteFsModulePath(
   "../../../ui/src/lib/settings-store.ts",
   import.meta.url,
 );
+const DEBUG_STORE_PATH = resolveViteFsModulePath(
+  "../../../ui/src/lib/debug-store.ts",
+  import.meta.url,
+);
 
 // ---------------------------------------------------------------------------
 // App initialization
@@ -99,6 +103,202 @@ test("main content area renders", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
   await expect(app.page.locator("main")).toBeVisible();
+});
+
+test("sidebar resize holds the dragged width after mouseup", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (patch: { display: { sidebarWidth: number } }) => Promise<void>;
+          };
+          setState: (partial: Record<string, unknown>) => void;
+        }
+      | undefined;
+
+    if (!store) return;
+
+    const originalUpdatePreferences = store.getState().updatePreferences;
+    store.setState({
+      updatePreferences: async (patch: { display: { sidebarWidth: number } }) => {
+        await new Promise((resolve) => window.setTimeout(resolve, 350));
+        await originalUpdatePreferences(patch);
+      },
+    });
+  });
+
+  const sidebar = page.getByTestId("app-sidebar");
+  const { initialWidth, widthAfterRelease } = await page.evaluate(async () => {
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    const resizeHandle = document.querySelector('[data-testid="app-sidebar-resize-handle"]') as HTMLElement | null;
+    if (!sidebar || !resizeHandle) {
+      throw new Error("Sidebar resize elements were not found");
+    }
+
+    const initialWidth = sidebar.getBoundingClientRect().width;
+    const handleRect = resizeHandle.getBoundingClientRect();
+    const startX = handleRect.left + handleRect.width / 2;
+    const pointerY = handleRect.top + handleRect.height / 2;
+    const endX = startX + 72;
+
+    resizeHandle.dispatchEvent(
+      new MouseEvent("mousedown", {
+        bubbles: true,
+        clientX: startX,
+        clientY: pointerY,
+      }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("mousemove", {
+        bubbles: true,
+        clientX: endX,
+        clientY: pointerY,
+      }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("mouseup", {
+        bubbles: true,
+        clientX: endX,
+        clientY: pointerY,
+      }),
+    );
+
+    await new Promise((resolve) => window.setTimeout(resolve, 100));
+
+    return {
+      initialWidth,
+      widthAfterRelease: sidebar.getBoundingClientRect().width,
+    };
+  });
+
+  expect(widthAfterRelease).toBeGreaterThan(initialWidth + 40);
+
+  await page.waitForTimeout(450);
+  const settledWidth = await sidebar.evaluate((element) =>
+    element.getBoundingClientRect().width,
+  );
+
+  expect(Math.abs(settledWidth - widthAfterRelease)).toBeLessThanOrEqual(2);
+
+  await page.waitForFunction((expectedWidth) => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            preferences: { display: { sidebarWidth?: number } };
+          };
+        }
+      | undefined;
+
+    const savedWidth = store?.getState().preferences.display.sidebarWidth ?? 0;
+    return Math.abs(savedWidth - expectedWidth) <= 2;
+  }, Math.round(settledWidth));
+});
+
+test("debug panel resize holds the dragged width after mouseup", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async (debugStorePath) => {
+    const mod = await import(debugStorePath);
+    mod.useDebugStore.getState().setVisible(true);
+  }, DEBUG_STORE_PATH);
+
+  const debugPanel = page.getByTestId("debug-panel-drawer");
+  await expect(debugPanel).toBeVisible();
+  await page.waitForTimeout(350);
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (patch: { display: { debugPanelWidth: number } }) => Promise<void>;
+          };
+          setState: (partial: Record<string, unknown>) => void;
+        }
+      | undefined;
+
+    if (!store) return;
+
+    const originalUpdatePreferences = store.getState().updatePreferences;
+    store.setState({
+      updatePreferences: async (patch: { display: { debugPanelWidth: number } }) => {
+        await new Promise((resolve) => window.setTimeout(resolve, 350));
+        await originalUpdatePreferences(patch);
+      },
+    });
+  });
+
+  const initialWidth = await page.evaluate(() => {
+    const debugPanel = document.querySelector('[data-testid="debug-panel-drawer"]') as HTMLElement | null;
+    const resizeHandle = document.querySelector('[data-testid="debug-panel-resize-handle"]') as HTMLElement | null;
+    if (!debugPanel || !resizeHandle) {
+      throw new Error("Debug panel resize elements were not found");
+    }
+
+    const initialWidth = debugPanel.getBoundingClientRect().width;
+    const handleRect = resizeHandle.getBoundingClientRect();
+    const startX = handleRect.left + handleRect.width / 2;
+    const pointerY = handleRect.top + handleRect.height / 2;
+    const endX = startX - 72;
+
+    resizeHandle.dispatchEvent(
+      new MouseEvent("mousedown", {
+        bubbles: true,
+        clientX: startX,
+        clientY: pointerY,
+      }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("mousemove", {
+        bubbles: true,
+        clientX: endX,
+        clientY: pointerY,
+      }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("mouseup", {
+        bubbles: true,
+        clientX: endX,
+        clientY: pointerY,
+      }),
+    );
+
+    return initialWidth;
+  });
+
+  await page.waitForTimeout(450);
+  const widthAfterTransition = await debugPanel.evaluate((element) =>
+    element.getBoundingClientRect().width,
+  );
+
+  expect(widthAfterTransition).toBeGreaterThan(initialWidth + 40);
+
+  await page.waitForTimeout(450);
+  const settledWidth = await debugPanel.evaluate((element) =>
+    element.getBoundingClientRect().width,
+  );
+
+  expect(Math.abs(settledWidth - widthAfterTransition)).toBeLessThanOrEqual(2);
+
+  await page.waitForFunction((expectedWidth) => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            preferences: { display: { debugPanelWidth?: number } };
+          };
+        }
+      | undefined;
+
+    const savedWidth = store?.getState().preferences.display.debugPanelWidth ?? 0;
+    return Math.abs(savedWidth - expectedWidth) <= 2;
+  }, Math.round(settledWidth));
 });
 
 test("settings dialog closes from the desktop sidebar close button", async ({ app }) => {

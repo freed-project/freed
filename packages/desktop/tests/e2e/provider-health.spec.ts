@@ -1394,8 +1394,9 @@ test("settings sources nav shows provider status dots", async ({ app, page }) =>
   const facebookSourceIndicatorLayout = await page.evaluate(() => {
     const row = document.querySelector('[data-testid="source-row-facebook"]')?.parentElement;
     const indicator = row?.querySelector('[data-testid="source-indicator-facebook"]');
+    const indicatorSlot = row?.querySelector('[data-testid="source-indicator-slot-facebook"]');
     const label = row?.querySelector('[data-testid="source-row-facebook"] span.min-w-0.flex-1.truncate');
-    if (!indicator || !label || !row) {
+    if (!indicator || !indicatorSlot || !label || !row) {
       return null;
     }
 
@@ -1405,6 +1406,7 @@ test("settings sources nav shows provider status dots", async ({ app, page }) =>
     return {
       indicatorLeft: indicatorRect.left,
       indicatorRight: indicatorRect.right,
+      indicatorOpacity: window.getComputedStyle(indicatorSlot).opacity,
       labelRight: labelRect.right,
       rowRight: rowRect.right,
     };
@@ -1413,6 +1415,7 @@ test("settings sources nav shows provider status dots", async ({ app, page }) =>
   expect(facebookSourceIndicatorLayout).not.toBeNull();
   expect(facebookSourceIndicatorLayout!.indicatorLeft).toBeGreaterThan(facebookSourceIndicatorLayout!.labelRight);
   expect(facebookSourceIndicatorLayout!.indicatorRight).toBeLessThan(facebookSourceIndicatorLayout!.rowRight);
+  expect(facebookSourceIndicatorLayout!.indicatorOpacity).toBe("1");
 
   const sidebarIndicatorSizes = await page.evaluate(() => {
     const settingsIndicator = document.querySelector('[data-testid="settings-provider-status-facebook"]');
@@ -1721,6 +1724,12 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
         gdrive: 0,
         dropbox: 0,
       },
+      unreadCountByPlatform: {
+        rss: 24,
+      },
+      itemCountByPlatform: {
+        rss: 52,
+      },
     });
 
     const response = await fetch(debugStorePath);
@@ -1784,6 +1793,35 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
   }, { debugStorePath });
 
   await expect(page.getByTestId("source-status-rss")).toHaveAttribute("title", "Syncing");
+  const rssRowLayout = await page.evaluate(() => {
+    const rowButton = document.querySelector('[data-testid="source-row-rss"]');
+    const row =
+      rowButton?.parentElement?.parentElement?.parentElement ?? null;
+    const label = rowButton?.querySelector("span.min-w-0.flex-1.truncate");
+    const status = document.querySelector('[data-testid="source-status-rss"]');
+    const counts = document.querySelector('[data-testid="source-counts-rss"]');
+    if (!row || !label || !status || !counts) {
+      return null;
+    }
+
+    const rowRect = row.getBoundingClientRect();
+    const labelRect = label.getBoundingClientRect();
+    const statusRect = status.getBoundingClientRect();
+    const countsRect = counts.getBoundingClientRect();
+    return {
+      rowRight: rowRect.right,
+      labelRight: labelRect.right,
+      statusLeft: statusRect.left,
+      statusRight: statusRect.right,
+      countsLeft: countsRect.left,
+      countsRight: countsRect.right,
+    };
+  });
+
+  expect(rssRowLayout).not.toBeNull();
+  expect(rssRowLayout!.statusLeft).toBeGreaterThan(rssRowLayout!.labelRight);
+  expect(rssRowLayout!.countsLeft).toBeGreaterThan(rssRowLayout!.statusRight);
+  expect(rssRowLayout!.countsRight).toBeLessThanOrEqual(rssRowLayout!.rowRight);
   await page.getByTestId("source-row-rss").hover();
   await expect(page.getByTestId("source-menu-trigger-rss")).toBeVisible();
 
@@ -1873,9 +1911,14 @@ test("source rows swap counts for an actions menu on hover", async ({ app, page 
   await expect(counts).toHaveClass(/opacity-100/);
   await expect(trigger).toHaveClass(/opacity-0/);
   await expect(trigger).toHaveClass(/pointer-events-none/);
-  await expect(indicator).toHaveClass(/transition-transform/);
   await expect(counts).toHaveClass(/transition-all/);
   await expect(trigger).toHaveClass(/transition-all/);
+  await expect(indicator).toBeVisible();
+
+  const indicatorOpacity = await indicator.evaluate((element) => {
+    return window.getComputedStyle(element).opacity;
+  });
+  expect(indicatorOpacity).toBe("1");
 
   await sourceRow.hover();
 
