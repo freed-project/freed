@@ -392,8 +392,7 @@ html[data-theme="ember"] {
 
 html[data-theme="scriptorium"] {
   --font-body:
-    "Baskerville", "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
-    Georgia, serif;
+    "Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-logo: "Baskerville", "Hoefler Text", "Iowan Old Style", Georgia, serif;
   --font-display:
     "Baskerville", "Hoefler Text", "Iowan Old Style", "Palatino Linotype",
