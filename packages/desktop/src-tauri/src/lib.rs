@@ -4,7 +4,7 @@
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use futures_util::{SinkExt, StreamExt};
-use log::{error, info};
+use log::{error, info, warn};
 use rand::RngCore;
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -512,6 +512,7 @@ struct CaptureState {
     fb_user_agent: std::sync::Mutex<String>,
     ig_user_agent: std::sync::Mutex<String>,
     li_user_agent: std::sync::Mutex<String>,
+    scraper_session: Arc<tokio::sync::Mutex<()>>,
     x_client: rquest::Client,
 }
 
@@ -529,7 +530,100 @@ impl CaptureState {
             fb_user_agent: std::sync::Mutex::new(String::new()),
             ig_user_agent: std::sync::Mutex::new(String::new()),
             li_user_agent: std::sync::Mutex::new(String::new()),
+            scraper_session: Arc::new(tokio::sync::Mutex::new(())),
             x_client,
+        }
+    }
+}
+
+struct ActiveScraperSession {
+    _guard: tokio::sync::OwnedMutexGuard<()>,
+    operation: &'static str,
+    acquired_at: std::time::Instant,
+}
+
+impl Drop for ActiveScraperSession {
+    fn drop(&mut self) {
+        info!(
+            "[scraper] released session op={} held_ms={}",
+            self.operation,
+            self.acquired_at.elapsed().as_millis()
+        );
+    }
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct RendererHeartbeatPayload {
+    seq: u64,
+    ts: u64,
+    reason: String,
+    visibility: String,
+    href: String,
+}
+
+struct RendererHeartbeatStatus {
+    started_at: std::time::Instant,
+    last_seen_at: Option<std::time::Instant>,
+    last_seq: u64,
+    last_reason: String,
+    last_visibility: String,
+    last_href: String,
+    stale_logged: bool,
+}
+
+impl RendererHeartbeatStatus {
+    fn new() -> Self {
+        Self {
+            started_at: std::time::Instant::now(),
+            last_seen_at: None,
+            last_seq: 0,
+            last_reason: "startup".to_string(),
+            last_visibility: "unknown".to_string(),
+            last_href: String::new(),
+            stale_logged: false,
+        }
+    }
+}
+
+fn truncate_for_log(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars();
+    let truncated: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{}...", truncated)
+    } else {
+        truncated
+    }
+}
+
+async fn acquire_background_scraper_session(
+    capture: &CaptureState,
+    operation: &'static str,
+) -> ActiveScraperSession {
+    let session = capture.scraper_session.clone();
+
+    match session.clone().try_lock_owned() {
+        Ok(guard) => {
+            info!("[scraper] acquired session op={} wait_ms=0", operation);
+            ActiveScraperSession {
+                _guard: guard,
+                operation,
+                acquired_at: std::time::Instant::now(),
+            }
+        }
+        Err(_) => {
+            info!("[scraper] waiting for active session op={}", operation);
+            let wait_started = std::time::Instant::now();
+            let guard = session.lock_owned().await;
+            info!(
+                "[scraper] acquired session op={} wait_ms={}",
+                operation,
+                wait_started.elapsed().as_millis()
+            );
+            ActiveScraperSession {
+                _guard: guard,
+                operation,
+                acquired_at: std::time::Instant::now(),
+            }
         }
     }
 }
@@ -1200,6 +1294,7 @@ async fn fb_check_auth(
     use tauri::WebviewWindowBuilder;
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
+    let _scraper_session = acquire_background_scraper_session(&capture, "fb_check_auth").await;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "auth check");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(w) => w,
@@ -1489,6 +1584,7 @@ async fn fb_scrape_feed(
 
     let fb_feed_url = "https://www.facebook.com/";
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
+    let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_feed").await;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "feed scrape complete");
 
@@ -1715,6 +1811,7 @@ async fn fb_scrape_groups(
 
     let fb_groups_url = "https://www.facebook.com/groups/?category=joined";
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
+    let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_groups").await;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "groups scrape complete");
 
@@ -1942,6 +2039,7 @@ async fn ig_check_auth(
     use tauri::WebviewWindowBuilder;
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
+    let _scraper_session = acquire_background_scraper_session(&capture, "ig_check_auth").await;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "auth check");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(w) => w,
@@ -2002,6 +2100,7 @@ async fn ig_scrape_feed(
 
     let ig_feed_url = "https://www.instagram.com/?variant=following";
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
+    let _scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_feed").await;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "ig-scraper", "feed scrape complete");
 
@@ -2266,6 +2365,7 @@ async fn fb_visit_url(
     url: String,
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
+    let _scraper_session = acquire_background_scraper_session(&capture, "fb_visit_url").await;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "visit complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
@@ -2296,6 +2396,7 @@ async fn ig_visit_url(
     url: String,
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
+    let _scraper_session = acquire_background_scraper_session(&capture, "ig_visit_url").await;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "visit complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
@@ -2332,6 +2433,7 @@ async fn fb_like_post(
     url: String,
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
+    let _scraper_session = acquire_background_scraper_session(&capture, "fb_like_post").await;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "like complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
@@ -2380,6 +2482,7 @@ async fn ig_like_post(
     url: String,
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
+    let _scraper_session = acquire_background_scraper_session(&capture, "ig_like_post").await;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "like complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
@@ -2522,6 +2625,7 @@ async fn li_check_auth(
     use tauri::WebviewWindowBuilder;
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.li_user_agent);
+    let _scraper_session = acquire_background_scraper_session(&capture, "li_check_auth").await;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "li-scraper", "auth check");
     let wv = match app.get_webview_window("li-scraper") {
         Some(w) => {
@@ -2594,6 +2698,7 @@ async fn li_scrape_feed(
 
     let li_feed_url = "https://www.linkedin.com/feed/";
     let scraper_user_agent = stored_or_default_user_agent(&capture.li_user_agent);
+    let _scraper_session = acquire_background_scraper_session(&capture, "li_scrape_feed").await;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "li-scraper", "feed scrape complete");
 
@@ -3201,6 +3306,87 @@ pub fn run() {
                     let url = val.get("url").and_then(|u| u.as_str()).unwrap_or("?");
                     info!("[IG] pass @ scrollY={}: candidates={}, new={}, total_unique={}, strategy={}, url={}",
                         scroll_y, candidates, new_count, total, strategy, &url[..url.len().min(60)]);
+                }
+            });
+
+            let renderer_health = Arc::new(StdRwLock::new(RendererHeartbeatStatus::new()));
+            let renderer_health_for_listener = renderer_health.clone();
+            let app_for_renderer = app.handle().clone();
+            app_for_renderer.listen("renderer-heartbeat", move |event| {
+                let payload = match serde_json::from_str::<RendererHeartbeatPayload>(event.payload()) {
+                    Ok(payload) => payload,
+                    Err(error) => {
+                        warn!(
+                            "[main-window] invalid renderer-heartbeat payload err={} payload={}",
+                            error,
+                            event.payload()
+                        );
+                        return;
+                    }
+                };
+
+                let now = std::time::Instant::now();
+                let mut health = renderer_health_for_listener.write().unwrap();
+                let gap_ms = health
+                    .last_seen_at
+                    .map(|last| now.duration_since(last).as_millis())
+                    .unwrap_or_else(|| now.duration_since(health.started_at).as_millis());
+                let recovered = health.stale_logged;
+
+                health.last_seen_at = Some(now);
+                health.last_seq = payload.seq;
+                health.last_reason = payload.reason.clone();
+                health.last_visibility = payload.visibility.clone();
+                health.last_href = payload.href.clone();
+                health.stale_logged = false;
+
+                let href = truncate_for_log(&payload.href, 120);
+                if recovered {
+                    warn!(
+                        "[main-window] renderer heartbeat recovered seq={} gap_ms={} reason={} visibility={} href={} ts={}",
+                        payload.seq,
+                        gap_ms,
+                        payload.reason,
+                        payload.visibility,
+                        href,
+                        payload.ts
+                    );
+                } else {
+                    info!(
+                        "[main-window] renderer heartbeat seq={} reason={} visibility={} href={} ts={}",
+                        payload.seq,
+                        payload.reason,
+                        payload.visibility,
+                        href,
+                        payload.ts
+                    );
+                }
+            });
+
+            let renderer_health_for_watchdog = renderer_health.clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(Duration::from_secs(30)).await;
+
+                    let mut health = renderer_health_for_watchdog.write().unwrap();
+                    let age = health
+                        .last_seen_at
+                        .map(|last| last.elapsed())
+                        .unwrap_or_else(|| health.started_at.elapsed());
+
+                    if age <= Duration::from_secs(150) || health.stale_logged {
+                        continue;
+                    }
+
+                    warn!(
+                        "[main-window] renderer heartbeat stale age_ms={} last_seq={} last_reason={} visibility={} href={}",
+                        age.as_millis(),
+                        health.last_seq,
+                        health.last_reason,
+                        health.last_visibility,
+                        truncate_for_log(&health.last_href, 120)
+                    );
+                    health.stale_logged = true;
                 }
             });
 

@@ -168,6 +168,7 @@ const RATE_LIMITS = {
 - [x] Social sync actions show an inline spinner only while that specific provider is actively syncing
 - [x] Social provider status dots switch to a live spinner while that provider is actively syncing
 - [x] Social provider sections include a line-by-line scrape log so users can see what the scraper is doing in real time
+- [x] Desktop social scraper commands serialize behind a shared native session lock so background WebKit jobs cannot overlap and starve the main renderer
 - [x] Social provider source menus surface a quick status explanation for warning or reconnect states before routing into full settings
 - [x] Empty states for both platforms in the feed view
 - [x] Source indicators in sidebar for both platforms

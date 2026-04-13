@@ -736,7 +736,7 @@ const phases: Phase[] = [
     number: 5,
     title: "Desktop & Mobile App",
     description:
-      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, first-run legal gating, provider risk interstitials, browser-style back and forward shortcuts, local snapshot rollback for disaster recovery, a provider health dashboard, failing-feed unsubscribe tools, reviewed cumulative release headings, paginated changelog history, and public-safe bug reporting.",
+      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, first-run legal gating, provider risk interstitials, browser-style back and forward shortcuts, local snapshot rollback for disaster recovery, a provider health dashboard, failing-feed unsubscribe tools, renderer heartbeat diagnostics in the local log, reviewed cumulative release headings, paginated changelog history, and public-safe bug reporting.",
     status: "current",
     priority: true,
     planLink:
@@ -755,7 +755,7 @@ const phases: Phase[] = [
     number: 7,
     title: "Facebook + Instagram",
     description:
-      "Facebook and Instagram integrated via Tauri WebView scraping, with suggested-post filtering, hardened story capture, silent background media guarding, Facebook group controls, provider health summaries, and smart backoff when sync looks rate-limited.",
+      "Facebook and Instagram integrated via Tauri WebView scraping, with suggested-post filtering, hardened story capture, silent background media guarding, serialized background scraper sessions, Facebook group controls, provider health summaries, and smart backoff when sync looks rate-limited.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/main/docs/PHASE-7-SOCIAL-CAPTURE.md",

@@ -31,7 +31,7 @@ import {
 } from "./lib/sync";
 import { clearLocalDoc } from "./lib/automerge";
 import { isTauri } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { log } from "./lib/logger";
 import { setLogTransport } from "@freed/ui/lib/debug-store";
 import { clearStoredCookies, storeCookies } from "./lib/x-auth";
@@ -71,6 +71,7 @@ import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
 const IS_LOCAL_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1";
+const RENDERER_HEARTBEAT_INTERVAL_MS = 60 * 1000;
 
 // Register the desktop log transport so addDebugEvent calls from ui/ flow
 // through the native logger in both local preview and release builds.
@@ -161,6 +162,49 @@ function App() {
     }).then((unlisten) => cleanups.push(unlisten));
 
     return () => cleanups.forEach((fn) => fn());
+  }, [legalAccepted]);
+
+  useEffect(() => {
+    if (!legalAccepted || !isTauri()) return;
+
+    let heartbeatSeq = 0;
+
+    const sendRendererHeartbeat = (reason: string) => {
+      heartbeatSeq += 1;
+      void emit("renderer-heartbeat", {
+        seq: heartbeatSeq,
+        ts: Date.now(),
+        reason,
+        visibility: document.visibilityState,
+        href: window.location.href,
+      }).catch(() => {
+        // If the renderer is already failing, heartbeat delivery may fail too.
+      });
+    };
+
+    sendRendererHeartbeat("startup");
+
+    const interval = window.setInterval(() => {
+      sendRendererHeartbeat("interval");
+    }, RENDERER_HEARTBEAT_INTERVAL_MS);
+
+    const handleVisibilityChange = () => {
+      sendRendererHeartbeat(`visibility:${document.visibilityState}`);
+    };
+
+    const handlePageHide = () => {
+      sendRendererHeartbeat("pagehide");
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", handlePageHide);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", handlePageHide);
+      sendRendererHeartbeat("cleanup");
+    };
   }, [legalAccepted]);
 
   // --- Update system ---
