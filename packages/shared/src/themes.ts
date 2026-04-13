@@ -45,6 +45,24 @@ export interface ThemeBackgroundRecipe {
   overlayEnabled?: boolean;
 }
 
+export interface ThemeMapPalette {
+  background: string;
+  water: string;
+  park: string;
+  wood: string;
+  residential: string;
+  building: string;
+  roadsMinor: string;
+  roadsMajor: string;
+  boundary: string;
+  labelStrong: string;
+  labelSoft: string;
+  labelWater: string;
+  labelHalo: string;
+  overlayVignette: string;
+  gridOpacity: number;
+}
+
 export interface ThemeDefinition {
   id: ThemeId;
   name: string;
@@ -56,6 +74,7 @@ export interface ThemeDefinition {
   surface: "dark" | "light";
   effects: "dramatic" | "restrained";
   background: ThemeBackgroundRecipe;
+  map: ThemeMapPalette;
 }
 
 export interface ThemeCssVariables {
@@ -140,6 +159,114 @@ const SCRIPTORIUM_SHELL_BACKGROUND = `radial-gradient(circle at 16% 13%, rgb(176
     radial-gradient(circle at 70% 88%, rgb(216 196 161 / 0.04) 0, transparent 32%),
     linear-gradient(180deg, #f4ead7 0%, #efe3ce 44%, #eadcc4 100%)`;
 
+const NEON_MAP: ThemeMapPalette = {
+  background: "#1c232c",
+  water: "#0f1722",
+  park: "#1b2730",
+  wood: "#202d36",
+  residential: "#222a33",
+  building: "#313b47",
+  roadsMinor: "#4a5665",
+  roadsMajor: "#657384",
+  boundary: "#6da6c8",
+  labelStrong: "#eef4fb",
+  labelSoft: "#97a4b6",
+  labelWater: "#86b9d5",
+  labelHalo: "#091018",
+  overlayVignette: `radial-gradient(
+      circle at 18% 0%,
+      color-mix(in oklab, var(--theme-accent-secondary) 14%, transparent) 0%,
+      transparent 34%
+    ),
+    linear-gradient(
+      180deg,
+      rgb(var(--theme-shell-rgb) / 0.04) 0%,
+      rgb(var(--theme-shell-rgb) / 0.14) 100%
+    )`,
+  gridOpacity: 0.055,
+};
+
+const EMBER_MAP: ThemeMapPalette = {
+  background: "#43332d",
+  water: "#1c2529",
+  park: "#4a443b",
+  wood: "#3f3b34",
+  residential: "#56443b",
+  building: "#6e594f",
+  roadsMinor: "#8d7367",
+  roadsMajor: "#b38d78",
+  boundary: "#c49172",
+  labelStrong: "#f7eee8",
+  labelSoft: "#d2b3a4",
+  labelWater: "#adc0c8",
+  labelHalo: "#140c0a",
+  overlayVignette: `radial-gradient(
+      circle at 20% 0%,
+      color-mix(in oklab, var(--theme-accent-secondary) 12%, transparent) 0%,
+      transparent 32%
+    ),
+    linear-gradient(
+      180deg,
+      rgb(var(--theme-shell-rgb) / 0.03) 0%,
+      rgb(var(--theme-shell-rgb) / 0.12) 100%
+    )`,
+  gridOpacity: 0.045,
+};
+
+const MIDAS_MAP: ThemeMapPalette = {
+  background: "#5b4d40",
+  water: "#27333d",
+  park: "#625847",
+  wood: "#504b40",
+  residential: "#6b5d4b",
+  building: "#89755d",
+  roadsMinor: "#a08f78",
+  roadsMajor: "#c5b295",
+  boundary: "#c9a76d",
+  labelStrong: "#f4ead7",
+  labelSoft: "#d6c8b4",
+  labelWater: "#c2d2d8",
+  labelHalo: "#261f19",
+  overlayVignette: `radial-gradient(
+      circle at 20% 0%,
+      color-mix(in oklab, var(--theme-accent-secondary) 10%, transparent) 0%,
+      transparent 32%
+    ),
+    linear-gradient(
+      180deg,
+      rgb(var(--theme-shell-rgb) / 0.025) 0%,
+      rgb(var(--theme-shell-rgb) / 0.1) 100%
+    )`,
+  gridOpacity: 0.04,
+};
+
+const SCRIPTORIUM_MAP: ThemeMapPalette = {
+  background: "#eadfcf",
+  water: "#cfd9dd",
+  park: "#d8d2bb",
+  wood: "#c4bea5",
+  residential: "#e3d8c7",
+  building: "#d2c0a6",
+  roadsMinor: "#baa98f",
+  roadsMajor: "#92775e",
+  boundary: "#8d755f",
+  labelStrong: "#2b2119",
+  labelSoft: "#6c5948",
+  labelWater: "#5b727c",
+  labelHalo: "#f7efdf",
+  overlayVignette: `radial-gradient(
+      circle at 18% 0%,
+      color-mix(in oklab, var(--theme-accent-secondary) 5%, transparent) 0%,
+      transparent 34%
+    ),
+    linear-gradient(
+      180deg,
+      rgb(255 255 255 / 0.02) 0%,
+      rgb(132 100 68 / 0.05) 100%
+    )`,
+  gridOpacity: 0.028,
+};
+
 export const DEFAULT_THEME_ID: ThemeId = "neon";
 
 export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
@@ -164,6 +291,7 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       renderer: "legacy",
       overlayEnabled: false,
     },
+    map: NEON_MAP,
   },
   {
     id: "ember",
@@ -184,6 +312,7 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       heroOrbs: DEFAULT_HERO_ORBS,
       rowOrbs: DEFAULT_ROW_ORBS,
     },
+    map: EMBER_MAP,
   },
   {
     id: "midas",
@@ -204,6 +333,7 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       heroOrbs: DEFAULT_HERO_ORBS,
       rowOrbs: DEFAULT_ROW_ORBS,
     },
+    map: MIDAS_MAP,
   },
   {
     id: "scriptorium",
@@ -227,6 +357,7 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       heroOrbs: DEFAULT_HERO_ORBS,
       rowOrbs: DEFAULT_ROW_ORBS,
     },
+    map: SCRIPTORIUM_MAP,
   },
 ] as const;
 

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { LocationMarkerSummary } from "@freed/shared";
-import type { ThemeId } from "@freed/shared/themes";
+import { DEFAULT_THEME_ID, getThemeDefinition, type ThemeId } from "@freed/shared/themes";
 import { createMarkerElement } from "./MarkerElement.js";
 import { createFriendAvatarPalette } from "../../lib/friend-avatar-style.js";
+import { buildThemedMapStyle } from "../../lib/map-style.js";
 
 type PopupInstance = {
   remove: () => void;
@@ -57,7 +58,6 @@ const MAPLIBRE_CSS_PATH =
     "../../../../../node_modules/maplibre-gl/dist/maplibre-gl.css",
     import.meta.url
   ).href;
-const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/positron";
 
 let mapLibreLoader: Promise<MapLibreModule> | null = null;
 let mapLibreCssLoaded = false;
@@ -308,10 +308,6 @@ function mapStyles(interactive: boolean) {
       font-family: system-ui, sans-serif;
     }
 
-    .freed-map-shell .maplibregl-canvas {
-      filter: var(--theme-map-canvas-filter);
-    }
-
     .freed-map-shell .maplibregl-control-container,
     .freed-map-shell .maplibregl-ctrl-logo,
     .freed-map-shell .maplibregl-ctrl-attrib {
@@ -372,6 +368,40 @@ function fallbackLabel(marker: LocationMarkerSummary) {
   return marker.friend?.name ?? marker.item.author.displayName;
 }
 
+function mapGridBackground(boundary: string) {
+  return `
+    linear-gradient(
+      color-mix(in oklab, ${boundary} 18%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in oklab, ${boundary} 14%, transparent) 1px,
+      transparent 1px
+    )
+  `;
+}
+
+function fallbackScanBackground(background: string, water: string) {
+  return `
+    radial-gradient(
+      circle at 18% 14%,
+      color-mix(in oklab, ${water} 72%, transparent) 0%,
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 78% 82%,
+      color-mix(in oklab, ${water} 28%, transparent) 0%,
+      transparent 28%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, ${background} 92%, black 8%) 0%,
+      ${background} 100%
+    )
+  `;
+}
+
 function fitMarkers(map: MapInstance, markers: LocationMarkerSummary[], focusedMarkerKey?: string | null) {
   if (markers.length === 0) return;
 
@@ -419,6 +449,7 @@ export function MapSurface({
   emptyTitle = "No geo-tagged posts yet.",
   emptyBody = "Posts with location data will show up here.",
 }: MapSurfaceProps) {
+  const resolvedThemeId = themeId ?? DEFAULT_THEME_ID;
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapInstance | null>(null);
   const mapModuleRef = useRef<MapLibreModule | null>(null);
@@ -434,8 +465,12 @@ export function MapSurface({
     [markers]
   );
   const avatarPalette = useMemo(
-    () => createFriendAvatarPalette(themeId),
-    [themeId]
+    () => createFriendAvatarPalette(resolvedThemeId),
+    [resolvedThemeId]
+  );
+  const mapPalette = useMemo(
+    () => getThemeDefinition(resolvedThemeId).map,
+    [resolvedThemeId]
   );
   const selectedFallbackMarker = useMemo(
     () => stableMarkers.find((marker) => marker.key === selectedFallbackMarkerKey) ?? null,
@@ -455,7 +490,10 @@ export function MapSurface({
     setLoadFailed(false);
     ensureMapLibreCss();
 
-    void loadMapLibre().then((module) => {
+    void Promise.all([
+      loadMapLibre(),
+      buildThemedMapStyle(resolvedThemeId),
+    ]).then(([module, mapStyle]) => {
       if (cancelled || !containerRef.current) return;
 
       const maplibre = module as unknown as MapLibreModule;
@@ -463,7 +501,7 @@ export function MapSurface({
       try {
         const map = new maplibre.Map({
           container: containerRef.current,
-          style: MAP_STYLE_URL,
+          style: mapStyle,
           center: [0, 20],
           zoom: 1.8,
           interactive,
@@ -479,7 +517,7 @@ export function MapSurface({
         setLoadFailed(true);
       }
     }).catch((error) => {
-      console.error("[MapSurface] Failed to load maplibre-gl", error);
+      console.error("[MapSurface] Failed to load the themed map", error);
       setLoadFailed(true);
     });
 
@@ -491,7 +529,7 @@ export function MapSurface({
       mapRef.current?.remove();
       mapRef.current = null;
     };
-  }, [closeActivePopup, interactive]);
+  }, [closeActivePopup, interactive, resolvedThemeId]);
 
   useEffect(() => {
     if (!mapReady || !mapRef.current || !mapModuleRef.current) return;
@@ -548,34 +586,62 @@ export function MapSurface({
   }, [avatarPalette, closeActivePopup, focusedMarkerKey, interactive, mapReady, onOpenFriend, onOpenPost, stableMarkers]);
 
   return (
-    <div className="freed-map-shell relative h-full w-full overflow-hidden">
+    <div
+      data-testid="map-surface"
+      data-map-theme={resolvedThemeId}
+      className="freed-map-shell relative h-full w-full overflow-hidden"
+    >
       <style>{mapStyles(interactive)}</style>
       <div
         ref={containerRef}
         className={`h-full w-full ${showFallback ? "invisible" : "visible"}`}
       />
       <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgb(var(--theme-accent-secondary-rgb)/1),transparent_34%)]"
-        style={{ opacity: "var(--theme-map-accent-overlay-opacity)" }}
+        className="pointer-events-none absolute inset-0"
+        style={{ background: mapPalette.overlayVignette }}
       />
       <div
-        className="theme-map-grid pointer-events-none absolute inset-0 [background-size:84px_84px]"
-        style={{ opacity: "var(--theme-map-grid-opacity)" }}
-      />
-      <div
-        className="theme-map-fade-top pointer-events-none absolute inset-x-0 top-0"
-        style={{ height: "var(--theme-map-fade-top-height)" }}
-      />
-      <div
-        className="theme-map-fade-bottom pointer-events-none absolute inset-x-0 bottom-0"
-        style={{ height: "var(--theme-map-fade-bottom-height)" }}
+        className="pointer-events-none absolute inset-0 [background-size:88px_88px]"
+        style={{
+          backgroundImage: mapGridBackground(mapPalette.boundary),
+          opacity: mapPalette.gridOpacity,
+        }}
       />
 
       {showFallback && stableMarkers.length > 0 && (
-        <div className="freed-map-fallback-scan absolute inset-0 overflow-hidden">
-          <div className="theme-map-grid-dense absolute inset-0 opacity-24 [background-size:72px_72px]" />
-          <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-[color:rgb(var(--theme-accent-secondary-rgb)/0.2)] to-transparent" />
-          <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-transparent via-[color:rgb(var(--theme-accent-secondary-rgb)/0.16)] to-transparent" />
+        <div
+          className="freed-map-fallback-scan absolute inset-0 overflow-hidden"
+          style={{ background: fallbackScanBackground(mapPalette.background, mapPalette.water) }}
+        >
+          <div
+            className="absolute inset-0 [background-size:72px_72px]"
+            style={{
+              backgroundImage: mapGridBackground(mapPalette.boundary),
+              opacity: mapPalette.gridOpacity + 0.03,
+            }}
+          />
+          <div
+            className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2"
+            style={{
+              background: `linear-gradient(
+                180deg,
+                transparent,
+                color-mix(in oklab, ${mapPalette.boundary} 34%, transparent),
+                transparent
+              )`,
+            }}
+          />
+          <div
+            className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2"
+            style={{
+              background: `linear-gradient(
+                90deg,
+                transparent,
+                color-mix(in oklab, ${mapPalette.boundary} 28%, transparent),
+                transparent
+              )`,
+            }}
+          />
           {stableMarkers.map((marker) => {
             const position = fallbackPosition(marker);
             return (
@@ -681,7 +747,12 @@ export function MapSurface({
       )}
 
       {showFallback && stableMarkers.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[color:color-mix(in_oklab,var(--theme-bg-deep)_94%,transparent)] px-6 text-center">
+        <div
+          className="absolute inset-0 flex items-center justify-center px-6 text-center"
+          style={{
+            background: `color-mix(in oklab, ${mapPalette.background} 92%, transparent)`,
+          }}
+        >
           <div>
             <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
               {loadFailed ? "Map failed to load" : emptyTitle}
