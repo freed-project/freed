@@ -2,7 +2,7 @@
   "tag": "v26.4.1201",
   "version": "26.4.1201",
   "dayKey": "26.4.12",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-13T01:22:31.071Z",
   "model": "heuristic",
@@ -53,21 +53,18 @@
     ]
   },
   "release": {
-    "deck": "Unify themes across website and app, refreshed theme system and typography polish, and polish website roadmap and changelog",
+    "deck": "A unified theme system, cleaner visual polish, and smoother desktop updates",
     "features": [
-      "Unify themes across website and app",
-      "Refreshed theme system and typography polish"
+      "Themes now stay in sync across the website and app.",
+      "The refreshed theme system tightens typography and overall visual consistency."
     ],
     "fixes": [
-      "Serialize desktop scrapers and log renderer stalls",
-      "Reorder sidebar sources and unclipped qr heading",
-      "Privacy policy callout border removed",
-      "Static card hover states removed",
-      "Polish QR footer hover state",
-      "Refine sharing qr layout",
-      "Updater progress bar lag removed"
+      "Desktop scrapers now run in sequence, which helps avoid renderer stalls.",
+      "Updater progress stays aligned with the actual install state.",
+      "The shared QR layout, footer hover states, and mobile website polish are cleaner and more consistent.",
+      "Sidebar source ordering and clipped headings are fixed."
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1201\n\nUnify themes across website and app, refreshed theme system and typography polish, and polish website roadmap and changelog\n\n### Features\n\n- Unify themes across website and app\n- Refreshed theme system and typography polish\n\n### Fixes\n\n- Serialize desktop scrapers and log renderer stalls\n- Reorder sidebar sources and unclipped qr heading\n- Privacy policy callout border removed\n- Static card hover states removed\n- Polish QR footer hover state\n- Refine sharing qr layout\n- Updater progress bar lag removed\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1201\n\nA unified theme system, cleaner visual polish, and smoother desktop updates\n\n### Features\n\n- Themes now stay in sync across the website and app.\n- The refreshed theme system tightens typography and overall visual consistency.\n\n### Fixes\n\n- Desktop scrapers now run in sequence, which helps avoid renderer stalls.\n- Updater progress stays aligned with the actual install state.\n- The shared QR layout, footer hover states, and mobile website polish are cleaner and more consistent.\n- Sidebar source ordering and clipped headings are fixed.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
