@@ -12,6 +12,7 @@ import {
   LI_SECTION_META,
   type SectionMeta,
 } from "../../lib/settings-sections.js";
+import { SearchField } from "../SearchField.js";
 
 interface CommandAction {
   id: string;
@@ -147,23 +148,7 @@ export function SearchJumpField() {
 
   return (
     <div className="relative z-20 mb-4">
-      <svg
-        className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--theme-text-soft)]"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-        aria-hidden="true"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-        />
-      </svg>
-
-      <input
-        type="text"
+      <SearchField
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
         onFocus={() => setIsFocused(true)}
@@ -171,34 +156,12 @@ export function SearchJumpField() {
           setTimeout(() => setIsFocused(false), 150);
         }}
         onKeyDown={handleKeyDown}
+        onClear={clearSearch}
         placeholder="Search or jump to..."
         aria-label="Search or run a command"
         aria-expanded={showPalette}
         aria-haspopup="listbox"
-        className="w-full rounded-lg border border-[var(--theme-border-subtle)] bg-transparent py-2 pl-8 pr-7 text-sm text-[var(--theme-text-secondary)] placeholder:text-[var(--theme-text-soft)] transition-colors hover:border-[var(--theme-border-quiet)] hover:bg-[var(--theme-bg-muted)] focus:bg-[var(--theme-bg-muted)] focus:outline-none focus:border-[var(--theme-border-strong)]"
       />
-
-      {inputValue && (
-        <button
-          onClick={clearSearch}
-          aria-label="Clear search"
-          className="absolute right-2 top-1/2 rounded p-0.5 transition-colors hover:bg-[var(--theme-bg-muted)]"
-        >
-          <svg
-            className="h-3 w-3 text-[var(--theme-text-soft)]"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2.5}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
-      )}
 
       {showPalette && (
         <div
