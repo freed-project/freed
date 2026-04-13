@@ -25,7 +25,9 @@ const HERO_ACCENTS = [
 const CENTER = 200;
 const RING_RADIUS = 175;
 const LOGO_RADIUS = 220;
-const BOX = { left: 155, right: 245, top: 155, bottom: 245 };
+const PARTICLE_RADIUS = 4;
+const DESKTOP_CENTER_BOX_SIZE = 90;
+const COMPACT_CENTER_BOX_SIZE = 112.5;
 
 const PLATFORMS = [
   {
@@ -87,11 +89,37 @@ interface Particle {
   state: "waiting" | "active" | "dead";
 }
 
+interface BoxBounds {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
 const PARTICLE_SPEED = slowHeroSpeed(0.66);
 const PARTICLES_PER_LOGO = 12;
 const CYCLE_DURATION = slowHeroInterval(12000); // ms
 const MAX_AGE = Math.round(slowHeroMotion(600)); // frames
 const RED_BOUNCE_SPEED_LIMIT = slowHeroSpeed(0.6);
+
+function buildCenterBoxBounds(size: number): BoxBounds {
+  const inset = CENTER - size / 2;
+  return {
+    left: inset,
+    right: inset + size,
+    top: inset,
+    bottom: inset + size,
+  };
+}
+
+function expandBox(bounds: BoxBounds, padding: number): BoxBounds {
+  return {
+    left: bounds.left - padding,
+    right: bounds.right + padding,
+    top: bounds.top - padding,
+    bottom: bounds.bottom + padding,
+  };
+}
 
 function createParticle(logo: ReturnType<typeof buildLogos>[number], isRed: boolean): Particle {
   // Aim directly at center with small random spread (±5 degrees)
@@ -134,7 +162,10 @@ function initParticles(logos: ReturnType<typeof buildLogos>): Particle[] {
   );
 }
 
-function useParticleSystem(logos: ReturnType<typeof buildLogos>) {
+function useParticleSystem(
+  logos: ReturnType<typeof buildLogos>,
+  centerBoxBounds: BoxBounds,
+) {
   const [particles, setParticles] = useState<Particle[]>(() => initParticles(logos));
   const startTimeRef = useRef(performance.now());
   const frameRef = useRef<number>(0);
@@ -142,6 +173,7 @@ function useParticleSystem(logos: ReturnType<typeof buildLogos>) {
   const tick = useCallback(() => {
     const now = performance.now();
     const elapsed = now - startTimeRef.current;
+    const redBounceBox = expandBox(centerBoxBounds, PARTICLE_RADIUS);
 
     setParticles((prev) =>
       prev.map((p) => {
@@ -183,23 +215,31 @@ function useParticleSystem(logos: ReturnType<typeof buildLogos>) {
         const newX = x + vx;
         const newY = y + vy;
         const inBox =
-          newX >= BOX.left &&
-          newX <= BOX.right &&
-          newY >= BOX.top &&
-          newY <= BOX.bottom;
+          newX >= centerBoxBounds.left &&
+          newX <= centerBoxBounds.right &&
+          newY >= centerBoxBounds.top &&
+          newY <= centerBoxBounds.bottom;
 
         if (p.isRed) {
           // Red: moves toward center at constant speed, bounces off box edge
           // Check if about to enter the box (bounce off edge)
           const wasOutside =
-            x < BOX.left || x > BOX.right || y < BOX.top || y > BOX.bottom;
+            x < redBounceBox.left ||
+            x > redBounceBox.right ||
+            y < redBounceBox.top ||
+            y > redBounceBox.bottom;
+          const entersBounceShield =
+            newX >= redBounceBox.left &&
+            newX <= redBounceBox.right &&
+            newY >= redBounceBox.top &&
+            newY <= redBounceBox.bottom;
 
-          if (wasOutside && inBox && opacity === 1) {
+          if (wasOutside && entersBounceShield && opacity === 1) {
             // Bouncing! Determine which edge based on entry direction
-            const fromLeft = x < BOX.left;
-            const fromRight = x > BOX.right;
-            const fromTop = y < BOX.top;
-            const fromBottom = y > BOX.bottom;
+            const fromLeft = x < redBounceBox.left;
+            const fromRight = x > redBounceBox.right;
+            const fromTop = y < redBounceBox.top;
+            const fromBottom = y > redBounceBox.bottom;
 
             // Preserve linear motion by keeping the particle on its natural
             // next-frame position and only changing the outgoing velocity.
@@ -275,7 +315,7 @@ function useParticleSystem(logos: ReturnType<typeof buildLogos>) {
     );
 
     frameRef.current = requestAnimationFrame(tick);
-  }, []);
+  }, [centerBoxBounds]);
 
   useEffect(() => {
     frameRef.current = requestAnimationFrame(tick);
@@ -285,7 +325,7 @@ function useParticleSystem(logos: ReturnType<typeof buildLogos>) {
   useEffect(() => {
     setParticles(initParticles(logos));
     startTimeRef.current = performance.now();
-  }, [logos]);
+  }, [logos, centerBoxBounds]);
 
   return particles.filter((p) => p.state === "active" && p.opacity > 0);
 }
@@ -301,7 +341,12 @@ export default function HeroAnimation({
 }) {
   const { themeId } = useTheme();
   const logos = useMemo(() => buildLogos(), []);
-  const particles = useParticleSystem(logos);
+  const centerBoxSize = compact ? COMPACT_CENTER_BOX_SIZE : DESKTOP_CENTER_BOX_SIZE;
+  const centerBoxBounds = useMemo(
+    () => buildCenterBoxBounds(centerBoxSize),
+    [centerBoxSize],
+  );
+  const particles = useParticleSystem(logos, centerBoxBounds);
   const viewBoxInset = compact ? 78 : 50;
   const viewBoxMin = -viewBoxInset;
   const viewBoxSize = 400 + viewBoxInset * 2;
@@ -311,8 +356,7 @@ export default function HeroAnimation({
   const centerGlowExpandedRadius = compact ? 78 : 62;
   const centerGlowOpacity = compact ? 0.11 : 0.08;
   const centerGlowExpandedOpacity = compact ? 0.18 : 0.15;
-  const centerBoxSize = compact ? 112.5 : 90;
-  const centerBoxInset = CENTER - centerBoxSize / 2;
+  const centerBoxInset = centerBoxBounds.left;
   const centerBoxRadius = compact ? 20 : 16;
   const centerStrokeWidth = compact ? 3.75 : 3;
   const centerFontSize = compact ? 60 : 48;
@@ -414,7 +458,7 @@ export default function HeroAnimation({
             key={i}
             cx={p.x}
             cy={p.y}
-            r={4}
+            r={PARTICLE_RADIUS}
             fill={p.color}
             opacity={p.opacity}
             transform={`scale(${p.scale})`}
