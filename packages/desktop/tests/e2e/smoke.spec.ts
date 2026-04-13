@@ -390,7 +390,7 @@ test("settings dialog closes from the mobile header close button", async ({ app,
   }, SETTINGS_STORE_PATH);
   await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
 
-  await page.getByRole("button", { name: "Reading" }).click();
+  await page.getByRole("button", { name: "Appearance" }).click();
   await expect(page.getByTestId("settings-close-button-mobile")).toBeVisible({ timeout: 5_000 });
 
   await page.getByTestId("settings-close-button-mobile").click();
@@ -412,21 +412,21 @@ test("settings nav highlight follows scroll position", async ({ app, page }) => 
   const appearanceButton = dialog.locator('button[data-active="true"]').filter({
     hasText: /^Appearance$/,
   });
-  const readingButton = dialog.locator('button[data-active="true"]').filter({
-    hasText: /^Reading$/,
+  const syncButton = dialog.locator('button[data-active="true"]').filter({
+    hasText: /^Sync$/,
   });
 
   await expect(appearanceButton).toHaveCount(1);
 
   await scrollContainer.evaluate((element) => {
-    const target = element.querySelector('[data-section="reading"]');
+    const target = element.querySelector('[data-section="sync"]');
     if (!(target instanceof HTMLElement)) {
-      throw new Error("Reading section not found");
+      throw new Error("Sync section not found");
     }
     element.scrollTo({ top: Math.max(0, target.offsetTop - 24) });
   });
 
-  await expect(readingButton).toHaveCount(1);
+  await expect(syncButton).toHaveCount(1);
 });
 
 test("provider risk dialog scrolls vertically on tiny mobile screens", async ({ app, page }) => {

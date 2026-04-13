@@ -42,6 +42,7 @@ import { SettingsToggle } from "./SettingsToggle.js";
 import { ReportComposer } from "./report/ReportComposer.js";
 import { SearchField } from "./SearchField.js";
 import { ThemePreviewButton } from "./ThemePreviewButton.js";
+import { Tooltip } from "./Tooltip.js";
 import { GoogleContactsIcon } from "./icons.js";
 
 const SAMPLE_SEED_FEED_COUNT = 10;
@@ -166,14 +167,6 @@ const ICONS: Record<SectionId, ReactNode> = {
   ),
   appearance: (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3c4.97 0 9 4.03 9 9a9 9 0 01-9 9c-2.208 0-4-1.567-4-3.5 0-.971.42-1.84 1.09-2.473.476-.45.744-1.077.744-1.731 0-1.308-1.06-2.37-2.369-2.37-.653 0-1.28.269-1.73.745A3.49 3.49 0 013 12c0-4.97 4.03-9 9-9z" />
-      <circle cx="7.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none" />
-      <circle cx="16.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
-    </svg>
-  ),
-  reading: (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
     </svg>
   ),
@@ -288,7 +281,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     sectionById.legal,
     sectionById.support,
     sectionById.sync,
-    sectionById.reading,
     {
       kind: "group",
       label: "Sources",
@@ -662,35 +654,38 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         return (
           <>
             <SectionHeading label="Appearance" />
-            <div className="grid gap-3 sm:grid-cols-2">
-              {THEME_DEFINITIONS.map((theme) => {
-                const isActive = display.themeId === theme.id;
-                return (
-                  <ThemePreviewButton
-                    key={theme.id}
-                    theme={theme}
-                    active={isActive}
-                    onClick={() => handleDisplayChange({ themeId: theme.id as ThemeId })}
-                  />
-                );
-              })}
-            </div>
-          </>
-        );
-
-      case "legal":
-        return (
-          <>
-            <SectionHeading label="Legal" />
-            {LegalSettingsContent ? <LegalSettingsContent /> : null}
-          </>
-        );
-
-      case "reading":
-        return (
-          <>
-            <SectionHeading label="Reading" />
             <div className="space-y-5">
+              <div className="theme-card-soft rounded-2xl p-4 sm:p-5">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="max-w-lg">
+                    <p className="text-sm font-semibold text-text-primary">Theme</p>
+                    <p className="mt-1 text-xs text-text-muted">
+                      Choose the look, atmosphere, and type treatment for Freed Desktop.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {THEME_DEFINITIONS.map((theme) => {
+                      const isActive = display.themeId === theme.id;
+                      return (
+                        <Tooltip
+                          key={theme.id}
+                          side="top"
+                          label={theme.name}
+                          description={theme.description}
+                          className="h-[2.2rem] items-center"
+                        >
+                          <ThemePreviewButton
+                            theme={theme}
+                            active={isActive}
+                            variant="compact"
+                            onClick={() => handleDisplayChange({ themeId: theme.id as ThemeId })}
+                          />
+                        </Tooltip>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
               <SettingsToggle
                 label="Mark read on scroll"
                 checked={display.reading.markReadOnScroll}
@@ -747,6 +742,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 </select>
               </div>
             </div>
+          </>
+        );
+
+      case "legal":
+        return (
+          <>
+            <SectionHeading label="Legal" />
+            {LegalSettingsContent ? <LegalSettingsContent /> : null}
           </>
         );
 

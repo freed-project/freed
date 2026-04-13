@@ -19,11 +19,7 @@ test("switching themes in settings applies the selected theme immediately", asyn
   const initialThemeId = await page.evaluate(() => document.documentElement.dataset.theme);
   expect(initialThemeId).toBe("neon");
 
-  await page
-    .locator("button")
-    .filter({ has: page.getByText("Scriptorium", { exact: true }) })
-    .first()
-    .click();
+  await page.getByRole("button", { name: /^Scriptorium\./ }).click();
 
   await expect.poll(async () => {
     return page.evaluate(() => document.documentElement.dataset.theme);
@@ -62,11 +58,7 @@ test("theme switching repaints the app even before preferences finish saving", a
     });
   });
 
-  await page
-    .locator("button")
-    .filter({ has: page.getByText("Scriptorium", { exact: true }) })
-    .first()
-    .click();
+  await page.getByRole("button", { name: /^Scriptorium\./ }).click();
 
   await expect.poll(async () => {
     return page.evaluate(() => document.documentElement.dataset.theme);
@@ -89,10 +81,10 @@ test("settings switches render with a full track and knob", async ({ app, page }
 
   await page.evaluate(async (settingsStorePath) => {
     const mod = await import(settingsStorePath);
-    mod.useSettingsStore.getState().openTo("reading");
+    mod.useSettingsStore.getState().openTo("appearance");
   }, SETTINGS_STORE_PATH);
 
-  await expect(page.getByText("Reading").first()).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Appearance").first()).toBeVisible({ timeout: 5_000 });
 
   const metrics = await page.evaluate(() => {
     const button = document.querySelector('button[role="switch"][aria-label="Mark read on scroll"]') as HTMLButtonElement | null;
