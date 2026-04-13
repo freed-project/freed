@@ -656,14 +656,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             <SectionHeading label="Appearance" />
             <div className="space-y-5">
               <div className="theme-card-soft rounded-2xl p-4 sm:p-5">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="max-w-lg">
-                    <p className="text-sm font-semibold text-text-primary">Theme</p>
-                    <p className="mt-1 text-xs text-text-muted">
-                      Choose the look, atmosphere, and type treatment for Freed Desktop.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm font-semibold text-text-primary">Theme</p>
+                  <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
                     {THEME_DEFINITIONS.map((theme) => {
                       const isActive = display.themeId === theme.id;
                       return (
@@ -732,7 +727,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 <select
                   value={display.archivePruneDays ?? 30}
                   onChange={(e) => handleDisplayChange({ archivePruneDays: Number(e.target.value) })}
-                  className="shrink-0 rounded-lg border border-[color:var(--theme-border)] bg-[var(--theme-bg-root)] px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_50%,transparent)] cursor-pointer"
+                  className="theme-input theme-select shrink-0 rounded-xl px-3 py-2 text-sm text-text-primary focus:outline-none"
                 >
                   <option value={3}>3 days</option>
                   <option value={7}>7 days</option>

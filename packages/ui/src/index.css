@@ -1748,6 +1748,11 @@ html[data-theme="scriptorium"] .btn-primary:hover {
   background: var(--theme-bg-input);
   border: 1px solid var(--theme-border-subtle);
   color: var(--theme-text-primary);
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    box-shadow 0.18s ease,
+    color 0.18s ease;
 }
 
 .theme-input::placeholder {
@@ -1757,6 +1762,56 @@ html[data-theme="scriptorium"] .btn-primary:hover {
 .theme-input:focus {
   border-color: var(--theme-border-strong);
   box-shadow: 0 0 0 1px var(--theme-focus-ring);
+}
+
+.theme-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+  border-color: color-mix(
+    in oklab,
+    var(--theme-border-strong) 58%,
+    var(--theme-border-subtle)
+  );
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.04), transparent 52%),
+    color-mix(in oklab, var(--theme-bg-input) 94%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.045),
+    0 8px 18px rgb(0 0 0 / 0.08);
+  padding-right: 2.5rem;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.04), transparent 52%);
+  background-position:
+    calc(100% - 1rem) calc(50% - 1px),
+    calc(100% - 0.7rem) calc(50% - 1px),
+    center;
+  background-size:
+    0.45rem 0.45rem,
+    0.45rem 0.45rem,
+    100% 100%;
+  background-repeat: no-repeat;
+}
+
+.theme-select:hover {
+  border-color: var(--theme-border-strong);
+  background-color: color-mix(in oklab, var(--theme-bg-input) 98%, transparent);
+}
+
+.theme-select:focus {
+  border-color: var(--theme-border-strong);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 0 0 1px var(--theme-focus-ring),
+    0 12px 28px rgb(0 0 0 / 0.1);
+}
+
+.theme-select option {
+  background: var(--theme-bg-elevated);
+  color: var(--theme-text-primary);
 }
 
 .theme-link {

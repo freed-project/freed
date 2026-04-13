@@ -61,7 +61,7 @@ export function DurationSelect({
       value={value}
       aria-label={ariaLabel}
       onChange={(event) => onChange(event.target.value as HealthChartRange)}
-      className="shrink-0 cursor-pointer rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-2.5 py-1.5 text-xs text-[var(--theme-text-primary)] focus:outline-none focus:border-[var(--theme-border-strong)]"
+      className="theme-input theme-select shrink-0 rounded-lg px-2.5 py-1.5 text-xs text-[var(--theme-text-primary)] focus:outline-none"
     >
       <option value="daily">Last 7 days</option>
       <option value="hourly">Last 24 hours</option>

@@ -386,7 +386,7 @@ export function FriendsView() {
           <select
             value={sortBy}
             onChange={(event) => setSortBy(event.target.value as FriendOverviewSort)}
-            className="theme-input rounded-lg px-2.5 py-1.5 text-xs"
+            className="theme-input theme-select rounded-lg px-2.5 py-1.5 text-xs"
           >
             {SORT_OPTIONS.map((option) => (
               <option key={option.id} value={option.id}>
