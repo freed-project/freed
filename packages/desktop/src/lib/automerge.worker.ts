@@ -623,6 +623,11 @@ async function handleRequest(
         ack(req.reqId);
         break;
 
+      case "UPDATE_RELAY_CLIENT_COUNT":
+        relayClientCount = req.count;
+        ack(req.reqId);
+        break;
+
       default: {
         const _exhaustive: never = req;
         void _exhaustive;
