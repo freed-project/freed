@@ -53,18 +53,19 @@
     ]
   },
   "release": {
-    "deck": "A unified theme system, cleaner visual polish, and smoother desktop updates",
+    "deck": "Unified theming across the website and app, cleaner typography and changelog browsing, and steadier desktop updates",
     "features": [
-      "Themes now stay in sync across the website and app.",
-      "The refreshed theme system tightens typography and overall visual consistency."
+      "A shared theme system now keeps the website and app visually aligned.",
+      "The refreshed typography and visual polish make the new themes feel more consistent."
     ],
     "fixes": [
       "Desktop scrapers now run in sequence, which helps avoid renderer stalls.",
-      "Updater progress stays aligned with the actual install state.",
-      "The shared QR layout, footer hover states, and mobile website polish are cleaner and more consistent.",
-      "Sidebar source ordering and clipped headings are fixed."
+      "Updater progress bar lag is removed.",
+      "Changelog pagination, roadmap motion, and mobile website polish feel smoother.",
+      "The shared QR layout and footer hover states are cleaner and more consistent.",
+      "Reorder sidebar sources and fix the clipped QR heading."
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1201\n\nA unified theme system, cleaner visual polish, and smoother desktop updates\n\n### Features\n\n- Themes now stay in sync across the website and app.\n- The refreshed theme system tightens typography and overall visual consistency.\n\n### Fixes\n\n- Desktop scrapers now run in sequence, which helps avoid renderer stalls.\n- Updater progress stays aligned with the actual install state.\n- The shared QR layout, footer hover states, and mobile website polish are cleaner and more consistent.\n- Sidebar source ordering and clipped headings are fixed.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1201\n\nUnified theming across the website and app, cleaner typography and changelog browsing, and steadier desktop updates\n\n### Features\n\n- A shared theme system now keeps the website and app visually aligned.\n- The refreshed typography and visual polish make the new themes feel more consistent.\n\n### Fixes\n\n- Desktop scrapers now run in sequence, which helps avoid renderer stalls.\n- Updater progress bar lag is removed.\n- Changelog pagination, roadmap motion, and mobile website polish feel smoother.\n- The shared QR layout and footer hover states are cleaner and more consistent.\n- Reorder sidebar sources and fix the clipped QR heading.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
