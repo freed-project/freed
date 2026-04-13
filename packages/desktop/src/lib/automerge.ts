@@ -23,8 +23,13 @@ import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types"
 import { log } from "./logger.js";
 export type { DocState } from "./automerge-types";
 
-/** Maximum time to wait for any single worker op before treating it as hung. */
-const WORKER_REQUEST_TIMEOUT_MS = 60_000;
+/**
+ * Whole-document save, hydrate, and broadcast work can take well over a
+ * minute on large libraries, especially when background sync is active.
+ * Keep the timeout high enough to catch true hangs without tripping on queue
+ * backpressure during normal operation.
+ */
+const WORKER_REQUEST_TIMEOUT_MS = 180_000;
 
 // ---------------------------------------------------------------------------
 // Worker lifecycle
@@ -64,9 +69,12 @@ async function request(msg: WorkerRequest): Promise<void> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       if (!pending.has(msg.reqId)) return;
+      const pendingCount = pending.size;
       pending.delete(msg.reqId);
       const opType = (msg as { type: string }).type;
-      const errMsg = `[automerge-worker] request TIMEOUT op=${opType} reqId=${msg.reqId}`;
+      const errMsg =
+        `[automerge-worker] request TIMEOUT op=${opType} reqId=${msg.reqId} ` +
+        `timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()} pending=${pendingCount.toLocaleString()}`;
       log.error(errMsg);
       addDebugEvent("error", errMsg);
       reject(new Error(errMsg));
