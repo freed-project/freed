@@ -1291,6 +1291,19 @@ html[data-theme="scriptorium"] .feed-card {
   );
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  html.feed-layout-transition::view-transition-group(*) {
+    animation-duration: 340ms;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  html.feed-layout-transition::view-transition-old(*),
+  html.feed-layout-transition::view-transition-new(*) {
+    animation-duration: 340ms;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
 .theme-topbar {
   border-color: var(--theme-header-border);
   background: var(--theme-header-background);

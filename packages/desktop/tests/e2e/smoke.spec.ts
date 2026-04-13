@@ -771,6 +771,81 @@ test("dual-column reader arrow navigation cycles tiles and keeps the next tile v
   expect(metrics.nextRowBottom).toBeLessThanOrEqual(metrics.containerBottom);
 });
 
+test("dual-column reader toggles use shared view transitions when supported", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(6);
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+
+    void store?.getState().updatePreferences({
+      display: {
+        reading: {
+          dualColumnMode: true,
+        },
+      },
+    });
+  });
+
+  await page.evaluate(() => {
+    const doc = document as Document & {
+      startViewTransition?: (update: () => void) => { finished: Promise<void> };
+    };
+    const state = { count: 0 };
+    (window as Record<string, unknown>).__FREED_VIEW_TRANSITIONS__ = state;
+
+    Object.defineProperty(doc, "startViewTransition", {
+      configurable: true,
+      writable: true,
+      value: (update: () => void) => {
+        state.count += 1;
+        update();
+        return { finished: Promise.resolve() };
+      },
+    });
+  });
+
+  const firstCard = page.locator('[data-feed-item-id$="bench-item-0"]').first();
+  await expect(firstCard).toBeVisible({ timeout: 5_000 });
+
+  const transitionName = await firstCard.evaluate((element) =>
+    window.getComputedStyle(element.parentElement as Element).viewTransitionName,
+  );
+  expect(transitionName).not.toBe("none");
+
+  await firstCard.click();
+  await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByLabel("Back")).toBeVisible({ timeout: 5_000 });
+
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const state = (window as Record<string, unknown>).__FREED_VIEW_TRANSITIONS__ as
+        | { count: number }
+        | undefined;
+      return state?.count ?? 0;
+    });
+  }).toBe(1);
+
+  await page.getByLabel("Back").click();
+
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const state = (window as Record<string, unknown>).__FREED_VIEW_TRANSITIONS__ as
+        | { count: number }
+        | undefined;
+      return state?.count ?? 0;
+    });
+  }).toBe(2);
+});
+
 test("Friends workspace keeps a visible sidebar and supports back navigation", async ({ app }) => {
   await app.goto();
   await app.waitForReady();

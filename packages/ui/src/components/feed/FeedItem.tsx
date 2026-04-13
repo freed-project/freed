@@ -42,6 +42,10 @@ interface FeedItemProps {
   storyHeight?: number;
 }
 
+function feedCardTransitionName(globalId: string): string {
+  return `feed-card-${globalId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
 const cls = "w-3.5 h-3.5";
 const SWIPE_THRESHOLD = 72;
 
@@ -132,6 +136,9 @@ export const FeedItem = memo(function FeedItem({
   storyHeight = 288,
 }: FeedItemProps) {
   const { feedMediaPreviews = "inline" } = usePlatform();
+  const sharedTransitionStyle = {
+    viewTransitionName: feedCardTransitionName(item.globalId),
+  } as React.CSSProperties;
   const timeAgo = formatDistanceToNow(item.publishedAt, { addSuffix: true });
   const platformIcon = platformIcons[item.platform] ?? <span className="text-xs">📄</span>;
   const isRead = Boolean(item.userState.readAt);
@@ -293,7 +300,7 @@ export const FeedItem = memo(function FeedItem({
 
   if (compact) {
     return (
-      <div className="relative overflow-hidden rounded-xl">
+      <div className="relative overflow-hidden rounded-xl" style={sharedTransitionStyle}>
         <article
           data-feed-item-id={item.globalId}
           data-focused={focused ? "true" : "false"}
@@ -367,7 +374,7 @@ export const FeedItem = memo(function FeedItem({
   const likeLabel = getLikeLabel(item, likeStatus);
 
   return (
-    <div className="relative overflow-hidden rounded-2xl">
+    <div className="relative overflow-hidden rounded-2xl" style={sharedTransitionStyle}>
       {enableSwipe && swipeX < 0 && (
         <div
           className="absolute inset-y-0 right-0 flex items-center justify-end pr-5 rounded-2xl transition-colors"
