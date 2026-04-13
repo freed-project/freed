@@ -59,7 +59,7 @@ export default function HowItWorks() {
         {/* Steps */}
         <div className="relative">
           <div
-            className="hidden lg:block absolute top-1/2 left-0 right-0 h-px -translate-y-1/2"
+            className="hidden xl:block absolute top-1/2 left-0 right-0 h-px -translate-y-1/2"
             style={{
               background:
                 "linear-gradient(to right, transparent, color-mix(in srgb, var(--theme-accent-secondary) 28%, transparent), transparent)",
@@ -96,7 +96,7 @@ export default function HowItWorks() {
                 {/* Connector dot */}
                 {index < steps.length - 1 && (
                   <div
-                    className="hidden lg:block absolute top-1/2 -right-5 h-2 w-2 rounded-full glow-sm -translate-y-1/2 z-20"
+                    className="hidden xl:block absolute top-1/2 -right-5 h-2 w-2 rounded-full glow-sm -translate-y-1/2 z-20"
                     style={{ background: "var(--theme-heading-accent)" }}
                   />
                 )}
