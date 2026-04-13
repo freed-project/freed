@@ -31,6 +31,14 @@ type ViewTransitionDocument = Document & {
   startViewTransition?: (update: () => void) => ViewTransitionLike;
 };
 
+type ViewTransitionLike = {
+  finished: Promise<void>;
+};
+
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (update: () => void) => ViewTransitionLike;
+};
+
 interface CompactFeedPanelProps {
   items: FeedItem[];
   selectedId: string;

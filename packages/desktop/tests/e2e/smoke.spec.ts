@@ -255,9 +255,9 @@ test("sidebar resize holds the dragged width after mouseup", async ({ app, page 
     });
   });
 
-  const sidebarShell = page.getByTestId("app-sidebar-shell");
+  const sidebar = page.getByTestId("app-sidebar");
   const { initialWidth, widthAfterRelease } = await page.evaluate(async () => {
-    const sidebar = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
     const resizeHandle = document.querySelector('[data-testid="app-sidebar-resize-handle"]') as HTMLElement | null;
     if (!sidebar || !resizeHandle) {
       throw new Error("Sidebar resize elements were not found");
@@ -302,11 +302,11 @@ test("sidebar resize holds the dragged width after mouseup", async ({ app, page 
   expect(widthAfterRelease).toBeGreaterThan(initialWidth + 40);
 
   await page.waitForTimeout(450);
-  const settledWidth = await sidebarShell.evaluate((element) =>
+  const settledWidth = await sidebar.evaluate((element) =>
     element.getBoundingClientRect().width,
   );
 
-  expect(settledWidth).toBeGreaterThan(initialWidth + 40);
+  expect(Math.abs(settledWidth - widthAfterRelease)).toBeLessThanOrEqual(2);
 
   await page.waitForFunction((expectedWidth) => {
     const w = window as Record<string, unknown>;
@@ -320,7 +320,7 @@ test("sidebar resize holds the dragged width after mouseup", async ({ app, page 
 
     const savedWidth = store?.getState().preferences.display.sidebarWidth ?? 0;
     return Math.abs(savedWidth - expectedWidth) <= 2;
-  }, Math.round(settledWidth - 12));
+  }, Math.round(settledWidth));
 });
 
 test("debug panel resize holds the dragged width after mouseup", async ({ app, page }) => {
@@ -333,7 +333,6 @@ test("debug panel resize holds the dragged width after mouseup", async ({ app, p
   }, DEBUG_STORE_PATH);
 
   const debugPanel = page.getByTestId("debug-panel-drawer");
-  const debugSurface = page.getByTestId("debug-panel-surface");
   await expect(debugPanel).toBeVisible();
   await page.waitForTimeout(350);
 
@@ -360,7 +359,7 @@ test("debug panel resize holds the dragged width after mouseup", async ({ app, p
   });
 
   const initialWidth = await page.evaluate(() => {
-    const debugPanel = document.querySelector('[data-testid="debug-panel-surface"]') as HTMLElement | null;
+    const debugPanel = document.querySelector('[data-testid="debug-panel-drawer"]') as HTMLElement | null;
     const resizeHandle = document.querySelector('[data-testid="debug-panel-resize-handle"]') as HTMLElement | null;
     if (!debugPanel || !resizeHandle) {
       throw new Error("Debug panel resize elements were not found");
@@ -398,14 +397,14 @@ test("debug panel resize holds the dragged width after mouseup", async ({ app, p
   });
 
   await page.waitForTimeout(450);
-  const widthAfterTransition = await debugSurface.evaluate((element) =>
+  const widthAfterTransition = await debugPanel.evaluate((element) =>
     element.getBoundingClientRect().width,
   );
 
   expect(widthAfterTransition).toBeGreaterThan(initialWidth + 40);
 
   await page.waitForTimeout(450);
-  const settledWidth = await debugSurface.evaluate((element) =>
+  const settledWidth = await debugPanel.evaluate((element) =>
     element.getBoundingClientRect().width,
   );
 
@@ -898,7 +897,6 @@ test("dual-column reader toolbar controls stay aligned with the sidebar and rail
   expect(Math.abs(alignment.dualColumnToggleLeft - alignment.compactRailLeft)).toBeLessThanOrEqual(2);
   expect(Math.abs(alignment.backButtonLeft - alignment.compactRailRight)).toBeLessThanOrEqual(2);
 });
-
 test("dual-column reader toggles use shared view transitions when supported", async ({ app, page }) => {
   await page.setViewportSize({ width: 1280, height: 600 });
   await app.goto();
