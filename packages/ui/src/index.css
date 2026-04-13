@@ -39,41 +39,8 @@ html[data-theme="neon"] {
   --theme-accent-tertiary-rgb: 6 182 212;
 
   --theme-shell-rgb: 6 7 13;
-  --theme-shell-background:
-    radial-gradient(
-      circle at 12% 16%,
-      rgb(59 130 246 / 0.18) 0,
-      transparent 34%
-    ),
-    radial-gradient(
-      circle at 84% 10%,
-      rgb(139 92 246 / 0.22) 0,
-      transparent 30%
-    ),
-    radial-gradient(
-      circle at 76% 82%,
-      rgb(6 182 212 / 0.14) 0,
-      transparent 32%
-    ),
-    linear-gradient(180deg, #090a11 0%, #0a0a0f 34%, #090909 100%);
-  --theme-atmosphere-overlay-background:
-    radial-gradient(
-      ellipse 900px 900px at -10% -15%,
-      rgb(var(--theme-accent-secondary-rgb) / 0.17) 0%,
-      rgb(var(--theme-accent-secondary-rgb) / 0.05) 35%,
-      transparent 65%
-    ),
-    radial-gradient(
-      ellipse 800px 800px at 110% 110%,
-      rgb(var(--theme-accent-primary-rgb) / 0.14) 0%,
-      rgb(var(--theme-accent-primary-rgb) / 0.04) 35%,
-      transparent 65%
-    ),
-    linear-gradient(
-      180deg,
-      transparent 0%,
-      rgb(var(--theme-shell-rgb) / 0.08) 100%
-    );
+  --theme-shell-background: linear-gradient(180deg, #090a11 0%, #0a0a0f 34%, #090909 100%);
+  --theme-atmosphere-overlay-background: none;
 
   --theme-button-primary-background: linear-gradient(
     135deg,
@@ -1923,21 +1890,33 @@ input[type="radio"]:focus-visible {
   outline-offset: 2px;
 }
 
-::-webkit-scrollbar {
+.app-theme-shell::-webkit-scrollbar,
+.app-theme-shell ::-webkit-scrollbar,
+.theme-dialog-shell::-webkit-scrollbar,
+.theme-dialog-shell ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-::-webkit-scrollbar-track {
+.app-theme-shell::-webkit-scrollbar-track,
+.app-theme-shell ::-webkit-scrollbar-track,
+.theme-dialog-shell::-webkit-scrollbar-track,
+.theme-dialog-shell ::-webkit-scrollbar-track {
   background: transparent;
 }
 
-::-webkit-scrollbar-thumb {
+.app-theme-shell::-webkit-scrollbar-thumb,
+.app-theme-shell ::-webkit-scrollbar-thumb,
+.theme-dialog-shell::-webkit-scrollbar-thumb,
+.theme-dialog-shell ::-webkit-scrollbar-thumb {
   background: rgb(var(--theme-accent-secondary-rgb) / 0.18);
   border-radius: 999px;
 }
 
-::-webkit-scrollbar-thumb:hover {
+.app-theme-shell::-webkit-scrollbar-thumb:hover,
+.app-theme-shell ::-webkit-scrollbar-thumb:hover,
+.theme-dialog-shell::-webkit-scrollbar-thumb:hover,
+.theme-dialog-shell ::-webkit-scrollbar-thumb:hover {
   background: rgb(var(--theme-accent-secondary-rgb) / 0.28);
 }
 

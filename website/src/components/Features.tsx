@@ -218,11 +218,11 @@ export default function Features() {
   return (
     <section
       id="features"
-      className="px-8 py-8 sm:px-6 sm:py-24 md:px-12 lg:px-8"
+      className="px-8 py-8 sm:px-6 sm:py-24 lg:px-8 xl:px-12"
     >
       <div className="max-w-6xl mx-auto">
         {/* Feature Grid */}
-        <div className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2 xl:grid-cols-3">
           {features.map((feature, index) => (
             <motion.div
               key={feature.title}

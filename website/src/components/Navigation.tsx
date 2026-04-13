@@ -59,6 +59,7 @@ export default function Navigation() {
   const [scrolled, setScrolled] = useState(false);
   const navRefs = useRef<(HTMLAnchorElement | null)[]>([]);
   const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 });
+  const showMobileTopCta = pathname !== "/" || scrolled;
 
   useEffect(() => {
     const handleScroll = () => {
@@ -131,7 +132,7 @@ export default function Navigation() {
   );
 
   const desktopLinks = (
-    <div className="hidden md:flex items-center gap-8 relative">
+    <div className="hidden lg:flex items-center gap-8 relative">
       {NAV_ITEMS.map((item, index) => (
         <Link
           key={item.path}
@@ -176,7 +177,7 @@ export default function Navigation() {
   const mobileHamburger = (
     <button
       onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-      className="md:hidden relative w-8 h-8 flex items-center justify-center"
+      className="lg:hidden relative w-8 h-8 flex items-center justify-center"
       aria-label="Toggle menu"
     >
       <motion.span
@@ -212,14 +213,14 @@ export default function Navigation() {
           bounce doesn't reveal a gap above the mobile nav bar. Height of 200px covers any
           realistic overscroll. Desktop nav is a floating pill so doesn't need this. */}
       <div
-        className="md:hidden fixed left-0 right-0 bg-freed-black z-40 pointer-events-none"
+        className="lg:hidden fixed left-0 right-0 bg-freed-black z-40 pointer-events-none"
         style={{ top: "-200px", height: "200px" }}
         aria-hidden="true"
       />
 
       {/* Desktop: Top blur overlay - blurs and darkens content as it approaches the top of viewport */}
       <div
-        className="hidden md:block fixed top-0 left-0 right-0 h-32 pointer-events-none z-40"
+        className="hidden lg:block fixed top-0 left-0 right-0 h-32 pointer-events-none z-40"
         style={{
           backdropFilter: "blur(20px)",
           WebkitBackdropFilter: "blur(20px)",
@@ -243,18 +244,38 @@ export default function Navigation() {
       >
         {/* Mobile: solid full-width bar */}
         <div
-          className={`md:hidden bg-freed-black px-8 py-4 ${
+          className={`lg:hidden bg-freed-black pl-8 pr-5 py-4 ${
             mobileMenuOpen ? "" : "border-b border-freed-border"
           }`}
         >
           <div className="flex items-center justify-between">
             {logoElement}
-            {mobileHamburger}
+            <div className="flex items-center gap-4">
+              {mobileHamburger}
+              <motion.div
+                initial={false}
+                animate={{
+                  maxWidth: showMobileTopCta ? 144 : 0,
+                  opacity: showMobileTopCta ? 1 : 0,
+                  marginLeft: showMobileTopCta ? 4 : 0,
+                }}
+                transition={{ duration: 0.24, ease: "easeInOut" }}
+                className="overflow-hidden"
+                style={{ pointerEvents: showMobileTopCta ? "auto" : "none" }}
+              >
+                <button
+                  onClick={openModal}
+                  className="btn-primary shrink-0 text-sm px-4 !py-2 whitespace-nowrap"
+                >
+                  Get Freed
+                </button>
+              </motion.div>
+            </div>
           </div>
         </div>
 
         {/* Desktop: floating pill navbar */}
-        <div className="hidden md:block px-4 py-4">
+        <div className="hidden lg:block px-4 py-4">
           <div
             className={`max-w-[calc(72rem+2rem)] mx-auto px-4 py-[13px] rounded-2xl border transition-all duration-300 ${
               scrolled ? "theme-topbar" : "bg-transparent border-transparent shadow-none"
@@ -275,7 +296,7 @@ export default function Navigation() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              className="md:hidden fixed left-0 right-0 bottom-0 bg-freed-black z-40"
+              className="lg:hidden fixed left-0 right-0 bottom-0 bg-freed-black z-40"
               style={{
                 // Overlap navbar by 1px to eliminate sub-pixel rendering gaps
                 top: "calc(64px + env(safe-area-inset-top))",

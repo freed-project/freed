@@ -74,49 +74,6 @@ html[data-theme="scriptorium"] .btn-primary:hover {
   transform: scale(1.05);
 }
 
-.hero-manifesto-button {
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--theme-bg-surface) 80%, white) 0%,
-    color-mix(in oklab, var(--theme-bg-surface) 94%, white) 24%,
-    color-mix(in oklab, var(--theme-bg-surface) 90%, black) 100%
-  );
-  border-color: color-mix(
-    in oklab,
-    var(--theme-border-subtle) 82%,
-    var(--theme-border-strong)
-  );
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.06),
-    inset 0 0 0 0.5px rgb(255 255 255 / 0.03),
-    0 14px 30px rgb(0 0 0 / 0.14);
-}
-
-.hero-manifesto-button:hover {
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--theme-bg-surface) 76%, white) 0%,
-    color-mix(in oklab, var(--theme-bg-surface) 92%, white) 24%,
-    color-mix(in oklab, var(--theme-bg-surface) 88%, black) 100%
-  );
-  border-color: color-mix(
-    in oklab,
-    var(--theme-border-strong) 62%,
-    var(--theme-border-subtle)
-  );
-}
-
-html[data-theme="scriptorium"] .hero-manifesto-button {
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--theme-bg-surface) 82%, white) 0%,
-    color-mix(in oklab, var(--theme-bg-surface) 94%, black) 100%
-  );
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.04),
-    0 10px 24px rgb(84 58 35 / 0.06);
-}
-
 .gradient-border {
   position: relative;
   background: var(--theme-bg-surface);
@@ -140,4 +97,51 @@ html[data-theme="scriptorium"] .hero-manifesto-button {
 
 .bg-gradient-orbs {
   background: var(--theme-atmosphere-overlay-background);
+}
+
+@media (max-width: 639px) {
+  .get-freed-launch-cta {
+    border-color: rgb(var(--theme-accent-primary-rgb) / 0.24) !important;
+    background: linear-gradient(
+      135deg,
+      rgb(var(--theme-accent-primary-rgb) / 0.18),
+      rgb(var(--theme-accent-secondary-rgb) / 0.14)
+    ) !important;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+  }
+
+  .get-freed-launch-cta:hover {
+    border-color: rgb(var(--theme-accent-primary-rgb) / 0.32) !important;
+  }
+
+  .get-freed-launch-cta__icon {
+    background: color-mix(
+      in srgb,
+      var(--theme-accent-primary) 18%,
+      var(--theme-bg-surface)
+    ) !important;
+    border-color: rgb(var(--theme-accent-primary-rgb) / 0.24) !important;
+  }
+
+  .get-freed-launch-cta__title,
+  .get-freed-launch-cta__subtitle,
+  .get-freed-launch-cta__toggle {
+    color: var(--theme-text-primary);
+  }
+
+  .get-freed-launch-cta__subtitle {
+    color: color-mix(
+      in srgb,
+      var(--theme-text-primary) 74%,
+      var(--theme-text-secondary)
+    );
+  }
+
+  .get-freed-launch-cta__toggle {
+    border-left-color: rgb(var(--theme-accent-primary-rgb) / 0.2);
+  }
+
+  .get-freed-launch-cta__toggle:hover {
+    background: rgb(var(--theme-accent-primary-rgb) / 0.08);
+  }
 }

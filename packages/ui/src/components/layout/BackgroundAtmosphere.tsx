@@ -6,6 +6,7 @@ import {
   resolveThemeId,
   type ThemeId,
   type ThemeBackgroundRecipe,
+  type ThemeBackgroundTextureLayer,
 } from "@freed/shared/themes";
 
 const channels = {
@@ -20,6 +21,8 @@ const MAX_HEIGHT = 2500;
 const VERTICAL_SPACING = 600;
 const HERO_ZONE_HEIGHT = 800;
 const MOBILE_BREAKPOINT = 768;
+const DESKTOP_BASELINE_WIDTH = 1280;
+const MIN_WIDTH_SCALE = 0.58;
 
 interface Orb {
   channel: ChannelName;
@@ -29,13 +32,53 @@ interface Orb {
   intensity: number;
 }
 
+interface ViewportProfile {
+  compact: boolean;
+  orbSizeScale: number;
+  orbIntensityScale: number;
+}
+
+type RendererMode = NonNullable<ThemeBackgroundRecipe["renderer"]>;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 function randomInRange(min: number, range: number): number {
   return min + Math.random() * range;
 }
 
-function generateOrbs(recipe: ThemeBackgroundRecipe): Orb[] {
+function getViewportProfile(viewportWidth: number): ViewportProfile {
+  const widthScale = clamp(
+    viewportWidth / DESKTOP_BASELINE_WIDTH,
+    MIN_WIDTH_SCALE,
+    1,
+  );
+
+  return {
+    compact: viewportWidth < MOBILE_BREAKPOINT,
+    orbSizeScale: Math.sqrt(widthScale),
+    orbIntensityScale: clamp(0.72 + widthScale * 0.28, 0.82, 1),
+  };
+}
+
+function getCompactCountPerRow(countPerRow: number): number {
+  return Math.max(1, Math.ceil(countPerRow / 2));
+}
+
+function generateOrbs(
+  recipe: ThemeBackgroundRecipe,
+  compact: boolean,
+  rendererMode: RendererMode,
+): Orb[] {
   const orbs: Orb[] = [];
   const rowRecipe = recipe.rowOrbs;
+  const countPerRow =
+    rendererMode === "legacy"
+      ? rowRecipe.countPerRow
+      : compact
+    ? getCompactCountPerRow(rowRecipe.countPerRow)
+    : rowRecipe.countPerRow;
 
   recipe.heroOrbs.forEach((heroOrb) => {
     orbs.push({
@@ -51,7 +94,7 @@ function generateOrbs(recipe: ThemeBackgroundRecipe): Orb[] {
     Math.ceil((MAX_HEIGHT - HERO_ZONE_HEIGHT) / VERTICAL_SPACING) + 1;
   for (let row = 0; row < numRows; row++) {
     const baseY = HERO_ZONE_HEIGHT + row * VERTICAL_SPACING;
-    for (let i = 0; i < rowRecipe.countPerRow; i++) {
+    for (let i = 0; i < countPerRow; i++) {
       orbs.push({
         channel:
           rowRecipe.channels[
@@ -71,7 +114,28 @@ function generateOrbs(recipe: ThemeBackgroundRecipe): Orb[] {
   return orbs;
 }
 
-function buildBackground(
+function buildGradientBackground(
+  orbs: Orb[],
+  viewportProfile: ViewportProfile,
+  recipe: ThemeBackgroundRecipe,
+): string {
+  return orbs
+    .map((orb) => {
+      const { rgbVar, intensity } = channels[orb.channel];
+      const size = Math.round(orb.size * viewportProfile.orbSizeScale);
+      const opacityMultiplier = Number(
+        (
+          orb.intensity
+          * intensity
+          * viewportProfile.orbIntensityScale
+        ).toFixed(3),
+      );
+      return `radial-gradient(${size}px ${size}px at ${orb.x}% ${orb.y}px, rgb(var(${rgbVar}) / ${recipe.baseOpacity * opacityMultiplier}), transparent)`;
+    })
+    .join(", ");
+}
+
+function buildLegacyBackground(
   orbs: Orb[],
   intensityMultiplier: number,
   recipe: ThemeBackgroundRecipe,
@@ -89,7 +153,15 @@ function buildBackground(
   return [...textures, gradients].join(", ");
 }
 
-function buildRepeatValues(
+function buildGradientRepeatValues(count: number): string {
+  return Array(count).fill("no-repeat").join(", ");
+}
+
+function buildGradientSizeValues(count: number): string {
+  return Array(count).fill("auto").join(", ");
+}
+
+function buildLegacyRepeatValues(
   count: number,
   recipe: ThemeBackgroundRecipe,
 ): string {
@@ -99,28 +171,56 @@ function buildRepeatValues(
   ].join(", ");
 }
 
-function buildSizeValues(count: number, recipe: ThemeBackgroundRecipe): string {
+function buildLegacySizeValues(
+  count: number,
+  recipe: ThemeBackgroundRecipe,
+): string {
   return [
     ...recipe.textures.map((texture) => texture.size),
     ...Array(count).fill("auto"),
   ].join(", ");
 }
 
+function resolveTextureSize(
+  texture: ThemeBackgroundTextureLayer,
+  viewportProfile: ViewportProfile,
+): string {
+  return viewportProfile.compact
+    ? texture.compactSize ?? texture.size
+    : texture.size;
+}
+
+function resolveTextureOpacity(
+  texture: ThemeBackgroundTextureLayer,
+  viewportProfile: ViewportProfile,
+): number {
+  if (!viewportProfile.compact) {
+    return 1;
+  }
+
+  return texture.compactOpacity ?? 1;
+}
+
 export function BackgroundAtmosphere() {
   const [orbs, setOrbs] = useState<Orb[] | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
+  const [viewportWidth, setViewportWidth] = useState(DESKTOP_BASELINE_WIDTH);
   const [themeId, setThemeId] = useState<ThemeId>("neon");
   const themeRecipe = useMemo(
     () => getThemeDefinition(themeId).background,
     [themeId],
   );
+  const viewportProfile = useMemo(
+    () => getViewportProfile(viewportWidth),
+    [viewportWidth],
+  );
+  const rendererMode: RendererMode = themeRecipe.renderer ?? "responsive";
+  const isLegacyRenderer = rendererMode === "legacy";
 
   useEffect(() => {
     const initialThemeId = resolveThemeId(
       document.documentElement.dataset.theme || "neon",
     );
-    setOrbs(generateOrbs(getThemeDefinition(initialThemeId).background));
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    setViewportWidth(window.innerWidth);
     setThemeId(initialThemeId);
 
     const observer = new MutationObserver(() => {
@@ -128,7 +228,6 @@ export function BackgroundAtmosphere() {
         document.documentElement.dataset.theme || "neon",
       );
       setThemeId(nextThemeId);
-      setOrbs(generateOrbs(getThemeDefinition(nextThemeId).background));
     });
     observer.observe(document.documentElement, {
       attributes: true,
@@ -139,7 +238,7 @@ export function BackgroundAtmosphere() {
     const onResize = () => {
       cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
-        setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+        setViewportWidth(window.innerWidth);
       });
     };
     window.addEventListener("resize", onResize);
@@ -150,36 +249,88 @@ export function BackgroundAtmosphere() {
     };
   }, []);
 
-  const backgroundImage = useMemo(
-    () => (orbs ? buildBackground(orbs, isMobile ? 0.5 : 1, themeRecipe) : ""),
-    [orbs, isMobile, themeRecipe],
+  useEffect(() => {
+    setOrbs(generateOrbs(themeRecipe, viewportProfile.compact, rendererMode));
+  }, [themeRecipe, viewportProfile.compact, rendererMode]);
+
+  const gradientBackgroundImage = useMemo(
+    () =>
+      orbs
+        ? isLegacyRenderer
+          ? buildLegacyBackground(
+              orbs,
+              viewportProfile.compact ? 0.5 : 1,
+              themeRecipe,
+            )
+          : buildGradientBackground(orbs, viewportProfile, themeRecipe)
+        : "",
+    [isLegacyRenderer, orbs, viewportProfile, themeRecipe],
   );
-  const backgroundRepeat = useMemo(
-    () => (orbs ? buildRepeatValues(orbs.length, themeRecipe) : ""),
-    [orbs, themeRecipe],
+  const gradientBackgroundRepeat = useMemo(
+    () =>
+      orbs
+        ? isLegacyRenderer
+          ? buildLegacyRepeatValues(orbs.length, themeRecipe)
+          : buildGradientRepeatValues(orbs.length)
+        : "",
+    [isLegacyRenderer, orbs, themeRecipe],
   );
-  const backgroundSize = useMemo(
-    () => (orbs ? buildSizeValues(orbs.length, themeRecipe) : ""),
-    [orbs, themeRecipe],
+  const gradientBackgroundSize = useMemo(
+    () =>
+      orbs
+        ? isLegacyRenderer
+          ? buildLegacySizeValues(orbs.length, themeRecipe)
+          : buildGradientSizeValues(orbs.length)
+        : "",
+    [isLegacyRenderer, orbs, themeRecipe],
   );
 
   if (!orbs) return null;
 
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-      <div
-        className="absolute inset-0"
-        style={{
-          backgroundImage,
-          backgroundRepeat,
-          backgroundSize,
-          willChange: "transform",
-          transform: "translateZ(0)",
-        }}
-      />
-      <div
-        className="bg-gradient-orbs absolute inset-0"
-      />
+      {isLegacyRenderer ? (
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: gradientBackgroundImage,
+            backgroundRepeat: gradientBackgroundRepeat,
+            backgroundSize: gradientBackgroundSize,
+            willChange: "transform",
+            transform: "translateZ(0)",
+          }}
+        />
+      ) : (
+        <>
+          {themeRecipe.textures.map((texture, index) => (
+            <div
+              key={`${themeId}-${index}`}
+              className="absolute inset-0"
+              style={{
+                backgroundImage: texture.image,
+                backgroundRepeat: texture.repeat,
+                backgroundSize: resolveTextureSize(texture, viewportProfile),
+                opacity: resolveTextureOpacity(texture, viewportProfile),
+                willChange: "transform",
+                transform: "translateZ(0)",
+              }}
+            />
+          ))}
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage: gradientBackgroundImage,
+              backgroundRepeat: gradientBackgroundRepeat,
+              backgroundSize: gradientBackgroundSize,
+              willChange: "transform",
+              transform: "translateZ(0)",
+            }}
+          />
+        </>
+      )}
+      {themeRecipe.overlayEnabled !== false && (
+        <div className="bg-gradient-orbs absolute inset-0" />
+      )}
     </div>
   );
 }
