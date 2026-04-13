@@ -13,10 +13,8 @@ export default function ThemeSelector({ compact = false }: ThemeSelectorProps) {
   const gapClassName = compact ? "gap-2" : "gap-3";
 
   return (
-    <div className="flex flex-col gap-2">
-      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-        Theme
-      </span>
+    <div className="flex flex-col">
+      <h4 className="mb-4 text-text-primary font-semibold">Theme</h4>
       <div className={`flex flex-wrap items-center ${gapClassName}`}>
         {THEME_DEFINITIONS.map((theme) => (
           <Tooltip
