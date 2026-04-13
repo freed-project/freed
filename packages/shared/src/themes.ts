@@ -213,7 +213,7 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       "A low-blue-light editorial theme for long reading sessions. Vellum, walnut, and quietly dignified typography.",
     previewGradient: "linear-gradient(135deg, #f4ead7, #d8c4a1 55%, #86684a)",
     previewDisplayFont: '"Baskerville", "Hoefler Text", "Iowan Old Style", "Palatino Linotype", Georgia, serif',
-    previewBodyFont: '"Baskerville", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif',
+    previewBodyFont: '"Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif',
     surface: "light",
     effects: "restrained",
     background: {
