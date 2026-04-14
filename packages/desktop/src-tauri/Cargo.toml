@@ -38,6 +38,11 @@ rand = "0.8"
 base64 = "0.22"
 url = "2"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSKeyValueCoding", "NSObject", "NSThread"] }
+objc2-web-kit = { version = "0.3", features = ["WKWebViewConfiguration"] }
+
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3"
