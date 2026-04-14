@@ -451,6 +451,11 @@ export async function docArchiveAllReadUnsaved(
   return request({ reqId, type: "ARCHIVE_ALL_READ_UNSAVED", platform, feedUrl });
 }
 
+export async function docUnarchiveSavedItems(): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "UNARCHIVE_SAVED_ITEMS" });
+}
+
 export async function docPruneArchivedItems(maxAgeMs?: number): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "PRUNE_ARCHIVED_ITEMS", maxAgeMs });

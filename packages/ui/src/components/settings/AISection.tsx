@@ -169,7 +169,7 @@ export function AISection() {
         <select
           value={ai.provider}
           onChange={(e) => handleProviderChange(e.target.value as AIPreferences["provider"])}
-          className="w-full rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-1.5 text-sm text-[var(--theme-text-secondary)] transition-colors focus:outline-none focus:border-[var(--theme-border-strong)]"
+          className="theme-input theme-select w-full rounded-lg px-3 py-1.5 text-sm text-[var(--theme-text-secondary)] focus:outline-none"
         >
           {Object.entries(PROVIDER_LABELS).map(([val, label]) => (
             <option key={val} value={val}>{label}</option>

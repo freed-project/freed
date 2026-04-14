@@ -15,7 +15,7 @@ html[data-theme="neon"] {
   --theme-bg-root: #0a0a0a;
   --theme-bg-deep: #0f0f15;
   --theme-bg-surface: #14141b;
-  --theme-bg-elevated: rgba(21, 21, 30, 0.9);
+  --theme-bg-elevated: #15151e;
   --theme-bg-card: rgba(255, 255, 255, 0.035);
   --theme-bg-card-hover: rgba(255, 255, 255, 0.06);
   --theme-bg-input: rgba(255, 255, 255, 0.05);
@@ -95,6 +95,7 @@ html[data-theme="neon"] {
   --theme-card-top-glint: rgb(255 255 255 / 0.022);
   --theme-card-top-glint-hover: rgb(255 255 255 / 0.03);
   --theme-header-background: rgb(10 10 10 / 0.7);
+  --theme-attached-topbar-background: #0a0a0a;
   --theme-header-border: rgb(255 255 255 / 0.08);
   --theme-header-shadow: 0 4px 30px rgb(0 0 0 / 0.5);
   --theme-overlay-scrim: rgb(0 0 0 / 0.62);
@@ -105,11 +106,6 @@ html[data-theme="neon"] {
   --theme-feedback-success-rgb: 34 197 94;
   --theme-feedback-warning-rgb: 245 158 11;
   --theme-feedback-danger-rgb: 239 68 68;
-  --theme-map-canvas-filter: brightness(0.26) contrast(1.24) saturate(0.24);
-  --theme-map-accent-overlay-opacity: 0.16;
-  --theme-map-grid-opacity: 0.2;
-  --theme-map-fade-top-height: 7rem;
-  --theme-map-fade-bottom-height: 7rem;
   --theme-icon-media: var(--theme-media-icon);
   --theme-icon-action: var(--theme-accent-secondary);
   --theme-icon-muted: var(--theme-text-soft);
@@ -155,8 +151,10 @@ html[data-theme="neon"] {
     0 0 100px rgb(var(--theme-accent-tertiary-rgb) / 0.08);
 
   --sidebar-width: 240px;
-  --card-radius: 16px;
+  --card-radius: 8px;
   --button-radius: 10px;
+  --feed-card-radius: var(--card-radius);
+  --feed-card-gap: var(--card-radius);
 }
 
 html[data-theme="midas"] {
@@ -171,7 +169,7 @@ html[data-theme="midas"] {
   --theme-bg-root: #2b231d;
   --theme-bg-deep: #352b23;
   --theme-bg-surface: #3e3229;
-  --theme-bg-elevated: rgb(55 45 36 / 0.92);
+  --theme-bg-elevated: rgb(55 45 36);
   --theme-bg-card: rgb(243 233 218 / 0.04);
   --theme-bg-card-hover: rgb(243 233 218 / 0.07);
   --theme-bg-input: rgb(243 233 218 / 0.06);
@@ -245,12 +243,6 @@ html[data-theme="midas"] {
   --theme-feedback-success-rgb: 122 156 104;
   --theme-feedback-warning-rgb: 196 154 93;
   --theme-feedback-danger-rgb: 171 86 74;
-  --theme-map-canvas-filter: brightness(0.42) contrast(1.08) saturate(0.38)
-    sepia(0.18);
-  --theme-map-accent-overlay-opacity: 0.1;
-  --theme-map-grid-opacity: 0.12;
-  --theme-map-fade-top-height: 6rem;
-  --theme-map-fade-bottom-height: 6rem;
   --theme-media-facebook: var(--theme-media-icon);
   --theme-media-instagram: var(--theme-media-icon);
   --theme-media-x: var(--theme-media-icon);
@@ -272,6 +264,7 @@ html[data-theme="midas"] {
   --theme-control-accent: var(--theme-heading-accent-color);
   --theme-control-accent-rgb: var(--theme-accent-secondary-rgb);
   --theme-header-background: rgb(55 45 36 / 0.98);
+  --theme-attached-topbar-background: #2b231d;
   --theme-header-border: rgb(188 157 108 / 0.24);
   --theme-header-shadow: 0 8px 22px rgb(18 12 9 / 0.18);
 }
@@ -287,7 +280,7 @@ html[data-theme="ember"] {
   --theme-bg-root: #180f0d;
   --theme-bg-deep: #221411;
   --theme-bg-surface: #2a1a16;
-  --theme-bg-elevated: rgb(39 24 20 / 0.93);
+  --theme-bg-elevated: rgb(39 24 20);
   --theme-bg-card: rgb(255 237 220 / 0.03);
   --theme-bg-card-hover: rgb(255 237 220 / 0.05);
   --theme-bg-input: rgb(255 237 220 / 0.05);
@@ -361,12 +354,6 @@ html[data-theme="ember"] {
   --theme-feedback-success-rgb: 112 155 91;
   --theme-feedback-warning-rgb: 215 142 78;
   --theme-feedback-danger-rgb: 197 92 82;
-  --theme-map-canvas-filter: brightness(0.34) contrast(1.1) saturate(0.42)
-    sepia(0.12);
-  --theme-map-accent-overlay-opacity: 0.11;
-  --theme-map-grid-opacity: 0.14;
-  --theme-map-fade-top-height: 6rem;
-  --theme-map-fade-bottom-height: 6rem;
   --theme-media-facebook: var(--theme-media-icon);
   --theme-media-instagram: var(--theme-media-icon);
   --theme-media-x: var(--theme-media-icon);
@@ -386,14 +373,14 @@ html[data-theme="ember"] {
   --theme-control-accent: var(--theme-heading-accent-color);
   --theme-control-accent-rgb: var(--theme-accent-secondary-rgb);
   --theme-header-background: rgb(24 15 13 / 0.72);
+  --theme-attached-topbar-background: #1c130f;
   --theme-header-border: rgb(193 90 46 / 0.22);
   --theme-header-shadow: 0 4px 30px rgb(0 0 0 / 0.42);
 }
 
 html[data-theme="scriptorium"] {
   --font-body:
-    "Baskerville", "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
-    Georgia, serif;
+    "Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-logo: "Baskerville", "Hoefler Text", "Iowan Old Style", Georgia, serif;
   --font-display:
     "Baskerville", "Hoefler Text", "Iowan Old Style", "Palatino Linotype",
@@ -405,7 +392,7 @@ html[data-theme="scriptorium"] {
   --theme-bg-root: #f4ead7;
   --theme-bg-deep: #ece0ca;
   --theme-bg-surface: #f8efdf;
-  --theme-bg-elevated: rgb(250 242 228 / 0.96);
+  --theme-bg-elevated: rgb(250 242 228);
   --theme-bg-card: rgb(255 251 244 / 0.76);
   --theme-bg-card-hover: rgb(255 251 244 / 0.9);
   --theme-bg-input: rgb(255 249 239 / 0.88);
@@ -487,6 +474,7 @@ html[data-theme="scriptorium"] {
   --theme-card-top-glint: rgb(255 255 255 / 0.04);
   --theme-card-top-glint-hover: rgb(255 255 255 / 0.05);
   --theme-header-background: rgb(249 241 226 / 0.985);
+  --theme-attached-topbar-background: #f9f1e2;
   --theme-header-border: rgb(132 100 68 / 0.12);
   --theme-header-shadow: 0 4px 10px rgb(84 58 35 / 0.035);
   --theme-overlay-scrim: rgb(48 30 17 / 0.2);
@@ -499,13 +487,6 @@ html[data-theme="scriptorium"] {
   --theme-feedback-success-rgb: 47 122 87;
   --theme-feedback-warning-rgb: 176 138 97;
   --theme-feedback-danger-rgb: 183 79 67;
-  --theme-map-canvas-filter: brightness(0.92) contrast(0.96) saturate(0.52)
-    sepia(0.18);
-  --theme-map-accent-overlay-opacity: 0.035;
-  --theme-map-grid-opacity: 0.06;
-  --theme-map-fade-top-height: 4.5rem;
-  --theme-map-fade-bottom-height: 4.5rem;
-
   --theme-media-facebook: var(--theme-media-icon);
   --theme-media-instagram: var(--theme-media-icon);
   --theme-media-x: var(--theme-media-icon);
@@ -799,9 +780,7 @@ html[data-theme="scriptorium"] .theme-page-heading-accent {
 
 .theme-panel {
   position: relative;
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.035), transparent 20%),
-    color-mix(in oklab, var(--theme-bg-surface) 88%, transparent);
+  background: color-mix(in oklab, var(--theme-bg-surface) 88%, transparent);
   border: 1px solid
     color-mix(in oklab, var(--theme-border-subtle) 78%, transparent);
   border-radius: var(--card-radius);
@@ -823,9 +802,7 @@ html[data-theme="scriptorium"] .theme-panel {
 }
 
 .theme-panel-muted {
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.025), transparent 18%),
-    color-mix(in oklab, var(--theme-bg-surface) 82%, transparent);
+  background: color-mix(in oklab, var(--theme-bg-surface) 82%, transparent);
   border: 1px solid var(--theme-border-subtle);
   border-radius: calc(var(--card-radius) - 2px);
   box-shadow:
@@ -840,11 +817,93 @@ html[data-theme="scriptorium"] .theme-panel-muted {
     0 4px 12px rgb(84 58 35 / 0.025);
 }
 
+.theme-soft-viewport {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 20px;
+}
+
+.theme-soft-viewport-content {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.theme-scroll-fade-y {
+  position: relative;
+  isolation: isolate;
+}
+
+@supports (
+  (-webkit-mask-image: linear-gradient(black, transparent)) or
+    (mask-image: linear-gradient(black, transparent))
+) {
+  .theme-soft-viewport-content {
+    -webkit-mask-image:
+      linear-gradient(
+        to right,
+        transparent 0,
+        #000 20px,
+        #000 calc(100% - 20px),
+        transparent 100%
+      ),
+      linear-gradient(
+        to bottom,
+        transparent 0,
+        #000 20px,
+        #000 calc(100% - 20px),
+        transparent 100%
+      );
+    -webkit-mask-repeat: no-repeat, no-repeat;
+    -webkit-mask-size: 100% 100%, 100% 100%;
+    -webkit-mask-composite: source-in;
+    mask-image:
+      linear-gradient(
+        to right,
+        transparent 0,
+        #000 20px,
+        #000 calc(100% - 20px),
+        transparent 100%
+      ),
+      linear-gradient(
+        to bottom,
+        transparent 0,
+        #000 20px,
+        #000 calc(100% - 20px),
+        transparent 100%
+      );
+    mask-repeat: no-repeat, no-repeat;
+    mask-size: 100% 100%, 100% 100%;
+    mask-composite: intersect;
+  }
+
+  .theme-scroll-fade-y {
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 20px,
+      #000 calc(100% - 20px),
+      transparent 100%
+    );
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-size: 100% 100%;
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 20px,
+      #000 calc(100% - 20px),
+      transparent 100%
+    );
+    mask-repeat: no-repeat;
+    mask-size: 100% 100%;
+  }
+}
+
 .glass-card {
   position: relative;
-  background:
-    linear-gradient(180deg, var(--theme-card-top-glint), transparent 18%),
-    color-mix(in oklab, var(--theme-bg-surface) 82%, transparent);
+  background: color-mix(in oklab, var(--theme-bg-surface) 82%, transparent);
   backdrop-filter: blur(20px) saturate(145%);
   -webkit-backdrop-filter: blur(20px) saturate(145%);
   border: 1px solid
@@ -866,9 +925,7 @@ html[data-theme="scriptorium"] .glass-card {
 }
 
 .glass-card-interactive:hover {
-  background:
-    linear-gradient(180deg, var(--theme-card-top-glint-hover), transparent 18%),
-    color-mix(in oklab, var(--theme-bg-surface) 88%, transparent);
+  background: color-mix(in oklab, var(--theme-bg-surface) 88%, transparent);
   border-color: color-mix(
     in oklab,
     var(--theme-border-strong) 72%,
@@ -969,12 +1026,7 @@ html[data-theme="scriptorium"] .phase-card-complete {
       var(--theme-border-strong) 48%,
       var(--theme-border-subtle)
     );
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--theme-bg-surface) 82%, white) 0%,
-    color-mix(in oklab, var(--theme-bg-surface) 96%, white) 22%,
-    color-mix(in oklab, var(--theme-bg-surface) 88%, black) 100%
-  );
+  background: color-mix(in oklab, var(--theme-bg-surface) 94%, black);
   color: var(--theme-text-primary);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.06),
@@ -986,11 +1038,7 @@ html[data-theme="scriptorium"] .phase-card-complete {
 }
 
 html[data-theme="scriptorium"] .theme-tooltip-panel {
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--theme-bg-surface) 88%, white) 0%,
-    color-mix(in oklab, var(--theme-bg-surface) 96%, black) 100%
-  );
+  background: color-mix(in oklab, var(--theme-bg-surface) 96%, black);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.03),
     0 10px 26px rgb(84 58 35 / 0.08);
@@ -1266,12 +1314,10 @@ html[data-theme="scriptorium"] .theme-tooltip-arrow {
 
 .feed-card {
   position: relative;
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.03), transparent 18%),
-    color-mix(in oklab, var(--theme-bg-surface) 90%, transparent);
+  background: color-mix(in oklab, var(--theme-bg-surface) 90%, transparent);
   border: 1px solid
     color-mix(in oklab, var(--theme-border-subtle) 72%, transparent);
-  border-radius: var(--card-radius);
+  border-radius: var(--feed-card-radius);
   padding: 16px;
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.045),
@@ -1290,14 +1336,25 @@ html[data-theme="scriptorium"] .feed-card {
 }
 
 .feed-card:hover {
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.04), transparent 18%),
-    color-mix(in oklab, var(--theme-bg-surface) 94%, transparent);
+  background: color-mix(in oklab, var(--theme-bg-surface) 94%, transparent);
   border-color: color-mix(
     in oklab,
     var(--theme-border-strong) 68%,
     var(--theme-border-subtle)
   );
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html.feed-layout-transition::view-transition-group(*) {
+    animation-duration: 340ms;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  html.feed-layout-transition::view-transition-old(*),
+  html.feed-layout-transition::view-transition-new(*) {
+    animation-duration: 340ms;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
 }
 
 .theme-topbar {
@@ -1311,6 +1368,90 @@ html[data-theme="scriptorium"] .feed-card {
 html[data-theme="scriptorium"] .theme-topbar {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+
+.theme-floating-panel {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--card-radius);
+  border: 1px solid var(--theme-header-border);
+  background: var(--theme-header-background);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    var(--theme-header-shadow);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.theme-floating-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: none;
+}
+
+html[data-theme="scriptorium"] .theme-floating-panel {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.theme-attached-topbar {
+  background: var(--theme-attached-topbar-background);
+  border-top: 0;
+  border-left: 0;
+  border-right: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: inset 0 -1px 0 color-mix(in oklab, var(--theme-header-border) 82%, transparent);
+}
+
+.theme-attached-topbar::before {
+  background: none;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.theme-attached-topbar-host {
+  background: var(--theme-attached-topbar-background);
+}
+
+.theme-resize-gap-handle {
+  position: relative;
+  cursor: col-resize;
+}
+
+.theme-resize-gap-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: transparent;
+  transition:
+    background-color 0.18s ease,
+    box-shadow 0.18s ease,
+    opacity 0.18s ease;
+  opacity: 0.82;
+}
+
+.theme-resize-gap-handle:hover::before {
+  background: color-mix(in oklab, var(--theme-text-primary) 22%, transparent);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.03);
+}
+
+.theme-resize-gap-handle:active::before {
+  background: color-mix(in oklab, var(--theme-text-primary) 34%, transparent);
+  opacity: 1;
 }
 
 .theme-subtle-button {
@@ -1334,6 +1475,73 @@ html[data-theme="scriptorium"] .theme-topbar {
 
 .theme-accent-button:hover {
   background: rgb(var(--theme-accent-secondary-rgb) / 0.24);
+}
+
+.theme-fab-button {
+  background: color-mix(
+    in oklab,
+    rgb(var(--theme-accent-secondary-rgb)) 22%,
+    var(--theme-bg-elevated)
+  );
+  color: color-mix(
+    in oklab,
+    var(--theme-accent-secondary) 72%,
+    var(--theme-text-primary)
+  );
+  border: 1px solid rgb(var(--theme-accent-secondary-rgb) / 0.28);
+  box-shadow:
+    0 0 28px 16px rgb(var(--theme-shell-rgb) / 0.58),
+    0 12px 40px 10px rgb(var(--theme-shell-rgb) / 0.32),
+    0 22px 44px rgb(var(--theme-shell-rgb) / 0.24),
+    inset 0 1px 0 rgb(255 255 255 / 0.22);
+}
+
+.theme-fab-button:hover {
+  background: color-mix(
+    in oklab,
+    rgb(var(--theme-accent-secondary-rgb)) 28%,
+    var(--theme-bg-elevated)
+  );
+}
+
+.theme-toolbar-cluster {
+  gap: 0;
+}
+
+.theme-toolbar-cluster > .theme-toolbar-slot + .theme-toolbar-slot {
+  margin-inline-start: 0.5rem;
+}
+
+.theme-toolbar-slot {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: var(--toolbar-slot-width, 16rem);
+  overflow: hidden;
+  opacity: 1;
+  transform: translateX(0);
+  transition:
+    max-width 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.18s ease,
+    transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+    margin-inline-start 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.theme-toolbar-slot-hidden {
+  max-width: 0 !important;
+  opacity: 0;
+  transform: translateX(10px);
+  pointer-events: none;
+}
+
+.theme-toolbar-slot-hidden > * {
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-toolbar-slot {
+    transition: none;
+  }
 }
 
 .theme-accent-tag {
@@ -1473,11 +1681,20 @@ html[data-theme="scriptorium"] .theme-topbar {
 }
 
 .theme-settings-overlay {
-  background: linear-gradient(
-    180deg,
-    rgb(var(--theme-shell-rgb) / 0.08),
-    rgb(var(--theme-shell-rgb) / 0.18)
-  );
+  background: rgb(var(--theme-shell-rgb) / 0.045);
+  backdrop-filter: blur(17px) saturate(138%);
+  -webkit-backdrop-filter: blur(17px) saturate(138%);
+  transition:
+    background 0.32s ease,
+    backdrop-filter 0.32s ease,
+    -webkit-backdrop-filter 0.32s ease,
+    opacity 0.32s ease;
+}
+
+.theme-settings-overlay-preview-off {
+  background: rgb(var(--theme-shell-rgb) / 0);
+  backdrop-filter: blur(0px) saturate(100%);
+  -webkit-backdrop-filter: blur(0px) saturate(100%);
 }
 
 .theme-dialog-shell {
@@ -1486,9 +1703,7 @@ html[data-theme="scriptorium"] .theme-topbar {
   border-radius: calc(var(--card-radius) + 8px);
   border: 1px solid
     color-mix(in oklab, var(--theme-border-subtle) 70%, transparent);
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.045), transparent 18%),
-    color-mix(in oklab, var(--theme-bg-elevated) 86%, transparent);
+  background: var(--theme-bg-elevated);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.06),
     inset 0 0 0 0.5px rgb(255 255 255 / 0.028),
@@ -1511,25 +1726,31 @@ html[data-theme="scriptorium"] .theme-dialog-shell {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    radial-gradient(circle at top, rgb(255 255 255 / 0.04), transparent 36%),
-    linear-gradient(
-      135deg,
-      rgb(var(--theme-accent-secondary-rgb) / 0.035),
-      transparent 38%,
-      rgb(var(--theme-accent-tertiary-rgb) / 0.025) 100%
-    );
+  background: none;
 }
 
 html[data-theme="scriptorium"] .theme-dialog-shell::before {
-  background:
-    radial-gradient(circle at top, rgb(255 255 255 / 0.02), transparent 34%),
-    linear-gradient(
-      135deg,
-      rgb(var(--theme-accent-secondary-rgb) / 0.015),
-      transparent 42%,
-      rgb(var(--theme-accent-tertiary-rgb) / 0.01) 100%
-    );
+  background: none;
+}
+
+.theme-settings-shell {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    inset 0 0 0 0.5px rgb(255 255 255 / 0.028),
+    0 42px 116px rgb(0 0 0 / 0.24),
+    0 88px 228px rgb(var(--theme-shell-rgb) / 0.7),
+    0 0 72px rgb(0 0 0 / 0.1),
+    0 0 0 1px rgb(255 255 255 / 0.025);
+}
+
+html[data-theme="scriptorium"] .theme-settings-shell {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.032),
+    inset 0 0 0 0.5px rgb(255 255 255 / 0.018),
+    0 34px 88px rgb(84 58 35 / 0.14),
+    0 72px 188px rgb(84 58 35 / 0.34),
+    0 0 56px rgb(84 58 35 / 0.08),
+    0 0 0 1px rgb(255 255 255 / 0.04);
 }
 
 .theme-dialog-divider {
@@ -1541,9 +1762,7 @@ html[data-theme="scriptorium"] .theme-dialog-shell::before {
 }
 
 .theme-dialog-section {
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.025), transparent 18%),
-    color-mix(in oklab, var(--theme-bg-surface) 72%, transparent);
+  background: color-mix(in oklab, var(--theme-bg-surface) 72%, transparent);
   border: 1px solid
     color-mix(in oklab, var(--theme-border-subtle) 68%, transparent);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
@@ -1551,9 +1770,7 @@ html[data-theme="scriptorium"] .theme-dialog-shell::before {
 
 .theme-card-soft {
   position: relative;
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.03), transparent 18%),
-    color-mix(in oklab, var(--theme-bg-surface) 78%, transparent);
+  background: color-mix(in oklab, var(--theme-bg-surface) 78%, transparent);
   border: 1px solid
     color-mix(in oklab, var(--theme-border-subtle) 58%, transparent);
   box-shadow:
@@ -1570,6 +1787,21 @@ html[data-theme="scriptorium"] .theme-card-soft {
     0 8px 18px rgb(84 58 35 / 0.03);
   backdrop-filter: blur(6px) saturate(104%);
   -webkit-backdrop-filter: blur(6px) saturate(104%);
+}
+
+.theme-settings-theme-card {
+  cursor: pointer;
+}
+
+.theme-settings-theme-card__label {
+  display: inline-block;
+  transition: transform 0.2s ease;
+  transform-origin: left center;
+}
+
+.theme-settings-theme-card:hover .theme-settings-theme-card__label,
+.theme-settings-theme-card:focus-within .theme-settings-theme-card__label {
+  transform: scale(1.05);
 }
 
 .btn-primary {
@@ -1630,6 +1862,39 @@ html[data-theme="scriptorium"] .btn-primary:hover {
   transform: scale(0.985);
 }
 
+.nav-mobile-cta.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: max-content;
+  margin-block: 0;
+  padding: 0.32rem 0.9rem;
+  line-height: 1;
+  border-radius: var(--button-radius);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
+  transition:
+    box-shadow 0.2s ease,
+    filter 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.nav-mobile-cta.btn-primary:hover,
+.nav-mobile-cta.btn-primary:active {
+  transform: none;
+  border-radius: var(--button-radius);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
+}
+
+.newsletter-modal .btn-primary:hover,
+.newsletter-modal .btn-primary:active {
+  transform: none;
+}
+
+.newsletter-modal-download-cta.btn-primary {
+  border-color: rgb(255 255 255 / 0.08);
+  box-shadow: var(--theme-button-primary-shadow);
+}
+
 .btn-secondary,
 .glass-button {
   background: var(--theme-button-secondary-background);
@@ -1661,6 +1926,11 @@ html[data-theme="scriptorium"] .btn-primary:hover {
   background: var(--theme-bg-input);
   border: 1px solid var(--theme-border-subtle);
   color: var(--theme-text-primary);
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    box-shadow 0.18s ease,
+    color 0.18s ease;
 }
 
 .theme-input::placeholder {
@@ -1670,6 +1940,57 @@ html[data-theme="scriptorium"] .btn-primary:hover {
 .theme-input:focus {
   border-color: var(--theme-border-strong);
   box-shadow: 0 0 0 1px var(--theme-focus-ring);
+}
+
+.theme-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+  min-inline-size: 8.5rem;
+  border-color: color-mix(
+    in oklab,
+    var(--theme-border-strong) 58%,
+    var(--theme-border-subtle)
+  );
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.04), transparent 52%),
+    color-mix(in oklab, var(--theme-bg-input) 94%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.045),
+    0 8px 18px rgb(0 0 0 / 0.08);
+  padding-right: 3.25rem;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%),
+    linear-gradient(180deg, rgb(255 255 255 / 0.04), transparent 52%);
+  background-position:
+    calc(100% - 1.35rem) calc(50% - 1px),
+    calc(100% - 1rem) calc(50% - 1px),
+    center;
+  background-size:
+    0.45rem 0.45rem,
+    0.45rem 0.45rem,
+    100% 100%;
+  background-repeat: no-repeat;
+}
+
+.theme-select:hover {
+  border-color: var(--theme-border-strong);
+  background-color: color-mix(in oklab, var(--theme-bg-input) 98%, transparent);
+}
+
+.theme-select:focus {
+  border-color: var(--theme-border-strong);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 0 0 1px var(--theme-focus-ring),
+    0 12px 28px rgb(0 0 0 / 0.1);
+}
+
+.theme-select option {
+  background: var(--theme-bg-elevated);
+  color: var(--theme-text-primary);
 }
 
 .theme-link {
@@ -1838,35 +2159,6 @@ html[data-theme="scriptorium"] .btn-primary:hover {
       rgb(var(--theme-accent-secondary-rgb) / 0.08) 1px,
       transparent 1px
     );
-}
-
-.theme-map-grid-dense {
-  background-image:
-    linear-gradient(
-      rgb(var(--theme-accent-secondary-rgb) / 0.16) 1px,
-      transparent 1px
-    ),
-    linear-gradient(
-      90deg,
-      rgb(var(--theme-accent-secondary-rgb) / 0.12) 1px,
-      transparent 1px
-    );
-}
-
-.theme-map-fade-top {
-  background: linear-gradient(
-    180deg,
-    rgb(var(--theme-accent-secondary-rgb) / 0.12),
-    transparent
-  );
-}
-
-.theme-map-fade-bottom {
-  background: linear-gradient(
-    0deg,
-    color-mix(in oklab, var(--theme-bg-root) 96%, transparent),
-    transparent
-  );
 }
 
 ::selection {

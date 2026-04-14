@@ -12,6 +12,7 @@ import { disconnectIg } from "../lib/instagram-auth";
 import { captureIgFeed } from "../lib/instagram-capture";
 import { useSettingsStore } from "@freed/ui/lib/settings-store";
 import { resetProviderPauseState } from "../lib/provider-health";
+import { SampleDataTestingSection } from "@freed/ui/components/SampleDataTestingSection";
 
 const IgIcon = () => (
   <svg className="h-7 w-7 text-[var(--theme-media-instagram)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -101,6 +102,7 @@ export function InstagramFeedEmptyState() {
               : syncError}
           </p>
         )}
+        <SampleDataTestingSection />
       </>
     );
   }
@@ -123,6 +125,7 @@ export function InstagramFeedEmptyState() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
       </button>
+      <SampleDataTestingSection />
     </>
   );
 }

@@ -26,10 +26,14 @@ import {
 import { clearLocalDoc, docAddStubItem } from "./lib/automerge";
 import { checkForPwaUpdate, applyPwaUpdate, initPwaUpdater, onUpdateAvailable } from "./lib/pwa-updater";
 import { pickContactViaWebApi } from "./lib/contacts";
-import { SyncIndicator } from "./components/layout/SyncIndicator";
 import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
 import { PwaSyncSettings } from "./components/PwaSyncSettings";
-import { PwaXSettings } from "./components/PwaXSettings";
+import {
+  PwaFacebookSettings,
+  PwaInstagramSettings,
+  PwaLinkedInSettings,
+  PwaXSettings,
+} from "./components/PwaSocialProviderSettings";
 import { PwaLegalSettingsSection } from "./components/PwaLegalSettingsSection";
 import { initiateGDriveOAuth } from "./lib/cloud-oauth";
 import { acceptPwaBundle, hasAcceptedPwaBundle } from "./lib/legal-consent";
@@ -129,14 +133,14 @@ function App() {
       addRssFeed: subscribeToFeed,
       exportFeedsAsOPML,
       SourceIndicator: null,
-      HeaderSyncIndicator: SyncIndicator,
+      HeaderSyncIndicator: null,
       SettingsExtraSections: PwaSyncSettings,
       LegalSettingsContent: PwaLegalSettingsSection,
       FeedEmptyState: PwaFeedEmptyState,
       XSettingsContent: PwaXSettings,
-      FacebookSettingsContent: null,
-      InstagramSettingsContent: null,
-      LinkedInSettingsContent: null,
+      FacebookSettingsContent: PwaFacebookSettings,
+      InstagramSettingsContent: PwaInstagramSettings,
+      LinkedInSettingsContent: PwaLinkedInSettings,
       GoogleContactsSettingsContent: GoogleContactsSection,
       checkForUpdates,
       applyUpdate: applyPwaUpdate,

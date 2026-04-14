@@ -31,6 +31,7 @@ import {
   toggleSaved,
   toggleArchived,
   archiveAllReadUnsaved,
+  unarchiveSavedItems,
   pruneArchivedItems,
   deleteAllArchivedItems,
   updatePreferences,
@@ -481,6 +482,11 @@ async function handleRequest(
           (doc) => archiveAllReadUnsaved(doc, req.platform, req.feedUrl),
           "Archive all read",
         );
+        ack(req.reqId);
+        break;
+
+      case "UNARCHIVE_SAVED_ITEMS":
+        await applyRequestChange((doc) => unarchiveSavedItems(doc), "Unarchive saved items");
         ack(req.reqId);
         break;
 

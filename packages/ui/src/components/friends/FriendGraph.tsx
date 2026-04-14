@@ -53,7 +53,7 @@ const MAX_SCALE = 2.4;
 const FIT_PADDING = 72;
 const DEFAULT_HEIGHT = 560;
 const CONTROL_BASE =
-  "btn-secondary inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs";
+  "inline-flex items-center gap-2 rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] px-3 py-1.5 text-xs text-[var(--theme-text-primary)] shadow-[0_12px_28px_rgb(0_0_0_/_0.18)] transition-colors hover:bg-[var(--theme-bg-muted)]";
 
 const avatarCache = new Map<string, HTMLImageElement | null>();
 
@@ -602,11 +602,23 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   }, [findHitNode, fitAll, focusFriend]);
 
   return (
-    <div ref={containerRef} className="app-theme-shell relative h-full w-full overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgb(var(--theme-accent-secondary-rgb)/0.12),transparent_32%)]" />
-      <div className="theme-map-grid pointer-events-none absolute inset-0 opacity-[0.08] [background-size:96px_96px]" />
-
-      <div className="absolute left-4 top-4 z-10 flex items-center gap-2">
+    <div ref={containerRef} className="theme-soft-viewport relative h-full w-full">
+      <div className="theme-soft-viewport-content">
+        <canvas
+          ref={canvasRef}
+          className={`h-full w-full touch-none ${isInteracting ? "cursor-grabbing" : "cursor-grab"}`}
+          data-testid="friend-graph-canvas"
+          data-view-scale={transformRef.current.scale.toFixed(4)}
+          onWheel={handleWheel}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerLeave}
+          onDoubleClick={handleDoubleClick}
+          aria-label="Friends social graph"
+        />
+      </div>
+      <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
         <button
           type="button"
           className={CONTROL_BASE}
@@ -615,20 +627,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           Fit all
         </button>
       </div>
-
-      <canvas
-        ref={canvasRef}
-        className={`h-full w-full touch-none ${isInteracting ? "cursor-grabbing" : "cursor-grab"}`}
-        data-testid="friend-graph-canvas"
-        data-view-scale={transformRef.current.scale.toFixed(4)}
-        onWheel={handleWheel}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerLeave}
-        onDoubleClick={handleDoubleClick}
-        aria-label="Friends social graph"
-      />
     </div>
   );
 });

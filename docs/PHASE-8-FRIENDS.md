@@ -191,21 +191,22 @@ Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare),
 - `packages/ui/src/components/map/MapView.tsx` — shared MapLibre map view for PWA and Freed Desktop
 - `packages/ui/src/components/map/MiniFriendMapCard.tsx` — friend detail last-seen mini map card
 - `packages/ui/src/components/map/MarkerElement.ts` — avatar bubble HTMLElement for MapLibre markers
-- `packages/ui/src/components/map/MapSurface.tsx` — shared dark map surface, glass popups, and fallback renderer
+- `packages/ui/src/components/map/MapSurface.tsx` — shared themed map surface, glass popups, and fallback renderer
 - `packages/ui/src/lib/sample-library-seed.ts` — append-only sample batch seeding for friend-linked map previews
 - `packages/ui/src/components/layout/Sidebar.tsx` — live Friends and Map counts in the primary nav
 - `packages/ui/src/components/Toast.tsx` — shared success/error feedback for sample refresh and other cross-shell actions
 
-`maplibre-gl` now lives in `@freed/ui` so both PWA and Freed Desktop use the same map runtime. The shared surface now uses a dark futuristic visual treatment so the full map and friend mini-map read like the same product.
+`maplibre-gl` now lives in `@freed/ui` so both PWA and Freed Desktop use the same map runtime. The shared surface now uses theme-native cartography, not a one-size-fits-none filter pass, so each theme gets its own land, water, boundary, and label palette while the avatars stay readable.
 Sample data batches now append friend-linked LinkedIn posts too, so repeated populates keep expanding the social graph instead of reseeding the same tiny cast.
 Friends and Map now use the same shared content header pattern as the rest of the app, instead of shipping bespoke top bars that wander off into their own little kingdoms.
 Map popovers now include the time of each location update and behave like a sane interface, with only one popup open at a time.
 Friends now behaves like a proper workspace: the graph settles once and freezes, supports pan and zoom, and uses a permanent resizable right sidebar for reconnect, search, filters, overview, and selected-friend detail.
+That Friends detail rail now uses the same floating shell-card treatment and gap-based resize grip as the main app sidebars, so it finally looks like it belongs in the same product.
 Trackpad pinch zoom is now captured by the Friends graph itself, so zooming the workspace no longer zooms the whole browser window.
 Friend captions in the graph now use pill backgrounds and label-aware spacing, so names stay readable instead of collapsing into an overlapping word soup.
 Friend avatars now inherit a theme-authored tint across the Friends graph and map markers, so each theme stays coherent without a stray custom accent fighting the palette.
 Map popovers now use a wider card layout and deliberately omit the old MapLibre tail, so place names and actions fit cleanly without the popup looking like a speech bubble from a cheaper app.
-Friends and Map now consume the same shared theme tokens, button treatments, shell backgrounds, and surface recipes as the rest of Freed, so themes like Neon, Midas, Vesper, Ember, and Scriptorium land consistently across the graph, sidebars, popovers, mini-map cards, editor, and contact-sync flows.
+Friends and Map now consume the same shared theme tokens, button treatments, shell backgrounds, surface recipes, and theme-native map palettes as the rest of Freed, so themes like Neon, Midas, Vesper, Ember, and Scriptorium land consistently across the graph, sidebars, popovers, mini-map cards, editor, contact-sync flows, and map basemap itself.
 
 ---
 
@@ -263,7 +264,7 @@ Friends and Map now consume the same shared theme tokens, button treatments, she
 - [x] MapLibre `FriendMap` component scaffolded
 - [x] `maplibre-gl` installed and map view live in PWA and Freed Desktop
 - [x] Friend detail panel shows a last-seen mini map card when location history exists
-- [x] Shared map surface uses a dark futuristic theme across live and fallback rendering
+- [x] Shared map surface uses theme-native palettes across live and fallback rendering
 - [x] Friends and Map inherit the shared multi-theme design system instead of hardcoded one-off gradients
 - [x] Sample data refresh rebuilds a 25-friend social graph with linked profiles and recent map activity
 - [x] Sidebar shows live counts for Friends and recent friend location updates on Map

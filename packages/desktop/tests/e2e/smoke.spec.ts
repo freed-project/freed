@@ -37,6 +37,10 @@ const SETTINGS_STORE_PATH = resolveViteFsModulePath(
   "../../../ui/src/lib/settings-store.ts",
   import.meta.url,
 );
+const DEBUG_STORE_PATH = resolveViteFsModulePath(
+  "../../../ui/src/lib/debug-store.ts",
+  import.meta.url,
+);
 
 // ---------------------------------------------------------------------------
 // App initialization
@@ -95,10 +99,330 @@ test("header is visible", async ({ app }) => {
   await expect(app.page.locator("header, [role='banner']").first()).toBeVisible();
 });
 
+test("desktop workspace keeps a single top toolbar in feed, reader, and friends views", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(8);
+
+  await expect(page.getByTestId("workspace-toolbar")).toBeVisible();
+  await expect(page.locator("header")).toHaveCount(1);
+
+  await page.locator("[data-feed-item-id]").first().click();
+  await expect(page.getByTestId("workspace-toolbar")).toBeVisible();
+  await expect(page.locator("header")).toHaveCount(1);
+
+  await page.getByTestId("app-sidebar").getByTestId("source-row-friends").click();
+  await expect(page.getByTestId("workspace-toolbar")).toBeVisible();
+  await expect(page.locator("header")).toHaveCount(1);
+});
+
+test("desktop sidebar and debug drawer use floating shell cards", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await expect(page.getByTestId("workspace-toolbar")).toBeVisible();
+
+  const initialShellState = await page.evaluate(() => {
+    const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    return {
+      toolbarHasFloatingShell: toolbar?.classList.contains("theme-floating-panel") ?? false,
+      sidebarHasFloatingShell: sidebar?.classList.contains("theme-floating-panel") ?? false,
+      sidebarWidth: sidebarShell?.getBoundingClientRect().width ?? 0,
+    };
+  });
+
+  expect(initialShellState.toolbarHasFloatingShell).toBe(true);
+  expect(initialShellState.sidebarHasFloatingShell).toBe(true);
+  expect(initialShellState.sidebarWidth).toBeGreaterThan(200);
+
+  await page.getByTestId("desktop-sidebar-toggle").click();
+  await page.waitForTimeout(250);
+
+  const collapsedWidth = await page.evaluate(() => {
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    return sidebarShell?.getBoundingClientRect().width ?? 0;
+  });
+  expect(collapsedWidth).toBeLessThanOrEqual(2);
+
+  await page.getByTestId("desktop-sidebar-toggle").click();
+  await page.waitForTimeout(250);
+  const reopenedWidth = await page.evaluate(() => {
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    return sidebarShell?.getBoundingClientRect().width ?? 0;
+  });
+  expect(reopenedWidth).toBeGreaterThan(200);
+
+  await page.keyboard.press("Control+Shift+D");
+  await expect(page.getByTestId("debug-panel-drawer")).toBeVisible();
+
+  const debugShellState = await page.evaluate(() => {
+    const debugPanel = document.querySelector('[data-testid="debug-panel-surface"]') as HTMLElement | null;
+    return debugPanel?.classList.contains("theme-floating-panel") ?? false;
+  });
+  expect(debugShellState).toBe(true);
+});
+
 test("main content area renders", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
   await expect(app.page.locator("main")).toBeVisible();
+});
+
+test("keyboard focus scrolling keeps a full row visible past the focused item", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(12);
+
+  for (let i = 0; i < 6; i += 1) {
+    await page.keyboard.press("ArrowDown");
+  }
+
+  await page.waitForFunction(() => {
+    const container = document.querySelector('[data-testid="feed-list-scroll-container"]') as HTMLElement | null;
+    const focusedItem = container?.querySelector('[data-focused="true"]') as HTMLElement | null;
+    const focusedRow = focusedItem?.closest('[data-feed-row-index]') as HTMLElement | null;
+    if (!container || !focusedRow) return false;
+
+    const rowIndex = Number(focusedRow.dataset.feedRowIndex);
+    const nextRow = container.querySelector(`[data-feed-row-index="${rowIndex + 1}"]`) as HTMLElement | null;
+    if (!nextRow) return false;
+
+    const containerRect = container.getBoundingClientRect();
+    const nextRowRect = nextRow.getBoundingClientRect();
+
+    return nextRowRect.top >= containerRect.top && nextRowRect.bottom <= containerRect.bottom;
+  });
+
+  const metrics = await page.evaluate(() => {
+    const container = document.querySelector('[data-testid="feed-list-scroll-container"]') as HTMLElement | null;
+    const focusedItem = container?.querySelector('[data-focused="true"]') as HTMLElement | null;
+    const focusedRow = focusedItem?.closest('[data-feed-row-index]') as HTMLElement | null;
+    if (!container || !focusedRow) {
+      throw new Error("Focused feed row was not found");
+    }
+
+    const rowIndex = Number(focusedRow.dataset.feedRowIndex);
+    const nextRow = container.querySelector(`[data-feed-row-index="${rowIndex + 1}"]`) as HTMLElement | null;
+    if (!nextRow) {
+      throw new Error("Next feed row was not found");
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const nextRowRect = nextRow.getBoundingClientRect();
+
+    return {
+      scrollTop: container.scrollTop,
+      nextRowTop: nextRowRect.top,
+      nextRowBottom: nextRowRect.bottom,
+      containerTop: containerRect.top,
+      containerBottom: containerRect.bottom,
+    };
+  });
+
+  expect(metrics.scrollTop).toBeGreaterThan(0);
+  expect(metrics.nextRowTop).toBeGreaterThanOrEqual(metrics.containerTop);
+  expect(metrics.nextRowBottom).toBeLessThanOrEqual(metrics.containerBottom);
+});
+
+test("sidebar resize holds the dragged width after mouseup", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (patch: { display: { sidebarWidth: number } }) => Promise<void>;
+          };
+          setState: (partial: Record<string, unknown>) => void;
+        }
+      | undefined;
+
+    if (!store) return;
+
+    const originalUpdatePreferences = store.getState().updatePreferences;
+    store.setState({
+      updatePreferences: async (patch: { display: { sidebarWidth: number } }) => {
+        await new Promise((resolve) => window.setTimeout(resolve, 350));
+        await originalUpdatePreferences(patch);
+      },
+    });
+  });
+
+  const sidebar = page.getByTestId("app-sidebar");
+  const { initialWidth, widthAfterRelease } = await page.evaluate(async () => {
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    const resizeHandle = document.querySelector('[data-testid="app-sidebar-resize-handle"]') as HTMLElement | null;
+    if (!sidebar || !resizeHandle) {
+      throw new Error("Sidebar resize elements were not found");
+    }
+
+    const initialWidth = sidebar.getBoundingClientRect().width;
+    const handleRect = resizeHandle.getBoundingClientRect();
+    const startX = handleRect.left + handleRect.width / 2;
+    const pointerY = handleRect.top + handleRect.height / 2;
+    const endX = startX + 72;
+
+    resizeHandle.dispatchEvent(
+      new MouseEvent("mousedown", {
+        bubbles: true,
+        clientX: startX,
+        clientY: pointerY,
+      }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("mousemove", {
+        bubbles: true,
+        clientX: endX,
+        clientY: pointerY,
+      }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("mouseup", {
+        bubbles: true,
+        clientX: endX,
+        clientY: pointerY,
+      }),
+    );
+
+    await new Promise((resolve) => window.setTimeout(resolve, 100));
+
+    return {
+      initialWidth,
+      widthAfterRelease: sidebar.getBoundingClientRect().width,
+    };
+  });
+
+  expect(widthAfterRelease).toBeGreaterThan(initialWidth + 40);
+
+  await page.waitForTimeout(450);
+  const settledWidth = await sidebar.evaluate((element) =>
+    element.getBoundingClientRect().width,
+  );
+
+  expect(Math.abs(settledWidth - widthAfterRelease)).toBeLessThanOrEqual(2);
+
+  await page.waitForFunction((expectedWidth) => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            preferences: { display: { sidebarWidth?: number } };
+          };
+        }
+      | undefined;
+
+    const savedWidth = store?.getState().preferences.display.sidebarWidth ?? 0;
+    return Math.abs(savedWidth - expectedWidth) <= 2;
+  }, Math.round(settledWidth));
+});
+
+test("debug panel resize holds the dragged width after mouseup", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async (debugStorePath) => {
+    const mod = await import(debugStorePath);
+    mod.useDebugStore.getState().setVisible(true);
+  }, DEBUG_STORE_PATH);
+
+  const debugPanel = page.getByTestId("debug-panel-drawer");
+  await expect(debugPanel).toBeVisible();
+  await page.waitForTimeout(350);
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (patch: { display: { debugPanelWidth: number } }) => Promise<void>;
+          };
+          setState: (partial: Record<string, unknown>) => void;
+        }
+      | undefined;
+
+    if (!store) return;
+
+    const originalUpdatePreferences = store.getState().updatePreferences;
+    store.setState({
+      updatePreferences: async (patch: { display: { debugPanelWidth: number } }) => {
+        await new Promise((resolve) => window.setTimeout(resolve, 350));
+        await originalUpdatePreferences(patch);
+      },
+    });
+  });
+
+  const initialWidth = await page.evaluate(() => {
+    const debugPanel = document.querySelector('[data-testid="debug-panel-drawer"]') as HTMLElement | null;
+    const resizeHandle = document.querySelector('[data-testid="debug-panel-resize-handle"]') as HTMLElement | null;
+    if (!debugPanel || !resizeHandle) {
+      throw new Error("Debug panel resize elements were not found");
+    }
+
+    const initialWidth = debugPanel.getBoundingClientRect().width;
+    const handleRect = resizeHandle.getBoundingClientRect();
+    const startX = handleRect.left + handleRect.width / 2;
+    const pointerY = handleRect.top + handleRect.height / 2;
+    const endX = startX - 72;
+
+    resizeHandle.dispatchEvent(
+      new MouseEvent("mousedown", {
+        bubbles: true,
+        clientX: startX,
+        clientY: pointerY,
+      }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("mousemove", {
+        bubbles: true,
+        clientX: endX,
+        clientY: pointerY,
+      }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("mouseup", {
+        bubbles: true,
+        clientX: endX,
+        clientY: pointerY,
+      }),
+    );
+
+    return initialWidth;
+  });
+
+  await page.waitForTimeout(450);
+  const widthAfterTransition = await debugPanel.evaluate((element) =>
+    element.getBoundingClientRect().width,
+  );
+
+  expect(widthAfterTransition).toBeGreaterThan(initialWidth + 40);
+
+  await page.waitForTimeout(450);
+  const settledWidth = await debugPanel.evaluate((element) =>
+    element.getBoundingClientRect().width,
+  );
+
+  expect(Math.abs(settledWidth - widthAfterTransition)).toBeLessThanOrEqual(2);
+
+  await page.waitForFunction((expectedWidth) => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            preferences: { display: { debugPanelWidth?: number } };
+          };
+        }
+      | undefined;
+
+    const savedWidth = store?.getState().preferences.display.debugPanelWidth ?? 0;
+    return Math.abs(savedWidth - expectedWidth) <= 2;
+  }, Math.round(settledWidth));
 });
 
 test("settings dialog closes from the desktop sidebar close button", async ({ app }) => {
@@ -133,7 +457,7 @@ test("settings dialog closes from the mobile header close button", async ({ app,
   }, SETTINGS_STORE_PATH);
   await expect(page.getByText("Settings").first()).toBeVisible({ timeout: 5_000 });
 
-  await page.getByRole("button", { name: "Reading" }).click();
+  await page.getByRole("button", { name: "Appearance" }).click();
   await expect(page.getByTestId("settings-close-button-mobile")).toBeVisible({ timeout: 5_000 });
 
   await page.getByTestId("settings-close-button-mobile").click();
@@ -155,21 +479,151 @@ test("settings nav highlight follows scroll position", async ({ app, page }) => 
   const appearanceButton = dialog.locator('button[data-active="true"]').filter({
     hasText: /^Appearance$/,
   });
-  const readingButton = dialog.locator('button[data-active="true"]').filter({
-    hasText: /^Reading$/,
+  const syncButton = dialog.locator('button[data-active="true"]').filter({
+    hasText: /^Sync$/,
   });
 
   await expect(appearanceButton).toHaveCount(1);
 
   await scrollContainer.evaluate((element) => {
-    const target = element.querySelector('[data-section="reading"]');
+    const target = element.querySelector('[data-section="sync"]');
     if (!(target instanceof HTMLElement)) {
-      throw new Error("Reading section not found");
+      throw new Error("Sync section not found");
     }
     element.scrollTo({ top: Math.max(0, target.offsetTop - 24) });
   });
 
-  await expect(readingButton).toHaveCount(1);
+  await expect(syncButton).toHaveCount(1);
+});
+
+test("provider settings do not remount when health updates arrive", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async ({ settingsStorePath, debugStorePath }) => {
+    const makeDailyBuckets = () =>
+      Array.from({ length: 7 }, (_, index) => ({
+        dateKey: `2026-04-0${index + 1}`,
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+      }));
+    const makeHourlyBuckets = () =>
+      Array.from({ length: 24 }, (_, index) => ({
+        hourKey: `2026-04-12T${String(index).padStart(2, "0")}`,
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+      }));
+    const makeSnapshot = (
+      provider: "rss" | "x" | "facebook" | "instagram" | "linkedin" | "gdrive" | "dropbox",
+    ) => ({
+      provider,
+      status: provider === "x" ? "degraded" : "idle",
+      lastAttemptAt: provider === "x" ? Date.now() : undefined,
+      lastSuccessfulAt: provider === "x" ? Date.now() - 120_000 : undefined,
+      lastOutcome: provider === "x" ? "error" : undefined,
+      lastError: provider === "x" ? "Transient timeout" : undefined,
+      currentMessage: provider === "x" ? "Transient timeout" : undefined,
+      pause: null,
+      dailyBuckets: makeDailyBuckets(),
+      hourlyBuckets: makeHourlyBuckets(),
+      latestAttempts: [],
+      totalSeen7d: 0,
+      totalAdded7d: 0,
+      totalBytes7d: 0,
+    });
+
+    const settingsMod = await import(settingsStorePath);
+    const debugMod = await import(debugStorePath);
+
+    settingsMod.useSettingsStore.getState().openTo("x");
+    debugMod.useDebugStore.getState().setHealth({
+      providers: {
+        rss: makeSnapshot("rss"),
+        x: makeSnapshot("x"),
+        facebook: makeSnapshot("facebook"),
+        instagram: makeSnapshot("instagram"),
+        linkedin: makeSnapshot("linkedin"),
+        gdrive: makeSnapshot("gdrive"),
+        dropbox: makeSnapshot("dropbox"),
+      },
+      failingRssFeeds: [],
+      updatedAt: Date.now(),
+    });
+  }, { settingsStorePath: SETTINGS_STORE_PATH, debugStorePath: DEBUG_STORE_PATH });
+
+  await expect(page.getByText("X / Twitter").first()).toBeVisible({ timeout: 5_000 });
+  await page.getByRole("button", { name: "Manual cookie setup" }).click();
+
+  const ct0Input = page.getByPlaceholder("ct0 value");
+  await expect(ct0Input).toBeVisible();
+  await ct0Input.fill("sticky-cookie");
+
+  await page.evaluate(async (debugStorePath) => {
+    const makeDailyBuckets = () =>
+      Array.from({ length: 7 }, (_, index) => ({
+        dateKey: `2026-04-0${index + 1}`,
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+      }));
+    const makeHourlyBuckets = () =>
+      Array.from({ length: 24 }, (_, index) => ({
+        hourKey: `2026-04-12T${String(index).padStart(2, "0")}`,
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+      }));
+    const makeSnapshot = (
+      provider: "rss" | "x" | "facebook" | "instagram" | "linkedin" | "gdrive" | "dropbox",
+    ) => ({
+      provider,
+      status: provider === "x" ? "degraded" : "idle",
+      lastAttemptAt: provider === "x" ? Date.now() : undefined,
+      lastSuccessfulAt: provider === "x" ? Date.now() - 60_000 : undefined,
+      lastOutcome: provider === "x" ? "error" : undefined,
+      lastError: provider === "x" ? "Retrying after timeout" : undefined,
+      currentMessage: provider === "x" ? "Retrying after timeout" : undefined,
+      pause: null,
+      dailyBuckets: makeDailyBuckets(),
+      hourlyBuckets: makeHourlyBuckets(),
+      latestAttempts: [],
+      totalSeen7d: 0,
+      totalAdded7d: 0,
+      totalBytes7d: 0,
+    });
+
+    const debugMod = await import(debugStorePath);
+    debugMod.useDebugStore.getState().setHealth({
+      providers: {
+        rss: makeSnapshot("rss"),
+        x: makeSnapshot("x"),
+        facebook: makeSnapshot("facebook"),
+        instagram: makeSnapshot("instagram"),
+        linkedin: makeSnapshot("linkedin"),
+        gdrive: makeSnapshot("gdrive"),
+        dropbox: makeSnapshot("dropbox"),
+      },
+      failingRssFeeds: [],
+      updatedAt: Date.now(),
+    });
+  }, DEBUG_STORE_PATH);
+
+  await expect(ct0Input).toBeVisible();
+  await expect(ct0Input).toHaveValue("sticky-cookie");
 });
 
 test("provider risk dialog scrolls vertically on tiny mobile screens", async ({ app, page }) => {
@@ -296,6 +750,226 @@ test("desktop reader history supports Cmd+[ and Cmd+] for open items", async ({ 
     return store?.getState().selectedItemId !== null;
   }, { timeout: 5_000 });
   await expect(page.getByLabel("Back")).toBeVisible({ timeout: 5_000 });
+});
+
+test("dual-column reader arrow navigation cycles tiles and keeps the next tile visible", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(12);
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+
+    void store?.getState().updatePreferences({
+      display: {
+        reading: {
+          dualColumnMode: true,
+        },
+      },
+    });
+  });
+
+  await page.getByText("Article 0:", { exact: false }).click();
+  await expect(page.getByLabel("Back")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
+
+  for (let i = 0; i < 6; i += 1) {
+    await page.keyboard.press("ArrowDown");
+  }
+
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { selectedItemId: string | null } }
+      | undefined;
+    return store?.getState().selectedItemId?.endsWith("bench-item-6") === true;
+  }, { timeout: 5_000 });
+
+  await page.waitForFunction(() => {
+    const container = document.querySelector('[data-testid="compact-feed-panel-scroll-container"]') as HTMLElement | null;
+    const selectedItem = container?.querySelector('[data-selected="true"]') as HTMLElement | null;
+    const selectedRow = selectedItem?.closest('[data-compact-panel-index]') as HTMLElement | null;
+    if (!container || !selectedRow) return false;
+
+    const rowIndex = Number(selectedRow.dataset.compactPanelIndex);
+    const nextRow = container.querySelector(`[data-compact-panel-index="${rowIndex + 1}"]`) as HTMLElement | null;
+    if (!nextRow) return false;
+
+    const containerRect = container.getBoundingClientRect();
+    const nextRowRect = nextRow.getBoundingClientRect();
+
+    return nextRowRect.top >= containerRect.top && nextRowRect.bottom <= containerRect.bottom;
+  }, { timeout: 5_000 });
+
+  const metrics = await page.evaluate(() => {
+    const container = document.querySelector('[data-testid="compact-feed-panel-scroll-container"]') as HTMLElement | null;
+    const selectedItem = container?.querySelector('[data-selected="true"]') as HTMLElement | null;
+    const selectedRow = selectedItem?.closest('[data-compact-panel-index]') as HTMLElement | null;
+    if (!container || !selectedRow) {
+      throw new Error("Selected compact panel row was not found");
+    }
+
+    const rowIndex = Number(selectedRow.dataset.compactPanelIndex);
+    const nextRow = container.querySelector(`[data-compact-panel-index="${rowIndex + 1}"]`) as HTMLElement | null;
+    if (!nextRow) {
+      throw new Error("Next compact panel row was not found");
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const nextRowRect = nextRow.getBoundingClientRect();
+
+    return {
+      scrollTop: container.scrollTop,
+      nextRowTop: nextRowRect.top,
+      nextRowBottom: nextRowRect.bottom,
+      containerTop: containerRect.top,
+      containerBottom: containerRect.bottom,
+    };
+  });
+
+  expect(metrics.scrollTop).toBeGreaterThan(0);
+  expect(metrics.nextRowTop).toBeGreaterThanOrEqual(metrics.containerTop);
+  expect(metrics.nextRowBottom).toBeLessThanOrEqual(metrics.containerBottom);
+});
+
+test("dual-column reader toolbar controls stay aligned with the sidebar and rail", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(8);
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+
+    void store?.getState().updatePreferences({
+      display: {
+        reading: {
+          dualColumnMode: true,
+        },
+      },
+    });
+  });
+
+  await page.getByText("Article 0:", { exact: false }).click();
+  await expect(page.getByLabel("Back to list")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
+
+  const alignment = await page.evaluate(() => {
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    const sidebarToggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
+    const dualColumnToggle = document.querySelector('[aria-label="Toggle dual column layout"]') as HTMLElement | null;
+    const backButton = document.querySelector('[aria-label="Back to list"]') as HTMLElement | null;
+    const compactRail = document.querySelector('[data-testid="compact-feed-panel-scroll-container"]') as HTMLElement | null;
+
+    if (!sidebar || !sidebarToggle || !dualColumnToggle || !backButton || !compactRail) {
+      throw new Error("Dual-column toolbar alignment elements were not found");
+    }
+
+    const sidebarRect = sidebar.getBoundingClientRect();
+    const sidebarToggleRect = sidebarToggle.getBoundingClientRect();
+    const dualColumnToggleRect = dualColumnToggle.getBoundingClientRect();
+    const backButtonRect = backButton.getBoundingClientRect();
+    const compactRailRect = compactRail.getBoundingClientRect();
+
+    return {
+      sidebarRight: sidebarRect.right,
+      sidebarToggleRight: sidebarToggleRect.right,
+      compactRailLeft: compactRailRect.left,
+      compactRailRight: compactRailRect.right,
+      dualColumnToggleLeft: dualColumnToggleRect.left,
+      backButtonLeft: backButtonRect.left,
+    };
+  });
+
+  expect(Math.abs(alignment.sidebarToggleRight - alignment.sidebarRight)).toBeLessThanOrEqual(2);
+  expect(Math.abs(alignment.dualColumnToggleLeft - alignment.compactRailLeft)).toBeLessThanOrEqual(2);
+  expect(Math.abs(alignment.backButtonLeft - alignment.compactRailRight)).toBeLessThanOrEqual(2);
+});
+test("dual-column reader toggles use shared view transitions when supported", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(6);
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+
+    void store?.getState().updatePreferences({
+      display: {
+        reading: {
+          dualColumnMode: true,
+        },
+      },
+    });
+  });
+
+  await page.evaluate(() => {
+    const doc = document as Document & {
+      startViewTransition?: (update: () => void) => { finished: Promise<void> };
+    };
+    const state = { count: 0 };
+    (window as Record<string, unknown>).__FREED_VIEW_TRANSITIONS__ = state;
+
+    Object.defineProperty(doc, "startViewTransition", {
+      configurable: true,
+      writable: true,
+      value: (update: () => void) => {
+        state.count += 1;
+        update();
+        return { finished: Promise.resolve() };
+      },
+    });
+  });
+
+  const firstCard = page.locator('[data-feed-item-id$="bench-item-0"]').first();
+  await expect(firstCard).toBeVisible({ timeout: 5_000 });
+
+  const transitionName = await firstCard.evaluate((element) =>
+    window.getComputedStyle(element.parentElement as Element).viewTransitionName,
+  );
+  expect(transitionName).not.toBe("none");
+
+  await firstCard.click();
+  await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByLabel("Back")).toBeVisible({ timeout: 5_000 });
+
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const state = (window as Record<string, unknown>).__FREED_VIEW_TRANSITIONS__ as
+        | { count: number }
+        | undefined;
+      return state?.count ?? 0;
+    });
+  }).toBe(1);
+
+  await page.getByLabel("Back").click();
+
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const state = (window as Record<string, unknown>).__FREED_VIEW_TRANSITIONS__ as
+        | { count: number }
+        | undefined;
+      return state?.count ?? 0;
+    });
+  }).toBe(2);
 });
 
 test("Friends workspace keeps a visible sidebar and supports back navigation", async ({ app }) => {
@@ -450,6 +1124,33 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
   await expect(page.locator('.freed-map-marker[aria-label="Ada Lovelace"]')).toBeVisible({
     timeout: 10_000,
   });
+});
+
+test("Friends view uses the floating detail drawer shell", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+
+  await page.getByRole("button", { name: /^Friends\b/ }).click();
+  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
+
+  const shellState = await page.evaluate(() => {
+    const sidebar = document.querySelector('[data-testid="friends-sidebar"]') as HTMLElement | null;
+    const shell = document.querySelector('[data-testid="friends-sidebar-shell"]') as HTMLElement | null;
+    const handle = document.querySelector('[aria-label="Resize friends sidebar"]') as HTMLElement | null;
+
+    return {
+      sidebarIsFloating: sidebar?.classList.contains("theme-floating-panel") ?? false,
+      shellWidth: shell?.getBoundingClientRect().width ?? 0,
+      sidebarWidth: sidebar?.getBoundingClientRect().width ?? 0,
+      handleUsesGapGrip: handle?.classList.contains("theme-resize-gap-handle") ?? false,
+    };
+  });
+
+  expect(shellState.sidebarIsFloating).toBe(true);
+  expect(shellState.handleUsesGapGrip).toBe(true);
+  expect(shellState.shellWidth).toBeGreaterThan(shellState.sidebarWidth);
 });
 
 // ---------------------------------------------------------------------------

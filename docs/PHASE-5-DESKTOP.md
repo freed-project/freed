@@ -23,6 +23,8 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Manual disconnect clears active pauses:** Disconnecting a social provider clears its current pause and resets future backoff escalation, but keeps historical diagnostics intact
 - **Paused providers reuse the primary action:** Settings surfaces swap `Sync Now` to `Resume Now` when a provider is paused, instead of rendering a second resume button
 - **Internal navigation history** — Desktop keeps a browser-style serialized navigation stack so `Cmd+[` and `Cmd+]` move through views and open reader state
+- **Blank-state testing escape hatch** — Desktop empty states now offer a lightweight sample-data section below the primary blank-state prompt, so fresh installs can seed realistic data without detouring into Settings
+- **Archived saved-item repair control** — Archived views now surface a one-click `Unarchive Saved Content` action when legacy or imported items end up both saved and archived
 
 ---
 
@@ -254,6 +256,13 @@ export async function captureDomFeed(
 - [x] LinkedIn and the other social source rows keep a sidebar status indicator even if auth state lags behind, falling back to the provider's actual item counts before hiding the dot
 - [x] Facebook group settings show active group counts in the header, keep refresh with the bulk actions, and split scraped `Last active ...` text into its own smaller right-aligned column instead of mashing it into the group name
 - [x] The redundant desktop header sync dropdown has been removed, leaving the sidebar source menus and provider settings as the canonical sync status and action surfaces
+- [x] Desktop view chrome now routes through one shared top toolbar, so feed, reader, and Friends stop stacking separate bars on top of each other
+- [x] The primary sidebar and right debug drawer now render as floating shell cards using the same glassy header treatment as the marketing navbar
+- [x] Reader toolbar controls now lock to the live sidebar and thumbnail-rail widths, so the sidebar toggle, dual-column toggle, and back-to-list control stay aligned with the floating cards below them
+- [x] Settings now use a shared polished dropdown treatment, and Appearance keeps the theme selector as one compact row instead of a descriptive mini card
+- [x] Settings use a stronger modal shadow plus a blur-only frosted backdrop, and the backdrop temporarily clears while previewing themes so desktop and touch users can see the active page treatment underneath
+- [x] Appearance now exposes `Show read in grayscale`, and mark-read-on-scroll correctly normalizes mobile list offsets before deciding which rows have scrolled past
+- [x] Desktop resize grips now live in the gaps between floating panels and use neutral hover feedback instead of a loud accent stripe
 - [x] Friends and Map sit directly under `All` in the primary Sources sidebar so navigation order matches the product's main reading flow
 - [x] Feeds sidebar status uses aggregate feed health, stays green when at least one followed feed is healthy, turns amber only when every followed feed is failing, and shows a spinner while RSS sync is actively running
 - [x] Provider sync actions swap to an inline spinner while that specific provider is actively syncing

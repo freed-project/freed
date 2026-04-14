@@ -162,4 +162,6 @@ test("LinkedIn login requires provider consent", async ({ app }) => {
   await expect(page.getByTestId("provider-risk-accept-linkedin")).toBeVisible({
     timeout: 5_000,
   });
+
+  await cancelProviderRiskDialog(page, "linkedin");
 });

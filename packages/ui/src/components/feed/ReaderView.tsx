@@ -11,6 +11,8 @@ interface ReaderViewProps {
   onClose: () => void;
   /** When true, renders inline as a flex child instead of a fixed overlay */
   dualColumn?: boolean;
+  /** When true, renders inline within the workspace shell and hides the local header. */
+  inline?: boolean;
   onOpenUrl?: (url: string) => void;
 }
 
@@ -187,7 +189,7 @@ const HEADING_CLASSES: Record<number, string> = {
 
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
-export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: ReaderViewProps) {
+export function ReaderView({ item, onClose, dualColumn = false, inline = false, onOpenUrl }: ReaderViewProps) {
   const { headerDragRegion, getLocalContent, getLocalPreservedText } = usePlatform();
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
@@ -198,6 +200,18 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
     enabled: storedDisplay.reading.focusMode,
     intensity: storedDisplay.reading.focusIntensity,
   });
+  const storedDisplayRef = useRef(storedDisplay);
+
+  useEffect(() => {
+    storedDisplayRef.current = storedDisplay;
+  }, [storedDisplay]);
+
+  useEffect(() => {
+    setFocusOptions({
+      enabled: storedDisplay.reading.focusMode,
+      intensity: storedDisplay.reading.focusIntensity,
+    });
+  }, [storedDisplay.reading.focusIntensity, storedDisplay.reading.focusMode]);
 
   // Content waterfall state
   const [html, setHtml] = useState<string | null>(null);
@@ -332,10 +346,11 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
       if (prefTimerRef.current) clearTimeout(prefTimerRef.current);
       prefTimerRef.current = setTimeout(() => {
         prefTimerRef.current = null;
+        const latestDisplay = storedDisplayRef.current;
         updatePreferences({
           display: {
-            ...storedDisplay,
-            reading: { ...storedDisplay.reading, focusMode: next.enabled, focusIntensity: next.intensity },
+            ...latestDisplay,
+            reading: { ...latestDisplay.reading, focusMode: next.enabled, focusIntensity: next.intensity },
           },
         });
       }, 1_000);
@@ -344,14 +359,15 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
   }, [updatePreferences, storedDisplay]);
 
   const toggleDualColumn = useCallback(() => {
-    const next = !storedDisplay.reading.dualColumnMode;
+    const latestDisplay = storedDisplayRef.current;
+    const next = !latestDisplay.reading.dualColumnMode;
     updatePreferences({
       display: {
-        ...storedDisplay,
-        reading: { ...storedDisplay.reading, dualColumnMode: next },
+        ...latestDisplay,
+        reading: { ...latestDisplay.reading, dualColumnMode: next },
       },
     });
-  }, [updatePreferences, storedDisplay]);
+  }, [updatePreferences]);
 
   const timeAgo = useMemo(
     () => formatDistanceToNow(item.publishedAt, { addSuffix: true }),
@@ -375,161 +391,163 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
   );
 
   return (
-    <div className={dualColumn ? "flex-1 min-w-0 overflow-auto bg-[var(--theme-bg-root)]" : "fixed inset-0 z-50 overflow-auto bg-[var(--theme-bg-root)]"}>
-      {/* Header */}
-      <header
-        className={`theme-topbar sticky top-0 z-10 border-b${
-          dualColumn ? " border-l rounded-bl-2xl" : ""
-        }`}
-        {...(headerDragRegion
-          ? {
-              "data-tauri-drag-region": true,
-              style: { WebkitAppRegion: "drag" } as React.CSSProperties,
-            }
-          : {})}
-      >
-        <div
-          className="h-14 w-full px-3 flex items-center gap-2"
-          style={headerDragRegion ? { paddingLeft: MACOS_TRAFFIC_LIGHT_INSET } : undefined}
+    <div
+      className={
+        inline
+          ? "theme-scroll-fade-y flex-1 min-w-0 overflow-auto bg-transparent"
+          : "theme-scroll-fade-y fixed inset-0 z-50 overflow-auto bg-[var(--theme-bg-root)]"
+      }
+    >
+      {!inline && (
+        <header
+          className="theme-topbar sticky top-0 z-10 border-b"
+          {...(headerDragRegion
+            ? {
+                "data-tauri-drag-region": true,
+                style: { WebkitAppRegion: "drag" } as React.CSSProperties,
+              }
+            : {})}
         >
-          <button
-            onClick={onClose}
-            className="group -ml-1 flex min-w-0 max-w-[50%] items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-[var(--theme-bg-muted)]"
-            style={headerDragRegion ? noDrag : undefined}
-            aria-label="Back"
+          <div
+            className="h-14 w-full px-3 flex items-center gap-2"
+            style={headerDragRegion ? { paddingLeft: MACOS_TRAFFIC_LIGHT_INSET } : undefined}
           >
-            <svg
-              className="w-5 h-5 shrink-0 text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            <span className="truncate text-sm text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]">
-              {item.author.displayName}
-            </span>
-          </button>
-
-          <div className="flex-1" />
-
-          {/* Offline / cached badge */}
-          {contentSource === "cache" && (
-            <Tooltip label="Served from your device cache">
-              <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
-                Offline
-              </span>
-            </Tooltip>
-          )}
-          {contentSource === "text" && (
-            <Tooltip label="Full content will load when online">
-              <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20">
-                Summary
-              </span>
-            </Tooltip>
-          )}
-
-          {isCaching && (
-            <Tooltip label="Loading full article">
-              <div className="w-4 h-4 rounded-full border border-[var(--theme-text-soft)] border-t-[var(--theme-accent-secondary)] animate-spin" />
-            </Tooltip>
-          )}
-
-          {/* Focus mode toggle */}
-          <Tooltip label={focusOptions.enabled ? "Disable focus mode" : "Enable focus mode"}>
             <button
-              onClick={toggleFocus}
-              className={`p-2 rounded-lg transition-colors text-sm font-bold ${
-                focusOptions.enabled
-                  ? "theme-accent-button"
-                  : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
-              }`}
+              onClick={onClose}
+              className="group -ml-1 flex min-w-0 max-w-[50%] items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-[var(--theme-bg-muted)]"
               style={headerDragRegion ? noDrag : undefined}
-              aria-pressed={focusOptions.enabled}
-              aria-label="Toggle focus reading mode"
-            >
-              <span aria-hidden="true">
-                <span className="font-black">F</span>
-                <span className="font-light text-xs">ocus</span>
-              </span>
-            </button>
-          </Tooltip>
-
-          <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"}>
-            <button
-              onClick={handleToggleSaved}
-              className={`p-2 rounded-lg transition-colors ${
-                item.userState.saved
-                  ? "theme-accent-button"
-                  : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
-              }`}
-              style={headerDragRegion ? noDrag : undefined}
-              aria-label={item.userState.saved ? "Unsave" : "Save"}
+              aria-label="Back"
             >
               <svg
-                className="w-5 h-5"
-                fill={item.userState.saved ? "currentColor" : "none"}
+                className="w-5 h-5 shrink-0 text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]"
+                fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
+              <span className="truncate text-sm text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]">
+                {item.author.displayName}
+              </span>
             </button>
-          </Tooltip>
 
-          <Tooltip label={item.userState.archived ? "Unarchive" : "Archive"}>
-            <button
-              onClick={handleToggleArchived}
-              className={`p-2 rounded-lg transition-colors ${
-                item.userState.archived
-                  ? "theme-status-pill-success hover:bg-[rgb(var(--theme-feedback-success-rgb)/0.18)]"
-                  : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
-              }`}
-              style={headerDragRegion ? noDrag : undefined}
-              aria-label={item.userState.archived ? "Unarchive" : "Archive"}
-            >
-              <TrashIcon className="w-5 h-5" />
-            </button>
-          </Tooltip>
+            <div className="flex-1" />
 
-          {onOpenUrl && item.sourceUrl && (
-            <button
-              onClick={() => onOpenUrl(item.sourceUrl!)}
-              className="theme-subtle-button inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm"
-              style={headerDragRegion ? noDrag : undefined}
-              aria-label="Open"
-            >
-              <ExternalLinkIcon className="w-4 h-4" />
-              <span>Open</span>
-            </button>
-          )}
+            {contentSource === "cache" && (
+              <Tooltip label="Served from your device cache">
+                <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                  Offline
+                </span>
+              </Tooltip>
+            )}
+            {contentSource === "text" && (
+              <Tooltip label="Full content will load when online">
+                <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20">
+                  Summary
+                </span>
+              </Tooltip>
+            )}
 
-          {/* Dual-column mode toggle (desktop only) */}
-          <Tooltip label={dualColumn ? "Single column" : "Dual column"}>
-            <button
-              onClick={toggleDualColumn}
-              className={`hidden md:flex p-2 rounded-lg transition-colors ${
-                dualColumn
-                  ? "theme-accent-button"
-                  : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
-              }`}
-              style={headerDragRegion ? noDrag : undefined}
-              aria-pressed={dualColumn}
-              aria-label="Toggle dual column layout"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                <path d="M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12" />
-                <path d="M9 4v16" />
-                <path d={dualColumn ? "M15 10l-2 2l2 2" : "M14 10l2 2l-2 2"} />
-              </svg>
-            </button>
-          </Tooltip>
-        </div>
-      </header>
+            {isCaching && (
+              <Tooltip label="Loading full article">
+                <div className="w-4 h-4 rounded-full border border-[var(--theme-text-soft)] border-t-[var(--theme-accent-secondary)] animate-spin" />
+              </Tooltip>
+            )}
+
+            <Tooltip label={focusOptions.enabled ? "Disable focus mode" : "Enable focus mode"}>
+              <button
+                onClick={toggleFocus}
+                className={`p-2 rounded-lg transition-colors text-sm font-bold ${
+                  focusOptions.enabled
+                    ? "theme-accent-button"
+                    : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                }`}
+                style={headerDragRegion ? noDrag : undefined}
+                aria-pressed={focusOptions.enabled}
+                aria-label="Toggle focus reading mode"
+              >
+                <span aria-hidden="true">
+                  <span className="font-black">F</span>
+                  <span className="font-light text-xs">ocus</span>
+                </span>
+              </button>
+            </Tooltip>
+
+            <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"}>
+              <button
+                onClick={handleToggleSaved}
+                className={`p-2 rounded-lg transition-colors ${
+                  item.userState.saved
+                    ? "theme-accent-button"
+                    : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                }`}
+                style={headerDragRegion ? noDrag : undefined}
+                aria-label={item.userState.saved ? "Unsave" : "Save"}
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill={item.userState.saved ? "currentColor" : "none"}
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                </svg>
+              </button>
+            </Tooltip>
+
+            <Tooltip label={item.userState.archived ? "Unarchive" : "Archive"}>
+              <button
+                onClick={handleToggleArchived}
+                className={`p-2 rounded-lg transition-colors ${
+                  item.userState.archived
+                    ? "theme-status-pill-success hover:bg-[rgb(var(--theme-feedback-success-rgb)/0.18)]"
+                    : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                }`}
+                style={headerDragRegion ? noDrag : undefined}
+                aria-label={item.userState.archived ? "Unarchive" : "Archive"}
+              >
+                <TrashIcon className="w-5 h-5" />
+              </button>
+            </Tooltip>
+
+            {onOpenUrl && item.sourceUrl && (
+              <button
+                onClick={() => onOpenUrl(item.sourceUrl!)}
+                className="theme-subtle-button inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm"
+                style={headerDragRegion ? noDrag : undefined}
+                aria-label="Open"
+              >
+                <ExternalLinkIcon className="w-4 h-4" />
+                <span>Open</span>
+              </button>
+            )}
+
+            <Tooltip label={dualColumn ? "Single column" : "Dual column"}>
+              <button
+                onClick={toggleDualColumn}
+                className={`hidden md:flex p-2 rounded-lg transition-colors ${
+                  dualColumn
+                    ? "theme-accent-button"
+                    : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                }`}
+                style={headerDragRegion ? noDrag : undefined}
+                aria-pressed={dualColumn}
+                aria-label="Toggle dual column layout"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                  <path d="M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12" />
+                  <path d="M9 4v16" />
+                  <path d={dualColumn ? "M15 10l-2 2l2 2" : "M14 10l2 2l-2 2"} />
+                </svg>
+              </button>
+            </Tooltip>
+          </div>
+        </header>
+      )}
 
       {/* Article content */}
-      <article className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-20">
+      <article className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* Meta */}
         <div className="mb-6">
           <div className="mb-4 flex flex-wrap items-center gap-3 text-sm text-[var(--theme-text-muted)]">
