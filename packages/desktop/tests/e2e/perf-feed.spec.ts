@@ -366,9 +366,9 @@ test.describe("Reader view open (the worst offender)", () => {
         await firstCard.click();
         // ReaderView mounts a close button (aria-label="Close" or similar).
         // Wait for any element that only appears inside ReaderView.
-        // ReaderView renders a "Back" button (aria-label="Back") in its header.
+        // ReaderView renders a back button in its header.
         await page
-          .locator('[aria-label="Back"]')
+          .locator('[aria-label="Back"], [aria-label="Back to list"]')
           .first()
           .waitFor({ state: "visible", timeout: 5_000 });
       },
