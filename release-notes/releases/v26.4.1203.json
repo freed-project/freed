@@ -1,0 +1,90 @@
+{
+  "tag": "v26.4.1203",
+  "version": "26.4.1203",
+  "dayKey": "26.4.12",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-13T02:32:26.559Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.4.1201",
+    "previousPublishedDayTag": "v26.4.1100",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.1200",
+      "v26.4.1201",
+      "v26.4.1203"
+    ],
+    "prNumbers": [
+      184,
+      185,
+      186,
+      187,
+      188,
+      190,
+      191,
+      192,
+      193,
+      194,
+      195,
+      196,
+      197,
+      198,
+      199,
+      200,
+      201,
+      202,
+      203,
+      204,
+      205
+    ],
+    "commitSubjects": [
+      "fix: handle relay count worker requests (#205)",
+      "docs: approve v26.4.1202 release notes",
+      "release: v26.4.1202",
+      "fix: harden desktop crash recovery (#203)",
+      "fix: refine mobile website hero and nav behavior (#204)",
+      "fix: unify search field styling (#202)",
+      "fix: restore neon background and polish mobile website (#201)",
+      "fix: apply desktop theme changes immediately (#200)",
+      "docs: sync v26.4.1201 release notes",
+      "docs: approve v26.4.1201 release notes",
+      "release: v26.4.1201",
+      "fix: polish mobile footer theme selector (#199)",
+      "fix: serialize desktop scrapers and log renderer stalls (#198)",
+      "fix: polish mobile website layout and tooltips (#197)",
+      "docs: approve v26.4.1200 release notes",
+      "release: v26.4.1200",
+      "fix: remove updater progress bar lag (#196)",
+      "fix: polish website roadmap and changelog (#195)",
+      "fix: polish roadmap icons, hero motion, and changelog pagination (#194)",
+      "fix: paginate changelog and polish theme motion (#193)",
+      "feat: unify themes across website and app (#191)",
+      "fix: reorder sidebar sources and unclipped qr heading (#192)",
+      "fix: remove privacy page callout border (#190)",
+      "feat: unify themes across website and app (#188)",
+      "fix: remove static card hover states (#187)",
+      "fix: polish QR footer hover state (#186)",
+      "feat: ship refreshed theme system and typography polish (#185)",
+      "fix: refine sharing qr layout (#184)"
+    ]
+  },
+  "release": {
+    "deck": "Unify themes across website and app, refreshed theme system and typography polish, and privacy policy callout border removed",
+    "features": [
+      "Unify themes across website and app",
+      "Refreshed theme system and typography polish",
+      "A shared theme system now keeps the website and app visually aligned"
+    ],
+    "fixes": [
+      "Updater progress bar lag removed",
+      "Refine sharing QR layout and footer hover states",
+      "Reorder sidebar sources and fix the clipped QR heading",
+      "Desktop scrapers now run in sequence, which helps avoid renderer stalls",
+      "Paginate the changelog and polish roadmap motion"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1203\n\nUnify themes across website and app, refreshed theme system and typography polish, and privacy policy callout border removed\n\n### Features\n\n- Unify themes across website and app\n- Refreshed theme system and typography polish\n- A shared theme system now keeps the website and app visually aligned\n\n### Fixes\n\n- Updater progress bar lag removed\n- Refine sharing QR layout and footer hover states\n- Reorder sidebar sources and fix the clipped QR heading\n- Desktop scrapers now run in sequence, which helps avoid renderer stalls\n- Paginate the changelog and polish roadmap motion\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

@@ -9,6 +9,8 @@ interface BottomSheetProps {
   title: string;
   /** Tailwind max-width override for the panel (default: "sm:max-w-md") */
   maxWidth?: string;
+  /** Whether to show the divider line under the header */
+  headerDivider?: boolean;
 }
 
 const DISMISS_THRESHOLD = 100;
@@ -25,6 +27,7 @@ export function BottomSheet({
   children,
   title,
   maxWidth = "sm:max-w-md",
+  headerDivider = true,
 }: BottomSheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const dragState = useRef<{ startY: number; currentY: number } | null>(null);
@@ -38,6 +41,20 @@ export function BottomSheet({
       document.body.style.overflow = "";
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
 
   const applyTransform = useCallback((dy: number) => {
     if (!panelRef.current) return;
@@ -101,7 +118,7 @@ export function BottomSheet({
     // translateY that lifts the sheet above the software keyboard without
     // shrinking the container (which would lose the bleed).
     <div
-      className="fixed inset-x-0 top-0 z-50 flex items-end sm:items-center justify-center"
+      className="fixed inset-x-0 top-0 z-[140] flex items-end sm:items-center justify-center"
       style={{
         height: '100lvh',
         transform: 'translateY(calc(-1 * var(--keyboard-height, 0px)))',
@@ -130,7 +147,7 @@ export function BottomSheet({
         <div className="sm:hidden mx-auto mb-1 mt-4 h-1 w-12 shrink-0 cursor-grab rounded-full bg-white/20 active:cursor-grabbing" />
 
         {/* Header */}
-        <div className="theme-dialog-divider flex shrink-0 items-center justify-between border-b px-6 py-4">
+        <div className={`flex shrink-0 items-center justify-between px-6 py-4 ${headerDivider ? "theme-dialog-divider border-b" : ""}`}>
           <h2 className="text-lg font-semibold">{title}</h2>
           <button
             onClick={onClose}

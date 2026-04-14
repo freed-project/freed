@@ -9,7 +9,6 @@ export type SectionId =
   | "legal"
   | "appearance"
   | "support"
-  | "reading"
   | "feeds"
   | "saved"
   | "ai"
@@ -34,7 +33,14 @@ export const BASE_SECTION_METAS: readonly SectionMeta[] = [
   {
     id: "appearance",
     label: "Appearance",
-    keywords: ["theme", "appearance", "style", "midas", "neon", "ember", "scriptorium", "look"],
+    keywords: [
+      "theme", "appearance", "style", "midas", "neon", "ember", "scriptorium", "look",
+      "engagement", "counts", "likes", "reposts", "views",
+      "focus", "focus mode", "bionic", "bold", "reading speed",
+      "intensity", "light", "normal", "strong", "mark read", "scroll",
+      "grayscale", "read grayscale", "read appearance",
+      "archive", "delete archived", "prune", "reading",
+    ],
   },
   {
     id: "legal",
@@ -50,15 +56,6 @@ export const BASE_SECTION_METAS: readonly SectionMeta[] = [
     id: "sync",
     label: "Sync",
     keywords: ["cloud", "dropbox", "google drive", "gdrive", "backup", "provider", "connect"],
-  },
-  {
-    id: "reading",
-    label: "Reading",
-    keywords: [
-      "engagement", "counts", "likes", "reposts", "views",
-      "focus", "focus mode", "bionic", "bold", "reading speed",
-      "intensity", "light", "normal", "strong", "display",
-    ],
   },
   {
     id: "saved",

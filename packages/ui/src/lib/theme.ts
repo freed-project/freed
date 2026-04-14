@@ -32,6 +32,19 @@ export function applyThemeToDocument(themeId: ThemeId): void {
   for (const [name, value] of Object.entries(cssVariables)) {
     root.style.setProperty(name, value);
   }
+
+  const computedStyles = getComputedStyle(root);
+  const browserThemeColor =
+    computedStyles.getPropertyValue("--theme-attached-topbar-background").trim()
+    || computedStyles.getPropertyValue("--theme-bg-root").trim();
+  if (browserThemeColor) {
+    const themeColorMeta = document.querySelector<HTMLMetaElement>(
+      'meta[name="theme-color"]',
+    );
+    if (themeColorMeta) {
+      themeColorMeta.content = browserThemeColor;
+    }
+  }
 }
 
 export function persistTheme(themeId: ThemeId): void {

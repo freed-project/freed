@@ -9,7 +9,7 @@
  * "pushes" to that section's content with a back button (iOS-style).
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   RELEASE_CHANNEL_LABELS,
   RELEASE_CHANNELS,
@@ -47,6 +47,8 @@ import { SettingsToggle } from "./SettingsToggle.js";
 import { ReportComposer } from "./report/ReportComposer.js";
 import { SearchField } from "./SearchField.js";
 import { ThemePreviewButton } from "./ThemePreviewButton.js";
+import { Tooltip } from "./Tooltip.js";
+import { GoogleContactsIcon } from "./icons.js";
 
 const SAMPLE_SEED_FEED_COUNT = 10;
 const SAMPLE_SEED_ITEM_COUNT = 155;
@@ -170,14 +172,6 @@ const ICONS: Record<SectionId, ReactNode> = {
   ),
   appearance: (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3c4.97 0 9 4.03 9 9a9 9 0 01-9 9c-2.208 0-4-1.567-4-3.5 0-.971.42-1.84 1.09-2.473.476-.45.744-1.077.744-1.731 0-1.308-1.06-2.37-2.369-2.37-.653 0-1.28.269-1.73.745A3.49 3.49 0 013 12c0-4.97 4.03-9 9-9z" />
-      <circle cx="7.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none" />
-      <circle cx="16.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
-    </svg>
-  ),
-  reading: (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
     </svg>
   ),
@@ -234,11 +228,7 @@ const ICONS: Record<SectionId, ReactNode> = {
     </svg>
   ),
   googleContacts: (
-    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 11a4 4 0 10-6 3.465V17a1 1 0 001 1h4a1 1 0 001-1v-2.535A4 4 0 0015 11z" />
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20h6" />
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18 8h3M3 8h3M16.95 3.05l2.12-2.12M4.93 5.17L2.81 3.05" />
-    </svg>
+    <GoogleContactsIcon />
   ),
 };
 
@@ -275,18 +265,32 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const preferences = useAppStore((s) => s.preferences);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const toggleDebug = useDebugStore((s) => s.toggle);
+  const themeBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const themeSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingThemeIdRef = useRef<ThemeId | null>(null);
+  const pendingThemeSaveSeqRef = useRef(0);
+  const committedThemeIdRef = useRef(preferences.display.themeId);
+  const baseSectionById = Object.fromEntries(BASE_SECTION_METAS.map((section) => [section.id, section])) as Record<
+    Exclude<SectionId, "ai" | "updates" | "danger" | "googleContacts" | "x" | "facebook" | "instagram" | "linkedin">,
+    SectionMeta
+  >;
 
   // Flat section list — drives scrollspy and right-pane rendering.
   // Keywords live in settings-sections.ts so Header's command palette can share them.
   // ── AI section is coming soon -- preserve ICONS.ai, do not delete ──
   const allSections: Section[] = [
-    ...BASE_SECTION_METAS.map((m) => ({ ...m, icon: ICONS[m.id] })),
+    { ...baseSectionById.appearance, icon: ICONS.appearance },
+    { ...baseSectionById.sync, icon: ICONS.sync },
+    ...(GoogleContactsSettingsContent ? [{ ...GOOGLE_CONTACTS_SECTION_META, icon: ICONS.googleContacts }] : []),
+    { ...baseSectionById.saved, icon: ICONS.saved },
     ...(XSettingsContent ? [{ ...X_SECTION_META, icon: ICONS.x }] : []),
     ...(FacebookSettingsContent ? [{ ...FB_SECTION_META, icon: ICONS.facebook }] : []),
     ...(InstagramSettingsContent ? [{ ...IG_SECTION_META, icon: ICONS.instagram }] : []),
     ...(LinkedInSettingsContent ? [{ ...LI_SECTION_META, icon: ICONS.linkedin }] : []),
-    ...(GoogleContactsSettingsContent ? [{ ...GOOGLE_CONTACTS_SECTION_META, icon: ICONS.googleContacts }] : []),
+    { ...baseSectionById.feeds, icon: ICONS.feeds },
     ...(checkForUpdates ? [{ ...UPDATES_SECTION_META, icon: ICONS.updates }] : []),
+    { ...baseSectionById.legal, icon: ICONS.legal },
+    { ...baseSectionById.support, icon: ICONS.support },
     ...(factoryReset ? [{ ...DANGER_SECTION_META, icon: ICONS.danger }] : []),
   ];
 
@@ -295,46 +299,43 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const sectionById = Object.fromEntries(allSections.map((s) => [s.id, s])) as Record<SectionId, Section>;
   const navStructure: NavStructureItem[] = [
     sectionById.appearance,
-    sectionById.legal,
-    sectionById.support,
     sectionById.sync,
-    sectionById.reading,
+    ...(GoogleContactsSettingsContent ? [sectionById.googleContacts] : []),
     {
       kind: "group",
       label: "Sources",
       icon: ICON_SOURCES,
       children: [
         sectionById.saved,
-        sectionById.feeds,
         ...(XSettingsContent ? [sectionById.x] : []),
         ...(FacebookSettingsContent ? [sectionById.facebook] : []),
         ...(InstagramSettingsContent ? [sectionById.instagram] : []),
         ...(LinkedInSettingsContent ? [sectionById.linkedin] : []),
-        ...(GoogleContactsSettingsContent ? [sectionById.googleContacts] : []),
+        sectionById.feeds,
       ],
     },
     // sectionById.ai, // AI coming soon -- do not delete
     ...(checkForUpdates ? [sectionById.updates] : []),
+    sectionById.legal,
+    sectionById.support,
     ...(factoryReset ? [sectionById.danger] : []),
   ];
 
   // ── Preferences state ────────────────────────────────────────────────────
   const [display, setDisplay] = useState(() => preferences.display);
+  const [themePreviewHovering, setThemePreviewHovering] = useState(false);
+  const [themePreviewTouchActive, setThemePreviewTouchActive] = useState(false);
+  const [hasCoarsePointer, setHasCoarsePointer] = useState(false);
+
+  useEffect(() => {
+    committedThemeIdRef.current = preferences.display.themeId;
+  }, [preferences.display.themeId]);
 
   const handleDisplayChange = useCallback(
     (update: Partial<typeof display>) => {
       setDisplay((prev) => {
         const next = { ...prev, ...update };
-        if (update.themeId && update.themeId !== prev.themeId) {
-          applyThemeToDocument(update.themeId);
-          persistTheme(update.themeId);
-        }
         void updatePreferences({ display: next }).catch(() => {
-          if (update.themeId && update.themeId !== prev.themeId) {
-            applyThemeToDocument(prev.themeId);
-            persistTheme(prev.themeId);
-            setDisplay(prev);
-          }
           toast.error("Could not save settings");
         });
         return next;
@@ -353,6 +354,133 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     },
     [updatePreferences],
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const media = window.matchMedia("(pointer: coarse)");
+    const updatePointerMode = () => {
+      setHasCoarsePointer(media.matches || navigator.maxTouchPoints > 0);
+    };
+
+    updatePointerMode();
+    media.addEventListener?.("change", updatePointerMode);
+    return () => {
+      media.removeEventListener?.("change", updatePointerMode);
+    };
+  }, []);
+
+  const flushPendingThemeSelection = useCallback((themeId: ThemeId, saveSeq: number) => {
+    pendingThemeIdRef.current = null;
+    void updatePreferences({ display: { themeId } } as Parameters<typeof updatePreferences>[0]).catch(() => {
+      if (pendingThemeSaveSeqRef.current !== saveSeq) {
+        return;
+      }
+
+      const committedThemeId = committedThemeIdRef.current;
+      applyThemeToDocument(committedThemeId);
+      persistTheme(committedThemeId);
+      setDisplay((prev) => ({ ...prev, themeId: committedThemeId }));
+      toast.error("Could not save settings");
+    });
+  }, [updatePreferences]);
+
+  const flushPendingThemeSelectionNow = useCallback(() => {
+    if (themeSaveTimerRef.current) {
+      clearTimeout(themeSaveTimerRef.current);
+      themeSaveTimerRef.current = null;
+    }
+    const pendingThemeId = pendingThemeIdRef.current;
+    if (!pendingThemeId) {
+      return;
+    }
+    flushPendingThemeSelection(pendingThemeId, pendingThemeSaveSeqRef.current);
+  }, [flushPendingThemeSelection]);
+
+  useEffect(() => {
+    if (open) return;
+    setThemePreviewHovering(false);
+    setThemePreviewTouchActive(false);
+    if (themeBlurRestoreTimerRef.current) {
+      clearTimeout(themeBlurRestoreTimerRef.current);
+      themeBlurRestoreTimerRef.current = null;
+    }
+    flushPendingThemeSelectionNow();
+  }, [flushPendingThemeSelectionNow, open]);
+
+  useEffect(() => {
+    return () => {
+      if (themeBlurRestoreTimerRef.current) {
+        clearTimeout(themeBlurRestoreTimerRef.current);
+      }
+      flushPendingThemeSelectionNow();
+    };
+  }, [flushPendingThemeSelectionNow]);
+
+  const activateTouchThemePreview = useCallback(() => {
+    if (!hasCoarsePointer) return;
+    setThemePreviewTouchActive(true);
+    if (themeBlurRestoreTimerRef.current) {
+      clearTimeout(themeBlurRestoreTimerRef.current);
+    }
+    themeBlurRestoreTimerRef.current = setTimeout(() => {
+      setThemePreviewTouchActive(false);
+      themeBlurRestoreTimerRef.current = null;
+    }, 5000);
+  }, [hasCoarsePointer]);
+
+  const handleThemeCardMouseEnter = useCallback(() => {
+    if (hasCoarsePointer) return;
+    setThemePreviewHovering(true);
+  }, [hasCoarsePointer]);
+
+  const handleThemeCardMouseLeave = useCallback(() => {
+    if (hasCoarsePointer) return;
+    setThemePreviewHovering(false);
+  }, [hasCoarsePointer]);
+
+  const handleThemeCardFocusCapture = useCallback(() => {
+    if (hasCoarsePointer) return;
+    setThemePreviewHovering(true);
+  }, [hasCoarsePointer]);
+
+  const handleThemeCardBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
+    if (hasCoarsePointer) return;
+    const nextFocused = event.relatedTarget;
+    if (nextFocused && event.currentTarget.contains(nextFocused)) {
+      return;
+    }
+    setThemePreviewHovering(false);
+  }, [hasCoarsePointer]);
+
+  const handleThemeSelect = useCallback((themeId: ThemeId) => {
+    activateTouchThemePreview();
+    setDisplay((prev) => (
+      prev.themeId === themeId
+        ? prev
+        : { ...prev, themeId }
+    ));
+    applyThemeToDocument(themeId);
+    persistTheme(themeId);
+
+    pendingThemeSaveSeqRef.current += 1;
+    const saveSeq = pendingThemeSaveSeqRef.current;
+    pendingThemeIdRef.current = themeId;
+
+    if (themeSaveTimerRef.current) {
+      clearTimeout(themeSaveTimerRef.current);
+    }
+    themeSaveTimerRef.current = setTimeout(() => {
+      themeSaveTimerRef.current = null;
+      const pendingThemeId = pendingThemeIdRef.current;
+      if (!pendingThemeId) {
+        return;
+      }
+      flushPendingThemeSelection(pendingThemeId, saveSeq);
+    }, 500);
+  }, [activateTouchThemePreview, flushPendingThemeSelection]);
+
+  const themeBackdropSuppressed = themePreviewHovering || themePreviewTouchActive;
 
   // ── Update check ─────────────────────────────────────────────────────────
   const [updateState, setUpdateState] = useState<UpdateCheckState>({ status: "idle" });
@@ -650,15 +778,15 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // ── Section content renderer ──────────────────────────────────────────────
 
-  function SectionBlock({ id }: { id: SectionId }) {
+  function renderSectionBlock(id: SectionId) {
     const isVisible = visibleSections.some((s) => s.id === id);
     if (!isVisible) return null;
 
-    // SectionContent is called as a plain function (not as a JSX component)
-    // because it is defined inside SettingsDialog. If rendered as
-    // <SectionContent />, React would see a new component type on every
-    // SettingsDialog re-render and unmount/remount the entire subtree,
-    // destroying local state in nested components like XSettingsSection.
+    // SectionContent and this wrapper both stay plain function calls because
+    // they are defined inside SettingsDialog. Rendering either as JSX would
+    // create a fresh component type on each parent re-render and remount the
+    // active subtree, which is visible as periodic flicker in provider sections
+    // when sync health updates land.
     return (
       <section data-section={id} className="pb-8 min-h-full flex flex-col">
         {SectionContent({ id })}
@@ -672,40 +800,50 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         return (
           <>
             <SectionHeading label="Appearance" />
-            <div className="grid gap-3 sm:grid-cols-2">
-              {THEME_DEFINITIONS.map((theme) => {
-                const isActive = display.themeId === theme.id;
-                return (
-                  <ThemePreviewButton
-                    key={theme.id}
-                    theme={theme}
-                    active={isActive}
-                    onClick={() => handleDisplayChange({ themeId: theme.id as ThemeId })}
-                  />
-                );
-              })}
-            </div>
-          </>
-        );
-
-      case "legal":
-        return (
-          <>
-            <SectionHeading label="Legal" />
-            {LegalSettingsContent ? <LegalSettingsContent /> : null}
-          </>
-        );
-
-      case "reading":
-        return (
-          <>
-            <SectionHeading label="Reading" />
             <div className="space-y-5">
+              <div
+                className="theme-card-soft theme-settings-theme-card rounded-2xl p-4 sm:p-5"
+                onMouseEnter={handleThemeCardMouseEnter}
+                onMouseLeave={handleThemeCardMouseLeave}
+                onFocusCapture={handleThemeCardFocusCapture}
+                onBlurCapture={handleThemeCardBlurCapture}
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="theme-settings-theme-card__label text-sm font-semibold text-text-primary">Theme</p>
+                  <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
+                    {THEME_DEFINITIONS.map((theme) => {
+                      const isActive = display.themeId === theme.id;
+                      return (
+                        <Tooltip
+                          key={theme.id}
+                          side="top"
+                          label={theme.name}
+                          description={theme.description}
+                          className="h-[2.2rem] items-center"
+                        >
+                          <ThemePreviewButton
+                            theme={theme}
+                            active={isActive}
+                            variant="compact"
+                            onClick={() => handleThemeSelect(theme.id as ThemeId)}
+                          />
+                        </Tooltip>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
               <SettingsToggle
                 label="Mark read on scroll"
                 checked={display.reading.markReadOnScroll}
                 onChange={(v) => handleReadingChange({ markReadOnScroll: v })}
                 description="Mark items as read when you scroll past them in the feed"
+              />
+              <SettingsToggle
+                label="Show read in grayscale"
+                checked={display.reading.showReadInGrayscale}
+                onChange={(v) => handleReadingChange({ showReadInGrayscale: v })}
+                description="Desaturate items after they have been marked read"
               />
               <SettingsToggle
                 label="Show engagement counts"
@@ -747,7 +885,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 <select
                   value={display.archivePruneDays ?? 30}
                   onChange={(e) => handleDisplayChange({ archivePruneDays: Number(e.target.value) })}
-                  className="shrink-0 rounded-lg border border-[color:var(--theme-border)] bg-[var(--theme-bg-root)] px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_50%,transparent)] cursor-pointer"
+                  className="theme-input theme-select shrink-0 rounded-xl px-3 py-2 text-sm text-text-primary focus:outline-none"
                 >
                   <option value={3}>3 days</option>
                   <option value={7}>7 days</option>
@@ -757,6 +895,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 </select>
               </div>
             </div>
+          </>
+        );
+
+      case "legal":
+        return (
+          <>
+            <SectionHeading label="Legal" />
+            {LegalSettingsContent ? <LegalSettingsContent /> : null}
           </>
         );
 
@@ -1085,14 +1231,15 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
       {/* Backdrop */}
       <div
-        className="theme-settings-overlay absolute inset-0"
+        className={`theme-settings-overlay absolute inset-0 ${themeBackdropSuppressed ? "theme-settings-overlay-preview-off" : ""}`}
         onClick={onClose}
+        style={{ top: "calc(env(safe-area-inset-top, 0px) + 58px)" }}
       />
 
       {/* Panel */}
       <div
         className={`
-          theme-dialog-shell relative z-10 flex w-full flex-col
+          theme-dialog-shell theme-settings-shell relative z-10 flex w-full flex-col
           h-[92dvh] rounded-t-2xl
           sm:rounded-[28px]
           sm:flex-row sm:max-w-3xl sm:h-[80vh] sm:max-h-[700px]
@@ -1200,7 +1347,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               </div>
             ) : (
               allSections.map((section) => (
-                <SectionBlock key={section.id} id={section.id} />
+                <Fragment key={section.id}>{renderSectionBlock(section.id)}</Fragment>
               ))
             )}
 

@@ -225,7 +225,7 @@ export function ReportComposer({
           <select
             value={draft.issueType}
             onChange={(event) => updateDraft("issueType", event.target.value as BugReportIssueType)}
-            className="theme-input w-full rounded-xl px-3 py-2 text-sm focus:outline-none"
+            className="theme-input theme-select w-full rounded-xl px-3 py-2 text-sm focus:outline-none"
           >
             {issueTypeOptions.map((option) => (
               <option key={option.value} value={option.value}>

@@ -27,6 +27,7 @@ vi.mock("./automerge", () => ({
   docRemoveFeedItem: vi.fn(),
   docToggleArchived: vi.fn(),
   docArchiveAllReadUnsaved: vi.fn(),
+  docUnarchiveSavedItems: vi.fn(),
   docDeleteAllArchived: vi.fn(),
   docPruneArchivedItems: vi.fn(),
   docUpdatePreferences: mockDocUpdatePreferences,

@@ -275,6 +275,25 @@ export function deleteAllArchivedItems(doc: FreedDoc): number {
 }
 
 /**
+ * Clear stale archived state from any saved items.
+ * This repairs legacy or imported states where an item ended up both saved and archived.
+ *
+ * @param doc - The Automerge document (mutable within A.change)
+ * @returns Number of items repaired
+ */
+export function unarchiveSavedItems(doc: FreedDoc): number {
+  let repaired = 0;
+  for (const item of Object.values(doc.feedItems)) {
+    if (!item.userState.saved) continue;
+    if (!item.userState.archived) continue;
+    item.userState.archived = false;
+    delete (item.userState as unknown as Record<string, unknown>).archivedAt;
+    repaired++;
+  }
+  return repaired;
+}
+
+/**
  * Toggle bookmark status for a feed item
  *
  * @param doc - The Automerge document (mutable within A.change)
