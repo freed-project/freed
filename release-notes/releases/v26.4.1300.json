@@ -1,0 +1,33 @@
+{
+  "tag": "v26.4.1300",
+  "version": "26.4.1300",
+  "dayKey": "26.4.13",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-14T05:01:34.281Z",
+  "model": "heuristic",
+  "source": {
+    "previousPublishedTag": "v26.4.1203",
+    "previousPublishedDayTag": "v26.4.1203",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.1300"
+    ],
+    "prNumbers": [
+      206,
+      207
+    ],
+    "commitSubjects": [
+      "feat: unify desktop shell chrome (#207)",
+      "fix: polish marketing surfaces and stabilize desktop panels (#206)"
+    ]
+  },
+  "release": {
+    "deck": "Unify desktop shell chrome",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1300\n\nUnify desktop shell chrome\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
