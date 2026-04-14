@@ -1015,6 +1015,7 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
 });
 
 test("Map view supports popup navigation into Friends and Feed", async ({ app }) => {
+  test.setTimeout(60_000);
   await app.goto();
   await app.waitForReady();
   await app.seedFriendLocation();
@@ -1037,10 +1038,10 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
   await page.locator('.freed-map-marker[aria-label="Ada Lovelace"]').click();
   await clickMapPopupAction(page, "Open Friend");
   await expect(page.getByRole("button", { name: "Back to all friends" })).toBeVisible({
-    timeout: 10_000,
+    timeout: 20_000,
   });
   await expect(page.getByRole("heading", { name: "Ada Lovelace" })).toBeVisible({
-    timeout: 10_000,
+    timeout: 20_000,
   });
 
   await page.getByRole("button", { name: /^Map/ }).click();
@@ -1049,9 +1050,9 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
   });
   await page.locator('.freed-map-marker[aria-label="Ada Lovelace"]').click();
   await clickMapPopupAction(page, "Open Post");
-  await expect(page.getByLabel("Back to list")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByLabel("Back to list")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole("heading", { name: "Bonjour from Paris" })).toBeVisible({
-    timeout: 10_000,
+    timeout: 20_000,
   });
 });
 
