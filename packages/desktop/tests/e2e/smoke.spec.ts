@@ -99,6 +99,73 @@ test("header is visible", async ({ app }) => {
   await expect(app.page.locator("header, [role='banner']").first()).toBeVisible();
 });
 
+test("desktop workspace keeps a single top toolbar in feed, reader, and friends views", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(8);
+
+  await expect(page.getByTestId("workspace-toolbar")).toBeVisible();
+  await expect(page.locator("header")).toHaveCount(1);
+
+  await page.locator("[data-feed-item-id]").first().click();
+  await expect(page.getByTestId("workspace-toolbar")).toBeVisible();
+  await expect(page.locator("header")).toHaveCount(1);
+
+  await page.getByTestId("app-sidebar").getByTestId("source-row-friends").click();
+  await expect(page.getByTestId("workspace-toolbar")).toBeVisible();
+  await expect(page.locator("header")).toHaveCount(1);
+});
+
+test("desktop sidebar and debug drawer use floating shell cards", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await expect(page.getByTestId("workspace-toolbar")).toBeVisible();
+
+  const initialShellState = await page.evaluate(() => {
+    const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    return {
+      toolbarHasFloatingShell: toolbar?.classList.contains("theme-floating-panel") ?? false,
+      sidebarHasFloatingShell: sidebar?.classList.contains("theme-floating-panel") ?? false,
+      sidebarWidth: sidebarShell?.getBoundingClientRect().width ?? 0,
+    };
+  });
+
+  expect(initialShellState.toolbarHasFloatingShell).toBe(true);
+  expect(initialShellState.sidebarHasFloatingShell).toBe(true);
+  expect(initialShellState.sidebarWidth).toBeGreaterThan(200);
+
+  await page.getByTestId("desktop-sidebar-toggle").click();
+  await page.waitForTimeout(250);
+
+  const collapsedWidth = await page.evaluate(() => {
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    return sidebarShell?.getBoundingClientRect().width ?? 0;
+  });
+  expect(collapsedWidth).toBeLessThanOrEqual(2);
+
+  await page.getByTestId("desktop-sidebar-toggle").click();
+  await page.waitForTimeout(250);
+  const reopenedWidth = await page.evaluate(() => {
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    return sidebarShell?.getBoundingClientRect().width ?? 0;
+  });
+  expect(reopenedWidth).toBeGreaterThan(200);
+
+  await page.keyboard.press("Control+Shift+D");
+  await expect(page.getByTestId("debug-panel-drawer")).toBeVisible();
+
+  const debugShellState = await page.evaluate(() => {
+    const debugPanel = document.querySelector('[data-testid="debug-panel-surface"]') as HTMLElement | null;
+    return debugPanel?.classList.contains("theme-floating-panel") ?? false;
+  });
+  expect(debugShellState).toBe(true);
+});
+
 test("main content area renders", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
@@ -771,6 +838,65 @@ test("dual-column reader arrow navigation cycles tiles and keeps the next tile v
   expect(metrics.nextRowBottom).toBeLessThanOrEqual(metrics.containerBottom);
 });
 
+test("dual-column reader toolbar controls stay aligned with the sidebar and rail", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(8);
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+
+    void store?.getState().updatePreferences({
+      display: {
+        reading: {
+          dualColumnMode: true,
+        },
+      },
+    });
+  });
+
+  await page.getByText("Article 0:", { exact: false }).click();
+  await expect(page.getByLabel("Back to list")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
+
+  const alignment = await page.evaluate(() => {
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    const sidebarToggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
+    const dualColumnToggle = document.querySelector('[aria-label="Toggle dual column layout"]') as HTMLElement | null;
+    const backButton = document.querySelector('[aria-label="Back to list"]') as HTMLElement | null;
+    const compactRail = document.querySelector('[data-testid="compact-feed-panel-scroll-container"]') as HTMLElement | null;
+
+    if (!sidebar || !sidebarToggle || !dualColumnToggle || !backButton || !compactRail) {
+      throw new Error("Dual-column toolbar alignment elements were not found");
+    }
+
+    const sidebarRect = sidebar.getBoundingClientRect();
+    const sidebarToggleRect = sidebarToggle.getBoundingClientRect();
+    const dualColumnToggleRect = dualColumnToggle.getBoundingClientRect();
+    const backButtonRect = backButton.getBoundingClientRect();
+    const compactRailRect = compactRail.getBoundingClientRect();
+
+    return {
+      sidebarRight: sidebarRect.right,
+      sidebarToggleRight: sidebarToggleRect.right,
+      compactRailLeft: compactRailRect.left,
+      compactRailRight: compactRailRect.right,
+      dualColumnToggleLeft: dualColumnToggleRect.left,
+      backButtonLeft: backButtonRect.left,
+    };
+  });
+
+  expect(Math.abs(alignment.sidebarToggleRight - alignment.sidebarRight)).toBeLessThanOrEqual(2);
+  expect(Math.abs(alignment.dualColumnToggleLeft - alignment.compactRailLeft)).toBeLessThanOrEqual(2);
+  expect(Math.abs(alignment.backButtonLeft - alignment.compactRailRight)).toBeLessThanOrEqual(2);
+});
 test("dual-column reader toggles use shared view transitions when supported", async ({ app, page }) => {
   await page.setViewportSize({ width: 1280, height: 600 });
   await app.goto();
@@ -998,6 +1124,33 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
   await expect(page.locator('.freed-map-marker[aria-label="Ada Lovelace"]')).toBeVisible({
     timeout: 10_000,
   });
+});
+
+test("Friends view uses the floating detail drawer shell", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+
+  await page.getByRole("button", { name: /^Friends\b/ }).click();
+  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
+
+  const shellState = await page.evaluate(() => {
+    const sidebar = document.querySelector('[data-testid="friends-sidebar"]') as HTMLElement | null;
+    const shell = document.querySelector('[data-testid="friends-sidebar-shell"]') as HTMLElement | null;
+    const handle = document.querySelector('[aria-label="Resize friends sidebar"]') as HTMLElement | null;
+
+    return {
+      sidebarIsFloating: sidebar?.classList.contains("theme-floating-panel") ?? false,
+      shellWidth: shell?.getBoundingClientRect().width ?? 0,
+      sidebarWidth: sidebar?.getBoundingClientRect().width ?? 0,
+      handleUsesGapGrip: handle?.classList.contains("theme-resize-gap-handle") ?? false,
+    };
+  });
+
+  expect(shellState.sidebarIsFloating).toBe(true);
+  expect(shellState.handleUsesGapGrip).toBe(true);
+  expect(shellState.shellWidth).toBeGreaterThan(shellState.sidebarWidth);
 });
 
 // ---------------------------------------------------------------------------

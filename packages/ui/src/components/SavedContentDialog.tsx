@@ -21,7 +21,7 @@ export function SavedContentDialog({ open, onClose }: SavedContentDialogProps) {
   const handleClose = () => onClose();
 
   return (
-    <BottomSheet open={open} onClose={handleClose} title="Save content" maxWidth="sm:max-w-lg">
+    <BottomSheet open={open} onClose={handleClose} title="Save Content" maxWidth="sm:max-w-lg" headerDivider={false}>
       {saveUrl && <SaveUrlTab onClose={handleClose} />}
     </BottomSheet>
   );

@@ -4,11 +4,11 @@ import { FeedList } from "./FeedList.js";
 import { ReaderView } from "./ReaderView.js";
 import { FeedItem as FeedItemCard } from "./FeedItem.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
-import { ContentHeader } from "../layout/ContentHeader.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
-import { PLATFORM_LABELS, type FeedItem, type RssFeed, type FilterOptions } from "@freed/shared";
+import type { FeedItem } from "@freed/shared";
+import { getFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
 
 // ─── Compact sidebar panel for dual-column mode ────────────────────────────
 
@@ -16,11 +16,13 @@ const MIN_PANEL_WIDTH = 100;
 const MAX_PANEL_WIDTH = 500;
 const DEFAULT_PANEL_WIDTH = 150;
 const NARROW_THRESHOLD = 150;
+const COMPACT_CARD_GAP = 8;
+const COMPACT_CARD_X_PAD = 0;
 
 // Card geometry: all cards are square (width × width), including story tiles.
-// Wrapper padding: px-2 (8px each side = 16px total), pb-2 (8px), first item gets pt-2 (8px).
-const CARD_H_PAD = 16;
-const CARD_V_GAP = 8;
+// Wrapper padding and row spacing match the nav-button radius token at 10px.
+const CARD_H_PAD = COMPACT_CARD_X_PAD * 2;
+const CARD_V_GAP = COMPACT_CARD_GAP;
 
 type ViewTransitionLike = {
   finished: Promise<void>;
@@ -177,7 +179,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     <div
       ref={parentRef}
       data-testid="compact-feed-panel-scroll-container"
-      className="shrink-0 min-h-0 overflow-y-auto minimal-scroll bg-[var(--theme-bg-root)]"
+      className="theme-scroll-fade-y shrink-0 min-h-0 overflow-y-auto minimal-scroll bg-transparent"
       style={{ width }}
     >
       <div
@@ -199,7 +201,13 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
                 transform: `translateY(${vi.start}px)`,
               }}
             >
-              <div className={`px-2 pb-2${vi.index === 0 ? " pt-2" : ""}`}>
+              <div
+                style={{
+                  paddingInline: `${COMPACT_CARD_X_PAD}px`,
+                  paddingBottom: `${COMPACT_CARD_GAP}px`,
+                  paddingTop: vi.index === 0 ? `${COMPACT_CARD_GAP}px` : undefined,
+                }}
+              >
                 <FeedItemCard
                   item={item}
                   compact
@@ -219,23 +227,6 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-/** Human-readable retention message for the archive toolbar. */
-function getRetentionLabel(pruneDays: number): string {
-  if (pruneDays === 0) return "Archived content is kept forever";
-  if (pruneDays === 1) return "Archived content deleted after 1 day";
-  return `Archived content deleted after ${pruneDays} days`;
-}
-
-/** Human-readable label for the scope currently active in the sidebar. */
-function getFilterLabel(filter: FilterOptions, feeds: Record<string, RssFeed>): string {
-  if (filter.savedOnly) return "Saved";
-  if (filter.archivedOnly) return "Archived";
-  if (filter.feedUrl) return feeds[filter.feedUrl]?.title ?? "this feed";
-  if (filter.platform === "rss") return "Feeds";
-  if (filter.platform) return PLATFORM_LABELS[filter.platform as keyof typeof PLATFORM_LABELS] ?? filter.platform;
-  return "All Sources";
-}
-
 export function FeedView() {
   const { addRssFeed } = usePlatform();
   const canAddFeeds = !!addRssFeed;
@@ -249,6 +240,7 @@ export function FeedView() {
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const toggleLiked = useAppStore((s) => s.toggleLiked);
+  const unarchiveSavedItems = useAppStore((s) => s.unarchiveSavedItems);
   const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
   const archivePruneDays = useAppStore((s) => s.preferences.display.archivePruneDays);
 
@@ -279,6 +271,10 @@ export function FeedView() {
   // First click arms the button; second click executes. Auto-resets after 3s.
   const [deleteConfirmArmed, setDeleteConfirmArmed] = useState(false);
   const deleteConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedArchivedCount = useMemo(
+    () => items.filter((item) => item.userState.saved && item.userState.archived).length,
+    [items],
+  );
 
   const handleDeleteArchivedClick = useCallback(() => {
     if (!deleteConfirmArmed) {
@@ -290,6 +286,10 @@ export function FeedView() {
     setDeleteConfirmArmed(false);
     void deleteAllArchived();
   }, [deleteConfirmArmed, deleteAllArchived]);
+
+  const handleUnarchiveSavedClick = useCallback(() => {
+    void unarchiveSavedItems();
+  }, [unarchiveSavedItems]);
 
   // Reset confirm state whenever the archived view is left.
   useEffect(() => {
@@ -306,13 +306,10 @@ export function FeedView() {
   const { filteredItems, isSearching, resultCount } = useSearchResults(items, searchQuery, activeFilter);
 
   const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds), [activeFilter, feeds]);
-  const feedSubtitle = isSearching
-    ? `${resultCount.toLocaleString()} result${resultCount === 1 ? "" : "s"} in ${scopeLabel}`
-    : `${filteredItems.length.toLocaleString()} item${filteredItems.length === 1 ? "" : "s"}`;
-
   const dualColumnMode = useAppStore((s) => s.preferences.display.reading.dualColumnMode);
   const isMobile = useIsMobile();
-  const showDualColumn = dualColumnMode && !!selectedItemId && !isMobile;
+  const showInlineReader = !!selectedItemId && !isMobile;
+  const showDualColumn = dualColumnMode && showInlineReader;
 
   const runFeedLayoutTransition = useCallback((update: () => void) => {
     if (typeof window === "undefined" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -453,6 +450,14 @@ export function FeedView() {
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(0);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.style.setProperty(
+      "--freed-reader-rail-width",
+      showDualColumn ? `${panelWidth}px` : "0px",
+    );
+  }, [panelWidth, showDualColumn]);
+
   const handleDragStart = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault();
@@ -482,14 +487,90 @@ export function FeedView() {
 
   // ─── Layout decision ────────────────────────────────────────────────────────
 
-  if (showDualColumn && selectedItem) {
+  if (showInlineReader && selectedItem) {
     return (
       <div className="h-full flex flex-col overflow-hidden">
-        <ContentHeader title={scopeLabel} subtitle={feedSubtitle} />
         {/* Archive retention toolbar — only shown in the archived view */}
         {activeFilter.archivedOnly && (
           <div className="flex-shrink-0 px-4 py-2 border-b border-[var(--theme-header-border)] flex items-center justify-between gap-4">
             <p className="text-xs text-[var(--theme-text-soft)]">{getRetentionLabel(archivePruneDays ?? 30)}</p>
+            <div className="flex items-center gap-2">
+              {savedArchivedCount > 0 && (
+                <button
+                  onClick={handleUnarchiveSavedClick}
+                  className="text-xs px-3 py-1 rounded-lg transition-colors border whitespace-nowrap bg-[var(--theme-bg-muted)] text-[var(--theme-text-muted)] border-transparent hover:bg-[var(--theme-bg-card-hover)] hover:text-[var(--theme-text-primary)]"
+                >
+                  Unarchive Saved Content
+                </button>
+              )}
+              {(archivePruneDays ?? 30) > 0 && (
+                <button
+                  onClick={handleDeleteArchivedClick}
+                  className={`text-xs px-3 py-1 rounded-lg transition-colors border whitespace-nowrap ${
+                    deleteConfirmArmed
+                      ? "bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30"
+                      : "bg-[var(--theme-bg-muted)] text-[var(--theme-text-muted)] border-transparent hover:bg-[var(--theme-bg-card-hover)] hover:text-[var(--theme-text-primary)]"
+                  }`}
+                >
+                  {deleteConfirmArmed ? "Confirm delete?" : "Delete archived content now"}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        <div className="flex-1 flex overflow-hidden">
+          {showDualColumn ? (
+            <>
+              <CompactFeedPanel
+                items={filteredItems}
+                selectedId={selectedItem.globalId}
+                selectionMoveDirection={compactSelectionDirection}
+                onItemClick={openItemDirect}
+                width={panelWidth}
+              />
+              <div
+                className="theme-resize-gap-handle w-4 shrink-0 self-stretch"
+                style={{
+                  marginTop: "var(--feed-card-gap, 8px)",
+                }}
+                onPointerDown={handleDragStart}
+                onPointerMove={handleDragMove}
+                onPointerUp={handleDragEnd}
+                onPointerCancel={handleDragEnd}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize sidebar"
+              />
+            </>
+          ) : null}
+          <ReaderView
+            item={selectedItem}
+            onClose={closeItem}
+            dualColumn={showDualColumn}
+            inline
+            onOpenUrl={handleOpenCommentUrl}
+          />
+        </div>
+        <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full flex flex-col">
+      {/* Archive retention toolbar — only shown in the archived view */}
+      {activeFilter.archivedOnly && (
+        <div className="flex-shrink-0 px-4 py-2 border-b border-[var(--theme-header-border)] flex items-center justify-between gap-4">
+          <p className="text-xs text-[var(--theme-text-soft)]">{getRetentionLabel(archivePruneDays ?? 30)}</p>
+          <div className="flex items-center gap-2">
+            {savedArchivedCount > 0 && (
+              <button
+                onClick={handleUnarchiveSavedClick}
+                className="text-xs px-3 py-1 rounded-lg transition-colors border whitespace-nowrap bg-[var(--theme-bg-muted)] text-[var(--theme-text-muted)] border-transparent hover:bg-[var(--theme-bg-card-hover)] hover:text-[var(--theme-text-primary)]"
+              >
+                Unarchive Saved Content
+              </button>
+            )}
             {(archivePruneDays ?? 30) > 0 && (
               <button
                 onClick={handleDeleteArchivedClick}
@@ -503,52 +584,6 @@ export function FeedView() {
               </button>
             )}
           </div>
-        )}
-        <div className="flex-1 flex overflow-hidden">
-          <CompactFeedPanel
-            items={filteredItems}
-            selectedId={selectedItem.globalId}
-            selectionMoveDirection={compactSelectionDirection}
-            onItemClick={openItemDirect}
-            width={panelWidth}
-          />
-          {/* Draggable column separator -- zero visible width, padding provides the hit area */}
-          <div
-            className="w-0 px-0.5 shrink-0 cursor-col-resize hover:bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.2)] active:bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.3)] transition-colors -mx-0.5 z-10"
-            onPointerDown={handleDragStart}
-            onPointerMove={handleDragMove}
-            onPointerUp={handleDragEnd}
-            onPointerCancel={handleDragEnd}
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize sidebar"
-          />
-          <ReaderView item={selectedItem} onClose={closeItem} dualColumn onOpenUrl={handleOpenCommentUrl} />
-        </div>
-        <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-full flex flex-col">
-      <ContentHeader title={scopeLabel} subtitle={feedSubtitle} />
-      {/* Archive retention toolbar — only shown in the archived view */}
-      {activeFilter.archivedOnly && (
-        <div className="flex-shrink-0 px-4 py-2 border-b border-[var(--theme-header-border)] flex items-center justify-between gap-4">
-          <p className="text-xs text-[var(--theme-text-soft)]">{getRetentionLabel(archivePruneDays ?? 30)}</p>
-          {(archivePruneDays ?? 30) > 0 && (
-            <button
-              onClick={handleDeleteArchivedClick}
-              className={`text-xs px-3 py-1 rounded-lg transition-colors border whitespace-nowrap ${
-                deleteConfirmArmed
-                  ? "bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30"
-                  : "bg-[var(--theme-bg-muted)] text-[var(--theme-text-muted)] border-transparent hover:bg-[var(--theme-bg-card-hover)] hover:text-[var(--theme-text-primary)]"
-              }`}
-            >
-              {deleteConfirmArmed ? "Confirm delete?" : "Delete archived content now"}
-            </button>
-          )}
         </div>
       )}
 

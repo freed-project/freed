@@ -1,23 +1,59 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, type CSSProperties, type ReactNode } from "react";
+import { countFriendsWithRecentLocationUpdates } from "@freed/shared";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
 import { Tooltip } from "../Tooltip.js";
 import {
+  ArchiveIcon,
+  ReaderRailHideIcon,
+  ReaderRailShowIcon,
+  SidebarCollapseIcon,
+  SidebarExpandIcon,
+} from "../icons.js";
+import { useSearchResults } from "../../hooks/useSearchResults.js";
+import { useIsMobile } from "../../hooks/useIsMobile.js";
+import {
   useAppStore,
   usePlatform,
-  MACOS_TRAFFIC_LIGHT_INSET,
 } from "../../context/PlatformContext.js";
+import { getFilterLabel } from "../../lib/feed-view-labels.js";
 
 interface HeaderProps {
   onMenuClick: () => void;
+  sidebarExpanded: boolean;
+  onSidebarToggle: () => void;
 }
 
-const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
-const dragStyle = { WebkitAppRegion: "drag" } as React.CSSProperties;
+const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
+const dragStyle = { WebkitAppRegion: "drag" } as CSSProperties;
 
-// ── Component ─────────────────────────────────────────────────────────────────
+function formatItemCount(count: number): string {
+  return `${count.toLocaleString()} item${count === 1 ? "" : "s"}`;
+}
 
-export function Header({ onMenuClick }: HeaderProps) {
+function ToolbarAnimatedSlot({
+  visible,
+  width,
+  className = "",
+  children,
+}: {
+  visible: boolean;
+  width: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={`theme-toolbar-slot ${visible ? "theme-toolbar-slot-visible" : "theme-toolbar-slot-hidden"} ${className}`}
+      style={{ ["--toolbar-slot-width" as string]: width } as CSSProperties}
+      aria-hidden={visible ? undefined : true}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: HeaderProps) {
   const {
     HeaderSyncIndicator,
     headerDragRegion,
@@ -25,25 +61,48 @@ export function Header({ onMenuClick }: HeaderProps) {
     saveUrl,
     importMarkdown,
     exportMarkdown,
+    openUrl,
   } = usePlatform();
+  const isMobile = useIsMobile();
 
   const canAddRss = !!addRssFeed;
   const canSaveContent = !!(saveUrl || importMarkdown || exportMarkdown);
   const showNewButton = canAddRss || canSaveContent;
 
-  const markAllAsRead = useAppStore((s) => s.markAllAsRead);
-  const archiveAllReadUnsaved = useAppStore((s) => s.archiveAllReadUnsaved);
+  const items = useAppStore((s) => s.items);
+  const feeds = useAppStore((s) => s.feeds);
+  const friends = useAppStore((s) => s.friends);
+  const activeView = useAppStore((s) => s.activeView);
   const activeFilter = useAppStore((s) => s.activeFilter);
+  const searchQuery = useAppStore((s) => s.searchQuery);
+  const selectedItemId = useAppStore((s) => s.selectedItemId);
   const totalUnreadCount = useAppStore((s) => s.totalUnreadCount);
   const unreadCountByPlatform = useAppStore((s) => s.unreadCountByPlatform);
   const totalArchivableCount = useAppStore((s) => s.totalArchivableCount);
-  const archivableCountByPlatform = useAppStore(
-    (s) => s.archivableCountByPlatform,
-  );
+  const archivableCountByPlatform = useAppStore((s) => s.archivableCountByPlatform);
   const archivableFeedCounts = useAppStore((s) => s.archivableFeedCounts);
+  const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
+  const markAllAsRead = useAppStore((s) => s.markAllAsRead);
+  const archiveAllReadUnsaved = useAppStore((s) => s.archiveAllReadUnsaved);
+  const toggleSaved = useAppStore((s) => s.toggleSaved);
+  const toggleArchived = useAppStore((s) => s.toggleArchived);
+  const updatePreferences = useAppStore((s) => s.updatePreferences);
+  const setSelectedItem = useAppStore((s) => s.setSelectedItem);
+  const display = useAppStore((s) => s.preferences.display);
 
-  // Derive display count from pre-computed store values — no items iteration.
-  // savedOnly and archivedOnly views don't show these actions.
+  const { filteredItems, isSearching, resultCount } = useSearchResults(items, searchQuery, activeFilter);
+  const selectedItem = useMemo(
+    () => (selectedItemId ? items.find((item) => item.globalId === selectedItemId) ?? null : null),
+    [items, selectedItemId],
+  );
+
+  const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds), [activeFilter, feeds]);
+  const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
+  const mappedFriendCount = useMemo(
+    () => countFriendsWithRecentLocationUpdates(items, friends),
+    [friends, items],
+  );
+
   const unreadCount =
     activeFilter.savedOnly || activeFilter.archivedOnly
       ? 0
@@ -60,12 +119,127 @@ export function Header({ onMenuClick }: HeaderProps) {
           ? (archivableCountByPlatform[activeFilter.platform] ?? 0)
           : totalArchivableCount;
 
-  // ── + New dropdown ─────────────────────────────────────────────────────────
+  const currentTitle = useMemo(() => {
+    if (selectedItem) {
+      return selectedItem.content.linkPreview?.title
+        ?? selectedItem.content.text?.slice(0, 90)
+        ?? selectedItem.author.displayName;
+    }
+    if (activeView === "friends") return "Friends";
+    if (activeView === "map") return "Map";
+    return scopeLabel;
+  }, [activeView, scopeLabel, selectedItem]);
+
+  const currentSubtitle = useMemo(() => {
+    if (selectedItem) {
+      const source = selectedItem.platform
+        ? selectedItem.platform.toLocaleUpperCase()
+        : scopeLabel;
+      return `${selectedItem.author.displayName} • ${source}`;
+    }
+    if (activeView === "friends") {
+      if (pendingMatchCount > 0) {
+        return `${friendCount.toLocaleString()} friends • ${pendingMatchCount.toLocaleString()} pending matches`;
+      }
+      return `${friendCount.toLocaleString()} friends`;
+    }
+    if (activeView === "map") {
+      return `${mappedFriendCount.toLocaleString()} friends on the map`;
+    }
+    if (isSearching) {
+      return `${resultCount.toLocaleString()} result${resultCount === 1 ? "" : "s"} in ${scopeLabel}`;
+    }
+    return formatItemCount(filteredItems.length);
+  }, [
+    activeView,
+    filteredItems.length,
+    friendCount,
+    isSearching,
+    mappedFriendCount,
+    pendingMatchCount,
+    resultCount,
+    scopeLabel,
+    selectedItem,
+  ]);
+
+  const handleCloseReader = useCallback(() => {
+    setSelectedItem(null);
+  }, [setSelectedItem]);
+
+  const handleToggleReaderSaved = useCallback(() => {
+    if (!selectedItem) return;
+    toggleSaved(selectedItem.globalId);
+  }, [selectedItem, toggleSaved]);
+
+  const handleToggleReaderArchived = useCallback(() => {
+    if (!selectedItem) return;
+    const wasArchived = selectedItem.userState.archived;
+    toggleArchived(selectedItem.globalId);
+    if (!wasArchived) {
+      setSelectedItem(null);
+    }
+  }, [selectedItem, setSelectedItem, toggleArchived]);
+
+  const handleToggleFocusMode = useCallback(() => {
+    void updatePreferences({
+      display: {
+        ...display,
+        reading: {
+          ...display.reading,
+          focusMode: !display.reading.focusMode,
+        },
+      },
+    });
+  }, [display, updatePreferences]);
+
+  const handleToggleDualColumn = useCallback(() => {
+    void updatePreferences({
+      display: {
+        ...display,
+        reading: {
+          ...display.reading,
+          dualColumnMode: !display.reading.dualColumnMode,
+        },
+      },
+    });
+  }, [display, updatePreferences]);
+
+  const handleOpenReaderUrl = useCallback(() => {
+    if (!selectedItem?.sourceUrl) return;
+    if (openUrl) {
+      openUrl(selectedItem.sourceUrl);
+      return;
+    }
+    window.open(selectedItem.sourceUrl, "_blank", "noopener,noreferrer");
+  }, [openUrl, selectedItem]);
+
+  const showReaderLayoutToggle =
+    !isMobile &&
+    activeView === "feed" &&
+    !!selectedItem;
+  const showReaderRailToolbar =
+    showReaderLayoutToggle &&
+    display.reading.dualColumnMode;
+  const sidebarSlotStyle =
+    !isMobile && sidebarExpanded
+      ? ({ width: "calc(var(--freed-sidebar-card-width, 240px) + 12px)", paddingRight: "12px" } as CSSProperties)
+      : undefined;
+  const leftToolbarStyle = sidebarSlotStyle
+    ? {
+        ...sidebarSlotStyle,
+        ...(headerDragRegion ? noDrag : {}),
+      }
+    : (headerDragRegion ? noDrag : undefined);
+  const readerRailSlotStyle = showReaderLayoutToggle
+    ? ({
+        width: showReaderRailToolbar ? "var(--freed-reader-rail-width, 0px)" : "auto",
+        ...(headerDragRegion ? noDrag : {}),
+      } as CSSProperties)
+    : undefined;
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [addFeedOpen, setAddFeedOpen] = useState(false);
   const [savedContentOpen, setSavedContentOpen] = useState(false);
-
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -89,234 +263,304 @@ export function Header({ onMenuClick }: HeaderProps) {
     };
   }, [dropdownOpen]);
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (addFeedOpen || savedContentOpen) {
+      setDropdownOpen(false);
+    }
+  }, [addFeedOpen, savedContentOpen]);
 
   return (
     <>
       <header
-        className={`theme-topbar sticky top-0 z-30 flex-shrink-0 border-b ${
-          headerDragRegion ? "" : "pt-[env(safe-area-inset-top)]"
-        } px-1`}
-        {...(headerDragRegion
-          ? {
-              "data-tauri-drag-region": true,
-              style: { WebkitAppRegion: "drag" } as React.CSSProperties,
-            }
-          : {})}
+        className={`sticky top-0 z-30 flex-shrink-0 ${
+          headerDragRegion ? "" : "theme-attached-topbar-host pt-[env(safe-area-inset-top)]"
+        }`}
       >
         <div
-          className="h-[55px] flex items-center pl-3 pr-1 gap-6"
-          style={
-            headerDragRegion
-              ? ({
-                  paddingLeft: MACOS_TRAFFIC_LIGHT_INSET,
-                  WebkitAppRegion: "drag",
-                } as React.CSSProperties)
-              : undefined
-          }
-          {...(headerDragRegion ? { "data-tauri-drag-region": true } : {})}
+          data-testid="workspace-toolbar"
+          className={`theme-floating-panel theme-attached-topbar flex min-h-[58px] items-center px-0 ${showReaderLayoutToggle ? "gap-0" : "gap-3"}`}
+          {...(headerDragRegion
+            ? {
+                "data-tauri-drag-region": true,
+                style: dragStyle,
+              }
+            : {})}
         >
-          {/* Mobile menu button */}
-          <Tooltip label="Menu" className="md:hidden">
-            <button
-              onClick={onMenuClick}
-              className="flex-shrink-0 rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)]"
-              aria-label="Open menu"
-              style={headerDragRegion ? noDrag : undefined}
+          <div
+            className={`theme-toolbar-cluster flex shrink-0 items-center ${showReaderLayoutToggle ? "gap-0" : "gap-2"}`}
+          >
+            <div
+              className={`flex shrink-0 items-center gap-2 pl-3 sm:pl-4 ${sidebarSlotStyle ? "justify-between" : ""}`}
+              style={leftToolbarStyle}
             >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 6h16M4 12h16M4 18h16"
-                />
-              </svg>
-            </button>
-          </Tooltip>
-
-          {/* FREED logo */}
-          <div
-            className="flex items-center flex-shrink-0"
-            style={headerDragRegion ? noDrag : undefined}
-          >
-            <span className="text-lg font-bold gradient-text font-logo">
-              FREED
-            </span>
-          </div>
-
-          {/* Spacer — search/jump now lives in the sidebar */}
-          <div
-            className="flex flex-1 items-center justify-center min-w-0 ml-2"
-            {...(headerDragRegion
-              ? { "data-tauri-drag-region": true, style: dragStyle }
-              : {})}
-          />
-
-          {/* Actions */}
-          <div
-            className="flex items-center gap-2 flex-shrink-0 ml-[-6px]"
-            style={headerDragRegion ? noDrag : undefined}
-          >
-            {HeaderSyncIndicator && <HeaderSyncIndicator />}
-
-            {unreadCount > 0 && (
-              <Tooltip label={`Mark all ${unreadCount.toLocaleString()} items as read`} className="hidden sm:flex">
+              <Tooltip label="Menu" className="md:hidden">
                 <button
-                  onClick={() => markAllAsRead(activeFilter.platform)}
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+                  onClick={onMenuClick}
+                  className="rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)]"
+                  aria-label="Open menu"
                 >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                   </svg>
-                  <span>{unreadCount.toLocaleString()} unread</span>
                 </button>
               </Tooltip>
-            )}
 
-            {archivableCount > 0 && (
-              <Tooltip label={`Archive all ${archivableCount.toLocaleString()} read items`} className="hidden sm:flex">
+              <span className="text-lg font-bold gradient-text font-logo">FREED</span>
+
+              <Tooltip label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"} className="hidden md:flex">
                 <button
-                  onClick={() =>
-                    archiveAllReadUnsaved(
-                      activeFilter.platform,
-                      activeFilter.feedUrl,
-                    )
-                  }
-                  className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+                  onClick={onSidebarToggle}
+                  data-testid="desktop-sidebar-toggle"
+                  className="theme-subtle-button rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)]"
+                  aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
                 >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                  <span>{archivableCount.toLocaleString()} read</span>
+                  {sidebarExpanded ? (
+                    <SidebarCollapseIcon className="h-5 w-5" />
+                  ) : (
+                    <SidebarExpandIcon className="h-5 w-5" />
+                  )}
                 </button>
               </Tooltip>
-            )}
+            </div>
 
-            {/* + New dropdown */}
-            {showNewButton && (
-              <div ref={dropdownRef} className="relative">
-                <Tooltip label="Add new content">
+            <ToolbarAnimatedSlot
+              visible={showReaderLayoutToggle}
+              width={showReaderRailToolbar ? "var(--freed-reader-rail-width, 0px)" : "3rem"}
+              className="hidden shrink-0 md:flex items-center"
+            >
+              <div className="flex items-center" style={readerRailSlotStyle}>
+                <Tooltip label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}>
                   <button
-                    onClick={() => setDropdownOpen((v) => !v)}
-                    className="theme-accent-button flex items-center gap-2 rounded-lg px-3 py-1.5 transition-colors"
-                    aria-haspopup="true"
-                    aria-expanded={dropdownOpen}
+                    onClick={handleToggleDualColumn}
+                    className="theme-subtle-button rounded-lg p-2 transition-colors hover:bg-[var(--theme-bg-muted)]"
+                    aria-pressed={display.reading.dualColumnMode}
+                    aria-label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
                   >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 4v16m8-8H4"
-                      />
-                    </svg>
-                    <span className="text-sm font-medium hidden sm:inline">
-                      New
-                    </span>
-                    <svg
-                      className={`w-3 h-3 transition-transform hidden sm:block ${dropdownOpen ? "rotate-180" : ""}`}
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 9l-7 7-7-7"
-                      />
-                    </svg>
+                    {display.reading.dualColumnMode ? (
+                      <ReaderRailHideIcon className="h-5 w-5" />
+                    ) : (
+                      <ReaderRailShowIcon className="h-5 w-5" />
+                    )}
                   </button>
                 </Tooltip>
-
-                {dropdownOpen && (
-                  <div className="absolute right-0 top-full z-50 mt-1.5 w-44 overflow-hidden rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] py-1 shadow-2xl shadow-black/40">
-                    {canAddRss && (
-                      <button
-                        onClick={() => {
-                          setDropdownOpen(false);
-                          setAddFeedOpen(true);
-                        }}
-                        className="w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-                      >
-                        <svg
-                          className="theme-icon-action w-4 h-4 shrink-0"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7M6 17a1 1 0 110 2 1 1 0 010-2z"
-                          />
-                        </svg>
-                        RSS Feed
-                      </button>
-                    )}
-                    {canSaveContent && (
-                      <button
-                        onClick={() => {
-                          setDropdownOpen(false);
-                          setSavedContentOpen(true);
-                        }}
-                        className="w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-                      >
-                        <svg
-                          className="theme-icon-action w-4 h-4 shrink-0"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
-                          />
-                        </svg>
-                        Saved Content
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
+            </ToolbarAnimatedSlot>
+          </div>
+
+          <div
+            className="min-w-0 flex-1"
+            {...(headerDragRegion ? { "data-tauri-drag-region": true, style: dragStyle } : {})}
+          >
+            {selectedItem ? (
+              <button
+                onClick={handleCloseReader}
+                className="group flex w-full min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-[var(--theme-bg-muted)]"
+                style={headerDragRegion ? noDrag : undefined}
+                aria-label="Back to list"
+              >
+                <svg
+                  className="h-4 w-4 shrink-0 text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-[var(--theme-text-primary)]">{currentTitle}</p>
+                  <p className="truncate text-xs text-[var(--theme-text-muted)]">{currentSubtitle}</p>
+                </div>
+              </button>
+            ) : (
+              <div className="min-w-0 px-1">
+                <p className="truncate text-sm font-semibold text-[var(--theme-text-primary)]">{currentTitle}</p>
+                <p className="truncate text-xs text-[var(--theme-text-muted)]">{currentSubtitle}</p>
+              </div>
+            )}
+          </div>
+
+          <div
+            className="theme-toolbar-cluster flex shrink-0 items-center pr-3 sm:pr-4"
+            style={headerDragRegion ? noDrag : undefined}
+          >
+            {selectedItem ? (
+              <>
+                <ToolbarAnimatedSlot visible={!isMobile} width="5.25rem" className="hidden lg:flex">
+                  <Tooltip label={display.reading.focusMode ? "Disable focus mode" : "Enable focus mode"}>
+                    <button
+                      onClick={handleToggleFocusMode}
+                      className={`rounded-lg px-2.5 py-2 text-sm font-bold transition-colors lg:inline-flex ${
+                        display.reading.focusMode
+                          ? "theme-accent-button"
+                          : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                      }`}
+                      aria-pressed={display.reading.focusMode}
+                      aria-label="Toggle focus reading mode"
+                    >
+                      <span aria-hidden="true">
+                        <span className="font-black">F</span>
+                        <span className="text-xs font-light">ocus</span>
+                      </span>
+                    </button>
+                  </Tooltip>
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot visible={true} width="3rem">
+                  <Tooltip label={selectedItem.userState.saved ? "Remove bookmark" : "Bookmark"}>
+                    <button
+                      onClick={handleToggleReaderSaved}
+                      className={`rounded-lg p-2 transition-colors ${
+                        selectedItem.userState.saved
+                          ? "theme-accent-button"
+                          : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                      }`}
+                      aria-label={selectedItem.userState.saved ? "Unsave" : "Save"}
+                    >
+                      <svg
+                        className="h-5 w-5"
+                        fill={selectedItem.userState.saved ? "currentColor" : "none"}
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                      </svg>
+                    </button>
+                  </Tooltip>
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot visible={true} width="3rem">
+                  <Tooltip label={selectedItem.userState.archived ? "Unarchive" : "Archive"}>
+                    <button
+                      onClick={handleToggleReaderArchived}
+                    className={`rounded-lg p-2 transition-colors ${
+                        selectedItem.userState.archived
+                          ? "theme-status-pill-success hover:bg-[rgb(var(--theme-feedback-success-rgb)/0.18)]"
+                          : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                      }`}
+                      aria-label={selectedItem.userState.archived ? "Unarchive" : "Archive"}
+                    >
+                      <ArchiveIcon className="h-5 w-5" />
+                    </button>
+                  </Tooltip>
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot visible={!!selectedItem.sourceUrl} width="5rem">
+                  {selectedItem.sourceUrl ? (
+                    <button
+                      onClick={handleOpenReaderUrl}
+                      className="theme-subtle-button inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm"
+                      aria-label="Open"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5h5m0 0v5m0-5L10 14M5 9v10h10" />
+                      </svg>
+                      <span className="hidden lg:inline">Open</span>
+                    </button>
+                  ) : null}
+                </ToolbarAnimatedSlot>
+              </>
+            ) : (
+              <>
+                <ToolbarAnimatedSlot visible={!!HeaderSyncIndicator} width="4.5rem" className="hidden md:flex">
+                  {HeaderSyncIndicator ? (
+                    <div className="hidden md:flex">
+                      <HeaderSyncIndicator />
+                    </div>
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot visible={unreadCount > 0} width="9.5rem" className="hidden lg:flex">
+                  {unreadCount > 0 ? (
+                    <Tooltip label={`Mark all ${unreadCount.toLocaleString()} items as read`} className="hidden lg:flex">
+                      <button
+                        onClick={() => markAllAsRead(activeFilter.platform)}
+                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span>{unreadCount.toLocaleString()} unread</span>
+                      </button>
+                    </Tooltip>
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot visible={archivableCount > 0} width="8rem" className="hidden lg:flex">
+                  {archivableCount > 0 ? (
+                    <Tooltip label={`Archive all ${archivableCount.toLocaleString()} read (unsaved) items`} className="hidden lg:flex">
+                      <button
+                        onClick={() => archiveAllReadUnsaved(activeFilter.platform, activeFilter.feedUrl)}
+                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span>{archivableCount.toLocaleString()} read</span>
+                      </button>
+                    </Tooltip>
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
+              </>
             )}
           </div>
         </div>
       </header>
+
+      {showNewButton && (
+        <div
+          ref={dropdownRef}
+          className="fixed bottom-5 right-5 z-[90] sm:bottom-6 sm:right-6"
+          style={headerDragRegion ? noDrag : undefined}
+        >
+          {dropdownOpen && (
+            <div className="theme-floating-panel absolute bottom-[calc(100%+0.875rem)] right-0 flex min-w-[12rem] flex-col overflow-hidden py-1 shadow-2xl shadow-black/40">
+              {canAddRss && (
+                <button
+                  onClick={() => {
+                    setDropdownOpen(false);
+                    setAddFeedOpen(true);
+                  }}
+                  className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+                >
+                  <svg className="theme-icon-action h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7M6 17a1 1 0 110 2 1 1 0 010-2z" />
+                  </svg>
+                  RSS Feed
+                </button>
+              )}
+              {canSaveContent && (
+                <button
+                  onClick={() => {
+                    setDropdownOpen(false);
+                    setSavedContentOpen(true);
+                  }}
+                  className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+                >
+                  <svg className="theme-icon-action h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                  </svg>
+                  Saved Content
+                </button>
+              )}
+            </div>
+          )}
+
+          <Tooltip label="Add new...">
+            <button
+              onClick={() => setDropdownOpen((value) => !value)}
+              className="theme-fab-button flex h-14 w-14 items-center justify-center rounded-full transition-transform hover:scale-[1.02] active:scale-[0.98]"
+              aria-haspopup="true"
+              aria-expanded={dropdownOpen}
+              aria-label="New"
+            >
+              <svg className={`h-6 w-6 transition-transform ${dropdownOpen ? "rotate-45" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          </Tooltip>
+        </div>
+      )}
 
       <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
       <SavedContentDialog

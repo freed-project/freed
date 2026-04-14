@@ -491,6 +491,12 @@ export interface ReadingEnhancements {
    */
   markReadOnScroll: boolean;
 
+  /**
+   * Desaturate read items in feed views.
+   * When false, read items keep full color.
+   */
+  showReadInGrayscale: boolean;
+
   /** Two-column reader layout: compact card thumbnail on left, article on right */
   dualColumnMode: boolean;
 }
@@ -670,6 +676,7 @@ export function createDefaultPreferences(): UserPreferences {
         focusMode: false,
         focusIntensity: "normal",
         markReadOnScroll: true,
+        showReadInGrayscale: true,
         dualColumnMode: true,
       },
       archivePruneDays: 30,

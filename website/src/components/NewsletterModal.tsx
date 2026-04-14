@@ -149,6 +149,25 @@ function detectDefaultInstallTarget(): InstallTarget {
   return detectDownloadKey();
 }
 
+function LaunchFreedWebIcon() {
+  return (
+    <svg
+      className="h-5 w-5 text-white"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M14 5h5v5" />
+      <path d="M10 14L19 5" />
+      <rect x="5" y="9" width="10" height="10" rx="2.5" />
+    </svg>
+  );
+}
+
 export default function NewsletterModal() {
   const { isOpen, closeModal } = useNewsletter();
   const [email, setEmail] = useState("");
@@ -420,6 +439,11 @@ export default function NewsletterModal() {
     if (!downloadUrl) return;
     window.open(downloadUrl, "_blank", "noopener,noreferrer");
   }, [downloadUrl]);
+
+  const handleSwitchToDesktopTarget = useCallback(() => {
+    setSelectedTarget(detectDownloadKey());
+    setDropdownOpen(false);
+  }, []);
 
   const handlePrimaryAction = useCallback(() => {
     if (isWebTarget) {
@@ -804,23 +828,24 @@ export default function NewsletterModal() {
                               <div
                                 className="get-freed-launch-cta__icon flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-white/12"
                               >
-                                <svg
-                                  className="w-5 h-5 text-white"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  stroke="currentColor"
-                                  strokeWidth={2}
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    d={
-                                      isWebTarget
-                                        ? "M13.5 6H19.5V12M10.5 18L19.5 9M4.5 7.5A1.5 1.5 0 016 6h6M4.5 10.5v7.5A1.5 1.5 0 006 19.5h7.5"
-                                        : "M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-                                    }
-                                  />
-                                </svg>
+                                {isWebTarget ? (
+                                  <LaunchFreedWebIcon />
+                                ) : (
+                                  <svg
+                                    className="h-5 w-5 text-white"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    strokeWidth={2}
+                                    aria-hidden="true"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                                    />
+                                  </svg>
+                                )}
                               </div>
                               <div className="flex-1 min-w-0 text-left">
                                 <p className="get-freed-launch-cta__title text-sm font-semibold text-white transition-colors group-hover:text-white">
@@ -874,7 +899,7 @@ export default function NewsletterModal() {
                               type="button"
                               onClick={handleOpenFreedWeb}
                               data-testid="website-open-web-app"
-                              className="flex w-full cursor-pointer items-center justify-start gap-2 rounded-lg bg-transparent px-3 py-2.5 text-left text-sm text-text-muted underline decoration-current underline-offset-4 transition-colors hover:bg-[rgb(var(--theme-control-accent-rgb)/0.08)] hover:text-text-primary hover:no-underline"
+                              className="flex w-full cursor-pointer items-center justify-start gap-2 rounded-lg bg-transparent px-3 py-2.5 text-left text-sm text-text-muted transition-colors hover:bg-[rgb(var(--theme-control-accent-rgb)/0.08)] hover:text-text-primary"
                             >
                               <svg
                                 aria-hidden="true"
@@ -890,7 +915,43 @@ export default function NewsletterModal() {
                                   d="M9 6l6 6-6 6M14 6l6 6-6 6"
                                 />
                               </svg>
-                              <span>Already running Freed Desktop? Launch Freed Web here.</span>
+                              <span>
+                                Already running Freed Desktop? Launch{" "}
+                                <span className="underline decoration-current underline-offset-4">
+                                  Freed Web
+                                </span>{" "}
+                                here
+                              </span>
+                            </button>
+                          )}
+                          {isWebTarget && (
+                            <button
+                              type="button"
+                              onClick={handleSwitchToDesktopTarget}
+                              data-testid="website-switch-to-desktop-download"
+                              className="flex w-full cursor-pointer items-center justify-start gap-2 rounded-lg bg-transparent px-3 py-2.5 text-left text-sm text-text-muted transition-colors hover:bg-[rgb(var(--theme-control-accent-rgb)/0.08)] hover:text-text-primary"
+                            >
+                              <svg
+                                aria-hidden="true"
+                                className="h-4 w-4"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M9 6l6 6-6 6M14 6l6 6-6 6"
+                                />
+                              </svg>
+                              <span>
+                                You'll first need{" "}
+                                <span className="underline decoration-current underline-offset-4">
+                                  Freed Desktop
+                                </span>{" "}
+                                running on your primary machine
+                              </span>
                             </button>
                           )}
                         </div>

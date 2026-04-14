@@ -258,18 +258,28 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const preferences = useAppStore((s) => s.preferences);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const toggleDebug = useDebugStore((s) => s.toggle);
+  const themeBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const baseSectionById = Object.fromEntries(BASE_SECTION_METAS.map((section) => [section.id, section])) as Record<
+    Exclude<SectionId, "ai" | "updates" | "danger" | "googleContacts" | "x" | "facebook" | "instagram" | "linkedin">,
+    SectionMeta
+  >;
 
   // Flat section list — drives scrollspy and right-pane rendering.
   // Keywords live in settings-sections.ts so Header's command palette can share them.
   // ── AI section is coming soon -- preserve ICONS.ai, do not delete ──
   const allSections: Section[] = [
-    ...BASE_SECTION_METAS.map((m) => ({ ...m, icon: ICONS[m.id] })),
+    { ...baseSectionById.appearance, icon: ICONS.appearance },
+    { ...baseSectionById.sync, icon: ICONS.sync },
+    ...(GoogleContactsSettingsContent ? [{ ...GOOGLE_CONTACTS_SECTION_META, icon: ICONS.googleContacts }] : []),
+    { ...baseSectionById.saved, icon: ICONS.saved },
     ...(XSettingsContent ? [{ ...X_SECTION_META, icon: ICONS.x }] : []),
     ...(FacebookSettingsContent ? [{ ...FB_SECTION_META, icon: ICONS.facebook }] : []),
     ...(InstagramSettingsContent ? [{ ...IG_SECTION_META, icon: ICONS.instagram }] : []),
     ...(LinkedInSettingsContent ? [{ ...LI_SECTION_META, icon: ICONS.linkedin }] : []),
-    ...(GoogleContactsSettingsContent ? [{ ...GOOGLE_CONTACTS_SECTION_META, icon: ICONS.googleContacts }] : []),
+    { ...baseSectionById.feeds, icon: ICONS.feeds },
     ...(checkForUpdates ? [{ ...UPDATES_SECTION_META, icon: ICONS.updates }] : []),
+    { ...baseSectionById.legal, icon: ICONS.legal },
+    { ...baseSectionById.support, icon: ICONS.support },
     ...(factoryReset ? [{ ...DANGER_SECTION_META, icon: ICONS.danger }] : []),
   ];
 
@@ -278,30 +288,33 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const sectionById = Object.fromEntries(allSections.map((s) => [s.id, s])) as Record<SectionId, Section>;
   const navStructure: NavStructureItem[] = [
     sectionById.appearance,
-    sectionById.legal,
-    sectionById.support,
     sectionById.sync,
+    ...(GoogleContactsSettingsContent ? [sectionById.googleContacts] : []),
     {
       kind: "group",
       label: "Sources",
       icon: ICON_SOURCES,
       children: [
         sectionById.saved,
-        sectionById.feeds,
         ...(XSettingsContent ? [sectionById.x] : []),
         ...(FacebookSettingsContent ? [sectionById.facebook] : []),
         ...(InstagramSettingsContent ? [sectionById.instagram] : []),
         ...(LinkedInSettingsContent ? [sectionById.linkedin] : []),
-        ...(GoogleContactsSettingsContent ? [sectionById.googleContacts] : []),
+        sectionById.feeds,
       ],
     },
     // sectionById.ai, // AI coming soon -- do not delete
     ...(checkForUpdates ? [sectionById.updates] : []),
+    sectionById.legal,
+    sectionById.support,
     ...(factoryReset ? [sectionById.danger] : []),
   ];
 
   // ── Preferences state ────────────────────────────────────────────────────
   const [display, setDisplay] = useState(() => preferences.display);
+  const [themePreviewHovering, setThemePreviewHovering] = useState(false);
+  const [themePreviewTouchActive, setThemePreviewTouchActive] = useState(false);
+  const [hasCoarsePointer, setHasCoarsePointer] = useState(false);
 
   const handleDisplayChange = useCallback(
     (update: Partial<typeof display>) => {
@@ -335,6 +348,82 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     },
     [updatePreferences],
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const media = window.matchMedia("(pointer: coarse)");
+    const updatePointerMode = () => {
+      setHasCoarsePointer(media.matches || navigator.maxTouchPoints > 0);
+    };
+
+    updatePointerMode();
+    media.addEventListener?.("change", updatePointerMode);
+    return () => {
+      media.removeEventListener?.("change", updatePointerMode);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (open) return;
+    setThemePreviewHovering(false);
+    setThemePreviewTouchActive(false);
+    if (themeBlurRestoreTimerRef.current) {
+      clearTimeout(themeBlurRestoreTimerRef.current);
+      themeBlurRestoreTimerRef.current = null;
+    }
+  }, [open]);
+
+  useEffect(() => {
+    return () => {
+      if (themeBlurRestoreTimerRef.current) {
+        clearTimeout(themeBlurRestoreTimerRef.current);
+      }
+    };
+  }, []);
+
+  const activateTouchThemePreview = useCallback(() => {
+    if (!hasCoarsePointer) return;
+    setThemePreviewTouchActive(true);
+    if (themeBlurRestoreTimerRef.current) {
+      clearTimeout(themeBlurRestoreTimerRef.current);
+    }
+    themeBlurRestoreTimerRef.current = setTimeout(() => {
+      setThemePreviewTouchActive(false);
+      themeBlurRestoreTimerRef.current = null;
+    }, 5000);
+  }, [hasCoarsePointer]);
+
+  const handleThemeCardMouseEnter = useCallback(() => {
+    if (hasCoarsePointer) return;
+    setThemePreviewHovering(true);
+  }, [hasCoarsePointer]);
+
+  const handleThemeCardMouseLeave = useCallback(() => {
+    if (hasCoarsePointer) return;
+    setThemePreviewHovering(false);
+  }, [hasCoarsePointer]);
+
+  const handleThemeCardFocusCapture = useCallback(() => {
+    if (hasCoarsePointer) return;
+    setThemePreviewHovering(true);
+  }, [hasCoarsePointer]);
+
+  const handleThemeCardBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
+    if (hasCoarsePointer) return;
+    const nextFocused = event.relatedTarget;
+    if (nextFocused && event.currentTarget.contains(nextFocused)) {
+      return;
+    }
+    setThemePreviewHovering(false);
+  }, [hasCoarsePointer]);
+
+  const handleThemeSelect = useCallback((themeId: ThemeId) => {
+    activateTouchThemePreview();
+    handleDisplayChange({ themeId });
+  }, [activateTouchThemePreview, handleDisplayChange]);
+
+  const themeBackdropSuppressed = themePreviewHovering || themePreviewTouchActive;
 
   // ── Update check ─────────────────────────────────────────────────────────
   const [updateState, setUpdateState] = useState<UpdateCheckState>({ status: "idle" });
@@ -655,15 +744,16 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <>
             <SectionHeading label="Appearance" />
             <div className="space-y-5">
-              <div className="theme-card-soft rounded-2xl p-4 sm:p-5">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="max-w-lg">
-                    <p className="text-sm font-semibold text-text-primary">Theme</p>
-                    <p className="mt-1 text-xs text-text-muted">
-                      Choose the look, atmosphere, and type treatment for Freed Desktop.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
+              <div
+                className="theme-card-soft theme-settings-theme-card rounded-2xl p-4 sm:p-5"
+                onMouseEnter={handleThemeCardMouseEnter}
+                onMouseLeave={handleThemeCardMouseLeave}
+                onFocusCapture={handleThemeCardFocusCapture}
+                onBlurCapture={handleThemeCardBlurCapture}
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="theme-settings-theme-card__label text-sm font-semibold text-text-primary">Theme</p>
+                  <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
                     {THEME_DEFINITIONS.map((theme) => {
                       const isActive = display.themeId === theme.id;
                       return (
@@ -678,7 +768,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                             theme={theme}
                             active={isActive}
                             variant="compact"
-                            onClick={() => handleDisplayChange({ themeId: theme.id as ThemeId })}
+                            onClick={() => handleThemeSelect(theme.id as ThemeId)}
                           />
                         </Tooltip>
                       );
@@ -691,6 +781,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 checked={display.reading.markReadOnScroll}
                 onChange={(v) => handleReadingChange({ markReadOnScroll: v })}
                 description="Mark items as read when you scroll past them in the feed"
+              />
+              <SettingsToggle
+                label="Show read in grayscale"
+                checked={display.reading.showReadInGrayscale}
+                onChange={(v) => handleReadingChange({ showReadInGrayscale: v })}
+                description="Desaturate items after they have been marked read"
               />
               <SettingsToggle
                 label="Show engagement counts"
@@ -732,7 +828,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 <select
                   value={display.archivePruneDays ?? 30}
                   onChange={(e) => handleDisplayChange({ archivePruneDays: Number(e.target.value) })}
-                  className="shrink-0 rounded-lg border border-[color:var(--theme-border)] bg-[var(--theme-bg-root)] px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_50%,transparent)] cursor-pointer"
+                  className="theme-input theme-select shrink-0 rounded-xl px-3 py-2 text-sm text-text-primary focus:outline-none"
                 >
                   <option value={3}>3 days</option>
                   <option value={7}>7 days</option>
@@ -1047,8 +1143,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-6">
       {/* Backdrop */}
       <div
-        className="theme-settings-overlay absolute inset-0"
+        className={`theme-settings-overlay absolute inset-0 ${themeBackdropSuppressed ? "theme-settings-overlay-preview-off" : ""}`}
         onClick={onClose}
+        style={{ top: "calc(env(safe-area-inset-top, 0px) + 58px)" }}
       />
 
       {/* Panel */}

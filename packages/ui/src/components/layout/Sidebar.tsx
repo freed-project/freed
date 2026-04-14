@@ -50,6 +50,7 @@ function scoreFeedMatch(feed: RssFeed, queryTerms: string[]): number {
 interface SidebarProps {
   open: boolean;
   onClose: () => void;
+  desktopExpanded?: boolean;
 }
 
 function SidebarSection({
@@ -376,7 +377,7 @@ const MIN_WIDTH = 180;
 const MAX_WIDTH = 480;
 const DEFAULT_WIDTH = 256;
 
-export function Sidebar({ open, onClose }: SidebarProps) {
+export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps) {
   const { SourceIndicator, headerDragRegion, syncRssNow, syncSourceNow, getSourceStatus } = usePlatform();
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
@@ -443,6 +444,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const [sourceMenuAnchorRect, setSourceMenuAnchorRect] = useState<DOMRect | null>(null);
   const [sourceMenuAnchorElement, setSourceMenuAnchorElement] = useState<HTMLElement | null>(null);
   const dragging = useRef(false);
+  const pendingPersistedWidth = useRef<number | null>(null);
 
 
   // ─── Tag tree ────────────────────────────────────────────────────────────────
@@ -490,10 +492,27 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
+    if (pendingPersistedWidth.current !== null) {
+      if (persistedSidebarWidth !== pendingPersistedWidth.current) return;
+      pendingPersistedWidth.current = null;
+    }
     setCommittedWidth(persistedSidebarWidth);
   }, [dragWidth, persistedSidebarWidth]);
 
   const width = dragWidth ?? committedWidth;
+  const compactSidebar = width < 220;
+  const sidebarPaddingClass = compactSidebar ? "px-2" : "px-4";
+  const rowPaddingClass = compactSidebar ? "px-1.5" : "px-3";
+  const rowLeadingPaddingClass = compactSidebar ? "pl-1.5" : "pl-3";
+  const rowTrailingPaddingClass = compactSidebar ? "pr-1" : "pr-2";
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.style.setProperty(
+      "--freed-sidebar-card-width",
+      desktopExpanded ? `${width}px` : "0px",
+    );
+  }, [desktopExpanded, width]);
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -515,9 +534,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       const onUp = (ev: MouseEvent) => {
         dragging.current = false;
         const final = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startW + ev.clientX - startX));
-        setDragWidth(null);
+        pendingPersistedWidth.current = final;
         setCommittedWidth(final);
-        void updatePreferences({ display: { sidebarWidth: final } } as Parameters<typeof updatePreferences>[0]);
+        setDragWidth(null);
+        void updatePreferences({ display: { sidebarWidth: final } } as Parameters<typeof updatePreferences>[0]).catch(() => {
+          if (pendingPersistedWidth.current === final) {
+            pendingPersistedWidth.current = null;
+          }
+        });
         document.body.style.cursor = previousCursor;
         document.body.style.userSelect = previousUserSelect;
         document.removeEventListener("mousemove", onMove);
@@ -554,11 +578,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
     const startIndex = rssFeedPage * FEEDS_PAGE_SIZE;
     return visibleFeedList.slice(startIndex, startIndex + FEEDS_PAGE_SIZE);
   }, [rssFeedPage, visibleFeedList]);
-  const activeFeedVisibleInResults = !!(
+  const activeFeedVisibleOnCurrentPage = !!(
     activeFilter.feedUrl &&
-    visibleFeedList.some((feed) => feed.url === activeFilter.feedUrl)
+    rssFeedsOpen &&
+    pagedFeeds.some((feed) => feed.url === activeFilter.feedUrl)
   );
-  const previousActiveFeedUrlRef = useRef<string | undefined>(undefined);
 
   const showFeed = useCallback((filter: FilterOptions) => {
     setActiveView("feed");
@@ -579,7 +603,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const isTopSourceActive = (source: SourceNavigationItem) => {
     if (!isFeedView) return false;
     if (source.id === "rss" && activeFilter.platform === "rss") {
-      return !activeFilter.feedUrl;
+      return !activeFilter.feedUrl || !activeFeedVisibleOnCurrentPage;
     }
     if (activeFilter.feedUrl) return false;
     if (activeFilter.archivedOnly) return false;
@@ -653,90 +677,26 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   }, [activeFilter.feedUrl, activeFilter.platform]);
 
   useEffect(() => {
-    setRssFeedPage(0);
-  }, [trimmedSearchQuery]);
-
-  useEffect(() => {
     const maxPage = Math.max(0, totalFeedPages - 1);
     if (rssFeedPage > maxPage) {
       setRssFeedPage(maxPage);
     }
   }, [rssFeedPage, totalFeedPages]);
 
-  useEffect(() => {
-    if (activeFilter.feedUrl === previousActiveFeedUrlRef.current) return;
-    previousActiveFeedUrlRef.current = activeFilter.feedUrl;
-    if (!activeFilter.feedUrl || visibleFeedList.length === 0) return;
-    const index = visibleFeedList.findIndex((feed) => feed.url === activeFilter.feedUrl);
-    if (index === -1) return;
-    setRssFeedPage(Math.floor(index / FEEDS_PAGE_SIZE));
-  }, [activeFilter.feedUrl, visibleFeedList]);
-
-  useEffect(() => {
-    if (activeFilter.platform !== "rss" || !activeFilter.feedUrl) return;
-    if (trimmedSearchQuery.length === 0) return;
-    if (activeFeedVisibleInResults) return;
-    setFilter({ platform: "rss" });
-  }, [
-    activeFeedVisibleInResults,
-    activeFilter.feedUrl,
-    activeFilter.platform,
-    setFilter,
-    trimmedSearchQuery,
-  ]);
-
   const handleFeedPageChange = useCallback((direction: "prev" | "next") => {
-    if (activeFilter.feedUrl) {
-      setFilter({ platform: "rss" });
-    }
     setRssFeedPage((page) =>
       direction === "prev"
         ? Math.max(0, page - 1)
         : Math.min(totalFeedPages - 1, page + 1),
     );
-  }, [activeFilter.feedUrl, setFilter, totalFeedPages]);
+  }, [totalFeedPages]);
 
-  return (
-    <>
-      {/* Mobile overlay */}
-      {open && (
-        <div
-          className="fixed inset-0 bg-black/60 z-40 md:hidden"
-          onClick={onClose}
-        />
-      )}
-
-      {/* Sidebar */}
-      <aside
-        data-testid="app-sidebar"
-        className={`
-          fixed inset-y-0 left-0 md:relative z-50 md:z-auto
-          h-full
-          bg-[color-mix(in_oklab,var(--theme-bg-root)_88%,transparent)] md:bg-[color-mix(in_oklab,var(--theme-bg-deep)_88%,transparent)]
-          border-r border-[var(--theme-border-subtle)]
-          transform transition-transform duration-200 ease-in-out
-          ${open ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-          flex flex-col min-h-0
-        `}
-        style={{ width: `${width}px` }}
-      >
-        {/* Mobile header with close button */}
-        <div className="md:hidden flex shrink-0 items-center justify-between border-b border-[var(--theme-border-subtle)] p-4 pt-[calc(env(safe-area-inset-top)+1rem)]">
-          {!headerDragRegion && (
-            <span className="text-lg font-bold gradient-text font-logo">FREED</span>
-          )}
-          <button onClick={onClose} className="ml-auto rounded-lg p-2 transition-colors hover:bg-[var(--theme-bg-muted)]">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <nav
-          className="flex-1 min-h-0 flex flex-col px-4 pt-4 overflow-y-auto minimal-scroll"
-          style={{ paddingBottom: 'calc(1rem + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))' }}
-        >
-          <SearchJumpField />
+  const sidebarBody = (
+    <nav
+      className={`flex-1 min-h-0 flex flex-col ${sidebarPaddingClass} pt-4 overflow-y-auto minimal-scroll`}
+      style={{ paddingBottom: "calc(1rem + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))" }}
+    >
+          <SearchJumpField compactSidebar={compactSidebar} />
 
           <ul className="flex flex-col gap-1">
             {[allSource].map((source) => (
@@ -752,7 +712,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     onClick={() => handleSourceClick(source)}
                     data-testid={`source-row-${sourceKey(source)}`}
                     className={`
-                      flex-1 flex items-center gap-3 pl-3 py-1.5 min-w-0
+                      flex-1 cursor-pointer flex items-center gap-3 ${rowLeadingPaddingClass} py-1.5 min-w-0
                       text-left text-sm transition-all
                       ${
                         isTopSourceActive(source)
@@ -764,7 +724,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     <span className="w-5 flex items-center justify-center">{source.icon}</span>
                     <span className="min-w-0 flex-1 truncate">{source.label}</span>
                   </button>
-                  <div className="shrink-0 flex items-center pr-2">
+                  <div
+                    onClick={() => handleSourceClick(source)}
+                    className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
+                  >
                     {SourceIndicator ? (
                       <span
                         data-testid={`source-indicator-slot-${sourceKey(source)}`}
@@ -798,7 +761,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               <button
                 onClick={() => showFeed({ savedOnly: true })}
                 className={`
-                  w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
+                  w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-1.5 rounded-lg
                   text-left text-sm transition-all border
                   ${
                     isFeedView && activeFilter.savedOnly
@@ -818,7 +781,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               <button
                 onClick={() => showFeed({ archivedOnly: true })}
                 className={`
-                  w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
+                  w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-1.5 rounded-lg
                   text-left text-sm transition-all border
                   ${
                     isFeedView && activeFilter.archivedOnly
@@ -844,7 +807,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 }}
                 data-testid="source-row-friends"
                 className={`
-                  w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
+                  w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-1.5 rounded-lg
                   text-left text-sm transition-all border
                   ${
                     activeView === "friends"
@@ -882,7 +845,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                 }}
                 data-testid="source-row-map"
                 className={`
-                  w-full flex items-center gap-3 px-3 py-1.5 rounded-lg
+                  w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-1.5 rounded-lg
                   text-left text-sm transition-all border
                   ${
                     activeView === "map"
@@ -920,12 +883,29 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                           }`}
                         >
                           <div className="flex items-stretch gap-2">
-                          <div className="flex min-w-0 flex-1 items-center gap-1.5 pl-3 py-1.5">
-                            <button
-                              onClick={() => handleSourceClick(source)}
-                              data-testid={`source-row-${sourceKey(source)}`}
+                          <div
+                            onClick={() => handleSourceClick(source)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                handleSourceClick(source);
+                              }
+                            }}
+                            data-testid={`source-row-${sourceKey(source)}`}
+                            role="button"
+                            tabIndex={0}
+                            className={`
+                              flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 ${rowLeadingPaddingClass} py-1.5 outline-none
+                              ${
+                                isTopSourceActive(source)
+                                  ? "text-[color:var(--theme-text-primary)]"
+                                  : "text-[color:var(--theme-text-secondary)] group-hover/source:text-[color:var(--theme-text-primary)]"
+                              }
+                            `}
+                          >
+                            <div
                               className={`
-                                flex min-w-0 flex-1 items-center gap-3 text-left text-sm transition-all
+                                flex min-w-0 max-w-full items-center gap-3 text-left text-sm transition-all
                                 ${
                                   isTopSourceActive(source)
                                     ? "text-[color:var(--theme-text-primary)]"
@@ -934,11 +914,14 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                               `}
                             >
                               <span className="w-5 flex items-center justify-center">{source.icon}</span>
-                              <span className="min-w-0 flex-1 truncate">{source.label}</span>
-                            </button>
+                              <span className="min-w-0 truncate">{source.label}</span>
+                            </div>
                             <button
                               type="button"
-                              onClick={() => setRssFeedsOpen((value) => !value)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setRssFeedsOpen((value) => !value);
+                              }}
                               className="shrink-0 rounded p-1 text-[color:var(--theme-text-soft)] transition-colors hover:text-[color:var(--theme-text-secondary)]"
                               aria-label={rssFeedsOpen ? "Collapse feeds" : "Expand feeds"}
                               aria-expanded={rssFeedsOpen}
@@ -953,7 +936,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                               </svg>
                             </button>
                           </div>
-                          <div className="shrink-0 flex items-center pr-2">
+                          <div
+                            onClick={() => handleSourceClick(source)}
+                            className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
+                          >
                             {sourceStatus ? (
                               <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                                 <ProviderStatusIndicator
@@ -1021,10 +1007,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                         </div>
 
                         {rssFeedsOpen && (
-                          <div className="ml-8 border-l border-[color:var(--theme-border-subtle)] pl-2">
+                          <div className="space-y-2">
                             {visibleFeedList.length > 0 ? (
                               <>
-                                <ul className="space-y-0.5">
+                                <div className={compactSidebar ? "pl-3" : "pl-6"}>
+                                  <ul className="space-y-0.5">
                                   {pagedFeeds.map((feed) => {
                                     const unread = feedUnreadCounts[feed.url] ?? 0;
                                     const total = feedTotalCounts[feed.url] ?? 0;
@@ -1042,7 +1029,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                       >
                                         <button
                                           onClick={() => handleFeedClick(feed.url)}
-                                          className="flex-1 flex items-center gap-2 pl-3 py-2 min-w-0 text-left"
+                                          className={`flex-1 cursor-pointer flex items-center gap-2 ${rowLeadingPaddingClass} py-2 min-w-0 text-left`}
                                         >
                                           {feed.imageUrl ? (
                                             <img
@@ -1058,7 +1045,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                           <span className="flex-1 truncate text-xs">{feed.title}</span>
                                         </button>
 
-                                        <div className="shrink-0 flex items-center pr-2">
+                                        <div
+                                          onClick={() => handleFeedClick(feed.url)}
+                                          className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
+                                        >
                                           {total > 0 && (
                                             <span className={`${menuOpen ? "hidden" : "flex group-hover/feed:hidden"} items-center gap-0.5 text-[10px] tabular-nums`}>
                                               <span className={unread > 0 ? "font-medium text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"}>
@@ -1098,10 +1088,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                       </li>
                                     );
                                   })}
-                                </ul>
+                                  </ul>
+                                </div>
 
                                 {visibleFeedList.length > FEEDS_PAGE_SIZE && (
-                                  <div className="mt-2 flex items-center justify-between gap-2 px-1">
+                                  <div className="flex w-full items-center justify-between gap-2 px-1">
                                     <button
                                       type="button"
                                       onClick={() => handleFeedPageChange("prev")}
@@ -1129,7 +1120,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                                 )}
                               </>
                             ) : (
-                              <p className="px-3 py-2 text-[11px] text-[color:var(--theme-text-muted)]">
+                              <p className={`${rowPaddingClass} py-2 text-[11px] text-[color:var(--theme-text-muted)]`}>
                                 No feeds match &ldquo;{searchQuery.trim()}&rdquo;.
                               </p>
                             )}
@@ -1153,7 +1144,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                       onClick={() => handleSourceClick(source)}
                       data-testid={`source-row-${sourceKey(source)}`}
                       className={`
-                        flex-1 flex items-center gap-3 pl-3 py-1.5 min-w-0
+                        flex-1 cursor-pointer flex items-center gap-3 ${rowLeadingPaddingClass} py-1.5 min-w-0
                         text-left text-sm transition-all
                         ${
                           isTopSourceActive(source)
@@ -1165,7 +1156,10 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                       <span className="w-5 flex items-center justify-center">{source.icon}</span>
                       <span className="min-w-0 flex-1 truncate">{source.label}</span>
                     </button>
-                    <div className="shrink-0 flex items-center pr-2">
+                    <div
+                      onClick={() => handleSourceClick(source)}
+                      className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
+                    >
                       {SourceIndicator ? (
                         <span
                           data-testid={`source-indicator-slot-${sourceKey(source)}`}
@@ -1272,7 +1266,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           <div className="mt-auto shrink-0">
             <button
               onClick={openSettings}
-              className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-left text-sm text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all"
+              className={`w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-1.5 rounded-lg text-left text-sm text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}
             >
               <span className="w-5 text-center">
                 <svg className="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1283,14 +1277,64 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               <span>Settings</span>
             </button>
           </div>
-        </nav>
+    </nav>
+  );
 
-        {/* Resize handle — desktop only */}
+  return (
+    <>
+      {open && (
         <div
-          data-testid="app-sidebar-resize-handle"
-          className="hidden md:block absolute top-0 right-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.3)] active:bg-[rgb(var(--theme-accent-secondary-rgb)/0.5)]"
-          onMouseDown={handleDragStart}
+          className="fixed inset-0 z-40 bg-black/60 md:hidden"
+          onClick={onClose}
         />
+      )}
+
+      <div
+        data-testid="app-sidebar-shell"
+        className="hidden md:flex flex-none overflow-hidden"
+        style={{
+          width: desktopExpanded ? width + 12 : 0,
+          opacity: desktopExpanded ? 1 : 0,
+          paddingTop: desktopExpanded ? "var(--feed-card-gap, 8px)" : 0,
+          transition: dragging.current ? "none" : "width 220ms ease, opacity 180ms ease",
+        }}
+      >
+        <div className="flex h-full w-full items-stretch">
+          <aside
+            data-testid="app-sidebar"
+            className="theme-floating-panel relative z-10 flex h-full min-h-0 flex-col overflow-hidden"
+            style={{ width: `${width}px` }}
+          >
+            {sidebarBody}
+          </aside>
+          <div
+            data-testid="app-sidebar-resize-handle"
+            className="theme-resize-gap-handle h-full w-4 shrink-0"
+            onMouseDown={handleDragStart}
+          />
+        </div>
+      </div>
+
+      <aside
+        data-testid="app-sidebar-mobile"
+        className={`
+          fixed inset-y-0 left-0 z-50 flex min-h-0 h-full flex-col overflow-hidden bg-[color-mix(in_oklab,var(--theme-bg-root)_88%,transparent)]
+          transform transition-transform duration-200 ease-in-out md:hidden
+          ${open ? "translate-x-0" : "-translate-x-full"}
+        `}
+        style={{ width: `${width}px` }}
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-[var(--theme-border-subtle)] p-4 pt-[calc(env(safe-area-inset-top)+1rem)]">
+          {!headerDragRegion && (
+            <span className="text-lg font-bold gradient-text font-logo">FREED</span>
+          )}
+          <button onClick={onClose} className="ml-auto rounded-lg p-2 transition-colors hover:bg-[var(--theme-bg-muted)]">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        {sidebarBody}
       </aside>
 
       <SettingsDialog open={showSettings} onClose={closeSettings} />

@@ -4,6 +4,7 @@ import { FeedItem } from "./FeedItem.js";
 import { FeedItemSkeleton } from "./FeedItemSkeleton.js";
 import {
   collectUnreadIdsFromRows as collectUnreadIdsFromReadRows,
+  getListViewportMetrics,
   getNewlyPassedRowEnd,
   getRemainingUnreadIds,
   hasReachedListBottom,
@@ -15,11 +16,12 @@ import { useIsMobile } from "../../hooks/useIsMobile.js";
 
 // ── Story grouping ────────────────────────────────────────────────────────────
 
-const TILE_GAP = 8;   // gap-2 = 8px
+const FEED_CARD_GAP = 8;
+const TILE_GAP = FEED_CARD_GAP;
 const MIN_TILE_W = 80; // minimum tile width before a column wraps
 const MAX_TILE_H = 288;
-// Tailwind max-w-2xl = 42rem = 672px. Story rows are wrapped in
-// "px-4 max-w-2xl mx-auto", so the usable tile area is at most 640px
+// Tailwind max-w-2xl = 42rem = 672px. Story rows are wrapped in a centered
+// container with 10px side gutters, so the usable tile area is at most 652px
 // regardless of how wide the scroll container actually is.
 const MAX_CONTENT_W = 672;
 
@@ -126,6 +128,7 @@ interface FeedItemRowProps {
   index: number;
   focused: boolean;
   showEngagement: boolean;
+  showReadInGrayscale: boolean;
   onItemClick?: (item: FeedItemType) => void;
   onFocusChange?: (index: number) => void;
   onItemSave?: (item: FeedItemType) => void;
@@ -139,6 +142,7 @@ const FeedItemRow = memo(function FeedItemRow({
   index,
   focused,
   showEngagement,
+  showReadInGrayscale,
   onItemClick,
   onFocusChange,
   onItemSave,
@@ -167,6 +171,7 @@ const FeedItemRow = memo(function FeedItemRow({
       onClick={handleClick}
       focused={focused}
       showEngagement={showEngagement}
+      showReadInGrayscale={showReadInGrayscale}
       onMouseEnter={handleMouseEnter}
       onSave={onItemSave ? handleSave : undefined}
       onArchive={onItemArchive ? handleArchive : undefined}
@@ -184,6 +189,7 @@ interface StoryGroupRowProps {
   /** Explicit tile height in pixels (3:4 portrait ratio, capped at 288px). */
   tileHeight: number;
   showEngagement: boolean;
+  showReadInGrayscale: boolean;
   onItemClick?: (item: FeedItemType) => void;
   onItemSave?: (item: FeedItemType) => void;
   onItemArchive?: (item: FeedItemType) => void;
@@ -194,14 +200,15 @@ const StoryGroupRow = memo(function StoryGroupRow({
   numCols,
   tileHeight,
   showEngagement,
+  showReadInGrayscale,
   onItemClick,
   onItemSave,
   onItemArchive,
 }: StoryGroupRowProps) {
   return (
     <div
-      className="grid gap-2"
-      style={{ gridTemplateColumns: `repeat(${numCols}, 1fr)` }}
+      className="grid"
+      style={{ gap: `${TILE_GAP}px`, gridTemplateColumns: `repeat(${numCols}, 1fr)` }}
     >
       {storyItems.map((item) => (
         <FeedItem
@@ -210,6 +217,7 @@ const StoryGroupRow = memo(function StoryGroupRow({
           onClick={() => onItemClick?.(item)}
           focused={false}
           showEngagement={showEngagement}
+          showReadInGrayscale={showReadInGrayscale}
           storyHeight={tileHeight}
           onSave={onItemSave ? (e) => { e.stopPropagation(); onItemSave(item); } : undefined}
           onArchive={onItemArchive ? (e) => { e.stopPropagation(); onItemArchive(item); } : undefined}
@@ -264,6 +272,9 @@ export function FeedList({
   const markReadOnScroll = useAppStore(
     (s) => s.preferences.display.reading.markReadOnScroll,
   );
+  const showReadInGrayscale = useAppStore(
+    (s) => s.preferences.display.reading.showReadInGrayscale,
+  );
 
   // Track scroll container width so story group rows are sized correctly.
   // 600 is a safe non-zero starting guess; the ResizeObserver corrects it
@@ -290,9 +301,9 @@ export function FeedList({
       // reconnected at most a handful of times.
 
   // Max grid columns based on current container width (capped at 3).
-  // Inner width = containerWidth minus px-4 on each side (32px total).
+  // Inner width = containerWidth minus the feed-card gutter on each side.
   const maxCols = useMemo(() => {
-    const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - 32, 0);
+    const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - FEED_CARD_GAP * 2, 0);
     return Math.max(1, Math.min(3, Math.floor((inner + TILE_GAP) / (MIN_TILE_W + TILE_GAP))));
   }, [containerWidth]);
 
@@ -319,11 +330,11 @@ export function FeedList({
     (index: number) => {
       const row = rows[index];
       if (!row || row.type !== "stories") return 220;
-      const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - 32, 0);
+      const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - FEED_CARD_GAP * 2, 0);
       const nc = row.numCols;
       const tileWidth = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
       const tileHeight = Math.min(tileWidth * storyHeightRatio(nc), MAX_TILE_H);
-      return Math.round(tileHeight + 24); // +pb-6; story rows are always 1 CSS row tall
+      return Math.round(tileHeight + FEED_CARD_GAP + (index === 0 ? FEED_CARD_GAP : 0));
     },
     [rows, containerWidth],
   );
@@ -453,13 +464,20 @@ export function FeedList({
       : elementVirtualizer.getVirtualItems();
     if (vItems.length === 0) return;
 
-    const scrollTop = isMobile
+    const rawScrollTop = isMobile
       ? window.scrollY
       : (parentRef.current?.scrollTop ?? 0);
     const vpHeight = isMobile
       ? window.innerHeight
       : (parentRef.current?.clientHeight ?? 0);
-    const vpBottom = scrollTop + vpHeight;
+    const scrollMargin = isMobile
+      ? (windowVirtualizer.options.scrollMargin ?? 0)
+      : 0;
+    const { scrollTop, viewportBottom: vpBottom } = getListViewportMetrics(
+      rawScrollTop,
+      vpHeight,
+      scrollMargin,
+    );
     const totalSize = isMobile
       ? windowVirtualizer.getTotalSize()
       : elementVirtualizer.getTotalSize();
@@ -498,9 +516,18 @@ export function FeedList({
   if (isLoading && items.length === 0) {
     return (
       <div className="flex-1 min-h-0 overflow-auto overscroll-none minimal-scroll">
-        <div className="px-4 pt-4 space-y-4 max-w-2xl mx-auto">
+        <div
+          className="max-w-2xl mx-auto"
+          style={{
+            paddingInline: `${FEED_CARD_GAP}px`,
+            paddingTop: `${FEED_CARD_GAP}px`,
+            paddingBottom: `${FEED_CARD_GAP}px`,
+          }}
+        >
           {Array.from({ length: SKELETON_COUNT }, (_, i) => (
-            <FeedItemSkeleton key={i} />
+            <div key={i} style={{ marginTop: i === 0 ? 0 : `${FEED_CARD_GAP}px` }}>
+              <FeedItemSkeleton />
+            </div>
           ))}
         </div>
       </div>
@@ -601,9 +628,16 @@ export function FeedList({
                   transform: `translateY(${virtualItem.start - windowVirtualizer.options.scrollMargin}px)`,
                 }}
               >
-                <div className={`px-3 pb-3 max-w-2xl mx-auto${virtualItem.index === 0 ? " pt-3" : ""}`}>
+                <div
+                  className="max-w-2xl mx-auto"
+                  style={{
+                    paddingInline: `${FEED_CARD_GAP}px`,
+                    paddingBottom: `${FEED_CARD_GAP}px`,
+                    paddingTop: virtualItem.index === 0 ? `${FEED_CARD_GAP}px` : undefined,
+                  }}
+                >
                   {row.type === "stories" ? (() => {
-                    const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - 32, 0);
+                    const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - FEED_CARD_GAP * 2, 0);
                     const nc = row.numCols;
                     const tw = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
                     const th = Math.round(Math.min(tw * storyHeightRatio(nc), MAX_TILE_H));
@@ -614,6 +648,7 @@ export function FeedList({
                         numCols={nc}
                         tileHeight={th}
                         showEngagement={showEngagementCounts}
+                        showReadInGrayscale={showReadInGrayscale}
                         onItemClick={onItemClick}
                         onItemSave={onItemSave}
                         onItemArchive={onItemArchive}
@@ -625,6 +660,7 @@ export function FeedList({
                       index={row.itemIndex}
                       focused={itemIndexToRowIndex.get(focusedIndex) === virtualItem.index}
                       showEngagement={showEngagementCounts}
+                      showReadInGrayscale={showReadInGrayscale}
                       onItemClick={onItemClick}
                       onFocusChange={onFocusChange}
                       onItemSave={onItemSave}
@@ -669,9 +705,16 @@ export function FeedList({
                 transform: `translateY(${virtualItem.start}px)`,
               }}
             >
-              <div className={`px-4 max-w-2xl mx-auto${virtualItem.index === 0 ? " pt-4" : ""} ${row.type === "stories" ? "pb-6" : "pb-4"}`}>
+              <div
+                className="max-w-2xl mx-auto"
+                style={{
+                  paddingInline: `${FEED_CARD_GAP}px`,
+                  paddingBottom: `${FEED_CARD_GAP}px`,
+                  paddingTop: virtualItem.index === 0 ? `${FEED_CARD_GAP}px` : undefined,
+                }}
+              >
                 {row.type === "stories" ? (() => {
-                  const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - 32, 0);
+                  const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - FEED_CARD_GAP * 2, 0);
                   const nc = row.numCols;
                   const tw = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
                   const th = Math.round(Math.min(tw * storyHeightRatio(nc), MAX_TILE_H));
@@ -682,6 +725,7 @@ export function FeedList({
                       numCols={nc}
                       tileHeight={th}
                       showEngagement={showEngagementCounts}
+                      showReadInGrayscale={showReadInGrayscale}
                       onItemClick={onItemClick}
                       onItemSave={onItemSave}
                       onItemArchive={onItemArchive}
@@ -693,6 +737,7 @@ export function FeedList({
                     index={row.itemIndex}
                     focused={itemIndexToRowIndex.get(focusedIndex) === virtualItem.index}
                     showEngagement={showEngagementCounts}
+                    showReadInGrayscale={showReadInGrayscale}
                     onItemClick={onItemClick}
                     onFocusChange={onFocusChange}
                     onItemSave={onItemSave}

@@ -7,6 +7,11 @@ export interface VirtualRowRange {
   end: number;
 }
 
+export interface ListViewportMetrics {
+  scrollTop: number;
+  viewportBottom: number;
+}
+
 export function collectUnreadIdsFromRows<TItem extends { globalId: string; userState: { readAt?: number } }>(
   rows: Array<ReadTrackRow<TItem>>,
   startIndex: number,
@@ -42,6 +47,18 @@ export function getRemainingUnreadIds<TItem extends { globalId: string; userStat
   return items
     .filter((item) => !item.userState.readAt)
     .map((item) => item.globalId);
+}
+
+export function getListViewportMetrics(
+  rawScrollTop: number,
+  viewportHeight: number,
+  scrollMargin: number = 0,
+): ListViewportMetrics {
+  const scrollTop = Math.max(0, rawScrollTop - scrollMargin);
+  return {
+    scrollTop,
+    viewportBottom: scrollTop + viewportHeight,
+  };
 }
 
 export function hasReachedListBottom(

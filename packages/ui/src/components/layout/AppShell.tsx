@@ -28,6 +28,7 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [desktopSidebarExpanded, setDesktopSidebarExpanded] = useState(true);
   const debugVisible = useDebugStore((s) => s.visible);
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);
@@ -47,9 +48,14 @@ export function AppShell({ children }: AppShellProps) {
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const [committedDebugWidth, setCommittedDebugWidth] = useState(persistedDebugWidth);
   const dragging = useRef(false);
+  const pendingPersistedDebugWidth = useRef<number | null>(null);
 
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
+    if (pendingPersistedDebugWidth.current !== null) {
+      if (persistedDebugWidth !== pendingPersistedDebugWidth.current) return;
+      pendingPersistedDebugWidth.current = null;
+    }
     setCommittedDebugWidth(persistedDebugWidth);
   }, [dragWidth, persistedDebugWidth]);
 
@@ -76,9 +82,14 @@ export function AppShell({ children }: AppShellProps) {
       const onUp = (ev: MouseEvent) => {
         dragging.current = false;
         const final = Math.min(MAX_DEBUG_WIDTH, Math.max(MIN_DEBUG_WIDTH, startW - (ev.clientX - startX)));
-        setDragWidth(null);
+        pendingPersistedDebugWidth.current = final;
         setCommittedDebugWidth(final);
-        void updatePreferences({ display: { debugPanelWidth: final } } as Parameters<typeof updatePreferences>[0]);
+        setDragWidth(null);
+        void updatePreferences({ display: { debugPanelWidth: final } } as Parameters<typeof updatePreferences>[0]).catch(() => {
+          if (pendingPersistedDebugWidth.current === final) {
+            pendingPersistedDebugWidth.current = null;
+          }
+        });
         document.body.style.cursor = previousCursor;
         document.body.style.userSelect = previousUserSelect;
         document.removeEventListener("mousemove", onMove);
@@ -165,63 +176,69 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <ContactSyncContext.Provider value={{ ...contactSync, openReview }}>
-    {/* On mobile (<md), the layout flows naturally in the document so Safari can
-        collapse its address bar when the feed scrolls. min-h-0 and overflow-hidden
-        are desktop-only; they lock the layout to 100dvh for in-element scrolling. */}
-    <div className="app-theme-shell relative flex flex-1 flex-col md:min-h-0">
-      <BackgroundAtmosphere />
-      <Header onMenuClick={() => setSidebarOpen(true)} />
-
-      <div className="relative z-10 flex flex-1 md:min-h-0 md:overflow-hidden">
-        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-        <main className="flex-1 md:min-h-0 md:overflow-hidden">
-          {activeView === "friends"
-            ? <FriendsView />
-            : activeView === "map"
-              ? <MapView />
-              : children}
-        </main>
-
-        {/* Desktop push drawer - always mounted so width can animate smoothly.
-            The DebugPanel's own border-l is clipped by overflow-hidden when width is 0.
-            Width is user-draggable; animated only when toggling open/closed. */}
-        <div
-          data-testid="debug-panel-drawer"
-          className="hidden sm:flex flex-none overflow-hidden relative"
-          style={{
-            width: debugVisible ? debugWidth : 0,
-            transition: dragging.current ? "none" : "width 300ms ease-in-out",
-          }}
-        >
-          {/* Left-edge resize handle - drag left to widen, drag right to narrow */}
-          {debugVisible && (
-            <div
-              data-testid="debug-panel-resize-handle"
-              className="absolute left-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.24)] active:bg-[rgb(var(--theme-accent-secondary-rgb)/0.4)]"
-              onMouseDown={handleDebugDragStart}
-            />
-          )}
-          <DebugPanel variant="drawer" />
-        </div>
-      </div>
-
-      {/* Mobile overlay - only on small screens, conditionally rendered */}
-      {debugVisible && (
-        <div className="sm:hidden">
-          <DebugPanel variant="overlay" />
-        </div>
-      )}
-
-      {showContactReview && (
-        <ContactSyncModal
-          onClose={() => setShowContactReview(false)}
-          syncState={contactSync.syncState}
-          onLink={handleLinkContact}
-          onSkip={contactSync.dismissMatch}
-          onCreateFriend={handleCreateFriend}
+      {/* On mobile (<md), the layout flows naturally in the document so Safari can
+          collapse its address bar when the feed scrolls. min-h-0 and overflow-hidden
+          are desktop-only; they lock the layout to 100dvh for in-element scrolling. */}
+      <div className="app-theme-shell relative flex flex-1 flex-col md:min-h-0">
+        <BackgroundAtmosphere />
+        <Header
+          onMenuClick={() => setSidebarOpen(true)}
+          sidebarExpanded={desktopSidebarExpanded}
+          onSidebarToggle={() => setDesktopSidebarExpanded((value) => !value)}
         />
-      )}
-    </div>
+
+        <div className="relative z-10 flex flex-1 px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)] md:min-h-0 md:overflow-hidden">
+          <Sidebar
+            open={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
+            desktopExpanded={desktopSidebarExpanded}
+          />
+          <main className="min-w-0 flex-1 md:min-h-0 md:overflow-hidden">
+            {activeView === "friends"
+              ? <FriendsView />
+              : activeView === "map"
+                ? <MapView />
+                : children}
+          </main>
+
+          <div
+            data-testid="debug-panel-drawer"
+            className="relative hidden sm:flex flex-none overflow-hidden"
+            style={{
+              width: debugVisible ? debugWidth + 12 : 0,
+              opacity: debugVisible ? 1 : 0,
+              transition: dragging.current ? "none" : "width 300ms ease-in-out, opacity 180ms ease-in-out",
+            }}
+          >
+            <div className="relative flex h-full w-full items-stretch">
+              {debugVisible && (
+                <div
+                  data-testid="debug-panel-resize-handle"
+                  className="theme-resize-gap-handle w-3 shrink-0 self-end"
+                  style={{ height: "calc(100% - var(--feed-card-gap, 8px))" }}
+                  onMouseDown={handleDebugDragStart}
+                />
+              )}
+              <DebugPanel variant="drawer" />
+            </div>
+          </div>
+        </div>
+        {debugVisible && (
+          <div className="sm:hidden">
+            <DebugPanel variant="overlay" />
+          </div>
+        )}
+
+        {showContactReview && (
+          <ContactSyncModal
+            onClose={() => setShowContactReview(false)}
+            syncState={contactSync.syncState}
+            onLink={handleLinkContact}
+            onSkip={contactSync.dismissMatch}
+            onCreateFriend={handleCreateFriend}
+          />
+        )}
+      </div>
     </ContactSyncContext.Provider>
   );
 }

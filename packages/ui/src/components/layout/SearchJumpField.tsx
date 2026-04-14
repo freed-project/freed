@@ -6,6 +6,7 @@ import {
   BASE_SECTION_METAS,
   UPDATES_SECTION_META,
   DANGER_SECTION_META,
+  GOOGLE_CONTACTS_SECTION_META,
   X_SECTION_META,
   FB_SECTION_META,
   IG_SECTION_META,
@@ -35,7 +36,11 @@ function buildSettingsActions(
   }));
 }
 
-export function SearchJumpField() {
+export function SearchJumpField({
+  compactSidebar = false,
+}: {
+  compactSidebar?: boolean;
+}) {
   const {
     checkForUpdates,
     factoryReset,
@@ -43,6 +48,7 @@ export function SearchJumpField() {
     FacebookSettingsContent,
     InstagramSettingsContent,
     LinkedInSettingsContent,
+    GoogleContactsSettingsContent,
   } = usePlatform();
   const openSettingsTo = useSettingsStore((s) => s.openTo);
   const searchQuery = useAppStore((s) => s.searchQuery);
@@ -70,18 +76,29 @@ export function SearchJumpField() {
   }, [searchQuery]);
 
   const allCommandActions = useMemo((): CommandAction[] => {
+    const sectionById = Object.fromEntries(BASE_SECTION_METAS.map((section) => [section.id, section])) as Record<
+      "appearance" | "legal" | "support" | "feeds" | "saved" | "sync",
+      SectionMeta
+    >;
     const sections: SectionMeta[] = [
-      ...BASE_SECTION_METAS,
+      sectionById.appearance,
+      sectionById.sync,
+      ...(GoogleContactsSettingsContent ? [GOOGLE_CONTACTS_SECTION_META] : []),
+      sectionById.saved,
       ...(XSettingsContent ? [X_SECTION_META] : []),
       ...(FacebookSettingsContent ? [FB_SECTION_META] : []),
       ...(InstagramSettingsContent ? [IG_SECTION_META] : []),
       ...(LinkedInSettingsContent ? [LI_SECTION_META] : []),
+      sectionById.feeds,
       ...(checkForUpdates ? [UPDATES_SECTION_META] : []),
+      sectionById.legal,
+      sectionById.support,
       ...(factoryReset ? [DANGER_SECTION_META] : []),
     ];
     return buildSettingsActions(sections, openSettingsTo);
   }, [
     FacebookSettingsContent,
+    GoogleContactsSettingsContent,
     InstagramSettingsContent,
     LinkedInSettingsContent,
     XSettingsContent,
@@ -161,6 +178,7 @@ export function SearchJumpField() {
         aria-label="Search or run a command"
         aria-expanded={showPalette}
         aria-haspopup="listbox"
+        inputClassName={compactSidebar ? "pl-7 pr-6" : undefined}
       />
 
       {showPalette && (
