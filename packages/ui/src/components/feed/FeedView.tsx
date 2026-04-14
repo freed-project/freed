@@ -9,6 +9,7 @@ import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import type { FeedItem } from "@freed/shared";
 import { getFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
+import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 
 // ─── Compact sidebar panel for dual-column mode ────────────────────────────
 
@@ -23,14 +24,6 @@ const COMPACT_CARD_X_PAD = 0;
 // Wrapper padding and row spacing match the nav-button radius token at 10px.
 const CARD_H_PAD = COMPACT_CARD_X_PAD * 2;
 const CARD_V_GAP = COMPACT_CARD_GAP;
-
-type ViewTransitionLike = {
-  finished: Promise<void>;
-};
-
-type ViewTransitionDocument = Document & {
-  startViewTransition?: (update: () => void) => ViewTransitionLike;
-};
 
 interface CompactFeedPanelProps {
   items: FeedItem[];
@@ -310,34 +303,6 @@ export function FeedView() {
   const isMobile = useIsMobile();
   const showInlineReader = !!selectedItemId && !isMobile;
   const showDualColumn = dualColumnMode && showInlineReader;
-
-  const runFeedLayoutTransition = useCallback((update: () => void) => {
-    if (typeof window === "undefined" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      update();
-      return;
-    }
-
-    const doc = document as ViewTransitionDocument;
-    if (!doc.startViewTransition) {
-      update();
-      return;
-    }
-
-    document.documentElement.classList.add("feed-layout-transition");
-
-    try {
-      const transition = doc.startViewTransition(() => {
-        update();
-      });
-
-      void transition.finished.finally(() => {
-        document.documentElement.classList.remove("feed-layout-transition");
-      });
-    } catch {
-      document.documentElement.classList.remove("feed-layout-transition");
-      update();
-    }
-  }, []);
 
   // Store only the ID so the rendered item stays in sync with the store.
   // Holding the full FeedItem in state would freeze userState (saved, archived,
