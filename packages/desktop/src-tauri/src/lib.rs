@@ -25,6 +25,12 @@ use tokio_tungstenite::{
 };
 
 #[cfg(target_os = "macos")]
+use objc2::rc::Retained;
+#[cfg(target_os = "macos")]
+use objc2_foundation::{ns_string, MainThreadMarker, NSObjectNSKeyValueCoding, NSString};
+#[cfg(target_os = "macos")]
+use objc2_web_kit::WKWebViewConfiguration;
+#[cfg(target_os = "macos")]
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
 const DEFAULT_SYNC_RELAY_PORT: u16 = 8765;
@@ -3051,6 +3057,47 @@ async fn start_sync_relay(state: RelayState, app: tauri::AppHandle) {
 // App entry point
 // ---------------------------------------------------------------------------
 
+#[cfg(target_os = "macos")]
+fn main_window_webview_configuration() -> Retained<WKWebViewConfiguration> {
+    let mtm = MainThreadMarker::new()
+        .expect("WKWebView configuration must be created on the main thread");
+    let config = unsafe { WKWebViewConfiguration::new(mtm) };
+    let display_name = NSString::from_str("Freed");
+
+    // Label the WebKit content process as "Freed" in Activity Monitor instead
+    // of leaving the default custom protocol URL visible.
+    unsafe {
+        config.setValue_forKey(
+            Some(display_name.as_ref()),
+            ns_string!("processDisplayName"),
+        );
+    }
+
+    config
+}
+
+fn create_main_window(app: &tauri::App) -> Result<tauri::WebviewWindow, tauri::Error> {
+    if let Some(window) = app.get_webview_window("main") {
+        return Ok(window);
+    }
+
+    let window_config = app
+        .config()
+        .app
+        .windows
+        .iter()
+        .find(|config| config.label == "main")
+        .expect("missing main window config")
+        .clone();
+
+    let builder = tauri::WebviewWindowBuilder::from_config(app, &window_config)?;
+
+    #[cfg(target_os = "macos")]
+    let builder = builder.with_webview_configuration(main_window_webview_configuration());
+
+    builder.build()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // When built with --features perf, initialise a JSON tracing subscriber so
@@ -3107,7 +3154,7 @@ pub fn run() {
         .manage(relay_state)
         .manage(CaptureState::new())
         .setup(move |app| {
-            let window = app.get_webview_window("main").unwrap();
+            let window = create_main_window(app)?;
 
             #[cfg(target_os = "macos")]
             apply_vibrancy(
