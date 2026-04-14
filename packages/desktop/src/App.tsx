@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useCallback, useRef, useState, Profiler, type ProfilerOnRenderCallback } from "react";
+import type { ReleaseChannel } from "@freed/shared";
 import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
 import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
@@ -68,6 +69,11 @@ import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
 import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
 import { startMemoryMonitor, stopMemoryMonitor } from "./lib/memory-monitor";
+import {
+  bootstrapDesktopReleaseChannel,
+  getDesktopUpdateTarget,
+  persistDesktopReleaseChannel,
+} from "./lib/release-channel";
 
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
@@ -99,6 +105,9 @@ function App() {
   const error = useAppStore((state) => state.error);
   const [legalResolved, setLegalResolved] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
+  const [releaseChannel, setReleaseChannelState] = useState<ReleaseChannel>(() =>
+    bootstrapDesktopReleaseChannel(),
+  );
   const fatalError = useFatalRuntimeError();
 
   useDesktopNavigationHistory(legalAccepted);
@@ -233,7 +242,8 @@ function App() {
 
     async function poll() {
       try {
-        const update = await check();
+        const target = await getDesktopUpdateTarget(releaseChannel);
+        const update = await check({ target });
         if (update) {
           pendingUpdate.current = update;
           setUpdateState({ phase: "available", update });
@@ -248,20 +258,21 @@ function App() {
       clearTimeout(initial);
       clearInterval(interval);
     };
-  }, [legalAccepted]);
+  }, [legalAccepted, releaseChannel]);
 
   // Manual check triggered from Settings panel.
   const checkForUpdates = useCallback(async (): Promise<string | null> => {
     if (IS_LOCAL_PREVIEW) return null;
 
-    const update = await check();
+    const target = await getDesktopUpdateTarget(releaseChannel);
+    const update = await check({ target });
     if (update) {
       pendingUpdate.current = update;
       setUpdateState({ phase: "available", update });
       return update.version;
     }
     return null;
-  }, []);
+  }, [releaseChannel]);
 
   // Download + install with progress, then relaunch. Used by both the toast
   // and the "Install & Restart" button in Settings via PlatformContext.
@@ -305,6 +316,16 @@ function App() {
 
   const handleRelaunch = useCallback(() => relaunch(), []);
   const handleDismissUpdate = useCallback(() => setUpdateState({ phase: "idle" }), []);
+  const setReleaseChannel = useCallback((channel: ReleaseChannel) => {
+    if (channel === releaseChannel) {
+      return;
+    }
+
+    persistDesktopReleaseChannel(channel);
+    pendingUpdate.current = null;
+    setUpdateState({ phase: "idle" });
+    setReleaseChannelState(channel);
+  }, [releaseChannel]);
 
   const handleFactoryReset = useCallback(async (deleteFromCloud: boolean) => {
     const providers = getActiveProviders();
@@ -407,6 +428,8 @@ function App() {
       GoogleContactsSettingsContent: GoogleContactsSection,
       checkForUpdates: IS_LOCAL_PREVIEW ? undefined : checkForUpdates,
       applyUpdate: IS_LOCAL_PREVIEW ? undefined : applyUpdate,
+      releaseChannel: IS_LOCAL_PREVIEW ? undefined : releaseChannel,
+      setReleaseChannel: IS_LOCAL_PREVIEW ? undefined : setReleaseChannel,
       factoryReset: handleFactoryReset,
       seedSocialConnections,
       activeCloudProviderLabel: () => {
@@ -502,7 +525,7 @@ function App() {
       })(),
       bugReporting: desktopBugReporting,
     }),
-     [checkForUpdates, applyUpdate, connectGoogleContacts, handleFactoryReset, reconnectCloudProvider, retryCloudProvider, seedSocialConnections, updateState],
+     [checkForUpdates, applyUpdate, connectGoogleContacts, handleFactoryReset, reconnectCloudProvider, releaseChannel, retryCloudProvider, seedSocialConnections, setReleaseChannel, updateState],
   );
 
   if (!legalResolved) {

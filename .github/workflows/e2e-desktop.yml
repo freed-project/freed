@@ -2,9 +2,9 @@ name: E2E - Desktop (Playwright)
 
 on:
   push:
-    branches: [main]
+    branches: [dev, main]
   pull_request:
-    branches: [main]
+    branches: [dev, main]
     paths:
       - "packages/desktop/**"
       - "packages/ui/**"

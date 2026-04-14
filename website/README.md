@@ -1,15 +1,15 @@
 # Freed Marketing Site
 
-Marketing website for Freed - Take Back Your Feed.
+Marketing website for Freed.
 
 **Live at:** [freed.wtf](https://freed.wtf)
+**Dev branch site:** `dev.freed.wtf`
 
 ## Tech Stack
 
-- **Framework:** Vite + React + TypeScript
+- **Framework:** Next.js App Router + TypeScript
 - **Styling:** Tailwind CSS v4
 - **Animations:** Framer Motion
-- **Routing:** React Router DOM
 - **Deployment:** Vercel
 
 ## Development
@@ -24,13 +24,16 @@ npm run dev
 # Build for production
 npm run build
 
-# Preview production build
-npm run preview
+# Run production locally
+npm run start
 ```
 
 ## Deployment
 
-The site auto-deploys to Vercel on push to `main` via GitHub integration.
+The site uses a dev-first branch flow:
+
+- `dev` is the default integration branch and deploys to `dev.freed.wtf`
+- `main` is the production promotion branch and deploys to `freed.wtf`
 
 ## Design System
 

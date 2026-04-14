@@ -15,7 +15,7 @@ Large app store distribution is not part of the current strategy. The mobile rea
 **Key architectural decisions:**
 
 - **TypeScript capture via subprocess** — Existing `capture-x`, `capture-rss` packages run via Node/Bun subprocess, not rewritten in Rust
-- **Shared React codebase** — `packages/pwa/` is embedded in WebView AND deployed standalone to app.freed.wtf
+- **Shared React codebase** — `packages/pwa/` is embedded in WebView and deployed standalone to `app.freed.wtf`, with the dev channel on `dev-app.freed.wtf`
 - **X authentication via WebView** — User logs into X inside the app; cookies captured from WebView session
 - **Ranking runs here** — Desktop computes `priority` scores, syncs to PWA via Automerge
 - **Versioned legal gate** — Freed Desktop blocks startup side effects until the current legal bundle is accepted locally on-device
@@ -280,7 +280,8 @@ export async function captureDomFeed(
 - [x] Desktop live UI state now caps preserved article text previews and fetches full preserved text on demand for the active reader item, instead of cloning entire article bodies through every feed-state update
 - [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation
 - [ ] Windows installer is code-signed (requires EV certificate)
-- [ ] Update server runs on a Freed-owned domain (not GitHub Releases)
+- [x] Update server runs on a Freed-owned domain instead of pointing the updater directly at GitHub Releases
+- [x] Desktop settings can switch this install between production and dev release channels
 
 > **Current state:**
 > macOS release builds are signed and notarized in GitHub Actions when the
@@ -328,22 +329,14 @@ export async function captureDomFeed(
 > releases so older builds can be linked directly without turning the page
 > into a mile-long papyrus scroll, and card hover states now key off the
 > existing timeline lane instead of inventing a second internal accent rail.
+> The updater endpoint now lives behind `freed.wtf/api/desktop-updates/{{target}}`,
+> and Freed Desktop can switch locally between production releases from `main`
+> and dev prereleases from `dev` without syncing that preference through the
+> shared document.
 > After the GitHub release is published, the workflow now
 > redeploys `freed.wtf` so the changelog snapshot rebuilds against the newly
 > published release instead of the earlier draft state. See
 > `RELEASE-SECRETS.md` for the full setup checklist.
-
-> **Planned — Independent Update Server (Task 5.26):**
-> The auto-updater currently points at GitHub Releases. If the repo is
-> taken down, transferred, or GitHub has a prolonged outage, every
-> installed copy of Freed loses the ability to update. To ensure project
-> continuity, we need a Freed-owned domain (e.g. `updates.freed.wtf`)
-> serving the Tauri update manifest and release artifacts. The CI/CD
-> pipeline would upload binaries to this endpoint in addition to (or
-> instead of) GitHub Releases, and `tauri.conf.json` would point the
-> updater at the Freed-controlled URL. A static file host behind
-> Cloudflare or a simple S3 bucket is sufficient; no custom server logic
-> required.
 
 ### Mobile
 

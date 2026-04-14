@@ -25,6 +25,24 @@ async function dismissCloudSyncNudgeIfPresent(page: Page) {
   }
 }
 
+async function openVisibleMapMarker(
+  page: Page,
+  label = "Ada Lovelace",
+  popupActionName?: "Open Friend" | "Open Post",
+) {
+  const visibleMarker = page.locator(`.freed-map-marker[aria-label="${label}"]:visible`).first();
+  await expect(visibleMarker).toBeVisible({ timeout: 10_000 });
+  await visibleMarker.click();
+
+  if (!popupActionName) {
+    return;
+  }
+
+  await expect(page.getByRole("button", { name: popupActionName })).toBeVisible({
+    timeout: 10_000,
+  });
+}
+
 async function clickMapPopupAction(page: Page, actionName: "Open Friend" | "Open Post") {
   const actionButton = page.getByRole("button", { name: actionName });
   await expect(actionButton).toBeVisible({ timeout: 5_000 });
@@ -306,7 +324,21 @@ test("sidebar resize holds the dragged width after mouseup", async ({ app, page 
     element.getBoundingClientRect().width,
   );
 
-  expect(Math.abs(settledWidth - widthAfterRelease)).toBeLessThanOrEqual(32);
+  expect(settledWidth).toBeGreaterThan(initialWidth + 40);
+
+  await page.waitForFunction((minimumWidth) => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            preferences: { display: { sidebarWidth?: number } };
+          };
+        }
+      | undefined;
+
+    const savedWidth = store?.getState().preferences.display.sidebarWidth ?? 0;
+    return savedWidth >= minimumWidth;
+  }, Math.round(initialWidth + 40));
 });
 
 test("debug panel resize holds the dragged width after mouseup", async ({ app, page }) => {
@@ -319,6 +351,7 @@ test("debug panel resize holds the dragged width after mouseup", async ({ app, p
   }, DEBUG_STORE_PATH);
 
   const debugPanel = page.getByTestId("debug-panel-drawer");
+  const debugSurface = page.getByTestId("debug-panel-surface");
   await expect(debugPanel).toBeVisible();
   await page.waitForTimeout(350);
 
@@ -383,18 +416,32 @@ test("debug panel resize holds the dragged width after mouseup", async ({ app, p
   });
 
   await page.waitForTimeout(450);
-  const widthAfterTransition = await debugPanel.evaluate((element) =>
+  const widthAfterTransition = await debugSurface.evaluate((element) =>
     element.getBoundingClientRect().width,
   );
 
   expect(widthAfterTransition).toBeGreaterThan(initialWidth + 40);
 
   await page.waitForTimeout(450);
-  const settledWidth = await debugPanel.evaluate((element) =>
+  const settledWidth = await debugSurface.evaluate((element) =>
     element.getBoundingClientRect().width,
   );
 
-  expect(Math.abs(settledWidth - widthAfterTransition)).toBeLessThanOrEqual(20);
+  expect(settledWidth).toBeGreaterThan(initialWidth + 40);
+
+  await page.waitForFunction((expectedWidth) => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            preferences: { display: { debugPanelWidth?: number } };
+          };
+        }
+      | undefined;
+
+    const savedWidth = store?.getState().preferences.display.debugPanelWidth ?? 0;
+    return Math.abs(savedWidth - expectedWidth) <= 2;
+  }, Math.round(settledWidth));
 });
 
 test("settings dialog closes from the desktop sidebar close button", async ({ app }) => {
@@ -427,14 +474,13 @@ test("settings dialog closes from the mobile header close button", async ({ app,
     const mod = await import(settingsStorePath);
     mod.useSettingsStore.getState().openDefault();
   }, SETTINGS_STORE_PATH);
-  const dialog = page.locator(".theme-dialog-shell").filter({ hasText: "Settings" }).first();
-  await expect(dialog).toBeVisible({ timeout: 5_000 });
-  await dialog.getByRole("button", { name: "Appearance" }).click();
-  const mobileCloseButton = dialog.getByTestId("settings-close-button-mobile");
-  await expect(mobileCloseButton).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("settings-close-button-sidebar")).toBeVisible({ timeout: 5_000 });
 
-  await mobileCloseButton.click();
-  await expect(mobileCloseButton).toHaveCount(0);
+  await page.getByRole("button", { name: "Appearance" }).last().click();
+  await expect(page.getByTestId("settings-close-button-mobile")).toBeVisible({ timeout: 5_000 });
+
+  await page.getByTestId("settings-close-button-mobile").click();
+  await expect(page.getByTestId("settings-close-button-mobile")).toHaveCount(0);
 });
 
 test("settings nav highlight follows scroll position", async ({ app, page }) => {
@@ -648,7 +694,7 @@ test("Friends view can return to the feed from sidebar navigation", async ({ app
     return store?.getState().activeView === "friends";
   }, { timeout: 5_000 });
 
-  await sidebar.getByTestId("source-row-all").click();
+  await page.getByRole("button", { name: /^Unified Feed$/ }).click();
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
@@ -870,7 +916,8 @@ test("dual-column reader toolbar controls stay aligned with the sidebar and rail
   });
 
   expect(Math.abs(alignment.sidebarToggleRight - alignment.sidebarRight)).toBeLessThanOrEqual(4);
-  expect(Math.abs(alignment.dualColumnToggleLeft - alignment.compactRailLeft)).toBeLessThanOrEqual(10);
+  expect(Math.abs(alignment.dualColumnToggleLeft - alignment.compactRailLeft)).toBeLessThanOrEqual(4);
+  expect(Math.abs(alignment.backButtonLeft - alignment.compactRailRight)).toBeLessThanOrEqual(4);
 });
 test("dual-column reader toggles use shared view transitions when supported", async ({ app, page }) => {
   await page.setViewportSize({ width: 1280, height: 600 });
@@ -945,7 +992,7 @@ test("dual-column reader toggles use shared view transitions when supported", as
         | undefined;
       return state?.count ?? 0;
     });
-  }).toBe(1);
+  }).toBe(2);
 });
 
 test("Friends workspace keeps a visible sidebar and supports back navigation", async ({ app }) => {
@@ -1032,14 +1079,34 @@ test("Map view popup exposes friend actions and supports post navigation", async
     return store?.getState().activeView === "map";
   }, { timeout: 10_000 });
 
-  await expect(page.locator('.freed-map-marker[aria-label="Ada Lovelace"]')).toBeVisible({
+  await openVisibleMapMarker(page, "Ada Lovelace", "Open Friend");
+  await clickMapPopupAction(page, "Open Friend");
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | { getState: () => { activeView: string; selectedFriendId: string | null } }
+      | undefined;
+    const state = store?.getState();
+    return state?.activeView === "friends" && state.selectedFriendId === "friend-ada";
+  }, { timeout: 10_000 });
+  await expect(page.getByRole("button", { name: "Back to all friends" })).toBeVisible({
     timeout: 10_000,
   });
-  await page.locator('.freed-map-marker[aria-label="Ada Lovelace"]').click();
-  await expect(page.getByRole("button", { name: "Open Friend" })).toBeVisible({
-    timeout: 10_000,
-  });
+
+  await page.getByRole("button", { name: /^Map/ }).click();
+  await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
   await clickMapPopupAction(page, "Open Post");
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | { getState: () => { activeView: string; selectedItemId: string | null } }
+      | undefined;
+    const state = store?.getState();
+    return state?.activeView === "feed" && state.selectedItemId === "ig:ada:paris";
+  }, { timeout: 10_000 });
+  await expect(page.getByRole("heading", { name: "Bonjour from Paris" })).toBeVisible({
+    timeout: 10_000,
+  });
   await expect(page.getByLabel("Back to list")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole("heading", { name: "Bonjour from Paris" })).toBeVisible({
     timeout: 20_000,

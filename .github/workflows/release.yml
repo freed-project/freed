@@ -18,9 +18,13 @@ jobs:
       contents: read
     outputs:
       release_body: ${{ steps.gen.outputs.release_body }}
+      release_channel: ${{ steps.gen.outputs.release_channel }}
+      is_prerelease: ${{ steps.gen.outputs.is_prerelease }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -72,11 +76,39 @@ jobs:
             process.stdout.write(data.releaseBody || '');
           " "$RELEASE_JSON")
 
+          CHANNEL=$(node -e "
+            const fs = require('fs');
+            const data = JSON.parse(fs.readFileSync(process.argv[1], 'utf8'));
+            const channel = data.channel || (String(data.version || '').endsWith('-dev') ? 'dev' : 'production');
+            process.stdout.write(channel);
+          " "$RELEASE_JSON")
+
+          if [[ "$CHANNEL" != "production" && "$CHANNEL" != "dev" ]]; then
+            echo "Unsupported release channel: $CHANNEL" >&2
+            exit 1
+          fi
+
+          if [[ "$CHANNEL" == "production" && "$TAG" == *-dev ]]; then
+            echo "Production release tags cannot end with -dev." >&2
+            exit 1
+          fi
+
+          if [[ "$CHANNEL" == "dev" && "$TAG" != *-dev ]]; then
+            echo "Dev release tags must end with -dev." >&2
+            exit 1
+          fi
+
           # Write to GITHUB_OUTPUT using heredoc to handle multiline
           {
             echo "release_body<<RELEASE_BODY_EOF"
             echo "$BODY"
             echo "RELEASE_BODY_EOF"
+            echo "release_channel=$CHANNEL"
+            if [[ "$CHANNEL" == "dev" ]]; then
+              echo "is_prerelease=true"
+            else
+              echo "is_prerelease=false"
+            fi
           } >> "$GITHUB_OUTPUT"
 
   release:
@@ -106,6 +138,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -230,12 +264,12 @@ jobs:
           releaseName: "Freed v__VERSION__"
           releaseBody: ${{ needs.notes.outputs.release_body }}
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ needs.notes.outputs.is_prerelease == 'true' }}
           args: ${{ matrix.args }}
 
       # Upload a stable-named copy for /releases/latest/download/ links
       - name: Upload stable download alias
-        if: success()
+        if: success() && needs.notes.outputs.release_channel == 'production'
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -289,7 +323,8 @@ jobs:
   # the step exits cleanly without failing the workflow.
   publish-website:
     name: Deploy Website
-    needs: publish
+    needs: [publish, notes]
+    if: needs.notes.outputs.release_channel == 'production'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -330,7 +365,7 @@ jobs:
             echo "Add a VERCEL_TOKEN secret to enable automatic website changelog refresh."
             exit 0
           fi
-          npx vercel deploy website/ --scope aubreyfs-projects -y --prod --token "$VERCEL_TOKEN"
+          ./scripts/vercel-deploy-production.sh website "$VERCEL_TOKEN"
 
   # Deploy the PWA to Vercel after the GitHub release is published so the
   # version shown in the app always matches the shipped desktop release.
@@ -338,7 +373,8 @@ jobs:
   # the step exits cleanly without failing the workflow.
   publish-pwa:
     name: Deploy PWA
-    needs: publish
+    needs: [publish, notes]
+    if: needs.notes.outputs.release_channel == 'production'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -362,4 +398,4 @@ jobs:
             echo "Add a VERCEL_TOKEN secret to enable automated PWA deployment."
             exit 0
           fi
-          npx vercel deploy packages/pwa/ --scope aubreyfs-projects -y --prod --token "$VERCEL_TOKEN"
+          ./scripts/vercel-deploy-production.sh pwa "$VERCEL_TOKEN"

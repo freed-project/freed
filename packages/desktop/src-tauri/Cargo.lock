@@ -1288,7 +1288,7 @@ dependencies = [
 
 [[package]]
 name = "freed-desktop"
-version = "26.4.1202"
+version = "26.4.1300"
 dependencies = [
  "base64 0.22.1",
  "criterion",
@@ -1297,6 +1297,9 @@ dependencies = [
  "local-ip-address",
  "log",
  "mdns-sd",
+ "objc2",
+ "objc2-foundation",
+ "objc2-web-kit",
  "rand 0.8.5",
  "reqwest",
  "rquest",

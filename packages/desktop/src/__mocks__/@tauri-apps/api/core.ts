@@ -67,6 +67,7 @@ const handlers: Record<string, Handler> = {
     relayDocBytes: 0,
     relayClientCount: 0,
   }),
+  get_updater_target: () => "darwin-aarch64",
   reset_pairing_token: () => null,
   get_recent_logs: () => [],
   start_relay: () => null,

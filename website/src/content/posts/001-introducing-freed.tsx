@@ -95,7 +95,7 @@ export default definePost(
       </li>
       <li>
         <strong>
-          <a href="https://github.com/freed-project/freed/blob/main/CONTRIBUTING.md">
+          <a href="https://github.com/freed-project/freed/blob/dev/CONTRIBUTING.md">
             Contribute
           </a>
           <span className="mx-2">🛠️</span>

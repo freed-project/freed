@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
-import type { SyncProviderSectionProps } from "@freed/ui/context";
+import { getWebsiteHostForChannel } from "@freed/shared";
+import { usePlatform, type SyncProviderSectionProps } from "@freed/ui/context";
 import { useAppStore } from "../lib/store";
 
 type SocialPlatform = "x" | "facebook" | "instagram" | "linkedin";
@@ -82,7 +83,9 @@ function PwaSocialProviderSettings({
 }: {
   platform: SocialPlatform;
 } & SyncProviderSectionProps) {
+  const { releaseChannel } = usePlatform();
   const content = PROVIDER_CONTENT[platform];
+  const websiteGetUrl = `https://${getWebsiteHostForChannel(releaseChannel ?? "production")}/get`;
   const itemCount = useAppStore((s) =>
     s.items.reduce((count, item) => count + (item.platform === platform ? 1 : 0), 0),
   );
@@ -106,13 +109,13 @@ function PwaSocialProviderSettings({
             <p className="mx-auto mt-1 max-w-[260px] text-xs leading-relaxed text-[var(--theme-text-soft)]">
               {itemCount.toLocaleString()} items synced
               {formattedLastSync ? <> · last {formattedLastSync}</> : null}
-            </p>
-          </div>
-          <a
-            href="https://freed.wtf/get"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="theme-accent-button rounded-lg px-4 py-2 text-xs transition-colors"
+          </p>
+        </div>
+        <a
+          href={websiteGetUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="theme-accent-button rounded-lg px-4 py-2 text-xs transition-colors"
           >
             Download Freed Desktop
           </a>
@@ -123,13 +126,13 @@ function PwaSocialProviderSettings({
             <p className="text-sm text-[var(--theme-text-secondary)]">{content.emptyLabel}</p>
             <p className="mx-auto mt-1 max-w-[260px] text-xs leading-relaxed text-[var(--theme-text-soft)]">
               {content.emptyBody}
-            </p>
-          </div>
-          <a
-            href="https://freed.wtf/get"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="theme-accent-button rounded-lg px-4 py-2 text-xs transition-colors"
+          </p>
+        </div>
+        <a
+          href={websiteGetUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="theme-accent-button rounded-lg px-4 py-2 text-xs transition-colors"
           >
             Download Freed Desktop
           </a>

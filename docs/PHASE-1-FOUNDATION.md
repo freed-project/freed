@@ -210,16 +210,23 @@ GitHub Actions workflows for continuous integration and deployment.
 - TypeScript type checking
 - ESLint
 - Build verification
-- Runs on all PRs and pushes to main
+- Runs on all PRs and pushes to `dev` and `main`
 
 **Deploy (Vercel):**
 
-Two Vercel projects, both auto-deploy on push to `main` with preview deploys on PRs:
+Two Vercel projects now follow a dev-first branch flow with preview deploys on PRs:
 
 | Project      | Root Directory   | Domain                                          |
 | ------------ | ---------------- | ------------------------------------------------ |
 | `freed-www`  | `website/`       | [freed.wtf](https://freed.wtf)                   |
 | `freed-pwa`  | `packages/pwa/`  | [app.freed.wtf](https://app.freed.wtf)           |
+
+Branch routing:
+
+- `dev` deploys to `dev.freed.wtf`
+- `dev` deploys to `dev-app.freed.wtf`
+- `main` deploys to `freed.wtf`
+- `main` deploys to `app.freed.wtf`
 
 Manual preview deploys for this monorepo now go through `./scripts/vercel-deploy-preview.sh website` and `./scripts/vercel-deploy-preview.sh pwa`. The helper stages a temporary monorepo slice with shared workspace packages before uploading to Vercel, which avoids the broken `npm install` failures caused by raw subdirectory deploys.
 

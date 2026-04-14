@@ -5,7 +5,6 @@ const RSS_TITLE = "Card UI Overhaul RSS Item";
 const FACEBOOK_URL = "https://example.com/facebook/card-ui-overhaul";
 const RSS_URL = "https://example.com/rss/card-ui-overhaul";
 const FACEBOOK_MEDIA_URL = "https://images.example.com/facebook/card-ui-overhaul.jpg";
-const TRASH_PATH = 'path[d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"]';
 
 async function injectCardUiItems(page: import("@playwright/test").Page): Promise<void> {
   await page.evaluate(
@@ -141,7 +140,7 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(facebookCard).toContainText("1,234");
   await expect(facebookCard).toContainText("45");
   await expect(facebookCard).toHaveClass(/grayscale/);
-  await expect(facebookCard.locator(TRASH_PATH).first()).toBeVisible();
+  await expect(facebookCard.locator('button[aria-label="Archive"]').first()).toBeVisible();
   await expect(facebookCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`)).toHaveCount(0);
 
   await facebookCard.hover();
@@ -162,7 +161,10 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(facebookCard).not.toContainText("45");
 
   await facebookCard.click();
+  const reader = app.page.locator("header").filter({ hasText: "Card UI Overhaul" }).first();
   const readerHeading = app.page.locator("article h1").filter({ hasText: FACEBOOK_TITLE }).first();
+  await expect(reader).toBeVisible();
+  await expect(reader.locator('button[aria-label="Archive"]').first()).toBeVisible();
   await expect(readerHeading).toBeVisible();
   await expect(app.page.getByLabel("Archive")).toBeVisible();
 

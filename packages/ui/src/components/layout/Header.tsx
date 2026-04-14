@@ -12,6 +12,7 @@ import {
 } from "../icons.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
   useAppStore,
   usePlatform,
@@ -163,8 +164,14 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
   ]);
 
   const handleCloseReader = useCallback(() => {
+    if (display.reading.dualColumnMode && !isMobile && selectedItemId) {
+      runFeedLayoutTransition(() => {
+        setSelectedItem(null);
+      });
+      return;
+    }
     setSelectedItem(null);
-  }, [setSelectedItem]);
+  }, [display.reading.dualColumnMode, isMobile, selectedItemId, setSelectedItem]);
 
   const handleToggleReaderSaved = useCallback(() => {
     if (!selectedItem) return;

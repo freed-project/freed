@@ -693,19 +693,6 @@ async function handleRequest(
         });
         break;
 
-      case "GET_DOC_BINARY":
-        if (!currentDoc) throw new Error("Document not initialized");
-        if (!currentBinary) {
-          currentBinary = A.save(currentDoc);
-          persistenceState = createPersistenceState(currentBinary);
-        }
-        send({
-          reqId: req.reqId,
-          type: "DOC_BINARY",
-          binary: currentBinary,
-        });
-        break;
-
       case "UPDATE_RELAY_CLIENT_COUNT":
         relayClientCount = req.count;
         ack(req.reqId);

@@ -4,7 +4,7 @@
  * Pure functions only, no side effects, no network calls.
  */
 
-import { friendForAuthor } from "./friends.js";
+import { friendForAuthor } from "./friends";
 import type { FeedItem, Friend } from "./types.js";
 
 // =============================================================================

@@ -1,5 +1,9 @@
 import { test, expect } from "./fixtures/app";
 
+function getDesktopSidebar(page: import("@playwright/test").Page) {
+  return page.getByTestId("app-sidebar");
+}
+
 function getSettingsDialog(page: import("@playwright/test").Page) {
   return page.locator(".fixed.inset-0.z-50").last();
 }
@@ -121,7 +125,7 @@ test("LinkedIn appears in sidebar as an active source", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
 
-  const sidebar = app.page.locator("nav").first();
+  const sidebar = getDesktopSidebar(app.page);
   const liButton = sidebar.getByTestId("source-row-linkedin");
   await expect(liButton).toBeVisible({ timeout: 3_000 });
 });
@@ -146,7 +150,7 @@ test("LinkedIn source button filters the feed to LinkedIn items", async ({
   await app.injectRssItems(1);
   await injectLinkedInItems(app.page, 1);
 
-  const sidebar = app.page.locator("nav").first();
+  const sidebar = getDesktopSidebar(app.page);
   await sidebar.getByTestId("source-row-linkedin").click();
   await app.page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
@@ -170,7 +174,7 @@ test("LinkedIn appears in the source sidebar when authenticated", async ({
   await setLiAuthState(app.page, true);
   await injectLinkedInItems(app.page, 1);
 
-  const sidebar = app.page.getByTestId("app-sidebar");
+  const sidebar = getDesktopSidebar(app.page);
   const linkedInRow = sidebar.getByTestId("source-row-linkedin");
   await expect(linkedInRow).toBeVisible({
     timeout: 3_000,

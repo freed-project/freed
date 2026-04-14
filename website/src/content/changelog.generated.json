@@ -1,5 +1,126 @@
 [
   {
+    "version": "26.4.1300",
+    "tagName": "v26.4.1300",
+    "date": "2026-04-14T05:17:28Z",
+    "deck": "Desktop shell chrome is unified across the app, with theme-native maps, clearer recovery handoffs, and steadier reading surfaces.",
+    "features": [
+      {
+        "text": "Unified desktop shell chrome across the feed, reader, settings, and floating rails"
+      },
+      {
+        "text": "Added theme-native map palettes and improved Scriptorium readability"
+      },
+      {
+        "text": "Expanded empty-state recovery handoffs so sources are easier to reconnect"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Stabilized desktop side panels, reader toolbar alignment, and feed card spacing"
+      },
+      {
+        "text": "Improved keyboard navigation in the reader and kept focused rows in view"
+      },
+      {
+        "text": "Polished settings controls, provider dialogs, and marketing launch surfaces"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1300",
+    "prNumbers": [
+      206,
+      207
+    ],
+    "builds": [
+      "26.4.1300"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.1300",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1300"
+      }
+    ]
+  },
+  {
+    "version": "26.4.1203",
+    "tagName": "v26.4.1203",
+    "date": "2026-04-13T02:44:48Z",
+    "deck": "Unify themes across website and app, refreshed theme system and typography polish, and privacy policy callout border removed",
+    "features": [
+      {
+        "text": "Unify themes across website and app"
+      },
+      {
+        "text": "Refreshed theme system and typography polish"
+      },
+      {
+        "text": "A shared theme system now keeps the website and app visually aligned"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Updater progress bar lag removed"
+      },
+      {
+        "text": "Refine sharing QR layout and footer hover states"
+      },
+      {
+        "text": "Reorder sidebar sources and fix the clipped QR heading"
+      },
+      {
+        "text": "Desktop scrapers now run in sequence, which helps avoid renderer stalls"
+      },
+      {
+        "text": "Paginate the changelog and polish roadmap motion"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1203",
+    "prNumbers": [
+      184,
+      185,
+      186,
+      187,
+      188,
+      190,
+      191,
+      192,
+      193,
+      194,
+      195,
+      196,
+      197,
+      198,
+      199,
+      200,
+      201,
+      202,
+      203,
+      204,
+      205
+    ],
+    "builds": [
+      "26.4.1200",
+      "26.4.1201",
+      "26.4.1203"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.1200",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1200"
+      },
+      {
+        "version": "26.4.1201",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1201"
+      },
+      {
+        "version": "26.4.1203",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1203"
+      }
+    ]
+  },
+  {
     "version": "26.4.1100",
     "tagName": "v26.4.1100",
     "date": "2026-04-12T06:06:18Z",

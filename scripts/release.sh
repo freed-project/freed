@@ -13,8 +13,10 @@ set -euo pipefail
 # Note: major version (YY) must be ≤255 for Windows MSI compatibility.
 #
 # Usage:
-#   ./scripts/release.sh          # auto-compute from today's date
-#   ./scripts/release.sh 26.3.105 # manual override
+#   ./scripts/release.sh                             # auto-compute from today's date
+#   ./scripts/release.sh --channel=dev              # auto-compute a dev release
+#   ./scripts/release.sh 26.3.105                   # manual production override
+#   ./scripts/release.sh 26.3.105-dev --channel=dev # manual dev override
 
 DESKTOP_DIR="packages/desktop"
 TAURI_CONF="${DESKTOP_DIR}/src-tauri/tauri.conf.json"
@@ -22,6 +24,8 @@ CARGO_TOML="${DESKTOP_DIR}/src-tauri/Cargo.toml"
 DESKTOP_PKG="${DESKTOP_DIR}/package.json"
 PWA_PKG="packages/pwa/package.json"
 NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
+CHANNEL=""
+VERSION_INPUT=""
 
 if [[ -z "${NODE_BIN}" && -x "${HOME}/.nvm/versions/node/v22.12.0/bin/node" ]]; then
   NODE_BIN="${HOME}/.nvm/versions/node/v22.12.0/bin/node"
@@ -38,9 +42,48 @@ if ! git diff --quiet HEAD; then
   exit 1
 fi
 
-if [[ -n "${1:-}" ]]; then
-  # Manual override
-  VERSION="${1#v}"
+for arg in "$@"; do
+  case "$arg" in
+    --channel=production|--channel=dev)
+      CHANNEL="${arg#*=}"
+      ;;
+    -h|--help)
+      echo "Usage: ./scripts/release.sh [<version>] [--channel=production|dev]" >&2
+      exit 0
+      ;;
+    *)
+      if [[ -n "$VERSION_INPUT" ]]; then
+        echo "Error: too many positional arguments." >&2
+        echo "Usage: ./scripts/release.sh [<version>] [--channel=production|dev]" >&2
+        exit 1
+      fi
+      VERSION_INPUT="${arg#v}"
+      ;;
+  esac
+done
+
+CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+
+if [[ -z "$CHANNEL" ]]; then
+  if [[ "$CURRENT_BRANCH" == "dev" ]]; then
+    CHANNEL="dev"
+  else
+    CHANNEL="production"
+  fi
+fi
+
+EXPECTED_BRANCH="main"
+if [[ "$CHANNEL" == "dev" ]]; then
+  EXPECTED_BRANCH="dev"
+fi
+
+if [[ "$CURRENT_BRANCH" != "$EXPECTED_BRANCH" ]]; then
+  echo "Error: ${CHANNEL} releases must be prepared from the ${EXPECTED_BRANCH} branch." >&2
+  exit 1
+fi
+
+if [[ -n "$VERSION_INPUT" ]]; then
+  VERSION="${VERSION_INPUT}"
 else
   # Auto-compute from today's date + existing tags
   YY=$(date +%y)    # e.g. 26
@@ -52,7 +95,15 @@ else
   # Find highest existing build number for today
   MAX_BUILD=-1
   for tag in $(git tag -l "v${YY}.${M}.*"); do
-    PATCH="${tag##*.}"
+    TAG_VERSION="${tag#v}"
+    BASE_VERSION="${TAG_VERSION%-dev}"
+    TAG_YY="${BASE_VERSION%%.*}"
+    REMAINDER="${BASE_VERSION#*.}"
+    TAG_MONTH="${REMAINDER%%.*}"
+    if [[ "$TAG_YY" != "$YY" || "$TAG_MONTH" != "$M" ]]; then
+      continue
+    fi
+    PATCH="${BASE_VERSION##*.}"
     if [[ "$PATCH" -ge "$PATCH_BASE" && "$PATCH" -lt "$PATCH_CEIL" ]] 2>/dev/null; then
       BUILD_NUM=$(( PATCH - PATCH_BASE ))
       if [[ "$BUILD_NUM" -gt "$MAX_BUILD" ]]; then
@@ -63,7 +114,10 @@ else
 
   NEXT_BUILD=$(( MAX_BUILD + 1 ))
   VERSION="${YY}.${M}.$(( PATCH_BASE + NEXT_BUILD ))"
-  echo "==> Auto-computed version: ${VERSION} (${YY}.${M}.${D} build ${NEXT_BUILD})"
+  if [[ "$CHANNEL" == "dev" ]]; then
+    VERSION="${VERSION}-dev"
+  fi
+  echo "==> Auto-computed ${CHANNEL} version: ${VERSION} (${YY}.${M}.${D} build ${NEXT_BUILD})"
 fi
 
 # Validate format
@@ -72,9 +126,20 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
   exit 1
 fi
 
+if [[ "$CHANNEL" == "dev" && "$VERSION" != *-dev ]]; then
+  VERSION="${VERSION}-dev"
+fi
+
+if [[ "$CHANNEL" == "production" && "$VERSION" == *-dev ]]; then
+  echo "Error: production releases cannot use a -dev suffix." >&2
+  exit 1
+fi
+
+BASE_VERSION="${VERSION%-dev}"
+
 TAG="v${VERSION}"
-DAY_KEY=$("${NODE_BIN}" -e "const v='${VERSION}'.split('.'); console.log(v.length===3 ? [v[0], v[1], String(Math.floor(Number(v[2]) / 100))].join('.') : '${VERSION}')")
-echo "==> Preparing ${VERSION} (tag: ${TAG})"
+DAY_KEY=$("${NODE_BIN}" -e "const v='${BASE_VERSION}'.split('.'); console.log(v.length===3 ? [v[0], v[1], String(Math.floor(Number(v[2]) / 100))].join('.') : '${BASE_VERSION}')")
+echo "==> Preparing ${CHANNEL} release ${VERSION} (tag: ${TAG})"
 
 # Update tauri.conf.json
 "${NODE_BIN}" -e "
@@ -124,13 +189,13 @@ echo "    ${PWA_PKG}"
 git add "${TAURI_CONF}" "${CARGO_TOML}" "${DESKTOP_PKG}" "${PWA_PKG}" \
   "release-notes/releases/${TAG}.json" \
   "release-notes/releases/${TAG}.md" \
-  "release-notes/daily/${DAY_KEY}.json"
+  "release-notes/daily/${CHANNEL}/${DAY_KEY}.json"
 git commit -m "release: ${TAG}"
 
 echo "==> Committed draft release prep for ${TAG}"
 echo "==> Review and edit:"
 echo "    release-notes/releases/${TAG}.json"
 echo "    release-notes/releases/${TAG}.md"
-echo "    release-notes/daily/${DAY_KEY}.json"
+echo "    release-notes/daily/${CHANNEL}/${DAY_KEY}.json"
 echo "==> After review, set \"approved\": true in the release file, commit the edits, then run:"
 echo "    ./scripts/release-publish.sh ${VERSION}"

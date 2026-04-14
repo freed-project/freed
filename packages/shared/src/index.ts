@@ -32,6 +32,7 @@ export * from "./sample-data";
 
 // Re-export shared theme metadata (browser-safe, no deps)
 export * from "./themes";
+export * from "./release-channel";
 
 // Re-export legal metadata and acceptance helpers (browser-safe, no deps)
 export * from "./legal";

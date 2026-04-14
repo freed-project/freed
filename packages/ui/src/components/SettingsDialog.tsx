@@ -10,6 +10,11 @@
  */
 
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  RELEASE_CHANNEL_LABELS,
+  RELEASE_CHANNELS,
+  type ReleaseChannel,
+} from "@freed/shared";
 import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
 import { createPortal } from "react-dom";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
@@ -253,12 +258,18 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     factoryReset,
     activeCloudProviderLabel,
     seedSocialConnections,
+    releaseChannel,
+    setReleaseChannel,
     updateDownloadProgress,
   } = usePlatform();
   const preferences = useAppStore((s) => s.preferences);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const toggleDebug = useDebugStore((s) => s.toggle);
   const themeBlurRestoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const themeSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingThemeIdRef = useRef<ThemeId | null>(null);
+  const pendingThemeSaveSeqRef = useRef(0);
+  const committedThemeIdRef = useRef(preferences.display.themeId);
   const baseSectionById = Object.fromEntries(BASE_SECTION_METAS.map((section) => [section.id, section])) as Record<
     Exclude<SectionId, "ai" | "updates" | "danger" | "googleContacts" | "x" | "facebook" | "instagram" | "linkedin">,
     SectionMeta
@@ -316,20 +327,15 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [themePreviewTouchActive, setThemePreviewTouchActive] = useState(false);
   const [hasCoarsePointer, setHasCoarsePointer] = useState(false);
 
+  useEffect(() => {
+    committedThemeIdRef.current = preferences.display.themeId;
+  }, [preferences.display.themeId]);
+
   const handleDisplayChange = useCallback(
     (update: Partial<typeof display>) => {
       setDisplay((prev) => {
         const next = { ...prev, ...update };
-        if (update.themeId && update.themeId !== prev.themeId) {
-          applyThemeToDocument(update.themeId);
-          persistTheme(update.themeId);
-        }
         void updatePreferences({ display: next }).catch(() => {
-          if (update.themeId && update.themeId !== prev.themeId) {
-            applyThemeToDocument(prev.themeId);
-            persistTheme(prev.themeId);
-            setDisplay(prev);
-          }
           toast.error("Could not save settings");
         });
         return next;
@@ -364,6 +370,32 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     };
   }, []);
 
+  const flushPendingThemeSelection = useCallback((themeId: ThemeId, saveSeq: number) => {
+    pendingThemeIdRef.current = null;
+    void updatePreferences({ display: { themeId } } as Parameters<typeof updatePreferences>[0]).catch(() => {
+      if (pendingThemeSaveSeqRef.current !== saveSeq) {
+        return;
+      }
+
+      const committedThemeId = committedThemeIdRef.current;
+      applyThemeToDocument(committedThemeId);
+      persistTheme(committedThemeId);
+      setDisplay((prev) => ({ ...prev, themeId: committedThemeId }));
+      toast.error("Could not save settings");
+    });
+  }, [updatePreferences]);
+
+  const flushPendingThemeSelectionNow = useCallback(() => {
+    if (themeSaveTimerRef.current) {
+      clearTimeout(themeSaveTimerRef.current);
+      themeSaveTimerRef.current = null;
+    }
+    const pendingThemeId = pendingThemeIdRef.current;
+    if (!pendingThemeId) {
+      return;
+    }
+    flushPendingThemeSelection(pendingThemeId, pendingThemeSaveSeqRef.current);
+  }, [flushPendingThemeSelection]);
   useEffect(() => {
     if (open) return;
     setThemePreviewHovering(false);
@@ -372,15 +404,17 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       clearTimeout(themeBlurRestoreTimerRef.current);
       themeBlurRestoreTimerRef.current = null;
     }
-  }, [open]);
+    flushPendingThemeSelectionNow();
+  }, [flushPendingThemeSelectionNow, open]);
 
   useEffect(() => {
     return () => {
       if (themeBlurRestoreTimerRef.current) {
         clearTimeout(themeBlurRestoreTimerRef.current);
       }
+      flushPendingThemeSelectionNow();
     };
-  }, []);
+  }, [flushPendingThemeSelectionNow]);
 
   const activateTouchThemePreview = useCallback(() => {
     if (!hasCoarsePointer) return;
@@ -420,8 +454,30 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   const handleThemeSelect = useCallback((themeId: ThemeId) => {
     activateTouchThemePreview();
-    handleDisplayChange({ themeId });
-  }, [activateTouchThemePreview, handleDisplayChange]);
+    setDisplay((prev) => (
+      prev.themeId === themeId
+        ? prev
+        : { ...prev, themeId }
+    ));
+    applyThemeToDocument(themeId);
+    persistTheme(themeId);
+
+    pendingThemeSaveSeqRef.current += 1;
+    const saveSeq = pendingThemeSaveSeqRef.current;
+    pendingThemeIdRef.current = themeId;
+
+    if (themeSaveTimerRef.current) {
+      clearTimeout(themeSaveTimerRef.current);
+    }
+    themeSaveTimerRef.current = setTimeout(() => {
+      themeSaveTimerRef.current = null;
+      const pendingThemeId = pendingThemeIdRef.current;
+      if (!pendingThemeId) {
+        return;
+      }
+      flushPendingThemeSelection(pendingThemeId, saveSeq);
+    }, 500);
+  }, [activateTouchThemePreview, flushPendingThemeSelection]);
 
   const themeBackdropSuppressed = themePreviewHovering || themePreviewTouchActive;
 
@@ -934,6 +990,37 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 Current version:{" "}
                 <span className="text-sm font-bold font-mono">v{__APP_VERSION__}</span>
               </p>
+              {releaseChannel && setReleaseChannel && (
+                <div className="space-y-2 rounded-xl border border-[color:var(--theme-border)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_68%,transparent)] p-3">
+                  <div>
+                    <p className="text-sm text-text-primary">Release channel</p>
+                    <p className="mt-1 text-xs text-text-muted">
+                      Production is the default. Dev follows the latest changes from the dev branch.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {RELEASE_CHANNELS.map((channel) => {
+                      const isActive = releaseChannel === channel;
+                      return (
+                        <button
+                          key={channel}
+                          type="button"
+                          onClick={() => {
+                            void setReleaseChannel(channel as ReleaseChannel);
+                          }}
+                          className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                            isActive
+                              ? "border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_55%,transparent)] bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent)] text-[var(--theme-accent-secondary)]"
+                              : "border-[color:var(--theme-border)] bg-[var(--theme-bg-root)] text-text-secondary hover:text-text-primary"
+                          }`}
+                        >
+                          {RELEASE_CHANNEL_LABELS[channel]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               {checkForUpdates && (
                 <div ref={checkButtonRef} className="flex items-center gap-3">
                   <button
