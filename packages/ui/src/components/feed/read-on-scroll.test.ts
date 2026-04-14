@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   collectUnreadIdsFromRows,
+  getListViewportMetrics,
   getNewlyPassedRowEnd,
   getRemainingUnreadIds,
   hasReachedListBottom,
@@ -50,6 +51,17 @@ describe("read-on-scroll helpers", () => {
         item("c"),
       ]),
     ).toEqual(["a", "c"]);
+  });
+
+  it("normalizes window scroll positions against the list offset", () => {
+    expect(getListViewportMetrics(480, 300, 120)).toEqual({
+      scrollTop: 360,
+      viewportBottom: 660,
+    });
+    expect(getListViewportMetrics(80, 300, 120)).toEqual({
+      scrollTop: 0,
+      viewportBottom: 300,
+    });
   });
 
   it("treats the list as complete only when the viewport reaches the bottom", () => {

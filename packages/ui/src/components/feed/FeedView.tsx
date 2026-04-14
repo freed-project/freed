@@ -17,19 +17,12 @@ const MAX_PANEL_WIDTH = 500;
 const DEFAULT_PANEL_WIDTH = 150;
 const NARROW_THRESHOLD = 150;
 const COMPACT_CARD_GAP = 8;
+const COMPACT_CARD_X_PAD = 0;
 
 // Card geometry: all cards are square (width × width), including story tiles.
 // Wrapper padding and row spacing match the nav-button radius token at 10px.
-const CARD_H_PAD = COMPACT_CARD_GAP * 2;
+const CARD_H_PAD = COMPACT_CARD_X_PAD * 2;
 const CARD_V_GAP = COMPACT_CARD_GAP;
-
-type ViewTransitionLike = {
-  finished: Promise<void>;
-};
-
-type ViewTransitionDocument = Document & {
-  startViewTransition?: (update: () => void) => ViewTransitionLike;
-};
 
 type ViewTransitionLike = {
   finished: Promise<void>;
@@ -186,7 +179,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     <div
       ref={parentRef}
       data-testid="compact-feed-panel-scroll-container"
-      className="shrink-0 min-h-0 overflow-y-auto minimal-scroll bg-[var(--theme-bg-root)]"
+      className="theme-scroll-fade-y shrink-0 min-h-0 overflow-y-auto minimal-scroll bg-transparent"
       style={{ width }}
     >
       <div
@@ -210,7 +203,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
             >
               <div
                 style={{
-                  paddingInline: `${COMPACT_CARD_GAP}px`,
+                  paddingInline: `${COMPACT_CARD_X_PAD}px`,
                   paddingBottom: `${COMPACT_CARD_GAP}px`,
                   paddingTop: vi.index === 0 ? `${COMPACT_CARD_GAP}px` : undefined,
                 }}
@@ -315,7 +308,8 @@ export function FeedView() {
   const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds), [activeFilter, feeds]);
   const dualColumnMode = useAppStore((s) => s.preferences.display.reading.dualColumnMode);
   const isMobile = useIsMobile();
-  const showDualColumn = dualColumnMode && !!selectedItemId && !isMobile;
+  const showInlineReader = !!selectedItemId && !isMobile;
+  const showDualColumn = dualColumnMode && showInlineReader;
 
   const runFeedLayoutTransition = useCallback((update: () => void) => {
     if (typeof window === "undefined" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -493,7 +487,7 @@ export function FeedView() {
 
   // ─── Layout decision ────────────────────────────────────────────────────────
 
-  if (showDualColumn && selectedItem) {
+  if (showInlineReader && selectedItem) {
     return (
       <div className="h-full flex flex-col overflow-hidden">
         {/* Archive retention toolbar — only shown in the archived view */}
@@ -525,24 +519,37 @@ export function FeedView() {
           </div>
         )}
         <div className="flex-1 flex overflow-hidden">
-          <CompactFeedPanel
-            items={filteredItems}
-            selectedId={selectedItem.globalId}
-            selectionMoveDirection={compactSelectionDirection}
-            onItemClick={openItemDirect}
-            width={panelWidth}
+          {showDualColumn ? (
+            <>
+              <CompactFeedPanel
+                items={filteredItems}
+                selectedId={selectedItem.globalId}
+                selectionMoveDirection={compactSelectionDirection}
+                onItemClick={openItemDirect}
+                width={panelWidth}
+              />
+              <div
+                className="theme-resize-gap-handle w-4 shrink-0 self-stretch"
+                style={{
+                  marginTop: "var(--feed-card-gap, 8px)",
+                }}
+                onPointerDown={handleDragStart}
+                onPointerMove={handleDragMove}
+                onPointerUp={handleDragEnd}
+                onPointerCancel={handleDragEnd}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize sidebar"
+              />
+            </>
+          ) : null}
+          <ReaderView
+            item={selectedItem}
+            onClose={closeItem}
+            dualColumn={showDualColumn}
+            inline
+            onOpenUrl={handleOpenCommentUrl}
           />
-          <div
-            className="theme-resize-gap-handle h-full w-3 shrink-0"
-            onPointerDown={handleDragStart}
-            onPointerMove={handleDragMove}
-            onPointerUp={handleDragEnd}
-            onPointerCancel={handleDragEnd}
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize sidebar"
-          />
-          <ReaderView item={selectedItem} onClose={closeItem} dualColumn onOpenUrl={handleOpenCommentUrl} />
         </div>
         <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
       </div>

@@ -57,6 +57,60 @@ export function MapPinIcon({ className = "w-4 h-4", style }: IconProps) {
   );
 }
 
+/** App sidebar toggle, action is to expand the left sidebar. */
+export function SidebarExpandIcon({ className = "w-4 h-4", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+      <path d="M8.5 5v14" />
+      <path d="M12 12h4" />
+      <path d="M14 10l2 2-2 2" />
+    </svg>
+  );
+}
+
+/** App sidebar toggle, action is to collapse the left sidebar. */
+export function SidebarCollapseIcon({ className = "w-4 h-4", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+      <path d="M8.5 5v14" />
+      <path d="M16 12h-4" />
+      <path d="M14 10l-2 2 2 2" />
+    </svg>
+  );
+}
+
+/** Reader layout toggle, action is to show the left thumbnail rail. */
+export function ReaderRailShowIcon({ className = "w-4 h-4", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+      <path d="M9 5v14" />
+      <path d="M6.25 8h1.5" />
+      <path d="M6.25 12h1.5" />
+      <path d="M6.25 16h1.5" />
+      <path d="M13 12h4" />
+      <path d="M15 10l2 2-2 2" />
+    </svg>
+  );
+}
+
+/** Reader layout toggle, action is to hide the left thumbnail rail. */
+export function ReaderRailHideIcon({ className = "w-4 h-4", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
+      <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
+      <path d="M9 5v14" />
+      <path d="M6.25 8h1.5" />
+      <path d="M6.25 12h1.5" />
+      <path d="M6.25 16h1.5" />
+      <path d="M17 12h-4" />
+      <path d="M15 10l-2 2 2 2" />
+    </svg>
+  );
+}
+
 /** External-link arrow for opening content outside Freed. */
 export function ExternalLinkIcon({ className = "w-4 h-4", style }: IconProps) {
   return (

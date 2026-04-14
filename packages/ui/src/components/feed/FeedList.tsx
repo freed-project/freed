@@ -4,6 +4,7 @@ import { FeedItem } from "./FeedItem.js";
 import { FeedItemSkeleton } from "./FeedItemSkeleton.js";
 import {
   collectUnreadIdsFromRows as collectUnreadIdsFromReadRows,
+  getListViewportMetrics,
   getNewlyPassedRowEnd,
   getRemainingUnreadIds,
   hasReachedListBottom,
@@ -127,6 +128,7 @@ interface FeedItemRowProps {
   index: number;
   focused: boolean;
   showEngagement: boolean;
+  showReadInGrayscale: boolean;
   onItemClick?: (item: FeedItemType) => void;
   onFocusChange?: (index: number) => void;
   onItemSave?: (item: FeedItemType) => void;
@@ -140,6 +142,7 @@ const FeedItemRow = memo(function FeedItemRow({
   index,
   focused,
   showEngagement,
+  showReadInGrayscale,
   onItemClick,
   onFocusChange,
   onItemSave,
@@ -168,6 +171,7 @@ const FeedItemRow = memo(function FeedItemRow({
       onClick={handleClick}
       focused={focused}
       showEngagement={showEngagement}
+      showReadInGrayscale={showReadInGrayscale}
       onMouseEnter={handleMouseEnter}
       onSave={onItemSave ? handleSave : undefined}
       onArchive={onItemArchive ? handleArchive : undefined}
@@ -185,6 +189,7 @@ interface StoryGroupRowProps {
   /** Explicit tile height in pixels (3:4 portrait ratio, capped at 288px). */
   tileHeight: number;
   showEngagement: boolean;
+  showReadInGrayscale: boolean;
   onItemClick?: (item: FeedItemType) => void;
   onItemSave?: (item: FeedItemType) => void;
   onItemArchive?: (item: FeedItemType) => void;
@@ -195,6 +200,7 @@ const StoryGroupRow = memo(function StoryGroupRow({
   numCols,
   tileHeight,
   showEngagement,
+  showReadInGrayscale,
   onItemClick,
   onItemSave,
   onItemArchive,
@@ -211,6 +217,7 @@ const StoryGroupRow = memo(function StoryGroupRow({
           onClick={() => onItemClick?.(item)}
           focused={false}
           showEngagement={showEngagement}
+          showReadInGrayscale={showReadInGrayscale}
           storyHeight={tileHeight}
           onSave={onItemSave ? (e) => { e.stopPropagation(); onItemSave(item); } : undefined}
           onArchive={onItemArchive ? (e) => { e.stopPropagation(); onItemArchive(item); } : undefined}
@@ -264,6 +271,9 @@ export function FeedList({
   const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
   const markReadOnScroll = useAppStore(
     (s) => s.preferences.display.reading.markReadOnScroll,
+  );
+  const showReadInGrayscale = useAppStore(
+    (s) => s.preferences.display.reading.showReadInGrayscale,
   );
 
   // Track scroll container width so story group rows are sized correctly.
@@ -454,13 +464,20 @@ export function FeedList({
       : elementVirtualizer.getVirtualItems();
     if (vItems.length === 0) return;
 
-    const scrollTop = isMobile
+    const rawScrollTop = isMobile
       ? window.scrollY
       : (parentRef.current?.scrollTop ?? 0);
     const vpHeight = isMobile
       ? window.innerHeight
       : (parentRef.current?.clientHeight ?? 0);
-    const vpBottom = scrollTop + vpHeight;
+    const scrollMargin = isMobile
+      ? (windowVirtualizer.options.scrollMargin ?? 0)
+      : 0;
+    const { scrollTop, viewportBottom: vpBottom } = getListViewportMetrics(
+      rawScrollTop,
+      vpHeight,
+      scrollMargin,
+    );
     const totalSize = isMobile
       ? windowVirtualizer.getTotalSize()
       : elementVirtualizer.getTotalSize();
@@ -631,6 +648,7 @@ export function FeedList({
                         numCols={nc}
                         tileHeight={th}
                         showEngagement={showEngagementCounts}
+                        showReadInGrayscale={showReadInGrayscale}
                         onItemClick={onItemClick}
                         onItemSave={onItemSave}
                         onItemArchive={onItemArchive}
@@ -642,6 +660,7 @@ export function FeedList({
                       index={row.itemIndex}
                       focused={itemIndexToRowIndex.get(focusedIndex) === virtualItem.index}
                       showEngagement={showEngagementCounts}
+                      showReadInGrayscale={showReadInGrayscale}
                       onItemClick={onItemClick}
                       onFocusChange={onFocusChange}
                       onItemSave={onItemSave}
@@ -706,6 +725,7 @@ export function FeedList({
                       numCols={nc}
                       tileHeight={th}
                       showEngagement={showEngagementCounts}
+                      showReadInGrayscale={showReadInGrayscale}
                       onItemClick={onItemClick}
                       onItemSave={onItemSave}
                       onItemArchive={onItemArchive}
@@ -717,6 +737,7 @@ export function FeedList({
                     index={row.itemIndex}
                     focused={itemIndexToRowIndex.get(focusedIndex) === virtualItem.index}
                     showEngagement={showEngagementCounts}
+                    showReadInGrayscale={showReadInGrayscale}
                     onItemClick={onItemClick}
                     onFocusChange={onFocusChange}
                     onItemSave={onItemSave}

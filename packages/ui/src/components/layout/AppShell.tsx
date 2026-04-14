@@ -48,9 +48,14 @@ export function AppShell({ children }: AppShellProps) {
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const [committedDebugWidth, setCommittedDebugWidth] = useState(persistedDebugWidth);
   const dragging = useRef(false);
+  const pendingPersistedDebugWidth = useRef<number | null>(null);
 
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
+    if (pendingPersistedDebugWidth.current !== null) {
+      if (persistedDebugWidth !== pendingPersistedDebugWidth.current) return;
+      pendingPersistedDebugWidth.current = null;
+    }
     setCommittedDebugWidth(persistedDebugWidth);
   }, [dragWidth, persistedDebugWidth]);
 
@@ -77,9 +82,14 @@ export function AppShell({ children }: AppShellProps) {
       const onUp = (ev: MouseEvent) => {
         dragging.current = false;
         const final = Math.min(MAX_DEBUG_WIDTH, Math.max(MIN_DEBUG_WIDTH, startW - (ev.clientX - startX)));
+        pendingPersistedDebugWidth.current = final;
         setCommittedDebugWidth(final);
         setDragWidth(null);
-        void updatePreferences({ display: { debugPanelWidth: final } } as Parameters<typeof updatePreferences>[0]);
+        void updatePreferences({ display: { debugPanelWidth: final } } as Parameters<typeof updatePreferences>[0]).catch(() => {
+          if (pendingPersistedDebugWidth.current === final) {
+            pendingPersistedDebugWidth.current = null;
+          }
+        });
         document.body.style.cursor = previousCursor;
         document.body.style.userSelect = previousUserSelect;
         document.removeEventListener("mousemove", onMove);
@@ -177,7 +187,7 @@ export function AppShell({ children }: AppShellProps) {
           onSidebarToggle={() => setDesktopSidebarExpanded((value) => !value)}
         />
 
-        <div className="relative z-10 flex flex-1 px-3 pb-3 md:min-h-0 md:overflow-hidden">
+        <div className="relative z-10 flex flex-1 px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)] md:min-h-0 md:overflow-hidden">
           <Sidebar
             open={sidebarOpen}
             onClose={() => setSidebarOpen(false)}
@@ -204,7 +214,8 @@ export function AppShell({ children }: AppShellProps) {
               {debugVisible && (
                 <div
                   data-testid="debug-panel-resize-handle"
-                  className="theme-resize-gap-handle h-full w-3 shrink-0"
+                  className="theme-resize-gap-handle w-3 shrink-0 self-end"
+                  style={{ height: "calc(100% - var(--feed-card-gap, 8px))" }}
                   onMouseDown={handleDebugDragStart}
                 />
               )}

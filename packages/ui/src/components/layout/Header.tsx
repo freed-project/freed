@@ -1,8 +1,15 @@
-import { useState, useEffect, useRef, useMemo, useCallback, type CSSProperties } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, type CSSProperties, type ReactNode } from "react";
 import { countFriendsWithRecentLocationUpdates } from "@freed/shared";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
 import { Tooltip } from "../Tooltip.js";
+import {
+  ArchiveIcon,
+  ReaderRailHideIcon,
+  ReaderRailShowIcon,
+  SidebarCollapseIcon,
+  SidebarExpandIcon,
+} from "../icons.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import {
@@ -22,6 +29,28 @@ const dragStyle = { WebkitAppRegion: "drag" } as CSSProperties;
 
 function formatItemCount(count: number): string {
   return `${count.toLocaleString()} item${count === 1 ? "" : "s"}`;
+}
+
+function ToolbarAnimatedSlot({
+  visible,
+  width,
+  className = "",
+  children,
+}: {
+  visible: boolean;
+  width: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={`theme-toolbar-slot ${visible ? "theme-toolbar-slot-visible" : "theme-toolbar-slot-hidden"} ${className}`}
+      style={{ ["--toolbar-slot-width" as string]: width } as CSSProperties}
+      aria-hidden={visible ? undefined : true}
+    >
+      {children}
+    </div>
+  );
 }
 
 export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: HeaderProps) {
@@ -161,7 +190,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
         },
       },
     });
-  }, [display.reading, updatePreferences]);
+  }, [display, updatePreferences]);
 
   const handleToggleDualColumn = useCallback(() => {
     void updatePreferences({
@@ -173,7 +202,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
         },
       },
     });
-  }, [display.reading, updatePreferences]);
+  }, [display, updatePreferences]);
 
   const handleOpenReaderUrl = useCallback(() => {
     if (!selectedItem?.sourceUrl) return;
@@ -184,10 +213,12 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     window.open(selectedItem.sourceUrl, "_blank", "noopener,noreferrer");
   }, [openUrl, selectedItem]);
 
-  const showReaderRailToolbar =
+  const showReaderLayoutToggle =
     !isMobile &&
     activeView === "feed" &&
-    !!selectedItem &&
+    !!selectedItem;
+  const showReaderRailToolbar =
+    showReaderLayoutToggle &&
     display.reading.dualColumnMode;
   const sidebarSlotStyle =
     !isMobile && sidebarExpanded
@@ -199,9 +230,9 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
         ...(headerDragRegion ? noDrag : {}),
       }
     : (headerDragRegion ? noDrag : undefined);
-  const readerRailSlotStyle = showReaderRailToolbar
+  const readerRailSlotStyle = showReaderLayoutToggle
     ? ({
-        width: "var(--freed-reader-rail-width, 0px)",
+        width: showReaderRailToolbar ? "var(--freed-reader-rail-width, 0px)" : "auto",
         ...(headerDragRegion ? noDrag : {}),
       } as CSSProperties)
     : undefined;
@@ -232,16 +263,22 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     };
   }, [dropdownOpen]);
 
+  useEffect(() => {
+    if (addFeedOpen || savedContentOpen) {
+      setDropdownOpen(false);
+    }
+  }, [addFeedOpen, savedContentOpen]);
+
   return (
     <>
       <header
-        className={`sticky top-0 z-30 flex-shrink-0 px-3 pt-3 ${
-          headerDragRegion ? "" : "pt-[calc(env(safe-area-inset-top)+0.75rem)]"
+        className={`sticky top-0 z-30 flex-shrink-0 ${
+          headerDragRegion ? "" : "theme-attached-topbar-host pt-[env(safe-area-inset-top)]"
         }`}
       >
         <div
           data-testid="workspace-toolbar"
-          className={`theme-floating-panel flex min-h-[58px] items-center px-0 ${showReaderRailToolbar ? "gap-0" : "gap-3"}`}
+          className={`theme-floating-panel theme-attached-topbar flex min-h-[58px] items-center px-0 ${showReaderLayoutToggle ? "gap-0" : "gap-3"}`}
           {...(headerDragRegion
             ? {
                 "data-tauri-drag-region": true,
@@ -250,7 +287,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
             : {})}
         >
           <div
-            className={`flex shrink-0 items-center ${showReaderRailToolbar ? "gap-0" : "gap-2"}`}
+            className={`theme-toolbar-cluster flex shrink-0 items-center ${showReaderLayoutToggle ? "gap-0" : "gap-2"}`}
           >
             <div
               className={`flex shrink-0 items-center gap-2 pl-3 sm:pl-4 ${sidebarSlotStyle ? "justify-between" : ""}`}
@@ -274,43 +311,40 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
                 <button
                   onClick={onSidebarToggle}
                   data-testid="desktop-sidebar-toggle"
-                  className={`rounded-lg p-1.5 transition-colors ${
-                    sidebarExpanded
-                      ? "theme-accent-button"
-                      : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
-                  }`}
+                  className="theme-subtle-button rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)]"
                   aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
-                  aria-pressed={sidebarExpanded}
                 >
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 4v16" />
-                  </svg>
+                  {sidebarExpanded ? (
+                    <SidebarCollapseIcon className="h-5 w-5" />
+                  ) : (
+                    <SidebarExpandIcon className="h-5 w-5" />
+                  )}
                 </button>
               </Tooltip>
             </div>
 
-            {showReaderRailToolbar && (
-              <div className="hidden shrink-0 md:flex items-center" style={readerRailSlotStyle}>
-                <Tooltip label={display.reading.dualColumnMode ? "Single column" : "Dual column"}>
+            <ToolbarAnimatedSlot
+              visible={showReaderLayoutToggle}
+              width={showReaderRailToolbar ? "var(--freed-reader-rail-width, 0px)" : "3rem"}
+              className="hidden shrink-0 md:flex items-center"
+            >
+              <div className="flex items-center" style={readerRailSlotStyle}>
+                <Tooltip label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}>
                   <button
                     onClick={handleToggleDualColumn}
-                    className={`rounded-lg p-2 transition-colors ${
-                      display.reading.dualColumnMode
-                        ? "theme-accent-button"
-                        : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
-                    }`}
+                    className="theme-subtle-button rounded-lg p-2 transition-colors hover:bg-[var(--theme-bg-muted)]"
                     aria-pressed={display.reading.dualColumnMode}
-                    aria-label="Toggle dual column layout"
+                    aria-label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
                   >
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 4v16" />
-                    </svg>
+                    {display.reading.dualColumnMode ? (
+                      <ReaderRailHideIcon className="h-5 w-5" />
+                    ) : (
+                      <ReaderRailShowIcon className="h-5 w-5" />
+                    )}
                   </button>
                 </Tooltip>
               </div>
-            )}
+            </ToolbarAnimatedSlot>
           </div>
 
           <div
@@ -320,7 +354,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
             {selectedItem ? (
               <button
                 onClick={handleCloseReader}
-                className="group flex min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-[var(--theme-bg-muted)]"
+                className="group flex w-full min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-[var(--theme-bg-muted)]"
                 style={headerDragRegion ? noDrag : undefined}
                 aria-label="Back to list"
               >
@@ -332,7 +366,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-[var(--theme-text-primary)]">{currentTitle}</p>
                   <p className="truncate text-xs text-[var(--theme-text-muted)]">{currentSubtitle}</p>
                 </div>
@@ -346,198 +380,187 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
           </div>
 
           <div
-            className="flex shrink-0 items-center gap-2 pr-3 sm:pr-4"
+            className="theme-toolbar-cluster flex shrink-0 items-center pr-3 sm:pr-4"
             style={headerDragRegion ? noDrag : undefined}
           >
             {selectedItem ? (
               <>
-                <Tooltip label={display.reading.focusMode ? "Disable focus mode" : "Enable focus mode"}>
-                  <button
-                    onClick={handleToggleFocusMode}
-                    className={`hidden rounded-lg px-2.5 py-2 text-sm font-bold transition-colors lg:inline-flex ${
-                      display.reading.focusMode
-                        ? "theme-accent-button"
-                        : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
-                    }`}
-                    aria-pressed={display.reading.focusMode}
-                    aria-label="Toggle focus reading mode"
-                  >
-                    <span aria-hidden="true">
-                      <span className="font-black">F</span>
-                      <span className="text-xs font-light">ocus</span>
-                    </span>
-                  </button>
-                </Tooltip>
-
-                <Tooltip label={selectedItem.userState.saved ? "Remove bookmark" : "Bookmark"}>
-                  <button
-                    onClick={handleToggleReaderSaved}
-                    className={`rounded-lg p-2 transition-colors ${
-                      selectedItem.userState.saved
-                        ? "theme-accent-button"
-                        : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
-                    }`}
-                    aria-label={selectedItem.userState.saved ? "Unsave" : "Save"}
-                  >
-                    <svg
-                      className="h-5 w-5"
-                      fill={selectedItem.userState.saved ? "currentColor" : "none"}
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                    </svg>
-                  </button>
-                </Tooltip>
-
-                <Tooltip label={selectedItem.userState.archived ? "Unarchive" : "Archive"}>
-                  <button
-                    onClick={handleToggleReaderArchived}
-                    className={`rounded-lg p-2 transition-colors ${
-                      selectedItem.userState.archived
-                        ? "theme-status-pill-success hover:bg-[rgb(var(--theme-feedback-success-rgb)/0.18)]"
-                        : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
-                    }`}
-                    aria-label={selectedItem.userState.archived ? "Unarchive" : "Archive"}
-                  >
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 7h12m-1 0-.867 12.142A2 2 0 0114.138 21H9.862a2 2 0 01-1.995-1.858L7 7m5-3v3m-4 0V4m8 3V4" />
-                    </svg>
-                  </button>
-                </Tooltip>
-
-                {selectedItem.sourceUrl && (
-                  <button
-                    onClick={handleOpenReaderUrl}
-                    className="theme-subtle-button inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm"
-                    aria-label="Open"
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5h5m0 0v5m0-5L10 14M5 9v10h10" />
-                    </svg>
-                    <span className="hidden lg:inline">Open</span>
-                  </button>
-                )}
-
-                {!isMobile && !showReaderRailToolbar && (
-                  <Tooltip label={display.reading.dualColumnMode ? "Single column" : "Dual column"}>
+                <ToolbarAnimatedSlot visible={!isMobile} width="5.25rem" className="hidden lg:flex">
+                  <Tooltip label={display.reading.focusMode ? "Disable focus mode" : "Enable focus mode"}>
                     <button
-                      onClick={handleToggleDualColumn}
-                      className={`rounded-lg p-2 transition-colors ${
-                        display.reading.dualColumnMode
+                      onClick={handleToggleFocusMode}
+                      className={`rounded-lg px-2.5 py-2 text-sm font-bold transition-colors lg:inline-flex ${
+                        display.reading.focusMode
                           ? "theme-accent-button"
                           : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
                       }`}
-                      aria-pressed={display.reading.dualColumnMode}
-                      aria-label="Toggle dual column layout"
+                      aria-pressed={display.reading.focusMode}
+                      aria-label="Toggle focus reading mode"
                     >
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 4v16" />
+                      <span aria-hidden="true">
+                        <span className="font-black">F</span>
+                        <span className="text-xs font-light">ocus</span>
+                      </span>
+                    </button>
+                  </Tooltip>
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot visible={true} width="3rem">
+                  <Tooltip label={selectedItem.userState.saved ? "Remove bookmark" : "Bookmark"}>
+                    <button
+                      onClick={handleToggleReaderSaved}
+                      className={`rounded-lg p-2 transition-colors ${
+                        selectedItem.userState.saved
+                          ? "theme-accent-button"
+                          : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                      }`}
+                      aria-label={selectedItem.userState.saved ? "Unsave" : "Save"}
+                    >
+                      <svg
+                        className="h-5 w-5"
+                        fill={selectedItem.userState.saved ? "currentColor" : "none"}
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
                       </svg>
                     </button>
                   </Tooltip>
-                )}
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot visible={true} width="3rem">
+                  <Tooltip label={selectedItem.userState.archived ? "Unarchive" : "Archive"}>
+                    <button
+                      onClick={handleToggleReaderArchived}
+                    className={`rounded-lg p-2 transition-colors ${
+                        selectedItem.userState.archived
+                          ? "theme-status-pill-success hover:bg-[rgb(var(--theme-feedback-success-rgb)/0.18)]"
+                          : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                      }`}
+                      aria-label={selectedItem.userState.archived ? "Unarchive" : "Archive"}
+                    >
+                      <ArchiveIcon className="h-5 w-5" />
+                    </button>
+                  </Tooltip>
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot visible={!!selectedItem.sourceUrl} width="5rem">
+                  {selectedItem.sourceUrl ? (
+                    <button
+                      onClick={handleOpenReaderUrl}
+                      className="theme-subtle-button inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm"
+                      aria-label="Open"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5h5m0 0v5m0-5L10 14M5 9v10h10" />
+                      </svg>
+                      <span className="hidden lg:inline">Open</span>
+                    </button>
+                  ) : null}
+                </ToolbarAnimatedSlot>
               </>
             ) : (
               <>
-                {HeaderSyncIndicator && (
-                  <div className="hidden md:flex">
-                    <HeaderSyncIndicator />
-                  </div>
-                )}
+                <ToolbarAnimatedSlot visible={!!HeaderSyncIndicator} width="4.5rem" className="hidden md:flex">
+                  {HeaderSyncIndicator ? (
+                    <div className="hidden md:flex">
+                      <HeaderSyncIndicator />
+                    </div>
+                  ) : null}
+                </ToolbarAnimatedSlot>
 
-                {unreadCount > 0 && (
-                  <Tooltip label={`Mark all ${unreadCount.toLocaleString()} items as read`} className="hidden lg:flex">
-                    <button
-                      onClick={() => markAllAsRead(activeFilter.platform)}
-                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-                    >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span>{unreadCount.toLocaleString()} unread</span>
-                    </button>
-                  </Tooltip>
-                )}
-
-                {archivableCount > 0 && (
-                  <Tooltip label={`Archive all ${archivableCount.toLocaleString()} read items`} className="hidden lg:flex">
-                    <button
-                      onClick={() => archiveAllReadUnsaved(activeFilter.platform, activeFilter.feedUrl)}
-                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-                    >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span>{archivableCount.toLocaleString()} read</span>
-                    </button>
-                  </Tooltip>
-                )}
-
-                {showNewButton && (
-                  <div ref={dropdownRef} className="relative">
-                    <Tooltip label="Add new content">
+                <ToolbarAnimatedSlot visible={unreadCount > 0} width="9.5rem" className="hidden lg:flex">
+                  {unreadCount > 0 ? (
+                    <Tooltip label={`Mark all ${unreadCount.toLocaleString()} items as read`} className="hidden lg:flex">
                       <button
-                        onClick={() => setDropdownOpen((value) => !value)}
-                        className="theme-accent-button flex items-center gap-2 rounded-lg px-3 py-1.5 transition-colors"
-                        aria-haspopup="true"
-                        aria-expanded={dropdownOpen}
+                        onClick={() => markAllAsRead(activeFilter.platform)}
+                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                       >
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        <span className="hidden text-sm font-medium sm:inline">New</span>
-                        <svg
-                          className={`hidden h-3 w-3 transition-transform sm:block ${dropdownOpen ? "rotate-180" : ""}`}
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
+                        <span>{unreadCount.toLocaleString()} unread</span>
                       </button>
                     </Tooltip>
+                  ) : null}
+                </ToolbarAnimatedSlot>
 
-                    {dropdownOpen && (
-                      <div className="absolute right-0 top-full z-50 mt-1.5 w-44 overflow-hidden rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] py-1 shadow-2xl shadow-black/40">
-                        {canAddRss && (
-                          <button
-                            onClick={() => {
-                              setDropdownOpen(false);
-                              setAddFeedOpen(true);
-                            }}
-                            className="w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-                          >
-                            <svg className="theme-icon-action h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7M6 17a1 1 0 110 2 1 1 0 010-2z" />
-                            </svg>
-                            RSS Feed
-                          </button>
-                        )}
-                        {canSaveContent && (
-                          <button
-                            onClick={() => {
-                              setDropdownOpen(false);
-                              setSavedContentOpen(true);
-                            }}
-                            className="w-full text-left flex items-center gap-2.5 px-3 py-2.5 text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-                          >
-                            <svg className="theme-icon-action h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                            </svg>
-                            Saved Content
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                <ToolbarAnimatedSlot visible={archivableCount > 0} width="8rem" className="hidden lg:flex">
+                  {archivableCount > 0 ? (
+                    <Tooltip label={`Archive all ${archivableCount.toLocaleString()} read (unsaved) items`} className="hidden lg:flex">
+                      <button
+                        onClick={() => archiveAllReadUnsaved(activeFilter.platform, activeFilter.feedUrl)}
+                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span>{archivableCount.toLocaleString()} read</span>
+                      </button>
+                    </Tooltip>
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
               </>
             )}
           </div>
         </div>
       </header>
+
+      {showNewButton && (
+        <div
+          ref={dropdownRef}
+          className="fixed bottom-5 right-5 z-[90] sm:bottom-6 sm:right-6"
+          style={headerDragRegion ? noDrag : undefined}
+        >
+          {dropdownOpen && (
+            <div className="theme-floating-panel absolute bottom-[calc(100%+0.875rem)] right-0 flex min-w-[12rem] flex-col overflow-hidden py-1 shadow-2xl shadow-black/40">
+              {canAddRss && (
+                <button
+                  onClick={() => {
+                    setDropdownOpen(false);
+                    setAddFeedOpen(true);
+                  }}
+                  className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+                >
+                  <svg className="theme-icon-action h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7M6 17a1 1 0 110 2 1 1 0 010-2z" />
+                  </svg>
+                  RSS Feed
+                </button>
+              )}
+              {canSaveContent && (
+                <button
+                  onClick={() => {
+                    setDropdownOpen(false);
+                    setSavedContentOpen(true);
+                  }}
+                  className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+                >
+                  <svg className="theme-icon-action h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                  </svg>
+                  Saved Content
+                </button>
+              )}
+            </div>
+          )}
+
+          <Tooltip label="Add new...">
+            <button
+              onClick={() => setDropdownOpen((value) => !value)}
+              className="theme-fab-button flex h-14 w-14 items-center justify-center rounded-full transition-transform hover:scale-[1.02] active:scale-[0.98]"
+              aria-haspopup="true"
+              aria-expanded={dropdownOpen}
+              aria-label="New"
+            >
+              <svg className={`h-6 w-6 transition-transform ${dropdownOpen ? "rotate-45" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          </Tooltip>
+        </div>
+      )}
 
       <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
       <SavedContentDialog

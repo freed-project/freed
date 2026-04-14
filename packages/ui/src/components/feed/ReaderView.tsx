@@ -11,6 +11,8 @@ interface ReaderViewProps {
   onClose: () => void;
   /** When true, renders inline as a flex child instead of a fixed overlay */
   dualColumn?: boolean;
+  /** When true, renders inline within the workspace shell and hides the local header. */
+  inline?: boolean;
   onOpenUrl?: (url: string) => void;
 }
 
@@ -187,7 +189,7 @@ const HEADING_CLASSES: Record<number, string> = {
 
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
-export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: ReaderViewProps) {
+export function ReaderView({ item, onClose, dualColumn = false, inline = false, onOpenUrl }: ReaderViewProps) {
   const { headerDragRegion, getLocalContent } = usePlatform();
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
@@ -198,6 +200,18 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
     enabled: storedDisplay.reading.focusMode,
     intensity: storedDisplay.reading.focusIntensity,
   });
+  const storedDisplayRef = useRef(storedDisplay);
+
+  useEffect(() => {
+    storedDisplayRef.current = storedDisplay;
+  }, [storedDisplay]);
+
+  useEffect(() => {
+    setFocusOptions({
+      enabled: storedDisplay.reading.focusMode,
+      intensity: storedDisplay.reading.focusIntensity,
+    });
+  }, [storedDisplay.reading.focusIntensity, storedDisplay.reading.focusMode]);
 
   // Content waterfall state
   const [html, setHtml] = useState<string | null>(null);
@@ -321,10 +335,11 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
       if (prefTimerRef.current) clearTimeout(prefTimerRef.current);
       prefTimerRef.current = setTimeout(() => {
         prefTimerRef.current = null;
+        const latestDisplay = storedDisplayRef.current;
         updatePreferences({
           display: {
-            ...storedDisplay,
-            reading: { ...storedDisplay.reading, focusMode: next.enabled, focusIntensity: next.intensity },
+            ...latestDisplay,
+            reading: { ...latestDisplay.reading, focusMode: next.enabled, focusIntensity: next.intensity },
           },
         });
       }, 1_000);
@@ -333,14 +348,15 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
   }, [updatePreferences, storedDisplay]);
 
   const toggleDualColumn = useCallback(() => {
-    const next = !storedDisplay.reading.dualColumnMode;
+    const latestDisplay = storedDisplayRef.current;
+    const next = !latestDisplay.reading.dualColumnMode;
     updatePreferences({
       display: {
-        ...storedDisplay,
-        reading: { ...storedDisplay.reading, dualColumnMode: next },
+        ...latestDisplay,
+        reading: { ...latestDisplay.reading, dualColumnMode: next },
       },
     });
-  }, [updatePreferences, storedDisplay]);
+  }, [updatePreferences]);
 
   const timeAgo = useMemo(
     () => formatDistanceToNow(item.publishedAt, { addSuffix: true }),
@@ -364,8 +380,14 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
   );
 
   return (
-    <div className={dualColumn ? "flex-1 min-w-0 overflow-auto bg-[var(--theme-bg-root)]" : "fixed inset-0 z-50 overflow-auto bg-[var(--theme-bg-root)]"}>
-      {!dualColumn && (
+    <div
+      className={
+        inline
+          ? "theme-scroll-fade-y flex-1 min-w-0 overflow-auto bg-transparent"
+          : "theme-scroll-fade-y fixed inset-0 z-50 overflow-auto bg-[var(--theme-bg-root)]"
+      }
+    >
+      {!inline && (
         <header
           className="theme-topbar sticky top-0 z-10 border-b"
           {...(headerDragRegion
@@ -514,7 +536,7 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
       )}
 
       {/* Article content */}
-      <article className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-20">
+      <article className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* Meta */}
         <div className="mb-6">
           <div className="mb-4 flex flex-wrap items-center gap-3 text-sm text-[var(--theme-text-muted)]">

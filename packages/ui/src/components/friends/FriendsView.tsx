@@ -41,6 +41,7 @@ const SORT_OPTIONS: Array<{ id: FriendOverviewSort; label: string }> = [
 ];
 
 const BUTTON_CHROME = "btn-secondary rounded-lg px-3 py-1.5 text-xs";
+const FRIENDS_SIDEBAR_SECTION = "theme-dialog-divider border-b px-4 py-3";
 
 function CareDots({ level }: { level: 1 | 2 | 3 | 4 | 5 }) {
   return (
@@ -152,6 +153,7 @@ export function FriendsView() {
 
   const graphRef = useRef<FriendGraphHandle>(null);
   const isDraggingSidebar = useRef(false);
+  const pendingPersistedSidebarWidth = useRef<number | null>(null);
   const isMobile = useIsMobile();
 
   const { openReview } = useContactSyncContext();
@@ -191,6 +193,10 @@ export function FriendsView() {
 
   useEffect(() => {
     if (isDraggingSidebar.current || dragWidth !== null) return;
+    if (pendingPersistedSidebarWidth.current !== null) {
+      if (savedSidebarWidth !== pendingPersistedSidebarWidth.current) return;
+      pendingPersistedSidebarWidth.current = null;
+    }
     setCommittedSidebarWidth(savedSidebarWidth);
   }, [dragWidth, savedSidebarWidth]);
 
@@ -295,9 +301,14 @@ export function FriendsView() {
         MAX_SIDEBAR_WIDTH,
         Math.max(MIN_SIDEBAR_WIDTH, startWidth - (upEvent.clientX - startX))
       );
+      pendingPersistedSidebarWidth.current = finalWidth;
       setCommittedSidebarWidth(finalWidth);
       setDragWidth(null);
-      void updatePreferences({ display: { friendsSidebarWidth: finalWidth } } as Parameters<typeof updatePreferences>[0]);
+      void updatePreferences({ display: { friendsSidebarWidth: finalWidth } } as Parameters<typeof updatePreferences>[0]).catch(() => {
+        if (pendingPersistedSidebarWidth.current === finalWidth) {
+          pendingPersistedSidebarWidth.current = null;
+        }
+      });
       document.body.style.cursor = previousCursor;
       document.body.style.userSelect = previousUserSelect;
       document.removeEventListener("mousemove", onMove);
@@ -309,8 +320,8 @@ export function FriendsView() {
   }, [isMobile, sidebarWidth, updatePreferences]);
 
   const renderOverviewSidebar = () => (
-    <div className="flex h-full flex-col bg-[color:var(--theme-bg-deep)]">
-      <div className="theme-dialog-divider bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_92%,transparent)] border-b px-4 py-3 backdrop-blur-md">
+    <div className="flex h-full flex-col bg-transparent">
+      <div className={FRIENDS_SIDEBAR_SECTION}>
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">Friends</h2>
@@ -354,8 +365,8 @@ export function FriendsView() {
         </div>
       </div>
 
-      <div className="theme-dialog-divider bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_92%,transparent)] border-b px-4 py-3 backdrop-blur-md">
-        <div className="theme-warning-panel rounded-2xl p-3">
+      <div className={FRIENDS_SIDEBAR_SECTION}>
+        <div className="theme-panel-muted rounded-xl p-3">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="theme-feedback-text-warning text-[11px] font-semibold uppercase tracking-[0.14em]">Reconnect</p>
@@ -369,7 +380,7 @@ export function FriendsView() {
                 setActiveFilters(new Set(["need_outreach"]));
                 setSortBy("last_contact");
               }}
-              className="theme-feedback-button-warning rounded-lg px-3 py-1.5 text-xs"
+              className={BUTTON_CHROME}
             >
               Review
             </button>
@@ -413,7 +424,7 @@ export function FriendsView() {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {filteredOverviewEntries.length === 0 ? (
-          <div className="theme-card-soft rounded-2xl px-4 py-6 text-center">
+          <div className="theme-panel-muted rounded-xl px-4 py-6 text-center">
             <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">No friends match those filters</p>
             <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Try clearing a filter or changing the search query.</p>
           </div>
@@ -434,8 +445,8 @@ export function FriendsView() {
   );
 
   const renderSelectedSidebar = () => (
-    <div className="flex h-full flex-col bg-[color:var(--theme-bg-deep)]">
-      <div className="theme-dialog-divider flex items-center justify-between gap-3 border-b bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_92%,transparent)] px-4 py-3 backdrop-blur-md">
+    <div className="flex h-full flex-col bg-transparent">
+      <div className={`${FRIENDS_SIDEBAR_SECTION} flex items-center justify-between gap-3`}>
         <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
@@ -514,7 +525,8 @@ export function FriendsView() {
 
         {!isMobile && (
           <div
-            className="theme-resize-gap-handle w-3 shrink-0"
+            className="theme-resize-gap-handle w-3 shrink-0 self-end"
+            style={{ height: "calc(100% - var(--feed-card-gap, 8px))" }}
             onMouseDown={handleSidebarDragStart}
             role="separator"
             aria-orientation="vertical"
@@ -533,7 +545,10 @@ export function FriendsView() {
           <div
             data-testid="friends-sidebar-shell"
             className="flex shrink-0 overflow-hidden"
-            style={{ width: `${sidebarWidth + 12}px` }}
+            style={{
+              width: `${sidebarWidth}px`,
+              paddingTop: "var(--feed-card-gap, 8px)",
+            }}
           >
             <aside
               data-testid="friends-sidebar"

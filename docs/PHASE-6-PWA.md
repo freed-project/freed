@@ -242,6 +242,9 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] First launch is blocked behind a local-only legal clickwrap gate
 - [x] Active view, feed filters, and reader selection round-trip through the URL for browser back/forward navigation
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
+- [x] PWA Settings surfaces X / Twitter, Facebook, Instagram, and LinkedIn with Freed Desktop sync and download handoff states
+- [x] Theme changes in Settings temporarily clear the frosted backdrop on touch devices so the active page treatment stays visible while previewing themes
+- [x] Appearance exposes `Show read in grayscale`, and mark-read-on-scroll now subtracts the feed list offset before marking mobile rows as passed
 - [x] Private diagnostics stay opt-in and are clearly separated from public GitHub sharing
 - [ ] PWA installable on mobile (add to homescreen) — manifest exists, needs testing
 - [ ] Offline access works (service worker + image cache) — SW registered, image cache pending
