@@ -70,8 +70,8 @@ export const PRIVATE_ARTIFACTS: readonly BugReportArtifactDefinition[] = [
   },
   {
     id: "screenshot",
-    label: "Screenshot",
-    description: "A screenshot you explicitly capture and review before export.",
+    label: "Include screenshot of interface behind this bug report",
+    description: "Captures the current interface behind this report. Review it before sharing publicly.",
     privacy: "private",
     enabledByDefault: false,
   },
@@ -335,7 +335,7 @@ export function getReportPrivacyTier(
     PRIVATE_ARTIFACTS.some((candidate) => candidate.id === artifact),
   );
   if (hasPrivateArtifact) return "private";
-  if (screenshot && !screenshot.safeForPublic) return "private";
+  if (selectedArtifacts.includes("screenshot") && screenshot && !screenshot.safeForPublic) return "private";
   return "public-safe";
 }
 
@@ -399,6 +399,7 @@ export function buildBugReportSummaryMarkdown(input: {
     input.manifest.stackFingerprint
       ? `- Stack fingerprint: \`${input.manifest.stackFingerprint}\``
       : null,
+    ``,
     ``,
     `## Summary`,
     input.draft.description.trim() || "_No summary provided._",
@@ -514,20 +515,25 @@ export function createGithubIssueUrl(input: {
     `## Summary`,
     draft.description.trim() || "_No summary provided._",
     ``,
+    ``,
     `## Reproduction`,
     draft.reproSteps.trim() || "_Not provided._",
+    ``,
     ``,
     `## Expected`,
     draft.expectedBehavior.trim() || "_Not provided._",
     ``,
+    ``,
     `## Actual`,
     draft.actualBehavior.trim() || "_Not provided._",
+    ``,
     ``,
     `## Environment`,
     `- App: ${bundle.manifest.appName}`,
     `- Privacy tier: ${bundle.manifest.privacyTier}`,
     bundle.manifest.crashFingerprint ? `- Crash fingerprint: \`${bundle.manifest.crashFingerprint}\`` : null,
     bundle.manifest.stackFingerprint ? `- Stack fingerprint: \`${bundle.manifest.stackFingerprint}\`` : null,
+    ``,
     ``,
     `## Attachment guidance`,
     `- The default public-safe bundle is designed for public issue attachment.`,

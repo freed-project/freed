@@ -14,6 +14,7 @@ import {
   PUBLIC_SAFE_ARTIFACTS,
 } from "../../lib/bug-report.js";
 import { usePlatform } from "../../context/PlatformContext.js";
+import { toast } from "../Toast.js";
 
 interface ReportComposerProps {
   initialIssueType?: BugReportIssueType;
@@ -36,17 +37,24 @@ function ArtifactToggle({
   artifact,
   checked,
   onChange,
+  disabled = false,
 }: {
   artifact: BugReportArtifactDefinition;
   checked: boolean;
   onChange: (checked: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
-    <label className="theme-dialog-section flex cursor-pointer items-start gap-3 rounded-xl p-3">
+    <label
+      className={`theme-dialog-section flex items-start gap-3 rounded-xl p-3 ${
+        disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+      }`}
+    >
       <input
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
+        disabled={disabled}
         className="mt-0.5 h-4 w-4 rounded border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-input)] text-[var(--theme-accent-secondary)] focus:ring-[color:var(--theme-focus-ring)] focus:ring-offset-0"
       />
       <div className="min-w-0">
@@ -85,6 +93,46 @@ export function ReportComposer({
     });
   };
 
+  const handleScreenshotArtifactToggle = async (nextChecked: boolean) => {
+    if (!nextChecked) {
+      setDraft((current) => {
+        const selected = current.selectedArtifacts.filter((artifact) => artifact !== "screenshot");
+        return {
+          ...current,
+          selectedArtifacts: selected,
+          screenshot: null,
+        };
+      });
+      setStatusMessage(null);
+      return;
+    }
+
+    if (!bugReporting?.captureScreenshot) {
+      toast.error("Screenshot capture is not available here.");
+      return;
+    }
+
+    setWorking("screenshot");
+    setStatusMessage(null);
+    try {
+      const screenshot = await bugReporting.captureScreenshot();
+      if (!screenshot) {
+        toast.error("No screenshot was captured.");
+        return;
+      }
+      setDraft((current) => ({
+        ...current,
+        screenshot,
+        selectedArtifacts: current.selectedArtifacts.includes("screenshot")
+          ? current.selectedArtifacts
+          : [...current.selectedArtifacts, "screenshot"],
+      }));
+      toast.success("Captured a screenshot for this report.");
+    } finally {
+      setWorking(null);
+    }
+  };
+
   const githubUrl = useMemo(() => {
     if (!bugReporting) return null;
     return async () => {
@@ -106,21 +154,31 @@ export function ReportComposer({
     setDraft((current) => ({ ...current, [key]: value }));
   };
 
+  const exportBundleForTier = async (tier: "public-safe" | "private") => {
+    const bundle = await bugReporting.generateBundle({ draft, privacyTier: tier });
+    setLastBundleName(bundle.manifest.filename);
+    if (bugReporting.exportBundle) {
+      await bugReporting.exportBundle(bundle);
+    } else {
+      downloadBundle(bundle);
+    }
+    return bundle;
+  };
+
   const handleExport = async (tier: "public-safe" | "private") => {
     setWorking("export");
     setStatusMessage(null);
     try {
-      const bundle = await bugReporting.generateBundle({ draft, privacyTier: tier });
-      setLastBundleName(bundle.manifest.filename);
-      if (bugReporting.exportBundle) {
-        await bugReporting.exportBundle(bundle);
-      } else {
-        downloadBundle(bundle);
-      }
+      await exportBundleForTier(tier);
       setStatusMessage(
         tier === "public-safe"
           ? "Public-safe bundle exported."
           : "Private bundle exported. Email it instead of posting it publicly.",
+      );
+      toast.info(
+        tier === "public-safe"
+          ? "Downloaded bundle."
+          : "Downloaded private bundle.",
       );
     } finally {
       setWorking(null);
@@ -132,9 +190,11 @@ export function ReportComposer({
     setWorking("github");
     setStatusMessage(null);
     try {
+      await exportBundleForTier("public-safe");
       const url = await githubUrl();
       (bugReporting.openUrl ?? openUrl ?? ((href) => window.open(href, "_blank", "noopener,noreferrer")))(url);
-      setStatusMessage("Opened a public GitHub issue draft with sanitized details.");
+      setStatusMessage("Downloaded a public-safe bundle and opened a sanitized GitHub issue draft.");
+      toast.info("Downloaded bundle and opened a GitHub issue draft.");
     } finally {
       setWorking(null);
     }
@@ -144,7 +204,7 @@ export function ReportComposer({
     setWorking("private-share");
     setStatusMessage(null);
     try {
-      await handleExport("private");
+      await exportBundleForTier("private");
       if (bugReporting.privateShareEmail) {
         const params = new URLSearchParams({
           subject: `Freed private bug report: ${draft.title || draft.issueType}`,
@@ -160,26 +220,8 @@ export function ReportComposer({
         const mailto = `mailto:${bugReporting.privateShareEmail}?${params.toString()}`;
         (bugReporting.openUrl ?? openUrl ?? ((href) => window.open(href, "_blank", "noopener,noreferrer")))(mailto);
       }
-    } finally {
-      setWorking(null);
-    }
-  };
-
-  const handleCaptureScreenshot = async () => {
-    if (!bugReporting.captureScreenshot) return;
-    setWorking("screenshot");
-    setStatusMessage(null);
-    try {
-      const screenshot = await bugReporting.captureScreenshot();
-      if (screenshot) {
-        setDraft((current) => ({
-          ...current,
-          screenshot,
-          selectedArtifacts: current.selectedArtifacts.includes("screenshot")
-            ? current.selectedArtifacts
-            : [...current.selectedArtifacts, "screenshot"],
-        }));
-      }
+      setStatusMessage("Downloaded a private bundle and opened an email draft.");
+      toast.info("Downloaded private bundle and opened an email draft.");
     } finally {
       setWorking(null);
     }
@@ -199,23 +241,6 @@ export function ReportComposer({
         <h3 className="text-base font-semibold text-[color:var(--theme-text-primary)]">{title}</h3>
         <p className="mt-1 text-sm text-[color:var(--theme-text-muted)]">
           Default exports are safe for public GitHub issues. Private diagnostics are opt-in and should be emailed instead.
-        </p>
-      </div>
-
-      <div
-        className={`px-4 py-3 ${
-          privacyTier === "public-safe"
-            ? "theme-feedback-panel-success"
-            : "theme-feedback-panel-warning"
-        }`}
-      >
-        <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
-          Privacy mode: {privacyTier === "public-safe" ? "Public-safe" : "Private"}
-        </p>
-        <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-          {privacyTier === "public-safe"
-            ? "This bundle is intended to be safe for a public GitHub issue."
-            : "This bundle may include details you may not want to post publicly. Use email or private sharing."}
         </p>
       </div>
 
@@ -298,64 +323,71 @@ export function ReportComposer({
             Turning these on may expose more of your local environment. Email these bundles instead of posting them publicly.
           </p>
         </div>
-        {PRIVATE_ARTIFACTS.filter((artifact) => artifact.id !== "screenshot").map((artifact) => (
-          <ArtifactToggle
-            key={artifact.id}
-            artifact={artifact}
-            checked={draft.selectedArtifacts.includes(artifact.id)}
-            onChange={(checked) => toggleArtifact(artifact.id, checked)}
-          />
-        ))}
-        <div className="theme-dialog-section rounded-xl p-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm text-[color:var(--theme-text-primary)]">Screenshot</p>
-              <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                Capture a screenshot only after reviewing what it shows.
-              </p>
-            </div>
-            <button
-              onClick={handleCaptureScreenshot}
-              disabled={working === "screenshot" || !bugReporting.captureScreenshot}
-              className="btn-secondary rounded-lg px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {working === "screenshot" ? "Capturing..." : "Capture screenshot"}
-            </button>
-          </div>
-          {draft.screenshot ? (
-            <div className="mt-3 space-y-3">
-              <img
-                src={draft.screenshot.dataUrl}
-                alt="Captured screenshot preview"
-                className="max-h-56 w-full rounded-xl border border-[color:var(--theme-border-subtle)] object-contain"
+        {PRIVATE_ARTIFACTS.map((artifact) =>
+          artifact.id === "screenshot" ? (
+            <div key={artifact.id} className="space-y-3">
+              <ArtifactToggle
+                artifact={artifact}
+                checked={draft.selectedArtifacts.includes("screenshot")}
+                onChange={handleScreenshotArtifactToggle}
+                disabled={working === "screenshot"}
               />
-              <label className="theme-dialog-section flex items-start gap-3 rounded-xl p-3">
-                <input
-                  type="checkbox"
-                  checked={draft.screenshot.safeForPublic}
-                  onChange={(event) =>
-                    updateDraft("screenshot", {
-                      ...draft.screenshot!,
-                      safeForPublic: event.target.checked,
-                    })
-                  }
-                  className="mt-0.5 h-4 w-4 rounded border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-input)] text-[var(--theme-accent-secondary)] focus:ring-[color:var(--theme-focus-ring)] focus:ring-offset-0"
-                />
-                <div>
-                  <p className="text-sm text-[color:var(--theme-text-primary)]">This screenshot is safe to post publicly.</p>
-                  <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                    Leave this off if it shows private content, account names, or anything sensitive.
-                  </p>
+              {draft.screenshot ? (
+                <div className="theme-dialog-section rounded-xl p-3">
+                  <img
+                    src={draft.screenshot.dataUrl}
+                    alt="Captured screenshot preview"
+                    className="max-h-56 w-full rounded-xl border border-[color:var(--theme-border-subtle)] object-contain"
+                  />
+                  <label className="theme-dialog-section mt-3 flex cursor-pointer items-start gap-3 rounded-xl p-3">
+                    <input
+                      type="checkbox"
+                      checked={draft.screenshot.safeForPublic}
+                      onChange={(event) =>
+                        updateDraft("screenshot", {
+                          ...draft.screenshot!,
+                          safeForPublic: event.target.checked,
+                        })
+                      }
+                      className="mt-0.5 h-4 w-4 rounded border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-input)] text-[var(--theme-accent-secondary)] focus:ring-[color:var(--theme-focus-ring)] focus:ring-offset-0"
+                    />
+                    <div>
+                      <p className="text-sm text-[color:var(--theme-text-primary)]">This screenshot is safe to post publicly.</p>
+                      <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                        Leave this off if it shows private content, account names, or anything sensitive.
+                      </p>
+                    </div>
+                  </label>
                 </div>
-              </label>
+              ) : null}
             </div>
-          ) : null}
-        </div>
+          ) : (
+            <ArtifactToggle
+              key={artifact.id}
+              artifact={artifact}
+              checked={draft.selectedArtifacts.includes(artifact.id)}
+              onChange={(checked) => toggleArtifact(artifact.id, checked)}
+            />
+          ),
+        )}
       </div>
 
-      <div className="theme-dialog-section rounded-2xl p-4">
-        <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">Review before export</p>
-        <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+      <div
+        className={`rounded-2xl p-4 ${
+          privacyTier === "public-safe"
+            ? "theme-feedback-panel-success"
+            : "theme-feedback-panel-warning"
+        }`}
+      >
+        <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
+          Privacy mode: {privacyTier === "public-safe" ? "Public-safe" : "Private"}
+        </p>
+        <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+          {privacyTier === "public-safe"
+            ? "This bundle is intended to be safe for a public GitHub issue."
+            : "This bundle may include details you may not want to post publicly. Use email or private sharing."}
+        </p>
+        <p className="mt-3 text-xs text-[color:var(--theme-text-muted)]">
           Bundle type: {privacyTier === "public-safe" ? "Public-safe zip" : "Private zip"}
         </p>
         <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
@@ -365,6 +397,15 @@ export function ReportComposer({
           <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">Last exported: {lastBundleName}</p>
         ) : null}
         {statusMessage ? <p className="theme-feedback-text-info mt-2 text-xs">{statusMessage}</p> : null}
+        {privacyTier === "private" ? (
+          <p className="theme-feedback-text-warning mt-3 text-xs">
+            This bundle may include information you may not want to post publicly. Use email or private sharing, not a public GitHub attachment.
+          </p>
+        ) : (
+          <p className="mt-3 text-xs text-[color:var(--theme-text-muted)]">
+            GitHub issues created from this screen always use a sanitized public-safe summary.
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -373,33 +414,23 @@ export function ReportComposer({
           disabled={working !== null}
           className="btn-primary rounded-xl px-4 py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Export public-safe bundle
-        </button>
-        <button
-          onClick={handleOpenGitHub}
-          disabled={working !== null}
-          className="btn-secondary rounded-xl px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Open GitHub issue
+          Download bundle
         </button>
         <button
           onClick={handlePrivateShare}
           disabled={working !== null}
           className="theme-feedback-button-warning rounded-xl px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Export private bundle for email
+          Download and email
+        </button>
+        <button
+          onClick={handleOpenGitHub}
+          disabled={working !== null}
+          className="btn-secondary rounded-xl px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Download and open GitHub issue
         </button>
       </div>
-
-      {privacyTier === "private" ? (
-        <p className="theme-feedback-text-warning text-xs">
-          This bundle may include information you may not want to post publicly. Use email or private sharing, not a public GitHub attachment.
-        </p>
-      ) : (
-        <p className="text-xs text-[color:var(--theme-text-muted)]">
-          GitHub issues created from this screen always use a sanitized public-safe summary.
-        </p>
-      )}
     </div>
   );
 }

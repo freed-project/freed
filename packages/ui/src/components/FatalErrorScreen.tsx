@@ -13,7 +13,7 @@ export function FatalErrorScreen({
   productName,
 }: FatalErrorScreenProps) {
   return (
-    <div className="min-h-screen bg-freed-black px-4 py-8 text-white">
+    <div className="h-screen min-h-screen overflow-y-auto bg-freed-black px-4 py-8 text-white">
       <div className="mx-auto flex max-w-4xl flex-col gap-8">
         <div className="rounded-3xl border border-red-500/20 bg-red-500/5 p-6">
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-red-300">
