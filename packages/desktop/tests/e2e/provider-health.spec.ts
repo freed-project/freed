@@ -1535,13 +1535,12 @@ test("provider sync button shows a spinner while that provider is active", async
   });
 
   await openSettingsSection(page, "X");
-  const sidebar = page.getByTestId("app-sidebar");
+  const sidebar = getDesktopSidebar(page);
 
   await expect(page.getByTestId("provider-sync-action-x")).toContainText("Syncing");
   await expect(page.getByTestId("provider-sync-action-x-spinner")).toBeVisible();
   await expect(page.getByTestId("settings-provider-status-x")).toHaveAttribute("title", "Syncing");
   await expect(page.getByTestId("provider-status-x")).toHaveAttribute("title", "Syncing");
-  const sidebar = getDesktopSidebar(page);
   await expect(sidebar.getByTestId("source-indicator-x")).toHaveAttribute("title", "Syncing");
   await expect(page.getByTestId("provider-activity-log-x")).toContainText("[X] sync started");
   await expect(page.getByTestId("provider-activity-log-x")).toContainText(
@@ -1683,7 +1682,7 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
 
   await app.goto();
   await app.waitForReady();
-  const sidebar = page.getByTestId("app-sidebar");
+  const sidebar = getDesktopSidebar(page);
 
   await page.evaluate(async ({ debugStorePath }) => {
     const now = Date.now();
@@ -1804,7 +1803,6 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
     });
   }, { debugStorePath });
 
-  const sidebar = getDesktopSidebar(page);
   await expect(sidebar.getByTestId("source-status-rss")).toHaveAttribute("title", "Syncing");
   const rssRowLayout = await page.evaluate(() => {
     const desktopSidebar = document.querySelector('[data-testid="app-sidebar"]');
