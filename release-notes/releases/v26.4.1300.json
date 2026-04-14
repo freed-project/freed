@@ -2,7 +2,7 @@
   "tag": "v26.4.1300",
   "version": "26.4.1300",
   "dayKey": "26.4.13",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-14T05:01:34.281Z",
   "model": "heuristic",
@@ -24,10 +24,18 @@
     ]
   },
   "release": {
-    "deck": "Unify desktop shell chrome",
-    "features": [],
-    "fixes": [],
+    "deck": "Desktop shell chrome is unified across the app, with theme-native maps, clearer recovery handoffs, and steadier reading surfaces.",
+    "features": [
+      "Unified desktop shell chrome across the feed, reader, settings, and floating rails",
+      "Added theme-native map palettes and improved Scriptorium readability",
+      "Expanded empty-state recovery handoffs so sources are easier to reconnect"
+    ],
+    "fixes": [
+      "Stabilized desktop side panels, reader toolbar alignment, and feed card spacing",
+      "Improved keyboard navigation in the reader and kept focused rows in view",
+      "Polished settings controls, provider dialogs, and marketing launch surfaces"
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1300\n\nUnify desktop shell chrome\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1300\n\nDesktop shell chrome is unified across the app, with theme-native maps, clearer recovery handoffs, and steadier reading surfaces.\n\n### Features\n\n- Unified desktop shell chrome across the feed, reader, settings, and floating rails\n- Added theme-native map palettes and improved Scriptorium readability\n- Expanded empty-state recovery handoffs so sources are easier to reconnect\n\n### Fixes\n\n- Stabilized desktop side panels, reader toolbar alignment, and feed card spacing\n- Improved keyboard navigation in the reader and kept focused rows in view\n- Polished settings controls, provider dialogs, and marketing launch surfaces\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
