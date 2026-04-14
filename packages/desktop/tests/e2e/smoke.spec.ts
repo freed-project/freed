@@ -1036,15 +1036,10 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
   });
   await page.locator('.freed-map-marker[aria-label="Ada Lovelace"]').click();
   await clickMapPopupAction(page, "Open Friend");
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | { getState: () => { activeView: string; selectedFriendId: string | null } }
-      | undefined;
-    const state = store?.getState();
-    return state?.activeView === "friends" && state.selectedFriendId === "friend-ada";
-  }, { timeout: 10_000 });
   await expect(page.getByRole("button", { name: "Back to all friends" })).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.getByRole("heading", { name: "Ada Lovelace" })).toBeVisible({
     timeout: 10_000,
   });
 
@@ -1054,14 +1049,7 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
   });
   await page.locator('.freed-map-marker[aria-label="Ada Lovelace"]').click();
   await clickMapPopupAction(page, "Open Post");
-  await page.waitForFunction(() => {
-    const w = window as Record<string, unknown>;
-    const store = w.__FREED_STORE__ as
-      | { getState: () => { activeView: string; selectedItemId: string | null } }
-      | undefined;
-    const state = store?.getState();
-    return state?.activeView === "feed" && state.selectedItemId === "ig:ada:paris";
-  }, { timeout: 10_000 });
+  await expect(page.getByLabel("Back to list")).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole("heading", { name: "Bonjour from Paris" })).toBeVisible({
     timeout: 10_000,
   });
