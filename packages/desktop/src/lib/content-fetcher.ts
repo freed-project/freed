@@ -54,6 +54,7 @@ let running = false;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let heartbeatHandle: ReturnType<typeof setInterval> | null = null;
 let unsubscribeDoc: (() => void) | null = null;
+let lastScannedDocItemCount: number | null = null;
 
 // Status subscribers
 type StatusSubscriber = (status: FetcherStatus) => void;
@@ -125,6 +126,12 @@ export function enqueue(items: FeedItem[]): void {
   const newEntries = newStubItems(items);
   queue.push(...newEntries);
   if (newEntries.length > 0) notifyStatus();
+}
+
+function maybeScanVisibleItems(items: FeedItem[], docItemCount: number): void {
+  if (lastScannedDocItemCount === docItemCount) return;
+  lastScannedDocItemCount = docItemCount;
+  enqueue(items);
 }
 
 /** Process one item from the front of the queue */
@@ -218,13 +225,21 @@ async function processNext(): Promise<void> {
 export function start(): void {
   if (running) return;
   running = true;
+  lastScannedDocItemCount = null;
 
   // Wire up the Automerge subscription so stub items arriving via relay sync
   // are automatically enqueued for background fetch.
+  //
+  // Important: do not rescan the whole visible feed on every mutation. Mark as
+  // read, archive toggles, and preference changes all trigger document updates,
+  // and a full enqueue() scan here turns those tiny mutations into O(n)
+  // churn across the whole library. Only rescan when the document item count
+  // changes, which is the common case for newly imported or relayed items.
   unsubscribeDoc = subscribe((state) => {
     // state.items contains non-hidden, ranked items from DocState.
-    // Stub items we care about are not hidden or archived, so the visible list is sufficient.
-    enqueue(state.items);
+    // Stub items we care about are not hidden or archived, so the visible list
+    // is sufficient when the library grows or shrinks.
+    maybeScanVisibleItems(state.items, state.docItemCount);
   });
 
   log.info("[content-fetcher] started");

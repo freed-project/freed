@@ -265,9 +265,11 @@ export async function captureDomFeed(
 - [x] Native relay broadcasts now reuse shared document buffers and stop writing a full snapshot on every live document push, reducing clone pressure during heavy sync churn
 - [x] Desktop worker state no longer ships the full `allItemIds` list or full Automerge binary back to the main thread on every mutation, and the content fetcher now bounds its failed-item cooldown cache instead of keeping an immortal set of every fetch miss
 - [x] Background fetch now tracks in-flight items so unrelated document updates cannot enqueue duplicate fetch work while a URL is already being processed
+- [x] Background fetch no longer rescans the entire visible feed on every document mutation, it only rescans when the document item count changes, which cuts repeated O(n) churn during read toggles and preference writes
 - [x] Outbox retry bookkeeping now drops completed and terminally failed IDs instead of keeping a session-long retry map for every action it has ever seen
 - [x] Removing RSS feeds now also drops their retained provider-health diagnostics instead of keeping dead feed histories in memory and storage forever
 - [x] Desktop live UI state now caps preserved article text previews and fetches full preserved text on demand for the active reader item, instead of cloning entire article bodies through every feed-state update
+- [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation
 - [ ] Windows installer is code-signed (requires EV certificate)
 - [ ] Update server runs on a Freed-owned domain (not GitHub Releases)
 
@@ -291,13 +293,18 @@ export async function captureDomFeed(
 > main thread on every state update. The background content fetcher now
 > bounds and ages out its failed-item cooldown cache, and it keeps an
 > in-flight set so unrelated state updates cannot queue the same fetch work
-> over and over while a URL is already being processed. The outbox also
+> over and over while a URL is already being processed. It also stopped
+> rescanning the full visible feed on every tiny document mutation and now
+> only rescans when the document item count actually changes. The outbox also
 > prunes completed retry bookkeeping instead of letting that map grow across
 > a long session, and removing RSS feeds now also forgets their saved health
 > history instead of leaving dead diagnostics behind. Desktop feed-state
 > updates also now cap preserved article text previews and fetch the full
 > preserved text only for the reader item that is actually open, instead of
 > cloning full article bodies through the live UI state on every mutation.
+> Desktop persistence also now appends Automerge incremental saves to the
+> last stored snapshot and compacts back to a fresh snapshot only when the
+> incremental tail has grown large enough to justify it.
 > Release notes now use a
 > checked-in review gate: `./scripts/release.sh` prepares draft notes and
 > daily editorial memory, then `./scripts/release-publish.sh` tags only after

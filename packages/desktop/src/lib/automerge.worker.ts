@@ -46,6 +46,11 @@ import {
 import { createDefaultPreferences, rankFeedItems } from "@freed/shared";
 import type { FeedItem, Friend, RssFeed, UserPreferences } from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
+import {
+  createPersistenceState,
+  persistDoc,
+  type AutomergePersistenceState,
+} from "./automerge-persistence";
 
 // ---------------------------------------------------------------------------
 // State
@@ -54,6 +59,7 @@ import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types"
 const storage = new IndexedDBStorage();
 let currentDoc: FreedDoc | null = null;
 let currentBinary: Uint8Array | null = null;
+let persistenceState: AutomergePersistenceState = createPersistenceState(null);
 let relayClientCount = 0;
 let queuedRequestCount = 0;
 let requestChain: Promise<void> = Promise.resolve();
@@ -229,7 +235,9 @@ async function saveAndBroadcast(trace?: RequestTrace): Promise<void> {
   if (!doc) return;
 
   const startedAt = performance.now();
-  const binary = A.save(doc);
+  const persisted = persistDoc(doc, persistenceState);
+  const binary = persisted.binary;
+  persistenceState = persisted.persistence;
   currentBinary = binary;
   const afterSerializeAt = performance.now();
   await storage.save(binary);
@@ -266,6 +274,7 @@ async function saveAndBroadcast(trace?: RequestTrace): Promise<void> {
         ` hydrate_ms=${formatMs(afterHydrateAt - afterPersistAt)}` +
         ` emit_ms=${formatMs(completedAt - afterHydrateAt)}` +
         ` total_ms=${formatMs(totalMs)}` +
+        ` persist_mode=${persisted.usedIncremental ? "incremental" : "snapshot"}` +
         ` bytes=${binary.byteLength.toLocaleString()}`,
     );
   }
@@ -315,14 +324,19 @@ async function handleRequest(
         if (saved) {
           try {
             currentDoc = A.load<FreedDoc>(saved);
+            currentBinary = saved;
+            persistenceState = createPersistenceState(saved);
           } catch {
             await storage.clear();
+            persistenceState = createPersistenceState(null);
             send({ type: "DEBUG_EVENT", kind: "init", detail: "corrupt doc cleared, creating fresh" });
           }
         }
         if (!currentDoc) {
           currentDoc = createEmptyDoc();
           const binary = A.save(currentDoc);
+          currentBinary = binary;
+          persistenceState = createPersistenceState(binary);
           await storage.save(binary);
         }
         const deviceId = (currentDoc.meta?.deviceId as string | undefined) ?? "unknown";
@@ -336,12 +350,14 @@ async function handleRequest(
         await storage.clear();
         currentDoc = null;
         currentBinary = null;
+        persistenceState = createPersistenceState(null);
         ack(req.reqId);
         break;
 
       case "REPLACE_DOC":
         currentDoc = A.load<FreedDoc>(req.binary);
         currentBinary = req.binary;
+        persistenceState = createPersistenceState(req.binary);
         await storage.save(req.binary);
         await saveAndBroadcast(trace);
         ack(req.reqId);
@@ -351,6 +367,7 @@ async function handleRequest(
         if (!currentDoc) throw new Error("Document not initialized");
         if (!currentBinary) {
           currentBinary = A.save(currentDoc);
+          persistenceState = createPersistenceState(currentBinary);
         }
         send({ reqId: req.reqId, type: "DOC_BINARY", binary: currentBinary });
         break;
@@ -674,6 +691,7 @@ async function handleRequest(
         if (!currentDoc) throw new Error("Document not initialized");
         if (!currentBinary) {
           currentBinary = A.save(currentDoc);
+          persistenceState = createPersistenceState(currentBinary);
         }
         send({
           reqId: req.reqId,
