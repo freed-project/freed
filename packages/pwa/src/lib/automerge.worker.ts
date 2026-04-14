@@ -27,6 +27,7 @@ import {
   toggleSaved,
   toggleArchived,
   archiveAllReadUnsaved,
+  unarchiveSavedItems,
   pruneArchivedItems,
   deleteAllArchivedItems,
   updatePreferences,
@@ -290,6 +291,11 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           (doc) => archiveAllReadUnsaved(doc, req.platform, req.feedUrl),
           "Archive all read",
         );
+        ack(req.reqId);
+        break;
+
+      case "UNARCHIVE_SAVED_ITEMS":
+        await applyChange((doc) => unarchiveSavedItems(doc), "Unarchive saved items");
         ack(req.reqId);
         break;
 

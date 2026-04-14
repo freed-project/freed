@@ -648,6 +648,16 @@ fn get_platform() -> String {
     std::env::consts::OS.to_string()
 }
 
+#[tauri::command]
+fn get_updater_target() -> String {
+    let os = match std::env::consts::OS {
+        "macos" => "darwin",
+        other => other,
+    };
+
+    format!("{}-{}", os, std::env::consts::ARCH)
+}
+
 // ---------------------------------------------------------------------------
 // Tauri commands — contacts
 // ---------------------------------------------------------------------------
@@ -3498,6 +3508,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_version,
             get_platform,
+            get_updater_target,
             fetch_url,
             x_api_request,
             get_local_ip,

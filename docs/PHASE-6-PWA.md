@@ -11,12 +11,15 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 
 **Key architectural decisions:**
 
-- **Shared codebase** — Same React app embedded in Desktop WebView and deployed to [app.freed.wtf](https://app.freed.wtf)
+- **Shared codebase** — Same React app embedded in Desktop WebView and deployed to [app.freed.wtf](https://app.freed.wtf), with the dev channel on `dev-app.freed.wtf`
 - **Thin client** — Displays pre-computed rankings from Desktop/OpenClaw, minimal local computation
 - **Light saves** — Can save URLs with metadata extraction (og tags); full article extraction requires Desktop
 - **Offline-first** — Service worker caches feed data and images for offline reading
 - **Versioned first-run consent** — PWA startup is blocked until the current legal bundle is accepted locally in the browser
 - **URL-driven navigation** — Active view, feed scope, and open reader state serialize into the URL so browser back and forward behave naturally
+- **Desktop handoff in source settings** — PWA Settings exposes X / Twitter, Facebook, Instagram, and LinkedIn with clear Freed Desktop sync and download handoff states
+- **Blank-state testing escape hatch** — PWA empty states now include a secondary sample-data section below the main handoff prompt for quick local testing
+- **Archived saved-item repair control** — Archived views now surface a one-click `Unarchive Saved Content` action when legacy or imported items end up both saved and archived
 
 ---
 
@@ -216,9 +219,10 @@ export function filterByAuthor(
 
 ## Deployment
 
-Vercel project `freed-pwa` auto-deploys on push to `main` (root directory: `packages/pwa`, framework: Vite).
+Vercel project `freed-pwa` now follows the dev-first branch flow.
 
 - **Production:** [app.freed.wtf](https://app.freed.wtf)
+- **Dev:** `dev-app.freed.wtf`
 - **Preview:** Auto-generated per pull request
 
 Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `packages/pwa/vercel.json`).
@@ -228,6 +232,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 ## Success Criteria
 
 - [x] PWA deploys to app.freed.wtf via Vercel
+- [x] PWA can switch locally between the production and dev release channels, redirecting between `app.freed.wtf` and `dev-app.freed.wtf`
 - [x] Feed displays items from Automerge document
 - [x] Per-source unread tracking works for opted-in feeds
 - [x] Virtual scrolling handles 1000+ items smoothly
@@ -239,6 +244,9 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] First launch is blocked behind a local-only legal clickwrap gate
 - [x] Active view, feed filters, and reader selection round-trip through the URL for browser back/forward navigation
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
+- [x] PWA Settings surfaces X / Twitter, Facebook, Instagram, and LinkedIn with Freed Desktop sync and download handoff states
+- [x] Theme changes in Settings temporarily clear the frosted backdrop on touch devices so the active page treatment stays visible while previewing themes
+- [x] Appearance exposes `Show read in grayscale`, and mark-read-on-scroll now subtracts the feed list offset before marking mobile rows as passed
 - [x] Private diagnostics stay opt-in and are clearly separated from public GitHub sharing
 - [ ] PWA installable on mobile (add to homescreen) — manifest exists, needs testing
 - [ ] Offline access works (service worker + image cache) — SW registered, image cache pending
@@ -273,4 +281,4 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 
 ## Deliverable
 
-Mobile-friendly PWA at [app.freed.wtf](https://app.freed.wtf) with offline support.
+Mobile-friendly PWA at [app.freed.wtf](https://app.freed.wtf), plus the dev channel at `dev-app.freed.wtf`, with offline support.

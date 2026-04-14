@@ -67,6 +67,8 @@ const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
   hour: "numeric",
   minute: "2-digit",
 });
+const MAP_POPUP_MAX_WIDTH = 560;
+const MAP_POPUP_VIEWPORT_MARGIN = 40;
 
 function popupRelativeTime(seenAt: number): string {
   return formatDistanceToNow(seenAt, { addSuffix: true });
@@ -155,8 +157,9 @@ function buildPopupContent(
     "display:flex",
     "flex-direction:column",
     "gap:16px",
-    "width:min(460px,calc(100vw - 40px))",
-    "min-width:420px",
+    `width:min(${MAP_POPUP_MAX_WIDTH}px,calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px))`,
+    `min-width:min(420px,calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px))`,
+    "max-width:100%",
     "padding:20px",
     "color:var(--theme-text-primary)",
     "font-family:system-ui,sans-serif",
@@ -301,7 +304,7 @@ function mapStyles(interactive: boolean) {
   return `
     .freed-map-shell {
       position: relative;
-      background: var(--theme-shell-background);
+      background: transparent;
     }
 
     .freed-map-shell .maplibregl-map {
@@ -315,8 +318,9 @@ function mapStyles(interactive: boolean) {
     }
 
     .freed-map-shell .maplibregl-popup-content {
-      min-width: 420px;
-      max-width: min(460px, calc(100vw - 40px));
+      width: min(${MAP_POPUP_MAX_WIDTH}px, calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px));
+      min-width: min(420px, calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px));
+      max-width: none;
       padding: 0;
       background:
         color-mix(in oklab, var(--theme-bg-elevated) 96%, transparent);
@@ -327,6 +331,10 @@ function mapStyles(interactive: boolean) {
         0 0 0 1px var(--theme-border-subtle);
       backdrop-filter: blur(18px);
       overflow: hidden;
+    }
+
+    .freed-map-shell .maplibregl-popup {
+      max-width: min(${MAP_POPUP_MAX_WIDTH}px, calc(100vw - ${MAP_POPUP_VIEWPORT_MARGIN}px)) !important;
     }
 
     .freed-map-shell .maplibregl-popup-tip {
@@ -555,6 +563,7 @@ export function MapSurface({
           closeButton: false,
           closeOnClick: false,
           offset: 12,
+          maxWidth: `${MAP_POPUP_MAX_WIDTH}px`,
           className: "freed-map-popup",
         })
           .setLngLat([markerData.lng, markerData.lat])
@@ -589,30 +598,31 @@ export function MapSurface({
     <div
       data-testid="map-surface"
       data-map-theme={resolvedThemeId}
-      className="freed-map-shell relative h-full w-full overflow-hidden"
+      className="freed-map-shell theme-soft-viewport relative h-full w-full"
     >
       <style>{mapStyles(interactive)}</style>
-      <div
-        ref={containerRef}
-        className={`h-full w-full ${showFallback ? "invisible" : "visible"}`}
-      />
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{ background: mapPalette.overlayVignette }}
-      />
-      <div
-        className="pointer-events-none absolute inset-0 [background-size:88px_88px]"
-        style={{
-          backgroundImage: mapGridBackground(mapPalette.boundary),
-          opacity: mapPalette.gridOpacity,
-        }}
-      />
-
-      {showFallback && stableMarkers.length > 0 && (
+      <div className="theme-soft-viewport-content">
         <div
-          className="freed-map-fallback-scan absolute inset-0 overflow-hidden"
-          style={{ background: fallbackScanBackground(mapPalette.background, mapPalette.water) }}
-        >
+          ref={containerRef}
+          className={`h-full w-full ${showFallback ? "invisible" : "visible"}`}
+        />
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ background: mapPalette.overlayVignette }}
+        />
+        <div
+          className="pointer-events-none absolute inset-0 [background-size:88px_88px]"
+          style={{
+            backgroundImage: mapGridBackground(mapPalette.boundary),
+            opacity: mapPalette.gridOpacity,
+          }}
+        />
+
+        {showFallback && stableMarkers.length > 0 && (
+          <div
+            className="freed-map-fallback-scan absolute inset-0 overflow-hidden"
+            style={{ background: fallbackScanBackground(mapPalette.background, mapPalette.water) }}
+          >
           <div
             className="absolute inset-0 [background-size:72px_72px]"
             style={{
@@ -664,7 +674,7 @@ export function MapSurface({
           })}
 
           {interactive && selectedFallbackMarker && (
-            <div data-testid="map-fallback-popup" className="theme-dialog-shell absolute bottom-4 left-4 w-[min(480px,calc(100%-2rem))] p-5">
+            <div data-testid="map-fallback-popup" className="theme-dialog-shell absolute bottom-4 left-4 w-[min(560px,calc(100%-2rem))] p-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -743,28 +753,29 @@ export function MapSurface({
               </div>
             </div>
           )}
-        </div>
-      )}
-
-      {showFallback && stableMarkers.length === 0 && (
-        <div
-          className="absolute inset-0 flex items-center justify-center px-6 text-center"
-          style={{
-            background: `color-mix(in oklab, ${mapPalette.background} 92%, transparent)`,
-          }}
-        >
-          <div>
-            <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
-              {loadFailed ? "Map failed to load" : emptyTitle}
-            </p>
-            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-              {loadFailed
-                ? "This browser could not initialize the live map, so a simplified view is shown instead."
-                : emptyBody}
-            </p>
           </div>
-        </div>
-      )}
+        )}
+
+        {showFallback && stableMarkers.length === 0 && (
+          <div
+            className="absolute inset-0 flex items-center justify-center px-6 text-center"
+            style={{
+              background: `color-mix(in oklab, ${mapPalette.background} 92%, transparent)`,
+            }}
+          >
+            <div>
+              <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">
+                {loadFailed ? "Map failed to load" : emptyTitle}
+              </p>
+              <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                {loadFailed
+                  ? "This browser could not initialize the live map, so a simplified view is shown instead."
+                  : emptyBody}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

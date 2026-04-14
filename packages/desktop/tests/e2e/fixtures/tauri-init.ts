@@ -31,6 +31,7 @@ export function tauriInitScript(): string {
       get_all_local_ips: () => [],
       get_sync_url: () => 'ws://127.0.0.1:8765',
       get_sync_client_count: () => 0,
+      get_updater_target: () => 'darwin-aarch64',
       reset_pairing_token: () => null,
       get_recent_logs: () => [],
       start_relay: () => null,

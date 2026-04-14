@@ -14,7 +14,15 @@ export interface Update {
   ) => Promise<void>;
 }
 
-export async function check(): Promise<Update | null> {
+export interface CheckOptions {
+  target?: string;
+}
+
+export async function check(options?: CheckOptions): Promise<Update | null> {
+  (
+    window as unknown as Record<string, unknown>
+  ).__TAURI_MOCK_UPDATE_CHECK_ARGS__ = options ?? null;
+
   // Honour __TAURI_MOCK_UPDATE__ so specific tests can simulate an update.
   const override = (window as unknown as Record<string, unknown>).__TAURI_MOCK_UPDATE__;
   if (override) {

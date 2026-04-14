@@ -6,6 +6,10 @@ const DEBUG_STORE_PATH = resolveViteFsModulePath(
   import.meta.url,
 );
 
+function getDesktopSidebar(page: import("@playwright/test").Page) {
+  return page.getByTestId("app-sidebar");
+}
+
 async function seedAcceptedDesktopConsent(
   page: import("@playwright/test").Page,
 ) {
@@ -1383,19 +1387,22 @@ test("settings sources nav shows provider status dots", async ({ app, page }) =>
   await expect(page.getByTestId("settings-provider-status-x")).toHaveClass(/bg-red-500/);
   await expect(page.getByTestId("settings-provider-status-facebook")).toHaveClass(/bg-emerald-500/);
   await expect(page.getByTestId("settings-provider-status-linkedin")).toHaveClass(/bg-amber-500/);
-  await expect(page.getByTestId("source-indicator-x")).toHaveAttribute("title", "Reconnect required");
-  await expect(page.getByTestId("source-indicator-facebook")).toHaveAttribute("title", "Connected");
-  await expect(page.getByTestId("source-indicator-linkedin")).toHaveAttribute("title", "Sync issue");
-  await expect(page.getByTestId("source-indicator-instagram")).toHaveCount(0);
-  await expect(page.getByTestId("source-indicator-x")).toHaveClass(/bg-red-500/);
-  await expect(page.getByTestId("source-indicator-facebook")).toHaveClass(/bg-emerald-500/);
-  await expect(page.getByTestId("source-indicator-linkedin")).toHaveClass(/bg-amber-500/);
+  const sidebar = getDesktopSidebar(page);
+  await expect(sidebar.getByTestId("source-indicator-x")).toHaveAttribute("title", "Reconnect required");
+  await expect(sidebar.getByTestId("source-indicator-facebook")).toHaveAttribute("title", "Connected");
+  await expect(sidebar.getByTestId("source-indicator-linkedin")).toHaveAttribute("title", "Sync issue");
+  await expect(sidebar.getByTestId("source-indicator-instagram")).toHaveCount(0);
+  await expect(sidebar.getByTestId("source-indicator-x")).toHaveClass(/bg-red-500/);
+  await expect(sidebar.getByTestId("source-indicator-facebook")).toHaveClass(/bg-emerald-500/);
+  await expect(sidebar.getByTestId("source-indicator-linkedin")).toHaveClass(/bg-amber-500/);
 
   const facebookSourceIndicatorLayout = await page.evaluate(() => {
-    const row = document.querySelector('[data-testid="source-row-facebook"]')?.parentElement;
+    const desktopSidebar = document.querySelector('[data-testid="app-sidebar"]');
+    const row = desktopSidebar?.querySelector('[data-testid="source-row-facebook"]')?.parentElement;
     const indicator = row?.querySelector('[data-testid="source-indicator-facebook"]');
+    const indicatorSlot = row?.querySelector('[data-testid="source-indicator-slot-facebook"]');
     const label = row?.querySelector('[data-testid="source-row-facebook"] span.min-w-0.flex-1.truncate');
-    if (!indicator || !label || !row) {
+    if (!indicator || !indicatorSlot || !label || !row) {
       return null;
     }
 
@@ -1405,6 +1412,7 @@ test("settings sources nav shows provider status dots", async ({ app, page }) =>
     return {
       indicatorLeft: indicatorRect.left,
       indicatorRight: indicatorRect.right,
+      indicatorOpacity: window.getComputedStyle(indicatorSlot).opacity,
       labelRight: labelRect.right,
       rowRight: rowRect.right,
     };
@@ -1413,10 +1421,11 @@ test("settings sources nav shows provider status dots", async ({ app, page }) =>
   expect(facebookSourceIndicatorLayout).not.toBeNull();
   expect(facebookSourceIndicatorLayout!.indicatorLeft).toBeGreaterThan(facebookSourceIndicatorLayout!.labelRight);
   expect(facebookSourceIndicatorLayout!.indicatorRight).toBeLessThan(facebookSourceIndicatorLayout!.rowRight);
+  expect(facebookSourceIndicatorLayout!.indicatorOpacity).toBe("1");
 
   const sidebarIndicatorSizes = await page.evaluate(() => {
     const settingsIndicator = document.querySelector('[data-testid="settings-provider-status-facebook"]');
-    const sourceIndicator = document.querySelector('[data-testid="source-indicator-facebook"]');
+    const sourceIndicator = document.querySelector('[data-testid="app-sidebar"] [data-testid="source-indicator-facebook"]');
     if (!settingsIndicator || !sourceIndicator) {
       return null;
     }
@@ -1468,7 +1477,7 @@ test("sidebar keeps friends and map under all, and LinkedIn falls back to source
   });
 
   const sourceRowOrder = await page.evaluate(() =>
-    Array.from(document.querySelectorAll('[data-testid^="source-row-"]'))
+    Array.from(document.querySelectorAll('[data-testid="app-sidebar"] [data-testid^="source-row-"]'))
       .map((node) => node.getAttribute("data-testid"))
       .slice(0, 8),
   );
@@ -1484,9 +1493,10 @@ test("sidebar keeps friends and map under all, and LinkedIn falls back to source
     "source-row-linkedin",
   ]);
 
-  await expect(page.getByTestId("source-indicator-linkedin")).toHaveAttribute("title", "Connected");
-  await page.getByTestId("source-row-linkedin").hover();
-  await page.getByTestId("source-menu-trigger-linkedin").click();
+  const sidebar = getDesktopSidebar(page);
+  await expect(sidebar.getByTestId("source-indicator-linkedin")).toHaveAttribute("title", "Connected");
+  await sidebar.getByTestId("source-row-linkedin").hover();
+  await sidebar.getByTestId("source-menu-trigger-linkedin").click();
   await expect(page.getByText("Connected").first()).toBeVisible();
 });
 
@@ -1530,15 +1540,17 @@ test("provider sync button shows a spinner while that provider is active", async
   await expect(page.getByTestId("provider-sync-action-x-spinner")).toBeVisible();
   await expect(page.getByTestId("settings-provider-status-x")).toHaveAttribute("title", "Syncing");
   await expect(page.getByTestId("provider-status-x")).toHaveAttribute("title", "Syncing");
-  await expect(page.getByTestId("source-indicator-x")).toHaveAttribute("title", "Syncing");
+  const sidebar = getDesktopSidebar(page);
+  await expect(sidebar.getByTestId("source-indicator-x")).toHaveAttribute("title", "Syncing");
   await expect(page.getByTestId("provider-activity-log-x")).toContainText("[X] sync started");
   await expect(page.getByTestId("provider-activity-log-x")).toContainText(
     "[X] requesting home timeline",
   );
 
   const sourceIndicatorSizes = await page.evaluate(() => {
-    const syncingIndicator = document.querySelector('[data-testid="source-indicator-x"]');
-    const healthyIndicator = document.querySelector('[data-testid="source-indicator-facebook"]');
+    const desktopSidebar = document.querySelector('[data-testid="app-sidebar"]');
+    const syncingIndicator = desktopSidebar?.querySelector('[data-testid="source-indicator-x"]');
+    const healthyIndicator = desktopSidebar?.querySelector('[data-testid="source-indicator-facebook"]');
     if (!syncingIndicator || !healthyIndicator) {
       return null;
     }
@@ -1654,11 +1666,12 @@ test("cooldown indicators stay amber while sync is active", async ({ app, page }
     });
   }, { debugStorePath });
 
-  await expect(page.getByTestId("source-indicator-instagram")).toHaveAttribute("title", "Cooling down");
-  await expect(page.getByTestId("source-indicator-instagram")).toContainText("😴");
-  await page.getByTestId("source-row-instagram").hover();
-  await expect(page.getByTestId("source-menu-trigger-instagram")).toBeVisible();
-  await page.getByTestId("source-menu-trigger-instagram").click();
+  const sidebar = getDesktopSidebar(page);
+  await expect(sidebar.getByTestId("source-indicator-instagram")).toHaveAttribute("title", "Cooling down");
+  await expect(sidebar.getByTestId("source-indicator-instagram")).toContainText("😴");
+  await sidebar.getByTestId("source-row-instagram").hover();
+  await expect(sidebar.getByTestId("source-menu-trigger-instagram")).toBeVisible();
+  await sidebar.getByTestId("source-menu-trigger-instagram").click();
   await expect(page.getByText("Cooling down").first()).toBeVisible();
 });
 
@@ -1720,6 +1733,12 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
         linkedin: 0,
         gdrive: 0,
         dropbox: 0,
+      },
+      unreadCountByPlatform: {
+        rss: 24,
+      },
+      itemCountByPlatform: {
+        rss: 52,
       },
     });
 
@@ -1783,9 +1802,42 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
     });
   }, { debugStorePath });
 
-  await expect(page.getByTestId("source-status-rss")).toHaveAttribute("title", "Syncing");
-  await page.getByTestId("source-row-rss").hover();
-  await expect(page.getByTestId("source-menu-trigger-rss")).toBeVisible();
+  const sidebar = getDesktopSidebar(page);
+  await expect(sidebar.getByTestId("source-status-rss")).toHaveAttribute("title", "Syncing");
+  const rssRowLayout = await page.evaluate(() => {
+    const desktopSidebar = document.querySelector('[data-testid="app-sidebar"]');
+    const rowButton = desktopSidebar?.querySelector('[data-testid="source-row-rss"]');
+    const row = rowButton?.closest("li");
+    const label =
+      Array.from(rowButton?.querySelectorAll("span") ?? []).find((node) =>
+        node.textContent?.includes("Feeds"),
+      ) ?? null;
+    const status = document.querySelector('[data-testid="source-status-rss"]');
+    const counts = document.querySelector('[data-testid="source-counts-rss"]');
+    if (!row || !label || !status || !counts) {
+      return null;
+    }
+
+    const rowRect = row.getBoundingClientRect();
+    const labelRect = label.getBoundingClientRect();
+    const statusRect = status.getBoundingClientRect();
+    const countsRect = counts.getBoundingClientRect();
+    return {
+      rowRight: rowRect.right,
+      labelRight: labelRect.right,
+      statusLeft: statusRect.left,
+      statusRight: statusRect.right,
+      countsLeft: countsRect.left,
+      countsRight: countsRect.right,
+    };
+  });
+
+  expect(rssRowLayout).not.toBeNull();
+  expect(rssRowLayout!.statusLeft).toBeGreaterThan(rssRowLayout!.labelRight);
+  expect(rssRowLayout!.countsLeft).toBeGreaterThan(rssRowLayout!.statusRight);
+  expect(rssRowLayout!.countsRight).toBeLessThanOrEqual(rssRowLayout!.rowRight);
+  await sidebar.getByTestId("source-row-rss").hover();
+  await expect(sidebar.getByTestId("source-menu-trigger-rss")).toBeVisible();
 
   await page.evaluate(async ({ debugStorePath }) => {
     const now = Date.now();
@@ -1832,8 +1884,8 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
     });
   }, { debugStorePath });
 
-  await expect(page.getByTestId("source-status-rss")).toHaveAttribute("title", "Sync issue");
-  await expect(page.getByTestId("source-status-rss")).toHaveClass(/bg-amber-500/);
+  await expect(sidebar.getByTestId("source-status-rss")).toHaveAttribute("title", "Sync issue");
+  await expect(sidebar.getByTestId("source-status-rss")).toHaveClass(/bg-amber-500/);
 });
 
 test("source rows swap counts for an actions menu on hover", async ({ app, page }) => {
@@ -1863,19 +1915,25 @@ test("source rows swap counts for an actions menu on hover", async ({ app, page 
     });
   });
 
-  const sourceRow = page.getByTestId("source-row-x");
-  const counts = page.getByTestId("source-counts-x");
-  const trigger = page.getByTestId("source-menu-trigger-x");
-  const indicator = page.getByTestId("source-indicator-slot-x");
+  const sidebar = getDesktopSidebar(page);
+  const sourceRow = sidebar.getByTestId("source-row-x");
+  const counts = sidebar.getByTestId("source-counts-x");
+  const trigger = sidebar.getByTestId("source-menu-trigger-x");
+  const indicator = sidebar.getByTestId("source-indicator-slot-x");
 
-  await expect(page.getByTestId("source-menu-trigger-all")).toHaveCount(0);
+  await expect(sidebar.getByTestId("source-menu-trigger-all")).toHaveCount(0);
   await expect(counts).toBeVisible();
   await expect(counts).toHaveClass(/opacity-100/);
   await expect(trigger).toHaveClass(/opacity-0/);
   await expect(trigger).toHaveClass(/pointer-events-none/);
-  await expect(indicator).toHaveClass(/transition-transform/);
   await expect(counts).toHaveClass(/transition-all/);
   await expect(trigger).toHaveClass(/transition-all/);
+  await expect(indicator).toBeVisible();
+
+  const indicatorOpacity = await indicator.evaluate((element) => {
+    return window.getComputedStyle(element).opacity;
+  });
+  expect(indicatorOpacity).toBe("1");
 
   await sourceRow.hover();
 
@@ -1924,9 +1982,10 @@ test("source menu trigger toggles open and closed", async ({ app, page }) => {
     });
   });
 
-  const sourceRow = page.getByTestId("source-row-x");
+  const sidebar = getDesktopSidebar(page);
+  const sourceRow = sidebar.getByTestId("source-row-x");
   await sourceRow.hover();
-  const trigger = page.getByTestId("source-menu-trigger-x");
+  const trigger = sidebar.getByTestId("source-menu-trigger-x");
   await trigger.click();
 
   const menu = page.getByTestId("source-context-menu-x");
@@ -1969,9 +2028,10 @@ test("source menu stays open and acknowledges sync now while syncing is already 
     });
   });
 
-  const sourceRow = page.getByTestId("source-row-x");
+  const sidebar = getDesktopSidebar(page);
+  const sourceRow = sidebar.getByTestId("source-row-x");
   await sourceRow.hover();
-  await page.getByTestId("source-menu-trigger-x").click();
+  await sidebar.getByTestId("source-menu-trigger-x").click();
 
   const menu = page.getByTestId("source-context-menu-x");
   await expect(menu).toBeVisible();

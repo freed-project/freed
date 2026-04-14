@@ -9,7 +9,6 @@ export type SectionId =
   | "legal"
   | "appearance"
   | "support"
-  | "reading"
   | "feeds"
   | "saved"
   | "ai"
@@ -34,7 +33,14 @@ export const BASE_SECTION_METAS: readonly SectionMeta[] = [
   {
     id: "appearance",
     label: "Appearance",
-    keywords: ["theme", "appearance", "style", "midas", "neon", "ember", "scriptorium", "look"],
+    keywords: [
+      "theme", "appearance", "style", "midas", "neon", "ember", "scriptorium", "look",
+      "engagement", "counts", "likes", "reposts", "views",
+      "focus", "focus mode", "bionic", "bold", "reading speed",
+      "intensity", "light", "normal", "strong", "mark read", "scroll",
+      "grayscale", "read grayscale", "read appearance",
+      "archive", "delete archived", "prune", "reading",
+    ],
   },
   {
     id: "legal",
@@ -52,15 +58,6 @@ export const BASE_SECTION_METAS: readonly SectionMeta[] = [
     keywords: ["cloud", "dropbox", "google drive", "gdrive", "backup", "provider", "connect"],
   },
   {
-    id: "reading",
-    label: "Reading",
-    keywords: [
-      "engagement", "counts", "likes", "reposts", "views",
-      "focus", "focus mode", "bionic", "bold", "reading speed",
-      "intensity", "light", "normal", "strong", "display",
-    ],
-  },
-  {
     id: "saved",
     label: "Saved",
     keywords: ["bookmark", "save url", "reading list", "markdown", "import", "export", "manage", "articles", "sources"],
@@ -76,7 +73,7 @@ export const BASE_SECTION_METAS: readonly SectionMeta[] = [
 export const UPDATES_SECTION_META: SectionMeta = {
   id: "updates",
   label: "Updates",
-  keywords: ["update", "version", "upgrade", "check for updates", "install", "restart", "release"],
+  keywords: ["update", "version", "upgrade", "check for updates", "install", "restart", "release", "production", "dev", "channel"],
 };
 
 /** Shown only when the platform provides an X/Twitter settings component (desktop). */

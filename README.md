@@ -8,6 +8,15 @@ Capture your social/rss/newsletter feeds locally. Tune the ranking algo yourself
 
 ---
 
+## Branch Flow
+
+- `dev` is the default integration branch
+- `main` is the production promotion branch
+- Production web surfaces live at `freed.wtf` and `app.freed.wtf`
+- Dev web surfaces live at `dev.freed.wtf` and `dev-app.freed.wtf`
+
+---
+
 ## Features
 
 - 🌊 **Unified feed** — X, RSS, YouTube, newsletters, podcasts in one timeline
@@ -73,7 +82,7 @@ Local WebSocket relay + cloud backup.
 
 ### [Phase 6: PWA Reader](docs/PHASE-6-PWA.md) 🚧
 
-Mobile companion at [app.freed.wtf](https://app.freed.wtf). Deployed via Vercel.
+Mobile companion at [app.freed.wtf](https://app.freed.wtf), with the dev channel at `dev-app.freed.wtf`.
 
 ### [Phase 7: Facebook + Instagram](docs/PHASE-7-SOCIAL-CAPTURE.md)
 

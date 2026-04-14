@@ -933,10 +933,11 @@ export function DebugPanel({ variant = "overlay" }: { variant?: PanelVariant }) 
   const content = <PanelContent tab={tab} setTab={setTab} onClose={toggle} />;
 
   if (variant === "drawer") {
-    // Desktop: fills the width-animated wrapper in AppShell.
-    // Border is here (not on the wrapper) so it's clipped when width is 0.
     return (
-      <div className="app-theme-shell flex h-full w-full flex-col border-l border-[var(--theme-border-subtle)]">
+      <div
+        data-testid="debug-panel-surface"
+        className="theme-floating-panel app-theme-shell flex h-full w-full flex-col overflow-hidden"
+      >
         {content}
       </div>
     );

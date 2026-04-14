@@ -6,11 +6,11 @@ disable-model-invocation: true
 
 # Build Feature
 
-Create a new worktree branch from main, plan the feature, implement it, and launch a live preview.
+Create a new worktree branch from dev, plan the feature, implement it, and launch a live preview.
 
 ## Workflow
 
-1. Create a new worktree branch from `main` using `./scripts/worktree-add.sh`.
+1. Create a new worktree branch from `dev` using `./scripts/worktree-add.sh`.
 2. Activate planning mode and prepare an implementation plan for the feature described by the user.
 3. Implement the feature according to the plan.
 4. Launch a live preview so the user can test it:

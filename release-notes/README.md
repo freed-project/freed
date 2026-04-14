@@ -4,11 +4,18 @@ Freed release notes now use a hybrid flow:
 
 1. `./scripts/release.sh`
    Bumps app versions and generates draft release-note artifacts.
+   Pass `--channel=dev` for a dev prerelease, or omit it on `main` for production.
 2. Review the generated files under `release-notes/`.
 3. Edit the copy and daily editorial guidance as needed.
 4. Mark the release file as approved.
 5. Commit the review changes.
 6. Run `./scripts/release-publish.sh <version>` to create the tag.
+
+## Channels
+
+- Production tags use `YY.M.DDBUILD`, for example `26.4.1203`
+- Dev tags use `YY.M.DDBUILD-dev`, for example `26.4.1204-dev`
+- Release artifacts now include a top-level `channel` field so workflows can publish dev builds as prereleases
 
 The release workflow only publishes notes from an approved checked-in release
 artifact. GitHub Actions does not write final release prose on its own.
@@ -19,6 +26,7 @@ artifact. GitHub Actions does not write final release prose on its own.
 
 Per-build release artifact with:
 
+- `channel`: `production` or `dev`
 - `approved`: must be `true` before tagging
 - `editorialNotes`: optional human guidance for this specific build
 - `release.deck`: terse noun-phrase heading for the most meaningful shipped outcomes
@@ -31,7 +39,7 @@ Per-build release artifact with:
 
 Rendered markdown preview of the release body.
 
-### `release-notes/daily/YY.M.D.json`
+### `release-notes/daily/<channel>/YY.M.D.json`
 
 Per-day editorial memory. This is how one piece of feedback can carry across
 later builds on the same day.
@@ -49,7 +57,7 @@ grouped card.
 
 ## Typical Review Loop
 
-1. Run `./scripts/release.sh`
+1. Run `./scripts/release.sh --channel=production` from `main`, or `./scripts/release.sh --channel=dev` from `dev`
 2. Open the generated `release-notes/releases/vX.Y.Z.json`
 3. Tighten the `deck`, `features`, `fixes`, and `followUps`
    The deck should read like `X, Y, and Z`, not a sentence

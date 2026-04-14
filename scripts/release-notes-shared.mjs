@@ -2,6 +2,7 @@ export const MAX_FEATURES = 3;
 export const MAX_FIXES = 15;
 export const MAX_FOLLOW_UPS = 15;
 const MAX_DECK_PHRASES = 3;
+const DEV_SUFFIX = "-dev";
 
 const STOP_WORDS = new Set([
   "a",
@@ -71,12 +72,49 @@ const SECTION_CONSOLIDATIONS = {
   },
 };
 
+function parseComparableVersion(version) {
+  const normalized = String(version ?? "").replace(/^v/, "");
+  const channel = normalized.endsWith(DEV_SUFFIX) ? "dev" : "production";
+  const baseVersion = channel === "dev"
+    ? normalized.slice(0, -DEV_SUFFIX.length)
+    : normalized;
+  const [yy = "0", month = "0", patch = "0"] = baseVersion.split(".");
+
+  return {
+    yy: Number(yy),
+    month: Number(month),
+    patch: Number(patch),
+    channel,
+  };
+}
+
 export function compareTags(a, b) {
-  return a.localeCompare(b, undefined, { numeric: true });
+  const left = parseComparableVersion(a);
+  const right = parseComparableVersion(b);
+
+  if (left.yy !== right.yy) {
+    return left.yy - right.yy;
+  }
+
+  if (left.month !== right.month) {
+    return left.month - right.month;
+  }
+
+  if (left.patch !== right.patch) {
+    return left.patch - right.patch;
+  }
+
+  if (left.channel === right.channel) {
+    return 0;
+  }
+
+  return left.channel === "dev" ? -1 : 1;
 }
 
 export function versionDayKey(version) {
-  const parts = version.split(".");
+  const parts = String(version ?? "")
+    .replace(DEV_SUFFIX, "")
+    .split(".");
   if (parts.length !== 3) {
     return version;
   }
@@ -87,7 +125,9 @@ export function versionDayKey(version) {
 }
 
 export function dayDateFromVersion(version) {
-  const parts = version.split(".");
+  const parts = String(version ?? "")
+    .replace(DEV_SUFFIX, "")
+    .split(".");
   if (parts.length !== 3) {
     return null;
   }
