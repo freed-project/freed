@@ -32,7 +32,7 @@ function LegalLink({
     <button
       type="button"
       onClick={() => openLegalUrl(href, openUrl)}
-      className="text-[var(--theme-accent-secondary)] hover:text-text-primary underline underline-offset-2 transition-colors"
+      className="theme-card-soft inline-flex items-center rounded-full px-3 py-1.5 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary"
     >
       {label}
     </button>
@@ -81,49 +81,66 @@ export function LegalGate({
   return (
     <div className="fixed inset-0 z-[120] app-theme-shell text-text-primary">
       <div className="flex min-h-full items-start justify-center overflow-y-auto px-4 py-4 sm:items-center sm:px-6 sm:py-8 lg:px-8">
-        <div className="theme-dialog-shell flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col sm:max-h-[calc(100dvh-3rem)]">
-          <div className="theme-dialog-divider shrink-0 border-b bg-[linear-gradient(90deg,color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent),color-mix(in_srgb,var(--theme-bg-surface)_92%,transparent),color-mix(in_srgb,var(--theme-accent-tertiary)_12%,transparent))] px-6 py-5 sm:px-8 sm:py-7">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--theme-accent-secondary)]">
-              Before You Continue
-            </p>
-            <h1 className="mt-2 text-2xl sm:text-3xl font-semibold">
-              {productName} is a live experiment with sharp edges.
-            </h1>
-            <p className="mt-3 text-sm leading-relaxed text-text-secondary sm:text-base">
-              Freed is local-first and does not phone home, but some features can still go badly sideways.
-              Third-party providers can rate limit you, lock your account, force re-authentication,
-              or ban you outright.
-            </p>
-          </div>
+        <div className="theme-dialog-shell flex max-h-[calc(100dvh-2rem)] w-full max-w-4xl flex-col overflow-hidden sm:max-h-[calc(100dvh-3rem)]">
+          <div
+            className="absolute top-0 left-1/4 h-32 w-32 rounded-full blur-3xl"
+            style={{
+              background:
+                "color-mix(in srgb, var(--theme-accent-secondary) 14%, transparent)",
+            }}
+          />
+          <div
+            className="absolute bottom-0 right-1/4 h-40 w-40 rounded-full blur-3xl"
+            style={{
+              background:
+                "color-mix(in srgb, var(--theme-accent-primary) 12%, transparent)",
+            }}
+          />
 
-          <div className="overflow-y-auto px-6 py-6 sm:px-8 sm:py-7 space-y-6">
-            <div className="theme-feedback-panel-warning rounded-2xl p-4">
-              <p className="theme-feedback-text-warning text-sm font-semibold">
-                What you are agreeing to
+          <div className="relative z-10 overflow-y-auto px-6 pt-6 pb-8 sm:px-10 sm:pt-10 sm:pb-10">
+            <div className="mx-auto max-w-2xl text-center">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--theme-accent-secondary)]">
+                Before You Continue
               </p>
-              <ul className="theme-feedback-text-warning-muted mt-3 space-y-2 text-sm">
-                <li>You are using experimental software that may break or change without notice.</li>
-                <li>You are responsible for deciding whether to connect any account or provider.</li>
-                <li>Some social features can trigger throttling, forced logouts, temporary locks, or permanent bans.</li>
-                <li>Freed is provided as-is, without promises of safety, uptime, or compatibility.</li>
-              </ul>
+              <h1 className="mt-3 text-3xl font-bold text-text-primary sm:text-4xl">
+                Use <span className="theme-heading-accent">{productName}</span> carefully.
+              </h1>
+              <p className="mt-3 text-sm leading-relaxed text-text-secondary sm:text-base">
+                {productName} is local-first and does not phone home. Third-party social providers can
+                rate limit you, lock your account, or even potentially close your account if they are
+                able to detect you're using Freed and they're feeling particularly Machiavellian.
+              </p>
             </div>
 
-            <div className="theme-dialog-section rounded-2xl p-4">
-              <p className="text-sm font-semibold text-text-primary">
-                Read these documents
-              </p>
-              <div className="mt-3 flex flex-wrap gap-x-3 gap-y-2 text-sm text-text-secondary">
-                {documentList.map((doc, index) => (
-                  <span key={doc.id}>
-                    <LegalLink href={doc.url} label={doc.label} openUrl={openUrl} />
-                    {index < documentList.length - 1 ? <span className="ml-3 text-text-muted/60">•</span> : null}
-                  </span>
-                ))}
+            <div className="mt-8 grid gap-0 lg:grid-cols-2 lg:items-start">
+              <div className="pb-6 lg:pr-8">
+                <h2 className="text-2xl font-bold text-text-primary">
+                  What you are agreeing to
+                </h2>
+                <ul className="mt-5 space-y-3 text-sm leading-relaxed text-text-secondary sm:text-base">
+                  <li>You are using experimental software that may break or change without notice.</li>
+                  <li>You decide whether to connect any account to third-party social providers.</li>
+                  <li>Those providers can throttle you, force re-authentication, temporarily lock you out, or close your account.</li>
+                  <li>{productName} is provided as-is, without promises of uptime, compatibility, or account safety.</li>
+                </ul>
+              </div>
+
+              <div className="lg:border-l lg:border-[color:color-mix(in_srgb,var(--theme-border-subtle)_70%,transparent)] lg:pl-8">
+                <h2 className="text-2xl font-bold text-text-primary">
+                  Read first
+                </h2>
+                <p className="mt-3 text-sm leading-relaxed text-text-secondary">
+                  Read the documents below before you accept. They are short, but the social platforms are not known for their sense of humor.
+                </p>
+                <div className="mt-5 flex flex-wrap gap-3">
+                  {documentList.map((doc) => (
+                    <LegalLink key={doc.id} href={doc.url} label={doc.label} openUrl={openUrl} />
+                  ))}
+                </div>
               </div>
             </div>
 
-            <label className="theme-card-soft flex cursor-pointer items-start gap-3 rounded-2xl p-4">
+            <label className="theme-card-soft mt-8 flex cursor-pointer items-start gap-3 rounded-2xl p-4 sm:p-5">
               <input
                 type="checkbox"
                 checked={checked}
@@ -143,17 +160,17 @@ export function LegalGate({
                 ) : (
                   "."
                 )}
-                I understand that some features can damage or terminate my access to third-party accounts.
+                I understand that third-party social providers can rate limit, lock, or close accounts connected to Freed activity.
               </span>
             </label>
 
-            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
+            <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
               <button
                 type="button"
                 onClick={() => {
                   void handleDecline();
                 }}
-                className="px-4 py-2.5 rounded-xl border border-[color:var(--theme-border)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] text-sm text-text-secondary transition-colors hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_90%,transparent)]"
+                className="btn-secondary px-4 py-2.5 text-sm"
               >
                 {declineLabel}
               </button>
