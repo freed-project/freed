@@ -67,6 +67,14 @@ export function startOutboxProcessor(
     return retryMap.get(id)!;
   }
 
+  function maybeDeleteRetries(id: string) {
+    const retries = retryMap.get(id);
+    if (!retries) return;
+    if (retries.likeRetries === 0 && retries.seenRetries === 0) {
+      retryMap.delete(id);
+    }
+  }
+
   let drainTimer: ReturnType<typeof setTimeout> | null = null;
   let isDraining = false;
 
@@ -120,12 +128,15 @@ export function startOutboxProcessor(
         if (ok) {
           retries.likeRetries = 0;
           await confirmLiked(item.globalId);
+          maybeDeleteRetries(item.globalId);
           addDebugEvent("change", `[Outbox] liked ${item.globalId} on ${item.platform}`);
         } else {
           retries.likeRetries++;
           addDebugEvent("change", `[Outbox] like soft-fail #${retries.likeRetries} for ${item.globalId}`);
           if (retries.likeRetries >= MAX_RETRIES) {
             try { await confirmLiked(item.globalId, -1); } catch { /* logged below */ }
+            retries.likeRetries = 0;
+            maybeDeleteRetries(item.globalId);
             addDebugEvent("error", `[Outbox] like permanently failed for ${item.globalId}`);
           }
         }
@@ -134,6 +145,8 @@ export function startOutboxProcessor(
         addDebugEvent("error", `[Outbox] like threw for ${item.globalId}: ${err instanceof Error ? err.message : String(err)}`);
         if (retries.likeRetries >= MAX_RETRIES) {
           try { await confirmLiked(item.globalId, -1); } catch { /* already logged */ }
+          retries.likeRetries = 0;
+          maybeDeleteRetries(item.globalId);
         }
       }
     }
@@ -148,10 +161,13 @@ export function startOutboxProcessor(
         if (ok) {
           retries.seenRetries = 0;
           await confirmSeen(item.globalId);
+          maybeDeleteRetries(item.globalId);
         } else {
           retries.seenRetries++;
           if (retries.seenRetries >= MAX_RETRIES) {
             try { await confirmSeen(item.globalId, -1); } catch { /* logged below */ }
+            retries.seenRetries = 0;
+            maybeDeleteRetries(item.globalId);
           }
         }
       } catch (err) {
@@ -159,6 +175,8 @@ export function startOutboxProcessor(
         addDebugEvent("error", `[Outbox] seen threw for ${item.globalId}: ${err instanceof Error ? err.message : String(err)}`);
         if (retries.seenRetries >= MAX_RETRIES) {
           try { await confirmSeen(item.globalId, -1); } catch { /* already logged */ }
+          retries.seenRetries = 0;
+          maybeDeleteRetries(item.globalId);
         }
       }
     }

@@ -116,26 +116,6 @@ export async function getClientCount(): Promise<number> {
 }
 
 /**
- * Broadcast document to all connected clients.
- *
- * Skips the Array.from(Uint8Array) conversion (O(binary size), can be 50-300 ms
- * for a large doc) when no clients are connected — the common single-device case.
- */
-export async function broadcastDoc(): Promise<void> {
-  if (clientCount === 0) return;
-  try {
-    const docBytes = getDocBinary();
-    // Convert Uint8Array to a plain array for Tauri JSON serialization.
-    await invoke("broadcast_doc", { docBytes: Array.from(docBytes) });
-    console.log("[Sync] Broadcast document:", docBytes.length, "bytes");
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error("[Sync] Failed to broadcast:", error);
-    addDebugEvent("error", `[Sync] broadcast failed: ${msg}`);
-  }
-}
-
-/**
  * Check if sync server is running
  */
 export function isRelayConnected(): boolean {
@@ -649,8 +629,9 @@ export async function deleteCloudFile(provider: CloudProvider, token: string): P
 
 /**
  * Schedule a debounced upload for a provider.
- * Called from `broadcastDoc` so every local document change triggers a cloud
- * backup. Debouncing prevents a flood of uploads during rapid edits.
+ * Called from the worker-backed document subscription so every local change
+ * can trigger a cloud backup. Debouncing prevents a flood of uploads during
+ * rapid edits.
  */
 export function scheduleCloudUpload(provider: CloudProvider, token: string): void {
   const existing = uploadTimers.get(provider);
@@ -658,7 +639,7 @@ export function scheduleCloudUpload(provider: CloudProvider, token: string): voi
 
   const timer = setTimeout(async () => {
     uploadTimers.delete(provider);
-    const binary = getDocBinary();
+    const binary = await getDocBinary();
     const startedAt = Date.now();
     try {
       if (provider === "gdrive") {

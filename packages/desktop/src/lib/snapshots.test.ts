@@ -70,7 +70,7 @@ describe("snapshots", () => {
       friends: {
         "friend-1": { id: "friend-1" },
       },
-      allItemIds: ["item-1", "item-2"],
+      docItemCount: 2,
     });
     localStorage.setItem(
       CONTACT_SYNC_STORAGE_KEY,

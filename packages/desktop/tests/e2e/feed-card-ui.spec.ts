@@ -162,12 +162,10 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(facebookCard).not.toContainText("45");
 
   await facebookCard.click();
-  const reader = app.page.locator("header").filter({ hasText: "Card UI Overhaul" }).first();
   const readerHeading = app.page.locator("article h1").filter({ hasText: FACEBOOK_TITLE }).first();
-  await expect(reader).toBeVisible();
-  await expect(reader.locator(TRASH_PATH).first()).toBeVisible();
   await expect(readerHeading).toBeVisible();
+  await expect(app.page.getByLabel("Archive")).toBeVisible();
 
-  const openReaderButton = reader.locator('button[aria-label="Open"]').first();
+  const openReaderButton = app.page.locator("header").getByRole("button", { name: "Open", exact: true });
   await expect(openReaderButton).toBeVisible();
 });

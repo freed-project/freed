@@ -61,6 +61,12 @@ const handlers: Record<string, Handler> = {
   get_all_local_ips: () => [],
   get_sync_url: () => "ws://127.0.0.1:8765",
   get_sync_client_count: () => 0,
+  get_runtime_memory_stats: () => ({
+    processResidentBytes: 64 * 1024 * 1024,
+    processVirtualBytes: 256 * 1024 * 1024,
+    relayDocBytes: 0,
+    relayClientCount: 0,
+  }),
   reset_pairing_token: () => null,
   get_recent_logs: () => [],
   start_relay: () => null,

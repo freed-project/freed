@@ -133,10 +133,9 @@ test("LinkedIn source indicator shows connected when authenticated", async ({
   await app.waitForReady();
 
   await setLiAuthState(app.page, true);
+  const sidebar = app.page.getByTestId("app-sidebar");
 
-  await expect(
-    app.page.getByTestId("source-indicator-linkedin"),
-  ).toBeVisible({ timeout: 3_000 });
+  await expect(sidebar.getByTestId("source-indicator-linkedin")).toBeVisible({ timeout: 3_000 });
 });
 
 test("LinkedIn source button filters the feed to LinkedIn items", async ({
@@ -171,12 +170,13 @@ test("LinkedIn appears in the source sidebar when authenticated", async ({
   await setLiAuthState(app.page, true);
   await injectLinkedInItems(app.page, 1);
 
-  const linkedInRow = app.page.getByTestId("source-row-linkedin");
+  const sidebar = app.page.getByTestId("app-sidebar");
+  const linkedInRow = sidebar.getByTestId("source-row-linkedin");
   await expect(linkedInRow).toBeVisible({
     timeout: 3_000,
   });
   await expect(linkedInRow).toContainText("LinkedIn");
-  await expect(app.page.getByTestId("source-indicator-linkedin")).toBeVisible({
+  await expect(sidebar.getByTestId("source-indicator-linkedin")).toBeVisible({
     timeout: 3_000,
   });
 });

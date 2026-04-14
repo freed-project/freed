@@ -36,6 +36,10 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+function formatOptionalBytes(bytes?: number): string {
+  return typeof bytes === "number" ? formatBytes(bytes) : "-";
+}
+
 function formatRelative(ts: number): string {
   const s = Math.floor((Date.now() - ts) / 1000);
   if (s < 5) return "just now";
@@ -155,6 +159,7 @@ const GDriveIcon = () => (
 function ConnectionTab() {
   const events = useDebugStore((s) => s.events);
   const docSnapshot = useDebugStore((s) => s.docSnapshot);
+  const runtimeMemory = useDebugStore((s) => s.runtimeMemory);
   const cloudProviders = useDebugStore((s) => s.cloudProviders);
   const [, setTick] = useState(0);
 
@@ -274,6 +279,96 @@ function ConnectionTab() {
           </div>
         </div>
       </div>
+
+      {/* ── Runtime Memory ───────────────────────────────────────────────── */}
+      {runtimeMemory && (
+        <div>
+          <p className="mb-2 px-0.5 text-[10px] uppercase tracking-widest text-[var(--theme-text-soft)]">
+            Runtime Memory
+          </p>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Process RSS</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {formatBytes(runtimeMemory.processResidentBytes)}
+              </p>
+            </div>
+
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Virtual Size</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {formatBytes(runtimeMemory.processVirtualBytes)}
+              </p>
+            </div>
+
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Relay Doc</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {formatBytes(runtimeMemory.relayDocBytes)}
+              </p>
+            </div>
+
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Relay Clients</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {runtimeMemory.relayClientCount.toLocaleString()}
+              </p>
+            </div>
+
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Fetcher Queue</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {runtimeMemory.contentQueuePending.toLocaleString()}
+              </p>
+            </div>
+
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Fetcher Failed</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {runtimeMemory.contentFailed.toLocaleString()}
+              </p>
+            </div>
+
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Renderer Heap</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {formatOptionalBytes(runtimeMemory.rendererHeapUsedBytes)}
+              </p>
+            </div>
+
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Renderer Heap Total</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {formatOptionalBytes(runtimeMemory.rendererHeapTotalBytes)}
+              </p>
+            </div>
+
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Heap Limit</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {formatOptionalBytes(runtimeMemory.rendererHeapLimitBytes)}
+              </p>
+            </div>
+
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>DOM Nodes</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {typeof runtimeMemory.domNodeCount === "number"
+                  ? runtimeMemory.domNodeCount.toLocaleString()
+                  : "-"}
+              </p>
+            </div>
+          </div>
+
+          <div className={`${DEBUG_CARD_CLASS} mt-2`}>
+            <p className={DEBUG_LABEL_CLASS}>Last Sample</p>
+            <p className="font-mono text-xs text-[var(--theme-text-muted)]">
+              {formatTs(runtimeMemory.sampleTs)}
+            </p>
+          </div>
+        </div>
+      )}
 
     </div>
   );

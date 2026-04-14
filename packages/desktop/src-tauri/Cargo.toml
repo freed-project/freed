@@ -37,6 +37,7 @@ hostname = "0.4"
 rand = "0.8"
 base64 = "0.22"
 url = "2"
+sysinfo = "0.37"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
