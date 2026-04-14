@@ -1,0 +1,45 @@
+{
+  "tag": "v26.4.1400",
+  "version": "26.4.1400",
+  "channel": "production",
+  "dayKey": "26.4.14",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-14T22:49:26.604Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.4.1300",
+    "previousPublishedDayTag": "v26.4.1300",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.1400"
+    ],
+    "prNumbers": [
+      208,
+      209,
+      210,
+      211,
+      212
+    ],
+    "commitSubjects": [
+      "Merge origin/dev into main",
+      "perf: reduce desktop memory churn and improve crash reporting (#211)",
+      "feat: add dev release channels and branch flow (#208)",
+      "fix: label macOS Activity Monitor web process as Freed (#212)",
+      "feat: add theme-native map palettes (#210)",
+      "fix: improve Scriptorium body font legibility (#209)"
+    ]
+  },
+  "release": {
+    "deck": "Theme-native map palettes, dev release channels and branch flow, and label macOS Activity Monitor web process as Freed",
+    "features": [
+      "Theme-native map palettes",
+      "Dev release channels and branch flow"
+    ],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1400\n\nTheme-native map palettes, dev release channels and branch flow, and label macOS Activity Monitor web process as Freed\n\n### Features\n\n- Theme-native map palettes\n- Dev release channels and branch flow\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
