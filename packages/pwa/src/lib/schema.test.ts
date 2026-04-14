@@ -13,6 +13,7 @@ import {
   removeFeedItem,
   markAsRead,
   toggleSaved,
+  unarchiveSavedItems,
   hideItem,
   addRssFeed,
   removeRssFeed,
@@ -276,6 +277,50 @@ describe("updatePreferences", () => {
     );
 
     expect(doc.preferences.display.compactMode).toBe(originalCompactMode);
+  });
+});
+
+describe("unarchiveSavedItems", () => {
+  it("clears stale archived state from saved items only", () => {
+    let doc = createEmptyDoc();
+    doc = A.change(doc, (d) => {
+      addFeedItem(
+        d,
+        makeItem({
+          globalId: "saved-archived",
+          userState: {
+            hidden: false,
+            saved: true,
+            savedAt: Date.now(),
+            archived: true,
+            archivedAt: Date.now(),
+            tags: [],
+          },
+        }),
+      );
+      addFeedItem(
+        d,
+        makeItem({
+          globalId: "plain-archived",
+          userState: {
+            hidden: false,
+            saved: false,
+            archived: true,
+            archivedAt: Date.now(),
+            tags: [],
+          },
+        }),
+      );
+    });
+
+    doc = A.change(doc, (d) => {
+      const repaired = unarchiveSavedItems(d);
+      expect(repaired).toBe(1);
+    });
+
+    expect(doc.feedItems["saved-archived"].userState.archived).toBe(false);
+    expect(doc.feedItems["saved-archived"].userState.archivedAt).toBeUndefined();
+    expect(doc.feedItems["plain-archived"].userState.archived).toBe(true);
   });
 });
 

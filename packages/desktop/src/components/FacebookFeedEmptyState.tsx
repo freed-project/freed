@@ -12,6 +12,7 @@ import { disconnectFb } from "../lib/fb-auth";
 import { captureFbFeed } from "../lib/fb-capture";
 import { useSettingsStore } from "@freed/ui/lib/settings-store";
 import { resetProviderPauseState } from "../lib/provider-health";
+import { SampleDataTestingSection } from "@freed/ui/components/SampleDataTestingSection";
 
 const FbIcon = () => (
   <svg className="h-7 w-7 text-[var(--theme-media-facebook)]" viewBox="0 0 24 24" fill="currentColor">
@@ -99,6 +100,7 @@ export function FacebookFeedEmptyState() {
               : syncError}
           </p>
         )}
+        <SampleDataTestingSection />
       </>
     );
   }
@@ -121,6 +123,7 @@ export function FacebookFeedEmptyState() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
       </button>
+      <SampleDataTestingSection />
     </>
   );
 }

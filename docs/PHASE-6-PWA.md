@@ -17,6 +17,9 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 - **Offline-first** — Service worker caches feed data and images for offline reading
 - **Versioned first-run consent** — PWA startup is blocked until the current legal bundle is accepted locally in the browser
 - **URL-driven navigation** — Active view, feed scope, and open reader state serialize into the URL so browser back and forward behave naturally
+- **Desktop handoff in source settings** — PWA Settings exposes X / Twitter, Facebook, Instagram, and LinkedIn with clear Freed Desktop sync and download handoff states
+- **Blank-state testing escape hatch** — PWA empty states now include a secondary sample-data section below the main handoff prompt for quick local testing
+- **Archived saved-item repair control** — Archived views now surface a one-click `Unarchive Saved Content` action when legacy or imported items end up both saved and archived
 
 ---
 

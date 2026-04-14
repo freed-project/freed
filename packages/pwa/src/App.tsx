@@ -28,7 +28,12 @@ import { checkForPwaUpdate, applyPwaUpdate, initPwaUpdater, onUpdateAvailable } 
 import { pickContactViaWebApi } from "./lib/contacts";
 import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
 import { PwaSyncSettings } from "./components/PwaSyncSettings";
-import { PwaXSettings } from "./components/PwaXSettings";
+import {
+  PwaFacebookSettings,
+  PwaInstagramSettings,
+  PwaLinkedInSettings,
+  PwaXSettings,
+} from "./components/PwaSocialProviderSettings";
 import { PwaLegalSettingsSection } from "./components/PwaLegalSettingsSection";
 import { initiateGDriveOAuth } from "./lib/cloud-oauth";
 import { acceptPwaBundle, hasAcceptedPwaBundle } from "./lib/legal-consent";
@@ -133,9 +138,9 @@ function App() {
       LegalSettingsContent: PwaLegalSettingsSection,
       FeedEmptyState: PwaFeedEmptyState,
       XSettingsContent: PwaXSettings,
-      FacebookSettingsContent: null,
-      InstagramSettingsContent: null,
-      LinkedInSettingsContent: null,
+      FacebookSettingsContent: PwaFacebookSettings,
+      InstagramSettingsContent: PwaInstagramSettings,
+      LinkedInSettingsContent: PwaLinkedInSettings,
       GoogleContactsSettingsContent: GoogleContactsSection,
       checkForUpdates,
       applyUpdate: applyPwaUpdate,

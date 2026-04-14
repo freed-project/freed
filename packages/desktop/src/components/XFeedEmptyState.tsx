@@ -15,6 +15,7 @@ import { loadStoredCookies, disconnectX } from "../lib/x-auth";
 import { captureXTimeline } from "../lib/x-capture";
 import { useSettingsStore } from "@freed/ui/lib/settings-store";
 import { resetProviderPauseState } from "../lib/provider-health";
+import { SampleDataTestingSection } from "@freed/ui/components/SampleDataTestingSection";
 
 const XIcon = () => (
   <svg className="h-7 w-7 text-[var(--theme-media-x)]" viewBox="0 0 24 24" fill="currentColor">
@@ -65,6 +66,7 @@ export function XFeedEmptyState() {
         </div>
         <p className="text-lg font-medium mb-2">All caught up!</p>
         <p className="text-sm text-[var(--theme-text-muted)]">No new items to show.</p>
+        <SampleDataTestingSection />
       </>
     );
   }
@@ -112,6 +114,7 @@ export function XFeedEmptyState() {
               : syncError}
           </p>
         )}
+        <SampleDataTestingSection />
       </>
     );
   }
@@ -135,6 +138,7 @@ export function XFeedEmptyState() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
       </button>
+      <SampleDataTestingSection />
     </>
   );
 }

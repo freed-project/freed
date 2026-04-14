@@ -23,6 +23,8 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Manual disconnect clears active pauses:** Disconnecting a social provider clears its current pause and resets future backoff escalation, but keeps historical diagnostics intact
 - **Paused providers reuse the primary action:** Settings surfaces swap `Sync Now` to `Resume Now` when a provider is paused, instead of rendering a second resume button
 - **Internal navigation history** — Desktop keeps a browser-style serialized navigation stack so `Cmd+[` and `Cmd+]` move through views and open reader state
+- **Blank-state testing escape hatch** — Desktop empty states now offer a lightweight sample-data section below the primary blank-state prompt, so fresh installs can seed realistic data without detouring into Settings
+- **Archived saved-item repair control** — Archived views now surface a one-click `Unarchive Saved Content` action when legacy or imported items end up both saved and archived
 
 ---
 

@@ -1,4 +1,5 @@
 import { useAppStore } from "../lib/store";
+import { SampleDataTestingSection } from "@freed/ui/components/SampleDataTestingSection";
 
 const openSyncSettings = () =>
   window.dispatchEvent(new CustomEvent("freed:open-settings", { detail: { scrollTo: "sync" } }));
@@ -59,6 +60,7 @@ export function PwaFeedEmptyState() {
             </button>
           </>
         )}
+        <SampleDataTestingSection />
       </>
     );
   }
@@ -94,6 +96,7 @@ export function PwaFeedEmptyState() {
         Connect
       </button>
       )}
+      <SampleDataTestingSection />
     </>
   );
 }
