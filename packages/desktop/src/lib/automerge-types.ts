@@ -29,11 +29,8 @@ export interface DocState {
   totalArchivableCount: number;
   archivableCountByPlatform: Record<string, number>;
   archivableFeedCounts: Record<string, number>;
-  /**
-   * ALL globalIds in the CRDT, including hidden and archived items.
-   * Used by import-export.ts for deduplication pre-scan without needing getDoc().
-   */
-  allItemIds: string[];
+  /** Total feed-item records in the CRDT, including hidden and archived items. */
+  docItemCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +75,9 @@ export type WorkerRequest =
   | { reqId: number; type: "BATCH_IMPORT_ITEMS"; items: FeedItem[] }
   | { reqId: number; type: "HEAL_UNTITLED_FEEDS" }
   | { reqId: number; type: "DEDUPLICATE_ITEMS" }
+  | { reqId: number; type: "GET_ALL_ITEM_IDS" }
+  | { reqId: number; type: "GET_DOC_BINARY" }
+  | { reqId: number; type: "GET_ITEM_PRESERVED_TEXT"; globalId: string }
   // Relay management (fire-and-forget, reqId ignored)
   | { reqId: number; type: "UPDATE_RELAY_CLIENT_COUNT"; count: number };
 
@@ -89,7 +89,7 @@ export type WorkerResponse =
   /** Simple acknowledgement for mutations that return void */
   | { reqId: number; type: "ACK"; error?: string }
   /** Broadcast on every doc mutation - main thread uses this to update UI */
-  | { type: "STATE_UPDATE"; state: DocState; binary: Uint8Array }
+  | { type: "STATE_UPDATE"; state: DocState }
   /** Debug panel event forwarding */
   | { type: "DEBUG_EVENT"; kind: string; detail?: string; bytes?: number }
   /** Doc size snapshot for the debug panel */
@@ -103,5 +103,11 @@ export type WorkerResponse =
    * the main thread for 10–100ms on large documents.
    */
   | { type: "BROADCAST_REQUEST"; data: number[] }
+  /** On-demand full item-id snapshot for import dedup pre-scan. */
+  | { reqId: number; type: "ALL_ITEM_IDS"; ids: string[] }
+  /** On-demand full document binary for relay, snapshots, and cloud uploads. */
+  | { reqId: number; type: "DOC_BINARY"; binary: Uint8Array }
+  /** On-demand preserved article text for the active reader item. */
+  | { reqId: number; type: "ITEM_PRESERVED_TEXT"; globalId: string; text: string | null }
   /** Progress reporting for BATCH_IMPORT_ITEMS. */
   | { type: "IMPORT_PROGRESS"; chunkIndex: number; totalChunks: number };

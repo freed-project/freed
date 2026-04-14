@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, local snapshot restore shipped, public-safe bug reporting shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -260,6 +260,14 @@ export async function captureDomFeed(
 - [x] Provider health badges and section headers use specific state labels like `Cooling down`, `Paused`, `Reconnect required`, and `Sync issue` instead of generic attention copy
 - [x] Settings > Feeds can filter to one needs-review bucket and bulk unsubscribe the currently shown set from a toolbar above the list, while each row still shows whether the feed looks likely dead or just failing
 - [x] Settings > Saved now shows an overview dashboard with saved-volume charts and source mix, instead of listing every saved item inline
+- [x] Desktop debug tooling now samples runtime memory, relay document size, relay client count, and content-fetcher queue depth so long-run RAM growth can be correlated without attaching Instruments first
+- [x] Desktop diagnostics now also sample renderer JS heap and DOM node counts so overnight RAM growth can be split between native process pressure and WebView pressure
+- [x] Native relay broadcasts now reuse shared document buffers and stop writing a full snapshot on every live document push, reducing clone pressure during heavy sync churn
+- [x] Desktop worker state no longer ships the full `allItemIds` list or full Automerge binary back to the main thread on every mutation, and the content fetcher now bounds its failed-item cooldown cache instead of keeping an immortal set of every fetch miss
+- [x] Background fetch now tracks in-flight items so unrelated document updates cannot enqueue duplicate fetch work while a URL is already being processed
+- [x] Outbox retry bookkeeping now drops completed and terminally failed IDs instead of keeping a session-long retry map for every action it has ever seen
+- [x] Removing RSS feeds now also drops their retained provider-health diagnostics instead of keeping dead feed histories in memory and storage forever
+- [x] Desktop live UI state now caps preserved article text previews and fetches full preserved text on demand for the active reader item, instead of cloning entire article bodies through every feed-state update
 - [ ] Windows installer is code-signed (requires EV certificate)
 - [ ] Update server runs on a Freed-owned domain (not GitHub Releases)
 
@@ -271,6 +279,25 @@ export async function captureDomFeed(
 > obtained or enough installs build reputation. Desktop now also writes
 > rotating local Automerge snapshots, including Google contact match state,
 > so catastrophic local corruption can be rolled back from Settings.
+> The desktop runtime now also emits periodic memory telemetry into the
+> debug panel and local logs, including process RSS, virtual size, relay
+> document size, relay client count, renderer heap usage, and DOM node
+> counts. We also removed the native relay's old habit of cloning whole
+> document buffers into multiple owners and writing a fresh snapshot on
+> every broadcast, which was an especially bad trade once sync churn stayed
+> hot for an hour or more. The worker now fetches full item-id lists and
+> full Automerge binaries only on demand for import dedupe, relay, cloud
+> backup, and snapshots, rather than shipping those payloads back to the
+> main thread on every state update. The background content fetcher now
+> bounds and ages out its failed-item cooldown cache, and it keeps an
+> in-flight set so unrelated state updates cannot queue the same fetch work
+> over and over while a URL is already being processed. The outbox also
+> prunes completed retry bookkeeping instead of letting that map grow across
+> a long session, and removing RSS feeds now also forgets their saved health
+> history instead of leaving dead diagnostics behind. Desktop feed-state
+> updates also now cap preserved article text previews and fetch the full
+> preserved text only for the reader item that is actually open, instead of
+> cloning full article bodies through the live UI state on every mutation.
 > Release notes now use a
 > checked-in review gate: `./scripts/release.sh` prepares draft notes and
 > daily editorial memory, then `./scripts/release-publish.sh` tags only after

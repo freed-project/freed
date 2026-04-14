@@ -23,10 +23,8 @@ import type { FeedItem } from "@freed/shared";
 // ── Module mocks ──────────────────────────────────────────────────────────────
 // Only mock I/O — NOT the capture-save parser (ESM live bindings prevent it).
 
-const { mockBatchImport, mockAllItemIds, mockCacheSet, mockEnqueue } = vi.hoisted(() => {
+const { mockBatchImport, mockGetAllItemIds, mockCacheSet, mockEnqueue } = vi.hoisted(() => {
   const docStore: Record<string, FeedItem> = {};
-  // allItemIds mirrors the full docStore keys for deduplication pre-scan
-  let allItemIds: string[] = [];
 
   const mockBatchImport = vi.fn(
     async (items: FeedItem[], onChunk?: (c: number, t: number) => void) => {
@@ -38,18 +36,12 @@ const { mockBatchImport, mockAllItemIds, mockCacheSet, mockEnqueue } = vi.hoiste
         }
         onChunk?.(Math.floor(i / CHUNK) + 1, total);
       }
-      allItemIds = Object.keys(docStore);
     },
   );
 
-  const mockAllItemIds = {
-    get: () => allItemIds,
-    reset: () => { allItemIds = []; Object.keys(docStore).forEach((k) => delete (docStore as Record<string, unknown>)[k]); },
-  };
-
   return {
     mockBatchImport,
-    mockAllItemIds,
+    mockGetAllItemIds: vi.fn(async () => Object.keys(docStore)),
     mockCacheSet: vi.fn(async () => undefined),
     mockEnqueue: vi.fn(),
     _docStore: docStore,
@@ -61,12 +53,7 @@ const docStore: Record<string, FeedItem> = {};
 
 vi.mock("./automerge.js", () => ({
   docBatchImportItems: mockBatchImport,
-}));
-
-vi.mock("./store.js", () => ({
-  useAppStore: {
-    getState: () => ({ allItemIds: mockAllItemIds.get() }),
-  },
+  getAllItemIds: mockGetAllItemIds,
 }));
 
 vi.mock("./content-cache.js", () => ({
@@ -144,7 +131,6 @@ describe("folderTagsFromRelativePath", () => {
 describe("importMarkdownFiles", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mockAllItemIds.reset();
     Object.keys(docStore).forEach((k) => delete docStore[k]);
 
     // Restore implementations cleared by resetAllMocks()
@@ -153,15 +139,14 @@ describe("importMarkdownFiles", () => {
         const CHUNK = 500;
         const total = Math.ceil(items.length / CHUNK);
         for (let i = 0; i < items.length; i += CHUNK) {
-          for (const item of items.slice(i, i + CHUNK)) {
-            if (!docStore[item.globalId]) docStore[item.globalId] = item;
-          }
-          onChunk?.(Math.floor(i / CHUNK) + 1, total);
+        for (const item of items.slice(i, i + CHUNK)) {
+          if (!docStore[item.globalId]) docStore[item.globalId] = item;
         }
-        const allItemIds = mockAllItemIds.get();
-        allItemIds.splice(0, allItemIds.length, ...Object.keys(docStore));
+        onChunk?.(Math.floor(i / CHUNK) + 1, total);
+      }
       },
     );
+    mockGetAllItemIds.mockImplementation(async () => Object.keys(docStore));
     mockCacheSet.mockResolvedValue(undefined);
   });
 

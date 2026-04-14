@@ -188,7 +188,7 @@ const HEADING_CLASSES: Record<number, string> = {
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
 export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: ReaderViewProps) {
-  const { headerDragRegion, getLocalContent } = usePlatform();
+  const { headerDragRegion, getLocalContent, getLocalPreservedText } = usePlatform();
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
@@ -201,6 +201,7 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
 
   // Content waterfall state
   const [html, setHtml] = useState<string | null>(null);
+  const [preservedText, setPreservedText] = useState<string | null>(item.preservedContent?.text ?? null);
   const [contentSource, setContentSource] = useState<ContentSource>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCaching, setIsCaching] = useState(false);
@@ -213,6 +214,7 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
 
     async function loadContent() {
       setIsLoading(true);
+      setPreservedText(item.preservedContent?.text ?? null);
 
       // Layer 1: Device-local content cache (desktop: Tauri FS, PWA: Cache API)
       if (getLocalContent) {
@@ -243,7 +245,16 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
 
       // Layer 2: preservedContent.text -- always available for imported items
       if (item.preservedContent?.text) {
+        let localPreservedText = item.preservedContent.text;
+        if (getLocalPreservedText) {
+          try {
+            localPreservedText = (await getLocalPreservedText(item.globalId)) ?? localPreservedText;
+          } catch {
+            localPreservedText = item.preservedContent.text;
+          }
+        }
         if (!cancelled) {
+          setPreservedText(localPreservedText);
           setHtml(null);
           setContentSource("text");
           setIsLoading(false);
@@ -302,7 +313,7 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
     return () => {
       cancelled = true;
     };
-  }, [item.globalId, articleUrl, getLocalContent]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [item.globalId, articleUrl, getLocalContent, getLocalPreservedText, item.preservedContent?.text]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleSaved = useCallback(() => {
     toggleSaved(item.globalId);
@@ -352,15 +363,15 @@ export function ReaderView({ item, onClose, dualColumn = false, onOpenUrl }: Rea
   // React elements, never raw HTML.
   const articleBlocks = useMemo<ContentBlock[]>(() => {
     if (html) return parseArticleBlocks(html);
-    const text = item.preservedContent?.text ?? item.content.text;
+    const text = preservedText ?? item.content.text;
     if (text) return textToBlocks(text);
     return [];
-  }, [html, item.preservedContent?.text, item.content.text]);
+  }, [html, preservedText, item.content.text]);
 
   // Plain text for focus mode rendering
   const plainText = useMemo(
-    () => htmlToPlainText(html ?? item.content.text ?? ""),
-    [html, item.content.text],
+    () => htmlToPlainText(html ?? preservedText ?? item.content.text ?? ""),
+    [html, preservedText, item.content.text],
   );
 
   return (

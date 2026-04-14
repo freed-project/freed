@@ -14,8 +14,7 @@ import { parseMarkdownArchiveFile } from "@freed/capture-save/import-markdown";
 import { exportLibraryAsMarkdown } from "@freed/capture-save/export-markdown";
 import type { FeedItem } from "@freed/shared";
 import { contentCache } from "./content-cache.js";
-import { docBatchImportItems } from "./automerge.js";
-import { useAppStore } from "./store.js";
+import { docBatchImportItems, getAllItemIds } from "./automerge.js";
 import { enqueue as enqueueFetch } from "./content-fetcher.js";
 
 export type ImportPhase = "scanning" | "writing" | "caching" | "fetching";
@@ -71,9 +70,9 @@ export async function importMarkdownFiles(
   // ── Phase 1: Scanning ──────────────────────────────────────────────────────
   // Snapshot existing globalIds once upfront — O(1) per lookup vs O(n) Automerge reads.
   // This is the primary deduplication gate; docBatchImportItems has a secondary guard
-  // inside the CRDT change for within-batch duplicates.
-  // allItemIds includes hidden/archived items — see DocState.allItemIds
-  const existingIds = new Set(useAppStore.getState().allItemIds);
+  // inside the CRDT change for within-batch duplicates. Fetch the full id set
+  // on demand rather than keeping it inside every live DocState update.
+  const existingIds = new Set(await getAllItemIds());
 
   const parsedItems: FeedItem[] = [];
   const htmlMap = new Map<string, string>(); // globalId → html

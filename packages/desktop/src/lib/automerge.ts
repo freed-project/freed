@@ -9,6 +9,8 @@
  *   - Handles BROADCAST_REQUEST responses from the worker by calling
  *     invoke("broadcast_doc") on the main thread (Tauri IPC is main-thread only).
  *     The Array.from(binary) conversion already happened in the worker.
+ *   - Fetches the full Automerge binary on demand for relay, snapshots, and
+ *     cloud backup instead of receiving a fresh clone on every state update.
  *   - Exports setRelayClientCount(n) so sync.ts can notify the worker.
  *
  * Public API is identical to the previous direct implementation so callers
@@ -62,6 +64,26 @@ let nextReqId = 1;
 const pending = new Map<
   number,
   { resolve: () => void; reject: (err: Error) => void; timer: ReturnType<typeof setTimeout> }
+>();
+const pendingAllItemIds = new Map<
+  number,
+  { resolve: (ids: string[]) => void; reject: (err: Error) => void; timer: ReturnType<typeof setTimeout> }
+>();
+const pendingDocBinary = new Map<
+  number,
+  {
+    resolve: (binary: Uint8Array) => void;
+    reject: (err: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }
+>();
+const pendingPreservedText = new Map<
+  number,
+  {
+    resolve: (text: string | null) => void;
+    reject: (err: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }
 >();
 
 async function request(msg: WorkerRequest): Promise<void> {
@@ -125,7 +147,7 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   if (msg.type === "READY") return;
 
   if (msg.type === "STATE_UPDATE") {
-    lastBinary = msg.binary;
+    lastBinary = null;
     lastDocState = msg.state;
     for (const sub of subscribers) sub(msg.state);
     return;
@@ -160,6 +182,34 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
       binarySize: msg.binarySize,
       savedAt: Date.now(),
     });
+    return;
+  }
+
+  if (msg.type === "ALL_ITEM_IDS") {
+    const pendingIds = pendingAllItemIds.get(msg.reqId);
+    if (!pendingIds) return;
+    clearTimeout(pendingIds.timer);
+    pendingAllItemIds.delete(msg.reqId);
+    pendingIds.resolve(msg.ids);
+    return;
+  }
+
+  if (msg.type === "DOC_BINARY") {
+    const pendingBinary = pendingDocBinary.get(msg.reqId);
+    if (!pendingBinary) return;
+    clearTimeout(pendingBinary.timer);
+    pendingDocBinary.delete(msg.reqId);
+    lastBinary = msg.binary;
+    pendingBinary.resolve(msg.binary);
+    return;
+  }
+
+  if (msg.type === "ITEM_PRESERVED_TEXT") {
+    const pendingText = pendingPreservedText.get(msg.reqId);
+    if (!pendingText) return;
+    clearTimeout(pendingText.timer);
+    pendingPreservedText.delete(msg.reqId);
+    pendingText.resolve(msg.text);
     return;
   }
 
@@ -212,7 +262,8 @@ function sendInit(): Promise<DocState> {
     const stateHandler = (event: MessageEvent<WorkerResponse>) => {
       const msg = event.data;
       if (msg.type === "STATE_UPDATE" && !initialState) {
-        lastBinary = msg.binary;
+        lastBinary = null;
+        lastDocState = msg.state;
         initialState = msg.state;
         tryResolve();
       } else if (msg.type === "ACK" && msg.reqId === reqId) {
@@ -251,9 +302,62 @@ export function getDocState(): DocState | null {
   return lastDocState;
 }
 
-export function getDocBinary(): Uint8Array {
-  if (!lastBinary) throw new Error("Document not initialized");
-  return lastBinary;
+export async function getDocBinary(): Promise<Uint8Array> {
+  if (lastBinary) return lastBinary;
+  await workerReady;
+  return new Promise((resolve, reject) => {
+    const reqId = nextReqId++;
+    const timer = setTimeout(() => {
+      if (!pendingDocBinary.has(reqId)) return;
+      pendingDocBinary.delete(reqId);
+      reject(
+        new Error(
+          `[automerge-worker] request TIMEOUT op=GET_DOC_BINARY reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
+        ),
+      );
+    }, WORKER_REQUEST_TIMEOUT_MS);
+
+    pendingDocBinary.set(reqId, { resolve, reject, timer });
+    worker.postMessage({ reqId, type: "GET_DOC_BINARY" } satisfies WorkerRequest);
+  });
+}
+
+export async function getAllItemIds(): Promise<string[]> {
+  await workerReady;
+  return new Promise((resolve, reject) => {
+    const reqId = nextReqId++;
+    const timer = setTimeout(() => {
+      if (!pendingAllItemIds.has(reqId)) return;
+      pendingAllItemIds.delete(reqId);
+      reject(
+        new Error(
+          `[automerge-worker] request TIMEOUT op=GET_ALL_ITEM_IDS reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
+        ),
+      );
+    }, WORKER_REQUEST_TIMEOUT_MS);
+
+    pendingAllItemIds.set(reqId, { resolve, reject, timer });
+    worker.postMessage({ reqId, type: "GET_ALL_ITEM_IDS" } satisfies WorkerRequest);
+  });
+}
+
+export async function getItemPreservedText(globalId: string): Promise<string | null> {
+  await workerReady;
+  return new Promise((resolve, reject) => {
+    const reqId = nextReqId++;
+    const timer = setTimeout(() => {
+      if (!pendingPreservedText.has(reqId)) return;
+      pendingPreservedText.delete(reqId);
+      reject(
+        new Error(
+          `[automerge-worker] request TIMEOUT op=GET_ITEM_PRESERVED_TEXT reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
+        ),
+      );
+    }, WORKER_REQUEST_TIMEOUT_MS);
+
+    pendingPreservedText.set(reqId, { resolve, reject, timer });
+    worker.postMessage({ reqId, type: "GET_ITEM_PRESERVED_TEXT", globalId } satisfies WorkerRequest);
+  });
 }
 
 export async function mergeDoc(incoming: Uint8Array): Promise<void> {

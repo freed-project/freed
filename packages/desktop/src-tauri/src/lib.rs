@@ -9,6 +9,7 @@ use rand::RngCore;
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock as StdRwLock};
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Listener, Manager};
@@ -487,9 +488,9 @@ fn prune_snapshots(snapshot_dir: &std::path::Path, now_secs: u64) {
 struct SyncRelayState {
     port: u16,
     /// Broadcast channel — sends doc bytes to all connected clients.
-    broadcast_tx: broadcast::Sender<Vec<u8>>,
+    broadcast_tx: broadcast::Sender<Arc<Vec<u8>>>,
     /// Latest doc binary, served to new joiners immediately on connect.
-    current_doc: RwLock<Option<Vec<u8>>>,
+    current_doc: RwLock<Option<Arc<Vec<u8>>>>,
     /// Live connection count (displayed in tray / sync indicator).
     client_count: RwLock<usize>,
     /// Pairing token — must appear as `?t=<token>` in the WS upgrade URI.
@@ -501,6 +502,15 @@ struct SyncRelayState {
 }
 
 type RelayState = Arc<SyncRelayState>;
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeMemoryStats {
+    process_resident_bytes: u64,
+    process_virtual_bytes: u64,
+    relay_doc_bytes: u64,
+    relay_client_count: u64,
+}
 
 // ---------------------------------------------------------------------------
 // Capture state — shared UA strings and HTTP client for social scrapers
@@ -833,24 +843,48 @@ async fn get_sync_client_count(state: tauri::State<'_, RelayState>) -> Result<us
     Ok(*state.client_count.read().await)
 }
 
+#[tauri::command]
+async fn get_runtime_memory_stats(
+    state: tauri::State<'_, RelayState>,
+) -> Result<RuntimeMemoryStats, String> {
+    let pid = Pid::from_u32(std::process::id());
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&[pid]),
+        true,
+        ProcessRefreshKind::nothing().with_memory(),
+    );
+
+    let (process_resident_bytes, process_virtual_bytes) = system
+        .process(pid)
+        .map(|process| (process.memory(), process.virtual_memory()))
+        .unwrap_or((0, 0));
+
+    let relay_doc_bytes = state
+        .current_doc
+        .read()
+        .await
+        .as_ref()
+        .map(|doc| doc.len() as u64)
+        .unwrap_or(0);
+    let relay_client_count = *state.client_count.read().await as u64;
+
+    Ok(RuntimeMemoryStats {
+        process_resident_bytes,
+        process_virtual_bytes,
+        relay_doc_bytes,
+        relay_client_count,
+    })
+}
+
 /// Push a document update to all connected clients.
-#[cfg_attr(feature = "perf", tracing::instrument(skip(state, app, doc_bytes), fields(bytes = doc_bytes.len())))]
+#[cfg_attr(feature = "perf", tracing::instrument(skip(state, doc_bytes), fields(bytes = doc_bytes.len())))]
 #[tauri::command]
 async fn broadcast_doc(
     state: tauri::State<'_, RelayState>,
-    app: tauri::AppHandle,
     doc_bytes: Vec<u8>,
 ) -> Result<(), String> {
-    // Write a GFS snapshot before touching broadcast state — recovery is
-    // always possible even if the broadcast itself fails.
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        let snapshot_dir = data_dir.join("snapshots");
-        let bytes = doc_bytes.clone();
-        tokio::task::spawn_blocking(move || write_snapshot(&snapshot_dir, &bytes))
-            .await
-            .ok();
-    }
-
+    let doc_bytes = Arc::new(doc_bytes);
     *state.current_doc.write().await = Some(doc_bytes.clone());
     let _ = state.broadcast_tx.send(doc_bytes);
     Ok(())
@@ -2975,7 +3009,10 @@ async fn handle_connection(
 
     // Push current doc to the new client immediately
     if let Some(doc) = state.current_doc.read().await.clone() {
-        if let Err(e) = ws_sender.send(Message::Binary(doc.into())).await {
+        if let Err(e) = ws_sender
+            .send(Message::Binary(doc.as_ref().clone().into()))
+            .await
+        {
             error!("[Sync] Failed to send initial doc: {}", e);
         }
     }
@@ -2988,7 +3025,7 @@ async fn handle_connection(
                 match msg {
                     Some(Ok(Message::Binary(data))) => {
                         // Client pushed a doc update — store and rebroadcast
-                        let bytes = data.to_vec();
+                        let bytes = Arc::new(data.to_vec());
                         *state.current_doc.write().await = Some(bytes.clone());
                         let _ = state.broadcast_tx.send(bytes);
                     }
@@ -3008,7 +3045,7 @@ async fn handle_connection(
             }
             broadcast = broadcast_rx.recv() => {
                 if let Ok(doc) = broadcast {
-                    if let Err(e) = ws_sender.send(Message::Binary(doc.into())).await {
+                    if let Err(e) = ws_sender.send(Message::Binary(doc.as_ref().clone().into())).await {
                         error!("[Sync] Failed to send to {}: {}", addr, e);
                         break;
                     }
@@ -3067,7 +3104,7 @@ pub fn run() {
             .init();
     }
 
-    let (broadcast_tx, _) = broadcast::channel::<Vec<u8>>(16);
+    let (broadcast_tx, _) = broadcast::channel::<Arc<Vec<u8>>>(16);
 
     let relay_state = Arc::new(SyncRelayState {
         port: sync_relay_port(),
@@ -3457,6 +3494,7 @@ pub fn run() {
             get_all_local_ips,
             get_sync_url,
             get_sync_client_count,
+            get_runtime_memory_stats,
             broadcast_doc,
             reset_pairing_token,
             show_window,

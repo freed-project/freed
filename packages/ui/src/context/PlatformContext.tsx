@@ -203,6 +203,13 @@ export interface PlatformConfig {
   openUrl?: (url: string) => void;
 
   /**
+   * Fetch full preserved article text for a specific item from local platform
+   * storage when the live feed state only carries a truncated preview.
+   * Desktop only.
+   */
+  getLocalPreservedText?: (globalId: string) => Promise<string | null>;
+
+  /**
    * Save a URL to the local library with full content extraction.
    * Desktop: fetches HTML via Tauri IPC, extracts content, writes to cache.
    * PWA: writes a stub item; desktop picks it up via relay and fetches content.

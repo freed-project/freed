@@ -7,7 +7,7 @@
  * Desktop additions over the PWA worker:
  *   - UPDATE_RELAY_CLIENT_COUNT: tracks connected PWA clients
  *   - BROADCAST_REQUEST response: posts pre-serialized Array.from(binary) to
- *     the main thread, which calls invoke("broadcast_doc") — Tauri IPC requires
+ *     the main thread, which calls invoke("broadcast_doc") - Tauri IPC requires
  *     the main thread, so the worker cannot call invoke() directly
  *   - BATCH_REFRESH_FEEDS: bulk feed+items update for the RSS poller
  *   - BATCH_IMPORT_ITEMS: chunked import with IMPORT_PROGRESS events
@@ -53,6 +53,7 @@ import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types"
 
 const storage = new IndexedDBStorage();
 let currentDoc: FreedDoc | null = null;
+let currentBinary: Uint8Array | null = null;
 let relayClientCount = 0;
 let queuedRequestCount = 0;
 let requestChain: Promise<void> = Promise.resolve();
@@ -60,6 +61,7 @@ let requestChain: Promise<void> = Promise.resolve();
 const SLOW_QUEUE_WAIT_MS = 1_000;
 const SLOW_REQUEST_PROCESS_MS = 5_000;
 const SLOW_SAVE_AND_BROADCAST_MS = 2_000;
+const DESKTOP_UI_PRESERVED_TEXT_LIMIT = 3_000;
 
 interface RequestTrace {
   reqId: number;
@@ -98,7 +100,21 @@ function emitWorkerTrace(
  */
 function hydrateFromDoc(doc: FreedDoc): DocState {
   const plain = A.toJS(doc) as FreedDoc;
-  const plainItems = Object.values(plain.feedItems as Record<string, FeedItem>);
+  const plainItems = Object.values(plain.feedItems as Record<string, FeedItem>).map((item) => {
+    const preservedContent = item.preservedContent;
+    const preservedText = preservedContent?.text;
+    if (!preservedContent || !preservedText || preservedText.length <= DESKTOP_UI_PRESERVED_TEXT_LIMIT) {
+      return item;
+    }
+
+    return {
+      ...item,
+      preservedContent: {
+        ...preservedContent,
+        text: preservedText.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT),
+      },
+    } as FeedItem;
+  });
   const feeds = plain.rssFeeds as Record<string, RssFeed>;
   const friends = (plain.friends ?? {}) as Record<string, Friend>;
   const preferences = {
@@ -198,14 +214,15 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
     totalArchivableCount,
     archivableCountByPlatform,
     archivableFeedCounts,
-    allItemIds: Object.keys(plain.feedItems as Record<string, FeedItem>),
+    docItemCount: Object.keys(plain.feedItems as Record<string, FeedItem>).length,
   };
 }
 
 /**
- * Persist, hydrate, and broadcast state + (if relay clients connected) request
- * a broadcast_doc IPC call from the main thread. The Array.from(binary) here
- * is the key optimization — it runs in the worker, not the main thread.
+ * Persist, hydrate, and broadcast state plus, if relay clients are connected,
+ * request a broadcast_doc IPC call from the main thread. The Array.from(binary)
+ * work stays in the worker, and the main thread only asks for the full binary
+ * later when snapshots or cloud sync actually need it.
  */
 async function saveAndBroadcast(trace?: RequestTrace): Promise<void> {
   const doc = currentDoc;
@@ -213,6 +230,7 @@ async function saveAndBroadcast(trace?: RequestTrace): Promise<void> {
 
   const startedAt = performance.now();
   const binary = A.save(doc);
+  currentBinary = binary;
   const afterSerializeAt = performance.now();
   await storage.save(binary);
   const afterPersistAt = performance.now();
@@ -227,10 +245,10 @@ async function saveAndBroadcast(trace?: RequestTrace): Promise<void> {
     binarySize: binary.byteLength,
   };
   send(snapshot);
-  send({ type: "STATE_UPDATE", state, binary });
+  send({ type: "STATE_UPDATE", state });
 
   // Request main thread to relay the binary to connected PWA clients.
-  // Array.from() (O(binary size)) runs here in the worker — off the main thread.
+  // Array.from() (O(binary size)) runs here in the worker, off the main thread.
   if (relayClientCount > 0) {
     send({ type: "BROADCAST_REQUEST", data: Array.from(binary) });
   }
@@ -317,14 +335,24 @@ async function handleRequest(
       case "CLEAR_LOCAL":
         await storage.clear();
         currentDoc = null;
+        currentBinary = null;
         ack(req.reqId);
         break;
 
       case "REPLACE_DOC":
         currentDoc = A.load<FreedDoc>(req.binary);
+        currentBinary = req.binary;
         await storage.save(req.binary);
         await saveAndBroadcast(trace);
         ack(req.reqId);
+        break;
+
+      case "GET_DOC_BINARY":
+        if (!currentDoc) throw new Error("Document not initialized");
+        if (!currentBinary) {
+          currentBinary = A.save(currentDoc);
+        }
+        send({ reqId: req.reqId, type: "DOC_BINARY", binary: currentBinary });
         break;
 
       case "MERGE_DOC": {
@@ -621,6 +649,37 @@ async function handleRequest(
           }
         }, "Deduplicate feed items by article link URL");
         ack(req.reqId);
+        break;
+
+      case "GET_ALL_ITEM_IDS":
+        if (!currentDoc) throw new Error("Document not initialized");
+        send({
+          reqId: req.reqId,
+          type: "ALL_ITEM_IDS",
+          ids: Object.keys(currentDoc.feedItems ?? {}),
+        });
+        break;
+
+      case "GET_ITEM_PRESERVED_TEXT":
+        if (!currentDoc) throw new Error("Document not initialized");
+        send({
+          reqId: req.reqId,
+          type: "ITEM_PRESERVED_TEXT",
+          globalId: req.globalId,
+          text: currentDoc.feedItems[req.globalId]?.preservedContent?.text ?? null,
+        });
+        break;
+
+      case "GET_DOC_BINARY":
+        if (!currentDoc) throw new Error("Document not initialized");
+        if (!currentBinary) {
+          currentBinary = A.save(currentDoc);
+        }
+        send({
+          reqId: req.reqId,
+          type: "DOC_BINARY",
+          binary: currentBinary,
+        });
         break;
 
       case "UPDATE_RELAY_CLIENT_COUNT":

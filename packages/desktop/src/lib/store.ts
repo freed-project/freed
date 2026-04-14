@@ -90,8 +90,8 @@ interface AppState {
   totalArchivableCount: number;
   archivableCountByPlatform: Record<string, number>;
   archivableFeedCounts: Record<string, number>;
-  /** All globalIds including hidden/archived - for import dedup pre-scan. */
-  allItemIds: string[];
+  /** Total feed-item records including hidden and archived items. */
+  docItemCount: number;
 
   // X auth state
   xAuth: XAuthState;
@@ -221,7 +221,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   totalArchivableCount: 0,
   archivableCountByPlatform: {},
   archivableFeedCounts: {},
-  allItemIds: [],
+  docItemCount: 0,
   xAuth: { isAuthenticated: false },
   fbAuth: { isAuthenticated: false },
   igAuth: { isAuthenticated: false },
@@ -369,10 +369,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   removeFeed: async (url, options) => {
     await docRemoveRssFeed(url, options?.includeItems ?? false);
+    const { forgetRssFeedHealth } = await import("./provider-health");
+    await forgetRssFeedHealth(url);
   },
 
   removeAllFeeds: async (includeItems) => {
+    const feedUrls = Object.keys(get().feeds);
     await docRemoveAllFeeds(includeItems);
+    const { forgetRssFeedHealth } = await import("./provider-health");
+    await Promise.all(feedUrls.map((url) => forgetRssFeedHealth(url)));
   },
 
   renameFeed: async (url, title) => {
