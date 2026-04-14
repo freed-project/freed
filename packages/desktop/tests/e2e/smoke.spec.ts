@@ -25,6 +25,24 @@ async function dismissCloudSyncNudgeIfPresent(page: Page) {
   }
 }
 
+async function openVisibleMapMarker(
+  page: Page,
+  label = "Ada Lovelace",
+  popupActionName?: "Open Friend" | "Open Post",
+) {
+  const visibleMarker = page.locator(`.freed-map-marker[aria-label="${label}"]:visible`).first();
+  await expect(visibleMarker).toBeVisible({ timeout: 10_000 });
+  await visibleMarker.click();
+
+  if (!popupActionName) {
+    return;
+  }
+
+  await expect(page.getByRole("button", { name: popupActionName })).toBeVisible({
+    timeout: 10_000,
+  });
+}
+
 async function clickMapPopupAction(page: Page, actionName: "Open Friend" | "Open Post") {
   const actionButton = page.getByRole("button", { name: actionName });
   await expect(actionButton).toBeVisible({ timeout: 5_000 });
@@ -1054,7 +1072,7 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
     return store?.getState().activeView === "map";
   }, { timeout: 10_000 });
 
-  await page.locator(".freed-map-marker").first().click();
+  await openVisibleMapMarker(page, "Ada Lovelace", "Open Friend");
   await clickMapPopupAction(page, "Open Friend");
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
@@ -1069,7 +1087,7 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
   });
 
   await page.getByRole("button", { name: /^Map/ }).click();
-  await page.locator(".freed-map-marker").first().click();
+  await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
   await clickMapPopupAction(page, "Open Post");
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
