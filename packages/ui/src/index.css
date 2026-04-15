@@ -1512,10 +1512,6 @@ html[data-theme="scriptorium"] .theme-floating-panel {
   margin-inline-start: 0.5rem;
 }
 
-.theme-toolbar-cluster > .theme-toolbar-slot.theme-toolbar-slot-flush {
-  margin-inline-start: 0;
-}
-
 .theme-toolbar-slot {
   display: flex;
   align-items: center;

@@ -35,18 +35,25 @@ function formatItemCount(count: number): string {
 function ToolbarAnimatedSlot({
   visible,
   width,
+  flushStartMargin = false,
   className = "",
   children,
 }: {
   visible: boolean;
   width: string;
+  flushStartMargin?: boolean;
   className?: string;
   children: ReactNode;
 }) {
+  const style = {
+    ["--toolbar-slot-width" as string]: width,
+    ...(flushStartMargin ? { marginInlineStart: 0 } : {}),
+  } as CSSProperties;
+
   return (
     <div
       className={`theme-toolbar-slot ${visible ? "theme-toolbar-slot-visible" : "theme-toolbar-slot-hidden"} ${className}`}
-      style={{ ["--toolbar-slot-width" as string]: width } as CSSProperties}
+      style={style}
       aria-hidden={visible ? undefined : true}
     >
       {children}
@@ -333,7 +340,8 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
             <ToolbarAnimatedSlot
               visible={showReaderLayoutToggle}
               width={showReaderRailToolbar ? "var(--freed-reader-rail-width, 0px)" : "3rem"}
-              className="theme-toolbar-slot-flush hidden shrink-0 md:flex items-center"
+              flushStartMargin
+              className="hidden shrink-0 md:flex items-center"
             >
               <div className="flex items-center" style={readerRailSlotStyle}>
                 <Tooltip label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}>
