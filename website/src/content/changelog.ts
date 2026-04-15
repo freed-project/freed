@@ -3,14 +3,18 @@ export interface ReleaseItem {
   prNumber?: number;
 }
 
+export type ReleaseChannel = "production" | "dev";
+
 export interface ReleaseBuild {
   version: string;
   htmlUrl: string;
+  channel: ReleaseChannel;
 }
 
 export interface ParsedRelease {
   version: string;
   tagName: string;
+  channel: ReleaseChannel;
   date: string;
   deck?: string;
   features: ReleaseItem[];
@@ -29,6 +33,28 @@ interface GitHubRelease {
   html_url: string;
   draft: boolean;
   prerelease: boolean;
+}
+
+function stripReleaseChannelSuffix(version: string): string {
+  return version.replace(/-dev$/, "");
+}
+
+function releaseChannelForTag(tagName: string): ReleaseChannel | null {
+  return tagName.endsWith("-dev") ? "dev" : "production";
+}
+
+function shouldIncludeRelease(release: GitHubRelease): boolean {
+  if (release.draft) {
+    return false;
+  }
+
+  const channel = releaseChannelForTag(release.tag_name);
+
+  if (channel === "dev") {
+    return release.prerelease;
+  }
+
+  return !release.prerelease;
 }
 
 function normalizeReleaseText(text: string): string {
@@ -211,15 +237,23 @@ export function normalizeGitHubReleases(
   releases: GitHubRelease[],
 ): ParsedRelease[] {
   return releases
-    .filter((release) => !release.draft && !release.prerelease)
+    .filter(shouldIncludeRelease)
+    .sort((left, right) => {
+      const leftDate = Date.parse(left.published_at);
+      const rightDate = Date.parse(right.published_at);
+      return rightDate - leftDate;
+    })
     .map((release) => {
       const { deck, features, fixes, followUps, prNumbers } = parseReleaseBody(
         release.body ?? "",
       );
+      const channel = releaseChannelForTag(release.tag_name) ?? "production";
+      const version = release.tag_name.replace(/^v/, "");
 
       return {
-        version: release.tag_name.replace(/^v/, ""),
+        version,
         tagName: release.tag_name,
+        channel,
         date: release.published_at,
         deck,
         features,
@@ -227,11 +261,12 @@ export function normalizeGitHubReleases(
         followUps,
         htmlUrl: release.html_url,
         prNumbers,
-        builds: [release.tag_name.replace(/^v/, "")],
+        builds: [version],
         buildLinks: [
           {
-            version: release.tag_name.replace(/^v/, ""),
+            version,
             htmlUrl: release.html_url,
+            channel,
           },
         ],
       };
@@ -239,8 +274,12 @@ export function normalizeGitHubReleases(
 }
 
 function compareVersionsAscending(left: string, right: string): number {
-  const leftParts = left.split(".").map((part) => Number(part));
-  const rightParts = right.split(".").map((part) => Number(part));
+  const leftParts = stripReleaseChannelSuffix(left)
+    .split(".")
+    .map((part) => Number(part));
+  const rightParts = stripReleaseChannelSuffix(right)
+    .split(".")
+    .map((part) => Number(part));
   const length = Math.max(leftParts.length, rightParts.length);
 
   for (let index = 0; index < length; index += 1) {
@@ -256,7 +295,7 @@ function compareVersionsAscending(left: string, right: string): number {
 }
 
 export function versionDayKey(version: string): string {
-  const parts = version.split(".");
+  const parts = stripReleaseChannelSuffix(version).split(".");
   if (parts.length !== 3) {
     return version;
   }
@@ -270,7 +309,7 @@ export function groupReleasesByDay(releases: ParsedRelease[]): ParsedRelease[] {
   const byDay = new Map<string, ParsedRelease[]>();
 
   for (const release of releases) {
-    const day = versionDayKey(release.version);
+    const day = `${versionDayKey(release.version)}:${release.channel}`;
     const group = byDay.get(day) ?? [];
     group.push(release);
     byDay.set(day, group);
@@ -283,6 +322,7 @@ export function groupReleasesByDay(releases: ParsedRelease[]): ParsedRelease[] {
       .map((release) => ({
         version: release.version,
         htmlUrl: release.htmlUrl,
+        channel: release.channel,
       }))
       .sort((left, right) => compareVersionsAscending(left.version, right.version));
 

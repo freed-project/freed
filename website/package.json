@@ -10,6 +10,8 @@
     "dev": "next dev --turbopack",
     "build": "npm run generate-changelog && next build && npm run generate-feed",
     "generate-changelog": "npx tsx scripts/generate-changelog.ts",
+    "test": "npm run test:changelog",
+    "test:changelog": "npx tsx src/content/changelog.test.ts",
     "start": "next start",
     "generate-feed": "npx tsx scripts/generate-feed.ts",
     "lint": "eslint ."

@@ -22,3 +22,4 @@ Ship a new versioned build from the correct release branch using GitHub Actions.
    - Squash-merge the PR to `dev` for dev-release fixes, or to `main` for production-release fixes.
    - Initiate a follow-up build from the matching release branch.
 6. Repeat until all platform builds are successful.
+7. After a dev or production release ships successfully, use `freed-ship-www` in changelog refresh mode so the static public changelog can include the newly published release without merging `dev` into `www`.

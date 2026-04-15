@@ -1,0 +1,47 @@
+name: Website Preview
+
+on:
+  pull_request:
+    branches: [www]
+    paths:
+      - "website/**"
+      - "packages/shared/**"
+      - "packages/ui/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.base.json"
+      - "scripts/vercel-deploy-preview.sh"
+      - "scripts/lib/**"
+      - ".github/workflows/website-preview.yml"
+
+concurrency:
+  group: website-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  preview:
+    name: Build and deploy website preview
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Deploy website preview
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "VERCEL_TOKEN not configured, skipping website preview deploy."
+            exit 0
+          fi
+          ./scripts/vercel-deploy-preview.sh website "$VERCEL_TOKEN"

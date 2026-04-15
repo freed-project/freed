@@ -320,56 +320,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release edit "${{ github.ref_name }}" --draft=false --repo "${{ github.repository }}"
 
-  # Redeploy the marketing site after the GitHub release is public so the
-  # checked-in changelog snapshot is rebuilt against the published release.
-  # Requires VERCEL_TOKEN to be set in repo secrets. If the secret is absent
-  # the step exits cleanly without failing the workflow.
-  publish-website:
-    name: Deploy Website
-    needs: [publish, notes]
-    if: needs.notes.outputs.release_channel == 'production'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "lts/*"
-          cache: "npm"
-
-      - name: Wait for published GitHub release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          for attempt in {1..30}; do
-            draft_state=$(gh api "repos/${{ github.repository }}/releases/tags/${{ github.ref_name }}" --jq '.draft')
-            if [ "$draft_state" = "false" ]; then
-              echo "Release ${{ github.ref_name }} is published."
-              exit 0
-            fi
-
-            echo "Release ${{ github.ref_name }} is still draft, retrying in 10s (${attempt}/30)"
-            sleep 10
-          done
-
-          echo "Release ${{ github.ref_name }} never became published."
-          exit 1
-
-      - name: Deploy website to Vercel
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: |
-          if [ -z "$VERCEL_TOKEN" ]; then
-            echo "VERCEL_TOKEN not configured, skipping website deploy"
-            echo "Add a VERCEL_TOKEN secret to enable automatic website changelog refresh."
-            exit 0
-          fi
-          ./scripts/vercel-deploy-production.sh website "$VERCEL_TOKEN"
-
   # Deploy the PWA to Vercel after the GitHub release is published so the
   # version shown in the app always matches the shipped desktop release.
   # Requires VERCEL_TOKEN to be set in repo secrets. If the secret is absent
