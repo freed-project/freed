@@ -18,7 +18,6 @@ import type {
   ContactSyncState,
   BugReportDraft,
   BugReportIssueType,
-  BugReportScreenshot,
   GeneratedBugReportBundle,
   ImportProgress,
   ReportPrivacyTier,
@@ -72,7 +71,6 @@ export interface BugReportingConfig {
     draft: BugReportDraft;
     privacyTier: ReportPrivacyTier;
   }) => Promise<GeneratedBugReportBundle>;
-  captureScreenshot?: () => Promise<BugReportScreenshot | null>;
   exportBundle?: (bundle: GeneratedBugReportBundle) => Promise<void>;
   openUrl?: (url: string) => void;
 }
