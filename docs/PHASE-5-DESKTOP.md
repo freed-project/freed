@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -190,7 +190,7 @@ export async function captureDomFeed(
 | 5.22 | Auto-updater (tauri-plugin-updater)                                     | Medium     |
 | 5.23 | CI/CD release pipeline (GH Actions)                                     | Medium     |
 | 5.24 | macOS code signing + notarization                                       | High       |
-| 5.25 | Windows code signing                                                    | Medium     |
+| 5.25 | Windows code signing with Microsoft Artifact Signing                    | Medium     |
 | 5.26 | Independent update server domain                                        | Medium     |
 | 5.27 | First-run legal gate and local-only acceptance storage                  | Medium     |
 | 5.28 | Provider-specific risk interstitials for social capture                 | Medium     |
@@ -279,16 +279,18 @@ export async function captureDomFeed(
 - [x] Removing RSS feeds now also drops their retained provider-health diagnostics instead of keeping dead feed histories in memory and storage forever
 - [x] Desktop live UI state now caps preserved article text previews and fetches full preserved text on demand for the active reader item, instead of cloning entire article bodies through every feed-state update
 - [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation
-- [ ] Windows installer is code-signed (requires EV certificate)
+- [ ] Windows installer is code-signed (Microsoft Artifact Signing plan scaffolded)
 - [x] Update server runs on a Freed-owned domain instead of pointing the updater directly at GitHub Releases
 - [x] Desktop settings can switch this install between production and dev release channels
 
 > **Current state:**
 > macOS release builds are signed and notarized in GitHub Actions when the
 > required Apple secrets are present. The release workflow now fails fast
-> instead of silently shipping an unsigned macOS artifact. Windows
-> SmartScreen warnings will still appear until an EV certificate is
-> obtained or enough installs build reputation. Desktop now also writes
+> instead of silently shipping an unsigned macOS artifact. Windows signing is
+> planned through Microsoft Artifact Signing, and the repo now includes
+> `docs/WINDOWS-SIGNING.md` plus an inert Tauri `signCommand` scaffold for the
+> future implementation. Windows SmartScreen warnings will still appear until
+> that path is provisioned, enabled, and verified in a signed release. Desktop now also writes
 > rotating local Automerge snapshots, including Google contact match state,
 > so catastrophic local corruption can be rolled back from Settings.
 > The desktop runtime now also emits periodic memory telemetry into the
