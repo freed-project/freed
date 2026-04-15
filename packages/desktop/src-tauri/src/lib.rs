@@ -3116,9 +3116,9 @@ fn main_window_webview_configuration() -> Retained<WKWebViewConfiguration> {
     let mtm = MainThreadMarker::new()
         .expect("WKWebView configuration must be created on the main thread");
     let config = unsafe { WKWebViewConfiguration::new(mtm) };
-    let display_name = NSString::from_str("Freed");
+    let display_name = NSString::from_str("Freed Engine");
 
-    // Label the WebKit content process as "Freed" in Activity Monitor instead
+    // Label the WebKit content process as "Freed Engine" in Activity Monitor instead
     // of leaving the default custom protocol URL visible.
     unsafe {
         config.setValue_forKey(
