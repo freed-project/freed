@@ -235,8 +235,9 @@ Manual preview deploys for this monorepo now go through `./scripts/vercel-deploy
 
 The website and PWA preview workflows use the helpers directly so PRs only
 build the surface they target. Native Vercel preview deploys should stay
-disabled where GitHub Actions owns preview deployment, otherwise a single PR
-can spend minutes in both systems for the same preview.
+disabled where GitHub Actions owns preview deployment. The website Vercel
+project only allows Git-triggered deploys from `www`, and the PWA project
+disables Git-triggered deploys entirely.
 
 The preview and production deploy helpers now resolve `npm` and `npx` from the
 active Node toolchain first, so they do not accidentally pick up an older
