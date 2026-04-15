@@ -991,34 +991,26 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 <span className="text-sm font-bold font-mono">v{__APP_VERSION__}</span>
               </p>
               {releaseChannel && setReleaseChannel && (
-                <div className="space-y-2 rounded-xl border border-[color:var(--theme-border)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_68%,transparent)] p-3">
-                  <div>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
                     <p className="text-sm text-text-primary">Release channel</p>
-                    <p className="mt-1 text-xs text-text-muted">
+                    <p className="mt-0.5 text-xs text-text-muted">
                       Production is the default. Dev follows the latest changes from the dev branch.
                     </p>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {RELEASE_CHANNELS.map((channel) => {
-                      const isActive = releaseChannel === channel;
-                      return (
-                        <button
-                          key={channel}
-                          type="button"
-                          onClick={() => {
-                            void setReleaseChannel(channel as ReleaseChannel);
-                          }}
-                          className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-                            isActive
-                              ? "border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_55%,transparent)] bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent)] text-[var(--theme-accent-secondary)]"
-                              : "border-[color:var(--theme-border)] bg-[var(--theme-bg-root)] text-text-secondary hover:text-text-primary"
-                          }`}
-                        >
-                          {RELEASE_CHANNEL_LABELS[channel]}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <select
+                    value={releaseChannel}
+                    onChange={(event) => {
+                      void setReleaseChannel(event.target.value as ReleaseChannel);
+                    }}
+                    className="theme-input theme-select shrink-0 rounded-xl px-3 py-2 text-sm text-text-primary focus:outline-none"
+                  >
+                    {RELEASE_CHANNELS.map((channel) => (
+                      <option key={channel} value={channel}>
+                        {RELEASE_CHANNEL_LABELS[channel]}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
               {checkForUpdates && (
