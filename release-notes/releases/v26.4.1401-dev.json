@@ -3,9 +3,9 @@
   "version": "26.4.1401-dev",
   "channel": "dev",
   "dayKey": "26.4.14",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
-  "generatedAt": "2026-04-15T05:02:08.558Z",
+  "generatedAt": "2026-04-15T05:20:10.034Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
@@ -190,6 +190,10 @@
       212
     ],
     "commitSubjects": [
+      "fix: keep release note prep from hanging",
+      "chore: harden worktree and deploy tooling",
+      "fix: accept website GitHub releases token",
+      "release: v26.4.1401-dev",
       "feat: add dev release channels and branch flow (#208)",
       "fix: label macOS Activity Monitor web process as Freed (#212)",
       "feat: add theme-native map palettes (#210)",
@@ -693,19 +697,19 @@
       "Rotating desktop snapshots"
     ],
     "fixes": [
+      "Release build and type-safety cleanup",
       "Reader, feed, and header polish",
       "Copy and documentation cleanup",
-      "Release build and type-safety cleanup",
       "Capture and scraper reliability fixes"
     ],
     "followUps": [
-      "Release workflow and build-system work",
       "Reader, sidebar, and settings UX work",
+      "Release workflow and build-system work",
       "Capture, login, and scraping platform work",
       "Sync, cloud, and pairing infrastructure",
       "Testing, diagnostics, and developer tooling",
       "Content and documentation work"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1401-dev\n\nTheme-native map palettes, contacts settings and sync, and rotating desktop snapshots\n\n### Features\n\n- Theme-native map palettes\n- Finish Google Contacts settings and sync\n- Rotating desktop snapshots\n\n### Fixes\n\n- Reader, feed, and header polish\n- Copy and documentation cleanup\n- Release build and type-safety cleanup\n- Capture and scraper reliability fixes\n\n### Follow-ups\n\n- Release workflow and build-system work\n- Reader, sidebar, and settings UX work\n- Capture, login, and scraping platform work\n- Sync, cloud, and pairing infrastructure\n- Testing, diagnostics, and developer tooling\n- Content and documentation work\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1401-dev\n\nTheme-native map palettes, contacts settings and sync, and rotating desktop snapshots\n\n### Features\n\n- Theme-native map palettes\n- Finish Google Contacts settings and sync\n- Rotating desktop snapshots\n\n### Fixes\n\n- Release build and type-safety cleanup\n- Reader, feed, and header polish\n- Copy and documentation cleanup\n- Capture and scraper reliability fixes\n\n### Follow-ups\n\n- Reader, sidebar, and settings UX work\n- Release workflow and build-system work\n- Capture, login, and scraping platform work\n- Sync, cloud, and pairing infrastructure\n- Testing, diagnostics, and developer tooling\n- Content and documentation work\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
