@@ -20,18 +20,44 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/node-tooling.sh
+source "${SCRIPT_DIR}/lib/node-tooling.sh"
+
 if [[ $# -eq 0 ]]; then
   echo "Usage: ./scripts/worktree-add.sh <path> [-b <branch>] [<commit-ish>]"
   exit 1
 fi
 
+EXISTING_WORKTREES=()
+while IFS= read -r line; do
+  EXISTING_WORKTREES+=("$line")
+done < <(git worktree list --porcelain | awk '/^worktree / { print $2 }')
+
 git worktree add "$@"
 
-# The new worktree is always the last entry in the list.
-NEW_WT=$(git worktree list --porcelain | awk '/^worktree/ {path=$2} END {print path}')
+CURRENT_WORKTREES=()
+while IFS= read -r line; do
+  CURRENT_WORKTREES+=("$line")
+done < <(git worktree list --porcelain | awk '/^worktree / { print $2 }')
+
+NEW_WT=""
+for candidate in "${CURRENT_WORKTREES[@]}"; do
+  if ! printf '%s\n' "${EXISTING_WORKTREES[@]}" | grep -Fxq "${candidate}"; then
+    NEW_WT="${candidate}"
+    break
+  fi
+done
+
+if [[ -z "${NEW_WT}" ]]; then
+  echo "Error: failed to detect the newly created worktree path." >&2
+  exit 1
+fi
+
+NPM_BIN="$(resolve_npm_bin)"
 
 echo ""
-echo "Installing node_modules in $NEW_WT (~74s with warm cache) ..."
-npm ci --prefer-offline --prefix "$NEW_WT"
+echo "Installing node_modules in $NEW_WT with $("${NPM_BIN}" -v) ..."
+"${NPM_BIN}" ci --prefer-offline --prefix "$NEW_WT"
 echo ""
 echo "Done. Worktree is ready."

@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/node-tooling.sh
+source "${SCRIPT_DIR}/lib/node-tooling.sh"
+use_resolved_node_path
+NPM_BIN="$(resolve_npm_bin)"
+NPX_BIN="$(resolve_npx_bin)"
+
 if [[ $# -lt 1 || $# -gt 2 ]]; then
   echo "Usage: $0 website|pwa [vercel-token]" >&2
   exit 1
@@ -87,11 +94,11 @@ fi
 echo "Verifying production bundle for $TARGET from $TEMP_DIR"
 (
   cd "$TEMP_DIR"
-  npm install
+  "$NPM_BIN" ci
   if [[ "$TARGET" == "website" ]]; then
-    npm run build --workspace=website
+    "$NPM_BIN" run build --workspace=website
   else
-    npm run build -w @freed/pwa
+    "$NPM_BIN" run build -w @freed/pwa
   fi
 )
 
@@ -101,15 +108,15 @@ if [[ -n "$VERCEL_TOKEN" ]]; then
 fi
 
 echo "Pulling Vercel settings for $TARGET"
-npx vercel pull --yes --environment production --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}"
+"$NPX_BIN" vercel pull --yes --environment production --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}"
 
 if [[ "$TARGET" == "website" ]]; then
   echo "Deploying $TARGET production build to Vercel"
-  npx vercel deploy --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" -y --prod
+  "$NPX_BIN" vercel deploy --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" -y --prod
 else
   echo "Building $TARGET production bundle with Vercel"
-  npx vercel build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" --prod
+  "$NPX_BIN" vercel build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" --prod
 
   echo "Deploying $TARGET production build to Vercel"
-  npx vercel deploy --prebuilt --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" -y --prod
+  "$NPX_BIN" vercel deploy --prebuilt --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" -y --prod
 fi

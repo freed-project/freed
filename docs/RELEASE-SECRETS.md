@@ -68,6 +68,18 @@ release is published.
 Without it, the release still completes and publishes on GitHub, but the
 workflow will skip the website and PWA deploy steps.
 
+## Website GitHub release token
+
+The website's download and desktop update routes can authenticate to the
+GitHub Releases API with any of these environment variable names:
+
+- `GITHUB_RELEASES_TOKEN`
+- `GITHUB_TOKEN`
+- `GH_TOKEN`
+- `RELEASE_GITHUB_TOKEN`
+
+On Vercel, the current project configuration uses `GITHUB_RELEASES_TOKEN`.
+
 ## Drafting release notes
 
 `./scripts/release.sh` now prepares a release in two stages:
@@ -142,6 +154,12 @@ If `VERCEL_TOKEN` is configured, production releases then:
 
 Dev releases are published as GitHub prereleases with a `-dev` suffix and do
 not trigger the production Vercel deploy steps.
+
+For dev releases, only the Git tag and release metadata use the `-dev` suffix.
+The app package versions written to Desktop and PWA package files stay numeric,
+for example tag `v26.4.1402-dev` writes app version `26.4.1402`. Windows MSI
+rejects prerelease labels in installer versions, so the release channel must
+come from the tag, not the bundled app version.
 
 The in-app updater will pick the new GitHub release up automatically.
 

@@ -38,9 +38,17 @@ async function openVisibleMapMarker(
     return;
   }
 
-  await expect(page.getByRole("button", { name: popupActionName })).toBeVisible({
-    timeout: 10_000,
-  });
+  const popupAction = page.getByRole("button", { name: popupActionName });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (await popupAction.isVisible().catch(() => false)) {
+      return;
+    }
+
+    await visibleMarker.click();
+    await page.waitForTimeout(250);
+  }
+
+  await expect(popupAction).toBeVisible({ timeout: 10_000 });
 }
 
 async function clickMapPopupAction(page: Page, actionName: "Open Friend" | "Open Post") {

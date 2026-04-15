@@ -230,6 +230,10 @@ Branch routing:
 
 Manual preview deploys for this monorepo now go through `./scripts/vercel-deploy-preview.sh website` and `./scripts/vercel-deploy-preview.sh pwa`. The helper stages a temporary monorepo slice with shared workspace packages before uploading to Vercel, which avoids the broken `npm install` failures caused by raw subdirectory deploys.
 
+The preview and production deploy helpers now resolve `npm` and `npx` from the
+active Node toolchain first, so they do not accidentally pick up an older
+system npm from the shell `PATH`.
+
 ---
 
 ## Key Decisions
