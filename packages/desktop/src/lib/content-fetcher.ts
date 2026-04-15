@@ -31,11 +31,13 @@ import { log } from "./logger.js";
 
 const FETCH_TIMEOUT_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const FAILED_RETRY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const MAX_FAILED_TRACKED = 2_000;
 
 export interface FetcherStatus {
   pending: number;
   completed: number;
-  failed: string[]; // globalIds of permanently-failed items
+  failedCount: number;
 }
 
 interface QueueEntry {
@@ -45,22 +47,25 @@ interface QueueEntry {
 
 // In-memory queue and status
 const queue: QueueEntry[] = [];
-const failed = new Set<string>();
+const inFlight = new Set<string>();
+const failed = new Map<string, number>();
 let completed = 0;
 let running = false;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let heartbeatHandle: ReturnType<typeof setInterval> | null = null;
 let unsubscribeDoc: (() => void) | null = null;
+let lastScannedDocItemCount: number | null = null;
 
 // Status subscribers
 type StatusSubscriber = (status: FetcherStatus) => void;
 const statusSubscribers = new Set<StatusSubscriber>();
 
 function notifyStatus(): void {
+  pruneFailed();
   const status: FetcherStatus = {
     pending: queue.length,
     completed,
-    failed: Array.from(failed),
+    failedCount: failed.size,
   };
   for (const sub of statusSubscribers) sub(status);
 }
@@ -76,7 +81,9 @@ function newStubItems(items: FeedItem[]): QueueEntry[] {
   const queuedIds = new Set(queue.map((e) => e.globalId));
   return items
     .filter((item) => {
-      if (queuedIds.has(item.globalId) || failed.has(item.globalId)) return false;
+      if (queuedIds.has(item.globalId) || inFlight.has(item.globalId) || hasRecentFailure(item.globalId)) {
+        return false;
+      }
       const url = item.content.linkPreview?.url;
       return !!url && !item.preservedContent?.text;
     })
@@ -84,6 +91,31 @@ function newStubItems(items: FeedItem[]): QueueEntry[] {
       globalId: item.globalId,
       url: item.content.linkPreview!.url!,
     }));
+}
+
+function pruneFailed(now = Date.now()): void {
+  for (const [id, failedAt] of failed) {
+    if (now - failedAt > FAILED_RETRY_COOLDOWN_MS) {
+      failed.delete(id);
+    }
+  }
+
+  if (failed.size <= MAX_FAILED_TRACKED) return;
+
+  const overflow = failed.size - MAX_FAILED_TRACKED;
+  const oldest = Array.from(failed.entries()).sort((a, b) => a[1] - b[1]);
+  for (let i = 0; i < overflow; i++) {
+    const entry = oldest[i];
+    if (entry) failed.delete(entry[0]);
+  }
+}
+
+function hasRecentFailure(globalId: string, now = Date.now()): boolean {
+  const failedAt = failed.get(globalId);
+  if (!failedAt) return false;
+  if (now - failedAt <= FAILED_RETRY_COOLDOWN_MS) return true;
+  failed.delete(globalId);
+  return false;
 }
 
 /**
@@ -96,11 +128,18 @@ export function enqueue(items: FeedItem[]): void {
   if (newEntries.length > 0) notifyStatus();
 }
 
+function maybeScanVisibleItems(items: FeedItem[], docItemCount: number): void {
+  if (lastScannedDocItemCount === docItemCount) return;
+  lastScannedDocItemCount = docItemCount;
+  enqueue(items);
+}
+
 /** Process one item from the front of the queue */
 async function processNext(): Promise<void> {
   if (queue.length === 0) return;
 
   const entry = queue.shift()!;
+  inFlight.add(entry.globalId);
   notifyStatus();
 
   try {
@@ -168,9 +207,12 @@ async function processNext(): Promise<void> {
       queue.push(entry);
     } else {
       log.warn(`[content-fetcher] fetch failed url=${entry.url} err=${msg}`);
-      failed.add(entry.globalId);
+      failed.set(entry.globalId, Date.now());
+      pruneFailed();
       addDebugEvent("error", `[Fetcher] failed to fetch ${entry.url}: ${msg}`);
     }
+  } finally {
+    inFlight.delete(entry.globalId);
   }
 
   notifyStatus();
@@ -183,13 +225,21 @@ async function processNext(): Promise<void> {
 export function start(): void {
   if (running) return;
   running = true;
+  lastScannedDocItemCount = null;
 
   // Wire up the Automerge subscription so stub items arriving via relay sync
   // are automatically enqueued for background fetch.
+  //
+  // Important: do not rescan the whole visible feed on every mutation. Mark as
+  // read, archive toggles, and preference changes all trigger document updates,
+  // and a full enqueue() scan here turns those tiny mutations into O(n)
+  // churn across the whole library. Only rescan when the document item count
+  // changes, which is the common case for newly imported or relayed items.
   unsubscribeDoc = subscribe((state) => {
-    // state.items contains non-hidden, ranked items (from DocState).
-    // allItemIds covers hidden/archived — stubs are never archived, so items is sufficient.
-    enqueue(state.items);
+    // state.items contains non-hidden, ranked items from DocState.
+    // Stub items we care about are not hidden or archived, so the visible list
+    // is sufficient when the library grows or shrinks.
+    maybeScanVisibleItems(state.items, state.docItemCount);
   });
 
   log.info("[content-fetcher] started");
@@ -238,5 +288,6 @@ export function stop(): void {
 
 /** Get current fetcher status without subscribing */
 export function getStatus(): FetcherStatus {
-  return { pending: queue.length, completed, failed: Array.from(failed) };
+  pruneFailed();
+  return { pending: queue.length, completed, failedCount: failed.size };
 }

@@ -18,7 +18,6 @@ import type {
   ContactSyncState,
   BugReportDraft,
   BugReportIssueType,
-  BugReportScreenshot,
   GeneratedBugReportBundle,
   ImportProgress,
   ReportPrivacyTier,
@@ -72,7 +71,6 @@ export interface BugReportingConfig {
     draft: BugReportDraft;
     privacyTier: ReportPrivacyTier;
   }) => Promise<GeneratedBugReportBundle>;
-  captureScreenshot?: () => Promise<BugReportScreenshot | null>;
   exportBundle?: (bundle: GeneratedBugReportBundle) => Promise<void>;
   openUrl?: (url: string) => void;
 }
@@ -207,6 +205,13 @@ export interface PlatformConfig {
    * If absent, FeedView falls back to window.open().
    */
   openUrl?: (url: string) => void;
+
+  /**
+   * Fetch full preserved article text for a specific item from local platform
+   * storage when the live feed state only carries a truncated preview.
+   * Desktop only.
+   */
+  getLocalPreservedText?: (globalId: string) => Promise<string | null>;
 
   /**
    * Save a URL to the local library with full content extraction.

@@ -137,10 +137,9 @@ test("LinkedIn source indicator shows connected when authenticated", async ({
   await app.waitForReady();
 
   await setLiAuthState(app.page, true);
+  const sidebar = app.page.getByTestId("app-sidebar");
 
-  await expect(getDesktopSidebar(app.page).getByTestId("source-indicator-linkedin")).toBeVisible({
-    timeout: 3_000,
-  });
+  await expect(sidebar.getByTestId("source-indicator-linkedin")).toBeVisible({ timeout: 3_000 });
 });
 
 test("LinkedIn source button filters the feed to LinkedIn items", async ({

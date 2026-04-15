@@ -197,7 +197,6 @@ test("rapid theme browsing only persists the final selected theme", async ({ app
     return page.evaluate(() => document.documentElement.dataset.theme);
   }).toBe("scriptorium");
 });
-
 test("map view repaints across all themes without using the old canvas filter", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();

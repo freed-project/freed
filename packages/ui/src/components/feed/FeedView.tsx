@@ -415,7 +415,7 @@ export function FeedView() {
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(0);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof document === "undefined") return;
     document.documentElement.style.setProperty(
       "--freed-reader-rail-width",

@@ -105,7 +105,7 @@ function contentFingerprint(items: FeedItem[]): string {
     .map((item) => {
       const tagsKey = (item.userState.tags ?? []).join(",");
       const hlKey = (item.userState.highlights ?? []).length;
-      return `${item.globalId}:${item.content.text?.length ?? 0}:${tagsKey}:${hlKey}`;
+      return `${item.globalId}:${item.content.text?.length ?? 0}:${item.preservedContent?.text?.length ?? 0}:${tagsKey}:${hlKey}`;
     })
     .join("|");
 }

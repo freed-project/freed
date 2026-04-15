@@ -30,7 +30,7 @@ import {
   storeCloudToken,
   type CloudProvider,
 } from "./lib/sync";
-import { clearLocalDoc } from "./lib/automerge";
+import { clearLocalDoc, getItemPreservedText } from "./lib/automerge";
 import { isTauri } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { log } from "./lib/logger";
@@ -68,6 +68,7 @@ import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib
 import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
 import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-report";
+import { startMemoryMonitor, stopMemoryMonitor } from "./lib/memory-monitor";
 import {
   bootstrapDesktopReleaseChannel,
   getDesktopUpdateTarget,
@@ -145,11 +146,13 @@ function App() {
     void startSnapshotManager();
     // Start background content fetcher -- processes article HTML fetch queue.
     startContentFetcher();
+    startMemoryMonitor();
     return () => {
       stopRssPoller();
       stopSync();
       stopSnapshotManager();
       stopContentFetcher();
+      stopMemoryMonitor();
     };
   }, [isInitialized, legalAccepted]);
 
@@ -502,6 +505,7 @@ function App() {
       },
       // Local content cache (Tauri FS layer)
       getLocalContent: (globalId) => contentCache.get(globalId),
+      getLocalPreservedText: (globalId) => getItemPreservedText(globalId),
       // Encrypted API key store (type-widened: ApiKeyProvider -> string for PlatformConfig interface)
       secureStorage: secureStorage as {
         getApiKey: (provider: string) => Promise<string | null>;

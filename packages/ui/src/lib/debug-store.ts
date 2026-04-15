@@ -49,6 +49,21 @@ export interface DocSnapshot {
   savedAt: number;
 }
 
+export interface RuntimeMemorySnapshot {
+  processResidentBytes: number;
+  processVirtualBytes: number;
+  relayDocBytes: number;
+  relayClientCount: number;
+  contentQueuePending: number;
+  contentCompleted: number;
+  contentFailed: number;
+  rendererHeapUsedBytes?: number;
+  rendererHeapTotalBytes?: number;
+  rendererHeapLimitBytes?: number;
+  domNodeCount?: number;
+  sampleTs: number;
+}
+
 // ---------------------------------------------------------------------------
 // Performance snapshot (updated at ~4Hz by useFpsMonitor)
 // ---------------------------------------------------------------------------
@@ -186,6 +201,7 @@ interface DebugState {
   visible: boolean;
   events: SyncEvent[];
   docSnapshot: DocSnapshot | null;
+  runtimeMemory: RuntimeMemorySnapshot | null;
   cloudProviders: CloudProvidersDebugState | null;
   health: ProviderHealthDebugState | null;
   perfSnapshot: FpsSnapshot | null;
@@ -198,6 +214,7 @@ interface DebugState {
   addEvent: (kind: SyncEventKind, detail?: string, bytes?: number) => void;
   clearEvents: () => void;
   setDocSnapshot: (snap: DocSnapshot) => void;
+  setRuntimeMemory: (snap: RuntimeMemorySnapshot) => void;
   setCloudProviders: (state: CloudProvidersDebugState) => void;
   setHealth: (state: ProviderHealthDebugState) => void;
   setPerfSnapshot: (snap: FpsSnapshot) => void;
@@ -214,6 +231,7 @@ export const useDebugStore = create<DebugState>()((set) => ({
   visible: false,
   events: [],
   docSnapshot: null,
+  runtimeMemory: null,
   cloudProviders: null,
   health: null,
   perfSnapshot: null,
@@ -238,6 +256,8 @@ export const useDebugStore = create<DebugState>()((set) => ({
   clearEvents: () => set({ events: [] }),
 
   setDocSnapshot: (docSnapshot) => set({ docSnapshot }),
+
+  setRuntimeMemory: (runtimeMemory) => set({ runtimeMemory }),
 
   setCloudProviders: (cloudProviders) => set({ cloudProviders }),
 
@@ -292,6 +312,10 @@ export function addDebugEvent(
 
 export function setDocSnapshot(snap: DocSnapshot): void {
   useDebugStore.getState().setDocSnapshot(snap);
+}
+
+export function setRuntimeMemory(snap: RuntimeMemorySnapshot): void {
+  useDebugStore.getState().setRuntimeMemory(snap);
 }
 
 export function setCloudProviders(state: CloudProvidersDebugState): void {

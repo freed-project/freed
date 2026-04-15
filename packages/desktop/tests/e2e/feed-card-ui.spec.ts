@@ -166,7 +166,8 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(reader).toBeVisible();
   await expect(reader.locator('button[aria-label="Archive"]').first()).toBeVisible();
   await expect(readerHeading).toBeVisible();
+  await expect(app.page.getByLabel("Archive")).toBeVisible();
 
-  const openReaderButton = reader.locator('button[aria-label="Open"]').first();
+  const openReaderButton = app.page.locator("header").getByRole("button", { name: "Open", exact: true });
   await expect(openReaderButton).toBeVisible();
 });

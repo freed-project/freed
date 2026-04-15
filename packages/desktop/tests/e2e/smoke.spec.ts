@@ -689,8 +689,9 @@ test("Friends view can return to the feed from sidebar navigation", async ({ app
   await app.injectRssItems(1);
 
   const { page } = app;
+  const sidebar = page.getByTestId("app-sidebar");
 
-  await page.getByRole("button", { name: "Friends" }).click();
+  await sidebar.getByTestId("source-row-friends").click();
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
@@ -895,17 +896,19 @@ test("dual-column reader toolbar controls stay aligned with the sidebar and rail
     const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
     const sidebarToggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
     const dualColumnToggle = document.querySelector(
-      '[aria-label="Hide thumbnail rail"], [aria-label="Show thumbnail rail"], [aria-label="Toggle dual column layout"]',
+      '[aria-label="Hide thumbnail rail"], [aria-label="Show thumbnail rail"]',
     ) as HTMLElement | null;
+    const backButton = document.querySelector('[aria-label="Back to list"]') as HTMLElement | null;
     const compactRail = document.querySelector('[data-testid="compact-feed-panel-scroll-container"]') as HTMLElement | null;
 
-    if (!sidebar || !sidebarToggle || !dualColumnToggle || !compactRail) {
+    if (!sidebar || !sidebarToggle || !dualColumnToggle || !backButton || !compactRail) {
       throw new Error("Dual-column toolbar alignment elements were not found");
     }
 
     const sidebarRect = sidebar.getBoundingClientRect();
     const sidebarToggleRect = sidebarToggle.getBoundingClientRect();
     const dualColumnToggleRect = dualColumnToggle.getBoundingClientRect();
+    const backButtonRect = backButton.getBoundingClientRect();
     const compactRailRect = compactRail.getBoundingClientRect();
 
     return {
@@ -914,11 +917,13 @@ test("dual-column reader toolbar controls stay aligned with the sidebar and rail
       compactRailLeft: compactRailRect.left,
       compactRailRight: compactRailRect.right,
       dualColumnToggleLeft: dualColumnToggleRect.left,
+      backButtonLeft: backButtonRect.left,
     };
   });
 
   expect(Math.abs(alignment.sidebarToggleRight - alignment.sidebarRight)).toBeLessThanOrEqual(4);
   expect(Math.abs(alignment.dualColumnToggleLeft - alignment.compactRailLeft)).toBeLessThanOrEqual(4);
+  expect(Math.abs(alignment.backButtonLeft - alignment.compactRailRight)).toBeLessThanOrEqual(4);
 });
 test("dual-column reader toggles use shared view transitions when supported", async ({ app, page }) => {
   await page.setViewportSize({ width: 1280, height: 600 });
@@ -972,7 +977,7 @@ test("dual-column reader toggles use shared view transitions when supported", as
 
   await firstCard.click();
   await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByLabel("Back")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByLabel("Back to list")).toBeVisible({ timeout: 5_000 });
 
   await expect.poll(async () => {
     return page.evaluate(() => {
@@ -983,7 +988,8 @@ test("dual-column reader toggles use shared view transitions when supported", as
     });
   }).toBe(1);
 
-  await page.getByLabel("Back").click();
+  await page.getByLabel("Back to list").click();
+  await expect(firstCard).toBeVisible({ timeout: 5_000 });
 
   await expect.poll(async () => {
     return page.evaluate(() => {
@@ -1061,7 +1067,8 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
   await expect(page.getByPlaceholder("Search friends")).toBeVisible({ timeout: 5_000 });
 });
 
-test("Map view supports popup navigation into Friends and Feed", async ({ app }) => {
+test("Map view popup exposes friend actions and supports post navigation", async ({ app }) => {
+  test.setTimeout(60_000);
   await app.goto();
   await app.waitForReady();
   await app.seedFriendLocation();
@@ -1105,6 +1112,10 @@ test("Map view supports popup navigation into Friends and Feed", async ({ app })
   }, { timeout: 10_000 });
   await expect(page.getByRole("heading", { name: "Bonjour from Paris" })).toBeVisible({
     timeout: 10_000,
+  });
+  await expect(page.getByLabel("Back to list")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: "Bonjour from Paris" })).toBeVisible({
+    timeout: 20_000,
   });
 });
 

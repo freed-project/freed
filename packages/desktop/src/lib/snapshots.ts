@@ -168,14 +168,14 @@ export async function createSnapshot(
   const root = await ensureSnapshotDir();
   const createdAt = Date.now();
   const id = String(createdAt);
-  const binary = getDocBinary();
+  const binary = await getDocBinary();
   const contactSyncState = readContactSyncState();
 
   const summary: SnapshotSummary = {
     id,
     createdAt,
     byteSize: binary.byteLength,
-    itemCount: state.allItemIds.length,
+    itemCount: state.docItemCount,
     friendCount: Object.keys(state.friends).length,
     contactCount: contactSyncState.cachedContacts.length,
     pendingMatchCount: contactSyncState.pendingMatches.length,

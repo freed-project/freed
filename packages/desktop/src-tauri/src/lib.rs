@@ -9,6 +9,7 @@ use rand::RngCore;
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock as StdRwLock};
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Listener, Manager};
@@ -45,6 +46,7 @@ fn sync_relay_port() -> u16 {
 
 const DEFAULT_WEBKIT_SAFARI_UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
+const SOCIAL_SCRAPER_WINDOW_LABELS: [&str; 3] = ["fb-scraper", "ig-scraper", "li-scraper"];
 const ENABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
     (function() {
         var token = "__freed_background_scraper__";
@@ -158,6 +160,12 @@ fn recycle_webview_window(app: &tauri::AppHandle, label: &str, reason: &str) {
                 label, reason, error
             ),
         }
+    }
+}
+
+fn recycle_social_scraper_windows(app: &tauri::AppHandle, reason: &str) {
+    for label in SOCIAL_SCRAPER_WINDOW_LABELS {
+        recycle_webview_window(app, label, reason);
     }
 }
 
@@ -493,9 +501,9 @@ fn prune_snapshots(snapshot_dir: &std::path::Path, now_secs: u64) {
 struct SyncRelayState {
     port: u16,
     /// Broadcast channel — sends doc bytes to all connected clients.
-    broadcast_tx: broadcast::Sender<Vec<u8>>,
+    broadcast_tx: broadcast::Sender<Arc<Vec<u8>>>,
     /// Latest doc binary, served to new joiners immediately on connect.
-    current_doc: RwLock<Option<Vec<u8>>>,
+    current_doc: RwLock<Option<Arc<Vec<u8>>>>,
     /// Live connection count (displayed in tray / sync indicator).
     client_count: RwLock<usize>,
     /// Pairing token — must appear as `?t=<token>` in the WS upgrade URI.
@@ -507,6 +515,15 @@ struct SyncRelayState {
 }
 
 type RelayState = Arc<SyncRelayState>;
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeMemoryStats {
+    process_resident_bytes: u64,
+    process_virtual_bytes: u64,
+    relay_doc_bytes: u64,
+    relay_client_count: u64,
+}
 
 // ---------------------------------------------------------------------------
 // Capture state — shared UA strings and HTTP client for social scrapers
@@ -849,24 +866,48 @@ async fn get_sync_client_count(state: tauri::State<'_, RelayState>) -> Result<us
     Ok(*state.client_count.read().await)
 }
 
+#[tauri::command]
+async fn get_runtime_memory_stats(
+    state: tauri::State<'_, RelayState>,
+) -> Result<RuntimeMemoryStats, String> {
+    let pid = Pid::from_u32(std::process::id());
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&[pid]),
+        true,
+        ProcessRefreshKind::nothing().with_memory(),
+    );
+
+    let (process_resident_bytes, process_virtual_bytes) = system
+        .process(pid)
+        .map(|process| (process.memory(), process.virtual_memory()))
+        .unwrap_or((0, 0));
+
+    let relay_doc_bytes = state
+        .current_doc
+        .read()
+        .await
+        .as_ref()
+        .map(|doc| doc.len() as u64)
+        .unwrap_or(0);
+    let relay_client_count = *state.client_count.read().await as u64;
+
+    Ok(RuntimeMemoryStats {
+        process_resident_bytes,
+        process_virtual_bytes,
+        relay_doc_bytes,
+        relay_client_count,
+    })
+}
+
 /// Push a document update to all connected clients.
-#[cfg_attr(feature = "perf", tracing::instrument(skip(state, app, doc_bytes), fields(bytes = doc_bytes.len())))]
+#[cfg_attr(feature = "perf", tracing::instrument(skip(state, doc_bytes), fields(bytes = doc_bytes.len())))]
 #[tauri::command]
 async fn broadcast_doc(
     state: tauri::State<'_, RelayState>,
-    app: tauri::AppHandle,
     doc_bytes: Vec<u8>,
 ) -> Result<(), String> {
-    // Write a GFS snapshot before touching broadcast state — recovery is
-    // always possible even if the broadcast itself fails.
-    if let Ok(data_dir) = app.path().app_data_dir() {
-        let snapshot_dir = data_dir.join("snapshots");
-        let bytes = doc_bytes.clone();
-        tokio::task::spawn_blocking(move || write_snapshot(&snapshot_dir, &bytes))
-            .await
-            .ok();
-    }
-
+    let doc_bytes = Arc::new(doc_bytes);
     *state.current_doc.write().await = Some(doc_bytes.clone());
     let _ = state.broadcast_tx.send(doc_bytes);
     Ok(())
@@ -2991,7 +3032,10 @@ async fn handle_connection(
 
     // Push current doc to the new client immediately
     if let Some(doc) = state.current_doc.read().await.clone() {
-        if let Err(e) = ws_sender.send(Message::Binary(doc.into())).await {
+        if let Err(e) = ws_sender
+            .send(Message::Binary(doc.as_ref().clone().into()))
+            .await
+        {
             error!("[Sync] Failed to send initial doc: {}", e);
         }
     }
@@ -3004,7 +3048,7 @@ async fn handle_connection(
                 match msg {
                     Some(Ok(Message::Binary(data))) => {
                         // Client pushed a doc update — store and rebroadcast
-                        let bytes = data.to_vec();
+                        let bytes = Arc::new(data.to_vec());
                         *state.current_doc.write().await = Some(bytes.clone());
                         let _ = state.broadcast_tx.send(bytes);
                     }
@@ -3024,7 +3068,7 @@ async fn handle_connection(
             }
             broadcast = broadcast_rx.recv() => {
                 if let Ok(doc) = broadcast {
-                    if let Err(e) = ws_sender.send(Message::Binary(doc.into())).await {
+                    if let Err(e) = ws_sender.send(Message::Binary(doc.as_ref().clone().into())).await {
                         error!("[Sync] Failed to send to {}: {}", addr, e);
                         break;
                     }
@@ -3072,9 +3116,9 @@ fn main_window_webview_configuration() -> Retained<WKWebViewConfiguration> {
     let mtm = MainThreadMarker::new()
         .expect("WKWebView configuration must be created on the main thread");
     let config = unsafe { WKWebViewConfiguration::new(mtm) };
-    let display_name = NSString::from_str("Freed");
+    let display_name = NSString::from_str("Freed Engine");
 
-    // Label the WebKit content process as "Freed" in Activity Monitor instead
+    // Label the WebKit content process as "Freed Engine" in Activity Monitor instead
     // of leaving the default custom protocol URL visible.
     unsafe {
         config.setValue_forKey(
@@ -3124,7 +3168,7 @@ pub fn run() {
             .init();
     }
 
-    let (broadcast_tx, _) = broadcast::channel::<Vec<u8>>(16);
+    let (broadcast_tx, _) = broadcast::channel::<Arc<Vec<u8>>>(16);
 
     let relay_state = Arc::new(SyncRelayState {
         port: sync_relay_port(),
@@ -3421,29 +3465,40 @@ pub fn run() {
             });
 
             let renderer_health_for_watchdog = renderer_health.clone();
+            let app_for_renderer_watchdog = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
                     tokio::time::sleep(Duration::from_secs(30)).await;
 
-                    let mut health = renderer_health_for_watchdog.write().unwrap();
-                    let age = health
-                        .last_seen_at
-                        .map(|last| last.elapsed())
-                        .unwrap_or_else(|| health.started_at.elapsed());
+                    let should_recycle_scrapers = {
+                        let mut health = renderer_health_for_watchdog.write().unwrap();
+                        let age = health
+                            .last_seen_at
+                            .map(|last| last.elapsed())
+                            .unwrap_or_else(|| health.started_at.elapsed());
 
-                    if age <= Duration::from_secs(150) || health.stale_logged {
-                        continue;
+                        if age <= Duration::from_secs(150) || health.stale_logged {
+                            false
+                        } else {
+                            warn!(
+                                "[main-window] renderer heartbeat stale age_ms={} last_seq={} last_reason={} visibility={} href={}",
+                                age.as_millis(),
+                                health.last_seq,
+                                health.last_reason,
+                                health.last_visibility,
+                                truncate_for_log(&health.last_href, 120)
+                            );
+                            health.stale_logged = true;
+                            true
+                        }
+                    };
+
+                    if should_recycle_scrapers {
+                        recycle_social_scraper_windows(
+                            &app_for_renderer_watchdog,
+                            "main renderer heartbeat stale",
+                        );
                     }
-
-                    warn!(
-                        "[main-window] renderer heartbeat stale age_ms={} last_seq={} last_reason={} visibility={} href={}",
-                        age.as_millis(),
-                        health.last_seq,
-                        health.last_reason,
-                        health.last_visibility,
-                        truncate_for_log(&health.last_href, 120)
-                    );
-                    health.stale_logged = true;
                 }
             });
 
@@ -3515,6 +3570,7 @@ pub fn run() {
             get_all_local_ips,
             get_sync_url,
             get_sync_client_count,
+            get_runtime_memory_stats,
             broadcast_doc,
             reset_pairing_token,
             show_window,

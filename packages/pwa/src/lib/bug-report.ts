@@ -9,8 +9,6 @@ import { useDebugStore } from "@freed/ui/lib/debug-store";
 import {
   buildBugReportManifest,
   buildBugReportSummaryMarkdown,
-  captureReportScreenshot,
-  dataUrlToUint8Array,
   getLastFatalRuntimeError,
   getRecentBugReportEvents,
   redactSensitiveText,
@@ -63,7 +61,6 @@ async function buildPwaBundle(input: {
   const includedArtifacts = resolveArtifactsForTier(
     input.draft.selectedArtifacts,
     input.privacyTier,
-    input.draft.screenshot,
   );
   const fatalError = getLastFatalRuntimeError();
   const runtimeInfo = getPwaRuntimeInfo();
@@ -123,16 +120,7 @@ async function buildPwaBundle(input: {
   zip.file("summary.md", summaryMarkdown);
   addJson(zip, "report.json", {
     manifest,
-    draft: {
-      ...input.draft,
-      screenshot: input.draft.screenshot
-        ? {
-            name: input.draft.screenshot.name,
-            safeForPublic: input.draft.screenshot.safeForPublic,
-            capturedAt: input.draft.screenshot.capturedAt,
-          }
-        : null,
-    },
+    draft: input.draft,
   });
   if (includedArtifacts.includes("diagnostic-events")) {
     addJson(zip, "diagnostics/report-events.json", reportEvents);
@@ -147,29 +135,12 @@ async function buildPwaBundle(input: {
   if (includedArtifacts.includes("crash-context") && fatalError) {
     addJson(zip, "diagnostics/fatal-error.json", fatalError);
   }
-  if (
-    includedArtifacts.includes("screenshot") &&
-    input.draft.screenshot &&
-    (input.privacyTier === "private" || input.draft.screenshot.safeForPublic)
-  ) {
-    zip.file(
-      `screenshots/${input.draft.screenshot.name}`,
-      dataUrlToUint8Array(input.draft.screenshot.dataUrl),
-    );
-  }
-
   const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
   return {
     blob,
     manifest,
     summaryMarkdown,
     diagnostics,
-    screenshot:
-      includedArtifacts.includes("screenshot") &&
-      input.draft.screenshot &&
-      (input.privacyTier === "private" || input.draft.screenshot.safeForPublic)
-        ? input.draft.screenshot
-        : null,
   };
 }
 
@@ -177,7 +148,6 @@ export const pwaBugReporting: BugReportingConfig = {
   githubRepo: GITHUB_REPO,
   privateShareEmail: SUPPORT_EMAIL,
   generateBundle: buildPwaBundle,
-  captureScreenshot: captureReportScreenshot,
   openUrl: (url) => {
     window.open(url, "_blank", "noopener,noreferrer");
   },

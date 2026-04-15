@@ -264,7 +264,7 @@ function App() {
         </AppShell>
         <ToastContainer />
         {showUpdateBanner && (
-          <div className="fixed bottom-4 right-4 z-50 max-w-sm animate-slide-up">
+          <div className="fixed bottom-4 right-4 z-[120] max-w-sm animate-slide-up">
             <div className="theme-panel flex items-center gap-3 rounded-xl p-4">
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-[var(--theme-text-primary)]">New version available</p>
