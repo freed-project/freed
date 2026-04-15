@@ -46,6 +46,7 @@ fn sync_relay_port() -> u16 {
 
 const DEFAULT_WEBKIT_SAFARI_UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
+const SOCIAL_SCRAPER_WINDOW_LABELS: [&str; 3] = ["fb-scraper", "ig-scraper", "li-scraper"];
 const ENABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
     (function() {
         var token = "__freed_background_scraper__";
@@ -159,6 +160,12 @@ fn recycle_webview_window(app: &tauri::AppHandle, label: &str, reason: &str) {
                 label, reason, error
             ),
         }
+    }
+}
+
+fn recycle_social_scraper_windows(app: &tauri::AppHandle, reason: &str) {
+    for label in SOCIAL_SCRAPER_WINDOW_LABELS {
+        recycle_webview_window(app, label, reason);
     }
 }
 
@@ -3458,29 +3465,40 @@ pub fn run() {
             });
 
             let renderer_health_for_watchdog = renderer_health.clone();
+            let app_for_renderer_watchdog = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
                     tokio::time::sleep(Duration::from_secs(30)).await;
 
-                    let mut health = renderer_health_for_watchdog.write().unwrap();
-                    let age = health
-                        .last_seen_at
-                        .map(|last| last.elapsed())
-                        .unwrap_or_else(|| health.started_at.elapsed());
+                    let should_recycle_scrapers = {
+                        let mut health = renderer_health_for_watchdog.write().unwrap();
+                        let age = health
+                            .last_seen_at
+                            .map(|last| last.elapsed())
+                            .unwrap_or_else(|| health.started_at.elapsed());
 
-                    if age <= Duration::from_secs(150) || health.stale_logged {
-                        continue;
+                        if age <= Duration::from_secs(150) || health.stale_logged {
+                            false
+                        } else {
+                            warn!(
+                                "[main-window] renderer heartbeat stale age_ms={} last_seq={} last_reason={} visibility={} href={}",
+                                age.as_millis(),
+                                health.last_seq,
+                                health.last_reason,
+                                health.last_visibility,
+                                truncate_for_log(&health.last_href, 120)
+                            );
+                            health.stale_logged = true;
+                            true
+                        }
+                    };
+
+                    if should_recycle_scrapers {
+                        recycle_social_scraper_windows(
+                            &app_for_renderer_watchdog,
+                            "main renderer heartbeat stale",
+                        );
                     }
-
-                    warn!(
-                        "[main-window] renderer heartbeat stale age_ms={} last_seq={} last_reason={} visibility={} href={}",
-                        age.as_millis(),
-                        health.last_seq,
-                        health.last_reason,
-                        health.last_visibility,
-                        truncate_for_log(&health.last_href, 120)
-                    );
-                    health.stale_logged = true;
                 }
             });
 
