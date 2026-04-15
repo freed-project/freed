@@ -77,8 +77,9 @@ Marketing preview routing:
 - PRs targeting `www` build and deploy website previews
 - PRs targeting `dev` build and deploy PWA previews
 - Desktop Playwright E2E runs for product PRs targeting `dev`
-- Native Vercel preview deploys should stay disabled where GitHub Actions owns
-  preview deployment
+- `website/vercel.json` only allows Git-triggered Vercel deploys from `www`
+- `packages/pwa/vercel.json` disables Git-triggered Vercel deploys entirely
+- GitHub Actions owns website and PWA previews through the deploy helpers
 
 ## Drafting release notes
 
