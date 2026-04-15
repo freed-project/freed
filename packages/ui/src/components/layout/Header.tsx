@@ -229,7 +229,6 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
 
   const showReaderLayoutToggle =
     !isMobile &&
-    activeView === "feed" &&
     !!selectedItem;
   const showReaderRailToolbar =
     showReaderLayoutToggle &&
@@ -340,8 +339,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
             <ToolbarAnimatedSlot
               visible={showReaderLayoutToggle}
               width={showReaderRailToolbar ? "var(--freed-reader-rail-width, 0px)" : "3rem"}
-              flushStartMargin
-              className="hidden shrink-0 md:flex items-center"
+              className="theme-reader-rail-slot hidden shrink-0 md:flex items-center"
             >
               <div className="flex items-center" style={readerRailSlotStyle}>
                 <Tooltip label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}>
