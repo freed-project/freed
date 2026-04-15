@@ -333,7 +333,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
             <ToolbarAnimatedSlot
               visible={showReaderLayoutToggle}
               width={showReaderRailToolbar ? "var(--freed-reader-rail-width, 0px)" : "3rem"}
-              className="hidden shrink-0 md:flex items-center"
+              className="theme-toolbar-slot-flush hidden shrink-0 md:flex items-center"
             >
               <div className="flex items-center" style={readerRailSlotStyle}>
                 <Tooltip label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}>
