@@ -37,6 +37,7 @@ export function AppShell({ children }: AppShellProps) {
   const updateFriend = useAppStore((s) => s.updateFriend);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const themeId = useAppStore((s) => s.preferences.display.themeId);
+  const showAtmosphere = activeView !== "friends" && activeView !== "map";
 
   // Mount the contact sync hook here (not in FriendsView) so the 15-minute
   // interval and focus listener run regardless of which view is active.
@@ -180,7 +181,7 @@ export function AppShell({ children }: AppShellProps) {
           collapse its address bar when the feed scrolls. min-h-0 and overflow-hidden
           are desktop-only; they lock the layout to 100dvh for in-element scrolling. */}
       <div className="app-theme-shell relative flex flex-1 flex-col md:min-h-0">
-        <BackgroundAtmosphere />
+        {showAtmosphere ? <BackgroundAtmosphere /> : null}
         <Header
           onMenuClick={() => setSidebarOpen(true)}
           sidebarExpanded={desktopSidebarExpanded}

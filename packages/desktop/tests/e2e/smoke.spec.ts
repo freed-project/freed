@@ -135,6 +135,32 @@ test("desktop workspace keeps a single top toolbar in feed, reader, and friends 
   await expect(page.locator("header")).toHaveCount(1);
 });
 
+test("desktop workspace toolbar reserves the macOS stoplight inset for the Freed wordmark", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const titlebarInset = await page.evaluate(() => {
+    const logo = document.querySelector('[data-testid="workspace-toolbar"] .font-logo') as HTMLElement | null;
+    const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
+    const logoRow = logo?.parentElement as HTMLElement | null;
+    if (!logo || !toolbar || !logoRow) {
+      return null;
+    }
+
+    const toolbarRect = toolbar.getBoundingClientRect();
+    const logoRect = logo.getBoundingClientRect();
+    return {
+      paddingLeft: window.getComputedStyle(logoRow).paddingLeft,
+      logoOffset: logoRect.left - toolbarRect.left,
+    };
+  });
+
+  expect(titlebarInset).not.toBeNull();
+  expect(titlebarInset?.paddingLeft).toBe("100px");
+  expect(titlebarInset?.logoOffset ?? 0).toBeGreaterThanOrEqual(100);
+});
+
 test("desktop sidebar and debug drawer use floating shell cards", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
@@ -188,6 +214,29 @@ test("main content area renders", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
   await expect(app.page.locator("main")).toBeVisible();
+});
+
+test("desktop primary feed scroller keeps the shared fade shell", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(8);
+
+  const fadeState = await page.evaluate(() => {
+    const container = document.querySelector('[data-testid="feed-list-scroll-container"]') as HTMLElement | null;
+    if (!container) {
+      return null;
+    }
+
+    return {
+      hasFadeClass: container.classList.contains("theme-scroll-fade-y"),
+      webkitMaskImage: window.getComputedStyle(container).webkitMaskImage,
+      maskImage: window.getComputedStyle(container).maskImage,
+    };
+  });
+
+  expect(fadeState).not.toBeNull();
+  expect(fadeState?.hasFadeClass).toBe(true);
+  expect((fadeState?.webkitMaskImage || fadeState?.maskImage || "none")).not.toBe("none");
 });
 
 test("keyboard focus scrolling keeps a full row visible past the focused item", async ({ app, page }) => {
@@ -919,6 +968,60 @@ test("dual-column reader toolbar controls stay aligned with the sidebar and rail
   expect(Math.abs(alignment.dualColumnToggleLeft - alignment.compactRailLeft)).toBeLessThanOrEqual(4);
   expect(Math.abs(alignment.backButtonLeft - alignment.compactRailRight)).toBeLessThanOrEqual(4);
 });
+
+test("desktop hide thumbnail rail button collapses the compact reader rail", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(8);
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+
+    void store?.getState().updatePreferences({
+      display: {
+        reading: {
+          dualColumnMode: true,
+        },
+      },
+    });
+  });
+
+  await page.getByText("Article 0:", { exact: false }).click();
+  await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByLabel("Hide thumbnail rail")).toBeVisible({ timeout: 5_000 });
+
+  await page.getByLabel("Hide thumbnail rail").click();
+
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as
+        | {
+            getState: () => {
+              preferences: {
+                display: {
+                  reading: {
+                    dualColumnMode: boolean;
+                  };
+                };
+              };
+            };
+          }
+        | undefined;
+      return store?.getState().preferences.display.reading.dualColumnMode ?? true;
+    });
+  }).toBe(false);
+
+  await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeHidden({ timeout: 5_000 });
+  await expect(page.getByLabel("Show thumbnail rail")).toBeVisible({ timeout: 5_000 });
+});
+
 test("dual-column reader toggles use shared view transitions when supported", async ({ app, page }) => {
   await page.setViewportSize({ width: 1280, height: 600 });
   await app.goto();
@@ -1203,6 +1306,72 @@ test("settings panel can be opened", async ({ app }) => {
   } else {
     test.skip(true, "Settings button not found with current selectors");
   }
+});
+
+test("sidebar keeps its dragged width while preferences persist", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  const { page } = app;
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (patch: { display: { sidebarWidth: number } }) => Promise<void>;
+          };
+          setState: (partial: Record<string, unknown>) => void;
+        }
+      | undefined;
+
+    const originalUpdatePreferences = store?.getState().updatePreferences;
+    if (!store || !originalUpdatePreferences) return;
+
+    store.setState({
+      updatePreferences: async (patch: { display: { sidebarWidth: number } }) => {
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
+        return originalUpdatePreferences(patch);
+      },
+    });
+  });
+
+  const sidebar = page.getByTestId("app-sidebar");
+  const handle = page.getByTestId("app-sidebar-resize-handle");
+  await expect(sidebar).toBeVisible();
+  await expect(handle).toBeVisible();
+
+  const beforeBox = await sidebar.boundingBox();
+  const handleBox = await handle.boundingBox();
+  expect(beforeBox).not.toBeNull();
+  expect(handleBox).not.toBeNull();
+
+  const startWidth = beforeBox!.width;
+  const dragTargetX = handleBox!.x + 120;
+  const dragTargetY = handleBox!.y + handleBox!.height / 2;
+
+  await page.mouse.move(handleBox!.x + handleBox!.width / 2, dragTargetY);
+  await page.mouse.down();
+  await page.mouse.move(dragTargetX, dragTargetY, { steps: 8 });
+  await page.mouse.up();
+
+  await page.waitForTimeout(50);
+
+  const afterReleaseBox = await sidebar.boundingBox();
+  expect(afterReleaseBox).not.toBeNull();
+  expect(afterReleaseBox!.width).toBeGreaterThan(startWidth + 80);
+
+  const minimumExpandedWidth = Math.round(startWidth + 80);
+  await page.waitForFunction((expectedWidth) => {
+    const panel = document.querySelector('[data-testid="app-sidebar"]');
+    return (panel?.getBoundingClientRect().width ?? 0) >= expectedWidth;
+  }, minimumExpandedWidth);
+
+  await page.waitForTimeout(350);
+
+  const afterPersistDelayBox = await sidebar.boundingBox();
+  expect(afterPersistDelayBox).not.toBeNull();
+  expect(afterPersistDelayBox!.width).toBeGreaterThan(startWidth + 80);
 });
 
 // ---------------------------------------------------------------------------

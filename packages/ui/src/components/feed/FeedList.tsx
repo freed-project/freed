@@ -682,7 +682,7 @@ export function FeedList({
     <div
       ref={parentRef}
       data-testid="feed-list-scroll-container"
-      className="flex-1 min-h-0 overflow-auto overscroll-none minimal-scroll"
+      className="theme-scroll-fade-y flex-1 min-h-0 overflow-auto overscroll-none minimal-scroll"
     >
       <div
         style={{ height: elementVirtualizer.getTotalSize() }}

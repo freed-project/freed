@@ -49,30 +49,32 @@ export function SampleDataTestingSection() {
   ]);
 
   return (
-    <div className="mt-8 flex w-full max-w-xl flex-col items-center gap-4">
-      <div className="h-px w-32 bg-[color:color-mix(in_srgb,var(--theme-border-subtle)_88%,transparent)]" />
-      <p className="text-center text-xs text-[var(--theme-text-soft)]">
-        Alternatively, if you&apos;re just testing:
+    <div className="mt-10 flex w-full max-w-xl flex-col items-center">
+      <div className="mb-7 h-px w-32 bg-[color:color-mix(in_srgb,var(--theme-border-subtle)_88%,transparent)]" />
+      <p className="text-center text-sm font-medium text-[var(--theme-text-muted)]">
+        Alternatively, for preview &amp; testing:
       </p>
       <button
         type="button"
         onClick={handleSeedSampleData}
         disabled={seeding}
-        className="theme-warning-panel w-full rounded-2xl px-5 py-4 text-left transition-colors hover:bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_100%,transparent)] disabled:cursor-not-allowed disabled:opacity-60"
+        className="theme-accent-button mt-7 inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <div className="flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-lg font-medium text-[var(--theme-text-primary)]">
-              {seedDone ? "Add more sample data" : seeding ? "Populating..." : "Populate sample data"}
-            </p>
-            <p className="mt-1 text-sm text-[var(--theme-text-muted)]">
-              Adds {SAMPLE_SEED_FEED_COUNT.toLocaleString()} RSS feeds, {SAMPLE_SEED_ITEM_COUNT.toLocaleString()} items, {SAMPLE_SEED_FRIEND_COUNT.toLocaleString()} friends, and location-linked social data
-            </p>
-          </div>
-          <svg className="h-5 w-5 shrink-0 text-[var(--theme-text-soft)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </div>
+        <svg
+          className="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+          aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 14l.9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9L19 14z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l.9 2.1L8 18l-2.1.9L5 21l-.9-2.1L2 18l2.1-.9L5 15z" />
+        </svg>
+        <span>
+          {seedDone ? "Add more sample data" : seeding ? "Populating..." : "Populate sample data"}
+        </span>
       </button>
     </div>
   );

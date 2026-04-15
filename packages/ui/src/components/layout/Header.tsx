@@ -14,6 +14,7 @@ import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
+  MACOS_TRAFFIC_LIGHT_INSET,
   useAppStore,
   usePlatform,
 } from "../../context/PlatformContext.js";
@@ -36,17 +37,19 @@ function ToolbarAnimatedSlot({
   visible,
   width,
   className = "",
+  style,
   children,
 }: {
   visible: boolean;
   width: string;
   className?: string;
+  style?: CSSProperties;
   children: ReactNode;
 }) {
   return (
     <div
       className={`theme-toolbar-slot ${visible ? "theme-toolbar-slot-visible" : "theme-toolbar-slot-hidden"} ${className}`}
-      style={{ ["--toolbar-slot-width" as string]: width } as CSSProperties}
+      style={{ ["--toolbar-slot-width" as string]: width, ...style } as CSSProperties}
       aria-hidden={visible ? undefined : true}
     >
       {children}
@@ -229,19 +232,27 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     display.reading.dualColumnMode;
   const sidebarSlotStyle =
     !isMobile && sidebarExpanded
-      ? ({ width: "calc(var(--freed-sidebar-card-width, 240px) + 12px)", paddingRight: "12px" } as CSSProperties)
+      ? ({ width: "calc(var(--freed-sidebar-card-width, 240px) + 16px)", paddingRight: "8px" } as CSSProperties)
       : undefined;
+  const macosTrafficLightInsetStyle = headerDragRegion
+    ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
+    : undefined;
   const leftToolbarStyle = sidebarSlotStyle
     ? {
         ...sidebarSlotStyle,
+        ...macosTrafficLightInsetStyle,
         ...(headerDragRegion ? noDrag : {}),
       }
-    : (headerDragRegion ? noDrag : undefined);
+    : (
+        headerDragRegion
+          ? {
+              ...macosTrafficLightInsetStyle,
+              ...noDrag,
+            }
+          : undefined
+      );
   const readerRailSlotStyle = showReaderLayoutToggle
-    ? ({
-        width: showReaderRailToolbar ? "var(--freed-reader-rail-width, 0px)" : "auto",
-        ...(headerDragRegion ? noDrag : {}),
-      } as CSSProperties)
+    ? (headerDragRegion ? noDrag : undefined)
     : undefined;
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -334,6 +345,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
               visible={showReaderLayoutToggle}
               width={showReaderRailToolbar ? "var(--freed-reader-rail-width, 0px)" : "3rem"}
               className="hidden shrink-0 md:flex items-center"
+              style={headerDragRegion ? noDrag : undefined}
             >
               <div className="flex items-center" style={readerRailSlotStyle}>
                 <Tooltip label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}>

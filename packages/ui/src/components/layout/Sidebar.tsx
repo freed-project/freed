@@ -1293,7 +1293,7 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
         data-testid="app-sidebar-shell"
         className="hidden md:flex flex-none overflow-hidden"
         style={{
-          width: desktopExpanded ? width + 12 : 0,
+          width: desktopExpanded ? width + 16 : 0,
           opacity: desktopExpanded ? 1 : 0,
           paddingTop: desktopExpanded ? "var(--feed-card-gap, 8px)" : 0,
           transition: dragging.current ? "none" : "width 220ms ease, opacity 180ms ease",
@@ -1302,7 +1302,7 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
         <div className="flex h-full w-full items-stretch">
           <aside
             data-testid="app-sidebar"
-            className="theme-floating-panel relative z-10 flex h-full min-h-0 flex-col overflow-hidden"
+            className="theme-floating-panel relative z-10 flex h-full min-h-0 shrink-0 flex-col overflow-hidden"
             style={{ width: `${width}px` }}
           >
             {sidebarBody}
