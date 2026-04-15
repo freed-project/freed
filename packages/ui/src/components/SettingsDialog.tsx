@@ -356,6 +356,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   );
 
   useEffect(() => {
+    setDisplay(preferences.display);
+  }, [preferences.display]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
 
     const media = window.matchMedia("(pointer: coarse)");

@@ -14,7 +14,6 @@
  *   cargo install criterion-table
  *   cargo bench --bench relay -- --output-format bencher 2>/dev/null | criterion-table > bench.md
  */
-
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::fs;
 use std::time::SystemTime;

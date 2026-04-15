@@ -2,13 +2,13 @@
 
 import { motion } from "framer-motion";
 import { useNewsletter } from "@/context/NewsletterContext";
+import { MarketingPageShell } from "@/components/MarketingPageShell";
 
 export default function ManifestoContent() {
   const { openModal } = useNewsletter();
 
   return (
-    <section className="py-24 sm:py-32 px-4 sm:px-6 md:px-12 lg:px-8">
-      <div className="max-w-3xl mx-auto">
+    <MarketingPageShell>
         <motion.article
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -211,7 +211,6 @@ export default function ManifestoContent() {
             </motion.button>
           </motion.div>
         </motion.article>
-      </div>
-    </section>
+    </MarketingPageShell>
   );
 }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState, useCallback } from "react";
 import { useNewsletter } from "@/context/NewsletterContext";
 import type { Post } from "@/content";
+import { MarketingPageShell } from "@/components/MarketingPageShell";
 
 function formatDate(dateString: string): string {
   // Parse as local date to avoid timezone shift
@@ -32,8 +33,7 @@ export default function PostContent({ post }: PostContentProps) {
   }, [post.slug]);
 
   return (
-    <section className="py-24 sm:py-32 px-4 sm:px-6 md:px-12 lg:px-8">
-      <div className="max-w-3xl mx-auto">
+    <MarketingPageShell>
         {/* Back link */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -186,7 +186,6 @@ export default function PostContent({ post }: PostContentProps) {
             </div>
           </footer>
         </motion.article>
-      </div>
-    </section>
+    </MarketingPageShell>
   );
 }
