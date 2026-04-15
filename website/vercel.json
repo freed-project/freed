@@ -3,8 +3,8 @@
   "framework": "nextjs",
   "git": {
     "deploymentEnabled": {
-      "dev": false,
-      "main": false
+      "*": false,
+      "www": true
     }
   },
   "outputDirectory": ".next"
