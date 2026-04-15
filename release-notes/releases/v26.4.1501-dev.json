@@ -3,7 +3,7 @@
   "version": "26.4.1501-dev",
   "channel": "dev",
   "dayKey": "26.4.15",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-15T20:14:03.580Z",
   "model": "heuristic",
@@ -36,16 +36,16 @@
     ]
   },
   "release": {
-    "deck": "Www release flow, harden desktop smoke alignment checks, and crash reports now keep diagnostic state",
+    "deck": "Explicit website release flow and stability fixes for recovery and UI checks",
     "features": [
-      "Explicit www release flow"
+      "Explicit website release flow"
     ],
     "fixes": [
+      "Crash reports now keep cleaner diagnostic state",
+      "Map popup smoke tests and reader rail alignment checks are steadier",
       "Crash reporting and WebKit recovery are now more stable"
     ],
-    "followUps": [
-      "Stability fixes for recovery and UI checks"
-    ]
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1501-dev\n\nWww release flow, harden desktop smoke alignment checks, and crash reports now keep diagnostic state\n\n### Features\n\n- Explicit www release flow\n\n### Fixes\n\n- Crash reporting and WebKit recovery are now more stable\n\n### Follow-ups\n\n- Stability fixes for recovery and UI checks\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1501-dev\n\nExplicit website release flow and stability fixes for recovery and UI checks\n\n### Features\n\n- Explicit website release flow\n\n### Fixes\n\n- Crash reports now keep cleaner diagnostic state\n- Map popup smoke tests and reader rail alignment checks are steadier\n- Crash reporting and WebKit recovery are now more stable\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
