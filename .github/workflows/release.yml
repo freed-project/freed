@@ -9,6 +9,9 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # Load the reviewed, checked-in release notes for this tag.
   # The workflow refuses to freestyle release prose on its own.
@@ -260,8 +263,8 @@ jobs:
         with:
           projectPath: packages/desktop
           tauriScript: npx tauri
-          tagName: v__VERSION__
-          releaseName: "Freed v__VERSION__"
+          tagName: ${{ github.ref_name }}
+          releaseName: "Freed ${{ github.ref_name }}"
           releaseBody: ${{ needs.notes.outputs.release_body }}
           releaseDraft: true
           prerelease: ${{ needs.notes.outputs.is_prerelease == 'true' }}
