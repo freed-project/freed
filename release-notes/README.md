@@ -82,9 +82,19 @@ Freed Desktop update prompts use the deck line only. They do not render bullet l
 
 - `OPENAI_API_KEY`: optional, used to generate stronger draft notes
 - `OPENAI_RELEASE_NOTES_MODEL`: optional, defaults to `gpt-5.4`
+- `OPENAI_RELEASE_NOTES_TIMEOUT_MS`: optional, defaults to `20000`
+- `RELEASE_NOTES_GITHUB_TIMEOUT_MS`: optional, defaults to `15000`
+- `RELEASE_NOTES_MAX_PR_DETAILS`: optional, defaults to `60`
 
 If no OpenAI key is present, the generator falls back to deterministic
 heuristics so the workflow still works.
+
+If the OpenAI draft call times out, the generator logs the timeout and falls
+back to deterministic heuristics instead of wedging the release prep step.
+
+When a release spans more PRs than `RELEASE_NOTES_MAX_PR_DETAILS`, the
+generator uses commit subjects instead of fetching every PR body. This keeps
+first-release and first-dev-channel prep from crawling through old history.
 
 ## Historical regeneration
 

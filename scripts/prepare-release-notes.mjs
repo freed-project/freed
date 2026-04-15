@@ -29,6 +29,18 @@ const DEV_SUFFIX = "-dev";
 const GITHUB_API = "https://api.github.com";
 const OPENAI_API = "https://api.openai.com/v1/chat/completions";
 const OPENAI_MODEL = process.env.OPENAI_RELEASE_NOTES_MODEL || "gpt-5.4";
+const OPENAI_TIMEOUT_MS = Math.max(
+  1_000,
+  Number.parseInt(process.env.OPENAI_RELEASE_NOTES_TIMEOUT_MS || "20000", 10) || 20_000,
+);
+const GITHUB_FETCH_TIMEOUT_MS = Math.max(
+  1_000,
+  Number.parseInt(process.env.RELEASE_NOTES_GITHUB_TIMEOUT_MS || "15000", 10) || 15_000,
+);
+const MAX_PR_DETAILS = Math.max(
+  0,
+  Number.parseInt(process.env.RELEASE_NOTES_MAX_PR_DETAILS || "60", 10) || 60,
+);
 
 function die(message) {
   console.error(message);
@@ -102,11 +114,25 @@ function githubHeaders() {
 }
 
 async function fetchJson(url, headers) {
-  const response = await fetch(url, { headers });
-  if (!response.ok) {
-    throw new Error(`Request failed: ${response.status} ${url}`);
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), GITHUB_FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, { headers, signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`Request failed: ${response.status} ${url}`);
+    }
+    return response.json();
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(
+        `GitHub request timed out after ${GITHUB_FETCH_TIMEOUT_MS.toLocaleString()}ms: ${url}`,
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutHandle);
   }
-  return response.json();
 }
 
 function normalizeSubject(subject) {
@@ -589,6 +615,14 @@ async function collectReleaseContext(tag, version, channel) {
 
   const entries = [];
   const prNumbers = new Set();
+  const prDetailCount = subjects.filter((subject) => /\(#(\d+)\)$/.test(subject)).length;
+  const shouldFetchPrDetails = prDetailCount <= MAX_PR_DETAILS;
+
+  if (!shouldFetchPrDetails) {
+    console.warn(
+      `[prepare-release-notes] Skipping PR body fetches for ${prDetailCount.toLocaleString()} PRs. Set RELEASE_NOTES_MAX_PR_DETAILS to raise the cap.`,
+    );
+  }
 
   for (const subject of subjects) {
     const normalizedSubject = normalizeSubject(subject);
@@ -604,7 +638,7 @@ async function collectReleaseContext(tag, version, channel) {
     let title = fallback;
     let details = [];
 
-    if (prNumber) {
+    if (prNumber && shouldFetchPrDetails) {
       prNumbers.add(prNumber);
       try {
         const pull = await fetchPull(prNumber);
@@ -628,6 +662,8 @@ async function collectReleaseContext(tag, version, channel) {
       } catch {
         details = [];
       }
+    } else if (prNumber) {
+      prNumbers.add(prNumber);
     }
 
     entries.push({
@@ -785,35 +821,50 @@ async function generateWithOpenAI(promptInput) {
     "Do not mention pull requests, commit hashes, internal tickets, or implementation trivia unless it materially changes the shipped product.",
   ].join(" ");
 
-  const response = await fetch(OPENAI_API, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: OPENAI_MODEL,
-      messages: [
-        { role: "system", content: system },
-        {
-          role: "user",
-          content: `Summarize this release context as strict JSON.\n${JSON.stringify(promptInput, null, 2)}`,
-        },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: schema,
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(OPENAI_API, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
       },
-    }),
-  });
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        messages: [
+          { role: "system", content: system },
+          {
+            role: "user",
+            content: `Summarize this release context as strict JSON.\n${JSON.stringify(promptInput, null, 2)}`,
+          },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: schema,
+        },
+      }),
+    });
 
-  if (!response.ok) {
-    throw new Error(`OpenAI API error ${response.status}: ${await response.text()}`);
+    if (!response.ok) {
+      throw new Error(`OpenAI API error ${response.status}: ${await response.text()}`);
+    }
+
+    const data = await response.json();
+    const raw = data?.choices?.[0]?.message?.content ?? "";
+    return validateStructuredNotes(parseJsonContent(raw));
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(
+        `OpenAI release-note generation timed out after ${OPENAI_TIMEOUT_MS.toLocaleString()}ms.`,
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutHandle);
   }
-
-  const data = await response.json();
-  const raw = data?.choices?.[0]?.message?.content ?? "";
-  return validateStructuredNotes(parseJsonContent(raw));
 }
 
 function loadPriorSameDayArtifact(release) {
@@ -974,8 +1025,14 @@ async function main() {
   console.log(`- ${path.relative(REPO_ROOT, dailyPath(dayKey, channel))}`);
 }
 
-main().catch((error) => {
-  console.error("[prepare-release-notes] Failed.");
-  console.error(error);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    // Node's fetch implementation can leave connection handles open long enough
+    // to wedge release.sh after all files have already been written.
+    process.exit(0);
+  })
+  .catch((error) => {
+    console.error("[prepare-release-notes] Failed.");
+    console.error(error);
+    process.exit(1);
+  });
