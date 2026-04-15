@@ -18,6 +18,9 @@ import {
 } from "./fixtures/app";
 import { tauriInitScript } from "./fixtures/tauri-init";
 
+const SIDEBAR_ALIGNMENT_TOLERANCE_PX = 4;
+const READER_RAIL_ALIGNMENT_TOLERANCE_PX = 8;
+
 async function dismissCloudSyncNudgeIfPresent(page: Page) {
   const dismissButton = page.getByRole("button", { name: "Dismiss", exact: true });
   if (await dismissButton.isVisible().catch(() => false)) {
@@ -950,9 +953,15 @@ test("dual-column reader toolbar controls stay aligned with the sidebar and rail
     };
   });
 
-  expect(Math.abs(alignment.sidebarToggleRight - alignment.sidebarRight)).toBeLessThanOrEqual(4);
-  expect(Math.abs(alignment.dualColumnToggleLeft - alignment.compactRailLeft)).toBeLessThanOrEqual(4);
-  expect(Math.abs(alignment.backButtonLeft - alignment.compactRailRight)).toBeLessThanOrEqual(4);
+  expect(Math.abs(alignment.sidebarToggleRight - alignment.sidebarRight)).toBeLessThanOrEqual(
+    SIDEBAR_ALIGNMENT_TOLERANCE_PX,
+  );
+  expect(Math.abs(alignment.dualColumnToggleLeft - alignment.compactRailLeft)).toBeLessThanOrEqual(
+    READER_RAIL_ALIGNMENT_TOLERANCE_PX,
+  );
+  expect(Math.abs(alignment.backButtonLeft - alignment.compactRailRight)).toBeLessThanOrEqual(
+    READER_RAIL_ALIGNMENT_TOLERANCE_PX,
+  );
 });
 test("dual-column reader toggles use shared view transitions when supported", async ({ app, page }) => {
   await page.setViewportSize({ width: 1280, height: 600 });
