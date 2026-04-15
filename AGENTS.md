@@ -94,6 +94,22 @@ Or run the cleanup helper to sweep all merged worktrees at once:
 
 Branches are deleted after merge. The squash commit message is derived from the PR title — write PR titles as if they are commit messages.
 
+### Worktree Routing
+
+Before creating a worktree, classify the requested work by destination branch.
+
+- Product work targets `dev`: Desktop, PWA, shared packages, sync, capture packages, release tooling, app behavior, and product docs.
+- Public marketing work targets `www`: `website/`, marketing copy, public roadmap presentation, changelog presentation, and marketing docs.
+- Production release prep targets `main`.
+- Dev release prep targets `dev`.
+- Use `freed-build-feature` for product work targeting `dev`.
+- Use `freed-build-www` for marketing-site changes targeting `www`.
+- Use `freed-ship-build` for desktop release shipping.
+- Use `freed-ship-www` for publishing `www`, refreshing changelog, or syncing `main` into `www`.
+- Ask before creating a worktree if destination branch or path scope is unclear.
+- Never base public marketing work from `dev`.
+- Never fast-forward `www` to `dev`.
+
 **Never use `git log main..branch` to check whether a branch has been merged.** Squash merge creates a new commit hash on `main`, so the original branch commits are never reachable from `main`'s history. The branch always looks "ahead" even when its content is fully shipped. Use these instead:
 
 ```bash

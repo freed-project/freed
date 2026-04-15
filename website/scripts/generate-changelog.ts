@@ -4,6 +4,8 @@ import {
   groupReleasesByDay,
   normalizeGitHubReleases,
   type ParsedRelease,
+  type ReleaseBuild,
+  type ReleaseChannel,
   type ReleaseItem,
 } from "../src/content/changelog";
 
@@ -109,7 +111,7 @@ function buildLinksFromArtifact(
   artifact: LocalReleaseArtifact,
   release: GitHubRelease,
   releaseMap: Map<string, GitHubRelease>,
-) {
+): ReleaseBuild[] {
   const relatedBuildTags = artifact.source?.relatedBuildTags ?? [];
   const buildLinks = relatedBuildTags
     .map((tag) => releaseMap.get(tag))
@@ -117,6 +119,7 @@ function buildLinksFromArtifact(
     .map((candidate) => ({
       version: candidate.tag_name.replace(/^v/, ""),
       htmlUrl: candidate.html_url,
+      channel: (candidate.tag_name.endsWith("-dev") ? "dev" : "production") as ReleaseChannel,
     }));
 
   if (buildLinks.length > 0) {
@@ -127,6 +130,7 @@ function buildLinksFromArtifact(
     {
       version: artifact.version || release.tag_name.replace(/^v/, ""),
       htmlUrl: release.html_url,
+      channel: (release.tag_name.endsWith("-dev") ? "dev" : "production") as ReleaseChannel,
     },
   ];
 }
@@ -137,6 +141,10 @@ function releaseFromLocalArtifact(
   releaseMap: Map<string, GitHubRelease>,
 ): ParsedRelease {
   const releaseShape = artifact.release ?? {};
+  const version = artifact.version || release.tag_name.replace(/^v/, "");
+  const channel: ReleaseChannel = release.tag_name.endsWith("-dev")
+    ? "dev"
+    : "production";
   const features = toReleaseItems(releaseShape.features ?? releaseShape.whatsNew);
   const fixes = toReleaseItems(releaseShape.fixes);
   const followUps = toReleaseItems([
@@ -146,8 +154,9 @@ function releaseFromLocalArtifact(
   const buildLinks = buildLinksFromArtifact(artifact, release, releaseMap);
 
   return {
-    version: artifact.version || release.tag_name.replace(/^v/, ""),
+    version,
     tagName: release.tag_name,
+    channel,
     date: release.published_at,
     deck: releaseShape.deck?.trim() || releaseShape.summary?.trim() || "",
     features,

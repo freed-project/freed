@@ -7,6 +7,8 @@ import type { CSSProperties, MouseEvent } from "react";
 import { useEffect, useMemo, useRef } from "react";
 import type { ParsedRelease } from "@/content/changelog";
 import { MarketingPageShell } from "@/components/MarketingPageShell";
+import type { ChangelogMode } from "./pagination";
+import { getChangelogPageHref } from "./pagination";
 
 const CHANGELOG_SMOOTH_SCROLL_KEY = "freed-changelog-smooth-scroll";
 
@@ -17,10 +19,6 @@ function formatDate(iso: string): string {
     month: "long",
     day: "numeric",
   });
-}
-
-function getPageHref(page: number): string {
-  return page <= 1 ? "/changelog" : `/changelog/${page.toString()}`;
 }
 
 function shouldAnimateChangelogHeader(pathname: string): boolean {
@@ -52,20 +50,20 @@ function shouldHandleSmoothPaginationClick(event: MouseEvent<HTMLAnchorElement>)
 
 function PaginationNav({
   currentPage,
+  mode,
   totalPages,
   className = "",
   smoothScrollOnNavigate = false,
 }: {
   currentPage: number;
+  mode: ChangelogMode;
   totalPages: number;
   className?: string;
   smoothScrollOnNavigate?: boolean;
 }) {
   const router = useRouter();
-
-  if (totalPages <= 1) {
-    return null;
-  }
+  const toggleHref = mode === "all" ? "/changelog" : "/changelog/all";
+  const toggleLabel = mode === "all" ? "Hide dev releases" : "Show dev releases";
 
   return (
     <nav
@@ -73,6 +71,30 @@ function PaginationNav({
       className={`text-sm text-text-muted ${className}`.trim()}
     >
       <div className="flex flex-wrap items-center justify-center gap-x-0.5 gap-y-2">
+        <Link
+          href={toggleHref}
+          scroll={!smoothScrollOnNavigate}
+          className="rounded-md px-1.5 py-1 text-text-secondary transition-colors hover:text-text-primary"
+          onClick={(event) => {
+            if (!smoothScrollOnNavigate) {
+              return;
+            }
+
+            if (!shouldHandleSmoothPaginationClick(event)) {
+              return;
+            }
+
+            event.preventDefault();
+
+            try {
+              sessionStorage.setItem(CHANGELOG_SMOOTH_SCROLL_KEY, toggleHref);
+            } catch {}
+
+            router.push(toggleHref, { scroll: false });
+          }}
+        >
+          {toggleLabel}
+        </Link>
         {Array.from({ length: totalPages }, (_, index) => {
           const page = index + 1;
           const isCurrent = page === currentPage;
@@ -93,7 +115,7 @@ function PaginationNav({
                 </span>
               ) : (
                 <Link
-                  href={getPageHref(page)}
+                  href={getChangelogPageHref(page, mode)}
                   scroll={!smoothScrollOnNavigate}
                   className="rounded-md px-1.5 py-1 transition-colors hover:text-text-primary"
                   onClick={(event) => {
@@ -110,11 +132,13 @@ function PaginationNav({
                     try {
                       sessionStorage.setItem(
                         CHANGELOG_SMOOTH_SCROLL_KEY,
-                        getPageHref(page)
+                        getChangelogPageHref(page, mode)
                       );
                     } catch {}
 
-                    router.push(getPageHref(page), { scroll: false });
+                    router.push(getChangelogPageHref(page, mode), {
+                      scroll: false,
+                    });
                   }}
                 >
                   {label}
@@ -278,6 +302,19 @@ function ReleaseCard({
                   Latest
                 </span>
               )}
+              {release.channel === "dev" && (
+                <span
+                  className="px-2.5 py-0.5 rounded-full border text-xs font-semibold text-text-secondary"
+                  style={{
+                    background:
+                      "color-mix(in srgb, var(--theme-text-muted) 12%, transparent)",
+                    borderColor:
+                      "color-mix(in srgb, var(--theme-text-muted) 24%, transparent)",
+                  }}
+                >
+                  Dev
+                </span>
+              )}
               <time className="ml-auto text-sm text-text-muted transition-colors duration-300">
                 {formatDate(release.date)}
               </time>
@@ -324,9 +361,14 @@ function ReleaseCard({
                     href={build.htmlUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="pointer-events-auto text-xs text-text-muted transition-colors hover:text-text-primary"
+                    className="pointer-events-auto inline-flex items-center gap-1 text-xs text-text-muted transition-colors hover:text-text-primary"
                   >
-                    v{build.version}
+                    <span>v{build.version}</span>
+                    {build.channel === "dev" && (
+                      <span className="rounded-full border border-freed-border px-1 text-[10px] uppercase">
+                        Dev
+                      </span>
+                    )}
                   </a>
                 ))}
               </div>
@@ -407,11 +449,13 @@ function Section({
 export default function ChangelogContent({
   releases,
   currentPage,
+  mode,
   totalPages,
   pageRange,
 }: {
   releases: ParsedRelease[];
   currentPage: number;
+  mode: ChangelogMode;
   totalPages: number;
   pageRange: { start: number; end: number; total: number };
 }) {
@@ -464,6 +508,7 @@ export default function ChangelogContent({
 
         <PaginationNav
           currentPage={currentPage}
+          mode={mode}
           totalPages={totalPages}
           className="mb-6"
           smoothScrollOnNavigate
@@ -487,6 +532,7 @@ export default function ChangelogContent({
 
         <PaginationNav
           currentPage={currentPage}
+          mode={mode}
           totalPages={totalPages}
           className="mt-8"
           smoothScrollOnNavigate

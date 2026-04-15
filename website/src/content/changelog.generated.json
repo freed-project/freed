@@ -2,6 +2,7 @@
   {
     "version": "26.4.1602",
     "tagName": "v26.4.1602",
+    "channel": "production",
     "date": "2026-04-17T02:06:16Z",
     "deck": "Freed Desktop keeps update dialogs visible, restores read state correctly, and trims sync memory growth on large saves",
     "features": [],
@@ -37,21 +38,160 @@
     "buildLinks": [
       {
         "version": "26.4.1600",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1600"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1600",
+        "channel": "production"
       },
       {
         "version": "26.4.1601-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1601-dev"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1601-dev",
+        "channel": "dev"
       },
       {
         "version": "26.4.1602",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1602"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1602",
+        "channel": "production"
+      }
+    ]
+  },
+  {
+    "version": "26.4.1601-dev",
+    "tagName": "v26.4.1601-dev",
+    "channel": "dev",
+    "date": "2026-04-17T00:12:58Z",
+    "deck": "Map tiles are back, and desktop sync carries less preserved article text",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Map view background tiles render again across the refreshed style palette"
+      },
+      {
+        "text": "Desktop sync now trims preserved article text before it reaches Automerge, which reduces sync memory growth on large saves"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1601-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.4.1601-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.1601-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1601-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.4.1501-dev",
+    "tagName": "v26.4.1501-dev",
+    "channel": "dev",
+    "date": "2026-04-15T20:29:20Z",
+    "deck": "Explicit website release flow and stability fixes for recovery and UI checks",
+    "features": [
+      {
+        "text": "Explicit website release flow"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Crash reports now keep cleaner diagnostic state"
+      },
+      {
+        "text": "Map popup smoke tests and reader rail alignment checks are steadier"
+      },
+      {
+        "text": "Crash reporting and WebKit recovery are now more stable"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1501-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.4.1500-dev",
+      "26.4.1501-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.1500-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1500-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.1501-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1501-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.4.1403-dev",
+    "tagName": "v26.4.1403-dev",
+    "channel": "dev",
+    "date": "2026-04-15T06:04:17Z",
+    "deck": "Theme-native map palettes, contacts settings and sync, and rotating desktop snapshots",
+    "features": [
+      {
+        "text": "Theme-native map palettes"
+      },
+      {
+        "text": "Finish Google Contacts settings and sync"
+      },
+      {
+        "text": "Rotating desktop snapshots"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Reader, feed, and header polish"
+      },
+      {
+        "text": "Release build and type-safety cleanup"
+      },
+      {
+        "text": "Copy and documentation cleanup"
+      },
+      {
+        "text": "Capture and scraper reliability fixes"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Reader, sidebar, and settings UX work"
+      },
+      {
+        "text": "Release workflow and build-system work"
+      },
+      {
+        "text": "Capture, login, and scraping platform work"
+      },
+      {
+        "text": "Sync, cloud, and pairing infrastructure"
+      },
+      {
+        "text": "Testing, diagnostics, and developer tooling"
+      },
+      {
+        "text": "Content and documentation work"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1403-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.4.1403-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.1403-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1403-dev",
+        "channel": "dev"
       }
     ]
   },
   {
     "version": "26.4.1400",
     "tagName": "v26.4.1400",
+    "channel": "production",
     "date": "2026-04-14T23:13:01Z",
     "deck": "Theme-native map palettes, dev release channels and branch flow, and label macOS Activity Monitor web process as Freed",
     "features": [
@@ -78,13 +218,15 @@
     "buildLinks": [
       {
         "version": "26.4.1400",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1400"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1400",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.4.1300",
     "tagName": "v26.4.1300",
+    "channel": "production",
     "date": "2026-04-14T05:17:28Z",
     "deck": "Desktop shell chrome is unified across the app, with theme-native maps, clearer recovery handoffs, and steadier reading surfaces.",
     "features": [
@@ -121,13 +263,15 @@
     "buildLinks": [
       {
         "version": "26.4.1300",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1300"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1300",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.4.1203",
     "tagName": "v26.4.1203",
+    "channel": "production",
     "date": "2026-04-13T02:44:48Z",
     "deck": "Unify themes across website and app, refreshed theme system and typography polish, and privacy policy callout border removed",
     "features": [
@@ -191,21 +335,25 @@
     "buildLinks": [
       {
         "version": "26.4.1200",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1200"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1200",
+        "channel": "production"
       },
       {
         "version": "26.4.1201",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1201"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1201",
+        "channel": "production"
       },
       {
         "version": "26.4.1203",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1203"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1203",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.4.1100",
     "tagName": "v26.4.1100",
+    "channel": "production",
     "date": "2026-04-12T06:06:18Z",
     "deck": "Contacts settings and sync, rotating desktop snapshots, and unify theming across website and app",
     "features": [
@@ -287,13 +435,15 @@
     "buildLinks": [
       {
         "version": "26.4.1100",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1100"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1100",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.4.900",
     "tagName": "v26.4.900",
+    "channel": "production",
     "date": "2026-04-10T04:38:56Z",
     "deck": "Provider health diagnostics and quieter background scrapers",
     "features": [
@@ -326,13 +476,15 @@
     "buildLinks": [
       {
         "version": "26.4.900",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.900"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.900",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.4.301",
     "tagName": "v26.4.301",
+    "channel": "production",
     "date": "2026-04-03T21:30:37Z",
     "deck": "Website changelog catches same-day releases",
     "features": [],
@@ -368,17 +520,20 @@
     "buildLinks": [
       {
         "version": "26.4.300",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.300"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.300",
+        "channel": "production"
       },
       {
         "version": "26.4.301",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.301"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.301",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.4.109",
     "tagName": "v26.4.109",
+    "channel": "production",
     "date": "2026-04-02T02:49:52Z",
     "deck": "Map view, refined consent gates, and signed macOS installs",
     "features": [
@@ -455,41 +610,50 @@
     "buildLinks": [
       {
         "version": "26.4.100",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.100"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.100",
+        "channel": "production"
       },
       {
         "version": "26.4.101",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.101"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.101",
+        "channel": "production"
       },
       {
         "version": "26.4.102",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.102"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.102",
+        "channel": "production"
       },
       {
         "version": "26.4.103",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.103"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.103",
+        "channel": "production"
       },
       {
         "version": "26.4.105",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.105"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.105",
+        "channel": "production"
       },
       {
         "version": "26.4.107",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.107"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.107",
+        "channel": "production"
       },
       {
         "version": "26.4.108",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.108"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.108",
+        "channel": "production"
       },
       {
         "version": "26.4.109",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.109"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.109",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.3.3100",
     "tagName": "v26.3.3100",
+    "channel": "production",
     "date": "2026-04-01T05:12:01Z",
     "deck": "QR landing page and refined consent gates",
     "features": [
@@ -513,13 +677,15 @@
     "buildLinks": [
       {
         "version": "26.3.3100",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.3100"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.3100",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.3.2402",
     "tagName": "v26.3.2402",
+    "channel": "production",
     "date": "2026-03-25T04:11:35Z",
     "deck": "Friends view and contacts sync, LinkedIn capture, and feed card and reader actions",
     "features": [
@@ -559,17 +725,20 @@
     "buildLinks": [
       {
         "version": "26.3.2400",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.2400"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.2400",
+        "channel": "production"
       },
       {
         "version": "26.3.2402",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.2402"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.2402",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.3.1300",
     "tagName": "v26.3.1300",
+    "channel": "production",
     "date": "2026-03-13T14:44:55Z",
     "deck": "Instagram and Facebook story scraping interleaved with feed scrolling",
     "features": [
@@ -589,13 +758,15 @@
     "buildLinks": [
       {
         "version": "26.3.1300",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1300"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1300",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.3.1200",
     "tagName": "v26.3.1200",
+    "channel": "production",
     "date": "2026-03-13T03:50:50Z",
     "deck": "Daily changelog grouping and fB/IG scraper windows instead of moving them off-screen now stays out of the way",
     "features": [
@@ -616,13 +787,15 @@
     "buildLinks": [
       {
         "version": "26.3.1200",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1200"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1200",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.3.1101",
     "tagName": "v26.3.1101",
+    "channel": "production",
     "date": "2026-03-11T20:13:18Z",
     "deck": "File logging and freeze guards",
     "features": [
@@ -648,17 +821,20 @@
     "buildLinks": [
       {
         "version": "26.3.1100",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1100"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1100",
+        "channel": "production"
       },
       {
         "version": "26.3.1101",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1101"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1101",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.3.1002",
     "tagName": "v26.3.1002",
+    "channel": "production",
     "date": "2026-03-11T06:10:34Z",
     "deck": "Dual column reader view, capture hardening, and platform-specific install cautions",
     "features": [
@@ -842,21 +1018,25 @@
     "buildLinks": [
       {
         "version": "26.3.1000",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1000"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1000",
+        "channel": "production"
       },
       {
         "version": "26.3.1001",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1001"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1001",
+        "channel": "production"
       },
       {
         "version": "26.3.1002",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1002"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.1002",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.3.904",
     "tagName": "v26.3.904",
+    "channel": "production",
     "date": "2026-03-10T01:01:55Z",
     "deck": "Changelog page, remove frosted glass, fix update banner, unused user-agent import from fb-capture.ts, and capture-x build step from release CI",
     "features": [
@@ -898,17 +1078,20 @@
     "buildLinks": [
       {
         "version": "26.3.903",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.903"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.903",
+        "channel": "production"
       },
       {
         "version": "26.3.904",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.904"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.904",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.3.804",
     "tagName": "v26.3.804",
+    "channel": "production",
     "date": "2026-03-09T03:27:30Z",
     "deck": "Sidebar purple dots, dev auto-seed, and social sample data and social engagement via outbox pattern (like, seen-sync, comment links)",
     "features": [
@@ -929,13 +1112,15 @@
     "buildLinks": [
       {
         "version": "26.3.804",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.804"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.804",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.3.703",
     "tagName": "v26.3.703",
+    "channel": "production",
     "date": "2026-03-08T05:30:11Z",
     "deck": "Playwright e2e smoke test infrastructure for desktop, dual-column split view, and uI polish bundle - tooltips, hover states, scroll reset, save fix, sidebar counts",
     "features": [
@@ -988,17 +1173,20 @@
     "buildLinks": [
       {
         "version": "26.3.702",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.702"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.702",
+        "channel": "production"
       },
       {
         "version": "26.3.703",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.703"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.703",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.3.601",
     "tagName": "v26.3.601",
+    "channel": "production",
     "date": "2026-03-06T22:40:26Z",
     "deck": "Fix focus mode showing raw HTML brackets from RSS feed descriptions and double-cast window through unknown to satisfy strict TS in mock files",
     "features": [],
@@ -1012,13 +1200,15 @@
     "buildLinks": [
       {
         "version": "26.3.601",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.601"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.601",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.3.504",
     "tagName": "v26.3.504",
+    "channel": "production",
     "date": "2026-03-05T18:19:48Z",
     "deck": "Complete X/Twitter integration end-to-end, build out the archive system end-to-end, and universal full-text search across all sources",
     "features": [
@@ -1161,21 +1351,25 @@
     "buildLinks": [
       {
         "version": "26.3.502",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.502"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.502",
+        "channel": "production"
       },
       {
         "version": "26.3.503",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.503"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.503",
+        "channel": "production"
       },
       {
         "version": "26.3.504",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.504"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.504",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.3.303",
     "tagName": "v26.3.303",
+    "channel": "production",
     "date": "2026-03-04T00:57:10Z",
     "deck": "Privacy policy page, heal untitled feed titles from live XML on sync, and syncConnectDialog UX",
     "features": [
@@ -1229,21 +1423,25 @@
     "buildLinks": [
       {
         "version": "26.3.300",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.300"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.300",
+        "channel": "production"
       },
       {
         "version": "26.3.302",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.302"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.302",
+        "channel": "production"
       },
       {
         "version": "26.3.303",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.303"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.303",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.3.200",
     "tagName": "v26.3.200",
+    "channel": "production",
     "date": "2026-03-03T15:54:05Z",
     "deck": "Sync section explains user-owned cloud storage + passphrase encryption and mDNS discovery, cloud file sync + desktop cloud sync",
     "features": [
@@ -1264,13 +1462,15 @@
     "buildLinks": [
       {
         "version": "26.3.200",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.200"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.200",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "26.3.104",
     "tagName": "v26.3.104",
+    "channel": "production",
     "date": "2026-03-02T05:30:02Z",
     "deck": "Per-feed context menu with sync status, rename, and unsubscribe, system, CalVer DDBUILD, UI polish, and fix tab strip alignment in AddFeedDialog",
     "features": [
@@ -1375,29 +1575,35 @@
     "buildLinks": [
       {
         "version": "26.3.100",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.100"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.100",
+        "channel": "production"
       },
       {
         "version": "26.3.101",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.101"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.101",
+        "channel": "production"
       },
       {
         "version": "26.3.102",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.102"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.102",
+        "channel": "production"
       },
       {
         "version": "26.3.103",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.103"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.103",
+        "channel": "production"
       },
       {
         "version": "26.3.104",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.104"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.3.104",
+        "channel": "production"
       }
     ]
   },
   {
     "version": "0.2.0",
     "tagName": "v0.2.0",
+    "channel": "production",
     "date": "2026-03-02T01:16:53Z",
     "deck": "@freed/capture-facebook and @freed/capture-instagram packages, sync, cloud, and pairing infrastructure, and content and documentation work",
     "features": [
@@ -1447,7 +1653,8 @@
     "buildLinks": [
       {
         "version": "0.2.0",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v0.2.0"
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v0.2.0",
+        "channel": "production"
       }
     ]
   }
