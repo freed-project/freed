@@ -17,6 +17,11 @@ Freed release notes now use a hybrid flow:
 - Dev tags use `YY.M.DDBUILD-dev`, for example `26.4.1204-dev`
 - Release artifacts now include a top-level `channel` field so workflows can publish dev builds as prereleases
 
+Dev app package versions stay numeric even when the tag has `-dev`. For
+example, `v26.4.1204-dev` writes `26.4.1204` into Desktop and PWA package
+files. Windows MSI requires numeric installer versions, so channel detection
+must use the tag and checked-in release artifact.
+
 The release workflow only publishes notes from an approved checked-in release
 artifact. GitHub Actions does not write final release prose on its own.
 
