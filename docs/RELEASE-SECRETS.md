@@ -68,6 +68,18 @@ release is published.
 Without it, the release still completes and publishes on GitHub, but the
 workflow will skip the website and PWA deploy steps.
 
+## Website GitHub release token
+
+The website's download and desktop update routes can authenticate to the
+GitHub Releases API with any of these environment variable names:
+
+- `GITHUB_RELEASES_TOKEN`
+- `GITHUB_TOKEN`
+- `GH_TOKEN`
+- `RELEASE_GITHUB_TOKEN`
+
+On Vercel, the current project configuration uses `GITHUB_RELEASES_TOKEN`.
+
 ## Drafting release notes
 
 `./scripts/release.sh` now prepares a release in two stages:

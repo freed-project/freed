@@ -10,7 +10,11 @@ import {
 const OUTPUT_PATH = join(process.cwd(), "src/content/changelog.generated.json");
 const RELEASE_NOTES_ROOT = join(process.cwd(), "..", "release-notes");
 const RELEASE_NOTES_RELEASES_DIR = join(RELEASE_NOTES_ROOT, "releases");
-const authToken = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
+const authToken =
+  process.env.GITHUB_RELEASES_TOKEN ??
+  process.env.GITHUB_TOKEN ??
+  process.env.GH_TOKEN ??
+  process.env.RELEASE_GITHUB_TOKEN;
 const API_HEADERS: Record<string, string> = {
   Accept: "application/vnd.github+json",
   "X-GitHub-Api-Version": "2022-11-28",
