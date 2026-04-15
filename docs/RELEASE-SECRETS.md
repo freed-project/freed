@@ -42,16 +42,28 @@ unsigned DMG by accident.
 - `APPLE_SIGNING_IDENTITY` is recommended for explicitness, but Tauri can infer it from `APPLE_CERTIFICATE` if needed.
 - `APPLE_PROVIDER_SHORT_NAME` is only needed when the Apple ID has access to multiple providers during notarization.
 
-## Windows Code Signing (deferred)
+## Windows Code Signing (planned)
 
 Without these, Windows builds produce unsigned NSIS installers. SmartScreen
 will show a warning on first download until the binary builds reputation or
-an EV certificate is used.
+Windows signing is enabled.
 
-Options:
-- **Azure Key Vault** with `relic` for EV code signing
-- **SignPath** (free for open source)
-- **SSL.com** cloud-hosted EV certificates
+The planned provider is Microsoft Artifact Signing. The implementation plan
+and disabled scaffold live in `docs/WINDOWS-SIGNING.md`.
+
+Planned GitHub configuration:
+
+| Secret or variable | Description |
+|--------------------|-------------|
+| `AZURE_TENANT_ID` | Microsoft Entra tenant ID |
+| `AZURE_CLIENT_ID` | App registration client ID for GitHub Actions OIDC |
+| `WINDOWS_TRUSTED_SIGNING_ACCOUNT_NAME` | Microsoft Artifact Signing account name |
+| `WINDOWS_TRUSTED_SIGNING_CERT_PROFILE` | Public Trust certificate profile name |
+| `WINDOWS_TRUSTED_SIGNING_ENDPOINT` | Region endpoint, for example `https://eus.codesigning.azure.net/` |
+
+Do not add `AZURE_CLIENT_SECRET` unless GitHub Actions OIDC cannot be made to
+work. If a client secret is used temporarily, document its expiration and
+remove it after OIDC works.
 
 ## Adding Secrets to GitHub
 
