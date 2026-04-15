@@ -52,9 +52,38 @@ async function openVisibleMapMarker(
 }
 
 async function clickMapPopupAction(page: Page, actionName: "Open Friend" | "Open Post") {
-  const actionButton = page.locator("button:visible", { hasText: new RegExp(`^${actionName}$`) }).first();
-  await expect(actionButton).toBeVisible({ timeout: 5_000 });
-  await actionButton.click({ force: true });
+  await expect(
+    page.locator("button:visible", { hasText: new RegExp(`^${actionName}$`) }).first(),
+  ).toBeVisible({ timeout: 5_000 });
+
+  await expect
+    .poll(
+      async () =>
+        page.evaluate((buttonText) => {
+          const buttons = [...document.querySelectorAll("button")];
+          const button = buttons.find((candidate) => {
+            const label = candidate.textContent?.trim();
+            const rect = candidate.getBoundingClientRect();
+            const style = window.getComputedStyle(candidate);
+            return (
+              label === buttonText &&
+              rect.width > 0 &&
+              rect.height > 0 &&
+              style.visibility !== "hidden" &&
+              style.display !== "none"
+            );
+          });
+
+          if (!button) {
+            return false;
+          }
+
+          button.click();
+          return true;
+        }, actionName),
+      { timeout: 5_000 },
+    )
+    .toBe(true);
 }
 
 const SETTINGS_STORE_PATH = resolveViteFsModulePath(
