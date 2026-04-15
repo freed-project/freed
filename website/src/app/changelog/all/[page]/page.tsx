@@ -1,35 +1,36 @@
 import type { Metadata } from "next";
-import ChangelogContent from "../ChangelogContent";
+import ChangelogContent from "../../ChangelogContent";
 import {
   buildChangelogMetadata,
   getChangelogPageRange,
-  getChangelogPageSlice,
+  getChangelogPageSliceForMode,
   getChangelogPaginationStaticParams,
   getChangelogTotalPages,
   parseChangelogPage,
-} from "../pagination";
+} from "../../pagination";
 
 interface Props {
   params: Promise<{ page: string }>;
 }
 
+const mode = "all";
+
 export function generateStaticParams(): Array<{ page: string }> {
-  return getChangelogPaginationStaticParams("production");
+  return getChangelogPaginationStaticParams(mode);
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { page } = await params;
-  return buildChangelogMetadata(parseChangelogPage(page, "production"));
+  return buildChangelogMetadata(parseChangelogPage(page, mode), mode);
 }
 
-export default async function ChangelogPaginationPage({ params }: Props) {
+export default async function AllChangelogPaginationPage({ params }: Props) {
   const { page } = await params;
-  const mode = "production";
   const currentPage = parseChangelogPage(page, mode);
 
   return (
     <ChangelogContent
-      releases={getChangelogPageSlice(currentPage)}
+      releases={getChangelogPageSliceForMode(currentPage, mode)}
       currentPage={currentPage}
       mode={mode}
       totalPages={getChangelogTotalPages(mode)}

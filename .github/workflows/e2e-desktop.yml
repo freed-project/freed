@@ -4,7 +4,7 @@ on:
   push:
     branches: [dev, main]
   pull_request:
-    branches: [dev, main]
+    branches: [dev]
     paths:
       - "packages/desktop/**"
       - "packages/ui/**"
@@ -15,6 +15,10 @@ on:
 permissions:
   contents: read
   pull-requests: write
+
+concurrency:
+  group: e2e-desktop-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true

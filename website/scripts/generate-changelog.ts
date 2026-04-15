@@ -4,6 +4,7 @@ import {
   groupReleasesByDay,
   normalizeGitHubReleases,
   type ParsedRelease,
+  type ReleaseChannel,
   type ReleaseItem,
 } from "../src/content/changelog";
 
@@ -113,6 +114,10 @@ function releaseFromLocalArtifact(
   release: GitHubRelease,
 ): ParsedRelease {
   const releaseShape = artifact.release ?? {};
+  const version = artifact.version || release.tag_name.replace(/^v/, "");
+  const channel: ReleaseChannel = release.tag_name.endsWith("-dev")
+    ? "dev"
+    : "production";
   const features = toReleaseItems(releaseShape.features ?? releaseShape.whatsNew);
   const fixes = toReleaseItems(releaseShape.fixes);
   const followUps = toReleaseItems([
@@ -121,8 +126,9 @@ function releaseFromLocalArtifact(
   ]);
 
   return {
-    version: artifact.version || release.tag_name.replace(/^v/, ""),
+    version,
     tagName: release.tag_name,
+    channel,
     date: release.published_at,
     deck: releaseShape.deck?.trim() || releaseShape.summary?.trim() || "",
     features,
@@ -133,8 +139,9 @@ function releaseFromLocalArtifact(
     builds: [release.tag_name.replace(/^v/, "")],
     buildLinks: [
       {
-        version: artifact.version || release.tag_name.replace(/^v/, ""),
+        version,
         htmlUrl: release.html_url,
+        channel,
       },
     ],
   };
