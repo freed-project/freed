@@ -17,6 +17,7 @@ import {
 import type { FeedItem } from "@freed/shared";
 import { contentCache } from "./content-cache.js";
 import { docAddFeedItem } from "./automerge.js";
+import { toSyncedPreservedText } from "./preserved-text.js";
 
 export interface SaveUrlOptions {
   tags?: string[];
@@ -89,7 +90,7 @@ export async function saveUrlInDesktop(
     },
     preservedContent: {
       // html intentionally omitted -- it lives in contentCache only
-      text: content.text.slice(0, 10_000),
+      text: toSyncedPreservedText(content.text),
       author: content.author ?? metadata.author,
       publishedAt: metadata.publishedAt,
       wordCount: content.wordCount,
