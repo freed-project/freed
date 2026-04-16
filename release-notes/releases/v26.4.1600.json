@@ -3,7 +3,7 @@
   "version": "26.4.1600",
   "channel": "production",
   "dayKey": "26.4.16",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-16T22:56:46.373Z",
   "model": "heuristic",
@@ -31,10 +31,14 @@
     ]
   },
   "release": {
-    "deck": "Desktop e2e merge regression resolved and raise update dialogs above floating new button",
+    "deck": "Freed Desktop keeps update dialogs visible, restores read state correctly, and makes release channel status clearer",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Update dialogs now stay above the floating new button.",
+      "Read state and related UI updates are restored correctly after merge recovery paths.",
+      "The Updates settings view now labels the installed version clearly and rechecks when you switch release channels."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1600\n\nDesktop e2e merge regression resolved and raise update dialogs above floating new button\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1600\n\nFreed Desktop keeps update dialogs visible, restores read state correctly, and makes release channel status clearer\n\n### Fixes\n\n- Update dialogs now stay above the floating new button\n- Read state and related UI updates are restored correctly after merge recovery paths\n- The Updates settings view now labels the installed version clearly and rechecks when you switch release channels\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
