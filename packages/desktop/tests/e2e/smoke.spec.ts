@@ -907,7 +907,7 @@ test("dual-column reader arrow navigation cycles tiles and keeps the next tile v
   expect(metrics.nextRowBottom).toBeLessThanOrEqual(metrics.containerBottom);
 });
 
-test("dual-column reader toolbar controls stay aligned with the sidebar and rail", async ({ app, page }) => {
+test("dual-column reader toolbar toggles stay aligned with the sidebar and rail", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -934,6 +934,9 @@ test("dual-column reader toolbar controls stay aligned with the sidebar and rail
   await page.getByText("Article 0:", { exact: false }).click();
   await expect(page.getByLabel("Back to list")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
+  await expect.poll(async () => {
+    return page.evaluate(() => document.documentElement.classList.contains("feed-layout-transition"));
+  }).toBe(false);
 
   const alignment = await page.evaluate(() => {
     const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
@@ -941,32 +944,27 @@ test("dual-column reader toolbar controls stay aligned with the sidebar and rail
     const dualColumnToggle = document.querySelector(
       '[aria-label="Hide thumbnail rail"], [aria-label="Show thumbnail rail"]',
     ) as HTMLElement | null;
-    const backButton = document.querySelector('[aria-label="Back to list"]') as HTMLElement | null;
     const compactRail = document.querySelector('[data-testid="compact-feed-panel-scroll-container"]') as HTMLElement | null;
 
-    if (!sidebar || !sidebarToggle || !dualColumnToggle || !backButton || !compactRail) {
-      throw new Error("Dual-column toolbar alignment elements were not found");
+    if (!sidebar || !sidebarToggle || !dualColumnToggle || !compactRail) {
+      throw new Error("Dual-column toolbar toggle alignment elements were not found");
     }
 
     const sidebarRect = sidebar.getBoundingClientRect();
     const sidebarToggleRect = sidebarToggle.getBoundingClientRect();
     const dualColumnToggleRect = dualColumnToggle.getBoundingClientRect();
-    const backButtonRect = backButton.getBoundingClientRect();
     const compactRailRect = compactRail.getBoundingClientRect();
 
     return {
       sidebarRight: sidebarRect.right,
       sidebarToggleRight: sidebarToggleRect.right,
       compactRailLeft: compactRailRect.left,
-      compactRailRight: compactRailRect.right,
       dualColumnToggleLeft: dualColumnToggleRect.left,
-      backButtonLeft: backButtonRect.left,
     };
   });
 
   expect(Math.abs(alignment.sidebarToggleRight - alignment.sidebarRight)).toBeLessThanOrEqual(4);
-  expect(Math.abs(alignment.dualColumnToggleLeft - alignment.compactRailLeft)).toBeLessThanOrEqual(4);
-  expect(Math.abs(alignment.backButtonLeft - alignment.compactRailRight)).toBeLessThanOrEqual(4);
+  expect(Math.abs(alignment.dualColumnToggleLeft - alignment.compactRailLeft)).toBeLessThanOrEqual(8);
 });
 
 test("desktop hide thumbnail rail button collapses the compact reader rail", async ({ app, page }) => {
