@@ -1,0 +1,35 @@
+{
+  "tag": "v26.4.1601-dev",
+  "version": "26.4.1601-dev",
+  "channel": "dev",
+  "dayKey": "26.4.16",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-16T23:58:20.378Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.1501-dev",
+    "previousPublishedDayTag": "v26.4.1501-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.1601-dev"
+    ],
+    "prNumbers": [
+      223,
+      224
+    ],
+    "commitSubjects": [
+      "fix: restore map view background tiles (#224)",
+      "fix: reduce desktop sync memory growth (#223)"
+    ]
+  },
+  "release": {
+    "deck": "Map view background tiles restored and optimized desktop sync memory growth",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1601-dev\n\nMap view background tiles restored and optimized desktop sync memory growth\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
