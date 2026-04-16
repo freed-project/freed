@@ -488,9 +488,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   // ── Update check ─────────────────────────────────────────────────────────
   const [updateState, setUpdateState] = useState<UpdateCheckState>({ status: "idle" });
   const fadeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const shouldRecheckAfterChannelChangeRef = useRef(false);
 
-  const handleCheckForUpdates = useCallback(async () => {
+  const runUpdateCheck = useCallback(async () => {
     if (!checkForUpdates) return;
+
     setUpdateState({ status: "checking" });
     try {
       const version = await checkForUpdates();
@@ -508,6 +510,26 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       fadeTimer.current = setTimeout(() => setUpdateState({ status: "idle" }), 4000);
     }
   }, [checkForUpdates]);
+
+  const handleCheckForUpdates = useCallback(async () => {
+    await runUpdateCheck();
+  }, [runUpdateCheck]);
+
+  useEffect(() => {
+    clearTimeout(fadeTimer.current);
+    setUpdateState({ status: "idle" });
+
+    if (!shouldRecheckAfterChannelChangeRef.current || !checkForUpdates) {
+      return;
+    }
+
+    shouldRecheckAfterChannelChangeRef.current = false;
+    void runUpdateCheck();
+  }, [checkForUpdates, releaseChannel, runUpdateCheck]);
+
+  useEffect(() => {
+    return () => clearTimeout(fadeTimer.current);
+  }, []);
 
   // ── Factory reset ─────────────────────────────────────────────────────────
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -991,7 +1013,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             <SectionHeading label="Updates" />
             <div className="space-y-3">
               <p className="text-xs text-text-muted">
-                Current version:{" "}
+                Installed version:{" "}
                 <span className="text-sm font-bold font-mono">v{__APP_VERSION__}</span>
               </p>
               {releaseChannel && setReleaseChannel && (
@@ -999,13 +1021,19 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   <div className="min-w-0">
                     <p className="text-sm text-text-primary">Release channel</p>
                     <p className="mt-0.5 text-xs text-text-muted">
-                      Production is the default. Dev follows the latest changes from the dev branch.
+                      Changing this affects future update checks. It does not change the installed version until an update is installed.
                     </p>
                   </div>
                   <select
+                    data-testid="settings-release-channel-select"
                     value={releaseChannel}
                     onChange={(event) => {
-                      void setReleaseChannel(event.target.value as ReleaseChannel);
+                      const nextChannel = event.target.value as ReleaseChannel;
+                      if (nextChannel === releaseChannel) {
+                        return;
+                      }
+                      shouldRecheckAfterChannelChangeRef.current = true;
+                      void setReleaseChannel(nextChannel);
                     }}
                     className="theme-input theme-select shrink-0 rounded-xl px-3 py-2 text-sm text-text-primary focus:outline-none"
                   >
@@ -1036,7 +1064,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   {updateState.status === "up-to-date" && <UpToDateBadge />}
                   {updateState.status === "available" && (
                     <span className="flex items-center gap-2">
-                      <span className="text-xs text-[var(--theme-accent-secondary)]">Update available</span>
+                      <span className="text-xs text-[var(--theme-accent-secondary)]">
+                        Update available on {RELEASE_CHANNEL_LABELS[releaseChannel ?? "production"]}
+                      </span>
                       {applyUpdate && (
                         <button
                           onClick={applyUpdate}

@@ -596,6 +596,7 @@ function App() {
           </AppShell>
           <UpdateNotification
             state={updateState}
+            releaseChannel={releaseChannel}
             onInstall={applyUpdate}
             onRelaunch={handleRelaunch}
             onDismiss={handleDismissUpdate}
