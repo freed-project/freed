@@ -35,6 +35,7 @@ interface LocalReleaseArtifact {
   dayKey: string;
   source?: {
     prNumbers?: number[];
+    relatedBuildTags?: string[];
   };
   release?: {
     deck?: string;
@@ -104,9 +105,36 @@ function readLocalReleaseArtifacts(): Map<string, LocalReleaseArtifact> {
   return artifacts;
 }
 
+function buildLinksFromArtifact(
+  artifact: LocalReleaseArtifact,
+  release: GitHubRelease,
+  releaseMap: Map<string, GitHubRelease>,
+) {
+  const relatedBuildTags = artifact.source?.relatedBuildTags ?? [];
+  const buildLinks = relatedBuildTags
+    .map((tag) => releaseMap.get(tag))
+    .filter((candidate): candidate is GitHubRelease => Boolean(candidate))
+    .map((candidate) => ({
+      version: candidate.tag_name.replace(/^v/, ""),
+      htmlUrl: candidate.html_url,
+    }));
+
+  if (buildLinks.length > 0) {
+    return buildLinks;
+  }
+
+  return [
+    {
+      version: artifact.version || release.tag_name.replace(/^v/, ""),
+      htmlUrl: release.html_url,
+    },
+  ];
+}
+
 function releaseFromLocalArtifact(
   artifact: LocalReleaseArtifact,
   release: GitHubRelease,
+  releaseMap: Map<string, GitHubRelease>,
 ): ParsedRelease {
   const releaseShape = artifact.release ?? {};
   const features = toReleaseItems(releaseShape.features ?? releaseShape.whatsNew);
@@ -115,6 +143,7 @@ function releaseFromLocalArtifact(
     ...(releaseShape.followUps ?? []),
     ...(releaseShape.performance ?? []),
   ]);
+  const buildLinks = buildLinksFromArtifact(artifact, release, releaseMap);
 
   return {
     version: artifact.version || release.tag_name.replace(/^v/, ""),
@@ -126,13 +155,8 @@ function releaseFromLocalArtifact(
     followUps,
     htmlUrl: release.html_url,
     prNumbers: [...new Set(artifact.source?.prNumbers ?? [])].sort((a, b) => a - b),
-    builds: [release.tag_name.replace(/^v/, "")],
-    buildLinks: [
-      {
-        version: artifact.version || release.tag_name.replace(/^v/, ""),
-        htmlUrl: release.html_url,
-      },
-    ],
+    builds: buildLinks.map((build) => build.version),
+    buildLinks,
   };
 }
 
@@ -149,7 +173,7 @@ async function fetchChangelog(): Promise<ParsedRelease[]> {
     const localArtifact = release ? localReleaseArtifacts.get(release.tag_name) : null;
 
     if (release && localArtifact?.release) {
-      return releaseFromLocalArtifact(localArtifact, release);
+      return releaseFromLocalArtifact(localArtifact, release, releaseMap);
     }
 
     return publishedRelease;

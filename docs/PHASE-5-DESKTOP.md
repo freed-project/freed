@@ -321,7 +321,10 @@ export async function captureDomFeed(
 > the reviewed release artifact passes validation and is approved. The latest
 > release of each day is cumulative, so website changelog cards describe
 > everything newly shipped since the previous day instead of unioning same-day
-> bullets after the fact. Release artifacts now render a distinct opener plus
+> bullets after the fact. Production releases now also carry forward
+> intermediary dev prereleases since the prior production release, so the
+> public card does not drop features that first shipped on `dev`. Release
+> artifacts now render a distinct opener plus
 > separate `Features`, `Fixes`, and `Follow-ups` sections so the card headline
 > can reinforce the theme without collapsing the details into one bucket. The
 > desktop updater now shows only that reviewed opener line when an update is
