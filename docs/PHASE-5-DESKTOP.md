@@ -279,6 +279,8 @@ export async function captureDomFeed(
 - [x] Removing RSS feeds now also drops their retained provider-health diagnostics instead of keeping dead feed histories in memory and storage forever
 - [x] Desktop live UI state now caps preserved article text previews and fetches full preserved text on demand for the active reader item, instead of cloning entire article bodies through every feed-state update
 - [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation
+- [x] Search now drops its MiniSearch index as soon as the query clears, rebuilds only when the worker says the searchable corpus changed, and indexes a smaller preserved-text window so one exploratory search cannot pin a second full-text copy of the library in renderer memory
+- [x] Desktop perf memory checks now use CDP heap-usage sampling instead of the broken zero-value metric path, and they include a heavy preserved-text search scenario so renderer retention regressions show up in CI
 - [ ] Windows installer is code-signed (requires EV certificate)
 - [x] Update server runs on a Freed-owned domain instead of pointing the updater directly at GitHub Releases
 - [x] Desktop settings can switch this install between production and dev release channels
@@ -312,6 +314,14 @@ export async function captureDomFeed(
 > updates also now cap preserved article text previews and fetch the full
 > preserved text only for the reader item that is actually open, instead of
 > cloning full article bodies through the live UI state on every mutation.
+> Search now tears down its MiniSearch index as soon as the query clears,
+> rebuilds it only when the worker reports a real corpus change, and indexes
+> a smaller preserved-text window so a one-off search cannot keep a second
+> library-sized text copy resident in renderer memory for the rest of the
+> session. The desktop perf harness also switched from Chromium's broken
+> zero-value heap metric path to `Runtime.getHeapUsage()` and added a heavy
+> preserved-text search scenario, so memory regressions stop passing CI by
+> emitting a very confident `0.0 MB`.
 > Desktop persistence also now appends Automerge incremental saves to the
 > last stored snapshot and compacts back to a fresh snapshot only when the
 > incremental tail has grown large enough to justify it.

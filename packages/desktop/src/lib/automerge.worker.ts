@@ -64,6 +64,7 @@ let persistenceState: AutomergePersistenceState = createPersistenceState(null);
 let relayClientCount = 0;
 let queuedRequestCount = 0;
 let requestChain: Promise<void> = Promise.resolve();
+let searchCorpusVersion = 0;
 
 const SLOW_QUEUE_WAIT_MS = 1_000;
 const SLOW_REQUEST_PROCESS_MS = 5_000;
@@ -99,6 +100,31 @@ function emitWorkerTrace(
   kind: Extract<WorkerResponse, { type: "DEBUG_EVENT" }>["kind"] = "change",
 ): void {
   send({ type: "DEBUG_EVENT", kind, detail });
+}
+
+function bumpSearchCorpusVersion(): void {
+  searchCorpusVersion += 1;
+}
+
+function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean {
+  if (
+    "author" in updates ||
+    "content" in updates ||
+    "contentType" in updates ||
+    "preservedContent" in updates ||
+    "publishedAt" in updates ||
+    "rssSource" in updates ||
+    "topics" in updates
+  ) {
+    return true;
+  }
+
+  if (!updates.userState) return false;
+  return (
+    "hidden" in updates.userState ||
+    "tags" in updates.userState ||
+    "highlights" in updates.userState
+  );
 }
 
 /**
@@ -209,6 +235,7 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
 
   return {
     items: rankedItems,
+    searchCorpusVersion,
     feeds,
     friends,
     preferences,
@@ -285,9 +312,11 @@ async function applyChange(
   changeFn: (doc: FreedDoc) => void,
   message: string,
   trace?: RequestTrace,
+  searchCorpusChanged = false,
 ): Promise<void> {
   if (!currentDoc) throw new Error("Document not initialized");
   currentDoc = A.change(currentDoc, message, changeFn);
+  if (searchCorpusChanged) bumpSearchCorpusVersion();
   send({ type: "DEBUG_EVENT", kind: "change", detail: message });
   await saveAndBroadcast(trace);
 }
@@ -316,7 +345,8 @@ async function handleRequest(
   const applyRequestChange = (
     changeFn: (doc: FreedDoc) => void,
     message: string,
-  ) => applyChange(changeFn, message, trace);
+    searchCorpusChanged = false,
+  ) => applyChange(changeFn, message, trace, searchCorpusChanged);
 
   try {
     switch (req.type) {
@@ -340,6 +370,7 @@ async function handleRequest(
           persistenceState = createPersistenceState(binary);
           await storage.save(binary);
         }
+        searchCorpusVersion = 1;
         const deviceId = (currentDoc.meta?.deviceId as string | undefined) ?? "unknown";
         send({ type: "DEBUG_EVENT", kind: "init", detail: `device ...${deviceId.slice(-8)}` });
         await saveAndBroadcast(trace);
@@ -352,6 +383,7 @@ async function handleRequest(
         currentDoc = null;
         currentBinary = null;
         persistenceState = createPersistenceState(null);
+        searchCorpusVersion = 0;
         ack(req.reqId);
         break;
 
@@ -359,6 +391,7 @@ async function handleRequest(
         currentDoc = A.load<FreedDoc>(req.binary);
         currentBinary = req.binary;
         persistenceState = createPersistenceState(req.binary);
+        bumpSearchCorpusVersion();
         await storage.save(req.binary);
         await saveAndBroadcast(trace);
         ack(req.reqId);
@@ -386,6 +419,7 @@ async function handleRequest(
           detail: delta !== 0 ? `${delta > 0 ? "+" : ""}${delta} items` : "no new items",
           bytes: req.binary.byteLength,
         });
+        bumpSearchCorpusVersion();
         await saveAndBroadcast(trace);
         ack(req.reqId);
         break;
@@ -451,7 +485,7 @@ async function handleRequest(
       case "ADD_FEED_ITEM":
         await applyRequestChange((doc) => {
           if (!doc.feedItems[req.item.globalId]) addFeedItem(doc, req.item);
-        }, "Add feed item");
+        }, "Add feed item", true);
         ack(req.reqId);
         break;
 
@@ -460,12 +494,12 @@ async function handleRequest(
           for (const item of req.items) {
             if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
           }
-        }, `Add ${req.items.length} feed items`);
+        }, `Add ${req.items.length} feed items`, true);
         ack(req.reqId);
         break;
 
       case "REMOVE_FEED_ITEM":
-        await applyRequestChange((doc) => removeFeedItem(doc, req.globalId), "Remove feed item");
+        await applyRequestChange((doc) => removeFeedItem(doc, req.globalId), "Remove feed item", true);
         ack(req.reqId);
         break;
 
@@ -473,6 +507,7 @@ async function handleRequest(
         await applyRequestChange(
           (doc) => updateFeedItem(doc, req.globalId, req.updates),
           "Update feed item",
+          feedItemUpdatesAffectSearchCorpus(req.updates),
         );
         ack(req.reqId);
         break;
@@ -494,6 +529,7 @@ async function handleRequest(
         await applyRequestChange(
           (doc) => pruneArchivedItems(doc, req.maxAgeMs),
           "Prune archived items",
+          true,
         );
         ack(req.reqId);
         break;
@@ -502,12 +538,13 @@ async function handleRequest(
         await applyRequestChange(
           (doc) => deleteAllArchivedItems(doc),
           "Delete all archived items",
+          true,
         );
         ack(req.reqId);
         break;
 
       case "ADD_RSS_FEED":
-        await applyRequestChange((doc) => addRssFeed(doc, req.feed), "Add RSS feed");
+        await applyRequestChange((doc) => addRssFeed(doc, req.feed), "Add RSS feed", true);
         ack(req.reqId);
         break;
 
@@ -515,6 +552,7 @@ async function handleRequest(
         await applyRequestChange(
           (doc) => removeRssFeed(doc, req.url, req.includeItems),
           req.includeItems ? "Remove RSS feed and articles" : "Remove RSS feed",
+          true,
         );
         ack(req.reqId);
         break;
@@ -523,6 +561,7 @@ async function handleRequest(
         await applyRequestChange(
           (doc) => updateRssFeed(doc, req.url, req.updates as Parameters<typeof updateRssFeed>[2]),
           "Update RSS feed",
+          true,
         );
         ack(req.reqId);
         break;
@@ -531,6 +570,7 @@ async function handleRequest(
         await applyRequestChange(
           (doc) => removeAllFeeds(doc, req.includeItems),
           req.includeItems ? "Remove all feeds and articles" : "Remove all feeds",
+          true,
         );
         ack(req.reqId);
         break;
@@ -609,7 +649,7 @@ async function handleRequest(
             addFeedItem(doc, item);
             if (linkUrl) existingLinkUrls.add(linkUrl);
           }
-        }, `Refresh ${req.feeds.length} feeds, ${req.items.length} items`);
+        }, `Refresh ${req.feeds.length} feeds, ${req.items.length} items`, true);
         ack(req.reqId);
         break;
 
@@ -624,7 +664,7 @@ async function handleRequest(
             for (const item of chunk) {
               if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
             }
-          }, `Batch import chunk ${chunkIndex + 1}/${totalChunks}`);
+          }, `Batch import chunk ${chunkIndex + 1}/${totalChunks}`, true);
           send({ type: "IMPORT_PROGRESS", chunkIndex: chunkIndex + 1, totalChunks });
         }
         ack(req.reqId);
@@ -640,7 +680,7 @@ async function handleRequest(
             try { healed = new URL(feed.url).hostname.replace(/^(?:www|feeds?)\./, ""); } catch { /* */ }
             if (healed) feed.title = healed;
           }
-        }, "Heal untitled feed titles from URL hostname");
+        }, "Heal untitled feed titles from URL hostname", true);
         ack(req.reqId);
         break;
 
@@ -670,7 +710,7 @@ async function handleRequest(
             scored.sort((a, b) => b.score - a.score || b.id.localeCompare(a.id));
             for (let i = 1; i < scored.length; i++) delete doc.feedItems[scored[i].id];
           }
-        }, "Deduplicate feed items by article link URL");
+        }, "Deduplicate feed items by article link URL", true);
         ack(req.reqId);
         break;
 

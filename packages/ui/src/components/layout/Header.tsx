@@ -83,6 +83,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
   const activeView = useAppStore((s) => s.activeView);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const totalUnreadCount = useAppStore((s) => s.totalUnreadCount);
   const unreadCountByPlatform = useAppStore((s) => s.unreadCountByPlatform);
@@ -98,7 +99,12 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const display = useAppStore((s) => s.preferences.display);
 
-  const { filteredItems, isSearching, resultCount } = useSearchResults(items, searchQuery, activeFilter);
+  const { filteredItems, isSearching, resultCount } = useSearchResults(
+    items,
+    searchQuery,
+    activeFilter,
+    searchCorpusVersion,
+  );
   const selectedItem = useMemo(
     () => (selectedItemId ? items.find((item) => item.globalId === selectedItemId) ?? null : null),
     [items, selectedItemId],

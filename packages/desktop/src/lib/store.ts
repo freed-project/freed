@@ -79,6 +79,7 @@ const EMPTY_PROVIDER_SYNC_COUNTS: ProviderSyncCounts = {
 interface AppState {
   // Data (received pre-hydrated from Automerge worker as DocState)
   items: FeedItem[];
+  searchCorpusVersion: number;
   feeds: Record<string, RssFeed>;
   friends: Record<string, Friend>;
   preferences: UserPreferences;
@@ -210,6 +211,7 @@ async function runStartupMigrations(archivePruneDays: number): Promise<void> {
 export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   items: [],
+  searchCorpusVersion: 0,
   feeds: {},
   friends: {},
   preferences: createDefaultPreferences(),
