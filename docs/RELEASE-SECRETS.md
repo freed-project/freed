@@ -59,14 +59,39 @@ Options:
 2. Click "New repository secret"
 3. Add each secret listed above
 
-## Automatic website + PWA deploys
+## Explicit marketing site deploys and automatic PWA deploys
 
-`VERCEL_TOKEN` is required if you want the release workflow to deploy
-`freed.wtf` and `app.freed.wtf` automatically after a production desktop
-release is published.
+`freed.wtf` is controlled by the long-lived `www` branch. Product releases from
+`dev` or `main` do not deploy the marketing site directly. Refresh the public
+marketing site by syncing approved website changes into `www`, rebuilding the
+checked-in changelog snapshot there, and deploying the website from `www`.
 
-Without it, the release still completes and publishes on GitHub, but the
-workflow will skip the website and PWA deploy steps.
+`VERCEL_TOKEN` is required for GitHub Actions preview deploys and the automated
+PWA production deploy after a production desktop release.
+
+Without it, desktop releases still complete and publish on GitHub, but the PWA
+deploy step and GitHub Actions owned preview deploys are skipped.
+
+Marketing preview routing:
+
+- PRs targeting `www` build and deploy website previews
+- PRs targeting `dev` build and deploy PWA previews
+- Desktop Playwright E2E runs for product PRs targeting `dev`
+- `website/vercel.json` only allows Git-triggered Vercel deploys from `www`
+- `packages/pwa/vercel.json` disables Git-triggered Vercel deploys entirely
+- GitHub Actions owns website and PWA previews through the deploy helpers
+
+## Website GitHub release token
+
+The website's download and desktop update routes can authenticate to the
+GitHub Releases API with any of these environment variable names:
+
+- `GITHUB_RELEASES_TOKEN`
+- `GITHUB_TOKEN`
+- `GH_TOKEN`
+- `RELEASE_GITHUB_TOKEN`
+
+On Vercel, the current project configuration uses `GITHUB_RELEASES_TOKEN`.
 
 ## Drafting release notes
 
@@ -133,15 +158,21 @@ creates a **draft** GitHub Release using the approved checked-in release body.
 After all platform builds succeed, the workflow publishes that release
 automatically.
 
-If `VERCEL_TOKEN` is configured, production releases then:
-
-- redeploys `website/` so `freed.wtf/changelog` rebuilds its checked-in
-  snapshot against the published GitHub release
-- deploys `packages/pwa/` so the PWA version stays aligned with the shipped
-  desktop release
+If `VERCEL_TOKEN` is configured, production releases deploy `packages/pwa/` so
+the PWA version stays aligned with the shipped desktop release. The marketing
+site changelog is refreshed separately from `www`, which rebuilds the static
+website snapshot from the current `www` branch state.
 
 Dev releases are published as GitHub prereleases with a `-dev` suffix and do
-not trigger the production Vercel deploy steps.
+not trigger production PWA deploys. They should still be followed by an
+explicit `www` changelog refresh so `freed.wtf/changelog/all` can include the
+dev release in the next static marketing build.
+
+For dev releases, only the Git tag and release metadata use the `-dev` suffix.
+The app package versions written to Desktop and PWA package files stay numeric,
+for example tag `v26.4.1402-dev` writes app version `26.4.1402`. Windows MSI
+rejects prerelease labels in installer versions, so the release channel must
+come from the tag, not the bundled app version.
 
 The in-app updater will pick the new GitHub release up automatically.
 
@@ -157,3 +188,19 @@ To regenerate historical artifacts and rewrite older GitHub release bodies:
 ```bash
 node scripts/backfill-release-notes.mjs --rewrite-github
 ```
+
+## Cloudflare release index follow-up
+
+The Cloudflare R2 updater migration should also publish release metadata for
+the website changelog. When that lands, the website changelog generator should
+read Cloudflare release metadata at build time instead of GitHub Releases.
+
+Expected public objects:
+
+- `https://updates.freed.wtf/releases/index.json`
+- `https://updates.freed.wtf/releases/vX.Y.Z.json`
+- `https://updates.freed.wtf/releases/vX.Y.Z-dev.json`
+
+The index must include production releases and dev prereleases. The changelog
+must stay a checked-in static build snapshot so public website visitors never
+wait on release metadata fetches.

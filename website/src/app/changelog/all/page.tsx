@@ -1,21 +1,22 @@
 import type { Metadata } from "next";
-import ChangelogContent from "./ChangelogContent";
+import ChangelogContent from "../ChangelogContent";
 import {
   buildChangelogMetadata,
   getChangelogPageRange,
-  getChangelogPageSlice,
+  getChangelogPageSliceForMode,
   getChangelogTotalPages,
-} from "./pagination";
+} from "../pagination";
 
-export const metadata: Metadata = buildChangelogMetadata(1);
+const mode = "all";
 
-export default function ChangelogPage() {
+export const metadata: Metadata = buildChangelogMetadata(1, mode);
+
+export default function AllChangelogPage() {
   const currentPage = 1;
-  const mode = "production";
 
   return (
     <ChangelogContent
-      releases={getChangelogPageSlice(currentPage)}
+      releases={getChangelogPageSliceForMode(currentPage, mode)}
       currentPage={currentPage}
       mode={mode}
       totalPages={getChangelogTotalPages(mode)}

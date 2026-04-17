@@ -22,3 +22,4 @@ Ship a new versioned build from the correct release branch using GitHub Actions.
    - Squash-merge the PR to `dev` for dev-release fixes, or to `main` for production-release fixes.
    - Initiate a follow-up build from the matching release branch.
 6. Repeat until all platform builds are successful.
+7. If the public marketing changelog should reflect the newly published release, follow up with an explicit `www` sync and website deploy instead of assuming the desktop release branch will update `freed.wtf` for you.
