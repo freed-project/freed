@@ -79,7 +79,8 @@ The publish step validates that:
 - the deck does not duplicate a feature or follow-up
 - there are at most 3 features
 - there are at most 15 fixes and 15 follow-ups after consolidation
-- same-day latest releases still include earlier same-day highlights
+- latest production releases still include earlier same-day production highlights
+- latest production releases can also carry forward intermediary dev prereleases since the prior production release
 
 Freed Desktop update prompts use the deck line only. They do not render bullet lists.
 

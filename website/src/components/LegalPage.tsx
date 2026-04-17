@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { MarketingPageShell } from "@/components/MarketingPageShell";
 
 interface LegalPageSection {
   title: string;
@@ -19,8 +20,7 @@ export function LegalPage({
   sections,
 }: LegalPageProps) {
   return (
-    <section className="py-24 sm:py-32 px-4 sm:px-6 md:px-12 lg:px-8">
-      <div className="max-w-3xl mx-auto">
+    <MarketingPageShell>
         <article className="prose prose-invert prose-base sm:prose-lg">
           <header className="text-center mb-10 sm:mb-16">
             <h1 className="theme-display-large text-3xl sm:text-5xl md:text-6xl font-bold mb-4 sm:mb-6">
@@ -48,7 +48,6 @@ export function LegalPage({
             ))}
           </div>
         </article>
-      </div>
-    </section>
+    </MarketingPageShell>
   );
 }

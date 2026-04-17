@@ -8,6 +8,7 @@ import {
   areNearDuplicates,
   buildReleaseDeck,
   compareTags,
+  dedupeSimilarStrings,
   dayDateFromVersion,
   MAX_FEATURES,
   normalizeReleaseText,
@@ -347,6 +348,7 @@ function defaultReleaseArtifact(tag, version, dayKey, channel) {
       compareRef: "HEAD",
       isLatestOfDay: true,
       sameDayTagsIncluded: [],
+      relatedBuildTags: [],
       prNumbers: [],
       commitSubjects: [],
     },
@@ -484,6 +486,7 @@ function releaseArtifactsMatch(existingArtifact, nextRelease, nextSource) {
     compareRef: existingArtifact.source?.compareRef ?? "HEAD",
     isLatestOfDay: Boolean(existingArtifact.source?.isLatestOfDay),
     sameDayTagsIncluded: existingArtifact.source?.sameDayTagsIncluded ?? [],
+    relatedBuildTags: existingArtifact.source?.relatedBuildTags ?? [],
     prNumbers: existingArtifact.source?.prNumbers ?? [],
     commitSubjects: existingArtifact.source?.commitSubjects ?? [],
   };
@@ -509,6 +512,10 @@ async function listPublishedReleases(channel) {
     .filter((release) => {
       if (release.draft) {
         return false;
+      }
+
+      if (channel === "all") {
+        return true;
       }
 
       if (channel === "dev") {
@@ -593,8 +600,150 @@ function collectPriorSameDayReleases(tag, dayKey, publishedReleases) {
   );
 }
 
+function dedupeNumericList(values) {
+  return [...new Set(values)].sort((a, b) => a - b);
+}
+
+function dedupeReleaseTags(tags) {
+  return [...new Set(tags)].sort(compareTags);
+}
+
+function dedupePublishedReleases(releases) {
+  const releaseMap = new Map();
+
+  for (const release of releases) {
+    releaseMap.set(release.tag_name, release);
+  }
+
+  return Array.from(releaseMap.values()).sort(compareReleases);
+}
+
+function extractPublishedReleaseDeck(body) {
+  const lines = normalizeBodyText(body).split("\n");
+  const deckLines = [];
+  let sawHeading = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("(AI Generated")) {
+      continue;
+    }
+
+    if (!sawHeading && /^##\s+/.test(trimmed)) {
+      sawHeading = true;
+      continue;
+    }
+
+    if (!sawHeading) {
+      continue;
+    }
+
+    if (/^###\s+/.test(trimmed)) {
+      break;
+    }
+
+    if (!trimmed) {
+      if (deckLines.length > 0) {
+        break;
+      }
+      continue;
+    }
+
+    deckLines.push(cleanDetailLine(trimmed));
+  }
+
+  return summarizeFallbackText(deckLines.join(" "));
+}
+
+function parsePublishedReleaseBody(body) {
+  const normalizedBody = normalizeBodyText(body);
+  const features = [];
+  const fixes = [];
+  const followUps = [];
+  const sectionRegex = /###\s+(.+?)\n([\s\S]*?)(?=\n###|\n##|$)/g;
+  let match;
+
+  while ((match = sectionRegex.exec(normalizedBody)) !== null) {
+    const heading = match[1].trim().toLowerCase();
+    const items = dedupeSimilarStrings(
+      match[2]
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith("- "))
+        .map((line) =>
+          summarizeFallbackText(
+            cleanDetailLine(
+              line
+                .replace(/^- /, "")
+                .replace(/\[#(\d+)\]\([^)]+\)/g, "#$1")
+                .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1"),
+            ),
+          ),
+        ),
+    );
+
+    if (heading.includes("feature") || heading.includes("new") || heading.includes("feat")) {
+      features.push(...items);
+      continue;
+    }
+
+    if (heading.includes("fix")) {
+      fixes.push(...items);
+      continue;
+    }
+
+    if (heading.includes("follow") || heading.includes("perf")) {
+      followUps.push(...items);
+    }
+  }
+
+  return sanitizeReleaseShape({
+    deck: extractPublishedReleaseDeck(normalizedBody),
+    features,
+    fixes,
+    followUps,
+  });
+}
+
+function loadPublishedReleaseSummary(release) {
+  const artifact = readJsonIfExists(releasePaths(release.tag_name).json);
+
+  if (artifact?.release) {
+    return {
+      release: releaseFromArtifact(artifact),
+      prNumbers: dedupeNumericList(artifact.source?.prNumbers ?? []),
+    };
+  }
+
+  return {
+    release: parsePublishedReleaseBody(release.body || ""),
+    prNumbers: [],
+  };
+}
+
+function collectIntermediaryDevReleases(tag, previousPublishedTag, publishedReleases) {
+  return publishedReleases.filter((release) => {
+    if (!release.prerelease || !release.tag_name.endsWith(DEV_SUFFIX)) {
+      return false;
+    }
+
+    if (compareTags(release.tag_name, tag) >= 0) {
+      return false;
+    }
+
+    if (!previousPublishedTag) {
+      return true;
+    }
+
+    return compareTags(release.tag_name, previousPublishedTag) > 0;
+  });
+}
+
 async function collectReleaseContext(tag, version, channel) {
   const publishedReleases = await listPublishedReleases(channel);
+  const allPublishedReleases =
+    channel === "production" ? await listPublishedReleases("all") : publishedReleases;
   const dayKey = versionDayKey(version);
   const sameDayPublished = publishedReleases.filter(
     (release) => versionDayKey(release.tag_name.replace(/^v/, "")) === dayKey,
@@ -605,6 +754,18 @@ async function collectReleaseContext(tag, version, channel) {
   const previousPublishedDay = previousPublishedDayRelease(version, publishedReleases);
   const isLatestOfDay =
     sameDayPublished.find((release) => compareTags(release.tag_name, tag) > 0) === undefined;
+  const priorSameDayReleases = collectPriorSameDayReleases(tag, dayKey, publishedReleases);
+  const intermediaryDevReleases =
+    channel === "production"
+      ? collectIntermediaryDevReleases(
+          tag,
+          previousPublished?.tag_name ?? null,
+          allPublishedReleases,
+        )
+      : [];
+  const priorCumulativeReleases = isLatestOfDay
+    ? dedupePublishedReleases([...priorSameDayReleases, ...intermediaryDevReleases])
+    : [];
   const compareRef = hasGitRef(tag) ? tag : "HEAD";
   const rangeStart = isLatestOfDay ? previousPublishedDay?.tag_name : previousPublished?.tag_name;
   const range = rangeStart ? `${rangeStart}..${compareRef}` : compareRef;
@@ -686,7 +847,12 @@ async function collectReleaseContext(tag, version, channel) {
     previousPublishedTag: previousPublished?.tag_name ?? null,
     previousPublishedDayTag: previousPublishedDay?.tag_name ?? null,
     sameDayPublishedTags: sameDayPublished.map((release) => release.tag_name),
-    priorSameDayReleases: collectPriorSameDayReleases(tag, dayKey, publishedReleases),
+    priorSameDayReleases,
+    intermediaryDevReleases,
+    priorCumulativeReleases,
+    relatedBuildTags: isLatestOfDay
+      ? dedupeReleaseTags([...priorCumulativeReleases.map((release) => release.tag_name), tag])
+      : [tag],
     publishedReleases,
     commitSubjects: subjects,
     prNumbers: [...prNumbers].sort((a, b) => a - b),
@@ -817,6 +983,7 @@ async function generateWithOpenAI(promptInput) {
     "The deck must be a distinct opener and must not duplicate any bullet.",
     `Features must contain at most ${MAX_FEATURES.toLocaleString()} items.`,
     "When isLatestOfDay is true, the release must cumulatively describe everything new since the previous day.",
+    "When channel is production, carry forward relevant dev prereleases shipped after the previous production release.",
     "Prefer installability, trust wins, and meaningful shipped behavior over internal implementation detail.",
     "Do not mention pull requests, commit hashes, internal tickets, or implementation trivia unless it materially changes the shipped product.",
   ].join(" ");
@@ -867,15 +1034,6 @@ async function generateWithOpenAI(promptInput) {
   }
 }
 
-function loadPriorSameDayArtifact(release) {
-  const artifact = readJsonIfExists(releasePaths(release.tag_name).json);
-  if (artifact?.release) {
-    return releaseFromArtifact(artifact);
-  }
-
-  return null;
-}
-
 async function main() {
   const { input, force } = parseArguments(process.argv.slice(2));
 
@@ -903,12 +1061,17 @@ async function main() {
   const draftSeedRelease = releaseHasContent(heuristicRelease)
     ? heuristicRelease
     : existingSeedRelease;
-  const earlierSameDayArtifacts = context.priorSameDayReleases
-    .map((release) => loadPriorSameDayArtifact(release))
-    .filter(Boolean);
+  const carriedForwardSummaries = context.priorCumulativeReleases
+    .map((release) => loadPublishedReleaseSummary(release))
+    .filter((summary) => releaseHasContent(summary.release));
+  const carriedForwardReleases = carriedForwardSummaries.map((summary) => summary.release);
+  const cumulativePrNumbers = dedupeNumericList([
+    ...context.prNumbers,
+    ...carriedForwardSummaries.flatMap((summary) => summary.prNumbers),
+  ]);
   const cumulativeDraftRelease = context.isLatestOfDay
     ? withComputedDeck(
-        mergePriorSameDayReleases(draftSeedRelease, earlierSameDayArtifacts),
+        mergePriorSameDayReleases(draftSeedRelease, carriedForwardReleases),
         context,
         existingDaily,
       )
@@ -926,6 +1089,7 @@ async function main() {
       sameDayTagsIncluded: context.isLatestOfDay
         ? [...context.sameDayPublishedTags.filter((sameDayTag) => compareTags(sameDayTag, tag) < 0), tag]
         : [tag],
+      relatedBuildTags: context.relatedBuildTags,
       commitSubjects: context.commitSubjects,
       sourceItems: context.entries.map((entry) => ({
         kind: entry.kind,
@@ -934,7 +1098,8 @@ async function main() {
         fallback: entry.fallback,
         details: entry.details.slice(0, 5),
       })),
-      priorSameDayReleases: earlierSameDayArtifacts,
+      priorSameDayReleases: carriedForwardReleases,
+      intermediaryBuildTags: context.intermediaryDevReleases.map((release) => release.tag_name),
       editorialGuidance: existingDaily.editorialGuidance,
       pinnedHighlights: existingDaily.pinnedHighlights,
       editorialNotes: existingDaily.editorialNotes,
@@ -952,13 +1117,13 @@ async function main() {
   const draftedRelease = sanitizeReleaseShape(structured?.release ?? cumulativeDraftRelease);
   const finalRelease = withComputedDeck(
     context.isLatestOfDay
-      ? mergePriorSameDayReleases(draftedRelease, earlierSameDayArtifacts)
+      ? mergePriorSameDayReleases(draftedRelease, carriedForwardReleases)
       : draftedRelease,
     context,
     existingDaily,
   );
   const validation = validateReleaseShape(finalRelease, {
-    earlierReleases: context.isLatestOfDay ? earlierSameDayArtifacts : [],
+    earlierReleases: context.isLatestOfDay ? carriedForwardReleases : [],
   });
 
   if (validation.errors.length > 0) {
@@ -978,7 +1143,8 @@ async function main() {
     sameDayTagsIncluded: context.isLatestOfDay
       ? [...context.sameDayPublishedTags.filter((sameDayTag) => compareTags(sameDayTag, tag) < 0), tag]
       : [tag],
-    prNumbers: context.prNumbers,
+    relatedBuildTags: context.relatedBuildTags,
+    prNumbers: cumulativePrNumbers,
     commitSubjects: context.commitSubjects,
   };
   const shouldKeepApproval = releaseArtifactsMatch(

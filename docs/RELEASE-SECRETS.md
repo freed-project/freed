@@ -137,7 +137,10 @@ raw items, related fixes and follow-ups are consolidated into grouped lines.
 
 For the latest release of a day, the generated copy is cumulative. It should
 describe everything newly shipped since the previous day, not just the delta
-from the previous same-day build.
+from the previous same-day build. Production releases also pull forward
+relevant intermediary dev prereleases that landed after the previous
+production release, so the public changelog card does not forget what just
+shipped.
 
 Freed Desktop update prompts use only the reviewed deck line. They do not
 render release bullets inside the install toast.
@@ -182,6 +185,7 @@ The in-app updater will pick the new GitHub release up automatically.
 - there are no more than 3 features
 - there are no more than 15 fixes or 15 follow-ups after consolidation
 - the latest release of a day still carries forward earlier same-day highlights
+- the latest production release also carries forward intermediary dev prereleases since the prior production release
 
 To regenerate historical artifacts and rewrite older GitHub release bodies:
 

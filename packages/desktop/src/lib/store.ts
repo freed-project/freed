@@ -21,7 +21,6 @@ import {
   docRemoveAllFeeds,
   docUpdateRssFeed,
   docUpdateFeedItem,
-  docMarkAsRead,
   docMarkItemsAsRead,
   docMarkAllAsRead,
   docToggleSaved,
@@ -207,6 +206,69 @@ async function runStartupMigrations(archivePruneDays: number): Promise<void> {
   } catch { /* non-fatal */ }
 }
 
+const READ_MARK_BATCH_DELAY_MS = 50;
+const pendingReadIds = new Set<string>();
+let readMarkBatchTimer: ReturnType<typeof setTimeout> | null = null;
+let readMarkBatchInFlight = false;
+let readMarkBatchWaiters: Array<() => void> = [];
+
+function scheduleReadMarkBatchFlush(): void {
+  if (readMarkBatchTimer || readMarkBatchInFlight || pendingReadIds.size === 0) return;
+  readMarkBatchTimer = setTimeout(() => {
+    readMarkBatchTimer = null;
+    void flushPendingReadMarks();
+  }, READ_MARK_BATCH_DELAY_MS);
+}
+
+function recordReadStateFailure(error: unknown, batchSize: number): void {
+  const detail = error instanceof Error ? error.message : String(error);
+  recordRuntimeError({ source: "desktop:readState", error, fatal: false });
+  recordBugReportEvent(
+    "desktop:readState",
+    "error",
+    `Read state update failed for ${batchSize.toLocaleString()} item${batchSize === 1 ? "" : "s"}`,
+    detail,
+  );
+}
+
+async function flushPendingReadMarks(): Promise<void> {
+  if (readMarkBatchInFlight) return;
+  readMarkBatchInFlight = true;
+
+  try {
+    while (pendingReadIds.size > 0) {
+      const ids = Array.from(pendingReadIds);
+      pendingReadIds.clear();
+
+      try {
+        await docMarkItemsAsRead(ids);
+      } catch (error) {
+        recordReadStateFailure(error, ids.length);
+      }
+    }
+  } finally {
+    readMarkBatchInFlight = false;
+    const waiters = readMarkBatchWaiters;
+    readMarkBatchWaiters = [];
+    waiters.forEach((resolve) => resolve());
+    scheduleReadMarkBatchFlush();
+  }
+}
+
+function queueReadMarks(ids: readonly string[]): Promise<void> {
+  const nextIds = ids.filter(Boolean);
+  if (nextIds.length === 0) return Promise.resolve();
+
+  for (const id of nextIds) pendingReadIds.add(id);
+
+  const promise = new Promise<void>((resolve) => {
+    readMarkBatchWaiters.push(resolve);
+  });
+
+  scheduleReadMarkBatchFlush();
+  return promise;
+}
+
 export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   items: [],
@@ -327,11 +389,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   markAsRead: async (id) => {
-    await docMarkAsRead(id);
+    await queueReadMarks([id]);
   },
 
   markItemsAsRead: async (ids) => {
-    await docMarkItemsAsRead(ids);
+    await queueReadMarks(ids);
   },
 
   markAllAsRead: async (platform) => {

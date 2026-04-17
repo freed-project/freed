@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef } from "react";
 import type { ParsedRelease } from "@/content/changelog";
 import type { ChangelogMode } from "./pagination";
 import { getChangelogPageHref } from "./pagination";
+import { MarketingPageShell } from "@/components/MarketingPageShell";
 
 const CHANGELOG_SMOOTH_SCROLL_KEY = "freed-changelog-smooth-scroll";
 
@@ -478,8 +479,7 @@ export default function ChangelogContent({
   }, [pathname]);
 
   return (
-    <section className="py-24 sm:py-32 px-4 sm:px-6 md:px-12 lg:px-8">
-      <div className="max-w-3xl mx-auto">
+    <MarketingPageShell>
         {/* Header */}
         <motion.header
           initial={shouldAnimateHeader ? { opacity: 0, y: 20 } : false}
@@ -556,7 +556,6 @@ export default function ChangelogContent({
             </a>
           </motion.div>
         )}
-      </div>
-    </section>
+    </MarketingPageShell>
   );
 }

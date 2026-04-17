@@ -9,6 +9,7 @@ import {
   slowHeroInterval,
   slowHeroSpeed,
 } from "@/lib/motion";
+import { MarketingPageShell } from "@/components/MarketingPageShell";
 
 // Responsive layout hook
 function useIsMobile() {
@@ -922,8 +923,7 @@ export default function RoadmapContent() {
   const progressPercent = (completedCount / totalCount) * 100;
 
   return (
-    <section className="py-24 sm:py-32 px-4 sm:px-6 md:px-12 lg:px-8">
-      <div className="max-w-4xl mx-auto">
+    <MarketingPageShell maxWidthClassName="max-w-4xl">
         {/* Header */}
         <motion.header
           initial={{ opacity: 0, y: 20 }}
@@ -1022,7 +1022,6 @@ export default function RoadmapContent() {
             </motion.button>
           </div>
         </motion.div>
-      </div>
-    </section>
+    </MarketingPageShell>
   );
 }
