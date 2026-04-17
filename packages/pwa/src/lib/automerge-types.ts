@@ -17,6 +17,7 @@ import type { FeedItem, Friend, ReachOutLog, RssFeed, UserPreferences } from "@f
 
 export interface DocState {
   items: FeedItem[];
+  searchCorpusVersion: number;
   feeds: Record<string, RssFeed>;
   friends: Record<string, Friend>;
   preferences: UserPreferences;

@@ -33,6 +33,8 @@ export interface FilterOptions {
 export interface BaseAppState {
   // Data (derived from Automerge doc)
   items: FeedItem[];
+  /** Bumps only when search-relevant corpus content changes. */
+  searchCorpusVersion: number;
   feeds: Record<string, RssFeed>;
   /** Friends (unified identities) — keyed by Friend.id */
   friends: Record<string, Friend>;
