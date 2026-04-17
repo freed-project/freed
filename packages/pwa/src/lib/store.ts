@@ -64,6 +64,7 @@ function shallowEqualRecord(
 export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   items: [],
+  searchCorpusVersion: 0,
   feeds: {},
   friends: {},
   preferences: createDefaultPreferences(),

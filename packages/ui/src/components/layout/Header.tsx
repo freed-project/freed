@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef, useMemo, useCallback, type CSSProperties, type ReactNode } from "react";
-import { countFriendsWithRecentLocationUpdates } from "@freed/shared";
+import {
+  countAuthorsWithRecentLocationUpdates,
+  countFriendsWithRecentLocationUpdates,
+  getDefaultMapMode,
+} from "@freed/shared";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
 import { Tooltip } from "../Tooltip.js";
@@ -87,6 +91,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
   const activeView = useAppStore((s) => s.activeView);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const totalUnreadCount = useAppStore((s) => s.totalUnreadCount);
   const unreadCountByPlatform = useAppStore((s) => s.unreadCountByPlatform);
@@ -102,7 +107,12 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const display = useAppStore((s) => s.preferences.display);
 
-  const { filteredItems, isSearching, resultCount } = useSearchResults(items, searchQuery, activeFilter);
+  const { filteredItems, isSearching, resultCount } = useSearchResults(
+    items,
+    searchQuery,
+    activeFilter,
+    searchCorpusVersion,
+  );
   const selectedItem = useMemo(
     () => (selectedItemId ? items.find((item) => item.globalId === selectedItemId) ?? null : null),
     [items, selectedItemId],
@@ -114,6 +124,12 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     () => countFriendsWithRecentLocationUpdates(items, friends),
     [friends, items],
   );
+  const mappedAllContentCount = useMemo(
+    () => countAuthorsWithRecentLocationUpdates(items),
+    [items],
+  );
+  const effectiveMapMode = display.mapMode
+    ?? getDefaultMapMode(mappedFriendCount, mappedAllContentCount);
 
   const unreadCount =
     activeFilter.savedOnly || activeFilter.archivedOnly
@@ -156,6 +172,9 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
       return `${friendCount.toLocaleString()} friends`;
     }
     if (activeView === "map") {
+      if (effectiveMapMode === "all_content") {
+        return `${mappedAllContentCount.toLocaleString()} accounts on the map`;
+      }
       return `${mappedFriendCount.toLocaleString()} friends on the map`;
     }
     if (isSearching) {
@@ -166,7 +185,9 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     activeView,
     filteredItems.length,
     friendCount,
+    effectiveMapMode,
     isSearching,
+    mappedAllContentCount,
     mappedFriendCount,
     pendingMatchCount,
     resultCount,

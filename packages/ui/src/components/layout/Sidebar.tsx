@@ -1,6 +1,12 @@
 import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from "react";
 
-import { countFriendsWithRecentLocationUpdates, type FilterOptions, type RssFeed } from "@freed/shared";
+import {
+  countAuthorsWithRecentLocationUpdates,
+  countFriendsWithRecentLocationUpdates,
+  getDefaultMapMode,
+  type FilterOptions,
+  type RssFeed,
+} from "@freed/shared";
 import { useAppStore, usePlatform, type SidebarSourceStatusSummary } from "../../context/PlatformContext.js";
 import { ProviderStatusIndicator } from "../ProviderStatusIndicator.js";
 import { SettingsDialog } from "../SettingsDialog.js";
@@ -407,6 +413,7 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
+  const display = useAppStore((s) => s.preferences.display);
   const health = useDebugStore((s) => s.health);
 
   const savedCount = useMemo(() => items.filter((i) => i.userState.saved).length, [items]);
@@ -416,6 +423,15 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
     () => countFriendsWithRecentLocationUpdates(items, friends),
     [friends, items]
   );
+  const mapAllContentCount = useMemo(
+    () => countAuthorsWithRecentLocationUpdates(items),
+    [items],
+  );
+  const effectiveMapMode = display.mapMode
+    ?? getDefaultMapMode(mapFriendCount, mapAllContentCount);
+  const mapCount = effectiveMapMode === "all_content"
+    ? mapAllContentCount
+    : mapFriendCount;
 
   const { open: showSettings, openDefault: openSettings, close: closeSettings } = useSettingsStore();
   const [dragWidth, setDragWidth] = useState<number | null>(null);
@@ -856,13 +872,13 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
               >
                 <span className="w-5 flex items-center justify-center"><MapPinIcon /></span>
                 <span className="flex-1">Map</span>
-                {mapFriendCount > 0 && (
+                {mapCount > 0 && (
                   <span
                     className={`shrink-0 text-[10px] tabular-nums ${
                       activeView === "map" ? "text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"
                     }`}
                   >
-                    {fmt(mapFriendCount)}
+                    {fmt(mapCount)}
                   </span>
                 )}
               </button>

@@ -756,7 +756,7 @@ const phases: Phase[] = [
     number: 7,
     title: "Facebook + Instagram",
     description:
-      "Facebook and Instagram integrated via Tauri WebView scraping, with suggested-post filtering, hardened story capture, silent background media guarding, serialized background scraper sessions, Facebook group controls, provider health summaries, and smart backoff when sync looks rate-limited.",
+      "Facebook and Instagram integrated via Tauri WebView scraping, with suggested-post filtering, hardened story capture, preserved Instagram story location metadata for map recovery, silent background media guarding, serialized background scraper sessions, Facebook group controls, provider health summaries, and smart backoff when sync looks rate-limited.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-7-SOCIAL-CAPTURE.md",
@@ -765,7 +765,7 @@ const phases: Phase[] = [
     number: 8,
     title: "Friends + Social Graph",
     description:
-      "A friend CRM with a stable pan-and-zoom graph workspace, a permanent resizable reconnect sidebar, Google Contacts sync and review, theme-authored avatar styling across Friends and Map, and a map with theme-native cartography that shows each friend's latest known location with time-aware popovers. Unify profiles across platforms into one identity per person, track relationship health, restore Google contact matches from desktop snapshots, and keep growing the map into a richer view of where friends were, are, and plan to be.",
+      "A friend CRM with a stable pan-and-zoom graph workspace, a permanent resizable reconnect sidebar, Google Contacts sync and review, theme-authored avatar styling across Friends and Map, and a map with theme-native cartography that can switch between each friend's latest known location and the latest valid pin from all followed content. Unify profiles across platforms into one identity per person, persist the user's preferred map mode, restore Google contact matches from desktop snapshots, and keep growing the map into a richer view of where people were, are, and plan to be.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-8-FRIENDS.md",

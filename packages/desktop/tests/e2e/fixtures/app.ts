@@ -278,6 +278,130 @@ export class AppFixture {
       });
     });
   }
+
+  async seedAllContentLocationsWithoutFriends(): Promise<void> {
+    await this.page.evaluate(async () => {
+      const w = window as Record<string, unknown>;
+      const automerge = w.__FREED_AUTOMERGE__ as {
+        docAddFeedItems: (items: unknown[]) => Promise<void>;
+      };
+      const store = w.__FREED_STORE__ as {
+        getState: () => {
+          friends: Record<string, unknown>;
+          items: Array<{ globalId: string }>;
+        };
+      };
+
+      const now = Date.now();
+      await automerge.docAddFeedItems([
+        {
+          globalId: "ig:nora:paris",
+          platform: "instagram",
+          contentType: "post",
+          capturedAt: now - 120_000,
+          publishedAt: now - 120_000,
+          author: {
+            id: "nora-ig",
+            handle: "nora",
+            displayName: "Nora Quinn",
+          },
+          content: {
+            text: "Earlier stop in Paris",
+            mediaUrls: [],
+            mediaTypes: [],
+          },
+          location: {
+            name: "Paris",
+            coordinates: { lat: 48.8566, lng: 2.3522 },
+            source: "geo_tag",
+          },
+          userState: {
+            hidden: false,
+            saved: false,
+            archived: false,
+            tags: [],
+          },
+          topics: [],
+        },
+        {
+          globalId: "ig:nora:story",
+          platform: "instagram",
+          contentType: "story",
+          capturedAt: now - 60_000,
+          publishedAt: now - 60_000,
+          author: {
+            id: "nora-ig",
+            handle: "nora",
+            displayName: "Nora Quinn",
+          },
+          content: {
+            text: "Recoverable story location",
+            mediaUrls: [],
+            mediaTypes: [],
+          },
+          location: {
+            name: "Locations",
+            coordinates: { lat: 34.2439, lng: -116.9114 },
+            url: "https://www.instagram.com/explore/locations/123456789/big-bear-california/",
+            source: "sticker",
+          },
+          userState: {
+            hidden: false,
+            saved: false,
+            archived: false,
+            tags: [],
+          },
+          topics: [],
+        },
+        {
+          globalId: "ig:ghost:story",
+          platform: "instagram",
+          contentType: "story",
+          capturedAt: now - 30_000,
+          publishedAt: now - 30_000,
+          author: {
+            id: "ghost-ig",
+            handle: "ghost",
+            displayName: "Ghost Noise",
+          },
+          content: {
+            text: "Should not show on the map",
+            mediaUrls: [],
+            mediaTypes: [],
+          },
+          location: {
+            name: "Check registration",
+            source: "sticker",
+          },
+          userState: {
+            hidden: false,
+            saved: false,
+            archived: false,
+            tags: [],
+          },
+          topics: [],
+        },
+      ]);
+
+      await new Promise<void>((resolve, reject) => {
+        const startedAt = Date.now();
+        const interval = window.setInterval(() => {
+          const state = store.getState();
+          const hasNora = state.items.some((item) => item.globalId === "ig:nora:story");
+          const hasGhost = state.items.some((item) => item.globalId === "ig:ghost:story");
+          if (hasNora && hasGhost) {
+            clearInterval(interval);
+            resolve();
+            return;
+          }
+          if (Date.now() - startedAt > 5_000) {
+            clearInterval(interval);
+            reject(new Error("seed timeout"));
+          }
+        }, 50);
+      });
+    });
+  }
 }
 
 export async function acceptLegalGate(page: Page, timeout = 5_000): Promise<boolean> {

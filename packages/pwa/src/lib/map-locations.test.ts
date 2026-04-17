@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  extractLocationFromItem,
+  getDefaultMapMode,
+  getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
   getLastSeenLocationForFriend,
   groupResolvedLocations,
@@ -203,6 +206,85 @@ describe("location grouping", () => {
     ]);
     expect(markers[0]?.label).toBe("London");
     expect(markers[0]?.item.globalId).toBe("ig:2");
+  });
+
+  it("shows only the newest location per author in all-content mode", () => {
+    const ada = makeFriend({ id: "friend-ada" });
+
+    const markers = getLatestAuthorLocationMarkers([
+      {
+        item: makeItem({ globalId: "ig:1", publishedAt: 10 }),
+        friend: ada,
+        lat: 37.7749,
+        lng: -122.4194,
+        label: "San Francisco",
+      },
+      {
+        item: makeItem({ globalId: "ig:2", publishedAt: 40 }),
+        friend: ada,
+        lat: 51.5072,
+        lng: -0.1276,
+        label: "London",
+      },
+      {
+        item: makeItem({
+          globalId: "ig:3",
+          publishedAt: 30,
+          author: { id: "maya-ig", handle: "maya", displayName: "Maya" },
+        }),
+        friend: null,
+        lat: 48.8566,
+        lng: 2.3522,
+        label: "Paris",
+      },
+    ]);
+
+    expect(markers).toHaveLength(2);
+    expect(markers.map((marker) => marker.authorKey)).toEqual([
+      "author:instagram:ada-ig",
+      "author:instagram:maya-ig",
+    ]);
+    expect(markers[0]?.label).toBe("London");
+    expect(markers[0]?.item.globalId).toBe("ig:2");
+  });
+
+  it("recovers story place names from Instagram location URLs when the label is junk", () => {
+    const signal = extractLocationFromItem(
+      makeItem({
+        globalId: "ig:story-1",
+        publishedAt: 10,
+        contentType: "story",
+        location: {
+          name: "Locations",
+          url: "https://www.instagram.com/explore/locations/123456789/big-bear-california/",
+          source: "sticker",
+        },
+      }),
+    );
+
+    expect(signal).toEqual({ name: "Big Bear California" });
+  });
+
+  it("rejects unrecoverable generic story labels", () => {
+    const signal = extractLocationFromItem(
+      makeItem({
+        globalId: "ig:story-2",
+        publishedAt: 10,
+        contentType: "story",
+        location: {
+          name: "Check registration",
+          source: "sticker",
+        },
+      }),
+    );
+
+    expect(signal).toBeNull();
+  });
+
+  it("defaults to all content when there are no friend markers", () => {
+    expect(getDefaultMapMode(0, 4)).toBe("all_content");
+    expect(getDefaultMapMode(2, 4)).toBe("friends");
+    expect(getDefaultMapMode(0, 0)).toBe("friends");
   });
 });
 

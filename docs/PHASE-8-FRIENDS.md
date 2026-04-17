@@ -11,7 +11,7 @@ A friend CRM built on a force-directed social graph. Unify a person's blog RSS f
 
 Clicking a friend zooms in to show a chronological timeline of everything they've posted across all their linked social channels.
 
-The geo map from the original Phase 8 design is retained as sub-phase 8D, now powered by Friend identities so pins cluster by person rather than by platform and render in Freed's dark purple visual language.
+The geo map from the original Phase 8 design is retained as sub-phase 8D. It now supports both Friend-linked pins and an `All content` fallback that shows the latest valid location per followed account when no Friend graph exists yet.
 
 This phase also becomes the home for future-aware social planning. Historical post locations still matter, but the map and friend timeline now need to handle future-dated place windows from sources like Mozi, plus derived overlap views when multiple friends are in the same place at the same time.
 
@@ -42,7 +42,8 @@ This phase also becomes the home for future-aware social planning. Historical po
 ┌──────────────────────────────────────────────────────────────────┐
 │                 8D: Location / Time-Aware Map View               │
 │  FeedItems + time windows → location extraction → Nominatim      │
-│  geocoding → cache → MapLibre markers (latest pin per Friend)    │
+│  geocoding → cache → MapLibre markers (latest pin per Friend or   │
+│  latest valid pin per followed account in All content mode)       │
 │  → timeline scrubber → derived overlap views                     │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -156,10 +157,10 @@ Default nudge intervals by care level:
 ## 8D: Location / Map View
 
 ```
-FeedItems → extractLocationFromItem() + optional time window → geocode() (Nominatim) → cache → MapLibre markers → timeline scrubber → derived overlap views
+FeedItems → extractLocationFromItem() + optional time window → geocode() (Nominatim) → cache → MapLibre markers → Friends mode or All content mode → timeline scrubber → derived overlap views
 ```
 
-Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare), text patterns ("📍 Paris"), **and IG/FB story location stickers** (Phase 7.11). Planned future sources such as Mozi add another class of signal: place windows that may sit in the future instead of the past.
+Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare), text patterns ("📍 Paris"), **and IG/FB story location stickers** (Phase 7.11). Low-confidence story labels are recovered from preserved Instagram location URLs when possible, or dropped when they cannot be trusted. Planned future sources such as Mozi add another class of signal: place windows that may sit in the future instead of the past.
 
 > **Note:** Stories cross-posted from Instagram to Facebook (or vice versa) currently create two separate FeedItems with different `globalId` prefixes (`ig:` vs `fb:`), which can produce duplicate map pins for the same location event. Phase 7.15 (cross-platform dedup) will address this by matching items with the same Friend identity + similar text + timestamps within a few minutes.
 
@@ -207,6 +208,7 @@ Friend captions in the graph now use pill backgrounds and label-aware spacing, s
 Friend avatars now inherit a theme-authored tint across the Friends graph and map markers, so each theme stays coherent without a stray custom accent fighting the palette.
 Map popovers now use a wider card layout and deliberately omit the old MapLibre tail, so place names and actions fit cleanly without the popup looking like a speech bubble from a cheaper app.
 Friends and Map now consume the same shared theme tokens, button treatments, shell backgrounds, surface recipes, and theme-native map palettes as the rest of Freed, so themes like Neon, Midas, Vesper, Ember, and Scriptorium land consistently across the graph, sidebars, popovers, mini-map cards, editor, contact-sync flows, and map basemap itself.
+The shared map now includes a persisted `Friends` / `All content` toggle. It restores the user's last mode from preferences and defaults to `All content` when the library has geolocatable followed accounts but no friend-linked pins yet.
 
 ---
 
@@ -239,6 +241,7 @@ Friends and Map now consume the same shared theme tokens, button treatments, she
 | 8.23 | Render derived overlap states in map and Friend detail surfaces | Medium | Not Started |
 | 8.24 | Support Mozi-backed friend/location events in identity and map flows | Medium | Not Started |
 | 8.25 | Include Google contact sync state in desktop disaster-recovery snapshots | Low | Done |
+| 8.26 | Add persisted `Friends` / `All content` map modes with latest-author pins | Medium | Done |
 
 ---
 
@@ -268,6 +271,10 @@ Friends and Map now consume the same shared theme tokens, button treatments, she
 - [x] Friends and Map inherit the shared multi-theme design system instead of hardcoded one-off gradients
 - [x] Sample data refresh rebuilds a 25-friend social graph with linked profiles and recent map activity
 - [x] Sidebar shows live counts for Friends and recent friend location updates on Map
+- [x] Map supports persisted `Friends` and `All content` modes
+- [x] Map defaults to `All content` when there are valid author pins but no friend-linked pins
+- [x] `All content` mode shows the latest valid location per followed account
+- [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map
 - [ ] macOS native contact picker (CNContactStore)
 - [x] Map promoted to live sidebar navigation
 - [ ] Future-aware map filtering supports past, current, and future location windows

@@ -56,6 +56,8 @@ export type LocationSource =
   | "sticker"
   | "text_extraction";
 
+export type MapMode = "friends" | "all_content";
+
 // =============================================================================
 // Feed Item
 // =============================================================================
@@ -105,6 +107,7 @@ export interface Engagement {
 export interface Location {
   name: string;
   coordinates?: { lat: number; lng: number };
+  url?: string;
   source: LocationSource;
 }
 
@@ -528,6 +531,9 @@ export interface DisplayPreferences {
 
   /** Debug panel width in pixels (default: 320, min: 280, max: 600) */
   debugPanelWidth?: number;
+
+  /** Saved map display mode. Unset means compute a default from available data. */
+  mapMode?: MapMode;
 
   /** Days to keep archived items before pruning (default: 30, 0 = never prune) */
   archivePruneDays: number;
