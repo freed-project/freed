@@ -1198,6 +1198,49 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
   });
 });
 
+test("map defaults to All content when only unlinked author locations exist", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.seedAllContentLocationsWithoutFriends();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.getByRole("button", { name: /^Map/ }).click();
+  const allContentButton = page.getByRole("button", { name: "All content", exact: true });
+  await expect(allContentButton).toHaveClass(/theme-chip-active/, { timeout: 10_000 });
+  await expect(page.locator('.freed-map-marker[aria-label="Nora Quinn"]')).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.locator('.freed-map-marker[aria-label="Ghost Noise"]')).toHaveCount(0);
+});
+
+test("recoverable story locations appear in All content mode and the mode persists", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+  await app.seedAllContentLocationsWithoutFriends();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.getByRole("button", { name: /^Map/ }).click();
+  const allContentButton = page.getByRole("button", { name: "All content", exact: true });
+  await allContentButton.click();
+  await expect(allContentButton).toHaveClass(/theme-chip-active/, { timeout: 10_000 });
+
+  await openVisibleMapMarker(page, "Nora Quinn");
+  await expect(page.getByText("Big Bear California")).toBeVisible({ timeout: 10_000 });
+
+  await page.reload();
+  await app.waitForReady();
+  await dismissCloudSyncNudgeIfPresent(page);
+  await page.getByRole("button", { name: /^Map/ }).click();
+  await expect(page.getByRole("button", { name: "All content", exact: true })).toHaveClass(
+    /theme-chip-active/,
+    { timeout: 10_000 },
+  );
+  await expect(page.locator('.freed-map-marker[aria-label="Nora Quinn"]')).toBeVisible({
+    timeout: 10_000,
+  });
+});
+
 test("Friends view uses the floating detail drawer shell", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();

@@ -83,4 +83,16 @@ describe("store.updatePreferences", () => {
       error.message,
     );
   });
+
+  it("passes map mode preference updates through to persistence", async () => {
+    await expect(
+      useAppStore.getState().updatePreferences({
+        display: { mapMode: "all_content" },
+      } as never),
+    ).resolves.toBeUndefined();
+
+    expect(mockDocUpdatePreferences).toHaveBeenCalledWith({
+      display: { mapMode: "all_content" },
+    });
+  });
 });
