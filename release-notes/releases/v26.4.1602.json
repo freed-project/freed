@@ -5,25 +5,34 @@
   "dayKey": "26.4.16",
   "approved": true,
   "editorialNotes": [],
-  "generatedAt": "2026-04-17T01:51:43.006Z",
+  "generatedAt": "2026-04-17T04:23:10.452Z",
   "model": "heuristic",
   "source": {
     "channel": "production",
     "previousPublishedTag": "v26.4.1600",
     "previousPublishedDayTag": "v26.4.1400",
-    "compareRef": "HEAD",
+    "compareRef": "v26.4.1602",
     "isLatestOfDay": true,
     "sameDayTagsIncluded": [
       "v26.4.1600",
+      "v26.4.1602"
+    ],
+    "relatedBuildTags": [
+      "v26.4.1600",
+      "v26.4.1601-dev",
       "v26.4.1602"
     ],
     "prNumbers": [
       213,
       215,
       216,
-      222
+      222,
+      223,
+      224
     ],
     "commitSubjects": [
+      "release: approve v26.4.1602",
+      "release: v26.4.1602",
       "release: approve v26.4.1600",
       "release: v26.4.1600",
       "fix: clarify desktop update channel state (#222)",
@@ -34,12 +43,15 @@
     ]
   },
   "release": {
-    "deck": "Freed Desktop keeps update dialogs visible, restores read state correctly, and makes release channel status clearer, the Updates settings view now labels the installed version clearly and rechecks when you switch release channels, and update dialogs now stay above the floating new button",
+    "deck": "Freed Desktop keeps update dialogs visible, restores read state correctly, and trims sync memory growth on large saves",
     "features": [],
     "fixes": [
-      "Read state and related UI updates are restored correctly after merge recovery paths"
+      "Update dialogs stay above the floating new button, and the Updates settings view labels the installed version clearly when you switch release channels.",
+      "Read state and related UI updates restore correctly after merge recovery paths.",
+      "Map view background tiles render again across the refreshed style palette.",
+      "Desktop sync trims preserved article text before it reaches Automerge, which reduces sync memory growth on large saves."
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1602\n\nFreed Desktop keeps update dialogs visible, restores read state correctly, and makes release channel status clearer, the Updates settings view now labels the installed version clearly and rechecks when you switch release channels, and update dialogs now stay above the floating new button\n\n### Fixes\n\n- Read state and related UI updates are restored correctly after merge recovery paths\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1602\n\nFreed Desktop keeps update dialogs visible, restores read state correctly, and trims sync memory growth on large saves\n\n### Fixes\n\n- Update dialogs stay above the floating new button, and the Updates settings view labels the installed version clearly when you switch release channels\n- Read state and related UI updates restore correctly after merge recovery paths\n- Map view background tiles render again across the refreshed style palette\n- Desktop sync trims preserved article text before it reaches Automerge, which reduces sync memory growth on large saves\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
