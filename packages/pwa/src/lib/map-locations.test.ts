@@ -20,6 +20,7 @@ function makeFriend(overrides: Partial<Friend> & { id: string }): Friend {
   const now = Date.now();
   return {
     name: "Ada Lovelace",
+    relationshipStatus: "friend",
     sources: [
       {
         platform: "instagram",

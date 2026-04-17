@@ -7,9 +7,10 @@ import { MapSurface } from "./MapSurface.js";
 
 export function MapView() {
   const items = useAppStore((state) => state.items);
-  const friends = useAppStore((state) => state.friends);
-  const selectedFriendId = useAppStore((state) => state.selectedFriendId);
-  const setSelectedFriend = useAppStore((state) => state.setSelectedFriend);
+  const persons = useAppStore((state) => state.persons);
+  const accounts = useAppStore((state) => state.accounts);
+  const selectedFriendId = useAppStore((state) => state.selectedPersonId);
+  const setSelectedFriend = useAppStore((state) => state.setSelectedPerson);
   const setSelectedItem = useAppStore((state) => state.setSelectedItem);
   const setActiveView = useAppStore((state) => state.setActiveView);
   const setFilter = useAppStore((state) => state.setFilter);
@@ -18,7 +19,11 @@ export function MapView() {
   const updatePreferences = useAppStore((state) => state.updatePreferences);
   const themeId = display.themeId;
 
-  const { friendMarkers, allContentMarkers, defaultMode } = useResolvedLocations(items, friends);
+  const { friendMarkers, allContentMarkers, defaultMode } = useResolvedLocations(
+    items,
+    persons,
+    accounts,
+  );
   const savedMode = display.mapMode;
   const [pendingMode, setPendingMode] = useState<MapMode | null>(null);
   const effectiveMode = pendingMode ?? savedMode ?? defaultMode;

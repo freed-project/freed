@@ -1,4 +1,4 @@
-import type { Friend } from "@freed/shared";
+import type { Person } from "@freed/shared";
 
 function firstDefinedAvatar(
   fallbacks?: Iterable<string | null | undefined> | string | null
@@ -16,11 +16,10 @@ function firstDefinedAvatar(
 }
 
 export function resolveFriendAvatarUrl(
-  friend: Pick<Friend, "avatarUrl" | "sources"> | null | undefined,
+  friend: Pick<Person, "avatarUrl"> | null | undefined,
   fallbackAvatarUrls?: Iterable<string | null | undefined> | string | null
 ): string | null {
   return friend?.avatarUrl
-    ?? friend?.sources.find((source) => source.avatarUrl)?.avatarUrl
     ?? firstDefinedAvatar(fallbackAvatarUrls)
     ?? null;
 }

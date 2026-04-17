@@ -4,8 +4,8 @@
  * Pure functions only, no side effects, no network calls.
  */
 
-import { friendForAuthor } from "./friends";
-import type { FeedItem, Friend, MapMode } from "./types.js";
+import { friendForAuthor, personForAuthor } from "./friends";
+import type { Account, FeedItem, Friend, MapMode, Person } from "./types.js";
 
 // =============================================================================
 // Types
@@ -26,7 +26,7 @@ export interface GeoLocation {
 
 export interface ResolvedLocationItem {
   item: FeedItem;
-  friend: Friend | null;
+  friend: Person | null;
   lat: number;
   lng: number;
   label?: string;
@@ -35,7 +35,7 @@ export interface ResolvedLocationItem {
 export interface LocationMarkerSummary {
   key: string;
   authorKey: string;
-  friend: Friend | null;
+  friend: Person | null;
   item: FeedItem;
   lat: number;
   lng: number;
@@ -192,7 +192,7 @@ function authorIdentityKey(item: FeedItem): string {
   return `author:${item.platform}:${item.author.id}`;
 }
 
-function friendIdentityKey(friend: Friend): string {
+function friendIdentityKey(friend: Person): string {
   return `friend:${friend.id}`;
 }
 
@@ -335,7 +335,8 @@ export function getLastSeenLocationForFriend(
 
 export function countFriendsWithRecentLocationUpdates(
   items: FeedItem[],
-  friends: Record<string, Friend>,
+  personsOrFriends: Record<string, Person> | Record<string, Friend>,
+  accounts?: Record<string, Account>,
   windowMs: number = 7 * 24 * 60 * 60 * 1000,
   now: number = Date.now()
 ): number {
@@ -346,7 +347,18 @@ export function countFriendsWithRecentLocationUpdates(
     if (item.publishedAt < cutoff) continue;
     if (!extractLocationFromItem(item)) continue;
 
-    const friend = friendForAuthor(friends, item.platform, item.author.id);
+    const friend = accounts
+      ? personForAuthor(
+          personsOrFriends as Record<string, Person>,
+          accounts,
+          item.platform,
+          item.author.id,
+        )
+      : friendForAuthor(
+          personsOrFriends as Record<string, Friend>,
+          item.platform,
+          item.author.id,
+        );
     if (friend) {
       friendIds.add(friend.id);
     }

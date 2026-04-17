@@ -304,7 +304,7 @@ export interface PlatformConfig {
 
 export interface ContactSyncActions {
   syncNow: () => Promise<ContactSyncState>;
-  dismissMatch: (contactResourceName: string, friendIdOrAuthorId: string) => void;
+  dismissSuggestion: (suggestionId: string) => void;
   openReview: () => Promise<void>;
 }
 

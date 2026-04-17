@@ -9,8 +9,8 @@
  */
 
 import { create } from "zustand";
-import type { FeedItem, FilterOptions, Friend, ReachOutLog, UserPreferences, RssFeed, RemoveFeedOptions } from "@freed/shared";
-import { createDefaultPreferences } from "@freed/shared";
+import type { Account, FeedItem, FilterOptions, Friend, Person, ReachOutLog, UserPreferences, RssFeed, RemoveFeedOptions } from "@freed/shared";
+import { accountsFromLegacyFriend, createDefaultPreferences, personFromLegacyFriend } from "@freed/shared";
 import {
   initDoc,
   subscribe,
@@ -33,10 +33,14 @@ import {
   docUpdatePreferences,
   docDeduplicateFeedItems,
   docHealUntitledFeedTitles,
-  docAddFriend,
-  docAddFriends,
-  docUpdateFriend,
-  docRemoveFriend,
+  docAddAccount,
+  docAddAccounts,
+  docAddPerson,
+  docAddPersons,
+  docUpdateAccount,
+  docUpdatePerson,
+  docRemoveAccount,
+  docRemovePerson,
   docLogReachOut,
   docToggleLiked,
   docConfirmLikedSynced,
@@ -80,6 +84,8 @@ interface AppState {
   items: FeedItem[];
   searchCorpusVersion: number;
   feeds: Record<string, RssFeed>;
+  persons: Record<string, Person>;
+  accounts: Record<string, Account>;
   friends: Record<string, Friend>;
   preferences: UserPreferences;
   feedUnreadCounts: Record<string, number>;
@@ -111,6 +117,7 @@ interface AppState {
   error: string | null;
   activeFilter: FilterOptions;
   selectedItemId: string | null;
+  selectedPersonId: string | null;
   selectedFriendId: string | null;
 
   // Initialization
@@ -136,11 +143,19 @@ interface AppState {
   removeAllFeeds: (includeItems: boolean) => Promise<void>;
 
   // Friend actions (persisted to Automerge)
+  addPerson: (person: Person) => Promise<void>;
+  addPersons: (persons: Person[]) => Promise<void>;
+  updatePerson: (id: string, updates: Partial<Person>) => Promise<void>;
+  removePerson: (id: string) => Promise<void>;
   addFriend: (friend: Friend) => Promise<void>;
   addFriends: (friends: Friend[]) => Promise<void>;
   updateFriend: (id: string, updates: Partial<Friend>) => Promise<void>;
   removeFriend: (id: string) => Promise<void>;
   logReachOut: (id: string, entry: ReachOutLog) => Promise<void>;
+  addAccount: (account: Account) => Promise<void>;
+  addAccounts: (accounts: Account[]) => Promise<void>;
+  updateAccount: (id: string, updates: Partial<Account>) => Promise<void>;
+  removeAccount: (id: string) => Promise<void>;
 
   // Preference actions (persisted to Automerge)
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;
@@ -157,6 +172,7 @@ interface AppState {
   // UI actions (not persisted)
   setFilter: (filter: FilterOptions) => void;
   setSelectedItem: (id: string | null) => void;
+  setSelectedPerson: (id: string | null) => void;
   setSelectedFriend: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
   setSyncing: (syncing: boolean) => void;
@@ -275,6 +291,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   items: [],
   searchCorpusVersion: 0,
   feeds: {},
+  persons: {},
+  accounts: {},
   friends: {},
   preferences: createDefaultPreferences(),
   feedUnreadCounts: {},
@@ -298,6 +316,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   error: null,
   activeFilter: {},
   selectedItemId: null,
+  selectedPersonId: null,
   selectedFriendId: null,
   searchQuery: "",
   activeView: "feed",
@@ -318,15 +337,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Preserve object identity on count maps to avoid spurious selector re-renders.
       subscribe((state: DocState) => {
         const prev = get();
-        let next: DocState = state;
+        let next: Partial<AppState> = { ...state };
 
-        if (shallowEqualRecord(next.feedUnreadCounts, prev.feedUnreadCounts))
+        if (shallowEqualRecord(state.feedUnreadCounts, prev.feedUnreadCounts))
           next = { ...next, feedUnreadCounts: prev.feedUnreadCounts };
-        if (shallowEqualRecord(next.feedTotalCounts, prev.feedTotalCounts))
+        if (shallowEqualRecord(state.feedTotalCounts, prev.feedTotalCounts))
           next = { ...next, feedTotalCounts: prev.feedTotalCounts };
-        if (shallowEqualRecord(next.unreadCountByPlatform, prev.unreadCountByPlatform))
+        if (shallowEqualRecord(state.unreadCountByPlatform, prev.unreadCountByPlatform))
           next = { ...next, unreadCountByPlatform: prev.unreadCountByPlatform };
-        if (shallowEqualRecord(next.itemCountByPlatform, prev.itemCountByPlatform))
+        if (shallowEqualRecord(state.itemCountByPlatform, prev.itemCountByPlatform))
           next = { ...next, itemCountByPlatform: prev.itemCountByPlatform };
 
         set(next);
@@ -453,25 +472,84 @@ export const useAppStore = create<AppState>((set, get) => ({
     await docUpdateRssFeed(url, { title });
   },
 
-  // Friend actions
-  addFriend: async (friend: Friend) => {
-    await docAddFriend(friend);
+  // Person actions
+  addPerson: async (person: Person) => {
+    await docAddPerson(person);
   },
 
-  addFriends: async (friends: Friend[]) => {
-    await docAddFriends(friends);
+  addPersons: async (persons: Person[]) => {
+    await docAddPersons(persons);
   },
 
-  updateFriend: async (id: string, updates: Partial<Friend>) => {
-    await docUpdateFriend(id, updates);
+  updatePerson: async (id: string, updates: Partial<Person>) => {
+    await docUpdatePerson(id, updates);
   },
 
-  removeFriend: async (id: string) => {
-    await docRemoveFriend(id);
+  removePerson: async (id: string) => {
+    await docRemovePerson(id);
   },
 
   logReachOut: async (id: string, entry: ReachOutLog) => {
     await docLogReachOut(id, entry);
+  },
+
+  // Deprecated friend aliases
+  addFriend: async (friend: Friend) => {
+    await docAddPerson(personFromLegacyFriend(friend));
+    const accounts = accountsFromLegacyFriend(friend);
+    if (accounts.length > 0) {
+      await docAddAccounts(accounts);
+    }
+  },
+
+  addFriends: async (friends: Friend[]) => {
+    const persons = friends.map((friend) => personFromLegacyFriend(friend as Friend));
+    await docAddPersons(persons);
+    const accounts = friends.flatMap((friend) => accountsFromLegacyFriend(friend as Friend));
+    if (accounts.length > 0) {
+      await docAddAccounts(accounts);
+    }
+  },
+
+  updateFriend: async (id: string, updates: Partial<Friend>) => {
+    const current = get().friends[id];
+    if (!current) {
+      await docUpdatePerson(id, updates);
+      return;
+    }
+    const nextFriend = {
+      ...current,
+      ...updates,
+      sources: "sources" in updates ? ((updates as Partial<Friend>).sources ?? []) : current.sources,
+      contact: "contact" in updates ? (updates as Partial<Friend>).contact : current.contact,
+    } as Friend;
+    await docUpdatePerson(id, personFromLegacyFriend(nextFriend));
+    const existingAccounts = Object.values(get().accounts).filter((account) => account.personId === id);
+    await Promise.all(existingAccounts.map((account) => docRemoveAccount(account.id)));
+    const nextAccounts = accountsFromLegacyFriend(nextFriend);
+    if (nextAccounts.length > 0) {
+      await docAddAccounts(nextAccounts);
+    }
+  },
+
+  removeFriend: async (id: string) => {
+    await docRemovePerson(id);
+  },
+
+  addAccount: async (account: Account) => {
+    await docAddAccount(account);
+  },
+
+  addAccounts: async (accounts: Account[]) => {
+    await docAddAccounts(accounts);
+  },
+
+  updateAccount: async (id: string, updates: Partial<Account>) => {
+    await docUpdateAccount(id, updates);
+  },
+
+  removeAccount: async (id: string) => {
+    await docRemoveAccount(id);
   },
 
   // Preference actions
@@ -502,7 +580,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // UI actions
   setFilter: (filter) => set({ activeFilter: filter }),
   setSelectedItem: (id) => set({ selectedItemId: id }),
-  setSelectedFriend: (id) => set({ selectedFriendId: id }),
+  setSelectedPerson: (id) => set({ selectedPersonId: id, selectedFriendId: id }),
+  setSelectedFriend: (id) => set({ selectedPersonId: id, selectedFriendId: id }),
   setLoading: (isLoading) => set({ isLoading }),
   setSyncing: (isSyncing) => set({ isSyncing }),
   setProviderSyncing: (provider, syncing) =>

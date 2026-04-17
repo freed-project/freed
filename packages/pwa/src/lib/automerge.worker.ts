@@ -15,7 +15,10 @@ import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
   createEmptyDoc,
+  addAccount,
+  addAccounts,
   addFeedItem,
+  addPerson,
   addRssFeed,
   removeRssFeed,
   removeAllFeeds,
@@ -32,16 +35,17 @@ import {
   deleteAllArchivedItems,
   updatePreferences,
   updateLastSync,
-  addFriend,
-  updateFriend,
-  removeFriend,
+  updateAccount,
+  updatePerson,
+  removeAccount,
+  removePerson,
   logReachOut,
   toggleLiked,
   confirmLikedSynced,
   confirmSeenSynced,
 } from "@freed/shared/schema";
 import { rankFeedItems } from "@freed/shared";
-import type { FeedItem, Friend, RssFeed, UserPreferences } from "@freed/shared";
+import type { Account, FeedItem, Friend, LegacyDeviceContact, LegacyFriendSource, Person, RssFeed, UserPreferences } from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
 
 // ---------------------------------------------------------------------------
@@ -62,6 +66,55 @@ function send(msg: WorkerResponse): void {
 
 function ack(reqId: number, error?: string): void {
   send({ reqId, type: "ACK", error });
+}
+
+function toLegacyContact(account: Account): LegacyDeviceContact {
+  const importedFrom: LegacyDeviceContact["importedFrom"] =
+    account.provider === "google_contacts"
+      ? "google"
+      : account.provider === "macos_contacts"
+        ? "macos"
+        : account.provider === "ios_contacts"
+          ? "ios"
+          : account.provider === "android_contacts"
+            ? "android"
+            : "web";
+  return {
+    importedFrom,
+    name: account.displayName ?? account.externalId,
+    phone: account.phone,
+    email: account.email,
+    address: account.address,
+    nativeId: account.externalId,
+    importedAt: account.importedAt ?? account.createdAt,
+  };
+}
+
+function projectLegacyFriends(
+  persons: Record<string, Person>,
+  accounts: Record<string, Account>
+): Record<string, Friend> {
+  return Object.fromEntries(
+    Object.values(persons).map((person) => {
+      const personAccounts = Object.values(accounts).filter((account) => account.personId === person.id);
+      const sources: LegacyFriendSource[] = personAccounts
+        .filter((account) => account.kind === "social")
+        .map((account) => ({
+          platform: account.provider as LegacyFriendSource["platform"],
+          authorId: account.externalId,
+          handle: account.handle,
+          displayName: account.displayName,
+          avatarUrl: account.avatarUrl,
+          profileUrl: account.profileUrl,
+        }));
+      const contactAccount = personAccounts.find((account) => account.kind === "contact");
+      return [person.id, {
+        ...person,
+        sources,
+        contact: contactAccount ? toLegacyContact(contactAccount) : undefined,
+      }];
+    })
+  );
 }
 
 function bumpSearchCorpusVersion(): void {
@@ -98,7 +151,9 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
   const plain = A.toJS(doc) as FreedDoc;
   const plainItems = Object.values(plain.feedItems as Record<string, FeedItem>);
   const feeds = plain.rssFeeds as Record<string, RssFeed>;
-  const friends = (plain.friends ?? {}) as Record<string, Friend>;
+  const persons = (plain.persons ?? {}) as Record<string, Person>;
+  const accounts = (plain.accounts ?? {}) as Record<string, Account>;
+  const friends = projectLegacyFriends(persons, accounts);
   const preferences = plain.preferences as UserPreferences;
 
   const visibleItems = plainItems.filter((item) => !item.userState.hidden);
@@ -146,6 +201,8 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
     items: rankedItems,
     searchCorpusVersion,
     feeds,
+    persons,
+    accounts,
     friends,
     preferences,
     feedUnreadCounts,
@@ -385,32 +442,52 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         ack(req.reqId);
         break;
 
-      case "ADD_FRIEND":
-        await applyChange((doc) => addFriend(doc, req.friend), "Add friend");
+      case "ADD_PERSON":
+        await applyChange((doc) => addPerson(doc, req.person), "Add person");
         ack(req.reqId);
         break;
 
-      case "ADD_FRIENDS":
+      case "ADD_PERSONS":
         await applyChange((doc) => {
-          for (const friend of req.friends) {
-            addFriend(doc, friend);
+          for (const person of req.persons) {
+            addPerson(doc, person);
           }
-        }, `Add ${req.friends.length} friends`);
+        }, `Add ${req.persons.length.toLocaleString()} people`);
         ack(req.reqId);
         break;
 
-      case "UPDATE_FRIEND":
-        await applyChange((doc) => updateFriend(doc, req.friendId, req.updates as Partial<Friend>), "Update friend");
+      case "UPDATE_PERSON":
+        await applyChange((doc) => updatePerson(doc, req.personId, req.updates as Partial<Person>), "Update person");
         ack(req.reqId);
         break;
 
-      case "REMOVE_FRIEND":
-        await applyChange((doc) => removeFriend(doc, req.friendId), "Remove friend");
+      case "REMOVE_PERSON":
+        await applyChange((doc) => removePerson(doc, req.personId), "Remove person");
         ack(req.reqId);
         break;
 
       case "LOG_REACH_OUT":
-        await applyChange((doc) => logReachOut(doc, req.friendId, req.entry), "Log reach-out");
+        await applyChange((doc) => logReachOut(doc, req.personId, req.entry), "Log reach-out");
+        ack(req.reqId);
+        break;
+
+      case "ADD_ACCOUNT":
+        await applyChange((doc) => addAccount(doc, req.account), "Add account");
+        ack(req.reqId);
+        break;
+
+      case "ADD_ACCOUNTS":
+        await applyChange((doc) => addAccounts(doc, req.accounts), `Add ${req.accounts.length.toLocaleString()} accounts`);
+        ack(req.reqId);
+        break;
+
+      case "UPDATE_ACCOUNT":
+        await applyChange((doc) => updateAccount(doc, req.accountId, req.updates), "Update account");
+        ack(req.reqId);
+        break;
+
+      case "REMOVE_ACCOUNT":
+        await applyChange((doc) => removeAccount(doc, req.accountId), "Remove account");
         ack(req.reqId);
         break;
 

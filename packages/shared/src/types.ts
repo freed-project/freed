@@ -554,16 +554,36 @@ export interface UserPreferences {
 }
 
 // =============================================================================
-// Friends & Identity
+// Identity Graph
 // =============================================================================
 
+export type RelationshipStatus = "connection" | "friend";
+
+export type AccountKind = "social" | "contact";
+
+export type ContactAccountProvider =
+  | "google_contacts"
+  | "manual_contact"
+  | "macos_contacts"
+  | "ios_contacts"
+  | "android_contacts"
+  | "web_contact";
+
+export type AccountProvider = Platform | ContactAccountProvider;
+
+export type AccountDiscoveredFrom =
+  | "captured_item"
+  | "story_author"
+  | "contact_import"
+  | "manual_entry"
+  | "follow_roster";
+
 /**
- * A single social media profile linked to a Friend.
- * Matched at render time against FeedItem.author.id for the given platform.
+ * Legacy social-profile shape preserved only for migration from the old
+ * Friend document model.
  */
-export interface FriendSource {
+export interface LegacyFriendSource {
   platform: Platform;
-  /** Matches FeedItem.author.id for this platform */
   authorId: string;
   handle?: string;
   displayName?: string;
@@ -572,22 +592,21 @@ export interface FriendSource {
 }
 
 /**
- * Address book data imported once from the device.
- * Not a content source — carries contact info only.
+ * Legacy contact shape preserved only for migration from the old Friend
+ * document model.
  */
-export interface DeviceContact {
+export interface LegacyDeviceContact {
   importedFrom: "macos" | "ios" | "android" | "web" | "google";
   name: string;
   phone?: string;
   email?: string;
   address?: string;
-  /** Native contact ID for potential future re-sync */
   nativeId?: string;
   importedAt: number;
 }
 
 /**
- * A single reach-out event logged by the user
+ * A single reach-out event logged by the user.
  */
 export interface ReachOutLog {
   loggedAt: number;
@@ -596,29 +615,19 @@ export interface ReachOutLog {
 }
 
 /**
- * Canonical record for a real person.
- *
- * Unifies social media profiles (sources) and address book data (contact)
- * into a single identity. careLevel drives automatic reach-out nudge timing.
+ * Canonical same-human identity. Accounts carry channel-specific data.
  */
-export interface Friend {
-  /** UUID, client-generated */
+export interface Person {
   id: string;
-  /** Canonical display name chosen by the user */
   name: string;
-  /** Overrides platform avatars when set */
   avatarUrl?: string;
   bio?: string;
-  /** Social media profiles that produce FeedItems */
-  sources: FriendSource[];
-  /** Address book import — contact info only, not a content source */
-  contact?: DeviceContact;
+  relationshipStatus: RelationshipStatus;
   /**
    * Relationship priority: 5 = closest (nudge weekly), 1 = acquaintance (never nudged).
-   * Drives effectiveInterval() in friends.ts.
+   * Drives effectiveInterval() in the identity helpers.
    */
   careLevel: 1 | 2 | 3 | 4 | 5;
-  /** Override for the nudge interval in days (auto-inferred from careLevel if absent) */
   reachOutIntervalDays?: number;
   /** Most recent reach-out entries first; capped at 20 */
   reachOutLog?: ReachOutLog[];
@@ -627,6 +636,43 @@ export interface Friend {
   createdAt: number;
   updatedAt: number;
 }
+
+/**
+ * Every attached node in the identity graph: social profile or contact record.
+ * When personId is absent, the account is still an orphan connection.
+ */
+export interface Account {
+  id: string;
+  personId?: string;
+  kind: AccountKind;
+  provider: AccountProvider;
+  externalId: string;
+  handle?: string;
+  displayName?: string;
+  avatarUrl?: string;
+  profileUrl?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  importedAt?: number;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  discoveredFrom: AccountDiscoveredFrom;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** @deprecated Use Person plus Account queries. */
+export type Friend = Person & {
+  sources: LegacyFriendSource[];
+  contact?: LegacyDeviceContact;
+};
+
+/** @deprecated Use Account. */
+export type FriendSource = LegacyFriendSource;
+
+/** @deprecated Use contact Accounts instead. */
+export type DeviceContact = LegacyDeviceContact;
 
 // =============================================================================
 // Document Metadata
@@ -731,13 +777,26 @@ export interface GoogleContact {
 }
 
 /**
- * A pairing of a Google contact with a matched Friend or unlinked author.
+ * A pairing of a Google contact with a matched Person or unlinked author.
  */
 export interface ContactMatch {
   contact: GoogleContact;
-  friend: Friend | null;
+  person?: Person | null;
+  /** @deprecated Use person. */
+  friend?: Friend | null;
   authorIds: string[];
   confidence: "high" | "medium";
+}
+
+export interface IdentitySuggestion {
+  id: string;
+  kind: "merge_accounts" | "attach_accounts_to_person";
+  confidence: "high" | "medium";
+  accountIds: string[];
+  personId?: string;
+  label: string;
+  reason?: string;
+  createdAt: number;
 }
 
 /**
@@ -751,10 +810,17 @@ export interface ContactSyncState {
   lastErrorCode?: "missing_token" | "auth" | "network" | "unknown";
   lastErrorMessage?: string;
   cachedContacts: GoogleContact[];
-  pendingMatches: ContactMatch[];
-  dismissedMatches: Array<{ contactResourceName: string; friendIdOrAuthorId: string }>;
-  autoLinkedCount: number;
-  autoCreatedCount: number;
+  pendingSuggestions: IdentitySuggestion[];
+  dismissedSuggestionIds: string[];
+  createdFriendCount: number;
+  /** @deprecated Use pendingSuggestions. */
+  pendingMatches?: IdentitySuggestion[];
+  /** @deprecated Use dismissedSuggestionIds. */
+  dismissedMatches?: string[];
+  /** @deprecated Suggestion auto-linking was removed. */
+  autoLinkedCount?: number;
+  /** @deprecated Use createdFriendCount. */
+  autoCreatedCount?: number;
 }
 
 /**
