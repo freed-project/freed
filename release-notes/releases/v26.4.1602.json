@@ -1,0 +1,45 @@
+{
+  "tag": "v26.4.1602",
+  "version": "26.4.1602",
+  "channel": "production",
+  "dayKey": "26.4.16",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-17T01:51:43.006Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.4.1600",
+    "previousPublishedDayTag": "v26.4.1400",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.1600",
+      "v26.4.1602"
+    ],
+    "prNumbers": [
+      213,
+      215,
+      216,
+      222
+    ],
+    "commitSubjects": [
+      "release: approve v26.4.1600",
+      "release: v26.4.1600",
+      "fix: clarify desktop update channel state (#222)",
+      "fix: restore uncommitted read-state and UI updates (#216)",
+      "fix: simplify release channel selector (#215)",
+      "fix: raise update dialogs above floating new button (#213)",
+      "fix: resolve desktop e2e merge regression"
+    ]
+  },
+  "release": {
+    "deck": "Freed Desktop keeps update dialogs visible, restores read state correctly, and makes release channel status clearer, the Updates settings view now labels the installed version clearly and rechecks when you switch release channels, and update dialogs now stay above the floating new button",
+    "features": [],
+    "fixes": [
+      "Read state and related UI updates are restored correctly after merge recovery paths"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1602\n\nFreed Desktop keeps update dialogs visible, restores read state correctly, and makes release channel status clearer, the Updates settings view now labels the installed version clearly and rechecks when you switch release channels, and update dialogs now stay above the floating new button\n\n### Fixes\n\n- Read state and related UI updates are restored correctly after merge recovery paths\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
