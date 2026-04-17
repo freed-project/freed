@@ -2,27 +2,34 @@ import { useEffect, useMemo, useState } from "react";
 import {
   extractLocationFromItem,
   friendForAuthor,
+  getDefaultMapMode,
+  getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
   getLastSeenLocationForFriend,
   type FeedItem,
   type Friend,
   type LocationMarkerSummary,
+  type MapMode,
   type ResolvedLocationItem,
 } from "@freed/shared";
 import { geocode } from "../lib/geocoding.js";
 
 interface ResolvedLocationsState {
-  markers: LocationMarkerSummary[];
+  friendMarkers: LocationMarkerSummary[];
+  allContentMarkers: LocationMarkerSummary[];
   resolvedItems: ResolvedLocationItem[];
   lastResolvedAt: number | null;
   resolvingCount: number;
+  defaultMode: MapMode;
 }
 
 const EMPTY_STATE: ResolvedLocationsState = {
-  markers: [],
+  friendMarkers: [],
+  allContentMarkers: [],
   resolvedItems: [],
   lastResolvedAt: null,
   resolvingCount: 0,
+  defaultMode: "friends",
 };
 
 export function useResolvedLocations(
@@ -79,11 +86,16 @@ export function useResolvedLocations(
       );
       if (cancelled) return;
 
+      const friendMarkers = getLatestFriendLocationMarkers(resolvedItems);
+      const allContentMarkers = getLatestAuthorLocationMarkers(resolvedItems);
+
       setState({
-        markers: getLatestFriendLocationMarkers(resolvedItems),
+        friendMarkers,
+        allContentMarkers,
         resolvedItems,
         resolvingCount: 0,
         lastResolvedAt: Date.now(),
+        defaultMode: getDefaultMapMode(friendMarkers.length, allContentMarkers.length),
       });
     }
 

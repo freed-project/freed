@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef, useMemo, useCallback, type CSSProperties, type ReactNode } from "react";
-import { countFriendsWithRecentLocationUpdates } from "@freed/shared";
+import {
+  countAuthorsWithRecentLocationUpdates,
+  countFriendsWithRecentLocationUpdates,
+  getDefaultMapMode,
+} from "@freed/shared";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
 import { Tooltip } from "../Tooltip.js";
@@ -116,6 +120,12 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     () => countFriendsWithRecentLocationUpdates(items, friends),
     [friends, items],
   );
+  const mappedAllContentCount = useMemo(
+    () => countAuthorsWithRecentLocationUpdates(items),
+    [items],
+  );
+  const effectiveMapMode = display.mapMode
+    ?? getDefaultMapMode(mappedFriendCount, mappedAllContentCount);
 
   const unreadCount =
     activeFilter.savedOnly || activeFilter.archivedOnly
@@ -158,6 +168,9 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
       return `${friendCount.toLocaleString()} friends`;
     }
     if (activeView === "map") {
+      if (effectiveMapMode === "all_content") {
+        return `${mappedAllContentCount.toLocaleString()} accounts on the map`;
+      }
       return `${mappedFriendCount.toLocaleString()} friends on the map`;
     }
     if (isSearching) {
@@ -168,7 +181,9 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     activeView,
     filteredItems.length,
     friendCount,
+    effectiveMapMode,
     isSearching,
+    mappedAllContentCount,
     mappedFriendCount,
     pendingMatchCount,
     resultCount,
