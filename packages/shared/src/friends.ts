@@ -15,6 +15,13 @@ const DEFAULT_INTERVALS: Record<1 | 2 | 3 | 4 | 5, number | null> = {
   1: null,
 };
 
+const SOCIAL_PLATFORMS = new Set<Platform>([
+  "x",
+  "facebook",
+  "instagram",
+  "linkedin",
+]);
+
 export function effectiveInterval(
   careLevel: 1 | 2 | 3 | 4 | 5,
   overrideDays?: number
@@ -80,6 +87,7 @@ export function buildDiscoveredAccountsFromItems(
   );
 
   for (const item of items) {
+    if (!SOCIAL_PLATFORMS.has(item.platform)) continue;
     const key = `${item.platform}:${item.author.id}`;
     if (seen.has(key)) continue;
     seen.add(key);

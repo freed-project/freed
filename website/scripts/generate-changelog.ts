@@ -4,6 +4,7 @@ import {
   groupReleasesByDay,
   normalizeGitHubReleases,
   type ParsedRelease,
+  type ReleaseBuild,
   type ReleaseChannel,
   type ReleaseItem,
 } from "../src/content/changelog";
@@ -114,9 +115,9 @@ function buildLinksFromArtifact(
   artifact: LocalReleaseArtifact,
   release: GitHubRelease,
   releaseMap: Map<string, GitHubRelease>,
-) {
+): ReleaseBuild[] {
   const relatedBuildTags = artifact.source?.relatedBuildTags ?? [];
-  const buildLinks = relatedBuildTags
+  const buildLinks: ReleaseBuild[] = relatedBuildTags
     .map((tag) => releaseMap.get(tag))
     .filter((candidate): candidate is GitHubRelease => Boolean(candidate))
     .map((candidate) => ({

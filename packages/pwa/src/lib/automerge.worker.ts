@@ -94,9 +94,20 @@ function projectLegacyFriends(
   persons: Record<string, Person>,
   accounts: Record<string, Account>
 ): Record<string, Friend> {
+  const accountsByPerson = new Map<string, Account[]>();
+  for (const account of Object.values(accounts)) {
+    if (!account.personId) continue;
+    const group = accountsByPerson.get(account.personId);
+    if (group) {
+      group.push(account);
+    } else {
+      accountsByPerson.set(account.personId, [account]);
+    }
+  }
+
   return Object.fromEntries(
     Object.values(persons).map((person) => {
-      const personAccounts = Object.values(accounts).filter((account) => account.personId === person.id);
+      const personAccounts = accountsByPerson.get(person.id) ?? [];
       const sources: LegacyFriendSource[] = personAccounts
         .filter((account) => account.kind === "social")
         .map((account) => ({

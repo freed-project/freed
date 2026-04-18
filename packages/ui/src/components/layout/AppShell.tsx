@@ -50,6 +50,7 @@ export function AppShell({ children }: AppShellProps) {
   const [committedDebugWidth, setCommittedDebugWidth] = useState(persistedDebugWidth);
   const dragging = useRef(false);
   const pendingPersistedDebugWidth = useRef<number | null>(null);
+  const discoveredAccountScanRef = useRef({ itemCount: 0, accountCount: 0 });
 
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
@@ -123,6 +124,13 @@ export function AppShell({ children }: AppShellProps) {
   }, [toggleDebug, debugVisible]);
 
   useEffect(() => {
+    const itemCount = items.length;
+    const accountCount = Object.keys(accounts).length;
+    const previous = discoveredAccountScanRef.current;
+    if (itemCount === previous.itemCount && accountCount === previous.accountCount) {
+      return;
+    }
+    discoveredAccountScanRef.current = { itemCount, accountCount };
     const missingAccounts = buildDiscoveredAccountsFromItems(items, accounts);
     if (missingAccounts.length === 0) return;
     void addAccounts(missingAccounts);
