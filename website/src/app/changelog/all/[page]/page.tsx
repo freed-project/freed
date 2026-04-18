@@ -5,6 +5,7 @@ import {
   getChangelogPageRange,
   getChangelogPageSliceForMode,
   getChangelogPaginationStaticParams,
+  getLatestChangelogTagName,
   getChangelogTotalPages,
   parseChangelogPage,
 } from "../../pagination";
@@ -35,6 +36,8 @@ export default async function AllChangelogPaginationPage({ params }: Props) {
       mode={mode}
       totalPages={getChangelogTotalPages(mode)}
       pageRange={getChangelogPageRange(currentPage, mode)}
+      latestProductionTagName={getLatestChangelogTagName("production")}
+      latestDevTagName={getLatestChangelogTagName("dev")}
     />
   );
 }

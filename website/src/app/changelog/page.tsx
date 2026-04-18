@@ -4,6 +4,7 @@ import {
   buildChangelogMetadata,
   getChangelogPageRange,
   getChangelogPageSlice,
+  getLatestChangelogTagName,
   getChangelogTotalPages,
 } from "./pagination";
 
@@ -20,6 +21,8 @@ export default function ChangelogPage() {
       mode={mode}
       totalPages={getChangelogTotalPages(mode)}
       pageRange={getChangelogPageRange(currentPage, mode)}
+      latestProductionTagName={getLatestChangelogTagName("production")}
+      latestDevTagName={getLatestChangelogTagName("dev")}
     />
   );
 }
