@@ -2,17 +2,23 @@
 //!
 //! Native desktop app that bundles capture, sync relay, and reader UI.
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{
+    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
+    Engine,
+};
 use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
 use rand::RngCore;
 use std::collections::HashSet;
 use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock as StdRwLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Listener, Manager};
+use tauri_plugin_shell::ShellExt;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, RwLock};
@@ -47,6 +53,9 @@ fn sync_relay_port() -> u16 {
 const DEFAULT_WEBKIT_SAFARI_UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
 const SOCIAL_SCRAPER_WINDOW_LABELS: [&str; 3] = ["fb-scraper", "ig-scraper", "li-scraper"];
+const STARTUP_RECOVERY_STATE_FILE: &str = "startup-recovery.json";
+const RECOVERY_WINDOW_LABEL: &str = "startup-recovery";
+const RECOVERY_DOWNLOAD_URL: &str = "https://freed.wtf/get";
 const ENABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
     (function() {
         var token = "__freed_background_scraper__";
@@ -346,6 +355,327 @@ fn load_or_create_token(data_dir: &std::path::Path) -> String {
     let token = generate_token();
     let _ = std::fs::write(&path, &token);
     token
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+struct StartupRecoveryState {
+    consecutive_failed_boots: u32,
+    pending_boot_started_at_ms: Option<u64>,
+    last_failed_boot_at_ms: Option<u64>,
+    last_successful_boot_at_ms: Option<u64>,
+}
+
+fn now_unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+fn startup_recovery_state_path(data_dir: &Path) -> PathBuf {
+    data_dir.join(STARTUP_RECOVERY_STATE_FILE)
+}
+
+fn load_startup_recovery_state(data_dir: &Path) -> StartupRecoveryState {
+    let path = startup_recovery_state_path(data_dir);
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return StartupRecoveryState::default();
+    };
+
+    match serde_json::from_str::<StartupRecoveryState>(&raw) {
+        Ok(state) => state,
+        Err(error) => {
+            warn!(
+                "[recovery] failed to parse startup recovery state at {}: {}",
+                path.display(),
+                error
+            );
+            StartupRecoveryState::default()
+        }
+    }
+}
+
+fn save_startup_recovery_state(data_dir: &Path, state: &StartupRecoveryState) {
+    let path = startup_recovery_state_path(data_dir);
+    let serialized = match serde_json::to_vec_pretty(state) {
+        Ok(serialized) => serialized,
+        Err(error) => {
+            warn!("[recovery] failed to serialize startup recovery state: {}", error);
+            return;
+        }
+    };
+
+    if let Err(error) = std::fs::write(&path, serialized) {
+        warn!(
+            "[recovery] failed to persist startup recovery state at {}: {}",
+            path.display(),
+            error
+        );
+    }
+}
+
+fn reconcile_startup_recovery_state(data_dir: &Path) -> StartupRecoveryState {
+    let mut state = load_startup_recovery_state(data_dir);
+
+    if state.pending_boot_started_at_ms.take().is_some() {
+        state.consecutive_failed_boots = state.consecutive_failed_boots.saturating_add(1);
+        state.last_failed_boot_at_ms = Some(now_unix_ms());
+        save_startup_recovery_state(data_dir, &state);
+        warn!(
+            "[recovery] detected unfinished startup, consecutive_failed_boots={}",
+            state.consecutive_failed_boots
+        );
+    }
+
+    state
+}
+
+fn mark_startup_pending(data_dir: &Path) {
+    let mut state = load_startup_recovery_state(data_dir);
+    state.pending_boot_started_at_ms = Some(now_unix_ms());
+    save_startup_recovery_state(data_dir, &state);
+}
+
+fn mark_startup_success(data_dir: &Path) {
+    let mut state = load_startup_recovery_state(data_dir);
+    if state.pending_boot_started_at_ms.is_none() && state.consecutive_failed_boots == 0 {
+        return;
+    }
+
+    state.pending_boot_started_at_ms = None;
+    state.consecutive_failed_boots = 0;
+    state.last_successful_boot_at_ms = Some(now_unix_ms());
+    save_startup_recovery_state(data_dir, &state);
+    info!("[recovery] renderer reached healthy startup state");
+}
+
+fn startup_requires_recovery(state: &StartupRecoveryState) -> bool {
+    state.consecutive_failed_boots > 0
+}
+
+fn recovery_window_html() -> String {
+    format!(
+        r#"<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Freed Recovery</title>
+    <style>
+      :root {{
+        color-scheme: dark;
+        --bg: #0b0b10;
+        --panel: rgba(24, 24, 34, 0.96);
+        --border: rgba(255, 255, 255, 0.08);
+        --text: #f3f0ff;
+        --muted: rgba(243, 240, 255, 0.68);
+        --accent: #7c5cff;
+        --accent-strong: #6d4cf6;
+        --danger: #ff8577;
+      }}
+      * {{
+        box-sizing: border-box;
+      }}
+      body {{
+        margin: 0;
+        min-height: 100vh;
+        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(124, 92, 255, 0.26), transparent 32%),
+          radial-gradient(circle at bottom right, rgba(255, 133, 119, 0.18), transparent 28%),
+          linear-gradient(180deg, #0b0b10 0%, #09090d 100%);
+        color: var(--text);
+        display: grid;
+        place-items: center;
+        padding: 28px;
+      }}
+      .panel {{
+        width: min(100%, 560px);
+        border-radius: 24px;
+        border: 1px solid var(--border);
+        background: var(--panel);
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+        padding: 32px;
+      }}
+      .eyebrow {{
+        margin: 0 0 12px;
+        color: #f19988;
+        font-size: 11px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }}
+      h1 {{
+        margin: 0 0 12px;
+        font-size: 30px;
+        line-height: 1.12;
+      }}
+      p {{
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.55;
+      }}
+      .callout {{
+        margin-top: 20px;
+        border-radius: 18px;
+        border: 1px solid rgba(255, 133, 119, 0.22);
+        background: rgba(255, 133, 119, 0.08);
+        padding: 16px 18px;
+      }}
+      .actions {{
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 24px;
+      }}
+      button {{
+        appearance: none;
+        border: 0;
+        border-radius: 14px;
+        padding: 13px 18px;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 120ms ease, opacity 120ms ease, background 120ms ease;
+      }}
+      button:hover {{
+        transform: translateY(-1px);
+      }}
+      button:disabled {{
+        cursor: wait;
+        opacity: 0.72;
+        transform: none;
+      }}
+      .primary {{
+        color: white;
+        background: linear-gradient(180deg, var(--accent) 0%, var(--accent-strong) 100%);
+      }}
+      .secondary {{
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }}
+      .status {{
+        min-height: 22px;
+        margin-top: 18px;
+        font-size: 14px;
+        color: var(--muted);
+      }}
+      .status.error {{
+        color: var(--danger);
+      }}
+      .footer {{
+        margin-top: 22px;
+        font-size: 12px;
+      }}
+    </style>
+  </head>
+  <body>
+    <main class="panel">
+      <p class="eyebrow">Recovery</p>
+      <h1>Freed did not finish loading last time.</h1>
+      <p>
+        This window lives outside the main app, so you can still retry startup or download a newer
+        build even if the renderer crashes before React boots.
+      </p>
+      <div class="callout">
+        <p>
+          Keep this window open while you retry. It will close itself after Freed reaches a healthy
+          startup state.
+        </p>
+      </div>
+      <div class="actions">
+        <button id="retry" class="primary" type="button">Try opening Freed again</button>
+        <button id="download" class="secondary" type="button">Download latest Freed Desktop</button>
+      </div>
+      <p id="status" class="status" aria-live="polite"></p>
+      <p class="footer">Version {}</p>
+    </main>
+    <script>
+      const statusEl = document.getElementById("status");
+      const retryButton = document.getElementById("retry");
+      const downloadButton = document.getElementById("download");
+      const invoke = window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === "function"
+        ? window.__TAURI__.core.invoke
+        : null;
+
+      function setStatus(message, isError) {{
+        statusEl.textContent = message || "";
+        statusEl.classList.toggle("error", !!isError);
+      }}
+
+      async function call(command, busyMessage) {{
+        if (!invoke) {{
+          setStatus("Recovery commands are unavailable in this build.", true);
+          return false;
+        }}
+
+        retryButton.disabled = true;
+        downloadButton.disabled = true;
+        setStatus(busyMessage, false);
+
+        try {{
+          await invoke(command);
+          return true;
+        }} catch (error) {{
+          setStatus(String(error), true);
+          return false;
+        }} finally {{
+          retryButton.disabled = false;
+          downloadButton.disabled = false;
+        }}
+      }}
+
+      retryButton.addEventListener("click", async () => {{
+        const ok = await call("retry_startup_after_crash", "Trying to reopen Freed...");
+        if (ok) {{
+          setStatus("Retry launched. This window will close after the app finishes loading.", false);
+        }}
+      }});
+
+      downloadButton.addEventListener("click", async () => {{
+        const ok = await call("open_recovery_download_page", "Opening the latest build in your browser...");
+        if (ok) {{
+          setStatus("Browser opened. Install the latest build over this one, then relaunch Freed.", false);
+        }}
+      }});
+    </script>
+  </body>
+</html>
+"#,
+        env!("CARGO_PKG_VERSION")
+    )
+}
+
+fn open_or_focus_recovery_window(
+    app: &tauri::AppHandle,
+) -> Result<tauri::WebviewWindow, tauri::Error> {
+    if let Some(window) = app.get_webview_window(RECOVERY_WINDOW_LABEL) {
+        let _ = window.show();
+        let _ = window.set_focus();
+        return Ok(window);
+    }
+
+    let html = recovery_window_html();
+    let url = format!("data:text/html;base64,{}", STANDARD.encode(html));
+    let window = tauri::WebviewWindowBuilder::new(
+        app,
+        RECOVERY_WINDOW_LABEL,
+        tauri::WebviewUrl::External(
+            url.parse()
+                .expect("startup recovery data URL should always be valid"),
+        ),
+    )
+    .title("Freed Recovery")
+    .inner_size(560.0, 520.0)
+    .min_inner_size(480.0, 420.0)
+    .center()
+    .resizable(true)
+    .focused(true)
+    .build()?;
+
+    let _ = window.show();
+    let _ = window.set_focus();
+    Ok(window)
 }
 
 // ---------------------------------------------------------------------------
@@ -1122,6 +1452,20 @@ fn show_window(app: tauri::AppHandle) {
         let _ = window.show();
         let _ = window.set_focus();
     }
+}
+
+#[tauri::command]
+fn retry_startup_after_crash(app: tauri::AppHandle) -> Result<(), String> {
+    let _ = start_main_window(&app).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn open_recovery_download_page(app: tauri::AppHandle) -> Result<(), String> {
+    #[allow(deprecated)]
+    app.shell()
+        .open(RECOVERY_DOWNLOAD_URL, None)
+        .map_err(|error| error.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -3130,7 +3474,12 @@ fn main_window_webview_configuration() -> Retained<WKWebViewConfiguration> {
     config
 }
 
-fn create_main_window(app: &tauri::App) -> Result<tauri::WebviewWindow, tauri::Error> {
+fn show_webview_window(window: &tauri::WebviewWindow) {
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
+fn create_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tauri::Error> {
     if let Some(window) = app.get_webview_window("main") {
         return Ok(window);
     }
@@ -3150,6 +3499,54 @@ fn create_main_window(app: &tauri::App) -> Result<tauri::WebviewWindow, tauri::E
     let builder = builder.with_webview_configuration(main_window_webview_configuration());
 
     builder.build()
+}
+
+fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tauri::Error> {
+    if let Some(window) = app.get_webview_window("main") {
+        show_webview_window(&window);
+        return Ok(window);
+    }
+
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        std::fs::create_dir_all(&data_dir).ok();
+        mark_startup_pending(&data_dir);
+    }
+
+    let window = create_main_window(app)?;
+
+    #[cfg(target_os = "macos")]
+    apply_vibrancy(
+        &window,
+        NSVisualEffectMaterial::UnderWindowBackground,
+        None,
+        None,
+    )
+    .expect("Failed to apply vibrancy");
+
+    show_webview_window(&window);
+    Ok(window)
+}
+
+fn show_primary_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        show_webview_window(&window);
+        return;
+    }
+
+    if let Some(window) = app.get_webview_window(RECOVERY_WINDOW_LABEL) {
+        show_webview_window(&window);
+        return;
+    }
+
+    let Ok(data_dir) = app.path().app_data_dir() else {
+        return;
+    };
+
+    if startup_requires_recovery(&load_startup_recovery_state(&data_dir)) {
+        if let Ok(window) = open_or_focus_recovery_window(app) {
+            show_webview_window(&window);
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -3208,24 +3605,27 @@ pub fn run() {
         .manage(relay_state)
         .manage(CaptureState::new())
         .setup(move |app| {
-            let window = create_main_window(app)?;
+            let app_handle = app.handle().clone();
 
-            #[cfg(target_os = "macos")]
-            apply_vibrancy(
-                &window,
-                NSVisualEffectMaterial::UnderWindowBackground,
-                None,
-                None,
-            )
-            .expect("Failed to apply vibrancy");
-
-            // Load (or generate) the persistent pairing token before the relay
-            // starts accepting connections.
             let data_dir = app
                 .path()
                 .app_data_dir()
                 .expect("Failed to resolve app data directory");
             std::fs::create_dir_all(&data_dir).ok();
+
+            let startup_recovery_state = reconcile_startup_recovery_state(&data_dir);
+            if startup_requires_recovery(&startup_recovery_state) {
+                warn!(
+                    "[recovery] opening native recovery window after {} failed early startup attempt(s)",
+                    startup_recovery_state.consecutive_failed_boots
+                );
+                let _ = open_or_focus_recovery_window(&app_handle)?;
+            } else {
+                let _ = start_main_window(&app_handle)?;
+            }
+
+            // Load (or generate) the persistent pairing token before the relay
+            // starts accepting connections.
             let token = load_or_create_token(&data_dir);
             *relay_state_clone.pairing_token.write().unwrap() = token;
 
@@ -3240,10 +3640,7 @@ pub fn run() {
                 .tooltip("Freed — Sync running")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
+                        show_primary_window(&app.app_handle());
                     }
                     "quit" => {
                         app.exit(0);
@@ -3258,10 +3655,7 @@ pub fn run() {
                     } = event
                     {
                         let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
+                        show_primary_window(&app);
                     }
                 })
                 .build(app)?;
@@ -3413,6 +3807,7 @@ pub fn run() {
             let renderer_health = Arc::new(StdRwLock::new(RendererHeartbeatStatus::new()));
             let renderer_health_for_listener = renderer_health.clone();
             let app_for_renderer = app.handle().clone();
+            let app_for_renderer_listener = app_for_renderer.clone();
             app_for_renderer.listen("renderer-heartbeat", move |event| {
                 let payload = match serde_json::from_str::<RendererHeartbeatPayload>(event.payload()) {
                     Ok(payload) => payload,
@@ -3428,6 +3823,7 @@ pub fn run() {
 
                 let now = std::time::Instant::now();
                 let mut health = renderer_health_for_listener.write().unwrap();
+                let first_heartbeat = health.last_seen_at.is_none();
                 let gap_ms = health
                     .last_seen_at
                     .map(|last| now.duration_since(last).as_millis())
@@ -3461,6 +3857,17 @@ pub fn run() {
                         href,
                         payload.ts
                     );
+                }
+
+                if first_heartbeat {
+                    if let Ok(data_dir) = app_for_renderer_listener.path().app_data_dir() {
+                        mark_startup_success(&data_dir);
+                    }
+                    if let Some(window) =
+                        app_for_renderer_listener.get_webview_window(RECOVERY_WINDOW_LABEL)
+                    {
+                        let _ = window.close();
+                    }
                 }
             });
 
@@ -3557,6 +3964,10 @@ pub fn run() {
                 if window.label() == "main" {
                     window.hide().unwrap();
                     api.prevent_close();
+                } else if window.label() == RECOVERY_WINDOW_LABEL
+                    && window.app_handle().get_webview_window("main").is_none()
+                {
+                    window.app_handle().exit(0);
                 }
             }
         })
@@ -3564,6 +3975,8 @@ pub fn run() {
             get_version,
             get_platform,
             get_updater_target,
+            retry_startup_after_crash,
+            open_recovery_download_page,
             fetch_url,
             x_api_request,
             get_local_ip,
@@ -3605,4 +4018,52 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Freed");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reconcile_marks_unfinished_boot_as_failed() {
+        let temp = tempfile::tempdir().unwrap();
+
+        save_startup_recovery_state(
+            temp.path(),
+            &StartupRecoveryState {
+                consecutive_failed_boots: 0,
+                pending_boot_started_at_ms: Some(123),
+                last_failed_boot_at_ms: None,
+                last_successful_boot_at_ms: None,
+            },
+        );
+
+        let state = reconcile_startup_recovery_state(temp.path());
+
+        assert_eq!(state.consecutive_failed_boots, 1);
+        assert!(state.pending_boot_started_at_ms.is_none());
+        assert!(state.last_failed_boot_at_ms.is_some());
+    }
+
+    #[test]
+    fn mark_startup_success_clears_recovery_state() {
+        let temp = tempfile::tempdir().unwrap();
+
+        save_startup_recovery_state(
+            temp.path(),
+            &StartupRecoveryState {
+                consecutive_failed_boots: 2,
+                pending_boot_started_at_ms: Some(456),
+                last_failed_boot_at_ms: Some(789),
+                last_successful_boot_at_ms: None,
+            },
+        );
+
+        mark_startup_success(temp.path());
+
+        let state = load_startup_recovery_state(temp.path());
+        assert_eq!(state.consecutive_failed_boots, 0);
+        assert!(state.pending_boot_started_at_ms.is_none());
+        assert!(state.last_successful_boot_at_ms.is_some());
+    }
 }
