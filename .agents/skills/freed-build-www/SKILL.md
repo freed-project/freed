@@ -12,11 +12,12 @@ Create a marketing worktree branch from `www`, implement the website change, ver
 
 1. Confirm the request is public marketing work targeting `www`.
 2. Reject or reroute product work targeting `dev`; use `freed-build-feature` instead.
-3. Create a new worktree branch from `www` using `./scripts/worktree-add.sh`.
-4. Keep changes scoped to marketing paths unless the user explicitly changes the destination.
-5. Run website checks, at minimum `npm run build --workspace=website`.
-6. Deploy a website preview with `./scripts/vercel-deploy-preview.sh website`.
-7. Open a PR targeting `www` when the work is ready.
+3. Create a new worktree branch from `www` using `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/www --install auto --target website`.
+4. Bootstrap dependencies only when the work needs them with `./scripts/worktree-bootstrap.sh <worktree> --target website`.
+5. Keep changes scoped to marketing paths unless the user explicitly changes the destination.
+6. Run website checks, at minimum `npm run build --workspace=website`.
+7. Deploy a website preview with `./scripts/vercel-deploy-preview.sh website`.
+8. Open a PR targeting `www` when the work is ready.
 
 ## Scope
 

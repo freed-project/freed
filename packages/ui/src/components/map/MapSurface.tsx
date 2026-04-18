@@ -70,6 +70,17 @@ const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
 const MAP_POPUP_MAX_WIDTH = 560;
 const MAP_POPUP_VIEWPORT_MARGIN = 40;
 
+function shouldForceMapFallback() {
+  if (typeof window === "undefined") return false;
+  return (
+    (
+      window as Window & {
+        __FREED_E2E_FORCE_MAP_FALLBACK__?: boolean;
+      }
+    ).__FREED_E2E_FORCE_MAP_FALLBACK__ === true
+  );
+}
+
 function popupRelativeTime(seenAt: number): string {
   return formatDistanceToNow(seenAt, { addSuffix: true });
 }
@@ -496,6 +507,19 @@ export function MapSurface({
     let cancelled = false;
     setMapReady(false);
     setLoadFailed(false);
+
+    if (shouldForceMapFallback()) {
+      setLoadFailed(true);
+      return () => {
+        cancelled = true;
+        closeActivePopup();
+        for (const marker of markersRef.current) marker.remove();
+        markersRef.current = [];
+        mapRef.current?.remove();
+        mapRef.current = null;
+      };
+    }
+
     ensureMapLibreCss();
 
     void Promise.all([

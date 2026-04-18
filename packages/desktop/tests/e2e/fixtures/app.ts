@@ -460,6 +460,10 @@ export const test = base.extend<Fixtures>({
   app: async ({ page }, use) => {
     // Inject the IPC shim before page JS fires so mock globals are ready.
     await page.addInitScript(tauriInitScript());
+    await page.addInitScript(() => {
+      (window as Window & { __FREED_E2E_FORCE_MAP_FALLBACK__?: boolean })
+        .__FREED_E2E_FORCE_MAP_FALLBACK__ = true;
+    });
     await use(new AppFixture(page));
   },
 

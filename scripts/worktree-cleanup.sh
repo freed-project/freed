@@ -2,7 +2,8 @@
 # worktree-cleanup.sh
 #
 # Removes worktrees and local branches for PRs that have already been merged
-# on GitHub. Run this from the primary worktree (the repo root).
+# on GitHub. It also stops tracked preview processes before removing a
+# worktree. Run this from the primary worktree.
 #
 # Usage:
 #   ./scripts/worktree-cleanup.sh          # interactive: confirms each removal
@@ -87,6 +88,7 @@ for i in "${!PATHS[@]}"; do
   echo "  -> Merged via PR #$pr_number"
 
   if confirm "Remove worktree '$path' and delete branch '$branch'?"; then
+    ./scripts/worktree-processes.sh stop --worktree "$path" >/dev/null 2>&1 || true
     git worktree remove --force "$path"
     # -D because squash merges leave branch commits unreachable from the
     # target branch.
@@ -119,6 +121,8 @@ while IFS= read -r line; do
     fi
   fi
 done < <(git branch -vv | grep '\[.*: gone\]' | awk '{print $1}')
+
+./scripts/worktree-processes.sh prune >/dev/null 2>&1 || true
 
 echo ""
 echo "Done. Removed: $removed  Skipped: $skipped"
