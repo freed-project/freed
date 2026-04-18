@@ -4,13 +4,17 @@ import { ReportComposer } from "./report/ReportComposer.js";
 interface FatalErrorScreenProps {
   error: RuntimeErrorSnapshot | { message: string; fingerprint?: string } | null;
   onRetry: () => void;
+  onSecondaryAction?: () => void;
   productName: string;
+  secondaryActionLabel?: string;
 }
 
 export function FatalErrorScreen({
   error,
   onRetry,
+  onSecondaryAction,
   productName,
+  secondaryActionLabel,
 }: FatalErrorScreenProps) {
   return (
     <div className="app-theme-shell h-screen min-h-screen overflow-y-auto px-4 py-8 text-[var(--theme-text-primary)]">
@@ -31,12 +35,27 @@ export function FatalErrorScreen({
               <p className="mt-2 text-xs text-[var(--theme-text-muted)]">Crash fingerprint: {error.fingerprint}</p>
             ) : null}
           </div>
-          <button
-            onClick={onRetry}
-            className="theme-accent-button mt-5 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors"
-          >
-            Retry
-          </button>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button
+              onClick={onRetry}
+              className="theme-accent-button rounded-xl px-4 py-2.5 text-sm font-medium transition-colors"
+            >
+              Retry
+            </button>
+            {onSecondaryAction && secondaryActionLabel ? (
+              <button
+                onClick={onSecondaryAction}
+                className="rounded-xl border border-[rgba(255,255,255,0.12)] bg-black/20 px-4 py-2.5 text-sm font-medium text-[var(--theme-text-primary)] transition-colors hover:bg-black/35"
+              >
+                {secondaryActionLabel}
+              </button>
+            ) : null}
+          </div>
+          {onSecondaryAction && secondaryActionLabel ? (
+            <p className="mt-3 text-xs text-[var(--theme-text-muted)]">
+              If recovery keeps failing, install the newest build over this one.
+            </p>
+          ) : null}
         </section>
 
         <section className="theme-dialog-shell p-6">
