@@ -47,6 +47,7 @@ export interface LocationMarkerSummary {
 export interface LocationMarkerOptions {
   timeMode?: MapTimeMode;
   now?: number;
+  playbackAt?: number | null;
 }
 
 interface NamedLocationSignal {
@@ -250,13 +251,82 @@ export function isLocationItemVisibleInTimeMode(
   return normalized.startsAt <= now && normalized.endsAt >= now;
 }
 
+function isLocationItemVisibleAtPlayback(
+  item: FeedItem,
+  timeMode: MapTimeMode,
+  playbackAt: number,
+  now: number,
+): boolean {
+  if (timeMode === "current") {
+    return isLocationItemVisibleInTimeMode(item, "current", playbackAt);
+  }
+
+  const timeRange = item.timeRange;
+  if (!timeRange) {
+    return timeMode === "past" && item.publishedAt <= playbackAt && item.publishedAt < now;
+  }
+
+  const normalized = normalizeTimeRange(timeRange);
+  if (timeMode === "future" && normalized.startsAt <= now) {
+    return false;
+  }
+
+  return normalized.startsAt <= playbackAt && normalized.endsAt >= playbackAt;
+}
+
 export function filterResolvedLocationsByTime(
   resolvedItems: ResolvedLocationItem[],
   options: LocationMarkerOptions = {},
 ): ResolvedLocationItem[] {
   const timeMode = options.timeMode ?? "current";
   const now = options.now ?? Date.now();
-  return resolvedItems.filter((resolved) => isLocationItemVisibleInTimeMode(resolved.item, timeMode, now));
+  const playbackAt = options.playbackAt ?? null;
+  return resolvedItems.filter((resolved) =>
+    playbackAt === null
+      ? isLocationItemVisibleInTimeMode(resolved.item, timeMode, now)
+      : isLocationItemVisibleAtPlayback(resolved.item, timeMode, playbackAt, now)
+  );
+}
+
+export function getLocationTimelineMoments(
+  resolvedItems: ResolvedLocationItem[],
+  options: LocationMarkerOptions = {},
+): number[] {
+  const timeMode = options.timeMode ?? "current";
+  const now = options.now ?? Date.now();
+  if (timeMode === "current") return [];
+
+  const moments = new Set<number>();
+
+  for (const resolved of resolvedItems) {
+    const timeRange = resolved.item.timeRange;
+    if (!timeRange) {
+      if (timeMode === "past" && resolved.item.publishedAt < now) {
+        moments.add(resolved.item.publishedAt);
+      }
+      continue;
+    }
+
+    const normalized = normalizeTimeRange(timeRange);
+    if (timeMode === "future") {
+      if (normalized.startsAt > now) {
+        moments.add(normalized.startsAt);
+      }
+      if (normalized.endsAt > now) {
+        moments.add(normalized.endsAt);
+      }
+      continue;
+    }
+
+    if (normalized.startsAt < now) {
+      moments.add(normalized.startsAt);
+    }
+    if (normalized.endsAt < now) {
+      moments.add(normalized.endsAt);
+    }
+  }
+
+  return Array.from(moments).sort((a, b) => a - b);
 }
 
 export function groupResolvedLocations(

@@ -35,7 +35,7 @@ async function openVisibleMapMarker(
 ) {
   const visibleMarker = page.locator(`.freed-map-marker[aria-label="${label}"]:visible`).first();
   await expect(visibleMarker).toBeVisible({ timeout: 10_000 });
-  await visibleMarker.click();
+  await visibleMarker.click({ force: true });
 
   if (!popupActionName) {
     return;
@@ -1624,6 +1624,201 @@ test("map time filters switch between current and future location windows", asyn
     /theme-chip-active/,
     { timeout: 10_000 },
   );
+});
+
+test("map timeline scrubber replays historical posts and future plans", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        items: Array<{ globalId: string }>;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddFeedItems([
+      {
+        globalId: "ig:ada:rome-history",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now - 10 * 24 * 60 * 60_000,
+        publishedAt: now - 10 * 24 * 60 * 60_000,
+        author: {
+          id: "ada-ig",
+          handle: "ada",
+          displayName: "Ada Lovelace",
+        },
+        content: {
+          text: "Throwback to Rome.",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        location: {
+          name: "Rome",
+          coordinates: { lat: 41.9028, lng: 12.4964 },
+          source: "geo_tag",
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: [],
+        },
+        topics: [],
+      },
+      {
+        globalId: "ig:ada:berlin-history",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now - 3 * 24 * 60 * 60_000,
+        publishedAt: now - 3 * 24 * 60 * 60_000,
+        author: {
+          id: "ada-ig",
+          handle: "ada",
+          displayName: "Ada Lovelace",
+        },
+        content: {
+          text: "Berlin was a good idea.",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        location: {
+          name: "Berlin",
+          coordinates: { lat: 52.52, lng: 13.405 },
+          source: "geo_tag",
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: [],
+        },
+        topics: [],
+      },
+      {
+        globalId: "ig:ada:lisbon-plan",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now,
+        author: {
+          id: "ada-ig",
+          handle: "ada",
+          displayName: "Ada Lovelace",
+        },
+        content: {
+          text: "Landing in Lisbon soon.",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        location: {
+          name: "Lisbon",
+          coordinates: { lat: 38.7223, lng: -9.1393 },
+          source: "geo_tag",
+        },
+        timeRange: {
+          startsAt: now + 2 * 24 * 60 * 60_000,
+          endsAt: now + 4 * 24 * 60 * 60_000,
+          kind: "travel",
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: [],
+        },
+        topics: [],
+      },
+      {
+        globalId: "ig:ada:tokyo-plan",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now,
+        author: {
+          id: "ada-ig",
+          handle: "ada",
+          displayName: "Ada Lovelace",
+        },
+        content: {
+          text: "Then straight to Tokyo.",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        location: {
+          name: "Tokyo",
+          coordinates: { lat: 35.6764, lng: 139.65 },
+          source: "geo_tag",
+        },
+        timeRange: {
+          startsAt: now + 6 * 24 * 60 * 60_000,
+          endsAt: now + 7 * 24 * 60 * 60_000,
+          kind: "travel",
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: [],
+        },
+        topics: [],
+      },
+    ]);
+
+    await new Promise<void>((resolve, reject) => {
+      const startedAt = Date.now();
+      const interval = window.setInterval(() => {
+        const itemIds = new Set(store.getState().items.map((item) => item.globalId));
+        if (
+          itemIds.has("ig:ada:rome-history")
+          && itemIds.has("ig:ada:berlin-history")
+          && itemIds.has("ig:ada:lisbon-plan")
+          && itemIds.has("ig:ada:tokyo-plan")
+        ) {
+          clearInterval(interval);
+          resolve();
+          return;
+        }
+        if (Date.now() - startedAt > 5_000) {
+          clearInterval(interval);
+          reject(new Error("seed timeout"));
+        }
+      }, 50);
+    });
+  });
+
+  await page.getByRole("button", { name: /^Map/ }).click();
+
+  const futureButton = page.getByRole("button", { name: "Future", exact: true });
+  await futureButton.click();
+  await expect(page.getByTestId("map-timeline-scrubber")).toBeVisible({ timeout: 10_000 });
+
+  await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
+  await expect(page.getByText("Lisbon", { exact: true })).toBeVisible({ timeout: 10_000 });
+
+  await page.getByLabel("Map timeline scrubber").fill("2");
+  await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
+  await expect(page.getByText("Tokyo", { exact: true })).toBeVisible({ timeout: 10_000 });
+
+  const pastButton = page.getByRole("button", { name: "Past", exact: true });
+  await pastButton.click();
+  await expect(page.getByTestId("map-timeline-scrubber")).toBeVisible({ timeout: 10_000 });
+
+  await page.getByLabel("Map timeline scrubber").fill("1");
+  await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
+  await expect(page.getByText("Berlin", { exact: true })).toBeVisible({ timeout: 10_000 });
+
+  await page.getByLabel("Map timeline scrubber").fill("0");
+  await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
+  await expect(page.getByText("Rome", { exact: true })).toBeVisible({ timeout: 10_000 });
 });
 
 test("Friends view uses the floating detail drawer shell", async ({ app, page }) => {
