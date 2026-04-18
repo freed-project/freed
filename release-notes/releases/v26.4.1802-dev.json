@@ -1,0 +1,48 @@
+{
+  "tag": "v26.4.1802-dev",
+  "version": "26.4.1802-dev",
+  "channel": "dev",
+  "dayKey": "26.4.18",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-18T19:54:35.154Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.1800-dev",
+    "previousPublishedDayTag": "v26.4.1700-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.1800-dev",
+      "v26.4.1802-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.4.1800-dev",
+      "v26.4.1802-dev"
+    ],
+    "prNumbers": [
+      233,
+      235,
+      238
+    ],
+    "commitSubjects": [
+      "release: approve v26.4.1801-dev",
+      "release: v26.4.1801-dev",
+      "feat: add time-aware map filtering (#238)",
+      "fix: refresh public changelog after dev releases (#233)",
+      "release: approve v26.4.1800-dev",
+      "release: v26.4.1800-dev",
+      "fix: migrate legacy identity graph on startup (#235)"
+    ]
+  },
+  "release": {
+    "deck": "Time-aware map filtering and migrate legacy identity graph on startup",
+    "features": [
+      "Time-aware map filtering"
+    ],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1802-dev\n\nTime-aware map filtering and migrate legacy identity graph on startup\n\n### Features\n\n- Time-aware map filtering\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
