@@ -149,10 +149,18 @@ creates a **draft** GitHub Release using the approved checked-in release body.
 After all platform builds succeed, the workflow publishes that release
 automatically.
 
-If `VERCEL_TOKEN` is configured, production releases deploy `packages/pwa/` so
-the PWA version stays aligned with the shipped desktop release. The marketing
-site changelog is refreshed separately through `freed-ship-www`, which rebuilds
-the static website snapshot from current `www`.
+If `VERCEL_TOKEN` is configured, production releases then:
+
+- redeploys `website/` from the `www` branch so `freed.wtf/changelog`
+  rebuilds its checked-in snapshot against the published GitHub release
+- deploys `packages/pwa/` so the PWA version stays aligned with the shipped
+  desktop release
+
+Production desktop tags still come from `main`, but the marketing site does
+not. Before the website deploy runs, merge the reviewed website and changelog
+state to `www`. The release workflow now checks out `www` for the production
+website deploy and fails if that branch does not contain the tagged release
+artifact.
 
 Dev releases are published as GitHub prereleases with a `-dev` suffix and do
 not trigger production PWA deploys. They should still be followed by
