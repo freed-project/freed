@@ -290,7 +290,10 @@ function useDataFlow(layout: (typeof LAYOUT)["desktop"]) {
   const nextId = useRef(0);
   const frameRef = useRef<number>(0);
   const layoutRef = useRef(layout);
-  layoutRef.current = layout;
+
+  useEffect(() => {
+    layoutRef.current = layout;
+  }, [layout]);
 
   const pulseCapture = useCallback((index: number) => {
     setCapturePulseKeys((prev) => {
