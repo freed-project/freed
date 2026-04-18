@@ -1320,7 +1320,8 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_AUTOMERGE__ as {
-      docAddFriend: (friend: unknown) => Promise<void>;
+      docAddPerson: (person: unknown) => Promise<void>;
+      docAddAccount: (account: unknown) => Promise<void>;
       docAddFeedItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as
@@ -1333,14 +1334,26 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
       | undefined;
 
     const now = Date.now();
-    await automerge.docAddFriend({
+    await automerge.docAddPerson({
       id: "friend-ada",
       name: "Ada Lovelace",
+      relationshipStatus: "friend",
       careLevel: 5,
-      sources: [
-        { platform: "instagram", authorId: "ada-ig", handle: "ada", displayName: "Ada Lovelace" },
-      ],
       reachOutLog: [{ loggedAt: now - 40 * 24 * 60 * 60_000, channel: "text" }],
+      createdAt: now,
+      updatedAt: now,
+    });
+    await automerge.docAddAccount({
+      id: "friend-ada:instagram:ada-ig",
+      personId: "friend-ada",
+      kind: "social",
+      provider: "instagram",
+      externalId: "ada-ig",
+      handle: "ada",
+      displayName: "Ada Lovelace",
+      firstSeenAt: now,
+      lastSeenAt: now,
+      discoveredFrom: "captured_item",
       createdAt: now,
       updatedAt: now,
     });

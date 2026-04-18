@@ -200,12 +200,14 @@ export class AppFixture {
     await this.page.evaluate(async () => {
       const w = window as Record<string, unknown>;
       const automerge = w.__FREED_AUTOMERGE__ as {
-        docAddFriend: (friend: unknown) => Promise<void>;
+        docAddPerson: (person: unknown) => Promise<void>;
+        docAddAccount: (account: unknown) => Promise<void>;
         docAddFeedItems: (items: unknown[]) => Promise<void>;
       };
       const store = w.__FREED_STORE__ as {
         getState: () => {
           friends: Record<string, unknown>;
+          accounts: Record<string, unknown>;
           items: unknown[];
           setActiveView: (view: string) => void;
           setSelectedFriend: (id: string | null) => void;
@@ -213,18 +215,25 @@ export class AppFixture {
       };
 
       const now = Date.now();
-      await automerge.docAddFriend({
+      await automerge.docAddPerson({
         id: "friend-ada",
         name: "Ada Lovelace",
-        sources: [
-          {
-            platform: "instagram",
-            authorId: "ada-ig",
-            handle: "ada",
-            displayName: "Ada Lovelace",
-          },
-        ],
+        relationshipStatus: "friend",
         careLevel: 4,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await automerge.docAddAccount({
+        id: "friend-ada:instagram:ada-ig",
+        personId: "friend-ada",
+        kind: "social",
+        provider: "instagram",
+        externalId: "ada-ig",
+        handle: "ada",
+        displayName: "Ada Lovelace",
+        firstSeenAt: now,
+        lastSeenAt: now,
+        discoveredFrom: "captured_item",
         createdAt: now,
         updatedAt: now,
       });
@@ -265,7 +274,7 @@ export class AppFixture {
         const startedAt = Date.now();
         const interval = window.setInterval(() => {
           const state = store.getState();
-          if (state.friends["friend-ada"] && state.items.length > 0) {
+          if (state.friends["friend-ada"] && state.accounts["friend-ada:instagram:ada-ig"] && state.items.length > 0) {
             clearInterval(interval);
             resolve();
             return;
