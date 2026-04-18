@@ -1,0 +1,36 @@
+{
+  "tag": "v26.4.1800-dev",
+  "version": "26.4.1800-dev",
+  "channel": "dev",
+  "dayKey": "26.4.18",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-18T17:00:02.272Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.1700-dev",
+    "previousPublishedDayTag": "v26.4.1700-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.1800-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.4.1800-dev"
+    ],
+    "prNumbers": [
+      235
+    ],
+    "commitSubjects": [
+      "fix: migrate legacy identity graph on startup (#235)"
+    ]
+  },
+  "release": {
+    "deck": "Migrate legacy identity graph on startup",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1800-dev\n\nMigrate legacy identity graph on startup\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
