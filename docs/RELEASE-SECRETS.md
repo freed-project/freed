@@ -66,6 +66,15 @@ Options:
 `freed-ship-www` to publish current `www`, refresh the static changelog, or
 sync approved `main` changes into `www`.
 
+Branch promotion rules:
+
+- `dev` carries ongoing product work and dev releases.
+- `main` is only for reviewed production release promotion and rare production hotfixes.
+- Promote `dev` into `main` when shipping production. Do not treat `main` as a peer development branch.
+- If `main` gets a production-only fix or release adjustment that `dev` does not already have, merge or cherry-pick it back into `dev` immediately after the production release is stable.
+- `www` stays separate from product branches. Sync approved `main` changes into `www` when the public website or checked-in changelog needs them. Never sync `www` from `dev`.
+- If release tooling or website deploy helpers are duplicated across long-lived branches, update the matching copies in the same sweep or note the intentional divergence in the PR.
+
 `VERCEL_TOKEN` is required for GitHub Actions preview deploys and the automated
 PWA production deploy after a production desktop release.
 
@@ -162,14 +171,17 @@ After all platform builds succeed, the workflow publishes that release
 automatically.
 
 If `VERCEL_TOKEN` is configured, production releases deploy `packages/pwa/` so
-the PWA version stays aligned with the shipped desktop release. The marketing
-site changelog is refreshed separately through `freed-ship-www`, which rebuilds
-the static website snapshot from current `www`.
+the PWA version stays aligned with the shipped desktop release. After any
+GitHub release is published, the release workflow also redeploys the public
+website from current `www` so the static changelog snapshot is rebuilt against
+the latest release list. Production website deploys still require the reviewed
+website and changelog state to already be merged into `www`.
 
 Dev releases are published as GitHub prereleases with a `-dev` suffix and do
-not trigger production PWA deploys. They should still be followed by
-`freed-ship-www` in changelog refresh mode so `freed.wtf/changelog/all` can
-include the dev release in the next static marketing build.
+not trigger production PWA deploys. They do trigger the public changelog
+refresh from current `www`, so `freed.wtf/changelog/all` can pick up the dev
+release without waiting for a later production ship. Use `freed-ship-www` as
+the manual fallback if the website refresh needs to be rerun independently.
 
 For dev releases, only the Git tag and release metadata use the `-dev` suffix.
 The app package versions written to Desktop and PWA package files stay numeric,
