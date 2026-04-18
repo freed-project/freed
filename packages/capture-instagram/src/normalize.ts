@@ -55,7 +55,8 @@ function buildLocation(post: RawIgPost): Location | undefined {
   if (!post.location) return undefined;
   return {
     name: post.location,
-    source: "geo_tag",
+    ...(post.locationUrl ? { url: post.locationUrl } : {}),
+    source: post.postType === "story" ? "sticker" : "geo_tag",
   };
 }
 

@@ -50,6 +50,7 @@ import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types"
 
 const storage = new IndexedDBStorage();
 let currentDoc: FreedDoc | null = null;
+let searchCorpusVersion = 0;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -61,6 +62,31 @@ function send(msg: WorkerResponse): void {
 
 function ack(reqId: number, error?: string): void {
   send({ reqId, type: "ACK", error });
+}
+
+function bumpSearchCorpusVersion(): void {
+  searchCorpusVersion += 1;
+}
+
+function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean {
+  if (
+    "author" in updates ||
+    "content" in updates ||
+    "contentType" in updates ||
+    "preservedContent" in updates ||
+    "publishedAt" in updates ||
+    "rssSource" in updates ||
+    "topics" in updates
+  ) {
+    return true;
+  }
+
+  if (!updates.userState) return false;
+  return (
+    "hidden" in updates.userState ||
+    "tags" in updates.userState ||
+    "highlights" in updates.userState
+  );
 }
 
 /**
@@ -118,6 +144,7 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
 
   return {
     items: rankedItems,
+    searchCorpusVersion,
     feeds,
     friends,
     preferences,
@@ -165,9 +192,11 @@ async function saveAndBroadcast(): Promise<void> {
 async function applyChange(
   changeFn: (doc: FreedDoc) => void,
   message: string,
+  searchCorpusChanged = false,
 ): Promise<void> {
   if (!currentDoc) throw new Error("Document not initialized");
   currentDoc = A.change(currentDoc, message, changeFn);
+  if (searchCorpusChanged) bumpSearchCorpusVersion();
   send({ type: "DEBUG_EVENT", kind: "change", detail: message });
   await saveAndBroadcast();
 }
@@ -196,6 +225,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           const binary = A.save(currentDoc);
           await storage.save(binary);
         }
+        searchCorpusVersion = 1;
         const deviceId = (currentDoc.meta?.deviceId as string | undefined) ?? "unknown";
         send({ type: "DEBUG_EVENT", kind: "init", detail: `device ...${deviceId.slice(-8)}` });
         await saveAndBroadcast();
@@ -263,7 +293,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       case "ADD_FEED_ITEM":
         await applyChange((doc) => {
           if (!doc.feedItems[req.item.globalId]) addFeedItem(doc, req.item);
-        }, "Add feed item");
+        }, "Add feed item", true);
         ack(req.reqId);
         break;
 
@@ -272,17 +302,21 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           for (const item of req.items) {
             if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
           }
-        }, `Add ${req.items.length} feed items`);
+        }, `Add ${req.items.length} feed items`, true);
         ack(req.reqId);
         break;
 
       case "REMOVE_FEED_ITEM":
-        await applyChange((doc) => removeFeedItem(doc, req.globalId), "Remove feed item");
+        await applyChange((doc) => removeFeedItem(doc, req.globalId), "Remove feed item", true);
         ack(req.reqId);
         break;
 
       case "UPDATE_FEED_ITEM":
-        await applyChange((doc) => updateFeedItem(doc, req.globalId, req.updates), "Update feed item");
+        await applyChange(
+          (doc) => updateFeedItem(doc, req.globalId, req.updates),
+          "Update feed item",
+          feedItemUpdatesAffectSearchCorpus(req.updates),
+        );
         ack(req.reqId);
         break;
 
@@ -300,17 +334,17 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "PRUNE_ARCHIVED_ITEMS":
-        await applyChange((doc) => pruneArchivedItems(doc, req.maxAgeMs), "Prune archived items");
+        await applyChange((doc) => pruneArchivedItems(doc, req.maxAgeMs), "Prune archived items", true);
         ack(req.reqId);
         break;
 
       case "DELETE_ALL_ARCHIVED":
-        await applyChange((doc) => deleteAllArchivedItems(doc), "Delete all archived items");
+        await applyChange((doc) => deleteAllArchivedItems(doc), "Delete all archived items", true);
         ack(req.reqId);
         break;
 
       case "ADD_RSS_FEED":
-        await applyChange((doc) => addRssFeed(doc, req.feed), "Add RSS feed");
+        await applyChange((doc) => addRssFeed(doc, req.feed), "Add RSS feed", true);
         ack(req.reqId);
         break;
 
@@ -318,17 +352,26 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         await applyChange(
           (doc) => removeRssFeed(doc, req.url, req.includeItems),
           req.includeItems ? "Remove RSS feed and articles" : "Remove RSS feed",
+          true,
         );
         ack(req.reqId);
         break;
 
       case "UPDATE_RSS_FEED":
-        await applyChange((doc) => updateRssFeed(doc, req.url, req.updates as Parameters<typeof updateRssFeed>[2]), "Update RSS feed");
+        await applyChange(
+          (doc) => updateRssFeed(doc, req.url, req.updates as Parameters<typeof updateRssFeed>[2]),
+          "Update RSS feed",
+          true,
+        );
         ack(req.reqId);
         break;
 
       case "REMOVE_ALL_FEEDS":
-        await applyChange((doc) => removeAllFeeds(doc, req.includeItems), req.includeItems ? "Remove all feeds and articles" : "Remove all feeds");
+        await applyChange(
+          (doc) => removeAllFeeds(doc, req.includeItems),
+          req.includeItems ? "Remove all feeds and articles" : "Remove all feeds",
+          true,
+        );
         ack(req.reqId);
         break;
 
@@ -403,7 +446,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
         await applyChange((doc) => {
           if (!doc.feedItems[stub.globalId]) addFeedItem(doc, stub);
-        }, `Add stub item for ${req.url}`);
+        }, `Add stub item for ${req.url}`, true);
         ack(req.reqId);
         break;
       }
@@ -421,6 +464,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           detail: delta !== 0 ? `${delta > 0 ? "+" : ""}${delta} items` : "no new items",
           bytes: req.binary.byteLength,
         });
+        bumpSearchCorpusVersion();
         await saveAndBroadcast();
         ack(req.reqId);
         break;
@@ -428,6 +472,8 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
       case "CLEAR_LOCAL":
         await storage.clear();
+        currentDoc = null;
+        searchCorpusVersion = 0;
         ack(req.reqId);
         break;
 

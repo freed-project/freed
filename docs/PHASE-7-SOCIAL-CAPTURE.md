@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress — Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, silent background media guarding, provider health summaries, smart backoff, and Facebook group controls
+> **Status:** 🚧 In Progress — Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, silent background media guarding, provider health summaries, smart backoff, Facebook group controls, and preserved Instagram story location metadata for map recovery
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -98,7 +98,7 @@ Self-contained JavaScript injected into the WebView's execution context. No exte
 - **Facebook** (`fb-extract.js`): Locates "Feed posts" h3, walks subtrees for post-sized blocks
 - **Instagram** (`ig-extract.js`): Queries `<article>` elements, extracts author/caption/media from semantic header/footer structure
 - **Facebook stories** (`fb-stories-extract.js`): Injected into the FB story viewer overlay. Extracts author, media, timestamp, location/check-in. Emits via `fb-feed-data` with `postType: "story"`.
-- **Instagram stories** (`ig-stories-extract.js`): Injected into the IG story viewer overlay. Extracts author handle (from URL + DOM), media URL, timestamp, location sticker. Emits via `ig-feed-data` with `postType: "story"`.
+- **Instagram stories** (`ig-stories-extract.js`): Injected into the IG story viewer overlay. Extracts author handle (from URL + DOM), media URL, timestamp, and location sticker metadata. The normalized `FeedItem.location` now preserves the sticker source plus Instagram `locationUrl`, so later map resolution can recover real place names from generic labels such as `Locations`.
 
 Story scraping is interleaved with feed scraping in each session. A coin flip (~50%) determines whether stories are scraped before or after the initial feed passes. ~15% of sessions skip story scraping entirely (real users don't always check stories). Up to 30 story frames are captured per session.
 
@@ -138,7 +138,7 @@ const RATE_LIMITS = {
 | 7.8  | Rate limiting to avoid bans                 | ✓ Complete  |
 | 7.9  | Selector versioning strategy                | ✓ Complete  |
 | 7.10 | Location extraction (for Phase 8)           | ✓ Complete  |
-| 7.11 | Stories capture (IG + FB)                   | 🚧 In Progress |
+| 7.11 | Stories capture (IG + FB, with map-ready location metadata) | 🚧 In Progress |
 | 7.12 | Social engagement write-back (like, seen)   | ✓ Complete  |
 | 7.13 | Outbox processor for cross-device sync      | ✓ Complete  |
 | 7.14 | Comment links (open on platform)            | ✓ Complete  |
@@ -175,7 +175,7 @@ const RATE_LIMITS = {
 - [x] Sync indicator panel shows both platforms
 - [ ] Facebook feed posts validated against real account (selector tuning)
 - [ ] Instagram feed posts validated against real account (selector tuning)
-- [~] Stories captured — IG + FB story scraping integrated, with stable IG story IDs and selector tuning still needed
+- [~] Stories captured, with IG + FB story scraping integrated and Instagram story location URLs preserved for map recovery. Stable IG story IDs and selector tuning still need work.
 - [ ] Cross-platform dedup (task 7.15): IG/FB cross-posted stories/posts create duplicate FeedItems because globalId is platform-prefixed (ig: vs fb:). The existing docDeduplicateFeedItems only deduplicates by linkPreview.url. A content-similarity pass is needed: match items by same Friend identity + similar text (first 120 chars) + timestamps within a few minutes.
 - [x] Like button with outbox pattern: intent recorded immediately, synced to platform async
 - [x] Two-state like UI: "noted" (amber) vs "memorialized" (red confirmed on platform)
