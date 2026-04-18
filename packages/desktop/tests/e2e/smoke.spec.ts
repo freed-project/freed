@@ -1527,6 +1527,105 @@ test("recoverable story locations appear in All content mode and the mode persis
   });
 });
 
+test("map time filters switch between current and future location windows", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        items: Array<{ globalId: string }>;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddFeedItems([
+      {
+        globalId: "ig:ada:lisbon-plan",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now,
+        author: {
+          id: "ada-ig",
+          handle: "ada",
+          displayName: "Ada Lovelace",
+        },
+        content: {
+          text: "Landing in Lisbon later this week.",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        location: {
+          name: "Lisbon",
+          coordinates: { lat: 38.7223, lng: -9.1393 },
+          source: "geo_tag",
+        },
+        timeRange: {
+          startsAt: now + 2 * 24 * 60 * 60_000,
+          endsAt: now + 5 * 24 * 60 * 60_000,
+          kind: "travel",
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: [],
+        },
+        topics: [],
+      },
+    ]);
+
+    await new Promise<void>((resolve, reject) => {
+      const startedAt = Date.now();
+      const interval = window.setInterval(() => {
+        const hasFutureItem = store
+          .getState()
+          .items.some((item) => item.globalId === "ig:ada:lisbon-plan");
+        if (hasFutureItem) {
+          clearInterval(interval);
+          resolve();
+          return;
+        }
+        if (Date.now() - startedAt > 5_000) {
+          clearInterval(interval);
+          reject(new Error("seed timeout"));
+        }
+      }, 50);
+    });
+  });
+
+  await page.getByRole("button", { name: /^Map/ }).click();
+  await expect(page.getByRole("button", { name: "Current", exact: true })).toHaveClass(
+    /theme-chip-active/,
+    { timeout: 10_000 },
+  );
+
+  await openVisibleMapMarker(page, "Ada Lovelace");
+  await expect(page.getByText("Paris", { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Lisbon", { exact: true })).toHaveCount(0);
+
+  const futureButton = page.getByRole("button", { name: "Future", exact: true });
+  await futureButton.click();
+  await expect(futureButton).toHaveClass(/theme-chip-active/, { timeout: 10_000 });
+  await expect(page.getByText("Lisbon", { exact: true })).toBeVisible({ timeout: 10_000 });
+
+  await page.reload();
+  await app.waitForReady();
+  await dismissCloudSyncNudgeIfPresent(page);
+  await page.getByRole("button", { name: /^Map/ }).click();
+  await expect(page.getByRole("button", { name: "Future", exact: true })).toHaveClass(
+    /theme-chip-active/,
+    { timeout: 10_000 },
+  );
+});
+
 test("Friends view uses the floating detail drawer shell", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();

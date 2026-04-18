@@ -95,4 +95,16 @@ describe("store.updatePreferences", () => {
       display: { mapMode: "all_content" },
     });
   });
+
+  it("passes map time preference updates through to persistence", async () => {
+    await expect(
+      useAppStore.getState().updatePreferences({
+        display: { mapTimeMode: "future" },
+      } as never),
+    ).resolves.toBeUndefined();
+
+    expect(mockDocUpdatePreferences).toHaveBeenCalledWith({
+      display: { mapTimeMode: "future" },
+    });
+  });
 });

@@ -57,6 +57,8 @@ export type LocationSource =
   | "text_extraction";
 
 export type MapMode = "friends" | "all_content";
+export type MapTimeMode = "current" | "future" | "past";
+export type TimeRangeKind = "event" | "travel" | "overlap";
 
 // =============================================================================
 // Feed Item
@@ -109,6 +111,18 @@ export interface Location {
   coordinates?: { lat: number; lng: number };
   url?: string;
   source: LocationSource;
+}
+
+/**
+ * Optional time window for location-bearing planning items.
+ * Historical capture can omit this and continue behaving like a "current"
+ * last-seen signal, while planning-oriented sources can attach future or
+ * bounded windows.
+ */
+export interface TimeRange {
+  startsAt: number;
+  endsAt?: number;
+  kind: TimeRangeKind;
 }
 
 /**
@@ -278,6 +292,9 @@ export interface FeedItem {
 
   /** Location information (optional) */
   location?: Location;
+
+  /** Optional time window for planning-aware location playback. */
+  timeRange?: TimeRange;
 
   /** RSS-specific source info (optional) */
   rssSource?: RssSourceInfo;
@@ -535,6 +552,9 @@ export interface DisplayPreferences {
   /** Saved map display mode. Unset means compute a default from available data. */
   mapMode?: MapMode;
 
+  /** Saved map time filter. Unset means default to the current view. */
+  mapTimeMode?: MapTimeMode;
+
   /** Days to keep archived items before pruning (default: 30, 0 = never prune) */
   archivePruneDays: number;
 }
@@ -731,6 +751,7 @@ export function createDefaultPreferences(): UserPreferences {
         showReadInGrayscale: true,
         dualColumnMode: true,
       },
+      mapTimeMode: "current",
       archivePruneDays: 30,
     },
     xCapture: {

@@ -5,7 +5,7 @@
  */
 
 import { friendForAuthor, personForAuthor } from "./friends";
-import type { Account, FeedItem, Friend, MapMode, Person } from "./types.js";
+import type { Account, FeedItem, Friend, MapMode, MapTimeMode, Person, TimeRange } from "./types.js";
 
 // =============================================================================
 // Types
@@ -42,6 +42,11 @@ export interface LocationMarkerSummary {
   label?: string;
   groupCount: number;
   seenAt: number;
+}
+
+export interface LocationMarkerOptions {
+  timeMode?: MapTimeMode;
+  now?: number;
 }
 
 interface NamedLocationSignal {
@@ -206,6 +211,54 @@ function coordinateKey(lat: number, lng: number): string {
   return `${lat.toFixed(4)}:${lng.toFixed(4)}`;
 }
 
+function locationSortTimestamp(
+  item: FeedItem,
+  timeMode: MapTimeMode,
+): number {
+  const timeRange = item.timeRange;
+  if (!timeRange) return item.publishedAt;
+  if (timeMode === "past") {
+    return timeRange.endsAt ?? timeRange.startsAt;
+  }
+  return timeRange.startsAt;
+}
+
+function normalizeTimeRange(timeRange: TimeRange): { startsAt: number; endsAt: number } {
+  return {
+    startsAt: timeRange.startsAt,
+    endsAt: timeRange.endsAt ?? timeRange.startsAt,
+  };
+}
+
+export function isLocationItemVisibleInTimeMode(
+  item: FeedItem,
+  timeMode: MapTimeMode = "current",
+  now: number = Date.now(),
+): boolean {
+  const timeRange = item.timeRange;
+  if (!timeRange) {
+    return timeMode !== "future" && item.publishedAt <= now;
+  }
+
+  const normalized = normalizeTimeRange(timeRange);
+  if (timeMode === "future") {
+    return normalized.startsAt > now;
+  }
+  if (timeMode === "past") {
+    return normalized.endsAt < now;
+  }
+  return normalized.startsAt <= now && normalized.endsAt >= now;
+}
+
+export function filterResolvedLocationsByTime(
+  resolvedItems: ResolvedLocationItem[],
+  options: LocationMarkerOptions = {},
+): ResolvedLocationItem[] {
+  const timeMode = options.timeMode ?? "current";
+  const now = options.now ?? Date.now();
+  return resolvedItems.filter((resolved) => isLocationItemVisibleInTimeMode(resolved.item, timeMode, now));
+}
+
 export function groupResolvedLocations(
   resolvedItems: ResolvedLocationItem[]
 ): LocationMarkerSummary[] {
@@ -248,15 +301,21 @@ export function groupResolvedLocations(
 }
 
 export function getLatestFriendLocationMarkers(
-  resolvedItems: ResolvedLocationItem[]
+  resolvedItems: ResolvedLocationItem[],
+  options: LocationMarkerOptions = {},
 ): LocationMarkerSummary[] {
+  const timeMode = options.timeMode ?? "current";
+  const filteredItems = filterResolvedLocationsByTime(resolvedItems, options);
   const latestByFriend = new Map<string, ResolvedLocationItem>();
 
-  for (const resolved of resolvedItems) {
+  for (const resolved of filteredItems) {
     if (!resolved.friend) continue;
 
     const existing = latestByFriend.get(resolved.friend.id);
-    if (!existing || resolved.item.publishedAt > existing.item.publishedAt) {
+    if (
+      !existing ||
+      locationSortTimestamp(resolved.item, timeMode) > locationSortTimestamp(existing.item, timeMode)
+    ) {
       latestByFriend.set(resolved.friend.id, resolved);
     }
   }
@@ -264,7 +323,7 @@ export function getLatestFriendLocationMarkers(
   return Array.from(latestByFriend.values())
     .map((resolved) => {
       const pointKey = coordinateKey(resolved.lat, resolved.lng);
-      const groupCount = resolvedItems.filter(
+      const groupCount = filteredItems.filter(
         (candidate) =>
           candidate.friend?.id === resolved.friend?.id &&
           coordinateKey(candidate.lat, candidate.lng) === pointKey
@@ -279,21 +338,27 @@ export function getLatestFriendLocationMarkers(
         lng: resolved.lng,
         label: resolved.label,
         groupCount,
-        seenAt: resolved.item.publishedAt,
+        seenAt: locationSortTimestamp(resolved.item, timeMode),
       };
     })
     .sort((a, b) => b.seenAt - a.seenAt);
 }
 
 export function getLatestAuthorLocationMarkers(
-  resolvedItems: ResolvedLocationItem[]
+  resolvedItems: ResolvedLocationItem[],
+  options: LocationMarkerOptions = {},
 ): LocationMarkerSummary[] {
+  const timeMode = options.timeMode ?? "current";
+  const filteredItems = filterResolvedLocationsByTime(resolvedItems, options);
   const latestByAuthor = new Map<string, ResolvedLocationItem>();
 
-  for (const resolved of resolvedItems) {
+  for (const resolved of filteredItems) {
     const authorKey = authorIdentityKey(resolved.item);
     const existing = latestByAuthor.get(authorKey);
-    if (!existing || resolved.item.publishedAt > existing.item.publishedAt) {
+    if (
+      !existing ||
+      locationSortTimestamp(resolved.item, timeMode) > locationSortTimestamp(existing.item, timeMode)
+    ) {
       latestByAuthor.set(authorKey, resolved);
     }
   }
@@ -301,7 +366,7 @@ export function getLatestAuthorLocationMarkers(
   return Array.from(latestByAuthor.entries())
     .map(([authorKey, resolved]) => {
       const pointKey = coordinateKey(resolved.lat, resolved.lng);
-      const groupCount = resolvedItems.filter(
+      const groupCount = filteredItems.filter(
         (candidate) =>
           authorIdentityKey(candidate.item) === authorKey &&
           coordinateKey(candidate.lat, candidate.lng) === pointKey
@@ -316,7 +381,7 @@ export function getLatestAuthorLocationMarkers(
         lng: resolved.lng,
         label: resolved.label,
         groupCount,
-        seenAt: resolved.item.publishedAt,
+        seenAt: locationSortTimestamp(resolved.item, timeMode),
       };
     })
     .sort((a, b) => b.seenAt - a.seenAt);
@@ -324,11 +389,13 @@ export function getLatestAuthorLocationMarkers(
 
 export function getLastSeenLocationForFriend(
   resolvedItems: ResolvedLocationItem[],
-  friendId: string
+  friendId: string,
+  options: LocationMarkerOptions = {},
 ): LocationMarkerSummary | null {
   return (
     getLatestFriendLocationMarkers(
-      resolvedItems.filter((resolved) => resolved.friend?.id === friendId)
+      resolvedItems.filter((resolved) => resolved.friend?.id === friendId),
+      options,
     )[0] ?? null
   );
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   extractLocationFromItem,
+  filterResolvedLocationsByTime,
   getDefaultMapMode,
   getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
@@ -286,6 +287,164 @@ describe("location grouping", () => {
     expect(getDefaultMapMode(0, 4)).toBe("all_content");
     expect(getDefaultMapMode(2, 4)).toBe("friends");
     expect(getDefaultMapMode(0, 0)).toBe("friends");
+  });
+
+  it("keeps future time windows out of the current map until they start", () => {
+    const now = 1_710_000_000_000;
+    const friend = makeFriend({ id: "friend-1" });
+    const markers = getLatestFriendLocationMarkers(
+      [
+        {
+          item: makeItem({
+            globalId: "ig:1",
+            publishedAt: now - 60_000,
+          }),
+          friend,
+          lat: 48.8566,
+          lng: 2.3522,
+          label: "Paris",
+        },
+        {
+          item: makeItem({
+            globalId: "ig:2",
+            publishedAt: now - 30_000,
+            timeRange: {
+              startsAt: now + 2 * 60 * 60_000,
+              endsAt: now + 5 * 60 * 60_000,
+              kind: "travel",
+            },
+          }),
+          friend,
+          lat: 38.7223,
+          lng: -9.1393,
+          label: "Lisbon",
+        },
+      ],
+      { now, timeMode: "current" },
+    );
+
+    expect(markers).toHaveLength(1);
+    expect(markers[0]?.label).toBe("Paris");
+    expect(markers[0]?.item.globalId).toBe("ig:1");
+  });
+
+  it("shows only upcoming time windows in future mode", () => {
+    const now = 1_710_000_000_000;
+    const friend = makeFriend({ id: "friend-1" });
+    const markers = getLatestFriendLocationMarkers(
+      [
+        {
+          item: makeItem({
+            globalId: "ig:1",
+            publishedAt: now - 60_000,
+          }),
+          friend,
+          lat: 48.8566,
+          lng: 2.3522,
+          label: "Paris",
+        },
+        {
+          item: makeItem({
+            globalId: "ig:2",
+            publishedAt: now - 30_000,
+            timeRange: {
+              startsAt: now + 2 * 60 * 60_000,
+              endsAt: now + 5 * 60 * 60_000,
+              kind: "travel",
+            },
+          }),
+          friend,
+          lat: 38.7223,
+          lng: -9.1393,
+          label: "Lisbon",
+        },
+      ],
+      { now, timeMode: "future" },
+    );
+
+    expect(markers).toHaveLength(1);
+    expect(markers[0]?.label).toBe("Lisbon");
+    expect(markers[0]?.seenAt).toBe(now + 2 * 60 * 60_000);
+  });
+
+  it("routes expired time windows into the past filter", () => {
+    const now = 1_710_000_000_000;
+    const friend = makeFriend({ id: "friend-1" });
+    const resolved: ResolvedLocationItem[] = [
+      {
+        item: makeItem({
+          globalId: "ig:1",
+          publishedAt: now - 8 * 60 * 60_000,
+          timeRange: {
+            startsAt: now - 8 * 60 * 60_000,
+            endsAt: now - 4 * 60 * 60_000,
+            kind: "event",
+          },
+        }),
+        friend,
+        lat: 35.6762,
+        lng: 139.6503,
+        label: "Tokyo",
+      },
+      {
+        item: makeItem({
+          globalId: "ig:2",
+          publishedAt: now - 60_000,
+          timeRange: {
+            startsAt: now + 2 * 60 * 60_000,
+            endsAt: now + 5 * 60 * 60_000,
+            kind: "travel",
+          },
+        }),
+        friend,
+        lat: 38.7223,
+        lng: -9.1393,
+        label: "Lisbon",
+      },
+    ];
+
+    expect(filterResolvedLocationsByTime(resolved, { now, timeMode: "past" })).toHaveLength(1);
+    expect(getLatestFriendLocationMarkers(resolved, { now, timeMode: "past" })[0]?.label).toBe(
+      "Tokyo",
+    );
+  });
+
+  it("uses the current map view for the friend last-seen card", () => {
+    const now = 1_710_000_000_000;
+    const friend = makeFriend({ id: "friend-1" });
+    const lastSeen = getLastSeenLocationForFriend(
+      [
+        {
+          item: makeItem({
+            globalId: "ig:1",
+            publishedAt: now - 60_000,
+          }),
+          friend,
+          lat: 48.8566,
+          lng: 2.3522,
+          label: "Paris",
+        },
+        {
+          item: makeItem({
+            globalId: "ig:2",
+            publishedAt: now - 30_000,
+            timeRange: {
+              startsAt: now + 2 * 60 * 60_000,
+              endsAt: now + 5 * 60 * 60_000,
+              kind: "travel",
+            },
+          }),
+          friend,
+          lat: 38.7223,
+          lng: -9.1393,
+          label: "Lisbon",
+        },
+      ],
+      friend.id,
+      { now, timeMode: "current" },
+    );
+
+    expect(lastSeen?.label).toBe("Paris");
   });
 });
 

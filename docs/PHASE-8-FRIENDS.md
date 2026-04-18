@@ -1,6 +1,6 @@
 # Phase 8: Friends + Social Graph
 
-> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, and the map plus Friends surfaces resolve identity through linked accounts instead of embedded friend sources
+> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, and the map plus Friends surfaces resolve identity through linked accounts instead of embedded friend sources while the map can already switch between current, future, and past location windows
 > **Dependencies:** Phase 7 (Facebook + Instagram capture provide most social content)
 
 ---
@@ -214,6 +214,7 @@ Friend avatars now inherit a theme-authored tint across the Friends graph and ma
 Map popovers now use a wider card layout and deliberately omit the old MapLibre tail, so place names and actions fit cleanly without the popup looking like a speech bubble from a cheaper app.
 Friends and Map now consume the same shared theme tokens, button treatments, shell backgrounds, surface recipes, and theme-native map palettes as the rest of Freed, so themes like Neon, Midas, Vesper, Ember, and Scriptorium land consistently across the graph, sidebars, popovers, mini-map cards, editor, contact-sync flows, and map basemap itself.
 The shared map now includes a persisted `Friends` / `All content` toggle. It restores the user's last mode from preferences and defaults to `All content` when the library has geolocatable followed accounts but no friend-linked pins yet.
+The shared map now also persists a `Current` / `Future` / `Past` time filter. Future-dated `timeRange` windows stay out of the default current map until they start, upcoming travel or event windows can be previewed directly, and expired windows fall into a separate past view without hijacking the current last-seen map.
 
 ---
 
@@ -241,7 +242,7 @@ The shared map now includes a persisted `Friends` / `All content` toggle. It res
 | 8.18 | Wire Friends to live sidebar navigation | Low | Done |
 | 8.19 | Google Contacts source, sync lifecycle, matching, and Friend creation flow | Medium | Done |
 | 8.20 | Wire Map to live sidebar navigation | Low | Done |
-| 8.21 | Add future-aware map filtering for location-bearing items | Medium | Not Started |
+| 8.21 | Add future-aware map filtering for location-bearing items | Medium | Done |
 | 8.22 | Add map timeline scrubber for past and future playback | Medium | Not Started |
 | 8.23 | Replace embedded Friend identity with canonical `Person` + `Account` schema and Automerge migration | High | Done |
 | 8.24 | Backfill followed-account catalog from captured authors and stories | Medium | Done |
@@ -287,7 +288,7 @@ The shared map now includes a persisted `Friends` / `All content` toggle. It res
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map
 - [ ] macOS native contact picker (CNContactStore)
 - [x] Map promoted to live sidebar navigation
-- [ ] Future-aware map filtering supports past, current, and future location windows
+- [x] Future-aware map filtering supports past, current, and future location windows
 - [ ] Timeline scrubbing works across historical posts and future planning items
 - [ ] Overlaps render as derived read-time views, not persisted source records
 - [ ] Mozi-backed friend/location events appear in Friend identity and map flows
