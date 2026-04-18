@@ -238,7 +238,7 @@ type UpdateCheckState =
   | { status: "idle" }
   | { status: "checking" }
   | { status: "up-to-date" }
-  | { status: "available"; version: string }
+  | { status: "available"; version: string; channel: ReleaseChannel }
   | { status: "error" };
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -495,9 +495,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
     setUpdateState({ status: "checking" });
     try {
-      const version = await checkForUpdates();
-      const next: UpdateCheckState = version
-        ? { status: "available", version }
+      const update = await checkForUpdates();
+      const next: UpdateCheckState = update
+        ? { status: "available", version: update.version, channel: update.channel }
         : { status: "up-to-date" };
       setUpdateState(next);
       if (next.status === "up-to-date") {
@@ -1021,7 +1021,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   <div className="min-w-0">
                     <p className="text-sm text-text-primary">Release channel</p>
                     <p className="mt-0.5 text-xs text-text-muted">
-                      Changing this affects future update checks. Dev follows the latest changes from the dev branch.
+                      Changing this affects future update checks. It does not change the installed version until an update is installed.
                     </p>
                   </div>
                   <select
@@ -1065,7 +1065,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   {updateState.status === "available" && (
                     <span className="flex items-center gap-2">
                       <span className="text-xs text-[var(--theme-accent-secondary)]">
-                        Update available on {RELEASE_CHANNEL_LABELS[releaseChannel ?? "production"]}
+                        Update available on {RELEASE_CHANNEL_LABELS[updateState.channel]}
                       </span>
                       {applyUpdate && (
                         <button

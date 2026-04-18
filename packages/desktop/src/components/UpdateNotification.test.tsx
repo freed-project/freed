@@ -8,6 +8,7 @@ describe("UpdateNotification", () => {
       <UpdateNotification
         state={{
           phase: "available",
+          channel: "dev",
           update: {
             version: "26.4.109",
             body: `(AI Generated).
@@ -23,7 +24,6 @@ Map view, refined consent gates, and signed macOS installs
 `,
           } as never,
         }}
-        releaseChannel="dev"
         onInstall={() => {}}
         onRelaunch={() => {}}
         onDismiss={() => {}}
@@ -40,7 +40,6 @@ Map view, refined consent gates, and signed macOS installs
     const html = renderToStaticMarkup(
       <UpdateNotification
         state={{ phase: "downloading", percent: 100 }}
-        releaseChannel="production"
         onInstall={() => {}}
         onRelaunch={() => {}}
         onDismiss={() => {}}

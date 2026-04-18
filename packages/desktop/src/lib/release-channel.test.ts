@@ -8,19 +8,29 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: mockInvoke,
 }));
 
-import { getDesktopUpdateTarget } from "./release-channel";
+import { getDesktopUpdateTargets } from "./release-channel";
 
 describe("desktop release channel helpers", () => {
   beforeEach(() => {
     mockInvoke.mockReset();
   });
 
-  it("prefixes the native updater target with the selected channel", async () => {
+  it("checks the selected target first and falls back to production on dev", async () => {
     mockInvoke.mockResolvedValue("darwin-aarch64");
 
-    await expect(getDesktopUpdateTarget("dev")).resolves.toBe(
-      "dev-darwin-aarch64",
-    );
+    await expect(getDesktopUpdateTargets("dev")).resolves.toEqual([
+      { channel: "dev", target: "dev-darwin-aarch64" },
+      { channel: "production", target: "production-darwin-aarch64" },
+    ]);
+    expect(mockInvoke).toHaveBeenCalledWith("get_updater_target");
+  });
+
+  it("only checks production when production is selected", async () => {
+    mockInvoke.mockResolvedValue("darwin-aarch64");
+
+    await expect(getDesktopUpdateTargets("production")).resolves.toEqual([
+      { channel: "production", target: "production-darwin-aarch64" },
+    ]);
     expect(mockInvoke).toHaveBeenCalledWith("get_updater_target");
   });
 });
