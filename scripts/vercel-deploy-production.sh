@@ -104,8 +104,11 @@ echo "Pulling Vercel settings for $TARGET"
 npx vercel pull --yes --environment production --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}"
 
 if [[ "$TARGET" == "website" ]]; then
+  echo "Building $TARGET production bundle with Vercel"
+  "$NPX_BIN" vercel build --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" --prod
+
   echo "Deploying $TARGET production build to Vercel"
-  npx vercel deploy --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" -y --prod
+  "$NPX_BIN" vercel deploy --prebuilt --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" -y --prod
 else
   echo "Building $TARGET production bundle with Vercel"
   npx vercel build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" --prod

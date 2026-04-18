@@ -59,14 +59,27 @@ Options:
 2. Click "New repository secret"
 3. Add each secret listed above
 
-## Automatic website + PWA deploys
+## Explicit marketing site deploys and automatic PWA deploys
 
-`VERCEL_TOKEN` is required if you want the release workflow to deploy
-`freed.wtf` and `app.freed.wtf` automatically after a production desktop
-release is published.
+`freed.wtf` is controlled by the long-lived `www` branch. Product releases from
+`dev` or `main` do not deploy the marketing site directly. Use
+`freed-ship-www` to publish current `www`, refresh the static changelog, or
+sync approved `main` changes into `www`.
 
-Without it, the release still completes and publishes on GitHub, but the
-workflow will skip the website and PWA deploy steps.
+`VERCEL_TOKEN` is required for GitHub Actions preview deploys and the automated
+PWA production deploy after a production desktop release.
+
+Without it, desktop releases still complete and publish on GitHub, but the PWA
+deploy step and GitHub Actions owned preview deploys are skipped.
+
+Marketing preview routing:
+
+- PRs targeting `www` build and deploy website previews
+- PRs targeting `dev` build and deploy PWA previews
+- Desktop Playwright E2E runs for product PRs targeting `dev`
+- `website/vercel.json` only allows Git-triggered Vercel deploys from `www`
+- `packages/pwa/vercel.json` disables Git-triggered Vercel deploys entirely
+- GitHub Actions owns website and PWA previews through the deploy helpers
 
 ## Drafting release notes
 
@@ -138,13 +151,21 @@ automatically.
 
 If `VERCEL_TOKEN` is configured, production releases then:
 
-- redeploys `website/` so `freed.wtf/changelog` rebuilds its checked-in
-  snapshot against the published GitHub release
+- redeploys `website/` from the `www` branch so `freed.wtf/changelog`
+  rebuilds its checked-in snapshot against the published GitHub release
 - deploys `packages/pwa/` so the PWA version stays aligned with the shipped
   desktop release
 
+Production desktop tags still come from `main`, but the marketing site does
+not. Before the website deploy runs, merge the reviewed website and changelog
+state to `www`. The release workflow now checks out `www` for the production
+website deploy and fails if that branch does not contain the tagged release
+artifact.
+
 Dev releases are published as GitHub prereleases with a `-dev` suffix and do
-not trigger the production Vercel deploy steps.
+not trigger production PWA deploys. They should still be followed by
+`freed-ship-www` in changelog refresh mode so `freed.wtf/changelog/all` can
+include the dev release in the next static marketing build.
 
 The in-app updater will pick the new GitHub release up automatically.
 
@@ -161,3 +182,19 @@ To regenerate historical artifacts and rewrite older GitHub release bodies:
 ```bash
 node scripts/backfill-release-notes.mjs --rewrite-github
 ```
+
+## Cloudflare release index follow-up
+
+The Cloudflare R2 updater migration should also publish release metadata for
+the website changelog. When that lands, the website changelog generator should
+read Cloudflare release metadata at build time instead of GitHub Releases.
+
+Expected public objects:
+
+- `https://updates.freed.wtf/releases/index.json`
+- `https://updates.freed.wtf/releases/vX.Y.Z.json`
+- `https://updates.freed.wtf/releases/vX.Y.Z-dev.json`
+
+The index must include production releases and dev prereleases. The changelog
+must stay a checked-in static build snapshot so public website visitors never
+wait on release metadata fetches.
