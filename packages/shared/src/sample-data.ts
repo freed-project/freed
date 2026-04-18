@@ -465,6 +465,7 @@ export function generateSampleFriends(options?: SampleDataOptions): Friend[] {
   return sampleFriendDefs.map((friend, index) => ({
     id: friend.id,
     name: friend.name,
+    relationshipStatus: "friend",
     careLevel: friend.careLevel,
     bio: friend.bio,
     avatarUrl: friend.avatarUrl,

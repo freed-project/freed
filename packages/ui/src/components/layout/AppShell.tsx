@@ -8,11 +8,10 @@ import { FriendsView } from "../friends/FriendsView.js";
 import { ContactSyncModal } from "../friends/ContactSyncModal.js";
 import { useContactSync } from "../../hooks/useContactSync.js";
 import { ContactSyncContext } from "../../context/ContactSyncContext.js";
-import type { ContactMatch, GoogleContact } from "@freed/shared";
+import { buildDiscoveredAccountsFromItems, type GoogleContact, type IdentitySuggestion } from "@freed/shared";
 import {
-  buildFriendSourcesFromAuthorIds,
-  createDeviceContactFromGoogleContact,
-  mergeFriendSources,
+  buildSocialAccountsFromAuthorIds,
+  createContactAccountFromGoogleContact,
 } from "@freed/shared/google-contacts-automation";
 import { applyThemeToDocument, persistTheme } from "../../lib/theme.js";
 import { MapView } from "../map/MapView.js";
@@ -33,10 +32,12 @@ export function AppShell({ children }: AppShellProps) {
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);
   const items = useAppStore((s) => s.items);
-  const addFriend = useAppStore((s) => s.addFriend);
-  const updateFriend = useAppStore((s) => s.updateFriend);
+  const accounts = useAppStore((s) => s.accounts);
+  const addPerson = useAppStore((s) => s.addPerson);
+  const addAccounts = useAppStore((s) => s.addAccounts);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const themeId = useAppStore((s) => s.preferences.display.themeId);
+  const showAtmosphere = activeView !== "friends" && activeView !== "map";
 
   // Mount the contact sync hook here (not in FriendsView) so the 15-minute
   // interval and focus listener run regardless of which view is active.
@@ -49,6 +50,7 @@ export function AppShell({ children }: AppShellProps) {
   const [committedDebugWidth, setCommittedDebugWidth] = useState(persistedDebugWidth);
   const dragging = useRef(false);
   const pendingPersistedDebugWidth = useRef<number | null>(null);
+  const discoveredAccountScanRef = useRef({ itemCount: 0, accountCount: 0 });
 
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
@@ -121,55 +123,72 @@ export function AppShell({ children }: AppShellProps) {
     return () => window.removeEventListener("keydown", handler);
   }, [toggleDebug, debugVisible]);
 
-  const handleLinkContact = useCallback(async (match: ContactMatch) => {
+  useEffect(() => {
+    const itemCount = items.length;
+    const accountCount = Object.keys(accounts).length;
+    const previous = discoveredAccountScanRef.current;
+    if (itemCount === previous.itemCount && accountCount === previous.accountCount) {
+      return;
+    }
+    discoveredAccountScanRef.current = { itemCount, accountCount };
+    const missingAccounts = buildDiscoveredAccountsFromItems(items, accounts);
+    if (missingAccounts.length === 0) return;
+    void addAccounts(missingAccounts);
+  }, [accounts, addAccounts, items]);
+
+  const handleLinkSuggestion = useCallback(async (suggestion: IdentitySuggestion) => {
+    const match = contactSync.getMatchForSuggestion(suggestion.id);
+    if (!match) return;
+
     const now = Date.now();
-    const contact = createDeviceContactFromGoogleContact(match.contact, now);
-    const newSources = buildFriendSourcesFromAuthorIds(items, match.authorIds);
+    const personId = match.person?.id ?? crypto.randomUUID();
+    const person = match.person ?? {
+      id: personId,
+      name: match.contact.name.displayName ?? match.contact.name.givenName ?? "Unknown",
+      relationshipStatus: "friend" as const,
+      careLevel: 3 as const,
+      createdAt: now,
+      updatedAt: now,
+    };
 
-    if (match.friend) {
-      await updateFriend(match.friend.id, {
-        contact,
-        sources: mergeFriendSources(match.friend.sources ?? [], newSources),
-        updatedAt: now,
-      });
-    } else if (newSources.length > 0) {
-      await addFriend({
-        id: crypto.randomUUID(),
-        name: contact.name,
-        sources: newSources,
-        contact,
-        careLevel: 3,
-        createdAt: now,
-        updatedAt: now,
-      });
+    if (!match.person) {
+      await addPerson(person);
     }
 
-    for (const id of [
-      ...(match.friend ? [match.friend.id] : []),
-      ...match.authorIds,
-    ]) {
-      contactSync.dismissMatch(match.contact.resourceName, id);
+    const contactAccount = createContactAccountFromGoogleContact(match.contact, now, personId);
+    const socialAccounts = buildSocialAccountsFromAuthorIds(items, match.authorIds, now, personId);
+    const mergedAccounts = [
+      contactAccount,
+      ...socialAccounts.filter((account) => !accounts[account.id]),
+    ];
+    if (mergedAccounts.length > 0) {
+      await addAccounts(mergedAccounts);
     }
-  }, [addFriend, contactSync, items, updateFriend]);
+
+    contactSync.dismissSuggestion(suggestion.id);
+  }, [accounts, addAccounts, addPerson, contactSync, items]);
 
   const handleCreateFriend = useCallback(async (contact: GoogleContact) => {
     const now = Date.now();
-    await addFriend({
-      id: crypto.randomUUID(),
+    const personId = crypto.randomUUID();
+    await addPerson({
+      id: personId,
       name: contact.name.displayName ?? contact.name.givenName ?? "",
-      sources: [],
-      contact: createDeviceContactFromGoogleContact(contact, now),
+      relationshipStatus: "friend",
       careLevel: 3,
       createdAt: now,
       updatedAt: now,
     });
-  }, [addFriend]);
+    await addAccounts([
+      createContactAccountFromGoogleContact(contact, now, personId),
+    ]);
+  }, [addAccounts, addPerson]);
 
   const openReview = useCallback(async () => {
     const result = await contactSync.syncNow();
     const shouldOpen =
       result.authStatus === "connected" ||
-      result.pendingMatches.length > 0 ||
+      result.pendingSuggestions.length > 0 ||
       result.cachedContacts.length > 0;
     setShowContactReview(shouldOpen);
   }, [contactSync]);
@@ -180,7 +199,7 @@ export function AppShell({ children }: AppShellProps) {
           collapse its address bar when the feed scrolls. min-h-0 and overflow-hidden
           are desktop-only; they lock the layout to 100dvh for in-element scrolling. */}
       <div className="app-theme-shell relative flex flex-1 flex-col md:min-h-0">
-        <BackgroundAtmosphere />
+        {showAtmosphere ? <BackgroundAtmosphere /> : null}
         <Header
           onMenuClick={() => setSidebarOpen(true)}
           sidebarExpanded={desktopSidebarExpanded}
@@ -233,8 +252,8 @@ export function AppShell({ children }: AppShellProps) {
           <ContactSyncModal
             onClose={() => setShowContactReview(false)}
             syncState={contactSync.syncState}
-            onLink={handleLinkContact}
-            onSkip={contactSync.dismissMatch}
+            onLinkSuggestion={handleLinkSuggestion}
+            onSkipSuggestion={contactSync.dismissSuggestion}
             onCreateFriend={handleCreateFriend}
           />
         )}

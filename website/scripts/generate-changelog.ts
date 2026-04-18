@@ -4,6 +4,7 @@ import {
   groupReleasesByDay,
   normalizeGitHubReleases,
   type ParsedRelease,
+  type ReleaseBuild,
   type ReleaseChannel,
   type ReleaseItem,
 } from "../src/content/changelog";
@@ -40,6 +41,7 @@ interface LocalReleaseArtifact {
   dayKey: string;
   source?: {
     prNumbers?: number[];
+    relatedBuildTags?: string[];
   };
   release?: {
     deck?: string;
@@ -109,9 +111,38 @@ function readLocalReleaseArtifacts(): Map<string, LocalReleaseArtifact> {
   return artifacts;
 }
 
+function buildLinksFromArtifact(
+  artifact: LocalReleaseArtifact,
+  release: GitHubRelease,
+  releaseMap: Map<string, GitHubRelease>,
+): ReleaseBuild[] {
+  const relatedBuildTags = artifact.source?.relatedBuildTags ?? [];
+  const buildLinks: ReleaseBuild[] = relatedBuildTags
+    .map((tag) => releaseMap.get(tag))
+    .filter((candidate): candidate is GitHubRelease => Boolean(candidate))
+    .map((candidate) => ({
+      version: candidate.tag_name.replace(/^v/, ""),
+      htmlUrl: candidate.html_url,
+      channel: candidate.tag_name.endsWith("-dev") ? "dev" : "production",
+    }));
+
+  if (buildLinks.length > 0) {
+    return buildLinks;
+  }
+
+  return [
+    {
+      version: artifact.version || release.tag_name.replace(/^v/, ""),
+      htmlUrl: release.html_url,
+      channel: release.tag_name.endsWith("-dev") ? "dev" : "production",
+    },
+  ];
+}
+
 function releaseFromLocalArtifact(
   artifact: LocalReleaseArtifact,
   release: GitHubRelease,
+  releaseMap: Map<string, GitHubRelease>,
 ): ParsedRelease {
   const releaseShape = artifact.release ?? {};
   const version = artifact.version || release.tag_name.replace(/^v/, "");
@@ -124,6 +155,7 @@ function releaseFromLocalArtifact(
     ...(releaseShape.followUps ?? []),
     ...(releaseShape.performance ?? []),
   ]);
+  const buildLinks = buildLinksFromArtifact(artifact, release, releaseMap);
 
   return {
     version,
@@ -136,14 +168,8 @@ function releaseFromLocalArtifact(
     followUps,
     htmlUrl: release.html_url,
     prNumbers: [...new Set(artifact.source?.prNumbers ?? [])].sort((a, b) => a - b),
-    builds: [release.tag_name.replace(/^v/, "")],
-    buildLinks: [
-      {
-        version,
-        htmlUrl: release.html_url,
-        channel,
-      },
-    ],
+    builds: buildLinks.map((build) => build.version),
+    buildLinks,
   };
 }
 
@@ -160,7 +186,7 @@ async function fetchChangelog(): Promise<ParsedRelease[]> {
     const localArtifact = release ? localReleaseArtifacts.get(release.tag_name) : null;
 
     if (release && localArtifact?.release) {
-      return releaseFromLocalArtifact(localArtifact, release);
+      return releaseFromLocalArtifact(localArtifact, release, releaseMap);
     }
 
     return publishedRelease;

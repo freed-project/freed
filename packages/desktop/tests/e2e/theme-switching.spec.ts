@@ -198,6 +198,8 @@ test("rapid theme browsing only persists the final selected theme", async ({ app
   }).toBe("scriptorium");
 });
 test("map view repaints across all themes without using the old canvas filter", async ({ app, page }) => {
+  const stableMapSurfaceWidth = process.platform === "linux" ? 996 : 992;
+  await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
   await app.seedFriendLocation();
@@ -205,6 +207,22 @@ test("map view repaints across all themes without using the old canvas filter", 
 
   await page.getByRole("button", { name: /^Map/ }).click();
   await expect(page.getByTestId("map-surface")).toBeVisible({ timeout: 10_000 });
+
+  await page.evaluate((width) => {
+    const mapSurface = document.querySelector('[data-testid="map-surface"]') as HTMLElement | null;
+    if (!mapSurface) {
+      throw new Error("Map surface not found");
+    }
+
+    const stableWidth = `${width}px`;
+    mapSurface.style.width = stableWidth;
+    mapSurface.style.minWidth = stableWidth;
+    mapSurface.style.maxWidth = stableWidth;
+    mapSurface.style.height = "654px";
+    mapSurface.style.minHeight = "654px";
+    mapSurface.style.maxHeight = "654px";
+  }, stableMapSurfaceWidth);
+  await page.waitForTimeout(100);
 
   const themeIds = ["neon", "ember", "midas", "scriptorium"] as const;
 

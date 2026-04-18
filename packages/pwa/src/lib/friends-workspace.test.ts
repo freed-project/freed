@@ -17,6 +17,7 @@ function makeFriend(id: string, name: string, careLevel: Friend["careLevel"], au
   return {
     id,
     name,
+    relationshipStatus: "friend",
     careLevel,
     sources: [
       {

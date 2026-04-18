@@ -178,7 +178,7 @@ export async function createSnapshot(
     itemCount: state.docItemCount,
     friendCount: Object.keys(state.friends).length,
     contactCount: contactSyncState.cachedContacts.length,
-    pendingMatchCount: contactSyncState.pendingMatches.length,
+    pendingMatchCount: contactSyncState.pendingSuggestions.length,
     reason,
   };
 

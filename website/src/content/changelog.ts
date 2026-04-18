@@ -65,6 +65,25 @@ function normalizeReleaseText(text: string): string {
     .trim();
 }
 
+function parseComparableVersion(version: string): {
+  yy: number;
+  month: number;
+  patch: number;
+  channel: "dev" | "production";
+} {
+  const normalized = version.replace(/^v/, "");
+  const channel = normalized.endsWith("-dev") ? "dev" : "production";
+  const baseVersion = channel === "dev" ? normalized.slice(0, -"-dev".length) : normalized;
+  const [yy = "0", month = "0", patch = "0"] = baseVersion.split(".");
+
+  return {
+    yy: Number(yy),
+    month: Number(month),
+    patch: Number(patch),
+    channel,
+  };
+}
+
 function isLowSignalReleaseText(text: string): boolean {
   const normalized = normalizeReleaseText(text).toLowerCase();
 
@@ -274,24 +293,38 @@ export function normalizeGitHubReleases(
 }
 
 function compareVersionsAscending(left: string, right: string): number {
-  const leftParts = stripReleaseChannelSuffix(left)
-    .split(".")
-    .map((part) => Number(part));
-  const rightParts = stripReleaseChannelSuffix(right)
-    .split(".")
-    .map((part) => Number(part));
-  const length = Math.max(leftParts.length, rightParts.length);
+  const leftVersion = parseComparableVersion(left);
+  const rightVersion = parseComparableVersion(right);
 
-  for (let index = 0; index < length; index += 1) {
-    const leftPart = leftParts[index] ?? 0;
-    const rightPart = rightParts[index] ?? 0;
+  if (leftVersion.yy !== rightVersion.yy) {
+    return leftVersion.yy - rightVersion.yy;
+  }
 
-    if (leftPart !== rightPart) {
-      return leftPart - rightPart;
+  if (leftVersion.month !== rightVersion.month) {
+    return leftVersion.month - rightVersion.month;
+  }
+
+  if (leftVersion.patch !== rightVersion.patch) {
+    return leftVersion.patch - rightVersion.patch;
+  }
+
+  if (leftVersion.channel === rightVersion.channel) {
+    return 0;
+  }
+
+  return leftVersion.channel === "dev" ? -1 : 1;
+}
+
+function dedupeBuildLinks(buildLinks: ReleaseBuild[]): ReleaseBuild[] {
+  const deduped = new Map<string, ReleaseBuild>();
+
+  for (const buildLink of buildLinks) {
+    if (!deduped.has(buildLink.version)) {
+      deduped.set(buildLink.version, buildLink);
     }
   }
 
-  return 0;
+  return Array.from(deduped.values());
 }
 
 export function versionDayKey(version: string): string {
@@ -318,12 +351,19 @@ export function groupReleasesByDay(releases: ParsedRelease[]): ParsedRelease[] {
   return Array.from(byDay.values()).map((group) => {
     const [head, ...rest] = group;
     const allReleases = [head, ...rest];
-    const buildLinks = allReleases
-      .map((release) => ({
-        version: release.version,
-        htmlUrl: release.htmlUrl,
-        channel: release.channel,
-      }))
+    const buildLinks = dedupeBuildLinks(
+      allReleases.flatMap((release) =>
+        release.buildLinks.length > 0
+          ? release.buildLinks
+          : [
+              {
+                version: release.version,
+                htmlUrl: release.htmlUrl,
+                channel: release.channel,
+              },
+            ],
+      ),
+    )
       .sort((left, right) => compareVersionsAscending(left.version, right.version));
 
     return {

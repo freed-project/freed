@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   extractLocationFromItem,
-  friendForAuthor,
   getDefaultMapMode,
   getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
   getLastSeenLocationForFriend,
+  personForAuthor,
+  type Account,
   type FeedItem,
-  type Friend,
+  type Person,
   type LocationMarkerSummary,
   type MapMode,
   type ResolvedLocationItem,
@@ -34,7 +35,8 @@ const EMPTY_STATE: ResolvedLocationsState = {
 
 export function useResolvedLocations(
   feedItems: FeedItem[],
-  friends: Record<string, Friend>
+  persons: Record<string, Person>,
+  accounts: Record<string, Account>
 ): ResolvedLocationsState {
   const [state, setState] = useState<ResolvedLocationsState>(EMPTY_STATE);
 
@@ -49,7 +51,7 @@ export function useResolvedLocations(
         const signal = extractLocationFromItem(item);
         if (!signal) continue;
 
-        const friend = friendForAuthor(friends, item.platform, item.author.id);
+        const friend = personForAuthor(persons, accounts, item.platform, item.author.id);
 
         if ("coordinates" in signal) {
           pending.push(
@@ -104,20 +106,21 @@ export function useResolvedLocations(
     return () => {
       cancelled = true;
     };
-  }, [feedItems, friends]);
+  }, [accounts, feedItems, persons]);
 
   return state;
 }
 
 export function useFriendLastSeenLocation(
-  friend: Friend,
+  friend: Person,
+  accounts: Record<string, Account>,
   feedItems: FeedItem[]
 ): {
   lastSeen: LocationMarkerSummary | null;
   resolvingCount: number;
 } {
   const friendMap = useMemo(() => ({ [friend.id]: friend }), [friend]);
-  const { resolvedItems, resolvingCount } = useResolvedLocations(feedItems, friendMap);
+  const { resolvedItems, resolvingCount } = useResolvedLocations(feedItems, friendMap, accounts);
   return {
     lastSeen: getLastSeenLocationForFriend(resolvedItems, friend.id),
     resolvingCount,

@@ -631,10 +631,6 @@ export function MapSurface({
           className={`h-full w-full ${showFallback ? "invisible" : "visible"}`}
         />
         <div
-          className="pointer-events-none absolute inset-0"
-          style={{ background: mapPalette.overlayVignette }}
-        />
-        <div
           className="pointer-events-none absolute inset-0 [background-size:88px_88px]"
           style={{
             backgroundImage: mapGridBackground(mapPalette.boundary),

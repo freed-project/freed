@@ -9,6 +9,7 @@ import {
   slowHeroInterval,
   slowHeroSpeed,
 } from "@/lib/motion";
+import { MarketingPageShell } from "@/components/MarketingPageShell";
 
 // Responsive layout hook
 function useIsMobile() {
@@ -764,7 +765,7 @@ const phases: Phase[] = [
     number: 8,
     title: "Friends + Social Graph",
     description:
-      "A friend CRM with a stable pan-and-zoom graph workspace, a permanent resizable reconnect sidebar, Google Contacts sync and review, theme-authored avatar styling across Friends and Map, and a map with theme-native cartography that can switch between each friend's latest known location and the latest valid pin from all followed content. Unify profiles across platforms into one identity per person, persist the user's preferred map mode, restore Google contact matches from desktop snapshots, and keep growing the map into a richer view of where people were, are, and plan to be.",
+      "A people CRM with a canonical Person plus Account identity graph, a stable pan-and-zoom Friends workspace, Google Contacts imports that create friend people by default, suggestion-only same-person review across platforms, and a map that resolves identity through linked accounts while still showing followed accounts at the edge before confirmation.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-8-FRIENDS.md",
@@ -922,8 +923,7 @@ export default function RoadmapContent() {
   const progressPercent = (completedCount / totalCount) * 100;
 
   return (
-    <section className="py-24 sm:py-32 px-4 sm:px-6 md:px-12 lg:px-8">
-      <div className="max-w-4xl mx-auto">
+    <MarketingPageShell maxWidthClassName="max-w-4xl">
         {/* Header */}
         <motion.header
           initial={{ opacity: 0, y: 20 }}
@@ -1022,7 +1022,6 @@ export default function RoadmapContent() {
             </motion.button>
           </div>
         </motion.div>
-      </div>
-    </section>
+    </MarketingPageShell>
   );
 }

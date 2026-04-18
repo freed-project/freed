@@ -1,11 +1,11 @@
 import { formatDistanceToNow } from "date-fns";
-import type { FeedItem, Friend } from "@freed/shared";
+import type { FeedItem, Person } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useFriendLastSeenLocation } from "../../hooks/useResolvedLocations.js";
 import { MapSurface } from "./MapSurface.js";
 
 interface MiniFriendMapCardProps {
-  friend: Friend;
+  friend: Person;
   feedItems: FeedItem[];
   onOpenMap: () => void;
 }
@@ -15,7 +15,8 @@ export function MiniFriendMapCard({
   feedItems,
   onOpenMap,
 }: MiniFriendMapCardProps) {
-  const { lastSeen, resolvingCount } = useFriendLastSeenLocation(friend, feedItems);
+  const accounts = useAppStore((state) => state.accounts);
+  const { lastSeen, resolvingCount } = useFriendLastSeenLocation(friend, accounts, feedItems);
   const themeId = useAppStore((state) => state.preferences.display.themeId);
 
   if (!lastSeen && resolvingCount === 0) return null;

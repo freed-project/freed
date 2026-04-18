@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { MarketingPageShell } from "@/components/MarketingPageShell";
 
 export default function PrivacyContent() {
   return (
-    <section className="py-24 sm:py-32 px-4 sm:px-6 md:px-12 lg:px-8">
-      <div className="max-w-3xl mx-auto">
+    <MarketingPageShell>
         <motion.article
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -283,7 +283,6 @@ export default function PrivacyContent() {
             </section>
           </div>
         </motion.article>
-      </div>
-    </section>
+    </MarketingPageShell>
   );
 }

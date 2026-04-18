@@ -744,7 +744,7 @@ test.describe("FREED PWA", () => {
     // Should show empty state message
     await expect(page.locator("text=No content yet")).toBeVisible();
     await expect(page.locator("text=Connect to your desktop app")).toBeVisible();
-    await expect(page.locator("text=Alternatively, if you're just testing:")).toBeVisible();
+    await expect(page.locator("text=Alternatively, for preview & testing:")).toBeVisible();
     await expect(page.getByRole("button", { name: /Populate sample data/i })).toBeVisible();
   });
 

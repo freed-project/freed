@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress — Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, silent background media guarding, provider health summaries, smart backoff, Facebook group controls, and preserved Instagram story location metadata for map recovery
+> **Status:** 🚧 In Progress — Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, silent background media guarding, provider health summaries, smart backoff, Facebook group controls, preserved Instagram story location metadata for map recovery, and captured authors now feeding the Phase 8 account catalog for identity review
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -170,6 +170,7 @@ const RATE_LIMITS = {
 - [x] Social provider sections include a line-by-line scrape log so users can see what the scraper is doing in real time
 - [x] Desktop social scraper commands serialize behind a shared native session lock so background WebKit jobs cannot overlap and starve the main renderer
 - [x] Social provider source menus surface a quick status explanation for warning or reconnect states before routing into full settings
+- [x] Captured social authors can backfill the Phase 8 account catalog so followed accounts exist before identity confirmation
 - [x] Empty states for both platforms in the feed view
 - [x] Source indicators in sidebar for both platforms
 - [x] Sync indicator panel shows both platforms

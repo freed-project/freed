@@ -388,11 +388,12 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
-  const setSelectedFriend = useAppStore((s) => s.setSelectedFriend);
+  const setSelectedFriend = useAppStore((s) => s.setSelectedPerson);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const feeds = useAppStore((s) => s.feeds);
-  const friends = useAppStore((s) => s.friends);
+  const friends = useAppStore((s) => s.persons);
+  const accounts = useAppStore((s) => s.accounts);
   const feedUnreadCounts = useAppStore((s) => s.feedUnreadCounts);
   const feedTotalCounts = useAppStore((s) => s.feedTotalCounts);
   const renameFeed = useAppStore((s) => s.renameFeed);
@@ -420,8 +421,8 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
   const archivedCount = useMemo(() => items.filter((i) => i.userState.archived).length, [items]);
   const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
   const mapFriendCount = useMemo(
-    () => countFriendsWithRecentLocationUpdates(items, friends),
-    [friends, items]
+    () => countFriendsWithRecentLocationUpdates(items, friends, accounts),
+    [accounts, friends, items]
   );
   const mapAllContentCount = useMemo(
     () => countAuthorsWithRecentLocationUpdates(items),
@@ -1309,7 +1310,7 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
         data-testid="app-sidebar-shell"
         className="hidden md:flex flex-none overflow-hidden"
         style={{
-          width: desktopExpanded ? width + 12 : 0,
+          width: desktopExpanded ? width + 16 : 0,
           opacity: desktopExpanded ? 1 : 0,
           paddingTop: desktopExpanded ? "var(--feed-card-gap, 8px)" : 0,
           transition: dragging.current ? "none" : "width 220ms ease, opacity 180ms ease",
@@ -1318,7 +1319,7 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
         <div className="flex h-full w-full items-stretch">
           <aside
             data-testid="app-sidebar"
-            className="theme-floating-panel relative z-10 flex h-full min-h-0 flex-col overflow-hidden"
+            className="theme-floating-panel relative z-10 flex h-full min-h-0 shrink-0 flex-col overflow-hidden"
             style={{ width: `${width}px` }}
           >
             {sidebarBody}

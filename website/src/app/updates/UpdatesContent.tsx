@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { posts } from "@/content";
 import { useNewsletter } from "@/context/NewsletterContext";
+import { MarketingPageShell } from "@/components/MarketingPageShell";
 
 function formatDate(dateString: string): string {
   // Parse as local date to avoid timezone shift
@@ -20,8 +21,7 @@ export default function UpdatesContent() {
   const { openModal } = useNewsletter();
 
   return (
-    <section className="py-24 sm:py-32 px-4 sm:px-6 md:px-12 lg:px-8">
-      <div className="max-w-3xl mx-auto">
+    <MarketingPageShell>
         {/* Header */}
         <motion.header
           initial={{ opacity: 0, y: 20 }}
@@ -133,7 +133,6 @@ export default function UpdatesContent() {
             Get Email Updates
           </motion.button>
         </motion.div>
-      </div>
-    </section>
+    </MarketingPageShell>
   );
 }
