@@ -355,10 +355,13 @@ export async function captureDomFeed(
 > and Freed Desktop can switch locally between production releases from `main`
 > and dev prereleases from `dev` without syncing that preference through the
 > shared document.
-> Release shipping no longer redeploys `freed.wtf` directly. The public
-> marketing site is controlled by the `www` branch and the `freed-ship-www`
-> workflow. After a dev or production release ships, `freed-ship-build`
-> should refresh the static marketing changelog from current `www` without
+> The public marketing site is controlled by the `www` branch. After any
+> GitHub release is published, the workflow now redeploys `freed.wtf` from the
+> current `www` branch so the changelog snapshot rebuilds against the newly
+> published release instead of waiting for a later production ship. Production
+> desktop tags still come from `main`, and production website deploys still
+> require the reviewed website and changelog state to be merged into `www`
+> first. Dev releases refresh the public changelog from current `www` without
 > ever moving `www` to `dev`. See `RELEASE-SECRETS.md` for the full setup
 > checklist.
 
