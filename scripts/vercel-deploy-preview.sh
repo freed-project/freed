@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 1 ]]; then
-  echo "Usage: $0 website|pwa" >&2
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/node-tooling.sh
+source "${SCRIPT_DIR}/lib/node-tooling.sh"
+use_resolved_node_path
+NPM_BIN="$(resolve_npm_bin)"
+NPX_BIN="$(resolve_npx_bin)"
+
+if [[ $# -lt 1 || $# -gt 2 ]]; then
+  echo "Usage: $0 website|pwa [vercel-token]" >&2
   exit 1
 fi
 
 TARGET="$1"
+VERCEL_TOKEN="${2:-${VERCEL_TOKEN:-}}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/freed-vercel-preview.XXXXXX")"
 
@@ -74,26 +82,34 @@ done
 echo "Verifying preview bundle for $TARGET from $TEMP_DIR"
 (
   cd "$TEMP_DIR"
-  npm install
+  "$NPM_BIN" ci
   if [[ "$TARGET" == "website" ]]; then
-    npm run build --workspace=website
+    "$NPM_BIN" run build --workspace=website
   elif [[ "$STAGE_AT_ROOT" == "true" ]]; then
-    npm run build
+    "$NPM_BIN" run build
   else
-    npm run build -w @freed/pwa
+    "$NPM_BIN" run build -w @freed/pwa
   fi
 )
 
+VERCEL_FLAGS=(--scope aubreyfs-projects)
+if [[ -n "$VERCEL_TOKEN" ]]; then
+  VERCEL_FLAGS+=(--token "$VERCEL_TOKEN")
+fi
+
 echo "Pulling Vercel settings for $TARGET"
-npx vercel pull --yes --environment preview --cwd "$TEMP_DIR" --scope aubreyfs-projects
+"$NPX_BIN" vercel pull --yes --environment preview --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}"
 
 if [[ "$TARGET" == "website" ]]; then
-  echo "Deploying $TARGET preview with Vercel"
-  npx vercel deploy --cwd "$TEMP_DIR" --scope aubreyfs-projects -y
-else
   echo "Building $TARGET preview with Vercel"
-  npx vercel build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" --scope aubreyfs-projects
+  "$NPX_BIN" vercel build --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}"
 
   echo "Deploying $TARGET preview with Vercel"
-  npx vercel deploy --prebuilt --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" --scope aubreyfs-projects -y
+  "$NPX_BIN" vercel deploy --prebuilt --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" -y
+else
+  echo "Building $TARGET preview with Vercel"
+  "$NPX_BIN" vercel build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}"
+
+  echo "Deploying $TARGET preview with Vercel"
+  "$NPX_BIN" vercel deploy --prebuilt --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" -y
 fi
