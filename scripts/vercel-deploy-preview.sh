@@ -82,13 +82,13 @@ done
 echo "Verifying preview bundle for $TARGET from $TEMP_DIR"
 (
   cd "$TEMP_DIR"
-  npm install
+  "$NPM_BIN" ci
   if [[ "$TARGET" == "website" ]]; then
-    npm run build --workspace=website
+    "$NPM_BIN" run build --workspace=website
   elif [[ "$STAGE_AT_ROOT" == "true" ]]; then
-    npm run build
+    "$NPM_BIN" run build
   else
-    npm run build -w @freed/pwa
+    "$NPM_BIN" run build -w @freed/pwa
   fi
 )
 

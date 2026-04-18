@@ -18,7 +18,6 @@ import type {
   ContactSyncState,
   BugReportDraft,
   BugReportIssueType,
-  BugReportScreenshot,
   GeneratedBugReportBundle,
   ImportProgress,
   ReportPrivacyTier,
@@ -77,7 +76,6 @@ export interface BugReportingConfig {
     draft: BugReportDraft;
     privacyTier: ReportPrivacyTier;
   }) => Promise<GeneratedBugReportBundle>;
-  captureScreenshot?: () => Promise<BugReportScreenshot | null>;
   exportBundle?: (bundle: GeneratedBugReportBundle) => Promise<void>;
   openUrl?: (url: string) => void;
 }
@@ -116,6 +114,12 @@ export interface PlatformConfig {
 
   /** When true, Header becomes a native draggable title bar with traffic light padding */
   headerDragRegion?: boolean;
+
+  /**
+   * Start a native window drag gesture from an interactive toolbar control.
+   * Desktop only.
+   */
+  startWindowDrag?: () => Promise<void>;
 
   // -- Layout slot components (null = not rendered) --
 
@@ -311,7 +315,7 @@ export interface PlatformConfig {
 
 export interface ContactSyncActions {
   syncNow: () => Promise<ContactSyncState>;
-  dismissMatch: (contactResourceName: string, friendIdOrAuthorId: string) => void;
+  dismissSuggestion: (suggestionId: string) => void;
   openReview: () => Promise<void>;
 }
 

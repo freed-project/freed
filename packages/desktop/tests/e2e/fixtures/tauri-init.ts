@@ -68,6 +68,7 @@ export function tauriInitScript(): string {
     };
     window.__TAURI_MOCK_INVOCATIONS__ = [];
     window.__TAURI_MOCK_OPENED_URLS__ = [];
+    window.__TAURI_MOCK_WINDOW_DRAG_CALLS__ = [];
     window.__TAURI_MOCK_CALLBACKS__ = {};
     window.__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__ = {};
     window.__TAURI_MOCK_UPDATE_CHECK_CALLS__ = [];

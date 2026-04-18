@@ -38,6 +38,7 @@ import {
 import { clearLocalDoc, getItemPreservedText } from "./lib/automerge";
 import { isTauri } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { log } from "./lib/logger";
 import { setLogTransport } from "@freed/ui/lib/debug-store";
 import { clearStoredCookies, storeCookies } from "./lib/x-auth";
@@ -84,6 +85,7 @@ const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
 const IS_LOCAL_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1";
 const RENDERER_HEARTBEAT_INTERVAL_MS = 60 * 1000;
+const DOWNLOAD_PAGE_URL = "https://freed.wtf/get";
 
 type PendingDesktopUpdate = {
   channel: ReleaseChannel;
@@ -187,7 +189,7 @@ function App() {
   }, [legalAccepted]);
 
   useEffect(() => {
-    if (!legalAccepted || !isTauri()) return;
+    if (!isTauri()) return;
 
     let heartbeatSeq = 0;
 
@@ -227,13 +229,14 @@ function App() {
       window.removeEventListener("pagehide", handlePageHide);
       sendRendererHeartbeat("cleanup");
     };
-  }, [legalAccepted]);
+  }, []);
 
   // --- Update system ---
 
   // Single source of truth for update state, shared by the toast and the Settings flow.
   const [updateState, setUpdateState] = useState<UpdateState>({ phase: "idle" });
   const pendingUpdate = useRef<PendingDesktopUpdate | null>(null);
+  const crashRecoveryUpdateCheckStarted = useRef(false);
 
   // Show a "just updated" banner for 5s after a process relaunch.
   const [justUpdated, setJustUpdated] = useState<string | null>(null);
@@ -304,6 +307,22 @@ function App() {
     return null;
   }, [findAvailableUpdate]);
 
+  const isStartupCrash = Boolean(error && !isInitialized);
+  const isCrashState = isStartupCrash || Boolean(fatalError);
+
+  // Recovery mode should not wait for the 5 second background poll.
+  useEffect(() => {
+    if (!legalAccepted || IS_LOCAL_PREVIEW || !isCrashState) {
+      crashRecoveryUpdateCheckStarted.current = false;
+      return;
+    }
+    if (crashRecoveryUpdateCheckStarted.current) return;
+    crashRecoveryUpdateCheckStarted.current = true;
+    void checkForUpdates().catch(() => {
+      // Silent. Recovery still exposes the manual download path.
+    });
+  }, [checkForUpdates, isCrashState, legalAccepted]);
+
   // Download + install with progress, then relaunch. Used by both the toast
   // and the "Install & Restart" button in Settings via PlatformContext.
   const applyUpdate = useCallback(async () => {
@@ -347,6 +366,9 @@ function App() {
 
   const handleRelaunch = useCallback(() => relaunch(), []);
   const handleDismissUpdate = useCallback(() => setUpdateState({ phase: "idle" }), []);
+  const handleOpenLatestDownload = useCallback(() => {
+    void shellOpen(DOWNLOAD_PAGE_URL);
+  }, []);
   const setReleaseChannel = useCallback((channel: ReleaseChannel) => {
     if (channel === releaseChannel) {
       return;
@@ -447,6 +469,10 @@ function App() {
       importOPMLFeeds,
       exportFeedsAsOPML,
       headerDragRegion: true,
+      startWindowDrag:
+        import.meta.env.VITE_TEST_TAURI === "1" || isTauri()
+          ? () => getCurrentWindow().startDragging()
+          : undefined,
       SourceIndicator: XSourceIndicator,
       HeaderSyncIndicator: null,
       SettingsExtraSections: MobileSyncTab,
@@ -590,68 +616,65 @@ function App() {
     );
   }
 
-  if (error && !isInitialized) {
-    return (
-      <PlatformProvider value={platform}>
-        <FatalErrorScreen
-          error={{ message: error }}
-          productName="Freed Desktop"
-          onRetry={() => window.location.reload()}
-        />
-      </PlatformProvider>
-    );
-  }
-
-  if (fatalError) {
-    return (
-      <PlatformProvider value={platform}>
-        <FatalErrorScreen
-          error={fatalError}
-          productName="Freed Desktop"
-          onRetry={() => {
-            clearFatalRuntimeError();
-            window.location.reload();
-          }}
-        />
-      </PlatformProvider>
-    );
-  }
-
   return (
     <Profiler id="App" onRender={onRender}>
-    <PlatformProvider value={platform}>
-      <BugReportBoundary>
-        <div className="h-screen flex flex-col bg-transparent">
-          <AppShell>
-            <FeedView />
-          </AppShell>
-          <UpdateNotification
-            state={updateState}
-            onInstall={applyUpdate}
-            onRelaunch={handleRelaunch}
-            onDismiss={handleDismissUpdate}
+      <PlatformProvider value={platform}>
+        {isStartupCrash ? (
+          <FatalErrorScreen
+            error={{ message: error ?? "Unknown fatal error" }}
+            productName="Freed Desktop"
+            onRetry={() => window.location.reload()}
+            onSecondaryAction={handleOpenLatestDownload}
+            secondaryActionLabel="Download latest Freed Desktop"
           />
-        </div>
+        ) : fatalError ? (
+          <FatalErrorScreen
+            error={fatalError}
+            productName="Freed Desktop"
+            onRetry={() => {
+              clearFatalRuntimeError();
+              window.location.reload();
+            }}
+            onSecondaryAction={handleOpenLatestDownload}
+            secondaryActionLabel="Download latest Freed Desktop"
+          />
+        ) : (
+          <>
+            <BugReportBoundary>
+              <div className="h-screen flex flex-col bg-transparent">
+                <AppShell>
+                  <FeedView />
+                </AppShell>
+              </div>
+            </BugReportBoundary>
 
-        {/* Toast nudge — shown every launch while no cloud provider is connected */}
-        <CloudSyncNudge />
-        <ToastContainer />
+            {/* Toast nudge — shown every launch while no cloud provider is connected */}
+            <CloudSyncNudge />
+            <ToastContainer />
 
-        {/* Post-restart confirmation — shown for 5s after a successful update relaunch */}
-        {justUpdated && (
-          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 animate-slide-up pointer-events-none">
-            <div className="rounded-2xl bg-[var(--freed-surface)] px-4 py-3 shadow-lg border border-[rgba(34,197,94,0.3)] flex items-center gap-2">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-                <path d="M3 8l3.5 3.5L13 5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <span className="text-sm text-text-primary">
-                Updated to <span className="font-mono font-bold">v{justUpdated}</span>
-              </span>
-            </div>
-          </div>
+            {/* Post-restart confirmation — shown for 5s after a successful update relaunch */}
+            {justUpdated && (
+              <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 animate-slide-up pointer-events-none">
+                <div className="rounded-2xl bg-[var(--freed-surface)] px-4 py-3 shadow-lg border border-[rgba(34,197,94,0.3)] flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+                    <path d="M3 8l3.5 3.5L13 5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <span className="text-sm text-text-primary">
+                    Updated to <span className="font-mono font-bold">v{justUpdated}</span>
+                  </span>
+                </div>
+              </div>
+            )}
+          </>
         )}
-      </BugReportBoundary>
-    </PlatformProvider>
+
+        <UpdateNotification
+          state={updateState}
+          onInstall={applyUpdate}
+          onRelaunch={handleRelaunch}
+          onDismiss={handleDismissUpdate}
+        />
+      </PlatformProvider>
     </Profiler>
   );
 }

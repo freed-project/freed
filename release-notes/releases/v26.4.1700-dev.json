@@ -1,0 +1,44 @@
+{
+  "tag": "v26.4.1700-dev",
+  "version": "26.4.1700-dev",
+  "channel": "dev",
+  "dayKey": "26.4.17",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-18T04:28:02.088Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.1601-dev",
+    "previousPublishedDayTag": "v26.4.1601-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.1700-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.4.1700-dev"
+    ],
+    "prNumbers": [
+      225,
+      226,
+      228,
+      229,
+      230
+    ],
+    "commitSubjects": [
+      "feat: refactor friends into a person account identity graph (#228)",
+      "perf: defer worktree bootstrap and track local previews (#229)",
+      "fix: restore desktop toolbar window dragging (#230)",
+      "fix: show map pins for all content (#226)",
+      "perf: reduce search memory retention (#225)"
+    ]
+  },
+  "release": {
+    "deck": "Refactor friends into a person account identity graph",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1700-dev\n\nRefactor friends into a person account identity graph\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

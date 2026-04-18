@@ -1512,16 +1512,21 @@ html[data-theme="scriptorium"] .theme-floating-panel {
   margin-inline-start: 0.5rem;
 }
 
+.theme-reader-rail-slot {
+  margin-inline-end: 0.5rem;
+}
+
 .theme-toolbar-slot {
   display: flex;
+  flex: 0 0 var(--toolbar-slot-width, auto);
   align-items: center;
   min-width: 0;
+  width: var(--toolbar-slot-width, auto);
   max-width: var(--toolbar-slot-width, 16rem);
   overflow: hidden;
   opacity: 1;
   transform: translateX(0);
   transition:
-    max-width 0.24s cubic-bezier(0.22, 1, 0.36, 1),
     opacity 0.18s ease,
     transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
     margin-inline-start 0.24s cubic-bezier(0.22, 1, 0.36, 1);

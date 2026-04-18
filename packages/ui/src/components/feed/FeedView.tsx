@@ -227,6 +227,7 @@ export function FeedView() {
   const feeds = useAppStore((s) => s.feeds);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const markAsRead = useAppStore((s) => s.markAsRead);
@@ -296,7 +297,12 @@ export function FeedView() {
 
   // useSearchResults handles both the search and the normal ranked+filtered path.
   // When searchQuery is empty it behaves identically to the previous useMemo.
-  const { filteredItems, isSearching, resultCount } = useSearchResults(items, searchQuery, activeFilter);
+  const { filteredItems, isSearching, resultCount } = useSearchResults(
+    items,
+    searchQuery,
+    activeFilter,
+    searchCorpusVersion,
+  );
 
   const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds), [activeFilter, feeds]);
   const dualColumnMode = useAppStore((s) => s.preferences.display.reading.dualColumnMode);
@@ -415,7 +421,7 @@ export function FeedView() {
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(0);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof document === "undefined") return;
     document.documentElement.style.setProperty(
       "--freed-reader-rail-width",

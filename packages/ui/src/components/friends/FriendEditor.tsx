@@ -251,6 +251,7 @@ export function FriendEditor({
       name: name.trim(),
       avatarUrl: avatarUrl.trim() || undefined,
       bio: bio.trim() || undefined,
+      relationshipStatus: existing?.relationshipStatus ?? "friend",
       sources,
       contact,
       careLevel,

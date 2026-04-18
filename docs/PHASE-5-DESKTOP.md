@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -199,6 +199,7 @@ export async function captureDomFeed(
 | 5.31 | Provider health dashboard, charts, and unsubscribe flow                 | Medium     |
 | 5.32 | Rotating local database snapshots + restore UI                          | Medium     |
 | 5.33 | Public-safe and private bug report bundles                              | Medium     |
+| 5.34 | Native startup recovery window outside the React tree                  | Medium     |
 
 ---
 
@@ -224,10 +225,12 @@ export async function captureDomFeed(
 - [x] Legal acceptance stays outside synced Automerge state
 - [x] Freed Desktop keeps rotating local database snapshots with a restore flow in Settings
 - [x] Desktop E2E test infrastructure bootstrapped (Playwright + VITE_TEST_TAURI=1 mock layer)
+- [x] Local desktop preview now defaults to the mocked browser harness, while tracked preview slots keep concurrent local threads to one desktop preview at a time unless native Tauri behavior is explicitly requested
 - [x] Desktop navigation history supports browser-style back and forward shortcuts for views and reader state
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Private diagnostic bundles are opt-in, redacted, and steered toward email instead of public GitHub attachment
 - [x] Freed Desktop emits native renderer heartbeats and warns in the local log when the main window goes silent long enough to suggest a renderer hang or crash
+- [x] If the renderer dies before the app finishes booting, the next launch opens a native recovery window with retry and latest-build download actions outside the React tree
 - [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
 - [x] macOS DMG is notarized in CI releases
 - [x] Checked-in release notes are reviewed before a release tag can publish
@@ -257,6 +260,7 @@ export async function captureDomFeed(
 - [x] Facebook group settings show active group counts in the header, keep refresh with the bulk actions, and split scraped `Last active ...` text into its own smaller right-aligned column instead of mashing it into the group name
 - [x] The redundant desktop header sync dropdown has been removed, leaving the sidebar source menus and provider settings as the canonical sync status and action surfaces
 - [x] Desktop view chrome now routes through one shared top toolbar, so feed, reader, and Friends stop stacking separate bars on top of each other
+- [x] Desktop top-toolbar controls now keep normal click behavior, but a full drag gesture from the wordmark, title area, or toolbar buttons repositions the native window the way a title bar should
 - [x] The primary sidebar and right debug drawer now render as floating shell cards using the same glassy header treatment as the marketing navbar
 - [x] Reader toolbar controls now lock to the live sidebar and thumbnail-rail widths, so the sidebar toggle, dual-column toggle, and back-to-list control stay aligned with the floating cards below them
 - [x] Settings now use a shared polished dropdown treatment, and Appearance keeps the theme selector as one compact row instead of a descriptive mini card
@@ -279,6 +283,8 @@ export async function captureDomFeed(
 - [x] Removing RSS feeds now also drops their retained provider-health diagnostics instead of keeping dead feed histories in memory and storage forever
 - [x] Desktop live UI state now caps preserved article text previews and fetches full preserved text on demand for the active reader item, instead of cloning entire article bodies through every feed-state update
 - [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation
+- [x] Search now drops its MiniSearch index as soon as the query clears, rebuilds only when the worker says the searchable corpus changed, and indexes a smaller preserved-text window so one exploratory search cannot pin a second full-text copy of the library in renderer memory
+- [x] Desktop perf memory checks now use CDP heap-usage sampling instead of the broken zero-value metric path, and they include a heavy preserved-text search scenario so renderer retention regressions show up in CI
 - [ ] Windows installer is code-signed (requires EV certificate)
 - [x] Update server runs on a Freed-owned domain instead of pointing the updater directly at GitHub Releases
 - [x] Desktop settings can switch this install between production and dev release channels, and the dev channel will install a newer production release when no newer dev build exists without switching the saved channel
@@ -288,11 +294,14 @@ export async function captureDomFeed(
 > required Apple secrets are present. The release workflow now fails fast
 > instead of silently shipping an unsigned macOS artifact. Windows
 > SmartScreen warnings will still appear until an EV certificate is
-> obtained or enough installs build reputation. Desktop now also keeps dev
-> installs on the newest eligible build even when that build comes from the
-> production channel. When production gets ahead of the last dev build, the
-> app now offers that production update without flipping the saved channel
-> away from dev. Desktop now also writes
+> obtained or enough installs build reputation. The shared desktop toolbar
+> now behaves like a real title bar again, including threshold-based window
+> dragging from toolbar controls plus normal cursor and selection treatment
+> for static toolbar labels. Desktop now also keeps dev installs on the
+> newest eligible build even when that build comes from the production
+> channel. When production gets ahead of the last dev build, the app now
+> offers that production update without flipping the saved channel away
+> from dev. Desktop now also writes
 > rotating local Automerge snapshots, including Google contact match state,
 > so catastrophic local corruption can be rolled back from Settings.
 > The desktop runtime now also emits periodic memory telemetry into the
@@ -316,9 +325,21 @@ export async function captureDomFeed(
 > updates also now cap preserved article text previews and fetch the full
 > preserved text only for the reader item that is actually open, instead of
 > cloning full article bodies through the live UI state on every mutation.
+> Search now tears down its MiniSearch index as soon as the query clears,
+> rebuilds it only when the worker reports a real corpus change, and indexes
+> a smaller preserved-text window so a one-off search cannot keep a second
+> library-sized text copy resident in renderer memory for the rest of the
+> session. The desktop perf harness also switched from Chromium's broken
+> zero-value heap metric path to `Runtime.getHeapUsage()` and added a heavy
+> preserved-text search scenario, so memory regressions stop passing CI by
+> emitting a very confident `0.0 MB`.
 > Desktop persistence also now appends Automerge incremental saves to the
 > last stored snapshot and compacts back to a fresh snapshot only when the
 > incremental tail has grown large enough to justify it.
+> Local developer workflow now also defaults desktop preview to the
+> `VITE_TEST_TAURI=1` browser harness, with tracked preview slots so
+> multiple concurrent worktrees do not each spin up their own native Tauri
+> stack by default.
 > Release notes now use a
 > checked-in review gate: `./scripts/release.sh` prepares draft notes and
 > daily editorial memory, then `./scripts/release-publish.sh` tags only after
@@ -340,15 +361,15 @@ export async function captureDomFeed(
 > and Freed Desktop can switch locally between production releases from `main`
 > and dev prereleases from `dev` without syncing that preference through the
 > shared document.
-> The public marketing site is controlled by the `www` branch. After the
-> GitHub release is published, the workflow now
-> redeploys `freed.wtf` from the `www` branch so the changelog snapshot
-> rebuilds against the newly published release instead of the earlier draft
-> state. Production desktop tags still come from `main`, but production
-> website deploys must first merge the reviewed website and changelog state to
-> `www`. Dev releases should still refresh the static marketing changelog from
-> current `www` without ever moving `www` to `dev`. See `RELEASE-SECRETS.md`
-> for the full setup checklist.
+> The public marketing site is controlled by the `www` branch. After any
+> GitHub release is published, the workflow now redeploys `freed.wtf` from the
+> current `www` branch so the changelog snapshot rebuilds against the newly
+> published release instead of waiting for a later production ship. Production
+> desktop tags still come from `main`, and production website deploys still
+> require the reviewed website and changelog state to be merged into `www`
+> first. Dev releases refresh the public changelog from current `www` without
+> ever moving `www` to `dev`. See `RELEASE-SECRETS.md` for the full setup
+> checklist.
 
 ### Mobile
 

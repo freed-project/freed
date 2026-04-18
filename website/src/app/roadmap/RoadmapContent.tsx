@@ -701,7 +701,7 @@ const phases: Phase[] = [
     number: 1,
     title: "Foundation",
     description:
-      "Marketing site, QR gallery, monorepo, Automerge schema, CI/CD, public legal docs with download clickwrap, and a protected newsletter signup flow.",
+      "Marketing site, QR gallery, monorepo, Automerge schema, CI/CD, public legal docs with download clickwrap, a protected newsletter signup flow, and deferred local worktree bootstrap with tracked preview tooling.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-1-FOUNDATION.md",
@@ -737,7 +737,7 @@ const phases: Phase[] = [
     number: 5,
     title: "Desktop & Mobile App",
     description:
-      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, a Freed-owned updater endpoint, local production or dev release-channel switching that keeps dev installs on the newest eligible build, first-run legal gating, provider risk interstitials, browser-style back and forward shortcuts, local snapshot rollback for disaster recovery, a provider health dashboard, failing-feed unsubscribe tools, renderer heartbeat diagnostics in the local log, runtime memory telemetry for long-session leak hunting, renderer heap and DOM diagnostics, reduced worker payload churn during large-library updates, duplicate-fetch suppression, fetcher rescans gated to real library growth, incremental Automerge persistence compaction, leaner outbox retry bookkeeping, dead-feed health cleanup, capped preserved-text previews with on-demand reader fetches, reviewed cumulative release headings, paginated changelog history, and public-safe bug reporting.",
+      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, a Freed-owned updater endpoint, local production or dev release-channel switching that keeps dev installs on the newest eligible build, first-run legal gating, provider risk interstitials, browser-style back and forward shortcuts, draggable shared top-toolbar chrome, local snapshot rollback for disaster recovery, a native startup recovery window outside the React tree, a provider health dashboard, failing-feed unsubscribe tools, renderer heartbeat diagnostics in the local log, runtime memory telemetry for long-session leak hunting, renderer heap and DOM diagnostics, reduced worker payload churn during large-library updates, duplicate-fetch suppression, fetcher rescans gated to real library growth, incremental Automerge persistence compaction, leaner outbox retry bookkeeping, dead-feed health cleanup, capped preserved-text previews with on-demand reader fetches, reviewed cumulative release headings, paginated changelog history, and public-safe bug reporting.",
     status: "current",
     priority: true,
     planLink:
@@ -756,7 +756,7 @@ const phases: Phase[] = [
     number: 7,
     title: "Facebook + Instagram",
     description:
-      "Facebook and Instagram integrated via Tauri WebView scraping, with suggested-post filtering, hardened story capture, silent background media guarding, serialized background scraper sessions, Facebook group controls, provider health summaries, and smart backoff when sync looks rate-limited.",
+      "Facebook and Instagram integrated via Tauri WebView scraping, with suggested-post filtering, hardened story capture, preserved Instagram story location metadata for map recovery, silent background media guarding, serialized background scraper sessions, Facebook group controls, provider health summaries, and smart backoff when sync looks rate-limited.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-7-SOCIAL-CAPTURE.md",
@@ -765,7 +765,7 @@ const phases: Phase[] = [
     number: 8,
     title: "Friends + Social Graph",
     description:
-      "A friend CRM with a stable pan-and-zoom graph workspace, a permanent resizable reconnect sidebar, Google Contacts sync and review, theme-authored avatar styling across Friends and Map, and a map with theme-native cartography that shows each friend's latest known location with time-aware popovers. Unify profiles across platforms into one identity per person, track relationship health, restore Google contact matches from desktop snapshots, and keep growing the map into a richer view of where friends were, are, and plan to be.",
+      "A people CRM with a canonical Person plus Account identity graph, a stable pan-and-zoom Friends workspace, Google Contacts imports that create friend people by default, suggestion-only same-person review across platforms, and a map that resolves identity through linked accounts with current, future, and past location filters while still showing followed accounts at the edge before confirmation.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-8-FRIENDS.md",
@@ -783,7 +783,7 @@ const phases: Phase[] = [
     number: 10,
     title: "Polish",
     description:
-      "Onboarding, statistics, AI features, plugin API, community infrastructure, and deeper crash recovery hardening.",
+      "Onboarding, statistics, AI features, plugin API, community infrastructure, and deeper crash recovery hardening beyond the native startup recovery window already shipped.",
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-10-POLISH.md",

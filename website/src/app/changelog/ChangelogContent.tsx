@@ -6,9 +6,9 @@ import { motion, useInView } from "framer-motion";
 import type { CSSProperties, MouseEvent } from "react";
 import { useEffect, useMemo, useRef } from "react";
 import type { ParsedRelease } from "@/content/changelog";
-import { MarketingPageShell } from "@/components/MarketingPageShell";
 import type { ChangelogMode } from "./pagination";
 import { getChangelogPageHref } from "./pagination";
+import { MarketingPageShell } from "@/components/MarketingPageShell";
 
 const CHANGELOG_SMOOTH_SCROLL_KEY = "freed-changelog-smooth-scroll";
 

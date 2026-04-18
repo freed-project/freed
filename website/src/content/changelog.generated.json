@@ -1,125 +1,31 @@
 [
   {
-    "version": "26.4.1602",
-    "tagName": "v26.4.1602",
-    "channel": "production",
-    "date": "2026-04-17T02:06:16Z",
-    "deck": "Freed Desktop keeps update dialogs visible, restores read state correctly, and trims sync memory growth on large saves",
-    "features": [],
-    "fixes": [
-      {
-        "text": "Update dialogs stay above the floating new button, and the Updates settings view labels the installed version clearly when you switch release channels."
-      },
-      {
-        "text": "Read state and related UI updates restore correctly after merge recovery paths."
-      },
-      {
-        "text": "Map view background tiles render again across the refreshed style palette."
-      },
-      {
-        "text": "Desktop sync trims preserved article text before it reaches Automerge, which reduces sync memory growth on large saves."
-      }
-    ],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1602",
-    "prNumbers": [
-      213,
-      215,
-      216,
-      222,
-      223,
-      224
-    ],
-    "builds": [
-      "26.4.1600",
-      "26.4.1601-dev",
-      "26.4.1602"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.4.1600",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1600",
-        "channel": "production"
-      },
-      {
-        "version": "26.4.1601-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1601-dev",
-        "channel": "dev"
-      },
-      {
-        "version": "26.4.1602",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1602",
-        "channel": "production"
-      }
-    ]
-  },
-  {
-    "version": "26.4.1601-dev",
-    "tagName": "v26.4.1601-dev",
+    "version": "26.4.1500-dev",
+    "tagName": "v26.4.1500-dev",
     "channel": "dev",
-    "date": "2026-04-17T00:12:58Z",
-    "deck": "Map tiles are back, and desktop sync carries less preserved article text",
+    "date": "2026-04-15T16:35:42Z",
+    "deck": "Stability fixes for recovery and UI checks",
     "features": [],
-    "fixes": [
-      {
-        "text": "Map view background tiles render again across the refreshed style palette"
-      },
-      {
-        "text": "Desktop sync now trims preserved article text before it reaches Automerge, which reduces sync memory growth on large saves"
-      }
-    ],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1601-dev",
-    "prNumbers": [],
-    "builds": [
-      "26.4.1601-dev"
-    ],
-    "buildLinks": [
-      {
-        "version": "26.4.1601-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1601-dev",
-        "channel": "dev"
-      }
-    ]
-  },
-  {
-    "version": "26.4.1501-dev",
-    "tagName": "v26.4.1501-dev",
-    "channel": "dev",
-    "date": "2026-04-15T20:29:20Z",
-    "deck": "Explicit website release flow and stability fixes for recovery and UI checks",
-    "features": [
-      {
-        "text": "Explicit website release flow"
-      }
-    ],
     "fixes": [
       {
         "text": "Crash reports now keep cleaner diagnostic state"
       },
       {
         "text": "Map popup smoke tests and reader rail alignment checks are steadier"
-      },
-      {
-        "text": "Crash reporting and WebKit recovery are now more stable"
       }
     ],
     "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1501-dev",
-    "prNumbers": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1500-dev",
+    "prNumbers": [
+      214
+    ],
     "builds": [
-      "26.4.1500-dev",
-      "26.4.1501-dev"
+      "26.4.1500-dev"
     ],
     "buildLinks": [
       {
         "version": "26.4.1500-dev",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1500-dev",
-        "channel": "dev"
-      },
-      {
-        "version": "26.4.1501-dev",
-        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1501-dev",
         "channel": "dev"
       }
     ]
@@ -176,7 +82,179 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1403-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      16,
+      27,
+      31,
+      32,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      55,
+      56,
+      57,
+      58,
+      59,
+      71,
+      72,
+      73,
+      74,
+      75,
+      76,
+      77,
+      78,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84,
+      85,
+      86,
+      87,
+      89,
+      90,
+      91,
+      92,
+      93,
+      94,
+      95,
+      96,
+      97,
+      98,
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+      110,
+      111,
+      112,
+      113,
+      114,
+      115,
+      116,
+      117,
+      118,
+      119,
+      120,
+      121,
+      122,
+      123,
+      124,
+      125,
+      126,
+      127,
+      128,
+      129,
+      130,
+      131,
+      132,
+      133,
+      134,
+      135,
+      136,
+      137,
+      138,
+      139,
+      140,
+      141,
+      142,
+      143,
+      144,
+      145,
+      146,
+      147,
+      148,
+      150,
+      151,
+      152,
+      153,
+      154,
+      155,
+      156,
+      157,
+      158,
+      159,
+      161,
+      162,
+      163,
+      164,
+      165,
+      166,
+      167,
+      168,
+      169,
+      170,
+      171,
+      172,
+      173,
+      174,
+      175,
+      176,
+      177,
+      178,
+      179,
+      180,
+      181,
+      182,
+      184,
+      185,
+      186,
+      187,
+      188,
+      190,
+      191,
+      192,
+      193,
+      194,
+      195,
+      196,
+      197,
+      198,
+      199,
+      200,
+      201,
+      202,
+      203,
+      204,
+      205,
+      208,
+      209,
+      210,
+      212
+    ],
     "builds": [
       "26.4.1403-dev"
     ],

@@ -110,12 +110,18 @@ Before creating a worktree, classify the requested work by destination branch.
 - Never base public marketing work from `dev`.
 - Never fast-forward `www` to `dev`.
 
-**Production website branch:** `freed.wtf` ships from `www`, not `main`.
+### Branch Promotion
 
-- Merge production website changes to `www` before deploying the marketing site
-- Production desktop releases still tag from `main`
-- If a production release updates checked-in changelog or website content, merge that reviewed website state to `www` before the production website deploy runs
-- Never assume a website deploy from `main` is correct just because the desktop release tagged from `main`
+Treat `dev`, `main`, and `www` as separate lanes with explicit promotion points.
+
+- `dev` is the default branch for ongoing product work.
+- `main` is the production release branch. Do not use it as a second development branch.
+- Promote `dev` into `main` when shipping a reviewed production release.
+- Merge `main` back into `dev` only when `main` has diverged with a production-only fix, release-only adjustment, or other reviewed change that `dev` does not already contain.
+- If a hotfix lands on `main`, merge or cherry-pick it back into `dev` immediately after the production release is stable. Do not let `main` drift sit around.
+- `www` is the public marketing branch. Sync approved `main` changes into `www` when the website or checked-in changelog needs them. Never sync `www` from `dev`.
+- Do not talk about routine `main` and `dev` sync. The normal flow is promotion from `dev` to `main`, with rare repair merges from `main` back to `dev`.
+- When release tooling or deployment helpers exist on more than one long-lived branch, update the matching copies in the same sweep or document why they intentionally differ.
 
 **Never use `git log main..branch` to check whether a branch has been merged.** Squash merge creates a new commit hash on `main`, so the original branch commits are never reachable from `main`'s history. The branch always looks "ahead" even when its content is fully shipped. Use these instead:
 

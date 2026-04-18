@@ -1,6 +1,12 @@
 import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from "react";
 
-import { countFriendsWithRecentLocationUpdates, type FilterOptions, type RssFeed } from "@freed/shared";
+import {
+  countAuthorsWithRecentLocationUpdates,
+  countFriendsWithRecentLocationUpdates,
+  getDefaultMapMode,
+  type FilterOptions,
+  type RssFeed,
+} from "@freed/shared";
 import { useAppStore, usePlatform, type SidebarSourceStatusSummary } from "../../context/PlatformContext.js";
 import { ProviderStatusIndicator } from "../ProviderStatusIndicator.js";
 import { SettingsDialog } from "../SettingsDialog.js";
@@ -382,11 +388,12 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
-  const setSelectedFriend = useAppStore((s) => s.setSelectedFriend);
+  const setSelectedFriend = useAppStore((s) => s.setSelectedPerson);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const feeds = useAppStore((s) => s.feeds);
-  const friends = useAppStore((s) => s.friends);
+  const friends = useAppStore((s) => s.persons);
+  const accounts = useAppStore((s) => s.accounts);
   const feedUnreadCounts = useAppStore((s) => s.feedUnreadCounts);
   const feedTotalCounts = useAppStore((s) => s.feedTotalCounts);
   const renameFeed = useAppStore((s) => s.renameFeed);
@@ -407,15 +414,25 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
+  const display = useAppStore((s) => s.preferences.display);
   const health = useDebugStore((s) => s.health);
 
   const savedCount = useMemo(() => items.filter((i) => i.userState.saved).length, [items]);
   const archivedCount = useMemo(() => items.filter((i) => i.userState.archived).length, [items]);
   const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
   const mapFriendCount = useMemo(
-    () => countFriendsWithRecentLocationUpdates(items, friends),
-    [friends, items]
+    () => countFriendsWithRecentLocationUpdates(items, friends, accounts),
+    [accounts, friends, items]
   );
+  const mapAllContentCount = useMemo(
+    () => countAuthorsWithRecentLocationUpdates(items),
+    [items],
+  );
+  const effectiveMapMode = display.mapMode
+    ?? getDefaultMapMode(mapFriendCount, mapAllContentCount);
+  const mapCount = effectiveMapMode === "all_content"
+    ? mapAllContentCount
+    : mapFriendCount;
 
   const { open: showSettings, openDefault: openSettings, close: closeSettings } = useSettingsStore();
   const [dragWidth, setDragWidth] = useState<number | null>(null);
@@ -856,13 +873,13 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
               >
                 <span className="w-5 flex items-center justify-center"><MapPinIcon /></span>
                 <span className="flex-1">Map</span>
-                {mapFriendCount > 0 && (
+                {mapCount > 0 && (
                   <span
                     className={`shrink-0 text-[10px] tabular-nums ${
                       activeView === "map" ? "text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"
                     }`}
                   >
-                    {fmt(mapFriendCount)}
+                    {fmt(mapCount)}
                   </span>
                 )}
               </button>

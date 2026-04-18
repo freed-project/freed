@@ -200,12 +200,14 @@ export class AppFixture {
     await this.page.evaluate(async () => {
       const w = window as Record<string, unknown>;
       const automerge = w.__FREED_AUTOMERGE__ as {
-        docAddFriend: (friend: unknown) => Promise<void>;
+        docAddPerson: (person: unknown) => Promise<void>;
+        docAddAccount: (account: unknown) => Promise<void>;
         docAddFeedItems: (items: unknown[]) => Promise<void>;
       };
       const store = w.__FREED_STORE__ as {
         getState: () => {
           friends: Record<string, unknown>;
+          accounts: Record<string, unknown>;
           items: unknown[];
           setActiveView: (view: string) => void;
           setSelectedFriend: (id: string | null) => void;
@@ -213,18 +215,25 @@ export class AppFixture {
       };
 
       const now = Date.now();
-      await automerge.docAddFriend({
+      await automerge.docAddPerson({
         id: "friend-ada",
         name: "Ada Lovelace",
-        sources: [
-          {
-            platform: "instagram",
-            authorId: "ada-ig",
-            handle: "ada",
-            displayName: "Ada Lovelace",
-          },
-        ],
+        relationshipStatus: "friend",
         careLevel: 4,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await automerge.docAddAccount({
+        id: "friend-ada:instagram:ada-ig",
+        personId: "friend-ada",
+        kind: "social",
+        provider: "instagram",
+        externalId: "ada-ig",
+        handle: "ada",
+        displayName: "Ada Lovelace",
+        firstSeenAt: now,
+        lastSeenAt: now,
+        discoveredFrom: "captured_item",
         createdAt: now,
         updatedAt: now,
       });
@@ -265,7 +274,131 @@ export class AppFixture {
         const startedAt = Date.now();
         const interval = window.setInterval(() => {
           const state = store.getState();
-          if (state.friends["friend-ada"] && state.items.length > 0) {
+          if (state.friends["friend-ada"] && state.accounts["friend-ada:instagram:ada-ig"] && state.items.length > 0) {
+            clearInterval(interval);
+            resolve();
+            return;
+          }
+          if (Date.now() - startedAt > 5_000) {
+            clearInterval(interval);
+            reject(new Error("seed timeout"));
+          }
+        }, 50);
+      });
+    });
+  }
+
+  async seedAllContentLocationsWithoutFriends(): Promise<void> {
+    await this.page.evaluate(async () => {
+      const w = window as Record<string, unknown>;
+      const automerge = w.__FREED_AUTOMERGE__ as {
+        docAddFeedItems: (items: unknown[]) => Promise<void>;
+      };
+      const store = w.__FREED_STORE__ as {
+        getState: () => {
+          friends: Record<string, unknown>;
+          items: Array<{ globalId: string }>;
+        };
+      };
+
+      const now = Date.now();
+      await automerge.docAddFeedItems([
+        {
+          globalId: "ig:nora:paris",
+          platform: "instagram",
+          contentType: "post",
+          capturedAt: now - 120_000,
+          publishedAt: now - 120_000,
+          author: {
+            id: "nora-ig",
+            handle: "nora",
+            displayName: "Nora Quinn",
+          },
+          content: {
+            text: "Earlier stop in Paris",
+            mediaUrls: [],
+            mediaTypes: [],
+          },
+          location: {
+            name: "Paris",
+            coordinates: { lat: 48.8566, lng: 2.3522 },
+            source: "geo_tag",
+          },
+          userState: {
+            hidden: false,
+            saved: false,
+            archived: false,
+            tags: [],
+          },
+          topics: [],
+        },
+        {
+          globalId: "ig:nora:story",
+          platform: "instagram",
+          contentType: "story",
+          capturedAt: now - 60_000,
+          publishedAt: now - 60_000,
+          author: {
+            id: "nora-ig",
+            handle: "nora",
+            displayName: "Nora Quinn",
+          },
+          content: {
+            text: "Recoverable story location",
+            mediaUrls: [],
+            mediaTypes: [],
+          },
+          location: {
+            name: "Locations",
+            coordinates: { lat: 34.2439, lng: -116.9114 },
+            url: "https://www.instagram.com/explore/locations/123456789/big-bear-california/",
+            source: "sticker",
+          },
+          userState: {
+            hidden: false,
+            saved: false,
+            archived: false,
+            tags: [],
+          },
+          topics: [],
+        },
+        {
+          globalId: "ig:ghost:story",
+          platform: "instagram",
+          contentType: "story",
+          capturedAt: now - 30_000,
+          publishedAt: now - 30_000,
+          author: {
+            id: "ghost-ig",
+            handle: "ghost",
+            displayName: "Ghost Noise",
+          },
+          content: {
+            text: "Should not show on the map",
+            mediaUrls: [],
+            mediaTypes: [],
+          },
+          location: {
+            name: "Check registration",
+            source: "sticker",
+          },
+          userState: {
+            hidden: false,
+            saved: false,
+            archived: false,
+            tags: [],
+          },
+          topics: [],
+        },
+      ]);
+
+      await new Promise<void>((resolve, reject) => {
+        const startedAt = Date.now();
+        const interval = window.setInterval(() => {
+          const state = store.getState();
+          const hasNora = state.items.some((item) => item.globalId === "ig:nora:story");
+          const hasGhost = state.items.some((item) => item.globalId === "ig:ghost:story");
+          if (hasNora && hasGhost) {
             clearInterval(interval);
             resolve();
             return;
@@ -336,6 +469,10 @@ export const test = base.extend<Fixtures>({
   app: async ({ page }, use) => {
     // Inject the IPC shim before page JS fires so mock globals are ready.
     await page.addInitScript(tauriInitScript());
+    await page.addInitScript(() => {
+      (window as Window & { __FREED_E2E_FORCE_MAP_FALLBACK__?: boolean })
+        .__FREED_E2E_FORCE_MAP_FALLBACK__ = true;
+    });
     await use(new AppFixture(page));
   },
 

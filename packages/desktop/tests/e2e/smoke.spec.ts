@@ -9,7 +9,7 @@
  * always assert on stable, visible elements. Avoid timing-sensitive assertions.
  */
 
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import {
   test,
   expect,
@@ -17,6 +17,9 @@ import {
   resolveViteFsModulePath,
 } from "./fixtures/app";
 import { tauriInitScript } from "./fixtures/tauri-init";
+
+const SIDEBAR_ALIGNMENT_TOLERANCE_PX = 4;
+const READER_RAIL_ALIGNMENT_TOLERANCE_PX = 8;
 
 async function dismissCloudSyncNudgeIfPresent(page: Page) {
   const dismissButton = page.getByRole("button", { name: "Dismiss", exact: true });
@@ -38,17 +41,67 @@ async function openVisibleMapMarker(
     return;
   }
 
-  await expect(page.getByRole("button", { name: popupActionName })).toBeVisible({
-    timeout: 10_000,
-  });
+  const popupAction = page.getByRole("button", { name: popupActionName });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (await popupAction.isVisible().catch(() => false)) {
+      return;
+    }
+
+    await visibleMarker.click();
+    await page.waitForTimeout(250);
+  }
+
+  await expect(popupAction).toBeVisible({ timeout: 10_000 });
 }
 
 async function clickMapPopupAction(page: Page, actionName: "Open Friend" | "Open Post") {
-  const actionButton = page.getByRole("button", { name: actionName });
-  await expect(actionButton).toBeVisible({ timeout: 5_000 });
-  await actionButton.evaluate((button) => {
-    (button as HTMLButtonElement).click();
-  });
+  await expect(
+    page.locator("button:visible", { hasText: new RegExp(`^${actionName}$`) }).first(),
+  ).toBeVisible({ timeout: 5_000 });
+
+  await expect
+    .poll(
+      async () =>
+        page.evaluate((buttonText) => {
+          const buttons = [...document.querySelectorAll("button")];
+          const button = buttons.find((candidate) => {
+            const label = candidate.textContent?.trim();
+            const rect = candidate.getBoundingClientRect();
+            const style = window.getComputedStyle(candidate);
+            return (
+              label === buttonText &&
+              rect.width > 0 &&
+              rect.height > 0 &&
+              style.visibility !== "hidden" &&
+              style.display !== "none"
+            );
+          });
+
+          if (!button) {
+            return false;
+          }
+
+          button.click();
+          return true;
+        }, actionName),
+      { timeout: 5_000 },
+    )
+    .toBe(true);
+}
+
+async function dragElementBy(page: Page, locator: Locator, deltaX: number, deltaY = 0) {
+  const box = await locator.boundingBox();
+  if (!box) {
+    throw new Error("Drag target is not visible");
+  }
+
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + deltaX, startY + deltaY, { steps: 4 });
+  await page.mouse.up();
 }
 
 const SETTINGS_STORE_PATH = resolveViteFsModulePath(
@@ -135,7 +188,7 @@ test("desktop workspace keeps a single top toolbar in feed, reader, and friends 
   await expect(page.locator("header")).toHaveCount(1);
 });
 
-test("desktop workspace toolbar reserves the macOS stoplight inset for the Freed wordmark", async ({ app, page }) => {
+test("desktop toolbar wordmark and passive title block avoid text-selection affordances", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -159,6 +212,158 @@ test("desktop workspace toolbar reserves the macOS stoplight inset for the Freed
   expect(titlebarInset).not.toBeNull();
   expect(titlebarInset?.paddingLeft).toBe("100px");
   expect(titlebarInset?.logoOffset ?? 0).toBeGreaterThanOrEqual(100);
+
+  const styleState = await page.evaluate(() => {
+    const wordmark = document.querySelector('[data-testid="workspace-toolbar-wordmark"]') as HTMLElement | null;
+    const titleBlock = document.querySelector('[data-testid="workspace-toolbar-title-block"]') as HTMLElement | null;
+    if (!wordmark || !titleBlock) {
+      return null;
+    }
+
+    const wordmarkStyle = window.getComputedStyle(wordmark);
+    const titleBlockStyle = window.getComputedStyle(titleBlock);
+    return {
+      wordmarkCursor: wordmarkStyle.cursor,
+      wordmarkUserSelect: wordmarkStyle.userSelect,
+      titleBlockCursor: titleBlockStyle.cursor,
+      titleBlockUserSelect: titleBlockStyle.userSelect,
+    };
+  });
+
+  expect(styleState).not.toBeNull();
+  expect(styleState?.wordmarkCursor).toBe("default");
+  expect(styleState?.wordmarkUserSelect).toBe("none");
+  expect(styleState?.titleBlockCursor).toBe("default");
+  expect(styleState?.titleBlockUserSelect).toBe("none");
+});
+
+test("desktop sidebar toggle still clicks normally from the shared toolbar", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const initialWidth = await page.evaluate(() => {
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    return sidebarShell?.getBoundingClientRect().width ?? 0;
+  });
+
+  await page.getByTestId("desktop-sidebar-toggle").click();
+  await page.waitForTimeout(250);
+
+  const collapsedWidth = await page.evaluate(() => {
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    return sidebarShell?.getBoundingClientRect().width ?? 0;
+  });
+
+  expect(initialWidth).toBeGreaterThan(200);
+  expect(collapsedWidth).toBeLessThanOrEqual(2);
+});
+
+test("dragging from the desktop sidebar toggle starts a window drag without collapsing the sidebar", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const initialWidth = await page.evaluate(() => {
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    return sidebarShell?.getBoundingClientRect().width ?? 0;
+  });
+
+  await dragElementBy(page, page.getByTestId("desktop-sidebar-toggle"), 24);
+  await page.waitForTimeout(100);
+
+  const postDragState = await page.evaluate(() => {
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    const win = window as Record<string, unknown>;
+    return {
+      sidebarWidth: sidebarShell?.getBoundingClientRect().width ?? 0,
+      dragCalls: ((win.__TAURI_MOCK_WINDOW_DRAG_CALLS__ as Array<unknown> | undefined) ?? []).length,
+    };
+  });
+
+  expect(postDragState.dragCalls).toBe(1);
+  expect(postDragState.sidebarWidth).toBeGreaterThan(initialWidth - 4);
+});
+
+test("dragging from a reader toolbar button starts a window drag without firing the button action", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(8);
+
+  await page.locator("[data-feed-item-id]").first().click();
+  const railButton = page.getByRole("button", { name: "Hide thumbnail rail" }).first();
+  await expect(railButton).toBeVisible();
+
+  await railButton.evaluate((button) => {
+    const rect = button.getBoundingClientRect();
+    const startX = rect.left + rect.width / 2;
+    const startY = rect.top + rect.height / 2;
+    const pointerId = 41;
+
+    button.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+      composed: true,
+      pointerId,
+      pointerType: "mouse",
+      isPrimary: true,
+      button: 0,
+      clientX: startX,
+      clientY: startY,
+    }));
+    window.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true,
+      composed: true,
+      pointerId,
+      pointerType: "mouse",
+      isPrimary: true,
+      button: 0,
+      clientX: startX + 24,
+      clientY: startY,
+    }));
+    window.dispatchEvent(new PointerEvent("pointerup", {
+      bubbles: true,
+      composed: true,
+      pointerId,
+      pointerType: "mouse",
+      isPrimary: true,
+      button: 0,
+      clientX: startX + 24,
+      clientY: startY,
+    }));
+  });
+  await page.waitForTimeout(100);
+
+  const dragCalls = await page.evaluate(() => {
+    const win = window as Record<string, unknown>;
+    return ((win.__TAURI_MOCK_WINDOW_DRAG_CALLS__ as Array<unknown> | undefined) ?? []).length;
+  });
+
+  expect(dragCalls).toBe(1);
+  await expect(railButton).toBeVisible();
+});
+
+test("desktop passive toolbar title area remains a native drag region", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const dragRegionState = await page.evaluate(() => {
+    const titleBlock = document.querySelector('[data-testid="workspace-toolbar-title-block"]') as HTMLElement | null;
+    const dragRegion = titleBlock?.parentElement as HTMLElement | null;
+    if (!titleBlock || !dragRegion) {
+      return null;
+    }
+
+    return {
+      hasDragRegionAttr: dragRegion.hasAttribute("data-tauri-drag-region"),
+      webkitAppRegion: dragRegion.style.webkitAppRegion,
+    };
+  });
+
+  expect(dragRegionState).not.toBeNull();
+  expect(dragRegionState?.hasDragRegionAttr).toBe(true);
+  expect(dragRegionState?.webkitAppRegion).toBe("drag");
 });
 
 test("desktop sidebar and debug drawer use floating shell cards", async ({ app, page }) => {
@@ -944,27 +1149,38 @@ test("dual-column reader toolbar toggles stay aligned with the sidebar and rail"
     const dualColumnToggle = document.querySelector(
       '[aria-label="Hide thumbnail rail"], [aria-label="Show thumbnail rail"]',
     ) as HTMLElement | null;
+    const backButton = document.querySelector('[aria-label="Back to list"]') as HTMLElement | null;
     const compactRail = document.querySelector('[data-testid="compact-feed-panel-scroll-container"]') as HTMLElement | null;
 
-    if (!sidebar || !sidebarToggle || !dualColumnToggle || !compactRail) {
-      throw new Error("Dual-column toolbar toggle alignment elements were not found");
+    if (!sidebar || !sidebarToggle || !dualColumnToggle || !backButton || !compactRail) {
+      throw new Error("Dual-column toolbar alignment elements were not found");
     }
 
     const sidebarRect = sidebar.getBoundingClientRect();
     const sidebarToggleRect = sidebarToggle.getBoundingClientRect();
     const dualColumnToggleRect = dualColumnToggle.getBoundingClientRect();
+    const backButtonRect = backButton.getBoundingClientRect();
     const compactRailRect = compactRail.getBoundingClientRect();
 
     return {
       sidebarRight: sidebarRect.right,
       sidebarToggleRight: sidebarToggleRect.right,
       compactRailLeft: compactRailRect.left,
+      compactRailRight: compactRailRect.right,
       dualColumnToggleLeft: dualColumnToggleRect.left,
+      backButtonLeft: backButtonRect.left,
     };
   });
 
-  expect(Math.abs(alignment.sidebarToggleRight - alignment.sidebarRight)).toBeLessThanOrEqual(4);
-  expect(Math.abs(alignment.dualColumnToggleLeft - alignment.compactRailLeft)).toBeLessThanOrEqual(8);
+  expect(Math.abs(alignment.sidebarToggleRight - alignment.sidebarRight)).toBeLessThanOrEqual(
+    SIDEBAR_ALIGNMENT_TOLERANCE_PX,
+  );
+  expect(Math.abs(alignment.dualColumnToggleLeft - alignment.compactRailLeft)).toBeLessThanOrEqual(
+    READER_RAIL_ALIGNMENT_TOLERANCE_PX,
+  );
+  expect(Math.abs(alignment.backButtonLeft - alignment.compactRailRight)).toBeLessThanOrEqual(
+    READER_RAIL_ALIGNMENT_TOLERANCE_PX,
+  );
 });
 
 test("desktop hide thumbnail rail button collapses the compact reader rail", async ({ app, page }) => {
@@ -1104,7 +1320,8 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_AUTOMERGE__ as {
-      docAddFriend: (friend: unknown) => Promise<void>;
+      docAddPerson: (person: unknown) => Promise<void>;
+      docAddAccount: (account: unknown) => Promise<void>;
       docAddFeedItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as
@@ -1117,14 +1334,26 @@ test("Friends workspace keeps a visible sidebar and supports back navigation", a
       | undefined;
 
     const now = Date.now();
-    await automerge.docAddFriend({
+    await automerge.docAddPerson({
       id: "friend-ada",
       name: "Ada Lovelace",
+      relationshipStatus: "friend",
       careLevel: 5,
-      sources: [
-        { platform: "instagram", authorId: "ada-ig", handle: "ada", displayName: "Ada Lovelace" },
-      ],
       reachOutLog: [{ loggedAt: now - 40 * 24 * 60 * 60_000, channel: "text" }],
+      createdAt: now,
+      updatedAt: now,
+    });
+    await automerge.docAddAccount({
+      id: "friend-ada:instagram:ada-ig",
+      personId: "friend-ada",
+      kind: "social",
+      provider: "instagram",
+      externalId: "ada-ig",
+      handle: "ada",
+      displayName: "Ada Lovelace",
+      firstSeenAt: now,
+      lastSeenAt: now,
+      discoveredFrom: "captured_item",
       createdAt: now,
       updatedAt: now,
     });
@@ -1253,6 +1482,148 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
   await expect(page.locator('.freed-map-marker[aria-label="Ada Lovelace"]')).toBeVisible({
     timeout: 10_000,
   });
+});
+
+test("map defaults to All content when only unlinked author locations exist", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.seedAllContentLocationsWithoutFriends();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.getByRole("button", { name: /^Map/ }).click();
+  const allContentButton = page.getByRole("button", { name: "All content", exact: true });
+  await expect(allContentButton).toHaveClass(/theme-chip-active/, { timeout: 10_000 });
+  await expect(page.locator('.freed-map-marker[aria-label="Nora Quinn"]')).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.locator('.freed-map-marker[aria-label="Ghost Noise"]')).toHaveCount(0);
+});
+
+test("recoverable story locations appear in All content mode and the mode persists", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+  await app.seedAllContentLocationsWithoutFriends();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.getByRole("button", { name: /^Map/ }).click();
+  const allContentButton = page.getByRole("button", { name: "All content", exact: true });
+  await allContentButton.click();
+  await expect(allContentButton).toHaveClass(/theme-chip-active/, { timeout: 10_000 });
+
+  await openVisibleMapMarker(page, "Nora Quinn");
+  await expect(page.getByText("Big Bear California")).toBeVisible({ timeout: 10_000 });
+
+  await page.reload();
+  await app.waitForReady();
+  await dismissCloudSyncNudgeIfPresent(page);
+  await page.getByRole("button", { name: /^Map/ }).click();
+  await expect(page.getByRole("button", { name: "All content", exact: true })).toHaveClass(
+    /theme-chip-active/,
+    { timeout: 10_000 },
+  );
+  await expect(page.locator('.freed-map-marker[aria-label="Nora Quinn"]')).toBeVisible({
+    timeout: 10_000,
+  });
+});
+
+test("map time filters switch between current and future location windows", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        items: Array<{ globalId: string }>;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddFeedItems([
+      {
+        globalId: "ig:ada:lisbon-plan",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now,
+        author: {
+          id: "ada-ig",
+          handle: "ada",
+          displayName: "Ada Lovelace",
+        },
+        content: {
+          text: "Landing in Lisbon later this week.",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        location: {
+          name: "Lisbon",
+          coordinates: { lat: 38.7223, lng: -9.1393 },
+          source: "geo_tag",
+        },
+        timeRange: {
+          startsAt: now + 2 * 24 * 60 * 60_000,
+          endsAt: now + 5 * 24 * 60 * 60_000,
+          kind: "travel",
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: [],
+        },
+        topics: [],
+      },
+    ]);
+
+    await new Promise<void>((resolve, reject) => {
+      const startedAt = Date.now();
+      const interval = window.setInterval(() => {
+        const hasFutureItem = store
+          .getState()
+          .items.some((item) => item.globalId === "ig:ada:lisbon-plan");
+        if (hasFutureItem) {
+          clearInterval(interval);
+          resolve();
+          return;
+        }
+        if (Date.now() - startedAt > 5_000) {
+          clearInterval(interval);
+          reject(new Error("seed timeout"));
+        }
+      }, 50);
+    });
+  });
+
+  await page.getByRole("button", { name: /^Map/ }).click();
+  await expect(page.getByRole("button", { name: "Current", exact: true })).toHaveClass(
+    /theme-chip-active/,
+    { timeout: 10_000 },
+  );
+
+  await openVisibleMapMarker(page, "Ada Lovelace");
+  await expect(page.getByText("Paris", { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Lisbon", { exact: true })).toHaveCount(0);
+
+  const futureButton = page.getByRole("button", { name: "Future", exact: true });
+  await futureButton.click();
+  await expect(futureButton).toHaveClass(/theme-chip-active/, { timeout: 10_000 });
+  await expect(page.getByText("Lisbon", { exact: true })).toBeVisible({ timeout: 10_000 });
+
+  await page.reload();
+  await app.waitForReady();
+  await dismissCloudSyncNudgeIfPresent(page);
+  await page.getByRole("button", { name: /^Map/ }).click();
+  await expect(page.getByRole("button", { name: "Future", exact: true })).toHaveClass(
+    /theme-chip-active/,
+    { timeout: 10_000 },
+  );
 });
 
 test("Friends view uses the floating detail drawer shell", async ({ app, page }) => {

@@ -1,0 +1,38 @@
+{
+  "tag": "v26.4.1601-dev",
+  "version": "26.4.1601-dev",
+  "channel": "dev",
+  "dayKey": "26.4.16",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-16T23:58:20.378Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.1501-dev",
+    "previousPublishedDayTag": "v26.4.1501-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.1601-dev"
+    ],
+    "prNumbers": [
+      223,
+      224
+    ],
+    "commitSubjects": [
+      "fix: restore map view background tiles (#224)",
+      "fix: reduce desktop sync memory growth (#223)"
+    ]
+  },
+  "release": {
+    "deck": "Map tiles are back, and desktop sync carries less preserved article text",
+    "features": [],
+    "fixes": [
+      "Map view background tiles render again across the refreshed style palette",
+      "Desktop sync now trims preserved article text before it reaches Automerge, which reduces sync memory growth on large saves"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1601-dev\n\nMap tiles are back, and desktop sync carries less preserved article text\n\n### Fixes\n\n- Map view background tiles render again across the refreshed style palette\n- Desktop sync now trims preserved article text before it reaches Automerge, which reduces sync memory growth on large saves\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

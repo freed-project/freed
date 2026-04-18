@@ -135,8 +135,28 @@ Compose and publish through your own site.
 # Clone and install dependencies
 git clone https://github.com/cyberspatial/freed.git
 cd freed
+cat .nvmrc          # expected Node version
 npm install
 ```
+
+This repo expects the Node version in `.nvmrc` and the matching npm release
+declared in `package.json`. If your shell still resolves `npm` from somewhere
+like `/usr/local/bin/npm`, run the npm that lives next to your active `node`
+binary instead.
+
+### Worktrees
+
+Use the helper instead of bare `git worktree add`:
+
+```bash
+./scripts/worktree-add.sh ../freed-my-branch -b feat/my-branch
+```
+
+The helper now:
+
+- detects the new worktree path by diffing the worktree list before and after creation
+- installs dependencies with the npm binary that matches the active Node runtime
+- avoids the broken "last worktree wins" assumption that can install into the wrong checkout
 
 ### Marketing Website (freed.wtf)
 

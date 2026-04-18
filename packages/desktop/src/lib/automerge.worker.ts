@@ -19,7 +19,12 @@ import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
   createEmptyDoc,
+  addAccount,
+  addAccounts,
   addFeedItem,
+  hasLegacyIdentityGraphData,
+  migrateLegacyIdentityGraph,
+  addPerson,
   addRssFeed,
   removeRssFeed,
   removeAllFeeds,
@@ -36,16 +41,17 @@ import {
   deleteAllArchivedItems,
   updatePreferences,
   updateLastSync,
-  addFriend,
-  updateFriend,
-  removeFriend,
+  updateAccount,
+  updatePerson,
+  removeAccount,
+  removePerson,
   logReachOut,
   toggleLiked,
   confirmLikedSynced,
   confirmSeenSynced,
 } from "@freed/shared/schema";
 import { createDefaultPreferences, rankFeedItems } from "@freed/shared";
-import type { FeedItem, Friend, RssFeed, UserPreferences } from "@freed/shared";
+import type { Account, FeedItem, Friend, LegacyDeviceContact, LegacyFriendSource, Person, RssFeed, UserPreferences } from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
 import {
   createPersistenceState,
@@ -64,6 +70,7 @@ let persistenceState: AutomergePersistenceState = createPersistenceState(null);
 let relayClientCount = 0;
 let queuedRequestCount = 0;
 let requestChain: Promise<void> = Promise.resolve();
+let searchCorpusVersion = 0;
 
 const SLOW_QUEUE_WAIT_MS = 1_000;
 const SLOW_REQUEST_PROCESS_MS = 5_000;
@@ -90,6 +97,66 @@ function ack(reqId: number, error?: string): void {
   send({ reqId, type: "ACK", error });
 }
 
+function toLegacyContact(account: Account): LegacyDeviceContact {
+  const importedFrom: LegacyDeviceContact["importedFrom"] =
+    account.provider === "google_contacts"
+      ? "google"
+      : account.provider === "macos_contacts"
+        ? "macos"
+        : account.provider === "ios_contacts"
+          ? "ios"
+          : account.provider === "android_contacts"
+            ? "android"
+            : "web";
+  return {
+    importedFrom,
+    name: account.displayName ?? account.externalId,
+    phone: account.phone,
+    email: account.email,
+    address: account.address,
+    nativeId: account.externalId,
+    importedAt: account.importedAt ?? account.createdAt,
+  };
+}
+
+function projectLegacyFriends(
+  persons: Record<string, Person>,
+  accounts: Record<string, Account>
+): Record<string, Friend> {
+  const accountsByPerson = new Map<string, Account[]>();
+  for (const account of Object.values(accounts)) {
+    if (!account.personId) continue;
+    const group = accountsByPerson.get(account.personId);
+    if (group) {
+      group.push(account);
+    } else {
+      accountsByPerson.set(account.personId, [account]);
+    }
+  }
+
+  return Object.fromEntries(
+    Object.values(persons).map((person) => {
+      const personAccounts = accountsByPerson.get(person.id) ?? [];
+      const sources: LegacyFriendSource[] = personAccounts
+        .filter((account) => account.kind === "social")
+        .map((account) => ({
+          platform: account.provider as LegacyFriendSource["platform"],
+          authorId: account.externalId,
+          handle: account.handle,
+          displayName: account.displayName,
+          avatarUrl: account.avatarUrl,
+          profileUrl: account.profileUrl,
+        }));
+      const contactAccount = personAccounts.find((account) => account.kind === "contact");
+      return [person.id, {
+        ...person,
+        sources,
+        contact: contactAccount ? toLegacyContact(contactAccount) : undefined,
+      }];
+    })
+  );
+}
+
 function formatMs(ms: number): string {
   return Math.round(ms).toLocaleString();
 }
@@ -99,6 +166,38 @@ function emitWorkerTrace(
   kind: Extract<WorkerResponse, { type: "DEBUG_EVENT" }>["kind"] = "change",
 ): void {
   send({ type: "DEBUG_EVENT", kind, detail });
+}
+
+function bumpSearchCorpusVersion(): void {
+  searchCorpusVersion += 1;
+}
+
+function migrateLoadedIdentityGraph(message: string): void {
+  if (!currentDoc || !hasLegacyIdentityGraphData(currentDoc)) return;
+  currentDoc = A.change(currentDoc, message, (doc) => {
+    migrateLegacyIdentityGraph(doc);
+  });
+}
+
+function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean {
+  if (
+    "author" in updates ||
+    "content" in updates ||
+    "contentType" in updates ||
+    "preservedContent" in updates ||
+    "publishedAt" in updates ||
+    "rssSource" in updates ||
+    "topics" in updates
+  ) {
+    return true;
+  }
+
+  if (!updates.userState) return false;
+  return (
+    "hidden" in updates.userState ||
+    "tags" in updates.userState ||
+    "highlights" in updates.userState
+  );
 }
 
 /**
@@ -123,7 +222,9 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
     } as FeedItem;
   });
   const feeds = plain.rssFeeds as Record<string, RssFeed>;
-  const friends = (plain.friends ?? {}) as Record<string, Friend>;
+  const persons = (plain.persons ?? {}) as Record<string, Person>;
+  const accounts = (plain.accounts ?? {}) as Record<string, Account>;
+  const friends = projectLegacyFriends(persons, accounts);
   const preferences = {
     ...createDefaultPreferences(),
     ...(plain.preferences as Partial<UserPreferences>),
@@ -209,7 +310,10 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
 
   return {
     items: rankedItems,
+    searchCorpusVersion,
     feeds,
+    persons,
+    accounts,
     friends,
     preferences,
     feedUnreadCounts,
@@ -285,9 +389,11 @@ async function applyChange(
   changeFn: (doc: FreedDoc) => void,
   message: string,
   trace?: RequestTrace,
+  searchCorpusChanged = false,
 ): Promise<void> {
   if (!currentDoc) throw new Error("Document not initialized");
   currentDoc = A.change(currentDoc, message, changeFn);
+  if (searchCorpusChanged) bumpSearchCorpusVersion();
   send({ type: "DEBUG_EVENT", kind: "change", detail: message });
   await saveAndBroadcast(trace);
 }
@@ -316,7 +422,8 @@ async function handleRequest(
   const applyRequestChange = (
     changeFn: (doc: FreedDoc) => void,
     message: string,
-  ) => applyChange(changeFn, message, trace);
+    searchCorpusChanged = false,
+  ) => applyChange(changeFn, message, trace, searchCorpusChanged);
 
   try {
     switch (req.type) {
@@ -325,6 +432,7 @@ async function handleRequest(
         if (saved) {
           try {
             currentDoc = A.load<FreedDoc>(saved);
+            migrateLoadedIdentityGraph("Migrate legacy identity graph");
             currentBinary = saved;
             persistenceState = createPersistenceState(saved);
           } catch {
@@ -340,6 +448,7 @@ async function handleRequest(
           persistenceState = createPersistenceState(binary);
           await storage.save(binary);
         }
+        searchCorpusVersion = 1;
         const deviceId = (currentDoc.meta?.deviceId as string | undefined) ?? "unknown";
         send({ type: "DEBUG_EVENT", kind: "init", detail: `device ...${deviceId.slice(-8)}` });
         await saveAndBroadcast(trace);
@@ -352,13 +461,16 @@ async function handleRequest(
         currentDoc = null;
         currentBinary = null;
         persistenceState = createPersistenceState(null);
+        searchCorpusVersion = 0;
         ack(req.reqId);
         break;
 
       case "REPLACE_DOC":
         currentDoc = A.load<FreedDoc>(req.binary);
+        migrateLoadedIdentityGraph("Migrate legacy identity graph");
         currentBinary = req.binary;
         persistenceState = createPersistenceState(req.binary);
+        bumpSearchCorpusVersion();
         await storage.save(req.binary);
         await saveAndBroadcast(trace);
         ack(req.reqId);
@@ -378,6 +490,7 @@ async function handleRequest(
         const beforeCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const incomingDoc = A.load<FreedDoc>(req.binary);
         currentDoc = A.merge(currentDoc, incomingDoc);
+        migrateLoadedIdentityGraph("Migrate legacy identity graph");
         const afterCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const delta = afterCount - beforeCount;
         send({
@@ -386,6 +499,7 @@ async function handleRequest(
           detail: delta !== 0 ? `${delta > 0 ? "+" : ""}${delta} items` : "no new items",
           bytes: req.binary.byteLength,
         });
+        bumpSearchCorpusVersion();
         await saveAndBroadcast(trace);
         ack(req.reqId);
         break;
@@ -451,7 +565,7 @@ async function handleRequest(
       case "ADD_FEED_ITEM":
         await applyRequestChange((doc) => {
           if (!doc.feedItems[req.item.globalId]) addFeedItem(doc, req.item);
-        }, "Add feed item");
+        }, "Add feed item", true);
         ack(req.reqId);
         break;
 
@@ -460,12 +574,12 @@ async function handleRequest(
           for (const item of req.items) {
             if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
           }
-        }, `Add ${req.items.length} feed items`);
+        }, `Add ${req.items.length} feed items`, true);
         ack(req.reqId);
         break;
 
       case "REMOVE_FEED_ITEM":
-        await applyRequestChange((doc) => removeFeedItem(doc, req.globalId), "Remove feed item");
+        await applyRequestChange((doc) => removeFeedItem(doc, req.globalId), "Remove feed item", true);
         ack(req.reqId);
         break;
 
@@ -473,6 +587,7 @@ async function handleRequest(
         await applyRequestChange(
           (doc) => updateFeedItem(doc, req.globalId, req.updates),
           "Update feed item",
+          feedItemUpdatesAffectSearchCorpus(req.updates),
         );
         ack(req.reqId);
         break;
@@ -494,6 +609,7 @@ async function handleRequest(
         await applyRequestChange(
           (doc) => pruneArchivedItems(doc, req.maxAgeMs),
           "Prune archived items",
+          true,
         );
         ack(req.reqId);
         break;
@@ -502,12 +618,13 @@ async function handleRequest(
         await applyRequestChange(
           (doc) => deleteAllArchivedItems(doc),
           "Delete all archived items",
+          true,
         );
         ack(req.reqId);
         break;
 
       case "ADD_RSS_FEED":
-        await applyRequestChange((doc) => addRssFeed(doc, req.feed), "Add RSS feed");
+        await applyRequestChange((doc) => addRssFeed(doc, req.feed), "Add RSS feed", true);
         ack(req.reqId);
         break;
 
@@ -515,6 +632,7 @@ async function handleRequest(
         await applyRequestChange(
           (doc) => removeRssFeed(doc, req.url, req.includeItems),
           req.includeItems ? "Remove RSS feed and articles" : "Remove RSS feed",
+          true,
         );
         ack(req.reqId);
         break;
@@ -523,6 +641,7 @@ async function handleRequest(
         await applyRequestChange(
           (doc) => updateRssFeed(doc, req.url, req.updates as Parameters<typeof updateRssFeed>[2]),
           "Update RSS feed",
+          true,
         );
         ack(req.reqId);
         break;
@@ -531,6 +650,7 @@ async function handleRequest(
         await applyRequestChange(
           (doc) => removeAllFeeds(doc, req.includeItems),
           req.includeItems ? "Remove all feeds and articles" : "Remove all feeds",
+          true,
         );
         ack(req.reqId);
         break;
@@ -548,38 +668,58 @@ async function handleRequest(
         ack(req.reqId);
         break;
 
-      case "ADD_FRIEND":
-        await applyRequestChange((doc) => addFriend(doc, req.friend), "Add friend");
+      case "ADD_PERSON":
+        await applyRequestChange((doc) => addPerson(doc, req.person), "Add person");
         ack(req.reqId);
         break;
 
-      case "ADD_FRIENDS":
+      case "ADD_PERSONS":
         await applyRequestChange((doc) => {
-          for (const friend of req.friends) {
-            addFriend(doc, friend);
+          for (const person of req.persons) {
+            addPerson(doc, person);
           }
-        }, `Add ${req.friends.length} friends`);
+        }, `Add ${req.persons.length.toLocaleString()} people`);
         ack(req.reqId);
         break;
 
-      case "UPDATE_FRIEND":
+      case "UPDATE_PERSON":
         await applyRequestChange(
-          (doc) => updateFriend(doc, req.friendId, req.updates as Partial<Friend>),
-          "Update friend",
+          (doc) => updatePerson(doc, req.personId, req.updates as Partial<Person>),
+          "Update person",
         );
         ack(req.reqId);
         break;
 
-      case "REMOVE_FRIEND":
-        await applyRequestChange((doc) => removeFriend(doc, req.friendId), "Remove friend");
+      case "REMOVE_PERSON":
+        await applyRequestChange((doc) => removePerson(doc, req.personId), "Remove person");
         ack(req.reqId);
         break;
 
       case "LOG_REACH_OUT":
         await applyRequestChange(
-          (doc) => logReachOut(doc, req.friendId, req.entry),
+          (doc) => logReachOut(doc, req.personId, req.entry),
           "Log reach-out",
         );
+        ack(req.reqId);
+        break;
+
+      case "ADD_ACCOUNT":
+        await applyRequestChange((doc) => addAccount(doc, req.account), "Add account");
+        ack(req.reqId);
+        break;
+
+      case "ADD_ACCOUNTS":
+        await applyRequestChange((doc) => addAccounts(doc, req.accounts), `Add ${req.accounts.length.toLocaleString()} accounts`);
+        ack(req.reqId);
+        break;
+
+      case "UPDATE_ACCOUNT":
+        await applyRequestChange((doc) => updateAccount(doc, req.accountId, req.updates), "Update account");
+        ack(req.reqId);
+        break;
+
+      case "REMOVE_ACCOUNT":
+        await applyRequestChange((doc) => removeAccount(doc, req.accountId), "Remove account");
         ack(req.reqId);
         break;
 
@@ -609,7 +749,7 @@ async function handleRequest(
             addFeedItem(doc, item);
             if (linkUrl) existingLinkUrls.add(linkUrl);
           }
-        }, `Refresh ${req.feeds.length} feeds, ${req.items.length} items`);
+        }, `Refresh ${req.feeds.length} feeds, ${req.items.length} items`, true);
         ack(req.reqId);
         break;
 
@@ -624,7 +764,7 @@ async function handleRequest(
             for (const item of chunk) {
               if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
             }
-          }, `Batch import chunk ${chunkIndex + 1}/${totalChunks}`);
+          }, `Batch import chunk ${chunkIndex + 1}/${totalChunks}`, true);
           send({ type: "IMPORT_PROGRESS", chunkIndex: chunkIndex + 1, totalChunks });
         }
         ack(req.reqId);
@@ -640,7 +780,7 @@ async function handleRequest(
             try { healed = new URL(feed.url).hostname.replace(/^(?:www|feeds?)\./, ""); } catch { /* */ }
             if (healed) feed.title = healed;
           }
-        }, "Heal untitled feed titles from URL hostname");
+        }, "Heal untitled feed titles from URL hostname", true);
         ack(req.reqId);
         break;
 
@@ -670,7 +810,7 @@ async function handleRequest(
             scored.sort((a, b) => b.score - a.score || b.id.localeCompare(a.id));
             for (let i = 1; i < scored.length; i++) delete doc.feedItems[scored[i].id];
           }
-        }, "Deduplicate feed items by article link URL");
+        }, "Deduplicate feed items by article link URL", true);
         ack(req.reqId);
         break;
 

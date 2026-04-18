@@ -1,17 +1,17 @@
 # Phase 8: Friends + Social Graph
 
-> **Status:** In Progress
+> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, and the map plus Friends surfaces resolve identity through linked accounts instead of embedded friend sources while the map can already switch between current, future, and past location windows
 > **Dependencies:** Phase 7 (Facebook + Instagram capture provide most social content)
 
 ---
 
 ## Overview
 
-A friend CRM built on a force-directed social graph. Unify a person's blog RSS feed, Facebook profile, Instagram account, and any other platform into a single **Friend** identity. Track relationship health, log reach-outs, and get nudged when you've drifted from people you care about.
+A people CRM built on a force-directed social graph. Canonical same-human identity now lives in a `Person` record, while every attached social profile or imported contact lives in an `Account` record. Social capture can catalog followed accounts before they are confirmed as the same person, and Google Contacts imports create friend people by default.
 
-Clicking a friend zooms in to show a chronological timeline of everything they've posted across all their linked social channels.
+Confirmed friends stay at the center of the graph. Their linked social and contact accounts orbit as attached nodes. Unconfirmed followed accounts can stay separate until the operator confirms that they belong to the same person.
 
-The geo map from the original Phase 8 design is retained as sub-phase 8D, now powered by Friend identities so pins cluster by person rather than by platform and render in Freed's dark purple visual language.
+The geo map from the original Phase 8 design is retained as sub-phase 8D. It now supports both Friend-linked pins and an `All content` fallback that shows the latest valid location per followed account when no Friend graph exists yet.
 
 This phase also becomes the home for future-aware social planning. Historical post locations still matter, but the map and friend timeline now need to handle future-dated place windows from sources like Mozi, plus derived overlap views when multiple friends are in the same place at the same time.
 
@@ -21,14 +21,19 @@ This phase also becomes the home for future-aware social planning. Historical po
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                     8A: Friend Identity Layer                     │
+│                  8A: Person + Account Identity Layer              │
 │                                                                   │
-│  Friend record (Automerge doc)                                    │
-│  ├── sources: FriendSource[]   → matches FeedItem.author.id       │
-│  └── contact?: DeviceContact   → imported from address book       │
+│  Person record (Automerge doc)                                    │
+│  ├── relationshipStatus: "connection" | "friend"                  │
+│  └── metadata for the confirmed same-human identity               │
+│                                                                   │
+│  Account record (Automerge doc)                                   │
+│  ├── kind: "social" | "contact"                                   │
+│  ├── provider + externalId                                        │
+│  └── optional personId when the operator confirms identity        │
 │                                                                   │
 │  packages/shared/src/friends.ts (pure functions)                  │
-│  └── friendForAuthor, feedItemsForFriend, isDue, nodeRadius ...   │
+│  └── personForAuthor, feedItemsForPerson, isDue, nodeRadius ...   │
 └──────────────────────────────────────────────────────────────────┘
            │                         │
            ▼                         ▼
@@ -42,7 +47,8 @@ This phase also becomes the home for future-aware social planning. Historical po
 ┌──────────────────────────────────────────────────────────────────┐
 │                 8D: Location / Time-Aware Map View               │
 │  FeedItems + time windows → location extraction → Nominatim      │
-│  geocoding → cache → MapLibre markers (latest pin per Friend)    │
+│  geocoding → cache → MapLibre markers (latest pin per Friend or   │
+│  latest valid pin per followed account in All content mode)       │
 │  → timeline scrubber → derived overlap views                     │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -56,47 +62,47 @@ This phase also becomes the home for future-aware social planning. Historical po
 ```typescript
 // packages/shared/src/types.ts
 
-interface FriendSource {
-  platform: Platform;
-  authorId: string;       // matches FeedItem.author.id
-  handle?: string;
-  displayName?: string;
-  avatarUrl?: string;
-  profileUrl?: string;
-}
-
-interface DeviceContact {
-  importedFrom: "macos" | "ios" | "android" | "web";
+interface Person {
+  id: string;
   name: string;
-  phone?: string;
-  email?: string;
-  address?: string;
-  nativeId?: string;
-  importedAt: number;
-}
-
-interface ReachOutLog {
-  loggedAt: number;
-  channel?: "phone" | "text" | "email" | "in_person" | "other";
-  notes?: string;
-}
-
-interface Friend {
-  id: string;                   // uuid
-  name: string;                 // canonical display name
-  avatarUrl?: string;           // overrides platform avatars
-  bio?: string;
-  sources: FriendSource[];
-  contact?: DeviceContact;
-  careLevel: 1 | 2 | 3 | 4 | 5; // drives reach-out nudge interval
-  reachOutIntervalDays?: number;  // override; auto-derived from careLevel if absent
-  reachOutLog?: ReachOutLog[];   // most recent first, capped at 20
+  relationshipStatus: "connection" | "friend";
+  careLevel: 1 | 2 | 3 | 4 | 5;
+  reachOutIntervalDays?: number;
+  reachOutLog?: ReachOutLog[];
   tags?: string[];
   notes?: string;
   createdAt: number;
   updatedAt: number;
 }
+
+interface Account {
+  id: string;
+  personId?: string;
+  kind: "social" | "contact";
+  provider: AccountProvider;
+  externalId: string;
+  handle?: string;
+  displayName?: string;
+  avatarUrl?: string;
+  profileUrl?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  importedAt: number;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  discoveredFrom:
+    | "captured_item"
+    | "story_author"
+    | "contact_import"
+    | "manual_entry"
+    | "follow_roster";
+  createdAt: number;
+  updatedAt: number;
+}
 ```
+
+Legacy `Friend`, `FriendSource`, and `DeviceContact` shims still exist for compatibility, but canonical persistence now lives in `persons` and `accounts` inside the Automerge document. Legacy docs hydrate through a migration that splits embedded sources and contact data into standalone account records.
 
 Default nudge intervals by care level:
 
@@ -115,7 +121,7 @@ Default nudge intervals by care level:
 - **Desktop**: Tauri `pick_contact` command (scaffolded, requires `objc2-contacts` crate + `com.apple.security.personal-information.addressbook` entitlement)
 - **PWA (iOS/Android)**: Web Contact Picker API (`navigator.contacts.select`)
 - **PWA (desktop browser)**: absent, `FriendEditor` falls back to manual form
-- **Google Contacts**: optional People API import in Friends view, with match suggestions, linking, skip, and create-Friend flows
+- **Google Contacts**: optional People API import in Friends view. Imports create `Person` records as `friend` by default, attach a contact `Account`, and surface suggestion-only merges for matching social accounts
 
 ---
 
@@ -156,10 +162,10 @@ Default nudge intervals by care level:
 ## 8D: Location / Map View
 
 ```
-FeedItems → extractLocationFromItem() + optional time window → geocode() (Nominatim) → cache → MapLibre markers → timeline scrubber → derived overlap views
+FeedItems → extractLocationFromItem() + optional time window → geocode() (Nominatim) → cache → MapLibre markers → Friends mode or All content mode → timeline scrubber → derived overlap views
 ```
 
-Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare), text patterns ("📍 Paris"), **and IG/FB story location stickers** (Phase 7.11). Planned future sources such as Mozi add another class of signal: place windows that may sit in the future instead of the past.
+Sources for location: Instagram geo-tags, Facebook check-ins, X geo-tags (rare), text patterns ("📍 Paris"), **and IG/FB story location stickers** (Phase 7.11). Low-confidence story labels are recovered from preserved Instagram location URLs when possible, or dropped when they cannot be trusted. Planned future sources such as Mozi add another class of signal: place windows that may sit in the future instead of the past.
 
 > **Note:** Stories cross-posted from Instagram to Facebook (or vice versa) currently create two separate FeedItems with different `globalId` prefixes (`ig:` vs `fb:`), which can produce duplicate map pins for the same location event. Phase 7.15 (cross-platform dedup) will address this by matching items with the same Friend identity + similar text + timestamps within a few minutes.
 
@@ -207,6 +213,8 @@ Friend captions in the graph now use pill backgrounds and label-aware spacing, s
 Friend avatars now inherit a theme-authored tint across the Friends graph and map markers, so each theme stays coherent without a stray custom accent fighting the palette.
 Map popovers now use a wider card layout and deliberately omit the old MapLibre tail, so place names and actions fit cleanly without the popup looking like a speech bubble from a cheaper app.
 Friends and Map now consume the same shared theme tokens, button treatments, shell backgrounds, surface recipes, and theme-native map palettes as the rest of Freed, so themes like Neon, Midas, Vesper, Ember, and Scriptorium land consistently across the graph, sidebars, popovers, mini-map cards, editor, contact-sync flows, and map basemap itself.
+The shared map now includes a persisted `Friends` / `All content` toggle. It restores the user's last mode from preferences and defaults to `All content` when the library has geolocatable followed accounts but no friend-linked pins yet.
+The shared map now also persists a `Current` / `Future` / `Past` time filter. Future-dated `timeRange` windows stay out of the default current map until they start, upcoming travel or event windows can be previewed directly, and expired windows fall into a separate past view without hijacking the current last-seen map.
 
 ---
 
@@ -234,18 +242,23 @@ Friends and Map now consume the same shared theme tokens, button treatments, she
 | 8.18 | Wire Friends to live sidebar navigation | Low | Done |
 | 8.19 | Google Contacts source, sync lifecycle, matching, and Friend creation flow | Medium | Done |
 | 8.20 | Wire Map to live sidebar navigation | Low | Done |
-| 8.21 | Add future-aware map filtering for location-bearing items | Medium | Not Started |
+| 8.21 | Add future-aware map filtering for location-bearing items | Medium | Done |
 | 8.22 | Add map timeline scrubber for past and future playback | Medium | Not Started |
+| 8.23 | Replace embedded Friend identity with canonical `Person` + `Account` schema and Automerge migration | High | Done |
+| 8.24 | Backfill followed-account catalog from captured authors and stories | Medium | Done |
+| 8.25 | Google Contacts imports create friend persons with linked contact accounts | Medium | Done |
+| 8.26 | Suggestion-only identity review queue for cross-account same-person confirmation | Medium | Done |
 | 8.23 | Render derived overlap states in map and Friend detail surfaces | Medium | Not Started |
 | 8.24 | Support Mozi-backed friend/location events in identity and map flows | Medium | Not Started |
 | 8.25 | Include Google contact sync state in desktop disaster-recovery snapshots | Low | Done |
+| 8.26 | Add persisted `Friends` / `All content` map modes with latest-author pins | Medium | Done |
 
 ---
 
 ## Success Criteria
 
-- [x] `Friend` type with unified identity model in Automerge doc
-- [x] Identity resolution: `friendForAuthor(friends, platform, authorId)`
+- [x] Canonical Automerge identity graph now persists `persons` plus `accounts`, with backward-compatible migration from legacy `friends`
+- [x] Identity resolution supports both `personForAuthor(persons, accounts, platform, authorId)` and legacy `friendForAuthor(...)`
 - [x] CRM helpers: `isDue`, `effectiveInterval`, `nodeRadius`, `nodeOpacity`
 - [x] Device contact import injected via `PlatformContext`
 - [x] Force graph canvas renders friend nodes with recency + care encoding
@@ -254,10 +267,11 @@ Friends and Map now consume the same shared theme tokens, button treatments, she
 - [x] Reach-out can be logged and clears the Reconnect ring
 - [x] FriendEditor links social sources and imports contact info
 - [x] Friends shown in Sidebar as a live navigation destination
-- [x] Google Contacts import suggests matches and can create Friends
+- [x] Google Contacts import creates friend persons by default and suggests same-person matches without auto-linking
 - [x] Desktop snapshot restore preserves cached Google contacts and pending match suggestions
 - [x] Google Contacts appears as a first-class source in Settings and Friends
-- [x] Google Contacts auto-links high-confidence matches and can create Friends from high-confidence unlinked authors
+- [x] Captured social authors can backfill orphan followed-account records before the operator confirms identity
+- [x] Match review is suggestion-only. Contact-to-social and social-to-social merges require explicit confirmation
 - [x] Location extraction from geo-tags and text patterns
 - [x] Nominatim geocoding with rate limiter
 - [x] Geocoding cache with TTL
@@ -268,9 +282,13 @@ Friends and Map now consume the same shared theme tokens, button treatments, she
 - [x] Friends and Map inherit the shared multi-theme design system instead of hardcoded one-off gradients
 - [x] Sample data refresh rebuilds a 25-friend social graph with linked profiles and recent map activity
 - [x] Sidebar shows live counts for Friends and recent friend location updates on Map
+- [x] Map supports persisted `Friends` and `All content` modes
+- [x] Map defaults to `All content` when there are valid author pins but no friend-linked pins
+- [x] `All content` mode shows the latest valid location per followed account
+- [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map
 - [ ] macOS native contact picker (CNContactStore)
 - [x] Map promoted to live sidebar navigation
-- [ ] Future-aware map filtering supports past, current, and future location windows
+- [x] Future-aware map filtering supports past, current, and future location windows
 - [ ] Timeline scrubbing works across historical posts and future planning items
 - [ ] Overlaps render as derived read-time views, not persisted source records
 - [ ] Mozi-backed friend/location events appear in Friend identity and map flows

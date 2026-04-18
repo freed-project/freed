@@ -15,7 +15,12 @@ import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
   createEmptyDoc,
+  addAccount,
+  addAccounts,
   addFeedItem,
+  hasLegacyIdentityGraphData,
+  migrateLegacyIdentityGraph,
+  addPerson,
   addRssFeed,
   removeRssFeed,
   removeAllFeeds,
@@ -32,16 +37,17 @@ import {
   deleteAllArchivedItems,
   updatePreferences,
   updateLastSync,
-  addFriend,
-  updateFriend,
-  removeFriend,
+  updateAccount,
+  updatePerson,
+  removeAccount,
+  removePerson,
   logReachOut,
   toggleLiked,
   confirmLikedSynced,
   confirmSeenSynced,
 } from "@freed/shared/schema";
 import { rankFeedItems } from "@freed/shared";
-import type { FeedItem, Friend, RssFeed, UserPreferences } from "@freed/shared";
+import type { Account, FeedItem, Friend, LegacyDeviceContact, LegacyFriendSource, Person, RssFeed, UserPreferences } from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
 
 // ---------------------------------------------------------------------------
@@ -50,6 +56,7 @@ import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types"
 
 const storage = new IndexedDBStorage();
 let currentDoc: FreedDoc | null = null;
+let searchCorpusVersion = 0;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -63,6 +70,98 @@ function ack(reqId: number, error?: string): void {
   send({ reqId, type: "ACK", error });
 }
 
+function toLegacyContact(account: Account): LegacyDeviceContact {
+  const importedFrom: LegacyDeviceContact["importedFrom"] =
+    account.provider === "google_contacts"
+      ? "google"
+      : account.provider === "macos_contacts"
+        ? "macos"
+        : account.provider === "ios_contacts"
+          ? "ios"
+          : account.provider === "android_contacts"
+            ? "android"
+            : "web";
+  return {
+    importedFrom,
+    name: account.displayName ?? account.externalId,
+    phone: account.phone,
+    email: account.email,
+    address: account.address,
+    nativeId: account.externalId,
+    importedAt: account.importedAt ?? account.createdAt,
+  };
+}
+
+function projectLegacyFriends(
+  persons: Record<string, Person>,
+  accounts: Record<string, Account>
+): Record<string, Friend> {
+  const accountsByPerson = new Map<string, Account[]>();
+  for (const account of Object.values(accounts)) {
+    if (!account.personId) continue;
+    const group = accountsByPerson.get(account.personId);
+    if (group) {
+      group.push(account);
+    } else {
+      accountsByPerson.set(account.personId, [account]);
+    }
+  }
+
+  return Object.fromEntries(
+    Object.values(persons).map((person) => {
+      const personAccounts = accountsByPerson.get(person.id) ?? [];
+      const sources: LegacyFriendSource[] = personAccounts
+        .filter((account) => account.kind === "social")
+        .map((account) => ({
+          platform: account.provider as LegacyFriendSource["platform"],
+          authorId: account.externalId,
+          handle: account.handle,
+          displayName: account.displayName,
+          avatarUrl: account.avatarUrl,
+          profileUrl: account.profileUrl,
+        }));
+      const contactAccount = personAccounts.find((account) => account.kind === "contact");
+      return [person.id, {
+        ...person,
+        sources,
+        contact: contactAccount ? toLegacyContact(contactAccount) : undefined,
+      }];
+    })
+  );
+}
+
+function bumpSearchCorpusVersion(): void {
+  searchCorpusVersion += 1;
+}
+
+function migrateLoadedIdentityGraph(message: string): void {
+  if (!currentDoc || !hasLegacyIdentityGraphData(currentDoc)) return;
+  currentDoc = A.change(currentDoc, message, (doc) => {
+    migrateLegacyIdentityGraph(doc);
+  });
+}
+
+function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean {
+  if (
+    "author" in updates ||
+    "content" in updates ||
+    "contentType" in updates ||
+    "preservedContent" in updates ||
+    "publishedAt" in updates ||
+    "rssSource" in updates ||
+    "topics" in updates
+  ) {
+    return true;
+  }
+
+  if (!updates.userState) return false;
+  return (
+    "hidden" in updates.userState ||
+    "tags" in updates.userState ||
+    "highlights" in updates.userState
+  );
+}
+
 /**
  * Convert the Automerge proxy document to a plain-JS DocState for postMessage.
  * A.toJS() converts CRDT proxies to regular objects, safe for structured clone.
@@ -72,7 +171,9 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
   const plain = A.toJS(doc) as FreedDoc;
   const plainItems = Object.values(plain.feedItems as Record<string, FeedItem>);
   const feeds = plain.rssFeeds as Record<string, RssFeed>;
-  const friends = (plain.friends ?? {}) as Record<string, Friend>;
+  const persons = (plain.persons ?? {}) as Record<string, Person>;
+  const accounts = (plain.accounts ?? {}) as Record<string, Account>;
+  const friends = projectLegacyFriends(persons, accounts);
   const preferences = plain.preferences as UserPreferences;
 
   const visibleItems = plainItems.filter((item) => !item.userState.hidden);
@@ -118,7 +219,10 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
 
   return {
     items: rankedItems,
+    searchCorpusVersion,
     feeds,
+    persons,
+    accounts,
     friends,
     preferences,
     feedUnreadCounts,
@@ -165,9 +269,11 @@ async function saveAndBroadcast(): Promise<void> {
 async function applyChange(
   changeFn: (doc: FreedDoc) => void,
   message: string,
+  searchCorpusChanged = false,
 ): Promise<void> {
   if (!currentDoc) throw new Error("Document not initialized");
   currentDoc = A.change(currentDoc, message, changeFn);
+  if (searchCorpusChanged) bumpSearchCorpusVersion();
   send({ type: "DEBUG_EVENT", kind: "change", detail: message });
   await saveAndBroadcast();
 }
@@ -186,6 +292,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         if (saved) {
           try {
             currentDoc = A.load<FreedDoc>(saved);
+            migrateLoadedIdentityGraph("Migrate legacy identity graph");
           } catch {
             await storage.clear();
             send({ type: "DEBUG_EVENT", kind: "init", detail: "corrupt doc cleared, creating fresh" });
@@ -196,6 +303,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           const binary = A.save(currentDoc);
           await storage.save(binary);
         }
+        searchCorpusVersion = 1;
         const deviceId = (currentDoc.meta?.deviceId as string | undefined) ?? "unknown";
         send({ type: "DEBUG_EVENT", kind: "init", detail: `device ...${deviceId.slice(-8)}` });
         await saveAndBroadcast();
@@ -263,7 +371,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       case "ADD_FEED_ITEM":
         await applyChange((doc) => {
           if (!doc.feedItems[req.item.globalId]) addFeedItem(doc, req.item);
-        }, "Add feed item");
+        }, "Add feed item", true);
         ack(req.reqId);
         break;
 
@@ -272,17 +380,21 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           for (const item of req.items) {
             if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
           }
-        }, `Add ${req.items.length} feed items`);
+        }, `Add ${req.items.length} feed items`, true);
         ack(req.reqId);
         break;
 
       case "REMOVE_FEED_ITEM":
-        await applyChange((doc) => removeFeedItem(doc, req.globalId), "Remove feed item");
+        await applyChange((doc) => removeFeedItem(doc, req.globalId), "Remove feed item", true);
         ack(req.reqId);
         break;
 
       case "UPDATE_FEED_ITEM":
-        await applyChange((doc) => updateFeedItem(doc, req.globalId, req.updates), "Update feed item");
+        await applyChange(
+          (doc) => updateFeedItem(doc, req.globalId, req.updates),
+          "Update feed item",
+          feedItemUpdatesAffectSearchCorpus(req.updates),
+        );
         ack(req.reqId);
         break;
 
@@ -300,17 +412,17 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         break;
 
       case "PRUNE_ARCHIVED_ITEMS":
-        await applyChange((doc) => pruneArchivedItems(doc, req.maxAgeMs), "Prune archived items");
+        await applyChange((doc) => pruneArchivedItems(doc, req.maxAgeMs), "Prune archived items", true);
         ack(req.reqId);
         break;
 
       case "DELETE_ALL_ARCHIVED":
-        await applyChange((doc) => deleteAllArchivedItems(doc), "Delete all archived items");
+        await applyChange((doc) => deleteAllArchivedItems(doc), "Delete all archived items", true);
         ack(req.reqId);
         break;
 
       case "ADD_RSS_FEED":
-        await applyChange((doc) => addRssFeed(doc, req.feed), "Add RSS feed");
+        await applyChange((doc) => addRssFeed(doc, req.feed), "Add RSS feed", true);
         ack(req.reqId);
         break;
 
@@ -318,17 +430,26 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         await applyChange(
           (doc) => removeRssFeed(doc, req.url, req.includeItems),
           req.includeItems ? "Remove RSS feed and articles" : "Remove RSS feed",
+          true,
         );
         ack(req.reqId);
         break;
 
       case "UPDATE_RSS_FEED":
-        await applyChange((doc) => updateRssFeed(doc, req.url, req.updates as Parameters<typeof updateRssFeed>[2]), "Update RSS feed");
+        await applyChange(
+          (doc) => updateRssFeed(doc, req.url, req.updates as Parameters<typeof updateRssFeed>[2]),
+          "Update RSS feed",
+          true,
+        );
         ack(req.reqId);
         break;
 
       case "REMOVE_ALL_FEEDS":
-        await applyChange((doc) => removeAllFeeds(doc, req.includeItems), req.includeItems ? "Remove all feeds and articles" : "Remove all feeds");
+        await applyChange(
+          (doc) => removeAllFeeds(doc, req.includeItems),
+          req.includeItems ? "Remove all feeds and articles" : "Remove all feeds",
+          true,
+        );
         ack(req.reqId);
         break;
 
@@ -342,32 +463,52 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         ack(req.reqId);
         break;
 
-      case "ADD_FRIEND":
-        await applyChange((doc) => addFriend(doc, req.friend), "Add friend");
+      case "ADD_PERSON":
+        await applyChange((doc) => addPerson(doc, req.person), "Add person");
         ack(req.reqId);
         break;
 
-      case "ADD_FRIENDS":
+      case "ADD_PERSONS":
         await applyChange((doc) => {
-          for (const friend of req.friends) {
-            addFriend(doc, friend);
+          for (const person of req.persons) {
+            addPerson(doc, person);
           }
-        }, `Add ${req.friends.length} friends`);
+        }, `Add ${req.persons.length.toLocaleString()} people`);
         ack(req.reqId);
         break;
 
-      case "UPDATE_FRIEND":
-        await applyChange((doc) => updateFriend(doc, req.friendId, req.updates as Partial<Friend>), "Update friend");
+      case "UPDATE_PERSON":
+        await applyChange((doc) => updatePerson(doc, req.personId, req.updates as Partial<Person>), "Update person");
         ack(req.reqId);
         break;
 
-      case "REMOVE_FRIEND":
-        await applyChange((doc) => removeFriend(doc, req.friendId), "Remove friend");
+      case "REMOVE_PERSON":
+        await applyChange((doc) => removePerson(doc, req.personId), "Remove person");
         ack(req.reqId);
         break;
 
       case "LOG_REACH_OUT":
-        await applyChange((doc) => logReachOut(doc, req.friendId, req.entry), "Log reach-out");
+        await applyChange((doc) => logReachOut(doc, req.personId, req.entry), "Log reach-out");
+        ack(req.reqId);
+        break;
+
+      case "ADD_ACCOUNT":
+        await applyChange((doc) => addAccount(doc, req.account), "Add account");
+        ack(req.reqId);
+        break;
+
+      case "ADD_ACCOUNTS":
+        await applyChange((doc) => addAccounts(doc, req.accounts), `Add ${req.accounts.length.toLocaleString()} accounts`);
+        ack(req.reqId);
+        break;
+
+      case "UPDATE_ACCOUNT":
+        await applyChange((doc) => updateAccount(doc, req.accountId, req.updates), "Update account");
+        ack(req.reqId);
+        break;
+
+      case "REMOVE_ACCOUNT":
+        await applyChange((doc) => removeAccount(doc, req.accountId), "Remove account");
         ack(req.reqId);
         break;
 
@@ -403,7 +544,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
         await applyChange((doc) => {
           if (!doc.feedItems[stub.globalId]) addFeedItem(doc, stub);
-        }, `Add stub item for ${req.url}`);
+        }, `Add stub item for ${req.url}`, true);
         ack(req.reqId);
         break;
       }
@@ -413,6 +554,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         const beforeCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const incomingDoc = A.load<FreedDoc>(req.binary);
         currentDoc = A.merge(currentDoc, incomingDoc);
+        migrateLoadedIdentityGraph("Migrate legacy identity graph");
         const afterCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const delta = afterCount - beforeCount;
         send({
@@ -421,6 +563,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           detail: delta !== 0 ? `${delta > 0 ? "+" : ""}${delta} items` : "no new items",
           bytes: req.binary.byteLength,
         });
+        bumpSearchCorpusVersion();
         await saveAndBroadcast();
         ack(req.reqId);
         break;
@@ -428,6 +571,8 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
       case "CLEAR_LOCAL":
         await storage.clear();
+        currentDoc = null;
+        searchCorpusVersion = 0;
         ack(req.reqId);
         break;
 

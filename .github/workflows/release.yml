@@ -9,6 +9,9 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # Load the reviewed, checked-in release notes for this tag.
   # The workflow refuses to freestyle release prose on its own.
@@ -260,8 +263,8 @@ jobs:
         with:
           projectPath: packages/desktop
           tauriScript: npx tauri
-          tagName: v__VERSION__
-          releaseName: "Freed v__VERSION__"
+          tagName: ${{ github.ref_name }}
+          releaseName: "Freed ${{ github.ref_name }}"
           releaseBody: ${{ needs.notes.outputs.release_body }}
           releaseDraft: true
           prerelease: ${{ needs.notes.outputs.is_prerelease == 'true' }}
@@ -317,14 +320,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release edit "${{ github.ref_name }}" --draft=false --repo "${{ github.repository }}"
 
-  # Redeploy the marketing site after the GitHub release is public so the
-  # checked-in changelog snapshot is rebuilt against the published release.
+  # Redeploy the public marketing site after any GitHub release is public so
+  # the checked-in changelog snapshot is rebuilt against the newly published
+  # release list. Production releases still require the reviewed website branch
+  # to contain the matching release notes file before deployment.
   # Requires VERCEL_TOKEN to be set in repo secrets. If the secret is absent
   # the step exits cleanly without failing the workflow.
   publish-website:
     name: Deploy Website
     needs: [publish, notes]
-    if: needs.notes.outputs.release_channel == 'production'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -342,6 +346,7 @@ jobs:
           cache: "npm"
 
       - name: Verify website production branch contains this release
+        if: needs.notes.outputs.release_channel == 'production'
         shell: bash
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
