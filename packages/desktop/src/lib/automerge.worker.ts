@@ -22,6 +22,8 @@ import {
   addAccount,
   addAccounts,
   addFeedItem,
+  hasLegacyIdentityGraphData,
+  migrateLegacyIdentityGraph,
   addPerson,
   addRssFeed,
   removeRssFeed,
@@ -168,6 +170,13 @@ function emitWorkerTrace(
 
 function bumpSearchCorpusVersion(): void {
   searchCorpusVersion += 1;
+}
+
+function migrateLoadedIdentityGraph(message: string): void {
+  if (!currentDoc || !hasLegacyIdentityGraphData(currentDoc)) return;
+  currentDoc = A.change(currentDoc, message, (doc) => {
+    migrateLegacyIdentityGraph(doc);
+  });
 }
 
 function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean {
@@ -423,6 +432,7 @@ async function handleRequest(
         if (saved) {
           try {
             currentDoc = A.load<FreedDoc>(saved);
+            migrateLoadedIdentityGraph("Migrate legacy identity graph");
             currentBinary = saved;
             persistenceState = createPersistenceState(saved);
           } catch {
@@ -457,6 +467,7 @@ async function handleRequest(
 
       case "REPLACE_DOC":
         currentDoc = A.load<FreedDoc>(req.binary);
+        migrateLoadedIdentityGraph("Migrate legacy identity graph");
         currentBinary = req.binary;
         persistenceState = createPersistenceState(req.binary);
         bumpSearchCorpusVersion();
@@ -479,6 +490,7 @@ async function handleRequest(
         const beforeCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const incomingDoc = A.load<FreedDoc>(req.binary);
         currentDoc = A.merge(currentDoc, incomingDoc);
+        migrateLoadedIdentityGraph("Migrate legacy identity graph");
         const afterCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const delta = afterCount - beforeCount;
         send({

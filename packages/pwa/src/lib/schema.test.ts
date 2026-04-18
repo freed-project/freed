@@ -8,8 +8,12 @@
 import { describe, it, expect } from "vitest";
 import * as A from "@automerge/automerge";
 import {
+  addAccounts,
   createEmptyDoc,
+  createDocFromData,
   addFeedItem,
+  hasLegacyIdentityGraphData,
+  migrateLegacyIdentityGraph,
   removeFeedItem,
   markAsRead,
   toggleSaved,
@@ -20,7 +24,7 @@ import {
   updatePreferences,
 } from "@freed/shared/schema";
 import type { FreedDoc } from "@freed/shared/schema";
-import type { FeedItem, RssFeed } from "@freed/shared";
+import type { Account, FeedItem, RssFeed } from "@freed/shared";
 
 // =============================================================================
 // Test fixtures
@@ -277,6 +281,84 @@ describe("updatePreferences", () => {
     );
 
     expect(doc.preferences.display.compactMode).toBe(originalCompactMode);
+  });
+});
+
+describe("legacy identity graph migration", () => {
+  function makeLegacyFriend() {
+    const now = Date.now();
+    return {
+      id: "person-1",
+      name: "Ada Lovelace",
+      sources: [{
+        platform: "x" as const,
+        authorId: "ada-l",
+        handle: "ada",
+        displayName: "Ada",
+      }],
+      careLevel: 3 as const,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  it("migrates legacy friends into persons and accounts when creating docs from data", () => {
+    const base = A.toJS(createEmptyDoc()) as FreedDoc;
+    const legacyFriend = makeLegacyFriend();
+    const doc = createDocFromData({
+      feedItems: base.feedItems,
+      rssFeeds: base.rssFeeds,
+      preferences: base.preferences,
+      meta: base.meta,
+      friends: {
+        [legacyFriend.id]: legacyFriend,
+      },
+    } as unknown as Partial<FreedDoc>);
+
+    expect(doc.persons[legacyFriend.id]?.name).toBe(legacyFriend.name);
+    expect(doc.accounts[`${legacyFriend.id}:x:${legacyFriend.sources[0].authorId}`]).toBeDefined();
+  });
+
+  it("repairs loaded legacy docs before discovered account writes run", () => {
+    const base = A.toJS(createEmptyDoc()) as FreedDoc;
+    const legacyFriend = makeLegacyFriend();
+    let doc = A.from({
+      feedItems: base.feedItems,
+      rssFeeds: base.rssFeeds,
+      preferences: base.preferences,
+      meta: base.meta,
+      friends: {
+        [legacyFriend.id]: legacyFriend,
+      },
+    } as Record<string, unknown>) as unknown as FreedDoc;
+
+    expect(hasLegacyIdentityGraphData(doc)).toBe(true);
+
+    doc = A.change(doc, (draft) => {
+      migrateLegacyIdentityGraph(draft);
+    });
+
+    const discoveredAccount: Account = {
+      id: `${legacyFriend.id}:x:new-author`,
+      personId: legacyFriend.id,
+      kind: "social",
+      provider: "x",
+      externalId: "new-author",
+      handle: "newauthor",
+      displayName: "New Author",
+      firstSeenAt: legacyFriend.updatedAt,
+      lastSeenAt: legacyFriend.updatedAt,
+      discoveredFrom: "captured_item",
+      createdAt: legacyFriend.updatedAt,
+      updatedAt: legacyFriend.updatedAt,
+    };
+
+    doc = A.change(doc, (draft) => {
+      addAccounts(draft, [discoveredAccount]);
+    });
+
+    expect(doc.persons[legacyFriend.id]?.name).toBe(legacyFriend.name);
+    expect(doc.accounts[discoveredAccount.id]?.externalId).toBe("new-author");
   });
 });
 
