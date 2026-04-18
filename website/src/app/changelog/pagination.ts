@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import changelogReleases from "@/content/changelog.generated.json";
-import type { ParsedRelease } from "@/content/changelog";
+import type { ParsedRelease, ReleaseChannel } from "@/content/changelog";
 
 export const CHANGELOG_PAGE_SIZE = 5;
 export type ChangelogMode = "production" | "all";
@@ -14,6 +14,12 @@ function releasesForMode(mode: ChangelogMode): ParsedRelease[] {
   }
 
   return allReleases.filter((release) => release.channel !== "dev");
+}
+
+export function getLatestChangelogTagName(
+  channel: ReleaseChannel,
+): string | null {
+  return allReleases.find((release) => release.channel === channel)?.tagName ?? null;
 }
 
 export function getChangelogTotalPages(

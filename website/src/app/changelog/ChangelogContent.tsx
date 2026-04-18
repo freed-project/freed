@@ -156,11 +156,13 @@ function PaginationNav({
 function ReleaseCard({
   release,
   index,
-  isLatest,
+  isLatestProduction,
+  isLatestDev,
 }: {
   release: ParsedRelease;
   index: number;
-  isLatest: boolean;
+  isLatestProduction: boolean;
+  isLatestDev: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, margin: "-80px" });
@@ -200,9 +202,9 @@ function ReleaseCard({
 
         {/* Node */}
         <div className="release-timeline-node relative z-10 mt-1 transition-transform duration-300">
-          {isLatest ? (
+          {isLatestProduction || isLatestDev ? (
             <>
-              {/* Pulsing rings for latest release */}
+              {/* Pulsing rings for latest release in each channel */}
               <motion.div
                 className="absolute inset-0 rounded-full"
                 style={{
@@ -287,7 +289,7 @@ function ReleaseCard({
               >
                 v{release.version}
               </a>
-              {isLatest && (
+              {isLatestProduction && (
                 <span
                   className="px-2.5 py-0.5 rounded-full text-xs font-semibold border"
                   style={{
@@ -301,7 +303,7 @@ function ReleaseCard({
                   Latest
                 </span>
               )}
-              {release.channel === "dev" && (
+              {isLatestDev && (
                 <span
                   className="px-2.5 py-0.5 rounded-full border text-xs font-semibold text-text-secondary"
                   style={{
@@ -311,7 +313,7 @@ function ReleaseCard({
                       "color-mix(in srgb, var(--theme-text-muted) 24%, transparent)",
                   }}
                 >
-                  Dev
+                  Dev Latest
                 </span>
               )}
               <time className="ml-auto text-sm text-text-muted transition-colors duration-300">
@@ -451,12 +453,16 @@ export default function ChangelogContent({
   mode,
   totalPages,
   pageRange,
+  latestProductionTagName,
+  latestDevTagName,
 }: {
   releases: ParsedRelease[];
   currentPage: number;
   mode: ChangelogMode;
   totalPages: number;
   pageRange: { start: number; end: number; total: number };
+  latestProductionTagName: string | null;
+  latestDevTagName: string | null;
 }) {
   const pathname = usePathname();
   const shouldAnimateHeader = useMemo(
@@ -523,7 +529,8 @@ export default function ChangelogContent({
                   key={release.tagName}
                   release={release}
                   index={index}
-                  isLatest={currentPage === 1 && index === 0}
+                  isLatestProduction={release.tagName === latestProductionTagName}
+                  isLatestDev={release.tagName === latestDevTagName}
                 />
               ))}
             </div>
