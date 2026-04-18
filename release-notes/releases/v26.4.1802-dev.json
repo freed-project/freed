@@ -3,7 +3,7 @@
   "version": "26.4.1802-dev",
   "channel": "dev",
   "dayKey": "26.4.18",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-18T19:54:35.154Z",
   "model": "heuristic",
@@ -41,8 +41,10 @@
     "features": [
       "Time-aware map filtering"
     ],
-    "fixes": [],
+    "fixes": [
+      "Migrates older friend data into the person and account graph during startup so existing identities keep loading cleanly after the update."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1802-dev\n\nTime-aware map filtering and migrate legacy identity graph on startup\n\n### Features\n\n- Time-aware map filtering\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1802-dev\n\nTime-aware map filtering and migrate legacy identity graph on startup\n\n### Features\n\n- Time-aware map filtering\n\n### Fixes\n\n- Migrates older friend data into the person and account graph during startup so existing identities keep loading cleanly after the update.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
