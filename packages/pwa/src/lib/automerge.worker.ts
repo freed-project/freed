@@ -18,6 +18,8 @@ import {
   addAccount,
   addAccounts,
   addFeedItem,
+  hasLegacyIdentityGraphData,
+  migrateLegacyIdentityGraph,
   addPerson,
   addRssFeed,
   removeRssFeed,
@@ -130,6 +132,13 @@ function projectLegacyFriends(
 
 function bumpSearchCorpusVersion(): void {
   searchCorpusVersion += 1;
+}
+
+function migrateLoadedIdentityGraph(message: string): void {
+  if (!currentDoc || !hasLegacyIdentityGraphData(currentDoc)) return;
+  currentDoc = A.change(currentDoc, message, (doc) => {
+    migrateLegacyIdentityGraph(doc);
+  });
 }
 
 function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean {
@@ -283,6 +292,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         if (saved) {
           try {
             currentDoc = A.load<FreedDoc>(saved);
+            migrateLoadedIdentityGraph("Migrate legacy identity graph");
           } catch {
             await storage.clear();
             send({ type: "DEBUG_EVENT", kind: "init", detail: "corrupt doc cleared, creating fresh" });
@@ -544,6 +554,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         const beforeCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const incomingDoc = A.load<FreedDoc>(req.binary);
         currentDoc = A.merge(currentDoc, incomingDoc);
+        migrateLoadedIdentityGraph("Migrate legacy identity graph");
         const afterCount = Object.keys(currentDoc.feedItems ?? {}).length;
         const delta = afterCount - beforeCount;
         send({

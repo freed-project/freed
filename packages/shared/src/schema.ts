@@ -206,6 +206,140 @@ function migrateLegacyIdentityData(data: Partial<FreedDoc>): Partial<FreedDoc> {
   };
 }
 
+function ensureIdentityGraphRoots(doc: FreedDoc): void {
+  const root = doc as FreedDoc & {
+    persons?: Record<string, Person>;
+    accounts?: Record<string, Account>;
+  };
+
+  if (!root.persons) {
+    root.persons = {};
+  }
+  if (!root.accounts) {
+    root.accounts = {};
+  }
+}
+
+function addLegacyFriendToIdentityGraph(doc: FreedDoc, legacy: LegacyFriend): void {
+  ensureIdentityGraphRoots(doc);
+
+  if (!doc.persons[legacy.id]) {
+    doc.persons[legacy.id] = normalizePerson({
+      id: legacy.id,
+      name: legacy.name,
+      avatarUrl: legacy.avatarUrl,
+      bio: legacy.bio,
+      relationshipStatus: "friend",
+      careLevel: legacy.careLevel,
+      reachOutIntervalDays: legacy.reachOutIntervalDays,
+      reachOutLog: legacy.reachOutLog,
+      tags: legacy.tags,
+      notes: legacy.notes,
+      createdAt: legacy.createdAt,
+      updatedAt: legacy.updatedAt,
+    });
+  }
+
+  for (const source of legacy.sources ?? []) {
+    const accountId = accountIdForLegacySocial(legacy.id, source);
+    if (!doc.accounts[accountId]) {
+      doc.accounts[accountId] = stripUndefined({
+        id: accountId,
+        personId: legacy.id,
+        kind: "social",
+        provider: source.platform,
+        externalId: source.authorId,
+        handle: source.handle,
+        displayName: source.displayName,
+        avatarUrl: source.avatarUrl,
+        profileUrl: source.profileUrl,
+        firstSeenAt: legacy.createdAt,
+        lastSeenAt: legacy.updatedAt,
+        discoveredFrom: "captured_item",
+        createdAt: legacy.createdAt,
+        updatedAt: legacy.updatedAt,
+      });
+    }
+  }
+
+  if (!legacy.contact) return;
+
+  const accountId = accountIdForLegacyContact(legacy.id, legacy.contact);
+  if (!doc.accounts[accountId]) {
+    doc.accounts[accountId] = stripUndefined({
+      id: accountId,
+      personId: legacy.id,
+      kind: "contact",
+      provider: contactProviderForLegacyContact(legacy.contact),
+      externalId: legacy.contact.nativeId ?? legacy.contact.name,
+      displayName: legacy.contact.name,
+      email: legacy.contact.email,
+      phone: legacy.contact.phone,
+      address: legacy.contact.address,
+      importedAt: legacy.contact.importedAt,
+      firstSeenAt: legacy.contact.importedAt,
+      lastSeenAt: legacy.updatedAt,
+      discoveredFrom: "contact_import",
+      createdAt: legacy.createdAt,
+      updatedAt: legacy.updatedAt,
+    });
+  }
+}
+
+export function hasLegacyIdentityGraphData(doc: FreedDoc): boolean {
+  const root = doc as FreedDoc & {
+    friends?: Record<string, LegacyFriend>;
+    persons?: Record<string, Person>;
+    accounts?: Record<string, Account>;
+  };
+
+  return !root.persons || !root.accounts || !!root.friends;
+}
+
+export function migrateLegacyIdentityGraph(doc: FreedDoc): boolean {
+  const root = doc as FreedDoc & {
+    friends?: Record<string, LegacyFriend>;
+  };
+  let changed = false;
+
+  if (!(doc as FreedDoc & { persons?: Record<string, Person> }).persons) {
+    (doc as FreedDoc & { persons?: Record<string, Person> }).persons = {};
+    changed = true;
+  }
+  if (!(doc as FreedDoc & { accounts?: Record<string, Account> }).accounts) {
+    (doc as FreedDoc & { accounts?: Record<string, Account> }).accounts = {};
+    changed = true;
+  }
+
+  const legacyFriends = root.friends;
+  if (!legacyFriends) {
+    return changed;
+  }
+
+  for (const legacy of Object.values(legacyFriends)) {
+    const personExists = !!doc.persons[legacy.id];
+    const socialAccountIds = (legacy.sources ?? []).map((source) =>
+      accountIdForLegacySocial(legacy.id, source),
+    );
+    const missingSocialAccount = socialAccountIds.some((id) => !doc.accounts[id]);
+    const contactAccountId = legacy.contact
+      ? accountIdForLegacyContact(legacy.id, legacy.contact)
+      : null;
+    const missingContactAccount = contactAccountId
+      ? !doc.accounts[contactAccountId]
+      : false;
+
+    if (personExists && !missingSocialAccount && !missingContactAccount) {
+      continue;
+    }
+
+    addLegacyFriendToIdentityGraph(doc, legacy);
+    changed = true;
+  }
+
+  return changed;
+}
+
 // =============================================================================
 // Feed Item Operations
 // =============================================================================
@@ -638,6 +772,7 @@ export function removeAllFeeds(doc: FreedDoc, includeItems: boolean): void {
  * @param friend - The friend to add
  */
 export function addPerson(doc: FreedDoc, person: Person): void {
+  ensureIdentityGraphRoots(doc);
   doc.persons[person.id] = normalizePerson(person);
 }
 
@@ -656,6 +791,7 @@ export function updatePerson(
   id: string,
   updates: Partial<Person>
 ): void {
+  ensureIdentityGraphRoots(doc);
   const existing = doc.persons[id];
   if (!existing) return;
 
@@ -685,6 +821,7 @@ export function updatePerson(
  * @param id - Friend.id
  */
 export function removePerson(doc: FreedDoc, id: string): void {
+  ensureIdentityGraphRoots(doc);
   delete doc.persons[id];
   for (const [accountId, account] of Object.entries(doc.accounts)) {
     if (account.personId === id) {
@@ -705,6 +842,7 @@ export function logReachOut(
   id: string,
   entry: ReachOutLog
 ): void {
+  ensureIdentityGraphRoots(doc);
   const person = doc.persons[id];
   if (!person) return;
 
@@ -726,6 +864,7 @@ export function logReachOut(
 // =============================================================================
 
 export function addAccount(doc: FreedDoc, account: Account): void {
+  ensureIdentityGraphRoots(doc);
   doc.accounts[account.id] = stripUndefined(account);
 }
 
@@ -740,6 +879,7 @@ export function updateAccount(
   id: string,
   updates: Partial<Account>
 ): void {
+  ensureIdentityGraphRoots(doc);
   const existing = doc.accounts[id];
   if (!existing) return;
   Object.assign(existing, stripUndefined(updates));
@@ -747,6 +887,7 @@ export function updateAccount(
 }
 
 export function removeAccount(doc: FreedDoc, id: string): void {
+  ensureIdentityGraphRoots(doc);
   delete doc.accounts[id];
 }
 
