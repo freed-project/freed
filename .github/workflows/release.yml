@@ -387,14 +387,14 @@ jobs:
             exit 0
           fi
           ./scripts/vercel-deploy-production.sh website "$VERCEL_TOKEN"
-  # Deploy the PWA to Vercel after the GitHub release is published so the
-  # version shown in the app always matches the shipped desktop release.
+  # Deploy the PWA after the GitHub release is published so the live PWA lane
+  # matches the shipped desktop channel. Production tags ship app.freed.wtf.
+  # Dev prerelease tags ship a pinned preview deployment at dev-app.freed.wtf.
   # Requires VERCEL_TOKEN to be set in repo secrets. If the secret is absent
   # the step exits cleanly without failing the workflow.
   publish-pwa:
-    name: Deploy PWA
+    name: Deploy PWA Channel
     needs: [publish, notes]
-    if: needs.notes.outputs.release_channel == 'production'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -409,7 +409,7 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: Deploy PWA to Vercel
+      - name: Deploy PWA channel to Vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
@@ -418,4 +418,8 @@ jobs:
             echo "Add a VERCEL_TOKEN secret to enable automated PWA deployment."
             exit 0
           fi
-          ./scripts/vercel-deploy-production.sh pwa "$VERCEL_TOKEN"
+          if [[ "${{ needs.notes.outputs.release_channel }}" == "production" ]]; then
+            ./scripts/vercel-deploy-production.sh pwa "$VERCEL_TOKEN"
+          else
+            ./scripts/vercel-deploy-preview.sh pwa "$VERCEL_TOKEN" dev-app.freed.wtf
+          fi

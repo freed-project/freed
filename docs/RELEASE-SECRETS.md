@@ -76,7 +76,8 @@ Branch promotion rules:
 - If release tooling or website deploy helpers are duplicated across long-lived branches, update the matching copies in the same sweep or note the intentional divergence in the PR.
 
 `VERCEL_TOKEN` is required for GitHub Actions preview deploys and the automated
-PWA production deploy after a production desktop release.
+PWA channel deploys that publish `app.freed.wtf` for production releases and
+`dev-app.freed.wtf` for dev prereleases.
 
 Without it, desktop releases still complete and publish on GitHub, but the PWA
 deploy step and GitHub Actions owned preview deploys are skipped.
@@ -170,18 +171,21 @@ creates a **draft** GitHub Release using the approved checked-in release body.
 After all platform builds succeed, the workflow publishes that release
 automatically.
 
-If `VERCEL_TOKEN` is configured, production releases deploy `packages/pwa/` so
-the PWA version stays aligned with the shipped desktop release. After any
-GitHub release is published, the release workflow also redeploys the public
-website from current `www` so the static changelog snapshot is rebuilt against
-the latest release list. Production website deploys still require the reviewed
-website and changelog state to already be merged into `www`.
+If `VERCEL_TOKEN` is configured, production releases deploy `packages/pwa/` to
+`app.freed.wtf` so the PWA version stays aligned with the shipped desktop
+release. After any GitHub release is published, the release workflow also
+redeploys the public website from current `www` so the static changelog
+snapshot is rebuilt against the latest release list. Production website deploys
+still require the reviewed website and changelog state to already be merged
+into `www`.
 
-Dev releases are published as GitHub prereleases with a `-dev` suffix and do
-not trigger production PWA deploys. They do trigger the public changelog
-refresh from current `www`, so `freed.wtf/changelog/all` can pick up the dev
-release without waiting for a later production ship. Use `freed-ship-www` as
-the manual fallback if the website refresh needs to be rerun independently.
+Dev releases are published as GitHub prereleases with a `-dev` suffix and
+deploy the PWA to `dev-app.freed.wtf` by pinning a Vercel preview deployment to
+that custom domain. They do not touch `app.freed.wtf`. Dev releases also
+trigger the public changelog refresh from current `www`, so
+`freed.wtf/changelog/all` can pick up the dev release without waiting for a
+later production ship. Use `freed-ship-www` as the manual fallback if the
+website refresh needs to be rerun independently.
 
 For dev releases, only the Git tag and release metadata use the `-dev` suffix.
 The app package versions written to Desktop and PWA package files stay numeric,

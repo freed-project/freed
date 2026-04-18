@@ -222,7 +222,7 @@ export function filterByAuthor(
 Vercel project `freed-pwa` now follows the dev-first branch flow.
 
 - **Production:** [app.freed.wtf](https://app.freed.wtf)
-- **Dev:** `dev-app.freed.wtf`
+- **Dev:** `dev-app.freed.wtf` via dev prerelease deploys
 - **Preview:** Auto-generated per pull request
 
 Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `packages/pwa/vercel.json`).
@@ -232,6 +232,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 ## Success Criteria
 
 - [x] PWA deploys to app.freed.wtf via Vercel
+- [x] Dev prerelease tags pin the PWA preview deployment to `dev-app.freed.wtf`
 - [x] PWA can switch locally between the production and dev release channels, redirecting between `app.freed.wtf` and `dev-app.freed.wtf`
 - [x] Feed displays items from Automerge document
 - [x] Per-source unread tracking works for opted-in feeds

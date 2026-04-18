@@ -228,6 +228,7 @@ Branch routing:
 - PRs targeting `www` build and deploy website previews only
 - `dev` is the product integration branch
 - PRs targeting `dev` build PWA previews and run product checks
+- Dev prerelease tags deploy the persistent PWA dev lane at `dev-app.freed.wtf`
 - `main` remains the production app release branch
 - `main` no longer redeploys `freed.wtf` as a side effect
 
