@@ -334,9 +334,11 @@ export async function captureDomFeed(
 > and dev prereleases from `dev` without syncing that preference through the
 > shared document.
 > After the GitHub release is published, the workflow now
-> redeploys `freed.wtf` so the changelog snapshot rebuilds against the newly
-> published release instead of the earlier draft state. See
-> `RELEASE-SECRETS.md` for the full setup checklist.
+> redeploys `freed.wtf` from the `www` branch so the changelog snapshot
+> rebuilds against the newly published release instead of the earlier draft
+> state. Production desktop tags still come from `main`, but production
+> website deploys must first merge the reviewed website and changelog state to
+> `www`. See `RELEASE-SECRETS.md` for the full setup checklist.
 
 ### Mobile
 

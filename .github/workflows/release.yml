@@ -331,12 +331,28 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: www
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "lts/*"
           cache: "npm"
+
+      - name: Verify website production branch contains this release
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          RELEASE_JSON="release-notes/releases/${TAG}.json"
+
+          if [[ ! -f "$RELEASE_JSON" ]]; then
+            echo "Website production deploys must ship from the www branch." >&2
+            echo "Missing ${RELEASE_JSON} on www for ${TAG}." >&2
+            echo "Merge the reviewed website and changelog updates into www before this production website deploy can run." >&2
+            exit 1
+          fi
 
       - name: Wait for published GitHub release
         env:

@@ -94,6 +94,13 @@ Or run the cleanup helper to sweep all merged worktrees at once:
 
 Branches are deleted after merge. The squash commit message is derived from the PR title — write PR titles as if they are commit messages.
 
+**Production website branch:** `freed.wtf` ships from `www`, not `main`.
+
+- Merge production website changes to `www` before deploying the marketing site
+- Production desktop releases still tag from `main`
+- If a production release updates checked-in changelog or website content, merge that reviewed website state to `www` before the production website deploy runs
+- Never assume a website deploy from `main` is correct just because the desktop release tagged from `main`
+
 **Never use `git log main..branch` to check whether a branch has been merged.** Squash merge creates a new commit hash on `main`, so the original branch commits are never reachable from `main`'s history. The branch always looks "ahead" even when its content is fully shipped. Use these instead:
 
 ```bash
