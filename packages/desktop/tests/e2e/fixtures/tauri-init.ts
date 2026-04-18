@@ -70,6 +70,7 @@ export function tauriInitScript(): string {
     window.__TAURI_MOCK_OPENED_URLS__ = [];
     window.__TAURI_MOCK_CALLBACKS__ = {};
     window.__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__ = {};
+    window.__TAURI_MOCK_UPDATE_CHECK_CALLS__ = [];
 
     var nextCallbackId = 1;
     var nextPluginEventId = 1;

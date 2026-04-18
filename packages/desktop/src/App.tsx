@@ -7,7 +7,12 @@ import { FatalErrorScreen } from "@freed/ui/components/FatalErrorScreen";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { GoogleContactsSection } from "@freed/ui/components/settings/GoogleContactsSection";
 import { ToastContainer } from "@freed/ui/components/Toast";
-import { PlatformProvider, type PlatformConfig, type UpdateDownloadProgress } from "@freed/ui/context";
+import {
+  PlatformProvider,
+  type AvailableUpdateInfo,
+  type PlatformConfig,
+  type UpdateDownloadProgress,
+} from "@freed/ui/context";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
 import { UpdateNotification, type UpdateState } from "./components/UpdateNotification";
 import { CloudSyncNudge } from "./components/CloudSyncNudge";
@@ -71,7 +76,7 @@ import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-
 import { startMemoryMonitor, stopMemoryMonitor } from "./lib/memory-monitor";
 import {
   bootstrapDesktopReleaseChannel,
-  getDesktopUpdateTarget,
+  getDesktopUpdateTargets,
   persistDesktopReleaseChannel,
 } from "./lib/release-channel";
 
@@ -79,6 +84,11 @@ const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
 const IS_LOCAL_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1";
 const RENDERER_HEARTBEAT_INTERVAL_MS = 60 * 1000;
+
+type PendingDesktopUpdate = {
+  channel: ReleaseChannel;
+  update: Update;
+};
 
 // Register the desktop log transport so addDebugEvent calls from ui/ flow
 // through the native logger in both local preview and release builds.
@@ -223,7 +233,7 @@ function App() {
 
   // Single source of truth for update state, shared by the toast and the Settings flow.
   const [updateState, setUpdateState] = useState<UpdateState>({ phase: "idle" });
-  const pendingUpdate = useRef<Update | null>(null);
+  const pendingUpdate = useRef<PendingDesktopUpdate | null>(null);
 
   // Show a "just updated" banner for 5s after a process relaunch.
   const [justUpdated, setJustUpdated] = useState<string | null>(null);
@@ -236,17 +246,31 @@ function App() {
     return () => clearTimeout(t);
   }, []);
 
+  const findAvailableUpdate = useCallback(async (): Promise<PendingDesktopUpdate | null> => {
+    const targets = await getDesktopUpdateTargets(releaseChannel);
+    for (const candidate of targets) {
+      const update = await check({ target: candidate.target });
+      if (update) {
+        return { channel: candidate.channel, update };
+      }
+    }
+    return null;
+  }, [releaseChannel]);
+
   // Poll for updates in the background every 30 minutes.
   useEffect(() => {
     if (!legalAccepted || IS_LOCAL_PREVIEW) return;
 
     async function poll() {
       try {
-        const target = await getDesktopUpdateTarget(releaseChannel);
-        const update = await check({ target });
-        if (update) {
-          pendingUpdate.current = update;
-          setUpdateState({ phase: "available", update });
+        const availableUpdate = await findAvailableUpdate();
+        if (availableUpdate) {
+          pendingUpdate.current = availableUpdate;
+          setUpdateState({
+            phase: "available",
+            channel: availableUpdate.channel,
+            update: availableUpdate.update,
+          });
         }
       } catch {
         // Silent — offline or endpoint down.
@@ -258,27 +282,34 @@ function App() {
       clearTimeout(initial);
       clearInterval(interval);
     };
-  }, [legalAccepted, releaseChannel]);
+  }, [findAvailableUpdate, legalAccepted]);
 
   // Manual check triggered from Settings panel.
-  const checkForUpdates = useCallback(async (): Promise<string | null> => {
+  const checkForUpdates = useCallback(async (): Promise<AvailableUpdateInfo | null> => {
     if (IS_LOCAL_PREVIEW) return null;
 
-    const target = await getDesktopUpdateTarget(releaseChannel);
-    const update = await check({ target });
-    if (update) {
-      pendingUpdate.current = update;
-      setUpdateState({ phase: "available", update });
-      return update.version;
+    const availableUpdate = await findAvailableUpdate();
+    if (availableUpdate) {
+      pendingUpdate.current = availableUpdate;
+      setUpdateState({
+        phase: "available",
+        channel: availableUpdate.channel,
+        update: availableUpdate.update,
+      });
+      return {
+        version: availableUpdate.update.version,
+        channel: availableUpdate.channel,
+      };
     }
     return null;
-  }, [releaseChannel]);
+  }, [findAvailableUpdate]);
 
   // Download + install with progress, then relaunch. Used by both the toast
   // and the "Install & Restart" button in Settings via PlatformContext.
   const applyUpdate = useCallback(async () => {
-    const update = pendingUpdate.current;
-    if (!update) return;
+    const pending = pendingUpdate.current;
+    if (!pending) return;
+    const update = pending.update;
 
     let totalBytes = 0;
     let downloadedBytes = 0;
@@ -596,7 +627,6 @@ function App() {
           </AppShell>
           <UpdateNotification
             state={updateState}
-            releaseChannel={releaseChannel}
             onInstall={applyUpdate}
             onRelaunch={handleRelaunch}
             onDismiss={handleDismissUpdate}

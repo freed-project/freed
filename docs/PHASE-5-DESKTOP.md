@@ -281,14 +281,18 @@ export async function captureDomFeed(
 - [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation
 - [ ] Windows installer is code-signed (requires EV certificate)
 - [x] Update server runs on a Freed-owned domain instead of pointing the updater directly at GitHub Releases
-- [x] Desktop settings can switch this install between production and dev release channels
+- [x] Desktop settings can switch this install between production and dev release channels, and the dev channel will install a newer production release when no newer dev build exists without switching the saved channel
 
 > **Current state:**
 > macOS release builds are signed and notarized in GitHub Actions when the
 > required Apple secrets are present. The release workflow now fails fast
 > instead of silently shipping an unsigned macOS artifact. Windows
 > SmartScreen warnings will still appear until an EV certificate is
-> obtained or enough installs build reputation. Desktop now also writes
+> obtained or enough installs build reputation. Desktop now also keeps dev
+> installs on the newest eligible build even when that build comes from the
+> production channel. When production gets ahead of the last dev build, the
+> app now offers that production update without flipping the saved channel
+> away from dev. Desktop now also writes
 > rotating local Automerge snapshots, including Google contact match state,
 > so catastrophic local corruption can be rolled back from Settings.
 > The desktop runtime now also emits periodic memory telemetry into the

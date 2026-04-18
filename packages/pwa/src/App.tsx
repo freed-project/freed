@@ -11,7 +11,11 @@ import { FatalErrorScreen } from "@freed/ui/components/FatalErrorScreen";
 import { ToastContainer } from "@freed/ui/components/Toast";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { OAuthCallback } from "./components/OAuthCallback";
-import { PlatformProvider, type PlatformConfig } from "@freed/ui/context";
+import {
+  PlatformProvider,
+  type AvailableUpdateInfo,
+  type PlatformConfig,
+} from "@freed/ui/context";
 import { useAppStore } from "./lib/store";
 import { exportFeedsAsOPML, subscribeToFeed } from "./lib/capture";
 import {
@@ -122,7 +126,10 @@ function App() {
     };
   }, [legalAccepted]);
 
-  const checkForUpdates = useCallback(() => checkForPwaUpdate(), []);
+  const checkForUpdates = useCallback(async (): Promise<AvailableUpdateInfo | null> => {
+    const version = await checkForPwaUpdate();
+    return version ? { version, channel: releaseChannel } : null;
+  }, [releaseChannel]);
   const setReleaseChannel = useCallback((channel: ReleaseChannel) => {
     if (channel === releaseChannel) {
       return;
