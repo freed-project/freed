@@ -11,6 +11,7 @@ import {
   type Person,
   type LocationMarkerSummary,
   type MapMode,
+  type MapTimeMode,
   type ResolvedLocationItem,
 } from "@freed/shared";
 import { geocode } from "../lib/geocoding.js";
@@ -24,21 +25,30 @@ interface ResolvedLocationsState {
   defaultMode: MapMode;
 }
 
-const EMPTY_STATE: ResolvedLocationsState = {
-  friendMarkers: [],
-  allContentMarkers: [],
+interface ResolvedLocationsCacheState {
+  resolvedItems: ResolvedLocationItem[];
+  lastResolvedAt: number | null;
+  resolvingCount: number;
+}
+
+const EMPTY_STATE: ResolvedLocationsCacheState = {
   resolvedItems: [],
   lastResolvedAt: null,
   resolvingCount: 0,
-  defaultMode: "friends",
 };
 
 export function useResolvedLocations(
   feedItems: FeedItem[],
   persons: Record<string, Person>,
-  accounts: Record<string, Account>
+  accounts: Record<string, Account>,
+  options: {
+    timeMode?: MapTimeMode;
+    now?: number;
+  } = {},
 ): ResolvedLocationsState {
-  const [state, setState] = useState<ResolvedLocationsState>(EMPTY_STATE);
+  const [state, setState] = useState<ResolvedLocationsCacheState>(EMPTY_STATE);
+  const timeMode = options.timeMode ?? "current";
+  const now = options.now;
 
   useEffect(() => {
     let cancelled = false;
@@ -88,16 +98,10 @@ export function useResolvedLocations(
       );
       if (cancelled) return;
 
-      const friendMarkers = getLatestFriendLocationMarkers(resolvedItems);
-      const allContentMarkers = getLatestAuthorLocationMarkers(resolvedItems);
-
       setState({
-        friendMarkers,
-        allContentMarkers,
         resolvedItems,
         resolvingCount: 0,
         lastResolvedAt: Date.now(),
-        defaultMode: getDefaultMapMode(friendMarkers.length, allContentMarkers.length),
       });
     }
 
@@ -108,7 +112,25 @@ export function useResolvedLocations(
     };
   }, [accounts, feedItems, persons]);
 
-  return state;
+  const friendMarkers = useMemo(
+    () => getLatestFriendLocationMarkers(state.resolvedItems, { timeMode, now }),
+    [now, state.resolvedItems, timeMode],
+  );
+  const allContentMarkers = useMemo(
+    () => getLatestAuthorLocationMarkers(state.resolvedItems, { timeMode, now }),
+    [now, state.resolvedItems, timeMode],
+  );
+  const defaultMode = useMemo(
+    () => getDefaultMapMode(friendMarkers.length, allContentMarkers.length),
+    [allContentMarkers.length, friendMarkers.length],
+  );
+
+  return {
+    ...state,
+    friendMarkers,
+    allContentMarkers,
+    defaultMode,
+  };
 }
 
 export function useFriendLastSeenLocation(
@@ -122,7 +144,7 @@ export function useFriendLastSeenLocation(
   const friendMap = useMemo(() => ({ [friend.id]: friend }), [friend]);
   const { resolvedItems, resolvingCount } = useResolvedLocations(feedItems, friendMap, accounts);
   return {
-    lastSeen: getLastSeenLocationForFriend(resolvedItems, friend.id),
+    lastSeen: getLastSeenLocationForFriend(resolvedItems, friend.id, { timeMode: "current" }),
     resolvingCount,
   };
 }
