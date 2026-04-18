@@ -279,9 +279,6 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     !isMobile && sidebarExpanded
       ? ({ width: "calc(var(--freed-sidebar-card-width, 240px) + 16px)", paddingRight: "8px" } as CSSProperties)
       : undefined;
-  const macosTrafficLightInsetStyle = headerDragRegion
-    ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
-    : undefined;
   const leftToolbarStyle = sidebarSlotStyle
     ? {
         ...sidebarSlotStyle,
