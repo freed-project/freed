@@ -22,6 +22,7 @@ const tauriMockAliases: Record<string, string> = process.env.VITE_TEST_TAURI
       "@tauri-apps/api/core": mock("api/core.ts"),
       "@tauri-apps/api/event": mock("api/event.ts"),
       "@tauri-apps/api/path": mock("api/path.ts"),
+      "@tauri-apps/api/window": mock("api/window.ts"),
       "@tauri-apps/plugin-process": mock("plugin-process/index.ts"),
       "@tauri-apps/plugin-updater": mock("plugin-updater/index.ts"),
       "@tauri-apps/plugin-shell": mock("plugin-shell/index.ts"),

@@ -1,4 +1,14 @@
-import { useState, useEffect, useRef, useMemo, useCallback, type CSSProperties, type ReactNode } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import {
   countAuthorsWithRecentLocationUpdates,
   countFriendsWithRecentLocationUpdates,
@@ -18,6 +28,7 @@ import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
+  MACOS_TRAFFIC_LIGHT_INSET,
   useAppStore,
   usePlatform,
 } from "../../context/PlatformContext.js";
@@ -31,6 +42,8 @@ interface HeaderProps {
 
 const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
 const dragStyle = { WebkitAppRegion: "drag" } as CSSProperties;
+const toolbarControlStyle = { ...noDrag, userSelect: "none" } as CSSProperties;
+const TOOLBAR_DRAG_THRESHOLD_PX = 6;
 
 function formatItemCount(count: number): string {
   return `${count.toLocaleString()} item${count === 1 ? "" : "s"}`;
@@ -69,6 +82,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
   const {
     HeaderSyncIndicator,
     headerDragRegion,
+    startWindowDrag,
     addRssFeed,
     saveUrl,
     importMarkdown,
@@ -251,9 +265,13 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
   const showReaderLayoutToggle =
     !isMobile &&
     !!selectedItem;
+  const canManuallyDragToolbarControls = !!(headerDragRegion && startWindowDrag);
   const showReaderRailToolbar =
     showReaderLayoutToggle &&
     display.reading.dualColumnMode;
+  const macosTrafficLightInsetStyle = headerDragRegion
+    ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
+    : undefined;
   const sidebarSlotStyle =
     !isMobile && sidebarExpanded
       ? ({ width: "calc(var(--freed-sidebar-card-width, 240px) + 12px)", paddingRight: "12px" } as CSSProperties)
@@ -261,13 +279,12 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
   const leftToolbarStyle = sidebarSlotStyle
     ? {
         ...sidebarSlotStyle,
-        ...(headerDragRegion ? noDrag : {}),
+        ...macosTrafficLightInsetStyle,
       }
-    : (headerDragRegion ? noDrag : undefined);
+    : macosTrafficLightInsetStyle;
   const readerRailSlotStyle = showReaderLayoutToggle
     ? ({
         width: showReaderRailToolbar ? "var(--freed-reader-rail-width, 0px)" : "auto",
-        ...(headerDragRegion ? noDrag : {}),
       } as CSSProperties)
     : undefined;
 
@@ -275,6 +292,105 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
   const [addFeedOpen, setAddFeedOpen] = useState(false);
   const [savedContentOpen, setSavedContentOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const toolbarDragGestureRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    target: HTMLElement;
+  } | null>(null);
+  const suppressedToolbarClickRef = useRef<EventTarget | null>(null);
+  const suppressedToolbarClickTimeoutRef = useRef<number | null>(null);
+
+  const clearSuppressedToolbarClick = useCallback(() => {
+    suppressedToolbarClickRef.current = null;
+    if (suppressedToolbarClickTimeoutRef.current !== null) {
+      window.clearTimeout(suppressedToolbarClickTimeoutRef.current);
+      suppressedToolbarClickTimeoutRef.current = null;
+    }
+  }, []);
+
+  const scheduleSuppressedToolbarClickClear = useCallback(() => {
+    if (suppressedToolbarClickTimeoutRef.current !== null) {
+      window.clearTimeout(suppressedToolbarClickTimeoutRef.current);
+    }
+    suppressedToolbarClickTimeoutRef.current = window.setTimeout(() => {
+      suppressedToolbarClickRef.current = null;
+      suppressedToolbarClickTimeoutRef.current = null;
+    }, 250);
+  }, []);
+
+  const finishToolbarDragGesture = useCallback((pointerId?: number) => {
+    const gesture = toolbarDragGestureRef.current;
+    if (!gesture) return;
+    if (pointerId !== undefined && gesture.pointerId !== pointerId) return;
+    toolbarDragGestureRef.current = null;
+  }, []);
+
+  const handleToolbarControlPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (!canManuallyDragToolbarControls) return;
+    if (event.button !== 0 || !event.isPrimary || event.pointerType === "touch") return;
+
+    clearSuppressedToolbarClick();
+    toolbarDragGestureRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      target: event.currentTarget,
+    };
+  }, [canManuallyDragToolbarControls, clearSuppressedToolbarClick]);
+
+  const handleWindowToolbarPointerMove = useCallback((event: PointerEvent) => {
+    const gesture = toolbarDragGestureRef.current;
+    if (!gesture || !startWindowDrag) return;
+    if (gesture.pointerId !== event.pointerId) return;
+
+    const travelDistance = Math.hypot(
+      event.clientX - gesture.startX,
+      event.clientY - gesture.startY,
+    );
+
+    if (travelDistance <= TOOLBAR_DRAG_THRESHOLD_PX) return;
+
+    suppressedToolbarClickRef.current = gesture.target;
+    scheduleSuppressedToolbarClickClear();
+    finishToolbarDragGesture(gesture.pointerId);
+    void startWindowDrag().catch(() => {
+      clearSuppressedToolbarClick();
+    });
+  }, [
+    clearSuppressedToolbarClick,
+    finishToolbarDragGesture,
+    scheduleSuppressedToolbarClickClear,
+    startWindowDrag,
+  ]);
+
+  const handleWindowToolbarPointerEnd = useCallback((event: PointerEvent) => {
+    finishToolbarDragGesture(event.pointerId);
+  }, [finishToolbarDragGesture]);
+
+  const handleToolbarControlClickCapture = useCallback((event: ReactMouseEvent<HTMLElement>) => {
+    if (suppressedToolbarClickRef.current !== event.currentTarget) return;
+    clearSuppressedToolbarClick();
+    event.preventDefault();
+    event.stopPropagation();
+  }, [clearSuppressedToolbarClick]);
+
+  const getToolbarControlProps = useCallback((style?: CSSProperties) => ({
+    ...(canManuallyDragToolbarControls
+      ? {
+          onPointerDown: handleToolbarControlPointerDown,
+          onClickCapture: handleToolbarControlClickCapture,
+        }
+      : {}),
+    style: headerDragRegion
+      ? ({ ...style, ...toolbarControlStyle } as CSSProperties)
+      : style,
+  }), [
+    canManuallyDragToolbarControls,
+    handleToolbarControlClickCapture,
+    handleToolbarControlPointerDown,
+    headerDragRegion,
+  ]);
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -303,6 +419,29 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     }
   }, [addFeedOpen, savedContentOpen]);
 
+  useEffect(() => () => {
+    finishToolbarDragGesture();
+    clearSuppressedToolbarClick();
+  }, [clearSuppressedToolbarClick, finishToolbarDragGesture]);
+
+  useEffect(() => {
+    if (!canManuallyDragToolbarControls) return;
+
+    window.addEventListener("pointermove", handleWindowToolbarPointerMove);
+    window.addEventListener("pointerup", handleWindowToolbarPointerEnd);
+    window.addEventListener("pointercancel", handleWindowToolbarPointerEnd);
+
+    return () => {
+      window.removeEventListener("pointermove", handleWindowToolbarPointerMove);
+      window.removeEventListener("pointerup", handleWindowToolbarPointerEnd);
+      window.removeEventListener("pointercancel", handleWindowToolbarPointerEnd);
+    };
+  }, [
+    canManuallyDragToolbarControls,
+    handleWindowToolbarPointerEnd,
+    handleWindowToolbarPointerMove,
+  ]);
+
   return (
     <>
       <header
@@ -330,6 +469,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
               <Tooltip label="Menu" className="md:hidden">
                 <button
                   onClick={onMenuClick}
+                  {...getToolbarControlProps()}
                   className="rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)]"
                   aria-label="Open menu"
                 >
@@ -339,11 +479,17 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
                 </button>
               </Tooltip>
 
-              <span className="text-lg font-bold gradient-text font-logo">FREED</span>
+              <span
+                data-testid="workspace-toolbar-wordmark"
+                className="cursor-default select-none text-lg font-bold gradient-text font-logo"
+              >
+                FREED
+              </span>
 
               <Tooltip label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"} className="hidden md:flex">
                 <button
                   onClick={onSidebarToggle}
+                  {...getToolbarControlProps()}
                   data-testid="desktop-sidebar-toggle"
                   className="theme-subtle-button rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)]"
                   aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
@@ -366,6 +512,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
                 <Tooltip label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}>
                   <button
                     onClick={handleToggleDualColumn}
+                    {...getToolbarControlProps()}
                     className="theme-subtle-button rounded-lg p-2 transition-colors hover:bg-[var(--theme-bg-muted)]"
                     aria-pressed={display.reading.dualColumnMode}
                     aria-label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
@@ -386,27 +533,33 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
             {...(headerDragRegion ? { "data-tauri-drag-region": true, style: dragStyle } : {})}
           >
             {selectedItem ? (
-              <button
-                onClick={handleCloseReader}
-                className="group flex w-full min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-[var(--theme-bg-muted)]"
-                style={headerDragRegion ? noDrag : undefined}
-                aria-label="Back to list"
-              >
-                <svg
-                  className="h-4 w-4 shrink-0 text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
+              <div className="flex min-w-0 items-center gap-2 px-2 py-1.5">
+                <button
+                  onClick={handleCloseReader}
+                  {...getToolbarControlProps()}
+                  data-testid="workspace-toolbar-reader-back"
+                  className="group flex shrink-0 items-center rounded-xl p-2 transition-colors hover:bg-[var(--theme-bg-muted)]"
+                  aria-label="Back to list"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
-                <div className="min-w-0 flex-1">
+                  <svg
+                    className="h-4 w-4 shrink-0 text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <div className="min-w-0 flex-1 cursor-default select-none">
                   <p className="truncate text-sm font-medium text-[var(--theme-text-primary)]">{currentTitle}</p>
                   <p className="truncate text-xs text-[var(--theme-text-muted)]">{currentSubtitle}</p>
                 </div>
-              </button>
+              </div>
             ) : (
-              <div className="min-w-0 px-1">
+              <div
+                data-testid="workspace-toolbar-title-block"
+                className="min-w-0 cursor-default select-none px-1"
+              >
                 <p className="truncate text-sm font-semibold text-[var(--theme-text-primary)]">{currentTitle}</p>
                 <p className="truncate text-xs text-[var(--theme-text-muted)]">{currentSubtitle}</p>
               </div>
@@ -415,7 +568,6 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
 
           <div
             className="theme-toolbar-cluster flex shrink-0 items-center pr-3 sm:pr-4"
-            style={headerDragRegion ? noDrag : undefined}
           >
             {selectedItem ? (
               <>
@@ -423,6 +575,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
                   <Tooltip label={display.reading.focusMode ? "Disable focus mode" : "Enable focus mode"}>
                     <button
                       onClick={handleToggleFocusMode}
+                      {...getToolbarControlProps()}
                       className={`rounded-lg px-2.5 py-2 text-sm font-bold transition-colors lg:inline-flex ${
                         display.reading.focusMode
                           ? "theme-accent-button"
@@ -443,6 +596,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
                   <Tooltip label={selectedItem.userState.saved ? "Remove bookmark" : "Bookmark"}>
                     <button
                       onClick={handleToggleReaderSaved}
+                      {...getToolbarControlProps()}
                       className={`rounded-lg p-2 transition-colors ${
                         selectedItem.userState.saved
                           ? "theme-accent-button"
@@ -466,7 +620,8 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
                   <Tooltip label={selectedItem.userState.archived ? "Unarchive" : "Archive"}>
                     <button
                       onClick={handleToggleReaderArchived}
-                    className={`rounded-lg p-2 transition-colors ${
+                      {...getToolbarControlProps()}
+                      className={`rounded-lg p-2 transition-colors ${
                         selectedItem.userState.archived
                           ? "theme-status-pill-success hover:bg-[rgb(var(--theme-feedback-success-rgb)/0.18)]"
                           : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
@@ -482,6 +637,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
                   {selectedItem.sourceUrl ? (
                     <button
                       onClick={handleOpenReaderUrl}
+                      {...getToolbarControlProps()}
                       className="theme-subtle-button inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm"
                       aria-label="Open"
                     >
@@ -508,6 +664,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
                     <Tooltip label={`Mark all ${unreadCount.toLocaleString()} items as read`} className="hidden lg:flex">
                       <button
                         onClick={() => markAllAsRead(activeFilter.platform)}
+                        {...getToolbarControlProps()}
                         className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                       >
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -524,6 +681,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
                     <Tooltip label={`Archive all ${archivableCount.toLocaleString()} read (unsaved) items`} className="hidden lg:flex">
                       <button
                         onClick={() => archiveAllReadUnsaved(activeFilter.platform, activeFilter.feedUrl)}
+                        {...getToolbarControlProps()}
                         className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                       >
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

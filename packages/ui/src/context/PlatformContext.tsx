@@ -110,6 +110,12 @@ export interface PlatformConfig {
   /** When true, Header becomes a native draggable title bar with traffic light padding */
   headerDragRegion?: boolean;
 
+  /**
+   * Start a native window drag gesture from an interactive toolbar control.
+   * Desktop only.
+   */
+  startWindowDrag?: () => Promise<void>;
+
   // -- Layout slot components (null = not rendered) --
 
   /** Rendered inline per source button for status indicators (e.g. X auth dot) */
