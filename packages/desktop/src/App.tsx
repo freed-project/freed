@@ -33,6 +33,7 @@ import {
 import { clearLocalDoc, getItemPreservedText } from "./lib/automerge";
 import { isTauri } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { log } from "./lib/logger";
 import { setLogTransport } from "@freed/ui/lib/debug-store";
 import { clearStoredCookies, storeCookies } from "./lib/x-auth";
@@ -416,6 +417,10 @@ function App() {
       importOPMLFeeds,
       exportFeedsAsOPML,
       headerDragRegion: true,
+      startWindowDrag:
+        import.meta.env.VITE_TEST_TAURI === "1" || isTauri()
+          ? () => getCurrentWindow().startDragging()
+          : undefined,
       SourceIndicator: XSourceIndicator,
       HeaderSyncIndicator: null,
       SettingsExtraSections: MobileSyncTab,

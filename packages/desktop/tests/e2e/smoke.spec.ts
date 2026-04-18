@@ -9,7 +9,7 @@
  * always assert on stable, visible elements. Avoid timing-sensitive assertions.
  */
 
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import {
   test,
   expect,
@@ -87,6 +87,21 @@ async function clickMapPopupAction(page: Page, actionName: "Open Friend" | "Open
       { timeout: 5_000 },
     )
     .toBe(true);
+}
+
+async function dragElementBy(page: Page, locator: Locator, deltaX: number, deltaY = 0) {
+  const box = await locator.boundingBox();
+  if (!box) {
+    throw new Error("Drag target is not visible");
+  }
+
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + deltaX, startY + deltaY, { steps: 4 });
+  await page.mouse.up();
 }
 
 const SETTINGS_STORE_PATH = resolveViteFsModulePath(
@@ -171,6 +186,164 @@ test("desktop workspace keeps a single top toolbar in feed, reader, and friends 
   await page.getByTestId("app-sidebar").getByTestId("source-row-friends").click();
   await expect(page.getByTestId("workspace-toolbar")).toBeVisible();
   await expect(page.locator("header")).toHaveCount(1);
+});
+
+test("desktop toolbar wordmark and passive title block avoid text-selection affordances", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const styleState = await page.evaluate(() => {
+    const wordmark = document.querySelector('[data-testid="workspace-toolbar-wordmark"]') as HTMLElement | null;
+    const titleBlock = document.querySelector('[data-testid="workspace-toolbar-title-block"]') as HTMLElement | null;
+    if (!wordmark || !titleBlock) {
+      return null;
+    }
+
+    const wordmarkStyle = window.getComputedStyle(wordmark);
+    const titleBlockStyle = window.getComputedStyle(titleBlock);
+    return {
+      wordmarkCursor: wordmarkStyle.cursor,
+      wordmarkUserSelect: wordmarkStyle.userSelect,
+      titleBlockCursor: titleBlockStyle.cursor,
+      titleBlockUserSelect: titleBlockStyle.userSelect,
+    };
+  });
+
+  expect(styleState).not.toBeNull();
+  expect(styleState?.wordmarkCursor).toBe("default");
+  expect(styleState?.wordmarkUserSelect).toBe("none");
+  expect(styleState?.titleBlockCursor).toBe("default");
+  expect(styleState?.titleBlockUserSelect).toBe("none");
+});
+
+test("desktop sidebar toggle still clicks normally from the shared toolbar", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const initialWidth = await page.evaluate(() => {
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    return sidebarShell?.getBoundingClientRect().width ?? 0;
+  });
+
+  await page.getByTestId("desktop-sidebar-toggle").click();
+  await page.waitForTimeout(250);
+
+  const collapsedWidth = await page.evaluate(() => {
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    return sidebarShell?.getBoundingClientRect().width ?? 0;
+  });
+
+  expect(initialWidth).toBeGreaterThan(200);
+  expect(collapsedWidth).toBeLessThanOrEqual(2);
+});
+
+test("dragging from the desktop sidebar toggle starts a window drag without collapsing the sidebar", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const initialWidth = await page.evaluate(() => {
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    return sidebarShell?.getBoundingClientRect().width ?? 0;
+  });
+
+  await dragElementBy(page, page.getByTestId("desktop-sidebar-toggle"), 24);
+  await page.waitForTimeout(100);
+
+  const postDragState = await page.evaluate(() => {
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    const win = window as Record<string, unknown>;
+    return {
+      sidebarWidth: sidebarShell?.getBoundingClientRect().width ?? 0,
+      dragCalls: ((win.__TAURI_MOCK_WINDOW_DRAG_CALLS__ as Array<unknown> | undefined) ?? []).length,
+    };
+  });
+
+  expect(postDragState.dragCalls).toBe(1);
+  expect(postDragState.sidebarWidth).toBeGreaterThan(initialWidth - 4);
+});
+
+test("dragging from a reader toolbar button starts a window drag without firing the button action", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(8);
+
+  await page.locator("[data-feed-item-id]").first().click();
+  const railButton = page.getByRole("button", { name: "Hide thumbnail rail" }).first();
+  await expect(railButton).toBeVisible();
+
+  await railButton.evaluate((button) => {
+    const rect = button.getBoundingClientRect();
+    const startX = rect.left + rect.width / 2;
+    const startY = rect.top + rect.height / 2;
+    const pointerId = 41;
+
+    button.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true,
+      composed: true,
+      pointerId,
+      pointerType: "mouse",
+      isPrimary: true,
+      button: 0,
+      clientX: startX,
+      clientY: startY,
+    }));
+    window.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true,
+      composed: true,
+      pointerId,
+      pointerType: "mouse",
+      isPrimary: true,
+      button: 0,
+      clientX: startX + 24,
+      clientY: startY,
+    }));
+    window.dispatchEvent(new PointerEvent("pointerup", {
+      bubbles: true,
+      composed: true,
+      pointerId,
+      pointerType: "mouse",
+      isPrimary: true,
+      button: 0,
+      clientX: startX + 24,
+      clientY: startY,
+    }));
+  });
+  await page.waitForTimeout(100);
+
+  const dragCalls = await page.evaluate(() => {
+    const win = window as Record<string, unknown>;
+    return ((win.__TAURI_MOCK_WINDOW_DRAG_CALLS__ as Array<unknown> | undefined) ?? []).length;
+  });
+
+  expect(dragCalls).toBe(1);
+  await expect(railButton).toBeVisible();
+});
+
+test("desktop passive toolbar title area remains a native drag region", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const dragRegionState = await page.evaluate(() => {
+    const titleBlock = document.querySelector('[data-testid="workspace-toolbar-title-block"]') as HTMLElement | null;
+    const dragRegion = titleBlock?.parentElement as HTMLElement | null;
+    if (!titleBlock || !dragRegion) {
+      return null;
+    }
+
+    return {
+      hasDragRegionAttr: dragRegion.hasAttribute("data-tauri-drag-region"),
+      webkitAppRegion: dragRegion.style.webkitAppRegion,
+    };
+  });
+
+  expect(dragRegionState).not.toBeNull();
+  expect(dragRegionState?.hasDragRegionAttr).toBe(true);
+  expect(dragRegionState?.webkitAppRegion).toBe("drag");
 });
 
 test("desktop sidebar and debug drawer use floating shell cards", async ({ app, page }) => {
