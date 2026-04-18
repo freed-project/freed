@@ -3,7 +3,7 @@
   "version": "26.4.1801-dev",
   "channel": "dev",
   "dayKey": "26.4.18",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-18T19:51:02.109Z",
   "model": "heuristic",
@@ -33,8 +33,10 @@
   "release": {
     "deck": "Migrate legacy identity graph on startup",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Migrates older friend data into the person and account graph during startup so existing identities keep loading cleanly after the update."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1801-dev\n\nMigrate legacy identity graph on startup\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1801-dev\n\nMigrate legacy identity graph on startup\n\n### Fixes\n\n- Migrates older friend data into the person and account graph during startup so existing identities keep loading cleanly after the update.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
