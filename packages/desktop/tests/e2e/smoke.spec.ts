@@ -343,6 +343,27 @@ test("dragging from a reader toolbar button starts a window drag without firing 
   await expect(railButton).toBeVisible();
 });
 
+test("clicking the reader toolbar title region returns to the feed list", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(8);
+
+  await page.locator("[data-feed-item-id]").first().click();
+  const readerTitleBlock = page.getByTestId("workspace-toolbar-reader-title-block");
+  await expect(readerTitleBlock).toBeVisible();
+
+  await readerTitleBlock.click();
+
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { selectedItemId: string | null } }
+      | undefined;
+    return store?.getState().selectedItemId === null;
+  });
+  await expect(page.locator("[data-feed-item-id]")).toHaveCount(8);
+});
+
 test("desktop passive toolbar title area remains a native drag region", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
