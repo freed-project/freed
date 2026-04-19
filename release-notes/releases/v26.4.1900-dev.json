@@ -3,7 +3,7 @@
   "version": "26.4.1900-dev",
   "channel": "dev",
   "dayKey": "26.4.19",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-19T23:52:27.810Z",
   "model": "heuristic",
@@ -35,10 +35,17 @@
     ]
   },
   "release": {
-    "deck": "Map timeline scrubber",
-    "features": [],
-    "fixes": [],
+    "deck": "Map timeline scrubber, startup recovery, and clearer dev updates",
+    "features": [
+      "Replay historical posts and future plans with a shared map timeline scrubber."
+    ],
+    "fixes": [
+      "Shows a native startup recovery window before React loads, so startup failures still expose recovery actions.",
+      "Lets dev installs take a newer production update when no newer dev build exists, without switching release channels.",
+      "Shows the `-dev` suffix consistently in desktop update surfaces and settings.",
+      "Restores desktop window dragging and makes the reader toolbar title region navigate back again."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1900-dev\n\nMap timeline scrubber\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1900-dev\n\nMap timeline scrubber, startup recovery, and clearer dev updates\n\n### Features\n\n- Replay historical posts and future plans with a shared map timeline scrubber.\n\n### Fixes\n\n- Shows a native startup recovery window before React loads, so startup failures still expose recovery actions.\n- Lets dev installs take a newer production update when no newer dev build exists, without switching release channels.\n- Shows the `-dev` suffix consistently in desktop update surfaces and settings.\n- Restores desktop window dragging and makes the reader toolbar title region navigate back again.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
