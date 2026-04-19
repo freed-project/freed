@@ -1,5 +1,9 @@
 import type { Update } from "@tauri-apps/plugin-updater";
-import { RELEASE_CHANNEL_LABELS, type ReleaseChannel } from "@freed/shared";
+import {
+  formatReleaseVersion,
+  RELEASE_CHANNEL_LABELS,
+  type ReleaseChannel,
+} from "@freed/shared";
 import { UpdateProgressBar } from "@freed/ui/components/UpdateProgressBar";
 import { extractUpdatePreviewLine } from "../lib/update-release-preview";
 
@@ -109,12 +113,17 @@ function UpdateContent({
   onInstall: () => void;
   onRelaunch: () => void;
 }) {
+  const availableVersion =
+    state.phase === "available"
+      ? formatReleaseVersion(state.update.version, state.channel)
+      : null;
+
   switch (state.phase) {
     case "available":
       return (
         <>
           <p className="text-sm font-medium text-text-primary">
-            Update available on {RELEASE_CHANNEL_LABELS[state.channel]}, v{state.update.version}
+            Update available on {RELEASE_CHANNEL_LABELS[state.channel]}, v{availableVersion}
           </p>
           {state.update.body && (() => {
             const preview = extractUpdatePreviewLine(state.update.body);

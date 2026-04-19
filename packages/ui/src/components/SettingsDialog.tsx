@@ -11,6 +11,7 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  formatReleaseVersion,
   RELEASE_CHANNEL_LABELS,
   RELEASE_CHANNELS,
   type ReleaseChannel,
@@ -489,6 +490,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [updateState, setUpdateState] = useState<UpdateCheckState>({ status: "idle" });
   const fadeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const shouldRecheckAfterChannelChangeRef = useRef(false);
+  const displayVersion = formatReleaseVersion(__APP_VERSION__, releaseChannel ?? "production");
 
   const runUpdateCheck = useCallback(async () => {
     if (!checkForUpdates) return;
@@ -1014,7 +1016,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             <div className="space-y-3">
               <p className="text-xs text-text-muted">
                 Installed version:{" "}
-                <span className="text-sm font-bold font-mono">v{__APP_VERSION__}</span>
+                <span className="text-sm font-bold font-mono">v{displayVersion}</span>
               </p>
               {releaseChannel && setReleaseChannel && (
                 <div className="flex items-center justify-between gap-4">
@@ -1311,11 +1313,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 }}
                 className="text-xs font-mono text-text-muted transition-colors tabular-nums hover:text-text-secondary"
               >
-                v{__APP_VERSION__}
+                v{displayVersion}
               </button>
             ) : (
               <span className="text-xs font-mono text-text-muted tabular-nums">
-                v{__APP_VERSION__}
+                v{displayVersion}
               </span>
             )}
             <a
