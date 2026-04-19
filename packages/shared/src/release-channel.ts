@@ -29,6 +29,14 @@ export function getReleaseChannelFromVersion(version: string): ReleaseChannel {
   return String(version ?? "").endsWith("-dev") ? "dev" : "production";
 }
 
+export function formatReleaseVersion(
+  version: string,
+  channel: ReleaseChannel = getReleaseChannelFromVersion(version),
+): string {
+  const baseVersion = stripReleaseChannelSuffix(version);
+  return channel === "dev" ? `${baseVersion}-dev` : baseVersion;
+}
+
 export function inferReleaseChannelFromHostname(
   hostname: string | null | undefined,
 ): ReleaseChannel | null {

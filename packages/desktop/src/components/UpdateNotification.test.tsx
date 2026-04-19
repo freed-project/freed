@@ -30,7 +30,7 @@ Map view, refined consent gates, and signed macOS installs
       />,
     );
 
-    expect(html).toContain("Update available on Dev, v26.4.109");
+    expect(html).toContain("Update available on Dev, v26.4.109-dev");
     expect(html).toContain("Map view, refined consent gates, and signed macOS installs");
     expect(html).not.toContain("<ul");
     expect(html).not.toContain("Shared map and friends workspace");

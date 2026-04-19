@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useCallback, useRef, useState, Profiler, type ProfilerOnRenderCallback } from "react";
-import type { ReleaseChannel } from "@freed/shared";
+import { formatReleaseVersion, type ReleaseChannel } from "@freed/shared";
 import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
 import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
@@ -629,7 +629,7 @@ function App() {
                     <path d="M3 8l3.5 3.5L13 5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                   <span className="text-sm text-text-primary">
-                    Updated to <span className="font-mono font-bold">v{justUpdated}</span>
+                    Updated to <span className="font-mono font-bold">v{formatReleaseVersion(justUpdated, releaseChannel)}</span>
                   </span>
                 </div>
               </div>
