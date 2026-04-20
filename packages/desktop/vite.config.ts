@@ -4,6 +4,7 @@ import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
 import { fileURLToPath } from "url";
 import pkg from "./package.json" with { type: "json" };
+import { getBuildMetadata } from "../../scripts/lib/build-metadata.mjs";
 
 // Resolve workspace packages directly from their TypeScript source so that
 // worktrees don't need to build dist/ artifacts before running the dev server.
@@ -35,9 +36,15 @@ const tauriMockExclude = process.env.VITE_TEST_TAURI
   ? Object.keys(tauriMockAliases)
   : [];
 
+const buildMetadata = getBuildMetadata(pkg.version);
+
 export default defineConfig({
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_VERSION__: JSON.stringify(buildMetadata.appVersion),
+    __BUILD_KIND__: JSON.stringify(buildMetadata.buildKind),
+    __BUILD_COMMIT_SHA__: JSON.stringify(buildMetadata.commitSha),
+    __BUILD_COMMIT_REF__: JSON.stringify(buildMetadata.commitRef),
+    __BUILD_DEPLOYED_AT__: JSON.stringify(buildMetadata.deployedAt),
   },
   resolve: {
     alias: {

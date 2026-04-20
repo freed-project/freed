@@ -747,7 +747,7 @@ const phases: Phase[] = [
     number: 6,
     title: "PWA Reader",
     description:
-      "Primary mobile surface with first-run legal gating, URL-backed view state, public-safe bug reporting, and switchable production or dev update channels across `app.freed.wtf` and `dev-app.freed.wtf`.",
+      "Primary mobile surface with first-run legal gating, URL-backed view state, public-safe bug reporting, and switchable production or dev update channels across `app.freed.wtf` and the `dev` branch lane at `dev-app.freed.wtf`.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-6-PWA.md",
