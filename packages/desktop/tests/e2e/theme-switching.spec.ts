@@ -83,6 +83,63 @@ test("theme switching repaints the app even before preferences finish saving", a
   }).toBe("neon");
 });
 
+test("hovering a theme previews it and leaving restores the committed theme", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async (settingsStorePath) => {
+    const mod = await import(settingsStorePath);
+    mod.useSettingsStore.getState().openTo("appearance");
+  }, SETTINGS_STORE_PATH);
+
+  await expect(page.getByText("Appearance").first()).toBeVisible({ timeout: 5_000 });
+
+  const scriptoriumButton = page.getByRole("button", { name: /^Scriptorium\./ });
+
+  await scriptoriumButton.hover();
+
+  await expect.poll(async () => {
+    return page.evaluate(() => document.documentElement.dataset.theme);
+  }).toBe("scriptorium");
+  await expect(scriptoriumButton).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByText("Mark read on scroll").hover();
+
+  await expect.poll(async () => {
+    return page.evaluate(() => document.documentElement.dataset.theme);
+  }).toBe("neon");
+  await expect(scriptoriumButton).toHaveAttribute("aria-pressed", "false");
+});
+
+test("keyboard focus previews a theme and blur restores the committed theme", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async (settingsStorePath) => {
+    const mod = await import(settingsStorePath);
+    mod.useSettingsStore.getState().openTo("appearance");
+  }, SETTINGS_STORE_PATH);
+
+  await expect(page.getByText("Appearance").first()).toBeVisible({ timeout: 5_000 });
+
+  const emberButton = page.getByRole("button", { name: /^Ember\./ });
+  const readingToggle = page.getByRole("switch", { name: "Mark read on scroll" });
+
+  await emberButton.focus();
+
+  await expect.poll(async () => {
+    return page.evaluate(() => document.documentElement.dataset.theme);
+  }).toBe("ember");
+  await expect(emberButton).toHaveAttribute("aria-pressed", "true");
+
+  await readingToggle.focus();
+
+  await expect.poll(async () => {
+    return page.evaluate(() => document.documentElement.dataset.theme);
+  }).toBe("neon");
+  await expect(emberButton).toHaveAttribute("aria-pressed", "false");
+});
+
 test("settings switches render with a full track and knob", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();

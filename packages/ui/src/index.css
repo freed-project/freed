@@ -149,6 +149,10 @@ html[data-theme="neon"] {
     0 0 30px rgb(var(--theme-accent-secondary-rgb) / 0.3),
     0 0 60px rgb(var(--theme-accent-primary-rgb) / 0.16),
     0 0 100px rgb(var(--theme-accent-tertiary-rgb) / 0.08);
+  --theme-transition-blur: 0px;
+  --theme-transition-brightness: 1;
+  --theme-transition-saturate: 1;
+  --theme-transition-duration: 170ms;
 
   --sidebar-width: 240px;
   --card-radius: 8px;
@@ -674,6 +678,22 @@ body {
   letter-spacing: var(--theme-body-letter-spacing);
   line-height: var(--theme-body-line-height);
   font-weight: var(--theme-body-font-weight);
+  filter:
+    blur(var(--theme-transition-blur))
+    brightness(var(--theme-transition-brightness))
+    saturate(var(--theme-transition-saturate));
+  transition: filter var(--theme-transition-duration) cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: filter;
+}
+
+html[data-theme-transition] body {
+  overflow: clip;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body {
+    transition: none;
+  }
 }
 
 .font-logo {
