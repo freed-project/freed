@@ -117,11 +117,18 @@ Treat `dev`, `main`, and `www` as separate lanes with explicit promotion points.
 - `dev` is the default branch for ongoing product work.
 - `main` is the production release branch. Do not use it as a second development branch.
 - Promote `dev` into `main` when shipping a reviewed production release.
-- Merge `main` back into `dev` only when `main` has diverged with a production-only fix, release-only adjustment, or other reviewed change that `dev` does not already contain.
-- If a hotfix lands on `main`, merge or cherry-pick it back into `dev` immediately after the production release is stable. Do not let `main` drift sit around.
+- After every production release, open a dedicated reverse-integration PR that merges `main` back into `dev`.
+- If a hotfix lands on `main`, include it in that reverse-integration PR immediately after the production release is stable. Do not let `main` drift sit around.
 - `www` is the public marketing branch. Sync approved `main` changes into `www` when the website or checked-in changelog needs them. Never sync `www` from `dev`.
-- Do not talk about routine `main` and `dev` sync. The normal flow is promotion from `dev` to `main`, with rare repair merges from `main` back to `dev`.
+- Treat the `main` back into `dev` reverse merge as part of the production release closeout, not as an optional cleanup.
 - When release tooling or deployment helpers exist on more than one long-lived branch, update the matching copies in the same sweep or document why they intentionally differ.
+
+### Validation Tiers
+
+- `npm run validate:feature` is the default feature-branch check. It always runs root typecheck, then scopes the rest of the checks from the changed path set.
+- `npm run validate:dev` is the full integration suite for merges and pushes to `dev`.
+- `npm run validate:release` is the heaviest lane for release-prep work on `main`.
+- Do not default feature threads to the full integration suite when the touched surface is narrow.
 
 **Never use `git log main..branch` to check whether a branch has been merged.** Squash merge creates a new commit hash on `main`, so the original branch commits are never reachable from `main`'s history. The branch always looks "ahead" even when its content is fully shipped. Use these instead:
 

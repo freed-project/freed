@@ -242,9 +242,11 @@ The preview and production deploy helpers now resolve `npm` and `npx` from the
 active Node toolchain first, so they do not accidentally pick up an older
 system npm from the shell `PATH`.
 
-Local product worktrees now also default to deferred bootstrap. `./scripts/worktree-add.sh` can record `--install none|auto|full` and `--target desktop|pwa|website|shared`, `./scripts/worktree-bootstrap.sh` handles the on-demand install, `./scripts/worktree-preview.sh` launches tracked previews with one desktop slot and one web slot per repo, `./scripts/worktree-publish.sh` stages the finished branch, commits it, pushes it, and opens a draft PR to `dev`, and `./scripts/worktree-cleanup.sh` stops tracked previews before removing merged worktrees.
+Local product worktrees now also default to deferred bootstrap. `./scripts/worktree-add.sh` can record `--install none|auto|full` and `--target desktop|pwa|website|shared`, `./scripts/worktree-bootstrap.sh` handles the on-demand install, `./scripts/worktree-preview.sh` launches tracked previews with one desktop slot and one web slot per repo, `./scripts/worktree-publish.sh` stages the finished branch, commits it, pushes it, and opens a draft PR to `dev` or `www`, and `./scripts/worktree-cleanup.sh` stops tracked previews before removing merged worktrees.
 
-Feature worktrees also now default to layered validation. Narrow feature branches should run focused checks that cover the touched surface, while broader integration passes stay attached to shared-surface changes, `dev` integration, and release prep.
+Feature worktrees also now default to layered validation. `npm run validate:feature` always runs root typecheck, then scopes website, PWA, desktop, capture-package, and release-tooling checks from the changed path set. `npm run validate:dev` is the full integration suite for merges and pushes to `dev`, and `npm run validate:release` adds release-build checks for release prep on `main`.
+
+Production release closeout now also requires a dedicated `main` back into `dev` reverse-integration PR so shipped production fixes and release-tooling changes do not drift out of the product branch.
 
 ---
 
@@ -275,7 +277,7 @@ Feature worktrees also now default to layered validation. Narrow feature branche
 | 1.9  | Generate RSS feed at build time              | ✓      |
 | 1.10 | Add public legal docs and versioned website clickwrap | ✓ |
 | 1.11 | Add unified shared theme system across website, Freed Desktop, and PWA | ✓ |
-| 1.12 | Add deferred worktree bootstrap, tracked local preview tooling, draft PR publish helper, and layered feature validation guidance | ✓ |
+| 1.12 | Add deferred worktree bootstrap, tracked local preview tooling, draft PR publish helper, tiered validation commands, and reverse-integration policy | ✓ |
 
 ---
 

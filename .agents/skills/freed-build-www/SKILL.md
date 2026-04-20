@@ -1,12 +1,12 @@
 ---
 name: freed-build-www
-description: Build marketing-site work in a www-based worktree, verify website changes, deploy a website preview, and prepare a PR targeting www. Use for homepage, public changelog presentation, public roadmap presentation, marketing copy, legal or marketing pages, and website-only changes intended for freed.wtf.
+description: Build marketing-site work in a www-based worktree, verify website changes, deploy a website preview, and finish by pushing a draft PR targeting www. Use for homepage, public changelog presentation, public roadmap presentation, marketing copy, legal or marketing pages, and website-only changes intended for freed.wtf.
 disable-model-invocation: true
 ---
 
 # Build WWW
 
-Create a marketing worktree branch from `www`, implement the website change, verify it, and deploy a website preview.
+Create a marketing worktree branch from `www`, implement the website change, verify it, deploy a website preview, and finish by opening a draft PR to `www`.
 
 ## Workflow
 
@@ -15,9 +15,10 @@ Create a marketing worktree branch from `www`, implement the website change, ver
 3. Create a new worktree branch from `www` using `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/www --install auto --target website`.
 4. Bootstrap dependencies only when the work needs them with `./scripts/worktree-bootstrap.sh <worktree> --target website`.
 5. Keep changes scoped to marketing paths unless the user explicitly changes the destination.
-6. Run website checks, at minimum `npm run build --workspace=website`.
+6. Run website checks, at minimum `npm run build --workspace=website` and `npm run test --workspace=website`.
 7. Deploy a website preview with `./scripts/vercel-deploy-preview.sh website`.
-8. Open a PR targeting `www` when the work is ready.
+8. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --base www --summary "<user-facing change>" --test "npm run build --workspace=website"`.
+9. Confirm the branch is pushed to `origin` and the new PR targeting `www` is in draft state.
 
 ## Scope
 

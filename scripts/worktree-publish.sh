@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  ./scripts/worktree-publish.sh --title "<conventional-commit title>" [--summary "<bullet>"]... [--test "<bullet>"]... [--base <branch>] [--body-file <path>]
+  ./scripts/worktree-publish.sh --title "<conventional-commit title>" [--summary "<bullet>"]... [--test "<bullet>"]... [--base <dev|www>] [--body-file <path>]
 
 Stages local changes, commits them when needed, pushes the current branch to origin,
 and opens a draft pull request.
@@ -19,6 +19,18 @@ require_command() {
     echo "Error: required command '${command_name}' is not available." >&2
     exit 1
   fi
+}
+
+ensure_supported_base_branch() {
+  local base_branch="$1"
+
+  case "${base_branch}" in
+    dev|www) ;;
+    *)
+      echo "Error: --base must be either 'dev' or 'www'." >&2
+      exit 1
+      ;;
+  esac
 }
 
 ensure_conventional_title() {
@@ -160,6 +172,7 @@ require_command git
 require_command gh
 
 ensure_conventional_title "${TITLE}"
+ensure_supported_base_branch "${BASE_BRANCH}"
 
 if ! git rev-parse --git-dir >/dev/null 2>&1; then
   echo "Error: current directory is not inside a git repository." >&2

@@ -71,7 +71,8 @@ Branch promotion rules:
 - `dev` carries ongoing product work and dev releases.
 - `main` is only for reviewed production release promotion and rare production hotfixes.
 - Promote `dev` into `main` when shipping production. Do not treat `main` as a peer development branch.
-- If `main` gets a production-only fix or release adjustment that `dev` does not already have, merge or cherry-pick it back into `dev` immediately after the production release is stable.
+- After every production release, open a dedicated reverse-integration PR that merges `main` back into `dev`.
+- If `main` gets a production-only fix or release adjustment, include it in that reverse-integration PR immediately after the production release is stable.
 - `www` stays separate from product branches. Sync approved `main` changes into `www` when the public website or checked-in changelog needs them. Never sync `www` from `dev`.
 - If release tooling or website deploy helpers are duplicated across long-lived branches, update the matching copies in the same sweep or note the intentional divergence in the PR.
 
@@ -177,7 +178,9 @@ release. After any GitHub release is published, the release workflow also
 redeploys the public website from current `www` so the static changelog
 snapshot is rebuilt against the latest release list. Production website deploys
 still require the reviewed website and changelog state to already be merged
-into `www`.
+into `www`. After the production release is stable, open the dedicated `main`
+back into `dev` reverse-integration PR before more feature work piles onto
+`dev`.
 
 Dev releases are published as GitHub prereleases with a `-dev` suffix and do
 not deploy the PWA. `dev-app.freed.wtf` instead follows merges to `dev`

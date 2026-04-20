@@ -9,11 +9,15 @@
   ],
   "scripts": {
     "postinstall": "node scripts/patch-automerge.mjs",
-    "build": "npm run build --workspaces --if-present",
-    "dev": "npm run dev --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "typecheck:graph": "tsc --build --dry"
+    "build": "node scripts/run-workspace-script.mjs build",
+    "dev": "node scripts/run-workspace-script.mjs dev",
+    "lint": "node scripts/run-workspace-script.mjs lint",
+    "test": "node scripts/run-workspace-script.mjs test",
+    "typecheck": "node scripts/run-workspace-script.mjs typecheck",
+    "typecheck:graph": "tsc --build --dry",
+    "validate:feature": "node scripts/validate-worktree.mjs --mode feature",
+    "validate:dev": "node scripts/validate-worktree.mjs --mode dev",
+    "validate:release": "node scripts/validate-worktree.mjs --mode release"
   },
   "devDependencies": {
     "typescript": "^5.3.0"
