@@ -19,7 +19,12 @@ test("switching release channels clears stale update state and rechecks the new 
   await expect(page.getByRole("heading", { name: "Updates" }).last()).toBeVisible({
     timeout: 5_000,
   });
-  await expect(page.getByText("Installed version:")).toBeVisible();
+  const installedVersionLabel = page.getByText(/^Installed version:/).last();
+  await expect(installedVersionLabel).toBeVisible();
+  const initialInstalledVersion = (await installedVersionLabel.textContent())
+    ?.replace(/\s+/g, " ")
+    .trim();
+  expect(initialInstalledVersion).toBeTruthy();
 
   const releaseChannelSelect = page.getByTestId("settings-release-channel-select");
   await expect(releaseChannelSelect).toHaveValue("production");
@@ -38,6 +43,7 @@ test("switching release channels clears stale update state and rechecks the new 
 
   await releaseChannelSelect.selectOption("dev");
   await expect(releaseChannelSelect).toHaveValue("dev");
+  await expect(installedVersionLabel).toHaveText(initialInstalledVersion ?? "");
 
   await expect(page.getByText("You're up to date")).toHaveCount(0);
   await expect(

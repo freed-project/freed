@@ -660,7 +660,7 @@ function App() {
                     <path d="M3 8l3.5 3.5L13 5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                   <span className="text-sm text-text-primary">
-                    Updated to <span className="font-mono font-bold">v{formatReleaseVersion(justUpdated, releaseChannel)}</span>
+                    Updated to <span className="font-mono font-bold">v{formatReleaseVersion(justUpdated)}</span>
                   </span>
                 </div>
               </div>
