@@ -74,3 +74,15 @@ use_resolved_node_path() {
   node_dir="$(cd "$(dirname "${node_bin}")" && pwd)"
   export PATH="${node_dir}:${PATH}"
 }
+
+print_node_tooling_preflight() {
+  local node_bin npm_bin node_version npm_version
+
+  node_bin="$(resolve_node_bin)"
+  npm_bin="$(resolve_npm_bin)"
+  node_version="$("${node_bin}" -v)"
+  npm_version="$("${npm_bin}" -v)"
+
+  printf 'node: %s (%s)\n' "${node_version}" "${node_bin}"
+  printf 'npm: %s (%s)\n' "${npm_version}" "${npm_bin}"
+}

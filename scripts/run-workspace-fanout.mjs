@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import fs from "node:fs";
+import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const scriptName = process.argv[2];
@@ -21,8 +23,18 @@ if (runningWorkspaceSelection) {
   process.exit(1);
 }
 
+function resolveNpmCommand() {
+  const siblingNpm = path.join(path.dirname(process.execPath), process.platform === "win32" ? "npm.cmd" : "npm");
+
+  if (fs.existsSync(siblingNpm)) {
+    return siblingNpm;
+  }
+
+  return "npm";
+}
+
 const child = spawnSync(
-  "npm",
+  resolveNpmCommand(),
   ["run", scriptName, "--workspaces", "--if-present", ...forwardedArgs],
   {
     stdio: "inherit",

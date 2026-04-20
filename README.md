@@ -156,9 +156,11 @@ The helper now:
 
 - detects the new worktree path by diffing the worktree list before and after creation
 - defaults to a full install with the npm binary that matches the active Node runtime
+- prints the resolved `node` and `npm` pair before bootstrap, preview, or publish work so stale global toolchains are obvious
 - avoids the broken "last worktree wins" assumption that can install into the wrong checkout
 - stays on the branch you asked for instead of inheriting some crusty local base by accident
 - works cleanly with tracked local previews, including readable labels for native preview windows
+- reruns of `worktree-publish.sh` update the existing PR title and body, and flip a ready PR back to draft instead of pretending nothing happened
 - avoids root-level workspace npm dispatch in the preview and deploy helpers, because this monorepo can recurse badly when `npm run <script> --workspace=...` is launched from the repo root
 
 If you want a cheap speculative worktree instead, opt in explicitly:
@@ -193,6 +195,7 @@ PATH=../node_modules/.bin:$PATH npm run build
 
 Do not use root-level `npm run <script> --workspace=...` in this repo.
 The root `build`, `dev`, `test`, and `typecheck` scripts now fail fast if you try it, so the error is your cue to `cd` into the workspace and run the command there.
+For the helper smoke lane itself, run `npm run test:scripts`.
 
 ### Marketing Website (freed.wtf)
 

@@ -240,9 +240,11 @@ under the release workflow.
 
 The preview and production deploy helpers now resolve `npm` and `npx` from the
 active Node toolchain first, so they do not accidentally pick up an older
-system npm from the shell `PATH`.
+system npm from the shell `PATH`. The root workspace fanout runner now does the
+same thing, which cuts out another stale-global-`npm` failure mode when local
+or CI commands fan out across workspaces.
 
-Local product worktrees now default to a ready-to-run full bootstrap so the next command does not trip over missing `node_modules`. `./scripts/worktree-add.sh` still supports `--install none|auto|full` and `--target desktop|pwa|website|shared` when you intentionally want to defer bootstrap, `./scripts/worktree-bootstrap.sh` handles the on-demand install, `./scripts/worktree-preview.sh` launches tracked previews with one desktop slot and one web slot per repo, defaults product work to the lightest useful preview surface, `./scripts/worktree-publish.sh` stages, commits, pushes, and opens a draft PR with the required `(AI Generated).` body prefix, preview labels are stamped with the worktree plus thread tail so concurrent native windows stay identifiable, and `./scripts/worktree-cleanup.sh` stops tracked previews before removing merged worktrees.
+Local product worktrees now default to a ready-to-run full bootstrap so the next command does not trip over missing `node_modules`. `./scripts/worktree-add.sh` still supports `--install none|auto|full` and `--target desktop|pwa|website|shared` when you intentionally want to defer bootstrap, the worktree helpers now print the resolved `node` and `npm` pair before they bootstrap, preview, or publish, `./scripts/worktree-bootstrap.sh` handles the on-demand install, `./scripts/worktree-preview.sh` launches tracked previews with one desktop slot and one web slot per repo, automatically skips an occupied website port even when the listener is only on IPv6, and now surfaces the local preview label inside the marketing site too, `./scripts/worktree-publish.sh` stages, commits, pushes, opens a draft PR with the required `(AI Generated).` body prefix, and updates that PR in place on reruns, preview labels are stamped with the worktree plus thread tail so concurrent native windows stay identifiable, `npm run test:scripts` covers the helper smoke lane in CI, and `./scripts/worktree-cleanup.sh` stops tracked previews before removing merged worktrees.
 
 ---
 
@@ -273,7 +275,7 @@ Local product worktrees now default to a ready-to-run full bootstrap so the next
 | 1.9  | Generate RSS feed at build time              | ✓      |
 | 1.10 | Add public legal docs and versioned website clickwrap | ✓ |
 | 1.11 | Add unified shared theme system across website, Freed Desktop, and PWA | ✓ |
-| 1.12 | Add ready-to-run worktree bootstrap controls plus labeled tracked local preview tooling | ✓ |
+| 1.12 | Add ready-to-run worktree bootstrap controls plus labeled tracked local preview tooling, rerunnable draft-PR publishing, and helper smoke coverage | ✓ |
 
 ---
 

@@ -67,6 +67,8 @@ Prefer the lightest useful local preview before opening a draft PR:
 - never run `npm run <script> --workspace=...` from the repo root in this monorepo, run from the workspace directory instead
 - the root fanout scripts now fail fast if you try that dangerous pattern, treat that error as a routing mistake and re-run from the workspace
 - if a workspace command needs a hoisted binary, prefix `PATH` with the worktree root `node_modules/.bin`
+- expect the worktree helpers to print the resolved `node` and `npm` pair before they do real work, and treat a surprising path there as a machine issue to fix before debugging the repo
+- rerunning `./scripts/worktree-publish.sh` should update the existing draft PR body and title, and push a ready PR back to draft when the local branch changes underneath it
 
 **Branch naming:** `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/` prefix followed by a short kebab-case description.
 

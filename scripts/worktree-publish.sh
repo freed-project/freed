@@ -2,6 +2,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./lib/node-tooling.sh
+source "${SCRIPT_DIR}/lib/node-tooling.sh"
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -106,6 +110,28 @@ build_body() {
   done
 }
 
+pr_field() {
+  local json="$1"
+  local field="$2"
+
+  python3 - "${json}" "${field}" <<'PY'
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+field = sys.argv[2]
+
+if not payload:
+    raise SystemExit(0)
+
+value = payload[0].get(field, "")
+if isinstance(value, bool):
+    print("true" if value else "false")
+else:
+    print(value)
+PY
+}
+
 TITLE=""
 BASE_BRANCH="dev"
 BODY_FILE=""
@@ -158,6 +184,7 @@ fi
 
 require_command git
 require_command gh
+print_node_tooling_preflight
 
 ensure_conventional_title "${TITLE}"
 
@@ -193,48 +220,35 @@ if [[ -n "${BODY_FILE}" ]]; then
   fi
 else
   BODY_ARGS=()
-  for item in "${SUMMARY_ARGS[@]}"; do
+  for item in "${SUMMARY_ARGS[@]-}"; do
+    [[ -n "${item}" ]] || continue
     BODY_ARGS+=(--summary "${item}")
   done
-  for item in "${TEST_ARGS[@]}"; do
+  for item in "${TEST_ARGS[@]-}"; do
+    [[ -n "${item}" ]] || continue
     BODY_ARGS+=(--test "${item}")
   done
   BODY_CONTENT="$(build_body "${TITLE}" "${BODY_ARGS[@]}")"
 fi
 
-EXISTING_PR_NUMBER="$(
+EXISTING_PR_JSON="$(
   gh pr list \
     --head "${BRANCH_NAME}" \
     --base "${BASE_BRANCH}" \
     --state open \
-    --json number \
-    --jq '.[0].number // empty' \
+    --json number,url,isDraft \
     --limit 1
 )"
-EXISTING_PR_URL="$(
-  gh pr list \
-    --head "${BRANCH_NAME}" \
-    --base "${BASE_BRANCH}" \
-    --state open \
-    --json url \
-    --jq '.[0].url // empty' \
-    --limit 1
-)"
-EXISTING_PR_IS_DRAFT="$(
-  gh pr list \
-    --head "${BRANCH_NAME}" \
-    --base "${BASE_BRANCH}" \
-    --state open \
-    --json isDraft \
-    --jq '.[0].isDraft // empty' \
-    --limit 1
-)"
+EXISTING_PR_NUMBER="$(pr_field "${EXISTING_PR_JSON}" "number")"
+EXISTING_PR_URL="$(pr_field "${EXISTING_PR_JSON}" "url")"
+EXISTING_PR_IS_DRAFT="$(pr_field "${EXISTING_PR_JSON}" "isDraft")"
 
 if [[ -n "${EXISTING_PR_NUMBER}" ]]; then
   if [[ "${EXISTING_PR_IS_DRAFT}" != "true" ]]; then
     gh pr ready "${EXISTING_PR_NUMBER}" --undo >/dev/null
   fi
-  printf 'Draft PR already exists: %s\n' "${EXISTING_PR_URL}"
+  gh pr edit "${EXISTING_PR_NUMBER}" --title "${TITLE}" --body "${BODY_CONTENT}" >/dev/null
+  printf 'Updated draft PR: %s\n' "${EXISTING_PR_URL}"
   exit 0
 fi
 
