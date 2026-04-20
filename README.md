@@ -169,7 +169,13 @@ If you want a cheap speculative worktree instead, opt in explicitly:
 ./scripts/worktree-add.sh ../freed-my-branch -b feat/my-branch origin/dev --install auto --target shared
 ```
 
-That is the better default when you are spinning up several speculative threads at once and only one or two of them will reach verification.
+If you are spinning up several speculative threads at once, use the swarm alias instead:
+
+```bash
+./scripts/worktree-add.sh ../freed-my-branch -b feat/my-branch origin/dev --swarm --target shared
+```
+
+That is the better default when only one or two of those threads will reach verification.
 
 When you are ready to preview the work locally, prefer the lightest useful surface:
 

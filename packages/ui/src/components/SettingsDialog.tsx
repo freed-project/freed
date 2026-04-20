@@ -758,9 +758,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     container.scrollTo({ top: targetTop, behavior });
   }, []);
 
-  // ── Mobile nav state ──────────────────────────────────────────────────────
-  const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
-
   useEffect(() => {
     const root = scrollRef.current;
     if (!root || searchLower || (isMobile && mobileView === "nav")) return;

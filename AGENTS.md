@@ -60,7 +60,7 @@ Run `./scripts/release.sh` with no args to auto-compute the next version.
 
 `worktree-add.sh` is a drop-in replacement for `git worktree add`. It defaults to a full isolated install so the new worktree is ready immediately, and it still supports `--install auto` or `--install none` when you intentionally want to defer bootstrap. Never use bare `git worktree add` directly.
 Pass an explicit remote base like `origin/dev` or `origin/www` so feature work does not inherit a stale local branch by accident.
-For multi-thread or speculative worktree swarms, prefer `--install auto` until the thread actually needs verification or a preview.
+For multi-thread or speculative worktree swarms, prefer `--swarm`. That maps to deferred bootstrap until the thread actually needs verification or a preview.
 Prefer the lightest useful local preview before opening a draft PR:
 - product work usually uses `./scripts/worktree-preview.sh pwa`
 - website work uses `./scripts/worktree-preview.sh website`

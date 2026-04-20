@@ -17,7 +17,7 @@ Create a product worktree branch from the latest remote `dev`, implement the fea
    - Confirm whether local `dev` or `main` are behind their remote counterparts.
    - If `origin/main` contains commits that are not in `origin/dev`, call that out before continuing so the user can decide whether `dev` needs to be refreshed first.
 5. Create a new worktree branch from `origin/dev` using `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --install full --target <desktop|pwa|shared>`.
-   - When you are spinning up multiple speculative threads at once, prefer `--install auto` until the worktree actually needs verification or a preview.
+   - When you are spinning up multiple speculative threads at once, prefer `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --swarm --target <desktop|pwa|shared>` so bootstrap stays deferred until that thread actually needs verification or a preview.
 6. If the worktree was created with deferred bootstrap on purpose, recover with `./scripts/worktree-bootstrap.sh <worktree> --target <desktop|pwa|shared>`.
 7. Implement the requested change.
 8. Verify with focused tests, then broader checks when shared behavior changed.
