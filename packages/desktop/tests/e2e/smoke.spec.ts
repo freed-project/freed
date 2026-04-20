@@ -436,6 +436,41 @@ test("desktop sidebar and debug drawer use floating shell cards", async ({ app, 
   expect(debugShellState).toBe(true);
 });
 
+test("desktop toolbar tooltips dismiss after clicking a moving control", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+  await sidebarToggle.hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Collapse sidebar");
+
+  await sidebarToggle.click();
+
+  await expect.poll(async () => {
+    return page.locator('[role="tooltip"]').count();
+  }).toBe(0);
+
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Expand sidebar");
+});
+
+test("desktop toolbar tooltips still open on keyboard focus", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await page.keyboard.press("Tab");
+    if (await sidebarToggle.evaluate((element) => element === document.activeElement)) {
+      break;
+    }
+  }
+
+  await expect(sidebarToggle).toBeFocused();
+  await expect(page.getByRole("tooltip")).toHaveText("Collapse sidebar");
+});
+
 test("main content area renders", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
