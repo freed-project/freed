@@ -1376,15 +1376,24 @@ test.describe("FREED PWA", () => {
   });
 
   test("map popovers show update time and keep only one open", async ({ page }) => {
+    const mapAssetResponses: Array<{ url: string; status: number }> = [];
+    page.on("response", (response) => {
+      const url = response.url();
+      if (url.includes("maplibre-gl")) {
+        mapAssetResponses.push({ url, status: response.status() });
+      }
+    });
+
     await page.goto("/");
     await acceptLegalGate(page);
     await seedMultipleFriendLocations(page);
 
     await page.getByRole("button", { name: "Map" }).click();
+    await expect(page.getByText("Map failed to load")).toHaveCount(0);
     await page.getByRole("button", { name: "Omar Hassan" }).click();
     await expect(page.getByText("Reykjavik, Capital Region, Iceland")).toBeVisible();
     await expect(page.getByText(/ago/).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Open Friend" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Open Post" })).toHaveCount(1);
     const livePopup = page.locator(".maplibregl-popup-content");
     const fallbackPopup = page.getByTestId("map-fallback-popup");
     const useLivePopup = await livePopup.isVisible().catch(() => false);
@@ -1400,7 +1409,9 @@ test.describe("FREED PWA", () => {
     await page.getByRole("button", { name: "Samir Dutta" }).click();
     await expect(page.getByText("Paris")).toBeVisible();
     await expect(page.getByText("Reykjavik, Capital Region, Iceland")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Open Friend" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Open Post" })).toHaveCount(1);
+    expect(mapAssetResponses.length).toBeGreaterThan(0);
+    expect(mapAssetResponses.some(({ status }) => status === 403)).toBeFalsy();
   });
 
   test("can add an RSS feed", async ({ page }) => {
