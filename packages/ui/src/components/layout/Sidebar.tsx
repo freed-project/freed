@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo, cloneElement, isValidElement, type ReactNode } from "react";
 
 import {
   countAuthorsWithRecentLocationUpdates,
@@ -814,30 +814,38 @@ export function Sidebar({
     icon: ReactNode;
     testId?: string;
     badge?: ReactNode;
-  }) => (
-    <Tooltip key={args.key} label={args.label} className="flex w-full">
-      <button
-        type="button"
-        onClick={args.onClick}
-        data-testid={args.testId}
-        className={`group/compact relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-2xl border transition-all ${
-          args.active
-            ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
-            : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
-        }`}
-        aria-label={args.label}
-      >
-        <span className="flex h-[18px] w-[18px] items-center justify-center">
-          {args.icon}
-        </span>
-        {args.badge ? (
-          <span className="pointer-events-none absolute right-1.5 top-1.5">
-            {args.badge}
+  }) => {
+    const compactIcon = isValidElement<{ className?: string }>(args.icon)
+      ? cloneElement(args.icon, {
+          className: `${args.icon.props.className ?? ""} h-8 w-8`.trim(),
+        })
+      : args.icon;
+
+    return (
+      <Tooltip key={args.key} label={args.label} className="flex w-full">
+        <button
+          type="button"
+          onClick={args.onClick}
+          data-testid={args.testId}
+          className={`group/compact relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-[var(--card-radius)] border transition-all ${
+            args.active
+              ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
+              : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
+          }`}
+          aria-label={args.label}
+        >
+          <span className="flex h-8 w-8 items-center justify-center">
+            {compactIcon}
           </span>
-        ) : null}
-      </button>
-    </Tooltip>
-  ), []);
+          {args.badge ? (
+            <span className="pointer-events-none absolute right-1 top-1">
+              {args.badge}
+            </span>
+          ) : null}
+        </button>
+      </Tooltip>
+    );
+  }, []);
 
   const sidebarBody = (
     <nav

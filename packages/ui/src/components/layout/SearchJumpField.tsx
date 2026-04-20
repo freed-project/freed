@@ -331,15 +331,15 @@ export function SearchJumpField({
               setIsTriggerOpen((value) => !value);
               setActiveIndex(-1);
             }}
-            className={`relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-2xl border border-[var(--theme-border-subtle)] bg-transparent text-[var(--theme-text-secondary)] transition-colors hover:border-[var(--theme-border-quiet)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)] ${
-              showPalette ? "border-[var(--theme-border-strong)] bg-[var(--theme-bg-muted)] text-[var(--theme-text-primary)]" : ""
+            className={`relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-[var(--card-radius)] bg-transparent text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)] ${
+              showPalette ? "bg-[var(--theme-bg-muted)] text-[var(--theme-text-primary)]" : ""
             }`}
             aria-label="Search or run a command"
             aria-expanded={showPalette}
             aria-haspopup="dialog"
             >
             <svg
-              className="h-[18px] w-[18px]"
+              className="h-8 w-8"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
