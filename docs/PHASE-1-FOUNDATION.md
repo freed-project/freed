@@ -242,7 +242,7 @@ The preview and production deploy helpers now resolve `npm` and `npx` from the
 active Node toolchain first, so they do not accidentally pick up an older
 system npm from the shell `PATH`.
 
-Local product worktrees now also default to deferred bootstrap. `./scripts/worktree-add.sh` can record `--install none|auto|full` and `--target desktop|pwa|website|shared`, `./scripts/worktree-bootstrap.sh` handles the on-demand install, `./scripts/worktree-preview.sh` launches tracked previews with one desktop slot and one web slot per repo, and `./scripts/worktree-cleanup.sh` stops tracked previews before removing merged worktrees.
+Local product worktrees now default to a ready-to-run full bootstrap so the next command does not trip over missing `node_modules`. `./scripts/worktree-add.sh` still supports `--install none|auto|full` and `--target desktop|pwa|website|shared` when you intentionally want to defer bootstrap, `./scripts/worktree-bootstrap.sh` handles the on-demand install, `./scripts/worktree-preview.sh` launches tracked previews with one desktop slot and one web slot per repo, and `./scripts/worktree-cleanup.sh` stops tracked previews before removing merged worktrees.
 
 ---
 
@@ -273,7 +273,7 @@ Local product worktrees now also default to deferred bootstrap. `./scripts/workt
 | 1.9  | Generate RSS feed at build time              | ✓      |
 | 1.10 | Add public legal docs and versioned website clickwrap | ✓ |
 | 1.11 | Add unified shared theme system across website, Freed Desktop, and PWA | ✓ |
-| 1.12 | Add deferred worktree bootstrap and tracked local preview tooling | ✓ |
+| 1.12 | Add ready-to-run worktree bootstrap controls and tracked local preview tooling | ✓ |
 
 ---
 

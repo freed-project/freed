@@ -53,12 +53,13 @@ Run `./scripts/release.sh` with no args to auto-compute the next version.
 **Never work directly on `main`.** Always create a git worktree for feature work:
 
 ```bash
-./scripts/worktree-add.sh ../freed-<slug> -b <branch>
+./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --target shared
 # work in ../freed-<slug>/
 # remove when done: git worktree remove ../freed-<slug>
 ```
 
-`worktree-add.sh` is a drop-in replacement for `git worktree add` -- same args, same behavior, plus it runs `npm ci --prefer-offline` automatically so the new worktree has isolated `node_modules` and is ready to run immediately (~74s with a warm cache). Never use bare `git worktree add` directly.
+`worktree-add.sh` is a drop-in replacement for `git worktree add`. It defaults to a full isolated install so the new worktree is ready immediately, and it still supports `--install auto` or `--install none` when you intentionally want to defer bootstrap. Never use bare `git worktree add` directly.
+Pass an explicit remote base like `origin/dev` or `origin/www` so feature work does not inherit a stale local branch by accident.
 
 **Branch naming:** `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/` prefix followed by a short kebab-case description.
 

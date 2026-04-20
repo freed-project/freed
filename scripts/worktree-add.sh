@@ -14,10 +14,11 @@
 #   silently corrupts every other worktree sharing that link. Isolated
 #   installs are the only safe option.
 #
-# Why defer installs by default?
-#   Most concurrent feature threads do not need a full dependency tree until
-#   they reach focused verification. Deferring bootstrap keeps idle worktrees
-#   cheap and saves RAM for the threads that are actually running builds.
+# Why keep deferred installs around?
+#   Some speculative or low-touch worktrees do not need a full dependency tree
+#   yet. `--install auto` and `--install none` still exist for those cases, but
+#   the default is now "ready to run" so active feature work does not trip over
+#   missing dependencies on the next command.
 
 set -euo pipefail
 
@@ -33,7 +34,7 @@ Usage:
   ./scripts/worktree-add.sh <path> [-b <branch>] [<commit-ish>] [--install none|auto|full] [--target desktop|pwa|website|shared]
 
 Options:
-  --install  Dependency bootstrap mode. Default: auto
+  --install  Dependency bootstrap mode. Default: full
   --target   Hint for later bootstrap or preview commands
 EOF
 }
@@ -62,7 +63,7 @@ validate_target_hint() {
   esac
 }
 
-INSTALL_MODE="auto"
+INSTALL_MODE="full"
 TARGET_HINT=""
 PASSTHROUGH_ARGS=()
 

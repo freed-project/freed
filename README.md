@@ -149,14 +149,21 @@ binary instead.
 Use the helper instead of bare `git worktree add`:
 
 ```bash
-./scripts/worktree-add.sh ../freed-my-branch -b feat/my-branch
+./scripts/worktree-add.sh ../freed-my-branch -b feat/my-branch origin/dev --target shared
 ```
 
 The helper now:
 
 - detects the new worktree path by diffing the worktree list before and after creation
-- installs dependencies with the npm binary that matches the active Node runtime
+- defaults to a full install with the npm binary that matches the active Node runtime
 - avoids the broken "last worktree wins" assumption that can install into the wrong checkout
+- stays on the branch you asked for instead of inheriting some crusty local base by accident
+
+If you want a cheap speculative worktree instead, opt in explicitly:
+
+```bash
+./scripts/worktree-add.sh ../freed-my-branch -b feat/my-branch origin/dev --install auto --target shared
+```
 
 ### Marketing Website (freed.wtf)
 
