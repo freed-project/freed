@@ -120,6 +120,9 @@ jobs:
       contents: write
 
     strategy:
+      # Tauri updates shared GitHub release assets like latest.json. Serializing
+      # the matrix avoids cross-target upload races on the same draft release.
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:
