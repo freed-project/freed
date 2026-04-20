@@ -77,6 +77,40 @@ current_timestamp() {
   date -u +"%Y-%m-%dT%H:%M:%SZ"
 }
 
+basename_without_freed_prefix() {
+  local path="$1"
+  local base_name
+
+  base_name="$(basename "${path}")"
+  printf '%s\n' "${base_name#freed-}"
+}
+
+preview_thread_label() {
+  local thread_id="${CODEX_THREAD_ID:-}"
+
+  if [[ -z "${thread_id}" ]]; then
+    return 0
+  fi
+
+  printf 'thread ...%s\n' "${thread_id: -8}"
+}
+
+preview_label_for_worktree() {
+  local path="$1"
+  local abs_path base_name thread_label
+
+  abs_path="$(resolve_worktree_path "${path}")"
+  base_name="$(basename_without_freed_prefix "${abs_path}")"
+  thread_label="$(preview_thread_label)"
+
+  if [[ -n "${thread_label}" ]]; then
+    printf '%s | %s\n' "${base_name}" "${thread_label}"
+    return 0
+  fi
+
+  printf '%s\n' "${base_name}"
+}
+
 is_pid_running() {
   local pid="$1"
 
@@ -129,6 +163,7 @@ write_process_metadata() {
   local port="$5"
   local command="$6"
   local log_path="$7"
+  local preview_label="$8"
   local abs_path worktree_id manifest
 
   ensure_runtime_dirs
@@ -146,6 +181,7 @@ write_process_metadata() {
     write_shell_var "PORT" "${port}"
     write_shell_var "COMMAND" "${command}"
     write_shell_var "LOG_PATH" "${log_path}"
+    write_shell_var "PREVIEW_LABEL" "${preview_label}"
     write_shell_var "STARTED_AT" "$(current_timestamp)"
   } > "${manifest}"
 }

@@ -3494,6 +3494,10 @@ fn create_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, ta
         .clone();
 
     let builder = tauri::WebviewWindowBuilder::from_config(app, &window_config)?;
+    let builder = match std::env::var("FREED_TAURI_WINDOW_TITLE") {
+        Ok(title) if !title.trim().is_empty() => builder.title(title),
+        _ => builder,
+    };
 
     #[cfg(target_os = "macos")]
     let builder = builder.with_webview_configuration(main_window_webview_configuration());

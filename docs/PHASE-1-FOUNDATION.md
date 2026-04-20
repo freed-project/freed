@@ -273,7 +273,7 @@ Local product worktrees now also default to deferred bootstrap. `./scripts/workt
 | 1.9  | Generate RSS feed at build time              | ✓      |
 | 1.10 | Add public legal docs and versioned website clickwrap | ✓ |
 | 1.11 | Add unified shared theme system across website, Freed Desktop, and PWA | ✓ |
-| 1.12 | Add deferred worktree bootstrap and tracked local preview tooling | ✓ |
+| 1.12 | Add deferred worktree bootstrap, tracked preview tooling, env-driven Vercel preview labels, and a draggable bottom-center preview badge | ✓ |
 
 ---
 

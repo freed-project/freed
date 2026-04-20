@@ -8,6 +8,7 @@ import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
 import { FeedView } from "@freed/ui/components/feed";
 import { GoogleContactsSection } from "@freed/ui/components/settings/GoogleContactsSection";
 import { FatalErrorScreen } from "@freed/ui/components/FatalErrorScreen";
+import { LocalPreviewBadge } from "@freed/ui/components/LocalPreviewBadge";
 import { ToastContainer } from "@freed/ui/components/Toast";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { OAuthCallback } from "./components/OAuthCallback";
@@ -53,6 +54,8 @@ import {
   buildPwaReleaseChannelUrl,
   persistReleaseChannel,
 } from "@freed/ui/lib/release-channel";
+
+const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
 
 function OAuthRouter() {
   if (window.location.pathname === "/oauth-callback") {
@@ -266,6 +269,7 @@ function App() {
   return (
     <PlatformProvider value={platform}>
       <BugReportBoundary>
+        <LocalPreviewBadge label={LOCAL_PREVIEW_LABEL} />
         <AppShell>
           <FeedView />
         </AppShell>
