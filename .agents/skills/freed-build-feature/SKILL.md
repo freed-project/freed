@@ -1,12 +1,12 @@
 ---
 name: freed-build-feature
-description: Scaffold product work in a dev-based worktree, implement it, verify it, and launch a preview only when the work actually needs one. Use for Desktop, PWA, shared packages, sync, capture packages, release tooling, app behavior, and product docs targeting dev. Do not use for public marketing changes targeting www.
+description: Scaffold product work in a dev-based worktree, implement it, verify it with focused checks, and finish by committing, pushing, and opening a draft PR. Use for Desktop, PWA, shared packages, sync, capture packages, release tooling, app behavior, and product docs targeting dev. Do not use for public marketing changes targeting www.
 disable-model-invocation: true
 ---
 
 # Build Feature
 
-Create a product worktree branch from the latest remote `dev`, implement the feature or fix, verify it, and launch the relevant preview only when the work reaches final verification or the user explicitly asks for one.
+Create a product worktree branch from the latest remote `dev`, implement the feature or fix, verify it with the lightest checks that actually cover the touched surface, and finish by committing the work, pushing the branch, and opening a draft PR to `dev`.
 
 ## Workflow
 
@@ -19,12 +19,18 @@ Create a product worktree branch from the latest remote `dev`, implement the fea
 5. Create a new worktree branch from `origin/dev` using `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --install auto --target <desktop|pwa|shared>`.
 6. Bootstrap dependencies only when the work actually needs them with `./scripts/worktree-bootstrap.sh <worktree> --target <desktop|pwa|shared>`.
 7. Implement the requested change.
-8. Verify with focused tests, then broader checks when shared behavior changed.
-9. Launch a preview only when final verification needs one or the user explicitly asks:
+8. Verify with focused checks first.
+   - Prefer changed-surface tests, lint, typecheck, or desktop E2E coverage that directly exercises the feature.
+   - Do not default every feature thread to full-repo validation when the touched surface is narrow.
+9. Escalate to broader checks only when the change crosses package boundaries or affects shared behavior.
+   - Shared schema, release tooling, shared UI primitives, and cross-app flows should earn broader validation before publish.
+   - Reserve the heaviest validation and release-shape smoke tests for `dev` integration and release prep, not every branch.
+10. Launch a preview only when final verification needs one or the user explicitly asks:
    - For PWA work, use `./scripts/worktree-preview.sh pwa`.
    - For desktop work, default to `./scripts/worktree-preview.sh desktop`.
    - Use `./scripts/worktree-preview.sh desktop --native` only when Tauri-native behavior itself matters.
-10. Open a PR targeting `dev` when the work is ready.
+11. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>"`.
+12. Confirm the branch is pushed to `origin` and the new PR targeting `dev` is in draft state.
 
 ## Scope
 
