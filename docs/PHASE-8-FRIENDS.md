@@ -214,6 +214,7 @@ Friend avatars now inherit a theme-authored tint across the Friends graph and ma
 Map popovers now use a wider card layout and deliberately omit the old MapLibre tail, so place names and actions fit cleanly without the popup looking like a speech bubble from a cheaper app.
 Friends and Map now consume the same shared theme tokens, button treatments, shell backgrounds, surface recipes, and theme-native map palettes as the rest of Freed, so themes like Neon, Midas, Vesper, Ember, and Scriptorium land consistently across the graph, sidebars, popovers, mini-map cards, editor, contact-sync flows, and map basemap itself.
 The shared map now includes a persisted `Friends` / `All content` toggle. It restores the user's last mode from preferences and defaults to `All content` when the library has geolocatable followed accounts but no friend-linked pins yet.
+That same `Friends` / `All content` lens now lives in the shared toolbar for feed surfaces too, so the operator can collapse Freed down to real-world people without leaving the main reading views.
 The shared map now also persists a `Current` / `Future` / `Past` time filter. Future-dated `timeRange` windows stay out of the default current map until they start, upcoming travel or event windows can be previewed directly, and expired windows fall into a separate past view without hijacking the current last-seen map.
 Past and future views now expose a timeline scrubber, so the operator can replay historical location posts or step through upcoming travel windows instead of staring at one collapsed "latest" pin and pretending that counts as time.
 
@@ -253,6 +254,7 @@ Past and future views now expose a timeline scrubber, so the operator can replay
 | 8.24 | Support Mozi-backed friend/location events in identity and map flows | Medium | Not Started |
 | 8.25 | Include Google contact sync state in desktop disaster-recovery snapshots | Low | Done |
 | 8.26 | Add persisted `Friends` / `All content` map modes with latest-author pins | Medium | Done |
+| 8.27 | Extend the shared `Friends` / `All content` toolbar lens to feed views | Medium | Done |
 
 ---
 
@@ -284,6 +286,7 @@ Past and future views now expose a timeline scrubber, so the operator can replay
 - [x] Sample data refresh rebuilds a 25-friend social graph with linked profiles and recent map activity
 - [x] Sidebar shows live counts for Friends and recent friend location updates on Map
 - [x] Map supports persisted `Friends` and `All content` modes
+- [x] Feed views share the same persisted `Friends` and `All content` toolbar lens
 - [x] Map defaults to `All content` when there are valid author pins but no friend-linked pins
 - [x] `All content` mode shows the latest valid location per followed account
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map

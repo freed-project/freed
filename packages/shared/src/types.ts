@@ -552,6 +552,9 @@ export interface DisplayPreferences {
   /** Saved map display mode. Unset means compute a default from available data. */
   mapMode?: MapMode;
 
+  /** Saved feed identity mode. Unset means show all captured content. */
+  friendsMode?: MapMode;
+
   /** Saved map time filter. Unset means default to the current view. */
   mapTimeMode?: MapTimeMode;
 
@@ -751,6 +754,7 @@ export function createDefaultPreferences(): UserPreferences {
         showReadInGrayscale: true,
         dualColumnMode: true,
       },
+      friendsMode: "all_content",
       mapTimeMode: "current",
       archivePruneDays: 30,
     },

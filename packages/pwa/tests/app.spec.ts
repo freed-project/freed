@@ -129,11 +129,13 @@ async function seedFriendLocation(
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_AUTOMERGE__ as {
       docAddFriend: (friend: unknown) => Promise<void>;
+      docAddAccount: (account: unknown) => Promise<void>;
       docAddFeedItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
         friends: Record<string, unknown>;
+        accounts: Record<string, unknown>;
         items: unknown[];
         setActiveView: (view: string) => void;
         setSelectedFriend: (id: string | null) => void;
@@ -144,15 +146,22 @@ async function seedFriendLocation(
     await automerge.docAddFriend({
       id: "friend-ada",
       name: "Ada Lovelace",
-      sources: [
-        {
-          platform: "instagram",
-          authorId: "ada-ig",
-          handle: "ada",
-          displayName: "Ada Lovelace",
-        },
-      ],
+      relationshipStatus: "friend",
       careLevel: 4,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await automerge.docAddAccount({
+      id: "social:instagram:ada-ig",
+      personId: "friend-ada",
+      kind: "social",
+      provider: "instagram",
+      externalId: "ada-ig",
+      handle: "ada",
+      displayName: "Ada Lovelace",
+      firstSeenAt: now,
+      lastSeenAt: now,
+      discoveredFrom: "captured_item",
       createdAt: now,
       updatedAt: now,
     });
@@ -193,7 +202,11 @@ async function seedFriendLocation(
       const startedAt = Date.now();
       const interval = window.setInterval(() => {
         const state = store.getState();
-        if (state.friends["friend-ada"] && state.items.length > 0) {
+        if (
+          state.friends["friend-ada"]
+          && state.accounts["social:instagram:ada-ig"]
+          && state.items.length > 0
+        ) {
           clearInterval(interval);
           resolve();
           return;
@@ -208,6 +221,132 @@ async function seedFriendLocation(
     const state = store.getState();
     state.setActiveView("friends");
     state.setSelectedFriend("friend-ada");
+  });
+}
+
+async function seedFriendFeedLens(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  await waitForPwaDocumentReady(page);
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddFriend: (friend: unknown) => Promise<void>;
+      docAddAccount: (account: unknown) => Promise<void>;
+      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        friends: Record<string, unknown>;
+        accounts: Record<string, unknown>;
+        items: Array<{ globalId: string }>;
+        setActiveView: (view: string) => void;
+        setSelectedFriend: (id: string | null) => void;
+        setSelectedItem: (id: string | null) => void;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddFriend({
+      id: "friend-grace",
+      name: "Grace Hopper",
+      relationshipStatus: "friend",
+      careLevel: 4,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await automerge.docAddAccount({
+      id: "social:linkedin:grace-li",
+      personId: "friend-grace",
+      kind: "social",
+      provider: "linkedin",
+      externalId: "grace-li",
+      handle: "grace",
+      displayName: "Grace Hopper",
+      firstSeenAt: now,
+      lastSeenAt: now,
+      discoveredFrom: "captured_item",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await automerge.docAddFeedItems([
+      {
+        globalId: "li:grace:lens",
+        platform: "linkedin",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now - 30_000,
+        author: {
+          id: "grace-li",
+          handle: "grace",
+          displayName: "Grace Hopper",
+        },
+        content: {
+          text: "Grace friend toggle scenario",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: [],
+        },
+        topics: [],
+      },
+      {
+        globalId: "x:outsider:lens",
+        platform: "x",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now - 20_000,
+        author: {
+          id: "outsider-x",
+          handle: "outsider",
+          displayName: "Outsider Account",
+        },
+        content: {
+          text: "Outsider toggle scenario",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: [],
+        },
+        topics: [],
+      },
+    ]);
+
+    await new Promise<void>((resolve, reject) => {
+      const startedAt = Date.now();
+      const interval = window.setInterval(() => {
+        const state = store.getState();
+        const itemIds = new Set(state.items.map((item) => item.globalId));
+        if (
+          state.friends["friend-grace"]
+          && state.accounts["social:linkedin:grace-li"]
+          && itemIds.has("li:grace:lens")
+          && itemIds.has("x:outsider:lens")
+        ) {
+          clearInterval(interval);
+          resolve();
+          return;
+        }
+        if (Date.now() - startedAt > 5_000) {
+          clearInterval(interval);
+          reject(new Error("friend feed lens seed timeout"));
+        }
+      }, 50);
+    });
+
+    const state = store.getState();
+    state.setActiveView("feed");
+    state.setSelectedFriend(null);
+    state.setSelectedItem(null);
   });
 }
 
@@ -1065,6 +1204,26 @@ test.describe("FREED PWA", () => {
     expect(mainBox).not.toBeNull();
     expect(mapBox).not.toBeNull();
     expect(Math.round(mapBox!.y)).toBe(Math.round(mainBox!.y));
+  });
+
+  test("toolbar identity toggle narrows the feed to linked friends", async ({ page }) => {
+    await page.goto("/");
+    await acceptLegalGate(page);
+    await seedFriendFeedLens(page);
+
+    await expect(page.getByText("Grace friend toggle scenario")).toBeVisible();
+    await expect(page.getByText("Outsider toggle scenario")).toBeVisible();
+
+    const toolbar = page.getByTestId("workspace-toolbar");
+    await toolbar.getByRole("button", { name: "Friends", exact: true }).click();
+
+    await expect(page.getByText("Grace friend toggle scenario")).toBeVisible();
+    await expect(page.getByText("Outsider toggle scenario")).toHaveCount(0);
+
+    await toolbar.getByRole("button", { name: "All content", exact: true }).click();
+
+    await expect(page.getByText("Grace friend toggle scenario")).toBeVisible();
+    await expect(page.getByText("Outsider toggle scenario")).toBeVisible();
   });
 
   test("friend detail shows the last seen location card when location data exists", async ({
