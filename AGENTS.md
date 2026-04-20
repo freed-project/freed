@@ -60,13 +60,18 @@ Run `./scripts/release.sh` with no args to auto-compute the next version.
 
 `worktree-add.sh` is a drop-in replacement for `git worktree add`. It defaults to a full isolated install so the new worktree is ready immediately, and it still supports `--install auto` or `--install none` when you intentionally want to defer bootstrap. Never use bare `git worktree add` directly.
 Pass an explicit remote base like `origin/dev` or `origin/www` so feature work does not inherit a stale local branch by accident.
+For multi-thread or speculative worktree swarms, prefer `--install auto` until the thread actually needs verification or a preview.
 Prefer the lightest useful local preview before opening a draft PR:
 - product work usually uses `./scripts/worktree-preview.sh pwa`
 - website work uses `./scripts/worktree-preview.sh website`
 - use `./scripts/worktree-preview.sh desktop --native` only when real Tauri behavior matters, and report the preview label when you do
 - never run `npm run <script> --workspace=...` from the repo root in this monorepo, run from the workspace directory instead
-- the root fanout scripts now fail fast if you try that dangerous pattern, treat that error as a routing mistake and re-run from the workspace
+- root `npm run dev` now fails fast on purpose, use `./scripts/worktree-preview.sh <target>` or run `npm run dev` from the workspace directory you actually want
+- the root fanout scripts now fail fast if you try the dangerous workspace-dispatch pattern, treat that error as a routing mistake and re-run from the workspace
 - if a workspace command needs a hoisted binary, prefix `PATH` with the worktree root `node_modules/.bin`
+- browser tooling is opt-in only, do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging
+- after browser tooling work, run `./scripts/dev-session-clean.sh`
+- `./scripts/worktree-publish.sh` now refuses stray untracked files unless you stage them yourself first or pass `--include-untracked`
 
 **Branch naming:** `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/` prefix followed by a short kebab-case description.
 

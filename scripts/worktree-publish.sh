@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  ./scripts/worktree-publish.sh --title "<conventional-commit title>" [--summary "<bullet>"]... [--test "<bullet>"]... [--base <branch>] [--body-file <path>]
+  ./scripts/worktree-publish.sh --title "<conventional-commit title>" [--summary "<bullet>"]... [--test "<bullet>"]... [--base <branch>] [--body-file <path>] [--include-untracked]
 
 Stages local changes, commits them when needed, pushes the current branch to origin,
 and opens a draft pull request.
@@ -60,6 +60,10 @@ branch_has_unique_commits() {
   [[ "$(git rev-list --count "origin/${base_branch}..HEAD")" -gt 0 ]]
 }
 
+list_untracked_files() {
+  git ls-files --others --exclude-standard
+}
+
 build_body() {
   local title="$1"
   shift
@@ -109,6 +113,7 @@ build_body() {
 TITLE=""
 BASE_BRANCH="dev"
 BODY_FILE=""
+INCLUDE_UNTRACKED=false
 SUMMARY_ARGS=()
 TEST_ARGS=()
 
@@ -138,6 +143,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || { echo "Error: --body-file requires a value." >&2; exit 1; }
       BODY_FILE="$2"
       shift 2
+      ;;
+    --include-untracked)
+      INCLUDE_UNTRACKED=true
+      shift
       ;;
     --help|-h)
       usage
@@ -172,9 +181,23 @@ BRANCH_NAME="$(current_branch)"
 ensure_publishable_branch "${BRANCH_NAME}"
 
 if has_worktree_changes; then
-  git add -A
+  UNTRACKED_FILES="$(list_untracked_files)"
+  if [[ -n "${UNTRACKED_FILES}" ]] && ! ${INCLUDE_UNTRACKED}; then
+    echo "Error: untracked files are present." >&2
+    echo "Stage intentional new files explicitly, ignore local junk, or re-run with --include-untracked." >&2
+    echo "" >&2
+    printf '%s\n' "${UNTRACKED_FILES}" >&2
+    exit 1
+  fi
+
+  if ${INCLUDE_UNTRACKED}; then
+    git add -A
+  else
+    git add -u
+  fi
+
   if git diff --cached --quiet; then
-    echo "Error: no staged changes found after git add -A." >&2
+    echo "Error: no staged changes found after staging tracked files." >&2
     exit 1
   fi
   git commit -m "${TITLE}"
