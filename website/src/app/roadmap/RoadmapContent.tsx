@@ -701,7 +701,7 @@ const phases: Phase[] = [
     number: 1,
     title: "Foundation",
     description:
-      "Marketing site, QR gallery, monorepo, Automerge schema, CI/CD, public legal docs with download clickwrap, a protected newsletter signup flow, and ready-to-run local worktree bootstrap with tracked preview tooling, light-by-default preview routing, draft-PR publish automation, labeled native windows, plus optional deferred installs when you actually want them.",
+      "Marketing site, QR gallery, monorepo, Automerge schema, CI/CD, public legal docs with download clickwrap, a protected newsletter signup flow, and ready-to-run local worktree bootstrap with tracked preview tooling, light-by-default preview routing, safer root command routing, draft-PR publish automation that rejects stray untracked files, labeled native windows, a local session cleanup helper for stale browser sidecars, plus optional deferred installs when you actually want them.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-1-FOUNDATION.md",

@@ -21,6 +21,14 @@ if (runningWorkspaceSelection) {
   process.exit(1);
 }
 
+if (scriptName === "dev") {
+  console.error('Refusing to run root "dev" from the monorepo root.');
+  console.error("That path can start too many long-lived processes at once.");
+  console.error("Use ./scripts/worktree-preview.sh <desktop|pwa|website> instead.");
+  console.error("Or cd into the workspace you actually want and run npm run dev there.");
+  process.exit(1);
+}
+
 const child = spawnSync(
   "npm",
   ["run", scriptName, "--workspaces", "--if-present", ...forwardedArgs],

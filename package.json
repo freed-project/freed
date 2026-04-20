@@ -11,6 +11,7 @@
     "postinstall": "node scripts/patch-automerge.mjs",
     "build": "node scripts/run-workspace-fanout.mjs build",
     "dev": "node scripts/run-workspace-fanout.mjs dev",
+    "session:clean": "bash scripts/dev-session-clean.sh",
     "test": "node scripts/run-workspace-fanout.mjs test",
     "typecheck": "node scripts/run-workspace-fanout.mjs typecheck",
     "typecheck:graph": "tsc --build --dry"
