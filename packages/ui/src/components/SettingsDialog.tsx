@@ -869,7 +869,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     testId,
   }: {
     className?: string;
-    testId: string;
+    testId?: string;
   }) {
     return (
       <button
@@ -1378,7 +1378,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           {/* Header */}
           <div className="relative hidden shrink-0 items-center justify-center px-2 pt-4 pb-2 sm:flex">
             <CloseButton
-              testId="settings-close-button-sidebar"
+              testId={isMobile ? undefined : "settings-close-button-sidebar"}
               className="absolute left-2"
             />
             <h2 className="text-base font-semibold text-center text-text-primary">Settings</h2>
@@ -1390,7 +1390,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           >
             <h2 className="text-sm font-semibold text-text-primary">Settings</h2>
             <CloseButton
-              testId="settings-close-button-sidebar-mobile"
+              testId={isMobile ? "settings-close-button-sidebar" : undefined}
               className="-mr-1"
             />
           </div>
