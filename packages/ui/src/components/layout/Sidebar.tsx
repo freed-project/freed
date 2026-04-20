@@ -565,9 +565,7 @@ export function Sidebar({
   const narrowLabeledSidebar = renderMode === "expanded" && desktopWidth < LABEL_PRIORITY_THRESHOLD;
   const rowCountsVisible = renderMode === "expanded" && !narrowLabeledSidebar;
   const sourceMenusVisible = renderMode === "expanded" && !narrowLabeledSidebar;
-  const sourceIndicatorsVisible = renderMode === "expanded" && !narrowLabeledSidebar;
   const rssAccordionVisible = renderMode === "expanded" && !narrowLabeledSidebar;
-  const sourceStatusVisible = renderMode === "expanded" && !narrowLabeledSidebar;
   const searchVariant = compactRail ? "trigger" : "inline";
   const expandedSidebarUsesCondensedPadding =
     renderMode === "expanded" && desktopWidth < EXPANDED_PADDING_CROSSOVER_WIDTH;
@@ -855,6 +853,55 @@ export function Sidebar({
     );
   }, []);
 
+  const renderSidebarIconBadge = useCallback((badge: ReactNode) => (
+    <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[color:var(--theme-bg-root)]">
+      {badge}
+    </span>
+  ), []);
+
+  const renderSidebarRowIcon = useCallback((icon: ReactNode, badge?: ReactNode, iconSizeClass = "h-5 w-5") => {
+    const resolvedIcon = isValidElement<{ className?: string }>(icon)
+      ? cloneElement(icon, {
+          className: `${icon.props.className ?? ""} ${iconSizeClass}`.trim(),
+        })
+      : icon;
+
+    return (
+      <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">
+        {resolvedIcon}
+        {badge ? (
+          <span className="pointer-events-none absolute -right-1 -top-1">
+            {badge}
+          </span>
+        ) : null}
+      </span>
+    );
+  }, []);
+
+  const getSourceBadge = useCallback((source: SourceNavigationItem, sourceStatus?: SidebarSourceStatusSummary | null) => {
+    if (sourceStatus) {
+      return renderSidebarIconBadge(
+        <ProviderStatusIndicator
+          tone={sourceStatus.tone}
+          syncing={sourceStatus.syncing}
+          label={sourceStatus.label}
+          size="xxs"
+          testId={`source-status-${sourceKey(source)}`}
+        />,
+      );
+    }
+
+    if (SourceIndicator) {
+      return renderSidebarIconBadge(<SourceIndicator sourceId={source.id ?? "all"} />);
+    }
+
+    return undefined;
+  }, [SourceIndicator, renderSidebarIconBadge]);
+
+  const pendingFriendsBadge = pendingMatchCount > 0
+    ? renderSidebarIconBadge(<span className="flex h-2.5 w-2.5 rounded-full bg-[var(--theme-accent-secondary)]" />)
+    : undefined;
+
   const sidebarBody = (
     <nav
       data-testid="app-sidebar-body"
@@ -874,11 +921,7 @@ export function Sidebar({
                     onClick: () => handleSourceClick(source),
                     icon: source.icon,
                     testId: `source-row-${sourceKey(source)}`,
-                    badge: SourceIndicator ? (
-                      <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[color:var(--theme-bg-root)]">
-                        <SourceIndicator sourceId={source.id ?? "all"} />
-                      </span>
-                    ) : undefined,
+                    badge: getSourceBadge(source),
                   })}
                 </li>
               ) : (
@@ -903,21 +946,13 @@ export function Sidebar({
                       }
                     `}
                     >
-                    <span className="w-5 flex items-center justify-center">{source.icon}</span>
+                    {renderSidebarRowIcon(source.icon, getSourceBadge(source))}
                     <span className="min-w-0 flex-1 truncate">{source.label}</span>
                   </button>
                   <div
                     onClick={() => handleSourceClick(source)}
                     className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
                   >
-                    {sourceIndicatorsVisible && SourceIndicator ? (
-                      <span
-                        data-testid={`source-indicator-slot-${sourceKey(source)}`}
-                        className="flex h-4 w-4 shrink-0 items-center justify-center"
-                      >
-                        <SourceIndicator sourceId={source.id ?? "all"} />
-                      </span>
-                    ) : null}
                     <div className={`relative h-6 shrink-0 ${rowCountsVisible ? "ml-0.5 w-[54px]" : "ml-0 w-0"}`}>
                       {rowCountsVisible && sourceTotalCount(source) > 0 && (
                         <span
@@ -962,7 +997,7 @@ export function Sidebar({
                     }
                   `}
                 >
-                  <span className="w-5 flex items-center justify-center"><BookmarkIcon /></span>
+                  {renderSidebarRowIcon(<BookmarkIcon />)}
                   <span className="flex-1">Saved</span>
                   {rowCountsVisible && savedCount > 0 && (
                     <span className="text-[10px] tabular-nums text-[color:var(--theme-text-soft)]">{fmt(savedCount)}</span>
@@ -992,7 +1027,7 @@ export function Sidebar({
                     }
                   `}
                 >
-                  <span className="w-5 flex items-center justify-center"><ArchiveIcon /></span>
+                  {renderSidebarRowIcon(<ArchiveIcon />)}
                   <span className="flex-1">Archived</span>
                   {rowCountsVisible && archivedCount > 0 && (
                     <span className="text-[10px] tabular-nums text-[color:var(--theme-text-soft)]">{fmt(archivedCount)}</span>
@@ -1014,9 +1049,7 @@ export function Sidebar({
                   },
                   icon: <UsersIcon />,
                   testId: "source-row-friends",
-                  badge: pendingMatchCount > 0 ? (
-                    <span className="flex h-2.5 w-2.5 rounded-full bg-[var(--theme-accent-secondary)]" />
-                  ) : undefined,
+                  badge: pendingFriendsBadge,
                 })
               ) : (
                 <button
@@ -1037,7 +1070,7 @@ export function Sidebar({
                     }
                   `}
                 >
-                  <span className="w-5 flex items-center justify-center"><UsersIcon /></span>
+                  {renderSidebarRowIcon(<UsersIcon />, pendingFriendsBadge)}
                   <span className="flex-1">Friends</span>
                   {rowCountsVisible && pendingMatchCount > 0 && (
                     <span className="shrink-0 rounded-full bg-[rgb(var(--theme-accent-secondary-rgb)/0.22)] px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-[var(--theme-text-primary)]">
@@ -1092,7 +1125,7 @@ export function Sidebar({
                     }
                   `}
                 >
-                  <span className="w-5 flex items-center justify-center"><MapPinIcon /></span>
+                  {renderSidebarRowIcon(<MapPinIcon />)}
                   <span className="flex-1">Map</span>
                   {rowCountsVisible && mapCount > 0 && (
                     <span
@@ -1111,21 +1144,7 @@ export function Sidebar({
                 const sourceStatus = getSourceStatus?.(source.id) ?? null;
 
                 if (compactRail) {
-                  const compactBadge = sourceStatus ? (
-                    <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[color:var(--theme-bg-root)]">
-                      <ProviderStatusIndicator
-                        tone={sourceStatus.tone}
-                        syncing={sourceStatus.syncing}
-                        label={sourceStatus.label}
-                        size="xxs"
-                        testId={`source-status-${sourceKey(source)}`}
-                      />
-                    </span>
-                  ) : SourceIndicator ? (
-                    <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[color:var(--theme-bg-root)]">
-                      <SourceIndicator sourceId={source.id ?? "all"} />
-                    </span>
-                  ) : undefined;
+                  const compactBadge = getSourceBadge(source, sourceStatus);
 
                   return (
                     <li key={source.id ?? "all"} className={sourceOrderClass(source)}>
@@ -1184,7 +1203,7 @@ export function Sidebar({
                                 }
                               `}
                             >
-                              <span className="w-5 flex items-center justify-center">{source.icon}</span>
+                              {renderSidebarRowIcon(source.icon, getSourceBadge(source, sourceStatus))}
                               <span className="min-w-0 truncate">{source.label}</span>
                             </div>
                             {rssAccordionVisible ? (
@@ -1213,17 +1232,6 @@ export function Sidebar({
                             onClick={() => handleSourceClick(source)}
                             className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
                           >
-                            {sourceStatusVisible && sourceStatus ? (
-                              <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                                <ProviderStatusIndicator
-                                  tone={sourceStatus.tone}
-                                  syncing={sourceStatus.syncing}
-                                  label={sourceStatus.label}
-                                  size="xxs"
-                                  testId={`source-status-${sourceKey(source)}`}
-                                />
-                              </span>
-                            ) : null}
                             <div className={`relative h-6 shrink-0 ${rowCountsVisible || sourceMenusVisible ? "ml-0.5 w-[54px]" : "ml-0 w-0"}`}>
                               {rowCountsVisible && sourceTotalCount(source) > 0 && (
                                 <span
@@ -1426,21 +1434,13 @@ export function Sidebar({
                         }
                       `}
                     >
-                      <span className="w-5 flex items-center justify-center">{source.icon}</span>
+                      {renderSidebarRowIcon(source.icon, getSourceBadge(source, getSourceStatus?.(source.id) ?? null))}
                       <span className="min-w-0 flex-1 truncate">{source.label}</span>
                     </button>
                     <div
                       onClick={() => handleSourceClick(source)}
                       className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
                     >
-                      {sourceIndicatorsVisible && SourceIndicator ? (
-                        <span
-                          data-testid={`source-indicator-slot-${sourceKey(source)}`}
-                          className="flex h-4 w-4 shrink-0 items-center justify-center"
-                        >
-                          <SourceIndicator sourceId={source.id ?? "all"} />
-                        </span>
-                      ) : null}
                       <div className={`relative h-6 shrink-0 ${rowCountsVisible || sourceMenusVisible ? "ml-0.5 w-[54px]" : "ml-0 w-0"}`}>
                         {rowCountsVisible && sourceTotalCount(source) > 0 && (
                           <span

@@ -533,18 +533,48 @@ test("narrow labeled sidebar keeps source names visible and drops counts first",
     }));
   });
 
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          setState: (partial: {
+            providerSyncCounts: Record<string, number>;
+          }) => void;
+        }
+      | undefined;
+
+    store?.setState({
+      providerSyncCounts: {
+        rss: 1,
+        x: 1,
+        facebook: 0,
+        instagram: 0,
+        linkedin: 0,
+        gdrive: 0,
+        dropbox: 0,
+      },
+    });
+  });
+
   await dragElementBy(page, page.getByTestId("app-sidebar-resize-handle"), -72);
   await page.waitForTimeout(250);
 
   await expect(desktopSidebar.getByTestId("source-row-x")).toContainText("X / Twitter");
   await expect(desktopSidebar.getByTestId("source-counts-x")).toHaveCount(0);
-  await expect(desktopSidebar.getByTestId("source-indicator-slot-x")).toHaveCount(0);
   await expect(desktopSidebar.getByTestId("source-menu-trigger-x")).toHaveCount(0);
 
   await expect(desktopSidebar.getByTestId("source-row-rss")).toContainText("Feeds");
+  await expect(desktopSidebar.getByTestId("source-status-rss")).toBeVisible();
   await expect(desktopSidebar.getByLabel(/Expand feeds|Collapse feeds/)).toHaveCount(0);
   await expect(desktopSidebar.getByTestId("source-counts-rss")).toHaveCount(0);
   await expect(desktopSidebar.getByTestId("source-menu-trigger-rss")).toHaveCount(0);
+
+  const rssStatusIsInsideRow = await page.evaluate(() => {
+    const rowButton = document.querySelector('[data-testid="source-row-rss"]');
+    const status = document.querySelector('[data-testid="source-status-rss"]');
+    return rowButton?.contains(status) ?? false;
+  });
+  expect(rssStatusIsInsideRow).toBe(true);
 });
 
 test("expanded sidebar padding settles to roomy or condensed values instead of resting mid-way", async ({ app, page }) => {
