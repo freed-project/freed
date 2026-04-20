@@ -918,7 +918,7 @@ export function Sidebar({
                         <SourceIndicator sourceId={source.id ?? "all"} />
                       </span>
                     ) : null}
-                    <div className={`relative h-6 shrink-0 ${rowCountsVisible ? "ml-1.5 w-[54px]" : "ml-0 w-0"}`}>
+                    <div className={`relative h-6 shrink-0 ${rowCountsVisible ? "ml-0.5 w-[54px]" : "ml-0 w-0"}`}>
                       {rowCountsVisible && sourceTotalCount(source) > 0 && (
                         <span
                           data-testid={`source-counts-${sourceKey(source)}`}
@@ -1224,7 +1224,7 @@ export function Sidebar({
                                 />
                               </span>
                             ) : null}
-                            <div className={`relative h-6 shrink-0 ${rowCountsVisible || sourceMenusVisible ? "ml-1.5 w-[54px]" : "ml-0 w-0"}`}>
+                            <div className={`relative h-6 shrink-0 ${rowCountsVisible || sourceMenusVisible ? "ml-0.5 w-[54px]" : "ml-0 w-0"}`}>
                               {rowCountsVisible && sourceTotalCount(source) > 0 && (
                                 <span
                                   data-testid={`source-counts-${sourceKey(source)}`}
@@ -1441,7 +1441,7 @@ export function Sidebar({
                           <SourceIndicator sourceId={source.id ?? "all"} />
                         </span>
                       ) : null}
-                      <div className={`relative h-6 shrink-0 ${rowCountsVisible || sourceMenusVisible ? "ml-1.5 w-[54px]" : "ml-0 w-0"}`}>
+                      <div className={`relative h-6 shrink-0 ${rowCountsVisible || sourceMenusVisible ? "ml-0.5 w-[54px]" : "ml-0 w-0"}`}>
                         {rowCountsVisible && sourceTotalCount(source) > 0 && (
                           <span
                             data-testid={`source-counts-${sourceKey(source)}`}
