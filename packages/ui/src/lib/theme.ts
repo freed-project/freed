@@ -19,9 +19,9 @@ export {
 
 export const THEME_STORAGE_KEY = "freed-theme";
 const THEME_TRANSITION_BLUR_OUT_MS = 90;
-const THEME_TRANSITION_BLUR_IN_MS = 170;
+const THEME_TRANSITION_BLUR_IN_MS = 210;
 const THEME_TRANSITION_CLEANUP_BUFFER_MS = 40;
-const THEME_TRANSITION_BLUR_AMOUNT = "16px";
+const THEME_TRANSITION_BLUR_AMOUNT = "7px";
 
 type ThemeTransitionPhase = "blur-out" | "blur-in";
 
@@ -85,8 +85,8 @@ function setThemeTransitionPhase(phase: ThemeTransitionPhase, durationMs: number
   root.dataset.themeTransition = phase;
   root.style.setProperty("--theme-transition-duration", `${durationMs}ms`);
   root.style.setProperty("--theme-transition-blur", THEME_TRANSITION_BLUR_AMOUNT);
-  root.style.setProperty("--theme-transition-brightness", "0.97");
-  root.style.setProperty("--theme-transition-saturate", "0.92");
+  root.style.setProperty("--theme-transition-opacity", "0.965");
+  root.style.setProperty("--theme-transition-saturate", "0.985");
 }
 
 function clearThemeTransitionStyles(): void {
@@ -98,7 +98,7 @@ function clearThemeTransitionStyles(): void {
   root.removeAttribute("data-theme-transition");
   root.style.removeProperty("--theme-transition-duration");
   root.style.removeProperty("--theme-transition-blur");
-  root.style.removeProperty("--theme-transition-brightness");
+  root.style.removeProperty("--theme-transition-opacity");
   root.style.removeProperty("--theme-transition-saturate");
 }
 
@@ -172,7 +172,7 @@ function transitionThemeOnDocument(themeId: ThemeId): void {
     applyThemeToDocument(themeId);
     setThemeTransitionPhase("blur-in", THEME_TRANSITION_BLUR_IN_MS);
     root.style.setProperty("--theme-transition-blur", "0px");
-    root.style.setProperty("--theme-transition-brightness", "1");
+    root.style.setProperty("--theme-transition-opacity", "1");
     root.style.setProperty("--theme-transition-saturate", "1");
 
     themeTransitionState.cleanupTimer = window.setTimeout(() => {
