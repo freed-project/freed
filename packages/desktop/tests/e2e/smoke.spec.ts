@@ -611,6 +611,47 @@ test("narrow labeled sidebar keeps source names visible and drops counts first",
     return rowButton?.contains(status) ?? false;
   });
   expect(rssStatusIsInsideRow).toBe(true);
+
+  const narrowLabelStyles = await page.evaluate(() => {
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    if (!sidebar) {
+      return null;
+    }
+
+    const findLabel = (label: string) =>
+      Array.from(sidebar.querySelectorAll("span")).find((node) => node.textContent?.trim() === label) as HTMLElement | undefined;
+
+    const facebookLabel = findLabel("Facebook");
+    const archivedLabel = findLabel("Archived");
+    const settingsLabel = findLabel("Settings");
+    if (!facebookLabel || !archivedLabel || !settingsLabel) {
+      return null;
+    }
+
+    const readStyle = (element: HTMLElement) => {
+      const style = window.getComputedStyle(element);
+      return {
+        textOverflow: style.textOverflow,
+        overflowX: style.overflowX,
+        paddingRight: Number.parseFloat(style.paddingRight),
+      };
+    };
+
+    return {
+      facebook: readStyle(facebookLabel),
+      archived: readStyle(archivedLabel),
+      settings: readStyle(settingsLabel),
+    };
+  });
+
+  expect(narrowLabelStyles).not.toBeNull();
+  expect(narrowLabelStyles?.facebook.textOverflow).toBe("clip");
+  expect(narrowLabelStyles?.archived.textOverflow).toBe("clip");
+  expect(narrowLabelStyles?.settings.textOverflow).toBe("clip");
+  expect(narrowLabelStyles?.facebook.overflowX).toBe("hidden");
+  expect(narrowLabelStyles?.settings.overflowX).toBe("hidden");
+  expect(narrowLabelStyles?.facebook.paddingRight ?? 0).toBeGreaterThanOrEqual(4);
+  expect(narrowLabelStyles?.settings.paddingRight ?? 0).toBeGreaterThanOrEqual(4);
 });
 
 test("expanded sidebar padding settles to roomy or condensed values instead of resting mid-way", async ({ app, page }) => {

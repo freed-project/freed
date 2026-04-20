@@ -901,6 +901,8 @@ export function Sidebar({
   const pendingFriendsBadge = pendingMatchCount > 0
     ? renderSidebarIconBadge(<span className="flex h-2.5 w-2.5 rounded-full bg-[var(--theme-accent-secondary)]" />)
     : undefined;
+  const sidebarLabelClass = "min-w-0 flex-1 overflow-hidden whitespace-nowrap pr-1.5 [text-overflow:clip]";
+  const sidebarFeedLabelClass = `${sidebarLabelClass} text-xs`;
 
   const sidebarBody = (
     <nav
@@ -947,7 +949,7 @@ export function Sidebar({
                     `}
                     >
                     {renderSidebarRowIcon(source.icon, getSourceBadge(source))}
-                    <span className="min-w-0 flex-1 truncate">{source.label}</span>
+                    <span className={sidebarLabelClass}>{source.label}</span>
                   </button>
                   <div
                     onClick={() => handleSourceClick(source)}
@@ -998,7 +1000,7 @@ export function Sidebar({
                   `}
                 >
                   {renderSidebarRowIcon(<BookmarkIcon />)}
-                  <span className="flex-1">Saved</span>
+                  <span className={sidebarLabelClass}>Saved</span>
                   {rowCountsVisible && savedCount > 0 && (
                     <span className="text-[10px] tabular-nums text-[color:var(--theme-text-soft)]">{fmt(savedCount)}</span>
                   )}
@@ -1028,7 +1030,7 @@ export function Sidebar({
                   `}
                 >
                   {renderSidebarRowIcon(<ArchiveIcon />)}
-                  <span className="flex-1">Archived</span>
+                  <span className={sidebarLabelClass}>Archived</span>
                   {rowCountsVisible && archivedCount > 0 && (
                     <span className="text-[10px] tabular-nums text-[color:var(--theme-text-soft)]">{fmt(archivedCount)}</span>
                   )}
@@ -1071,7 +1073,7 @@ export function Sidebar({
                   `}
                 >
                   {renderSidebarRowIcon(<UsersIcon />, pendingFriendsBadge)}
-                  <span className="flex-1">Friends</span>
+                  <span className={sidebarLabelClass}>Friends</span>
                   {rowCountsVisible && pendingMatchCount > 0 && (
                     <span className="shrink-0 rounded-full bg-[rgb(var(--theme-accent-secondary-rgb)/0.22)] px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-[var(--theme-text-primary)]">
                       {fmt(pendingMatchCount)}
@@ -1126,7 +1128,7 @@ export function Sidebar({
                   `}
                 >
                   {renderSidebarRowIcon(<MapPinIcon />)}
-                  <span className="flex-1">Map</span>
+                  <span className={sidebarLabelClass}>Map</span>
                   {rowCountsVisible && mapCount > 0 && (
                     <span
                       className={`shrink-0 text-[10px] tabular-nums ${
@@ -1195,7 +1197,7 @@ export function Sidebar({
                           >
                             <div
                               className={`
-                                flex min-w-0 max-w-full items-center gap-3 text-left text-sm transition-all
+                                flex min-w-0 max-w-full flex-1 items-center gap-3 text-left text-sm transition-all
                                 ${
                                   isTopSourceActive(source)
                                     ? "text-[color:var(--theme-text-primary)]"
@@ -1204,7 +1206,7 @@ export function Sidebar({
                               `}
                             >
                               {renderSidebarRowIcon(source.icon, getSourceBadge(source, sourceStatus))}
-                              <span className="min-w-0 truncate">{source.label}</span>
+                              <span className={sidebarLabelClass}>{source.label}</span>
                             </div>
                             {rssAccordionVisible ? (
                               <button
@@ -1323,7 +1325,7 @@ export function Sidebar({
                                           ) : (
                                             <RssIcon className="w-4 h-4 shrink-0 text-[color:var(--theme-text-soft)]" />
                                           )}
-                                          <span className="flex-1 truncate text-xs">{feed.title}</span>
+                                          <span className={sidebarFeedLabelClass}>{feed.title}</span>
                                         </button>
 
                                         <div
@@ -1435,7 +1437,7 @@ export function Sidebar({
                       `}
                     >
                       {renderSidebarRowIcon(source.icon, getSourceBadge(source, getSourceStatus?.(source.id) ?? null))}
-                      <span className="min-w-0 flex-1 truncate">{source.label}</span>
+                      <span className={sidebarLabelClass}>{source.label}</span>
                     </button>
                     <div
                       onClick={() => handleSourceClick(source)}
@@ -1562,7 +1564,7 @@ export function Sidebar({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </span>
-                <span>Settings</span>
+                <span className={sidebarLabelClass}>Settings</span>
               </button>
             )}
             </div>
@@ -1753,7 +1755,7 @@ function TagTreeNode({
           <svg className="w-3 h-3 shrink-0 text-[color:var(--theme-text-soft)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
           </svg>
-          <span className="truncate">{label}</span>
+          <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap pr-1.5 [text-overflow:clip]">{label}</span>
         </button>
         {hasChildren && (
           <button
