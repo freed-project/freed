@@ -262,6 +262,7 @@ export async function captureDomFeed(
 - [x] Desktop view chrome now routes through one shared top toolbar, so feed, reader, and Friends stop stacking separate bars on top of each other
 - [x] Desktop top-toolbar controls now keep normal click behavior, but a full drag gesture from the wordmark, title area, or toolbar buttons repositions the native window the way a title bar should
 - [x] Desktop top-toolbar title and subtitle blocks now reserve enough space for the wordmark, sidebar toggle, and traffic-light inset so view captions never overlap the left controls as the sidebar narrows
+- [x] Narrow desktop reader mode now stays inline instead of falling into the full-screen mobile overlay, auto-collapses the thumbnail rail, and keeps the compact desktop sidebar accessible while an item is open
 - [x] The primary sidebar and right debug drawer now render as floating shell cards using the same glassy header treatment as the marketing navbar
 - [x] Reader toolbar controls now lock to the live sidebar and thumbnail-rail widths, so the sidebar toggle, dual-column toggle, and back-to-list control stay aligned with the floating cards below them
 - [x] Settings now use a shared polished dropdown treatment, and Appearance keeps the theme selector as one compact row instead of a descriptive mini card with live hover and focus previews across every theme

@@ -338,6 +338,26 @@ test("narrow desktop viewports keep the desktop compact rail instead of switchin
   await expect(page.getByLabel("Open menu")).toHaveCount(0);
 });
 
+test("narrow desktop reader mode keeps the compact sidebar accessible and collapses the reader rail", async ({ app, page }) => {
+  await page.setViewportSize({ width: 700, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(8);
+
+  await page.locator("[data-feed-item-id]").first().click();
+  await expect(page.getByTestId("workspace-toolbar-reader-title-block")).toBeVisible();
+  await expect(page.getByTestId("app-sidebar").getByTestId("compact-sidebar-search-trigger")).toBeVisible();
+
+  const readerRailWidth = await page.evaluate(() =>
+    window.getComputedStyle(document.documentElement).getPropertyValue("--freed-reader-rail-width").trim(),
+  );
+  expect(readerRailWidth).toBe("0px");
+
+  const trigger = page.getByTestId("app-sidebar").getByTestId("compact-sidebar-search-trigger");
+  await trigger.click();
+  await expect(page.getByTestId("compact-sidebar-search-palette")).toBeVisible();
+});
+
 test("desktop sidebar snaps to compact and closed, then restores the last non-closed mode", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
