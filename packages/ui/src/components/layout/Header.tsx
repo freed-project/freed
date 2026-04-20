@@ -16,6 +16,7 @@ import {
   type DisplayPreferences,
   type MapMode,
   type MapTimeMode,
+  type SidebarMode,
 } from "@freed/shared";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
@@ -38,9 +39,10 @@ import {
 import { getFilterLabel } from "../../lib/feed-view-labels.js";
 
 interface HeaderProps {
-  onMenuClick: () => void;
-  sidebarExpanded: boolean;
-  onSidebarToggle: () => void;
+  mobileSidebarOpen: boolean;
+  onMobileMenuToggle: () => void;
+  desktopSidebarMode: SidebarMode;
+  onDesktopSidebarToggle: () => void;
 }
 
 const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
@@ -84,7 +86,12 @@ function ToolbarAnimatedSlot({
   );
 }
 
-export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: HeaderProps) {
+export function Header({
+  mobileSidebarOpen,
+  onMobileMenuToggle,
+  desktopSidebarMode,
+  onDesktopSidebarToggle,
+}: HeaderProps) {
   const {
     HeaderSyncIndicator,
     headerDragRegion,
@@ -103,6 +110,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
 
   const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
+  const persons = useAppStore((s) => s.persons);
   const accounts = useAppStore((s) => s.accounts);
   const friends = useAppStore((s) => s.friends);
   const activeView = useAppStore((s) => s.activeView);
@@ -129,6 +137,10 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     searchQuery,
     activeFilter,
     searchCorpusVersion,
+    display.friendsMode ?? "all_content",
+    persons,
+    accounts,
+    friends,
   );
   const selectedItem = useMemo(
     () => (selectedItemId ? items.find((item) => item.globalId === selectedItemId) ?? null : null),
@@ -310,7 +322,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
     : undefined;
   const sidebarSlotStyle =
-    !isMobile && sidebarExpanded
+    !isMobile && desktopSidebarMode !== "closed"
       ? ({ width: "calc(var(--freed-sidebar-card-width, 240px) + 16px)", paddingRight: "8px" } as CSSProperties)
       : undefined;
   const leftToolbarStyle = sidebarSlotStyle
@@ -511,10 +523,11 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
             >
               <Tooltip label="Menu" className="md:hidden">
                 <button
-                  onClick={onMenuClick}
+                  onClick={onMobileMenuToggle}
                   {...getToolbarControlProps()}
-                  className="rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)]"
-                  aria-label="Open menu"
+                  className={`rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)] ${mobileSidebarOpen ? "bg-[var(--theme-bg-muted)]" : ""}`}
+                  aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
+                  aria-pressed={mobileSidebarOpen}
                 >
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -529,18 +542,18 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
                 FREED
               </span>
 
-              <Tooltip label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"} className="hidden md:flex">
+              <Tooltip label={desktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"} className="hidden md:flex">
                 <button
-                  onClick={onSidebarToggle}
+                  onClick={onDesktopSidebarToggle}
                   {...getToolbarControlProps()}
                   data-testid="desktop-sidebar-toggle"
                   className="theme-subtle-button rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)]"
-                  aria-label={sidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
+                  aria-label={desktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
                 >
-                  {sidebarExpanded ? (
-                    <SidebarCollapseIcon className="h-5 w-5" />
-                  ) : (
+                  {desktopSidebarMode === "closed" ? (
                     <SidebarExpandIcon className="h-5 w-5" />
+                  ) : (
+                    <SidebarCollapseIcon className="h-5 w-5" />
                   )}
                 </button>
               </Tooltip>
@@ -718,17 +731,15 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
                           ["friends", "Friends"],
                           ["all_content", "All content"],
                         ] as const).map(([mode, label]) => {
-                          const isActive =
-                            activeView === "friends"
-                              ? effectiveFriendsMode === mode
-                              : effectiveMapMode === mode;
-                          const preferenceKey = activeView === "friends" ? "friendsMode" : "mapMode";
+                          const isActive = activeView === "map"
+                            ? effectiveMapMode === mode
+                            : effectiveFriendsMode === mode;
 
                           return (
                             <button
                               key={`${activeView}-${mode}`}
                               type="button"
-                              onClick={() => handleIdentityModeChange(preferenceKey, mode)}
+                              onClick={() => handleIdentityModeChange(activeView === "friends" ? "friendsMode" : "mapMode", mode)}
                               {...getToolbarControlProps()}
                               className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                                 isActive ? "theme-chip-active" : "theme-chip"

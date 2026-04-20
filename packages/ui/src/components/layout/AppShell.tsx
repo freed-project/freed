@@ -8,7 +8,12 @@ import { FriendsView } from "../friends/FriendsView.js";
 import { ContactSyncModal } from "../friends/ContactSyncModal.js";
 import { useContactSync } from "../../hooks/useContactSync.js";
 import { ContactSyncContext } from "../../context/ContactSyncContext.js";
-import { buildDiscoveredAccountsFromItems, type GoogleContact, type IdentitySuggestion } from "@freed/shared";
+import {
+  buildDiscoveredAccountsFromItems,
+  type GoogleContact,
+  type IdentitySuggestion,
+  type SidebarMode,
+} from "@freed/shared";
 import {
   buildSocialAccountsFromAuthorIds,
   createContactAccountFromGoogleContact,
@@ -26,8 +31,7 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [desktopSidebarExpanded, setDesktopSidebarExpanded] = useState(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const debugVisible = useDebugStore((s) => s.visible);
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);
@@ -45,11 +49,18 @@ export function AppShell({ children }: AppShellProps) {
   const [showContactReview, setShowContactReview] = useState(false);
   const persistedDebugWidth =
     useAppStore((s) => s.preferences.display.debugPanelWidth) ?? DEFAULT_DEBUG_WIDTH;
+  const persistedDesktopSidebarMode =
+    useAppStore((s) => s.preferences.display.sidebarMode) ?? "expanded";
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const [committedDebugWidth, setCommittedDebugWidth] = useState(persistedDebugWidth);
+  const [desktopSidebarMode, setDesktopSidebarMode] = useState<SidebarMode>(persistedDesktopSidebarMode);
   const dragging = useRef(false);
   const pendingPersistedDebugWidth = useRef<number | null>(null);
+  const pendingPersistedDesktopSidebarMode = useRef<SidebarMode | null>(null);
+  const lastNonClosedDesktopSidebarModeRef = useRef<SidebarMode>(
+    persistedDesktopSidebarMode === "closed" ? "expanded" : persistedDesktopSidebarMode,
+  );
   const discoveredAccountScanRef = useRef({ itemCount: 0, accountCount: 0 });
 
   useEffect(() => {
@@ -61,7 +72,40 @@ export function AppShell({ children }: AppShellProps) {
     setCommittedDebugWidth(persistedDebugWidth);
   }, [dragWidth, persistedDebugWidth]);
 
+  useEffect(() => {
+    if (pendingPersistedDesktopSidebarMode.current !== null) {
+      if (persistedDesktopSidebarMode !== pendingPersistedDesktopSidebarMode.current) {
+        return;
+      }
+      pendingPersistedDesktopSidebarMode.current = null;
+    }
+    setDesktopSidebarMode(persistedDesktopSidebarMode);
+    if (persistedDesktopSidebarMode !== "closed") {
+      lastNonClosedDesktopSidebarModeRef.current = persistedDesktopSidebarMode;
+    }
+  }, [persistedDesktopSidebarMode]);
+
   const debugWidth = dragWidth ?? committedDebugWidth;
+
+  const persistDesktopSidebarMode = useCallback((nextMode: SidebarMode) => {
+    setDesktopSidebarMode(nextMode);
+    if (nextMode !== "closed") {
+      lastNonClosedDesktopSidebarModeRef.current = nextMode;
+    }
+    pendingPersistedDesktopSidebarMode.current = nextMode;
+    void updatePreferences({ display: { sidebarMode: nextMode } } as Parameters<typeof updatePreferences>[0]).catch(() => {
+      if (pendingPersistedDesktopSidebarMode.current === nextMode) {
+        pendingPersistedDesktopSidebarMode.current = null;
+      }
+    });
+  }, [updatePreferences]);
+
+  const handleDesktopSidebarToggle = useCallback(() => {
+    const nextMode = desktopSidebarMode === "closed"
+      ? lastNonClosedDesktopSidebarModeRef.current
+      : "closed";
+    persistDesktopSidebarMode(nextMode);
+  }, [desktopSidebarMode, persistDesktopSidebarMode]);
 
   const handleDebugDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -201,16 +245,19 @@ export function AppShell({ children }: AppShellProps) {
       <div className="app-theme-shell relative flex flex-1 flex-col md:min-h-0">
         {showAtmosphere ? <BackgroundAtmosphere /> : null}
         <Header
-          onMenuClick={() => setSidebarOpen(true)}
-          sidebarExpanded={desktopSidebarExpanded}
-          onSidebarToggle={() => setDesktopSidebarExpanded((value) => !value)}
+          mobileSidebarOpen={mobileSidebarOpen}
+          onMobileMenuToggle={() => setMobileSidebarOpen((value) => !value)}
+          desktopSidebarMode={desktopSidebarMode}
+          onDesktopSidebarToggle={handleDesktopSidebarToggle}
         />
 
         <div className="relative z-10 flex flex-1 px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)] md:min-h-0 md:overflow-hidden">
           <Sidebar
-            open={sidebarOpen}
-            onClose={() => setSidebarOpen(false)}
-            desktopExpanded={desktopSidebarExpanded}
+            mobileOpen={mobileSidebarOpen}
+            onMobileClose={() => setMobileSidebarOpen(false)}
+            onMobileToggle={() => setMobileSidebarOpen((value) => !value)}
+            desktopMode={desktopSidebarMode}
+            onDesktopModeChange={persistDesktopSidebarMode}
           />
           <main className="min-w-0 flex-1 md:min-h-0 md:overflow-hidden">
             {activeView === "friends"

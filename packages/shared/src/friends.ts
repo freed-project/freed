@@ -121,6 +121,17 @@ export function personForAuthor(
   return persons[account.personId] ?? null;
 }
 
+export function isFriendAuthoredItem(
+  item: FeedItem,
+  persons: Record<string, Person>,
+  accounts: Record<string, Account>,
+  friends: Record<string, Friend>,
+): boolean {
+  const person = personForAuthor(persons, accounts, item.platform, item.author.id);
+  if (person) return person.relationshipStatus === "friend";
+  return friendForAuthor(friends, item.platform, item.author.id) !== null;
+}
+
 function legacySourceKeys(friend: Pick<Friend, "sources">): Set<string> {
   return new Set(friend.sources.map((source) => `${source.platform}:${source.authorId}`));
 }
