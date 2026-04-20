@@ -75,20 +75,21 @@ Branch promotion rules:
 - `www` stays separate from product branches. Sync approved `main` changes into `www` when the public website or checked-in changelog needs them. Never sync `www` from `dev`.
 - If release tooling or website deploy helpers are duplicated across long-lived branches, update the matching copies in the same sweep or note the intentional divergence in the PR.
 
-`VERCEL_TOKEN` is required for GitHub Actions preview deploys and the automated
+`VERCEL_TOKEN` is required for the website preview workflow and the automated
 PWA production deploy after a production desktop release.
 
 Without it, desktop releases still complete and publish on GitHub, but the PWA
-deploy step and GitHub Actions owned preview deploys are skipped.
+production deploy step and website preview workflow are skipped.
 
 Marketing preview routing:
 
 - PRs targeting `www` build and deploy website previews
-- PRs targeting `dev` build and deploy PWA previews
+- merges to `dev` redeploy `dev-app.freed.wtf` through Vercel Git deploys
+- Vercel preview deployments handle PWA branch and PR previews
 - Desktop Playwright E2E runs for product PRs targeting `dev`
 - `website/vercel.json` only allows Git-triggered Vercel deploys from `www`
-- `packages/pwa/vercel.json` disables Git-triggered Vercel deploys entirely
-- GitHub Actions owns website and PWA previews through the deploy helpers
+- `packages/pwa/vercel.json` leaves Git deployments enabled so `dev-app.freed.wtf` can follow `dev`
+- GitHub Actions owns website previews, while Vercel handles PWA Git previews
 
 ## Website GitHub release token
 
@@ -170,15 +171,17 @@ creates a **draft** GitHub Release using the approved checked-in release body.
 After all platform builds succeed, the workflow publishes that release
 automatically.
 
-If `VERCEL_TOKEN` is configured, production releases deploy `packages/pwa/` so
-the PWA version stays aligned with the shipped desktop release. After any
-GitHub release is published, the release workflow also redeploys the public
-website from current `www` so the static changelog snapshot is rebuilt against
-the latest release list. Production website deploys still require the reviewed
-website and changelog state to already be merged into `www`.
+If `VERCEL_TOKEN` is configured, production releases deploy `packages/pwa/` to
+`app.freed.wtf` so the PWA version stays aligned with the shipped desktop
+release. After any GitHub release is published, the release workflow also
+redeploys the public website from current `www` so the static changelog
+snapshot is rebuilt against the latest release list. Production website deploys
+still require the reviewed website and changelog state to already be merged
+into `www`.
 
 Dev releases are published as GitHub prereleases with a `-dev` suffix and do
-not trigger production PWA deploys. They do trigger the public changelog
+not deploy the PWA. `dev-app.freed.wtf` instead follows merges to `dev`
+through Vercel Git deploys. Dev releases still trigger the public changelog
 refresh from current `www`, so `freed.wtf/changelog/all` can pick up the dev
 release without waiting for a later production ship. Use `freed-ship-www` as
 the manual fallback if the website refresh needs to be rerun independently.

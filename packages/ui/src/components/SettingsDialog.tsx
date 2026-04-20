@@ -19,6 +19,7 @@ import {
 import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
 import { createPortal } from "react-dom";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
+import { describeInstalledBuild, readBuildMetadata } from "../lib/build-info.js";
 import { useDebugStore } from "../lib/debug-store.js";
 import { useSettingsStore } from "../lib/settings-store.js";
 import { refreshSampleLibraryData } from "../lib/sample-library-seed.js";
@@ -91,6 +92,7 @@ type ProviderAuthSlices = {
   liAuth?: ProviderAuthState;
 };
 const EMPTY_PROVIDER_SECTION_SYNC_COUNTS: Partial<Record<ProviderSectionId, number>> = {};
+const INSTALLED_BUILD_PRESENTATION = describeInstalledBuild(readBuildMetadata());
 
 function isProviderSection(sectionId: SectionId): sectionId is ProviderSectionId {
   return (
@@ -1058,12 +1060,20 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 Installed version:{" "}
                 <span className="text-sm font-bold font-mono">v{displayVersion}</span>
               </p>
+              {INSTALLED_BUILD_PRESENTATION && (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="rounded-full bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_88%,transparent)] px-2 py-0.5 font-semibold text-text-primary">
+                    {INSTALLED_BUILD_PRESENTATION.badgeLabel}
+                  </span>
+                  <span className="text-text-muted">{INSTALLED_BUILD_PRESENTATION.detail}</span>
+                </div>
+              )}
               {releaseChannel && setReleaseChannel && (
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0">
                     <p className="text-sm text-text-primary">Release channel</p>
                     <p className="mt-0.5 text-xs text-text-muted">
-                      Changing this affects future update checks. It does not change the installed version until an update is installed.
+                      Changing this affects future update checks. It does not change the installed version until an update is installed. Dev auto-deploys every merge to the dev branch, and snapshot builds keep the last release version with a build label.
                     </p>
                   </div>
                   <select

@@ -4,12 +4,11 @@ import {
   getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
   getLocationTimelineMoments,
-  type MapMode,
   type MapTimeMode,
 } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useResolvedLocations } from "../../hooks/useResolvedLocations.js";
-import { openFriendFromMap, openPostFromMap } from "../../lib/map-navigation.js";
+import { openAccountFromMap, openFriendFromMap, openPostFromMap } from "../../lib/map-navigation.js";
 import { MapSurface } from "./MapSurface.js";
 
 const MAP_TIME_REFRESH_MS = 60_000;
@@ -38,41 +37,39 @@ export function MapView() {
   const items = useAppStore((state) => state.items);
   const persons = useAppStore((state) => state.persons);
   const accounts = useAppStore((state) => state.accounts);
-  const selectedFriendId = useAppStore((state) => state.selectedPersonId);
-  const setSelectedFriend = useAppStore((state) => state.setSelectedPerson);
+  const selectedPersonId = useAppStore((state) => state.selectedPersonId);
+  const setSelectedPerson = useAppStore((state) => state.setSelectedPerson);
+  const setSelectedAccount = useAppStore((state) => state.setSelectedAccount);
   const setSelectedItem = useAppStore((state) => state.setSelectedItem);
   const setActiveView = useAppStore((state) => state.setActiveView);
   const setFilter = useAppStore((state) => state.setFilter);
   const setSearchQuery = useAppStore((state) => state.setSearchQuery);
   const display = useAppStore((state) => state.preferences.display);
-  const updatePreferences = useAppStore((state) => state.updatePreferences);
   const themeId = display.themeId;
   const savedTimeMode = display.mapTimeMode ?? "current";
   const [referenceNow, setReferenceNow] = useState(() => Date.now());
-  const [pendingTimeMode, setPendingTimeMode] = useState<MapTimeMode | null>(null);
   const [timelineIndexes, setTimelineIndexes] = useState<Record<Exclude<MapTimeMode, "current">, number | null>>({
     past: null,
     future: null,
   });
 
-  const effectiveTimeMode = pendingTimeMode ?? savedTimeMode;
   const { resolvedItems } = useResolvedLocations(items, persons, accounts);
   const timelineMoments = useMemo(
-    () => getLocationTimelineMoments(resolvedItems, { timeMode: effectiveTimeMode, now: referenceNow }),
-    [effectiveTimeMode, referenceNow, resolvedItems],
+    () => getLocationTimelineMoments(resolvedItems, { timeMode: savedTimeMode, now: referenceNow }),
+    [referenceNow, resolvedItems, savedTimeMode],
   );
   const selectedTimelineIndex =
-    effectiveTimeMode === "current"
+    savedTimeMode === "current"
       ? null
-      : timelineIndexes[effectiveTimeMode];
+      : timelineIndexes[savedTimeMode];
   const fallbackTimelineIndex =
-    effectiveTimeMode === "current"
+    savedTimeMode === "current"
       ? null
-      : DEFAULT_TIMELINE_INDEX[effectiveTimeMode] < 0
+      : DEFAULT_TIMELINE_INDEX[savedTimeMode] < 0
         ? Math.max(0, timelineMoments.length - 1)
-        : DEFAULT_TIMELINE_INDEX[effectiveTimeMode];
+        : DEFAULT_TIMELINE_INDEX[savedTimeMode];
   const effectiveTimelineIndex =
-    effectiveTimeMode === "current" || timelineMoments.length === 0
+    savedTimeMode === "current" || timelineMoments.length === 0
       ? null
       : Math.min(
           selectedTimelineIndex ?? fallbackTimelineIndex ?? 0,
@@ -83,28 +80,26 @@ export function MapView() {
   const friendMarkers = useMemo(
     () =>
       getLatestFriendLocationMarkers(resolvedItems, {
-        timeMode: effectiveTimeMode,
+        timeMode: savedTimeMode,
         now: referenceNow,
         playbackAt,
       }),
-    [effectiveTimeMode, playbackAt, referenceNow, resolvedItems],
+    [playbackAt, referenceNow, resolvedItems, savedTimeMode],
   );
   const allContentMarkers = useMemo(
     () =>
       getLatestAuthorLocationMarkers(resolvedItems, {
-        timeMode: effectiveTimeMode,
+        timeMode: savedTimeMode,
         now: referenceNow,
         playbackAt,
       }),
-    [effectiveTimeMode, playbackAt, referenceNow, resolvedItems],
+    [playbackAt, referenceNow, resolvedItems, savedTimeMode],
   );
   const defaultMode = useMemo(
     () => getDefaultMapMode(friendMarkers.length, allContentMarkers.length),
     [allContentMarkers.length, friendMarkers.length],
   );
-  const savedMode = display.mapMode;
-  const [pendingMode, setPendingMode] = useState<MapMode | null>(null);
-  const effectiveMode = pendingMode ?? savedMode ?? defaultMode;
+  const effectiveMode = display.mapMode ?? defaultMode;
   const markers = effectiveMode === "friends" ? friendMarkers : allContentMarkers;
 
   useEffect(() => {
@@ -116,61 +111,27 @@ export function MapView() {
     };
   }, []);
 
-  useEffect(() => {
-    if (pendingMode && savedMode === pendingMode) {
-      setPendingMode(null);
-    }
-  }, [pendingMode, savedMode]);
-
-  useEffect(() => {
-    if (pendingTimeMode && savedTimeMode === pendingTimeMode) {
-      setPendingTimeMode(null);
-    }
-  }, [pendingTimeMode, savedTimeMode]);
-
   const focusedMarker = useMemo(
-    () => markers.find((marker) => marker.friend?.id === selectedFriendId) ?? null,
-    [markers, selectedFriendId]
+    () => markers.find((marker) => marker.friend?.id === selectedPersonId) ?? null,
+    [markers, selectedPersonId]
   );
 
-  const handleModeChange = (mode: MapMode) => {
-    setPendingMode(mode);
-    void updatePreferences({
-      display: {
-        mapMode: mode,
-      },
-    } as Parameters<typeof updatePreferences>[0]).catch(() => {
-      setPendingMode(null);
-    });
-  };
-
-  const handleTimeModeChange = (timeMode: MapTimeMode) => {
-    setPendingTimeMode(timeMode);
-    void updatePreferences({
-      display: {
-        mapTimeMode: timeMode,
-      },
-    } as Parameters<typeof updatePreferences>[0]).catch(() => {
-      setPendingTimeMode(null);
-    });
-  };
-
   const handleTimelineScrub = (nextIndex: number) => {
-    if (effectiveTimeMode === "current") return;
+    if (savedTimeMode === "current") return;
     setTimelineIndexes((current) => ({
       ...current,
-      [effectiveTimeMode]: nextIndex,
+      [savedTimeMode]: nextIndex,
     }));
   };
 
   const emptyState = (() => {
-    if (effectiveTimeMode === "future") {
+    if (savedTimeMode === "future") {
       return {
         title: "No future location windows yet.",
         body: "Future-dated travel or event plans will appear here once captured.",
       };
     }
-    if (effectiveTimeMode === "past") {
+    if (savedTimeMode === "past") {
       return {
         title: effectiveMode === "friends" ? "No friend location history yet." : "No past location pins yet.",
         body:
@@ -190,78 +151,36 @@ export function MapView() {
 
   return (
     <div className="app-theme-shell relative h-full overflow-hidden">
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center px-4 pt-4">
-        <div className="pointer-events-auto flex w-full max-w-[min(56rem,calc(100vw-2rem))] flex-col gap-2 rounded-[28px] border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-elevated)_88%,transparent)] p-2 shadow-[var(--theme-glow-sm)] backdrop-blur-md">
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <div className="inline-flex items-center gap-1 rounded-full border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_82%,transparent)] p-1">
-              {([
-                ["friends", "Friends"],
-                ["all_content", "All content"],
-              ] as const).map(([mode, label]) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => handleModeChange(mode)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                    effectiveMode === mode
-                      ? "theme-chip-active"
-                      : "theme-chip"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+      {savedTimeMode !== "current" && timelineMoments.length > 0 && effectiveTimelineIndex !== null ? (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center px-4 pt-4">
+          <div
+            className="pointer-events-auto w-full max-w-[min(40rem,calc(100vw-2rem))] rounded-[24px] border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-elevated)_88%,transparent)] px-4 py-3 shadow-[var(--theme-glow-sm)] backdrop-blur-md"
+            data-testid="map-timeline-scrubber"
+          >
+            <div className="flex items-center justify-between gap-3 text-[11px] font-medium uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
+              <span>{savedTimeMode === "past" ? "History scrub" : "Future playback"}</span>
+              <span className="text-right normal-case tracking-normal text-[color:var(--theme-text-primary)]">
+                {formatTimelineMoment(timelineMoments[effectiveTimelineIndex])}
+              </span>
             </div>
-            <div className="inline-flex items-center gap-1 rounded-full border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_82%,transparent)] p-1">
-              {([
-                ["current", "Current"],
-                ["future", "Future"],
-                ["past", "Past"],
-              ] as const).map(([timeMode, label]) => (
-                <button
-                  key={timeMode}
-                  type="button"
-                  onClick={() => handleTimeModeChange(timeMode)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                    effectiveTimeMode === timeMode
-                      ? "theme-chip-active"
-                      : "theme-chip"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, timelineMoments.length - 1)}
+              step={1}
+              value={effectiveTimelineIndex}
+              aria-label="Map timeline scrubber"
+              className="mt-3 h-2 w-full accent-[var(--theme-accent-primary)]"
+              onChange={(event) => handleTimelineScrub(Number.parseInt(event.currentTarget.value, 10))}
+            />
+            <div className="mt-2 flex items-center justify-between text-[11px] text-[color:var(--theme-text-muted)]">
+              <span>{formatTimelineEdge(timelineMoments[0])}</span>
+              <span>{formatTimelineEdge(timelineMoments[timelineMoments.length - 1])}</span>
             </div>
           </div>
-          {effectiveTimeMode !== "current" && timelineMoments.length > 0 && effectiveTimelineIndex !== null ? (
-            <div
-              className="rounded-[24px] border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_82%,transparent)] px-4 py-3"
-              data-testid="map-timeline-scrubber"
-            >
-              <div className="flex items-center justify-between gap-3 text-[11px] font-medium uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
-                <span>{effectiveTimeMode === "past" ? "History scrub" : "Future playback"}</span>
-                <span className="text-right normal-case tracking-normal text-[color:var(--theme-text-primary)]">
-                  {formatTimelineMoment(timelineMoments[effectiveTimelineIndex])}
-                </span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={Math.max(0, timelineMoments.length - 1)}
-                step={1}
-                value={effectiveTimelineIndex}
-                aria-label="Map timeline scrubber"
-                className="mt-3 h-2 w-full accent-[var(--theme-accent-primary)]"
-                onChange={(event) => handleTimelineScrub(Number.parseInt(event.currentTarget.value, 10))}
-              />
-              <div className="mt-2 flex items-center justify-between text-[11px] text-[color:var(--theme-text-muted)]">
-                <span>{formatTimelineEdge(timelineMoments[0])}</span>
-                <span>{formatTimelineEdge(timelineMoments[timelineMoments.length - 1])}</span>
-              </div>
-            </div>
-          ) : null}
         </div>
-      </div>
+      ) : null}
+
       <MapSurface
         markers={markers}
         focusedMarkerKey={focusedMarker?.key ?? null}
@@ -269,14 +188,32 @@ export function MapView() {
         onOpenFriend={(marker) => {
           openFriendFromMap(marker, {
             setActiveView,
-            setSelectedFriend,
+            setSelectedPerson,
+            setSelectedAccount,
+            setSelectedItem,
+          });
+        }}
+        onPromoteAccount={(marker) => {
+          openAccountFromMap(marker, accounts, {
+            setActiveView,
+            setSelectedPerson,
+            setSelectedAccount,
+            setSelectedItem,
+          });
+        }}
+        onLinkAccount={(marker) => {
+          openAccountFromMap(marker, accounts, {
+            setActiveView,
+            setSelectedPerson,
+            setSelectedAccount,
             setSelectedItem,
           });
         }}
         onOpenPost={(marker) => {
           openPostFromMap(marker, {
             setActiveView,
-            setSelectedFriend,
+            setSelectedPerson,
+            setSelectedAccount,
             setSelectedItem,
             setFilter,
             setSearchQuery,

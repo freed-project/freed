@@ -28,8 +28,8 @@
 
 import { useMemo, useRef } from "react";
 import MiniSearch from "minisearch";
-import { filterFeedItems, sortByPriority } from "@freed/shared";
-import type { FeedItem, FilterOptions } from "@freed/shared";
+import { filterFeedItems, isFriendAuthoredItem, sortByPriority } from "@freed/shared";
+import type { Account, FeedItem, FilterOptions, Friend, Person } from "@freed/shared";
 
 const SEARCH_PRESERVED_TEXT_LIMIT = 1_200;
 
@@ -126,6 +126,10 @@ export function useSearchResults(
   searchQuery: string,
   activeFilter: FilterOptions,
   searchCorpusVersion: number,
+  identityMode: "friends" | "all_content",
+  persons: Record<string, Person>,
+  accounts: Record<string, Account>,
+  friends: Record<string, Friend>,
 ): SearchResults {
   const trimmedQuery = searchQuery.trim();
 
@@ -151,9 +155,14 @@ export function useSearchResults(
   }
 
   return useMemo(() => {
+    const filterIdentityMode = (candidateItems: FeedItem[]): FeedItem[] =>
+      identityMode === "friends"
+        ? candidateItems.filter((item) => isFriendAuthoredItem(item, persons, accounts, friends))
+        : candidateItems;
+
     if (!trimmedQuery) {
       // Normal feed: apply active filter then sort by priority. No MiniSearch work.
-      const filtered = filterFeedItems(items, activeFilter);
+      const filtered = filterFeedItems(filterIdentityMode(items), activeFilter);
       const byFeed = activeFilter.feedUrl
         ? filtered.filter((item) => item.rssSource?.feedUrl === activeFilter.feedUrl)
         : filtered;
@@ -176,7 +185,7 @@ export function useSearchResults(
       .map((r) => itemById.get(r.id as string))
       .filter((item): item is FeedItem => item !== undefined);
 
-    const filtered = filterFeedItems(matchingItems, activeFilter);
+    const filtered = filterFeedItems(filterIdentityMode(matchingItems), activeFilter);
     const byFeed = activeFilter.feedUrl
       ? filtered.filter((item) => item.rssSource?.feedUrl === activeFilter.feedUrl)
       : filtered;
@@ -188,5 +197,5 @@ export function useSearchResults(
     );
 
     return { filteredItems: sorted, isSearching: true, resultCount: sorted.length };
-  }, [items, trimmedQuery, activeFilter, searchCorpusVersion]);
+  }, [accounts, activeFilter, friends, identityMode, items, persons, searchCorpusVersion, trimmedQuery]);
 }

@@ -43,6 +43,8 @@ interface MapSurfaceProps {
   interactive?: boolean;
   themeId?: ThemeId;
   onOpenFriend?: (marker: LocationMarkerSummary) => void;
+  onPromoteAccount?: (marker: LocationMarkerSummary) => void;
+  onLinkAccount?: (marker: LocationMarkerSummary) => void;
   onOpenPost?: (marker: LocationMarkerSummary) => void;
   emptyTitle?: string;
   emptyBody?: string;
@@ -161,6 +163,8 @@ function loadMapLibre(): Promise<MapLibreModule> {
 function buildPopupContent(
   marker: LocationMarkerSummary,
   onOpenFriend?: (marker: LocationMarkerSummary) => void,
+  onPromoteAccount?: (marker: LocationMarkerSummary) => void,
+  onLinkAccount?: (marker: LocationMarkerSummary) => void,
   onOpenPost?: (marker: LocationMarkerSummary) => void
 ): HTMLElement {
   const root = document.createElement("div");
@@ -281,6 +285,49 @@ function buildPopupContent(
     ].join(";");
     friendButton.addEventListener("click", () => onOpenFriend(marker));
     actions.appendChild(friendButton);
+  }
+
+  if (!marker.friend && onPromoteAccount) {
+    const promoteButton = document.createElement("button");
+    promoteButton.type = "button";
+    promoteButton.textContent = "Promote to friend";
+    promoteButton.style.cssText = [
+      "padding:10px 14px",
+      "border-radius:12px",
+      "border:1px solid var(--theme-border-strong)",
+      "background:var(--theme-button-primary-background)",
+      "color:var(--theme-button-primary-text)",
+      "font-size:12px",
+      "font-weight:600",
+      "cursor:pointer",
+      "outline:none",
+      "width:100%",
+      "white-space:nowrap",
+      "box-shadow:var(--theme-button-primary-shadow)",
+    ].join(";");
+    promoteButton.addEventListener("click", () => onPromoteAccount(marker));
+    actions.appendChild(promoteButton);
+  }
+
+  if (!marker.friend && onLinkAccount) {
+    const linkButton = document.createElement("button");
+    linkButton.type = "button";
+    linkButton.textContent = "Link to existing friend";
+    linkButton.style.cssText = [
+      "padding:10px 14px",
+      "border-radius:12px",
+      "border:1px solid var(--theme-border-subtle)",
+      "background:var(--theme-button-secondary-background)",
+      "color:var(--theme-text-primary)",
+      "font-size:12px",
+      "font-weight:600",
+      "cursor:pointer",
+      "outline:none",
+      "width:100%",
+      "white-space:nowrap",
+    ].join(";");
+    linkButton.addEventListener("click", () => onLinkAccount(marker));
+    actions.appendChild(linkButton);
   }
 
   if (onOpenPost) {
@@ -464,6 +511,8 @@ export function MapSurface({
   interactive = true,
   themeId,
   onOpenFriend,
+  onPromoteAccount,
+  onLinkAccount,
   onOpenPost,
   emptyTitle = "No geo-tagged posts yet.",
   emptyBody = "Posts with location data will show up here.",
@@ -591,7 +640,7 @@ export function MapSurface({
           className: "freed-map-popup",
         })
           .setLngLat([markerData.lng, markerData.lat])
-          .setDOMContent(buildPopupContent(markerData, onOpenFriend, onOpenPost));
+          .setDOMContent(buildPopupContent(markerData, onOpenFriend, onPromoteAccount, onLinkAccount, onOpenPost));
         element.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -616,7 +665,7 @@ export function MapSurface({
       map.off("click", handleMapClick);
       closeActivePopup();
     };
-  }, [avatarPalette, closeActivePopup, focusedMarkerKey, interactive, mapReady, onOpenFriend, onOpenPost, stableMarkers]);
+  }, [avatarPalette, closeActivePopup, focusedMarkerKey, interactive, mapReady, onLinkAccount, onOpenFriend, onOpenPost, onPromoteAccount, stableMarkers]);
 
   return (
     <div
@@ -759,6 +808,24 @@ export function MapSurface({
                     onClick={() => onOpenFriend(selectedFallbackMarker)}
                   >
                     Open Friend
+                  </button>
+                )}
+                {!selectedFallbackMarker.friend && onPromoteAccount && (
+                  <button
+                    type="button"
+                    className="btn-primary w-full rounded-xl px-3.5 py-2 text-xs"
+                    onClick={() => onPromoteAccount(selectedFallbackMarker)}
+                  >
+                    Promote to friend
+                  </button>
+                )}
+                {!selectedFallbackMarker.friend && onLinkAccount && (
+                  <button
+                    type="button"
+                    className="btn-secondary w-full rounded-xl px-3.5 py-2 text-xs"
+                    onClick={() => onLinkAccount(selectedFallbackMarker)}
+                  >
+                    Link to existing friend
                   </button>
                 )}
                 {onOpenPost && (

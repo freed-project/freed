@@ -29,6 +29,7 @@
     "./components/SampleDataTestingSection": "./src/components/SampleDataTestingSection.tsx",
     "./lib/debug-store": "./src/lib/debug-store.ts",
     "./lib/bug-report": "./src/lib/bug-report.ts",
+    "./lib/build-info": "./src/lib/build-info.ts",
     "./lib/map-navigation": "./src/lib/map-navigation.ts",
     "./lib/provider-status": "./src/lib/provider-status.ts",
     "./lib/release-channel": "./src/lib/release-channel.ts",

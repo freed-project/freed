@@ -121,6 +121,17 @@ export function personForAuthor(
   return persons[account.personId] ?? null;
 }
 
+export function isFriendAuthoredItem(
+  item: FeedItem,
+  persons: Record<string, Person>,
+  accounts: Record<string, Account>,
+  friends: Record<string, Friend>,
+): boolean {
+  const person = personForAuthor(persons, accounts, item.platform, item.author.id);
+  if (person) return person.relationshipStatus === "friend";
+  return friendForAuthor(friends, item.platform, item.author.id) !== null;
+}
+
 function legacySourceKeys(friend: Pick<Friend, "sources">): Set<string> {
   return new Set(friend.sources.map((source) => `${source.platform}:${source.authorId}`));
 }
@@ -328,4 +339,46 @@ export function accountsFromLegacyFriend(friend: Friend): Account[] {
     createdAt: friend.createdAt,
     updatedAt: friend.updatedAt,
   });
+}
+
+export function friendFromPerson(
+  person: Person,
+  accounts: Record<string, Account>
+): Friend {
+  const socialSources = socialAccountsForPerson(accounts, person.id).map((account) => ({
+    platform: account.provider as Platform,
+    authorId: account.externalId,
+    handle: account.handle,
+    displayName: account.displayName,
+    avatarUrl: account.avatarUrl,
+    profileUrl: account.profileUrl,
+  }));
+
+  const primaryContact = primaryContactAccountForPerson(accounts, person.id);
+  const contact: Friend["contact"] = primaryContact
+    ? {
+        importedFrom:
+          primaryContact.provider === "google_contacts"
+            ? "google"
+            : primaryContact.provider === "macos_contacts"
+              ? "macos"
+              : primaryContact.provider === "ios_contacts"
+                ? "ios"
+                : primaryContact.provider === "android_contacts"
+                  ? "android"
+                  : "web",
+        name: primaryContact.displayName ?? person.name,
+        phone: primaryContact.phone,
+        email: primaryContact.email,
+        address: primaryContact.address,
+        nativeId: primaryContact.externalId,
+        importedAt: primaryContact.importedAt ?? primaryContact.createdAt,
+      }
+    : undefined;
+
+  return {
+    ...person,
+    sources: socialSources,
+    ...(contact ? { contact } : {}),
+  };
 }
