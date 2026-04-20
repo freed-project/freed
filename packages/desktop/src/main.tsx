@@ -9,9 +9,7 @@ import { installConsoleBugReportCapture, installGlobalBugReportCapture } from "@
 
 bootstrapDocumentTheme();
 
-const previewLabel = import.meta.env.DEV
-  ? import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || ""
-  : "";
+const previewLabel = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || "";
 
 if (previewLabel) {
   document.title = `Freed Preview | ${previewLabel}`;

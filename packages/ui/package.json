@@ -12,6 +12,7 @@
     "./components/PullToRefresh": "./src/components/PullToRefresh.tsx",
     "./components/Toast": "./src/components/Toast.tsx",
     "./components/Tooltip": "./src/components/Tooltip.tsx",
+    "./components/LocalPreviewBadge": "./src/components/LocalPreviewBadge.tsx",
     "./components/SettingsToggle": "./src/components/SettingsToggle.tsx",
     "./components/AddFeedDialog": "./src/components/AddFeedDialog.tsx",
     "./components/SettingsDialog": "./src/components/SettingsDialog.tsx",

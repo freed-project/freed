@@ -85,9 +85,7 @@ import {
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
 const IS_LOCAL_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1";
-const LOCAL_PREVIEW_LABEL = import.meta.env.DEV
-  ? import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null
-  : null;
+const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
 const RENDERER_HEARTBEAT_INTERVAL_MS = 60 * 1000;
 const DOWNLOAD_PAGE_URL = "https://freed.wtf/get";
 

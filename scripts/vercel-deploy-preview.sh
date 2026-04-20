@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./lib/node-tooling.sh
 source "${SCRIPT_DIR}/lib/node-tooling.sh"
+# shellcheck source=./lib/worktree-runtime.sh
+source "${SCRIPT_DIR}/lib/worktree-runtime.sh"
 use_resolved_node_path
 NPM_BIN="$(resolve_npm_bin)"
 NPX_BIN="$(resolve_npx_bin)"
@@ -17,6 +19,9 @@ TARGET="$1"
 VERCEL_TOKEN="${2:-${VERCEL_TOKEN:-}}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/freed-vercel-preview.XXXXXX")"
+PREVIEW_LABEL="$(preview_label_for_worktree "${ROOT_DIR}")"
+BUILD_ENV_KEY=""
+ROOT_BIN_DIR="${TEMP_DIR}/node_modules/.bin"
 ROOT_BIN_DIR="${TEMP_DIR}/node_modules/.bin"
 
 cleanup() {
@@ -28,6 +33,7 @@ case "$TARGET" in
   website)
     APP_DIR="website"
     STAGE_AT_ROOT="false"
+    BUILD_ENV_KEY="NEXT_PUBLIC_FREED_PREVIEW_LABEL"
     DEPENDENCY_DIRS=(
       "packages/shared"
       "packages/ui"
@@ -36,6 +42,7 @@ case "$TARGET" in
   pwa)
     APP_DIR="packages/pwa"
     STAGE_AT_ROOT="false"
+    BUILD_ENV_KEY="VITE_FREED_PREVIEW_LABEL"
     DEPENDENCY_DIRS=(
       "packages/shared"
       "packages/sync"
@@ -87,14 +94,14 @@ echo "Verifying preview bundle for $TARGET from $TEMP_DIR"
   if [[ "$TARGET" == "website" ]]; then
     (
       cd website
-      PATH="${ROOT_BIN_DIR}:${PATH}" "$NPM_BIN" run build
+      env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" PATH="${ROOT_BIN_DIR}:${PATH}" "$NPM_BIN" run build
     )
   elif [[ "$STAGE_AT_ROOT" == "true" ]]; then
-    "$NPM_BIN" run build
+    env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" "$NPM_BIN" run build
   else
     (
       cd packages/pwa
-      PATH="${ROOT_BIN_DIR}:${PATH}" "$NPM_BIN" run build
+      env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" PATH="${ROOT_BIN_DIR}:${PATH}" "$NPM_BIN" run build
     )
   fi
 )
@@ -109,13 +116,13 @@ echo "Pulling Vercel settings for $TARGET"
 
 if [[ "$TARGET" == "website" ]]; then
   echo "Building $TARGET preview with Vercel"
-  "$NPX_BIN" vercel build --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}"
+  env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" "$NPX_BIN" vercel build --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}"
 
   echo "Deploying $TARGET preview with Vercel"
   "$NPX_BIN" vercel deploy --prebuilt --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" -y
 else
   echo "Building $TARGET preview with Vercel"
-  "$NPX_BIN" vercel build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}"
+  env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" "$NPX_BIN" vercel build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}"
 
   echo "Deploying $TARGET preview with Vercel"
   "$NPX_BIN" vercel deploy --prebuilt --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" -y

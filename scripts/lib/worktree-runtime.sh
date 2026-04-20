@@ -145,7 +145,6 @@ worktree_root_bin_dir() {
   abs_root="$(resolve_worktree_path "${root_path}")"
   printf '%s/node_modules/.bin\n' "${abs_root}"
 }
-
 is_pid_running() {
   local pid="$1"
 

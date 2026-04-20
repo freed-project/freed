@@ -275,11 +275,7 @@ Local product worktrees now default to a ready-to-run full bootstrap so the next
 | 1.9  | Generate RSS feed at build time              | ✓      |
 | 1.10 | Add public legal docs and versioned website clickwrap | ✓ |
 | 1.11 | Add unified shared theme system across website, Freed Desktop, and PWA | ✓ |
-<<<<<<< HEAD
-| 1.12 | Add ready-to-run worktree bootstrap controls, safer root command routing, rerunnable draft-PR publishing, helper smoke coverage, and labeled tracked local preview tooling | ✓ |
-=======
-| 1.12 | Add ready-to-run worktree bootstrap controls, a swarm shortcut for deferred worktrees, safer root command routing, and labeled tracked local preview tooling | ✓ |
->>>>>>> e967bb1 (fix: harden build fanout and swarm worktree setup)
+| 1.12 | Add ready-to-run worktree bootstrap controls, safer root command routing, env-driven labeled preview tooling, and a draggable bottom-center preview badge | ✓ |
 
 ---
 

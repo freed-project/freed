@@ -55,9 +55,7 @@ import {
   persistReleaseChannel,
 } from "@freed/ui/lib/release-channel";
 
-const LOCAL_PREVIEW_LABEL = import.meta.env.DEV
-  ? import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null
-  : null;
+const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
 
 function OAuthRouter() {
   if (window.location.pathname === "/oauth-callback") {
