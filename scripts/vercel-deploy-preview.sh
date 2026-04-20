@@ -21,6 +21,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/freed-vercel-preview.XXXXXX")"
 PREVIEW_LABEL="$(preview_label_for_worktree "${ROOT_DIR}")"
 BUILD_ENV_KEY=""
+ROOT_BIN_DIR="${TEMP_DIR}/node_modules/.bin"
+ROOT_BIN_DIR="${TEMP_DIR}/node_modules/.bin"
 
 cleanup() {
   rm -rf "$TEMP_DIR"
@@ -73,7 +75,7 @@ else
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "buildCommand": "npm run build -w @freed/pwa",
+  "buildCommand": "cd packages/pwa && PATH=../../node_modules/.bin:$PATH npm run build",
   "outputDirectory": "packages/pwa/dist",
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }
@@ -90,11 +92,17 @@ echo "Verifying preview bundle for $TARGET from $TEMP_DIR"
   cd "$TEMP_DIR"
   "$NPM_BIN" ci
   if [[ "$TARGET" == "website" ]]; then
-    env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" "$NPM_BIN" run build --workspace=website
+    (
+      cd website
+      env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" PATH="${ROOT_BIN_DIR}:${PATH}" "$NPM_BIN" run build
+    )
   elif [[ "$STAGE_AT_ROOT" == "true" ]]; then
     env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" "$NPM_BIN" run build
   else
-    env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" "$NPM_BIN" run build -w @freed/pwa
+    (
+      cd packages/pwa
+      env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" PATH="${ROOT_BIN_DIR}:${PATH}" "$NPM_BIN" run build
+    )
   fi
 )
 

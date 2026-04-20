@@ -53,12 +53,27 @@ Run `./scripts/release.sh` with no args to auto-compute the next version.
 **Never work directly on `main`.** Always create a git worktree for feature work:
 
 ```bash
-./scripts/worktree-add.sh ../freed-<slug> -b <branch>
+./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --target shared
 # work in ../freed-<slug>/
 # remove when done: git worktree remove ../freed-<slug>
 ```
 
-`worktree-add.sh` is a drop-in replacement for `git worktree add` -- same args, same behavior, plus it runs `npm ci --prefer-offline` automatically so the new worktree has isolated `node_modules` and is ready to run immediately (~74s with a warm cache). Never use bare `git worktree add` directly.
+`worktree-add.sh` is a drop-in replacement for `git worktree add`. It defaults to a full isolated install so the new worktree is ready immediately, and it still supports `--install auto` or `--install none` when you intentionally want to defer bootstrap. Never use bare `git worktree add` directly.
+Pass an explicit remote base like `origin/dev` or `origin/www` so feature work does not inherit a stale local branch by accident.
+For multi-thread or speculative worktree swarms, prefer `--swarm`. That maps to deferred bootstrap until the thread actually needs verification or a preview.
+Prefer the lightest useful local preview before opening a draft PR:
+- product work usually uses `./scripts/worktree-preview.sh pwa`
+- website work uses `./scripts/worktree-preview.sh website`
+- use `./scripts/worktree-preview.sh desktop --native` only when real Tauri behavior matters, and report the preview label when you do
+- never run `npm run <script> --workspace=...` from the repo root in this monorepo, run from the workspace directory instead
+- root `npm run dev` now fails fast on purpose, use `./scripts/worktree-preview.sh <target>` or run `npm run dev` from the workspace directory you actually want
+- the root fanout scripts now fail fast if you try the dangerous workspace-dispatch pattern, treat that error as a routing mistake and re-run from the workspace
+- if a workspace command needs a hoisted binary, prefix `PATH` with the worktree root `node_modules/.bin`
+- expect the worktree helpers to print the resolved `node` and `npm` pair before they do real work, and treat a surprising path there as a machine issue to fix before debugging the repo
+- rerunning `./scripts/worktree-publish.sh` should update the existing draft PR body and title, and push a ready PR back to draft when the local branch changes underneath it
+- browser tooling is opt-in only, do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging
+- after browser tooling work, run `./scripts/dev-session-clean.sh`
+- `./scripts/worktree-publish.sh` now refuses stray untracked files unless you stage them yourself first or pass `--include-untracked`
 
 **Branch naming:** `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/` prefix followed by a short kebab-case description.
 
@@ -161,13 +176,14 @@ with default IPC handlers for every command the app calls on startup.
 
 ```bash
 # Standard run (headless Chromium)
-npm run test:e2e --workspace=packages/desktop
+cd packages/desktop
+npm run test:e2e
 
 # Playwright UI mode (visual test runner, great for writing new tests)
-npm run test:e2e:ui --workspace=packages/desktop
+npm run test:e2e:ui
 
 # Step-through debugger (pauses on each action, shows browser)
-npm run test:e2e:debug --workspace=packages/desktop
+npm run test:e2e:debug
 ```
 
 All three commands start a Vite dev server automatically on port 1422 with `VITE_TEST_TAURI=1` and

@@ -75,6 +75,7 @@ fi
 validate_target_hint "${TARGET_HINT}"
 
 if [[ -d "${WORKTREE_PATH}/node_modules" ]]; then
+  print_node_tooling_preflight
   echo "Dependencies already present in ${WORKTREE_PATH}."
   exit 0
 fi
@@ -82,9 +83,9 @@ fi
 NPM_BIN="$(resolve_npm_bin)"
 NPM_VERSION="$("${NPM_BIN}" -v)"
 
+print_node_tooling_preflight
 echo "Bootstrapping ${WORKTREE_PATH}"
 echo "Target: ${TARGET_HINT}"
-echo "npm: ${NPM_VERSION}"
 
 if [[ "${TARGET_HINT}" == "shared" ]]; then
   echo "Shared-only bootstrap still uses the root workspace install with the current npm lockfile layout."

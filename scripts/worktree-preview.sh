@@ -18,41 +18,6 @@ behavior itself is the thing being tested.
 EOF
 }
 
-find_free_port() {
-  local start_port="$1"
-
-  python3 - "${start_port}" <<'PY'
-import socket
-import sys
-
-start = int(sys.argv[1])
-
-for port in range(start, start + 200):
-    is_in_use = False
-    probes = [(socket.AF_INET, ("127.0.0.1", port))]
-    if socket.has_ipv6:
-        probes.append((socket.AF_INET6, ("::1", port, 0, 0)))
-
-    for family, target in probes:
-        with socket.socket(family, socket.SOCK_STREAM) as sock:
-            sock.settimeout(0.1)
-            try:
-                if sock.connect_ex(target) == 0:
-                    is_in_use = True
-                    break
-            except OSError:
-                continue
-
-    if is_in_use:
-        continue
-
-    print(port)
-    break
-else:
-    raise SystemExit("No free port found in the requested range.")
-PY
-}
-
 existing_process_for_target() {
   local worktree_path="$1"
   local preview_target="$2"
@@ -62,7 +27,7 @@ existing_process_for_target() {
 
   shopt -s nullglob
   for manifest in "$(process_state_dir)"/*.env; do
-    unset PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH STARTED_AT
+    unset PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH PREVIEW_LABEL STARTED_AT
     # shellcheck disable=SC1090
     source "${manifest}"
     if [[ "${WORKTREE_PATH:-}" == "${worktree_path}" && "${TARGET:-}" == "${preview_target}" ]]; then
@@ -134,6 +99,7 @@ fi
 WORKTREE_PATH="$(resolve_worktree_path "${WORKTREE_PATH}")"
 PROCESS_SCRIPT="${SCRIPT_DIR}/worktree-processes.sh"
 PREVIEW_LABEL="${PREVIEW_LABEL:-$(preview_label_for_worktree "${WORKTREE_PATH}")}"
+print_node_tooling_preflight
 
 if existing_manifest="$(existing_process_for_target "${WORKTREE_PATH}" "${TARGET}")"; then
   unset PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH PREVIEW_LABEL STARTED_AT
@@ -161,10 +127,13 @@ LOG_PATH=""
 URL=""
 ENV_VARS=()
 RUN_ARGS=()
+RUN_CWD=""
+ROOT_BIN_DIR="$(worktree_root_bin_dir "${WORKTREE_PATH}")"
 
 case "${TARGET}" in
   desktop)
     SLOT_KIND="desktop"
+    RUN_CWD="$(workspace_path_for_target "${WORKTREE_PATH}" "desktop")"
     if ${USE_NATIVE}; then
       DEFAULT_PORT="1420"
       PORT="${PORT:-${DEFAULT_PORT}}"
@@ -172,35 +141,51 @@ case "${TARGET}" in
         echo "Error: native desktop preview is fixed to port 1420 by tauri.conf.json." >&2
         exit 1
       fi
-      ENV_VARS=("VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}" "FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL}")
-      RUN_ARGS=("${NPM_BIN}" "run" "tauri:dev" "--workspace=packages/desktop")
-      COMMAND_DISPLAY="VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL} npm run tauri:dev --workspace=packages/desktop"
+      ENV_VARS=(
+        "PATH=${ROOT_BIN_DIR}:${PATH}"
+        "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
+        "FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL}"
+      )
+      RUN_ARGS=("${NPM_BIN}" "run" "tauri:dev")
+      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL} npm run tauri:dev"
       URL="http://localhost:1420"
     else
       DEFAULT_PORT="1422"
-      PORT="${PORT:-$(find_free_port "${DEFAULT_PORT}")}"
-      ENV_VARS=("VITE_TEST_TAURI=1" "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}")
-      RUN_ARGS=("${NPM_BIN}" "run" "dev" "--workspace=packages/desktop" "--" "--port" "${PORT}")
-      COMMAND_DISPLAY="VITE_TEST_TAURI=1 VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev --workspace=packages/desktop -- --port ${PORT}"
+      PORT="${PORT:-$("$(resolve_node_bin)" "${SCRIPT_DIR}/lib/find-free-port.mjs" "${DEFAULT_PORT}")}"
+      ENV_VARS=(
+        "PATH=${ROOT_BIN_DIR}:${PATH}"
+        "VITE_TEST_TAURI=1"
+        "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
+      )
+      RUN_ARGS=("${NPM_BIN}" "run" "dev" "--" "--port" "${PORT}")
+      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_TEST_TAURI=1 VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT}"
       URL="http://localhost:${PORT}"
     fi
     ;;
   pwa)
     SLOT_KIND="web"
     DEFAULT_PORT="1421"
-    PORT="${PORT:-$(find_free_port "${DEFAULT_PORT}")}"
-    ENV_VARS=("VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}")
-    RUN_ARGS=("${NPM_BIN}" "run" "dev" "--workspace=packages/pwa" "--" "--port" "${PORT}")
-    COMMAND_DISPLAY="VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev --workspace=packages/pwa -- --port ${PORT}"
+    PORT="${PORT:-$("$(resolve_node_bin)" "${SCRIPT_DIR}/lib/find-free-port.mjs" "${DEFAULT_PORT}")}"
+    RUN_CWD="$(workspace_path_for_target "${WORKTREE_PATH}" "pwa")"
+    ENV_VARS=(
+      "PATH=${ROOT_BIN_DIR}:${PATH}"
+      "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
+    )
+    RUN_ARGS=("${NPM_BIN}" "run" "dev" "--" "--port" "${PORT}")
+    COMMAND_DISPLAY="cd packages/pwa && PATH=${ROOT_BIN_DIR}:\$PATH VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT}"
     URL="http://localhost:${PORT}"
     ;;
   website)
     SLOT_KIND="web"
     DEFAULT_PORT="3000"
-    PORT="${PORT:-$(find_free_port "${DEFAULT_PORT}")}"
-    ENV_VARS=("NEXT_PUBLIC_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}")
-    RUN_ARGS=("${NPM_BIN}" "run" "dev" "--workspace=website" "--" "--port" "${PORT}")
-    COMMAND_DISPLAY="NEXT_PUBLIC_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev --workspace=website -- --port ${PORT}"
+    PORT="${PORT:-$("$(resolve_node_bin)" "${SCRIPT_DIR}/lib/find-free-port.mjs" "${DEFAULT_PORT}")}"
+    RUN_CWD="$(workspace_path_for_target "${WORKTREE_PATH}" "website")"
+    ENV_VARS=(
+      "PATH=${ROOT_BIN_DIR}:${PATH}"
+      "NEXT_PUBLIC_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
+    )
+    RUN_ARGS=("${NPM_BIN}" "run" "dev" "--" "--port" "${PORT}")
+    COMMAND_DISPLAY="cd website && PATH=${ROOT_BIN_DIR}:\$PATH NEXT_PUBLIC_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT}"
     URL="http://localhost:${PORT}"
     ;;
 esac
@@ -221,7 +206,7 @@ spawn_preview() {
     done
   fi
 
-  FREED_PREVIEW_ENV="${env_blob}" python3 - "${WORKTREE_PATH}" "${LOG_PATH}" "${RUN_ARGS[@]}" <<'PY'
+  FREED_PREVIEW_ENV="${env_blob}" python3 - "${RUN_CWD}" "${LOG_PATH}" "${RUN_ARGS[@]}" <<'PY'
 import os
 import subprocess
 import sys
@@ -275,8 +260,8 @@ trap - EXIT
 
 echo "Started ${TARGET} preview."
 echo "Worktree: ${WORKTREE_PATH}"
-echo "PID: ${PID_VALUE}"
 echo "Label: ${PREVIEW_LABEL}"
+echo "PID: ${PID_VALUE}"
 echo "Log: ${LOG_PATH}"
 if [[ -n "${URL}" ]]; then
   echo "URL: ${URL}"

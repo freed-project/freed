@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from "react";
-
 type LocalPreviewBadgeProps = {
   label: string | null;
 };

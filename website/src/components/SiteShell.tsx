@@ -2,10 +2,13 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
+import { LocalPreviewBadge } from "@freed/ui/components/LocalPreviewBadge";
 import Navigation from "@/components/Navigation";
 import Footer from "@/components/Footer";
 import NewsletterModal from "@/components/NewsletterModal";
 import BackgroundGradients from "@/components/BackgroundGradients";
+
+const LOCAL_PREVIEW_LABEL = process.env.NEXT_PUBLIC_FREED_PREVIEW_LABEL?.trim() || null;
 
 export default function SiteShell({
   children,
@@ -31,6 +34,7 @@ export default function SiteShell({
     <>
       <div className="theme-shell flex flex-col overflow-hidden relative">
         <BackgroundGradients />
+        <LocalPreviewBadge label={LOCAL_PREVIEW_LABEL} />
 
         {!isQrGallery && <Navigation />}
 

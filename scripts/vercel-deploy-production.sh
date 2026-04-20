@@ -17,6 +17,7 @@ TARGET="$1"
 VERCEL_TOKEN="${2:-${VERCEL_TOKEN:-}}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/freed-vercel-production.XXXXXX")"
+ROOT_BIN_DIR="${TEMP_DIR}/node_modules/.bin"
 
 cleanup() {
   rm -rf "$TEMP_DIR"
@@ -73,7 +74,7 @@ else
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "buildCommand": "npm run build -w @freed/pwa",
+  "buildCommand": "cd packages/pwa && PATH=../../node_modules/.bin:$PATH npm run build",
   "outputDirectory": "packages/pwa/dist",
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }
@@ -96,9 +97,15 @@ echo "Verifying production bundle for $TARGET from $TEMP_DIR"
   cd "$TEMP_DIR"
   "$NPM_BIN" ci
   if [[ "$TARGET" == "website" ]]; then
-    "$NPM_BIN" run build --workspace=website
+    (
+      cd website
+      PATH="${ROOT_BIN_DIR}:${PATH}" "$NPM_BIN" run build
+    )
   else
-    "$NPM_BIN" run build -w @freed/pwa
+    (
+      cd packages/pwa
+      PATH="${ROOT_BIN_DIR}:${PATH}" "$NPM_BIN" run build
+    )
   fi
 )
 

@@ -111,6 +111,40 @@ preview_label_for_worktree() {
   printf '%s\n' "${base_name}"
 }
 
+workspace_path_for_target() {
+  local root_path="$1"
+  local target="$2"
+  local abs_root
+
+  abs_root="$(resolve_worktree_path "${root_path}")"
+
+  case "${target}" in
+    desktop)
+      printf '%s/packages/desktop\n' "${abs_root}"
+      ;;
+    pwa)
+      printf '%s/packages/pwa\n' "${abs_root}"
+      ;;
+    website)
+      printf '%s/website\n' "${abs_root}"
+      ;;
+    shared)
+      printf '%s\n' "${abs_root}"
+      ;;
+    *)
+      echo "Error: unsupported target '${target}'." >&2
+      return 1
+      ;;
+  esac
+}
+
+worktree_root_bin_dir() {
+  local root_path="$1"
+  local abs_root
+
+  abs_root="$(resolve_worktree_path "${root_path}")"
+  printf '%s/node_modules/.bin\n' "${abs_root}"
+}
 is_pid_running() {
   local pid="$1"
 
