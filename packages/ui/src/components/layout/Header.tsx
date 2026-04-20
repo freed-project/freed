@@ -221,7 +221,7 @@ export function Header({
   const showWorkspaceIdentityControls = activeView === "friends" || activeView === "map";
   const showMapTimeControls = activeView === "map";
   const showFeedBulkActions = activeView === "feed";
-  const showArchivedToolbar = activeView === "feed" && activeFilter.archivedOnly;
+  const showArchivedToolbar = activeView === "feed" && activeFilter.archivedOnly === true;
   const showArchivedDeleteAction = showArchivedToolbar && (display.archivePruneDays ?? 30) > 0;
 
   const unreadCount =
@@ -359,7 +359,7 @@ export function Header({
   }, [display, updatePreferences]);
 
   const [deleteConfirmArmed, setDeleteConfirmArmed] = useState(false);
-  const deleteConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deleteConfirmTimerRef = useRef<number | null>(null);
 
   const handleOpenReaderUrl = useCallback(() => {
     if (!selectedItem?.sourceUrl) return;

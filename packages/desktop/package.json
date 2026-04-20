@@ -17,7 +17,11 @@
     "test:e2e:debug": "node ../../node_modules/playwright/cli.js test --debug"
   },
   "dependencies": {
+    "@automerge/automerge": "^2.2.8",
+    "@freed/capture-facebook": "*",
+    "@freed/capture-instagram": "*",
     "@freed/capture-rss": "*",
+    "@freed/capture-save": "*",
     "@freed/capture-x": "*",
     "@freed/shared": "*",
     "@freed/sync": "*",
