@@ -7,6 +7,14 @@ import { installConsoleBugReportCapture, installGlobalBugReportCapture } from '@
 
 bootstrapDocumentTheme()
 
+const previewLabel = import.meta.env.DEV
+  ? import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || ""
+  : ""
+
+if (previewLabel) {
+  document.title = `Freed Preview | ${previewLabel}`
+}
+
 if (import.meta.env.DEV) {
   Promise.all([import("./lib/store"), import("./lib/automerge")]).then(
     ([store, automerge]) => {

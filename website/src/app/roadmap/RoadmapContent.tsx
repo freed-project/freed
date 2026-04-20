@@ -701,7 +701,7 @@ const phases: Phase[] = [
     number: 1,
     title: "Foundation",
     description:
-      "Marketing site, QR gallery, monorepo, Automerge schema, CI/CD, public legal docs with download clickwrap, a protected newsletter signup flow, and ready-to-run local worktree bootstrap with tracked preview tooling plus optional deferred installs when you actually want them.",
+      "Marketing site, QR gallery, monorepo, Automerge schema, CI/CD, public legal docs with download clickwrap, a protected newsletter signup flow, and ready-to-run local worktree bootstrap with tracked preview tooling, light-by-default preview routing, labeled native windows, plus optional deferred installs when you actually want them.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-1-FOUNDATION.md",
@@ -737,7 +737,7 @@ const phases: Phase[] = [
     number: 5,
     title: "Desktop & Mobile App",
     description:
-      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, a Freed-owned updater endpoint, local production or dev release-channel switching that keeps dev installs on the newest eligible build, first-run legal gating, provider risk interstitials, browser-style back and forward shortcuts, draggable shared top-toolbar chrome, a tri-state resizable source sidebar with compact icon rail and floating compact search, local snapshot rollback for disaster recovery, a native startup recovery window outside the React tree, a provider health dashboard, failing-feed unsubscribe tools, renderer heartbeat diagnostics in the local log, runtime memory telemetry for long-session leak hunting, renderer heap and DOM diagnostics, reduced worker payload churn during large-library updates, duplicate-fetch suppression, fetcher rescans gated to real library growth, incremental Automerge persistence compaction, leaner outbox retry bookkeeping, dead-feed health cleanup, capped preserved-text previews with on-demand reader fetches, reviewed cumulative release headings, paginated changelog history, and public-safe bug reporting.",
+      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, a Freed-owned updater endpoint, local production or dev release-channel switching that keeps dev installs on the newest eligible build, first-run legal gating, provider risk interstitials, browser-style back and forward shortcuts, draggable shared top-toolbar chrome, a tri-state resizable source sidebar with compact icon rail and floating compact search, local snapshot rollback for disaster recovery, a native startup recovery window outside the React tree, a provider health dashboard, failing-feed unsubscribe tools, renderer heartbeat diagnostics in the local log, runtime memory telemetry for long-session leak hunting, renderer heap and DOM diagnostics, reduced worker payload churn during large-library updates, duplicate-fetch suppression, fetcher rescans gated to real library growth, incremental Automerge persistence compaction, leaner outbox retry bookkeeping, dead-feed health cleanup, capped preserved-text previews with on-demand reader fetches, labeled native local previews, reviewed cumulative release headings, paginated changelog history, and public-safe bug reporting.",
     status: "current",
     priority: true,
     planLink:

@@ -19,6 +19,7 @@
     "./components/settings/GoogleContactsSection": "./src/components/settings/GoogleContactsSection.tsx",
     "./components/BugReportBoundary": "./src/components/BugReportBoundary.tsx",
     "./components/FatalErrorScreen": "./src/components/FatalErrorScreen.tsx",
+    "./components/LocalPreviewBadge": "./src/components/LocalPreviewBadge.tsx",
     "./components/legal/LegalGate": "./src/components/legal/LegalGate.tsx",
     "./components/legal/ProviderRiskDialog": "./src/components/legal/ProviderRiskDialog.tsx",
     "./components/DebugPanel": "./src/components/DebugPanel.tsx",

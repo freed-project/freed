@@ -60,6 +60,10 @@ Run `./scripts/release.sh` with no args to auto-compute the next version.
 
 `worktree-add.sh` is a drop-in replacement for `git worktree add`. It defaults to a full isolated install so the new worktree is ready immediately, and it still supports `--install auto` or `--install none` when you intentionally want to defer bootstrap. Never use bare `git worktree add` directly.
 Pass an explicit remote base like `origin/dev` or `origin/www` so feature work does not inherit a stale local branch by accident.
+Prefer the lightest useful local preview before opening a draft PR:
+- product work usually uses `./scripts/worktree-preview.sh pwa`
+- website work uses `./scripts/worktree-preview.sh website`
+- use `./scripts/worktree-preview.sh desktop --native` only when real Tauri behavior matters, and report the preview label when you do
 
 **Branch naming:** `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/` prefix followed by a short kebab-case description.
 

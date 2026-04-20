@@ -158,11 +158,20 @@ The helper now:
 - defaults to a full install with the npm binary that matches the active Node runtime
 - avoids the broken "last worktree wins" assumption that can install into the wrong checkout
 - stays on the branch you asked for instead of inheriting some crusty local base by accident
+- works cleanly with tracked local previews, including readable labels for native preview windows
 
 If you want a cheap speculative worktree instead, opt in explicitly:
 
 ```bash
 ./scripts/worktree-add.sh ../freed-my-branch -b feat/my-branch origin/dev --install auto --target shared
+```
+
+When you are ready to preview the work locally, prefer the lightest useful surface:
+
+```bash
+./scripts/worktree-preview.sh pwa      # default for most product work
+./scripts/worktree-preview.sh website  # marketing site work
+./scripts/worktree-preview.sh desktop --native  # only for real Tauri behavior
 ```
 
 ### Marketing Website (freed.wtf)

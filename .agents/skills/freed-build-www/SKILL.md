@@ -1,12 +1,12 @@
 ---
 name: freed-build-www
-description: Build marketing-site work in a www-based worktree, verify website changes, deploy a website preview, and prepare a PR targeting www. Use for homepage, public changelog presentation, public roadmap presentation, marketing copy, legal or marketing pages, and website-only changes intended for freed.wtf.
+description: Build marketing-site work in a www-based worktree, verify website changes, launch a local website preview, and prepare a draft PR targeting www. Use for homepage, public changelog presentation, public roadmap presentation, marketing copy, legal or marketing pages, and website-only changes intended for freed.wtf.
 disable-model-invocation: true
 ---
 
 # Build WWW
 
-Create a marketing worktree branch from `www`, implement the website change, verify it, and deploy a website preview.
+Create a marketing worktree branch from `www`, implement the website change, verify it, launch a local website preview, and open a draft PR targeting `www`.
 
 ## Workflow
 
@@ -16,8 +16,9 @@ Create a marketing worktree branch from `www`, implement the website change, ver
 4. If the worktree was created with deferred bootstrap on purpose, recover with `./scripts/worktree-bootstrap.sh <worktree> --target website`.
 5. Keep changes scoped to marketing paths unless the user explicitly changes the destination.
 6. Run website checks, at minimum `npm run build --workspace=website`.
-7. Deploy a website preview with `./scripts/vercel-deploy-preview.sh website`.
-8. Open a PR targeting `www` when the work is ready.
+7. Before opening the draft PR, launch the local website preview with `./scripts/worktree-preview.sh website`.
+8. Deploy `./scripts/vercel-deploy-preview.sh website` only when a shareable remote preview is needed.
+9. Open a draft PR targeting `www`, and include the local preview URL in the closeout.
 
 ## Scope
 

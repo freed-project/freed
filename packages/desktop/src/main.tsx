@@ -9,6 +9,14 @@ import { installConsoleBugReportCapture, installGlobalBugReportCapture } from "@
 
 bootstrapDocumentTheme();
 
+const previewLabel = import.meta.env.DEV
+  ? import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || ""
+  : "";
+
+if (previewLabel) {
+  document.title = `Freed Preview | ${previewLabel}`;
+}
+
 // Expose internal modules on window so E2E performance tests can inject data
 // directly without going through the UI. Only active in VITE_TEST_TAURI=1 mode.
 if (import.meta.env.VITE_TEST_TAURI) {
