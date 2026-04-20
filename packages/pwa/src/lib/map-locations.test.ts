@@ -462,16 +462,18 @@ describe("map navigation helpers", () => {
     ]);
 
     const setActiveView = vi.fn();
-    const setSelectedFriend = vi.fn();
+    const setSelectedPerson = vi.fn();
+    const setSelectedAccount = vi.fn();
     const setSelectedItem = vi.fn();
 
     openFriendFromMap(marker, {
       setActiveView,
-      setSelectedFriend,
+      setSelectedPerson,
+      setSelectedAccount,
       setSelectedItem,
     });
 
-    expect(setSelectedFriend).toHaveBeenCalledWith(friend.id);
+    expect(setSelectedPerson).toHaveBeenCalledWith(friend.id);
     expect(setSelectedItem).toHaveBeenCalledWith(null);
     expect(setActiveView).toHaveBeenCalledWith("friends");
   });
@@ -489,14 +491,16 @@ describe("map navigation helpers", () => {
     ]);
 
     const setActiveView = vi.fn();
-    const setSelectedFriend = vi.fn();
+    const setSelectedPerson = vi.fn();
+    const setSelectedAccount = vi.fn();
     const setSelectedItem = vi.fn();
     const setFilter = vi.fn();
     const setSearchQuery = vi.fn();
 
     openPostFromMap(marker, {
       setActiveView,
-      setSelectedFriend,
+      setSelectedPerson,
+      setSelectedAccount,
       setSelectedItem,
       setFilter,
       setSearchQuery,
@@ -504,7 +508,7 @@ describe("map navigation helpers", () => {
 
     expect(setFilter).toHaveBeenCalledWith({});
     expect(setSearchQuery).toHaveBeenCalledWith("");
-    expect(setSelectedFriend).toHaveBeenCalledWith(friend.id);
+    expect(setSelectedPerson).toHaveBeenCalledWith(friend.id);
     expect(setSelectedItem).toHaveBeenCalledWith("ig:1");
     expect(setActiveView).toHaveBeenCalledWith("feed");
   });
