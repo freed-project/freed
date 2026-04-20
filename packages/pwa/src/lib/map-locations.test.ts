@@ -463,13 +463,11 @@ describe("map navigation helpers", () => {
 
     const setActiveView = vi.fn();
     const setSelectedPerson = vi.fn();
-    const setSelectedAccount = vi.fn();
     const setSelectedItem = vi.fn();
 
     openFriendFromMap(marker, {
       setActiveView,
       setSelectedPerson,
-      setSelectedAccount,
       setSelectedItem,
     });
 
@@ -492,7 +490,6 @@ describe("map navigation helpers", () => {
 
     const setActiveView = vi.fn();
     const setSelectedPerson = vi.fn();
-    const setSelectedAccount = vi.fn();
     const setSelectedItem = vi.fn();
     const setFilter = vi.fn();
     const setSearchQuery = vi.fn();
@@ -500,7 +497,6 @@ describe("map navigation helpers", () => {
     openPostFromMap(marker, {
       setActiveView,
       setSelectedPerson,
-      setSelectedAccount,
       setSelectedItem,
       setFilter,
       setSearchQuery,

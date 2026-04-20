@@ -92,6 +92,19 @@ async function clickMapPopupAction(page: Page, actionName: "Open Friend" | "Open
     .toBe(true);
 }
 
+async function setMapTimelineScrubberValue(page: Page, value: number) {
+  const scrubber = page.getByLabel("Map timeline scrubber");
+  await expect(scrubber).toBeVisible({ timeout: 10_000 });
+  await scrubber.focus();
+  await page.keyboard.press("Home");
+  for (let step = 0; step < value; step += 1) {
+    await page.keyboard.press("ArrowRight");
+  }
+  await expect
+    .poll(async () => Number(await scrubber.inputValue()), { timeout: 10_000 })
+    .toBe(value);
+}
+
 async function dragElementBy(page: Page, locator: Locator, deltaX: number, deltaY = 0) {
   const box = await locator.boundingBox();
   if (!box) {
@@ -2172,7 +2185,7 @@ test("map timeline scrubber replays historical posts and future plans", async ({
   await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
   await expect(page.getByText("Lisbon", { exact: true })).toBeVisible({ timeout: 10_000 });
 
-  await page.getByLabel("Map timeline scrubber").fill("2");
+  await setMapTimelineScrubberValue(page, 2);
   await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
   await expect(page.getByText("Tokyo", { exact: true })).toBeVisible({ timeout: 10_000 });
 
@@ -2180,11 +2193,11 @@ test("map timeline scrubber replays historical posts and future plans", async ({
   await pastButton.click();
   await expect(page.getByTestId("map-timeline-scrubber")).toBeVisible({ timeout: 10_000 });
 
-  await page.getByLabel("Map timeline scrubber").fill("1");
+  await setMapTimelineScrubberValue(page, 1);
   await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
   await expect(page.getByText("Berlin", { exact: true })).toBeVisible({ timeout: 10_000 });
 
-  await page.getByLabel("Map timeline scrubber").fill("0");
+  await setMapTimelineScrubberValue(page, 0);
   await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
   await expect(page.getByText("Rome", { exact: true })).toBeVisible({ timeout: 10_000 });
 });
