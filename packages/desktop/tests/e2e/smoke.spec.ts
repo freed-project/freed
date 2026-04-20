@@ -104,6 +104,17 @@ async function dragElementBy(page: Page, locator: Locator, deltaX: number, delta
   await page.mouse.up();
 }
 
+async function readDesktopSidebarGeometry(page: Page) {
+  return page.evaluate(() => {
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    return {
+      shellWidth: sidebarShell?.getBoundingClientRect().width ?? 0,
+      sidebarWidth: sidebar?.getBoundingClientRect().width ?? 0,
+    };
+  });
+}
+
 const SETTINGS_STORE_PATH = resolveViteFsModulePath(
   "../../../ui/src/lib/settings-store.ts",
   import.meta.url,
@@ -259,6 +270,76 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
   expect(collapsedWidth).toBeLessThanOrEqual(2);
 });
 
+test("desktop sidebar snaps to compact and closed, then restores the last non-closed mode", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const resizeHandle = page.getByTestId("app-sidebar-resize-handle");
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+  const desktopSidebar = page.getByTestId("app-sidebar");
+
+  const initialGeometry = await readDesktopSidebarGeometry(page);
+  expect(initialGeometry.shellWidth).toBeGreaterThan(200);
+
+  await dragElementBy(page, resizeHandle, -164);
+  await page.waitForTimeout(250);
+
+  const compactGeometry = await readDesktopSidebarGeometry(page);
+  expect(compactGeometry.shellWidth).toBeGreaterThanOrEqual(100);
+  expect(compactGeometry.shellWidth).toBeLessThanOrEqual(112);
+  expect(compactGeometry.sidebarWidth).toBeGreaterThanOrEqual(84);
+  expect(compactGeometry.sidebarWidth).toBeLessThanOrEqual(92);
+  await expect(desktopSidebar.getByTestId("compact-sidebar-search-trigger")).toBeVisible();
+
+  await sidebarToggle.click();
+  await page.waitForTimeout(250);
+  expect((await readDesktopSidebarGeometry(page)).shellWidth).toBeLessThanOrEqual(2);
+
+  await sidebarToggle.click();
+  await page.waitForTimeout(250);
+  const reopenedCompactGeometry = await readDesktopSidebarGeometry(page);
+  expect(reopenedCompactGeometry.shellWidth).toBeGreaterThanOrEqual(100);
+  expect(reopenedCompactGeometry.shellWidth).toBeLessThanOrEqual(112);
+
+  await dragElementBy(page, resizeHandle, -72);
+  await page.waitForTimeout(250);
+  expect((await readDesktopSidebarGeometry(page)).shellWidth).toBeLessThanOrEqual(2);
+
+  await sidebarToggle.click();
+  await page.waitForTimeout(250);
+  const restoredCompactGeometry = await readDesktopSidebarGeometry(page);
+  expect(restoredCompactGeometry.shellWidth).toBeGreaterThanOrEqual(100);
+  expect(restoredCompactGeometry.shellWidth).toBeLessThanOrEqual(112);
+
+  const savedMode = await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | { getState: () => { preferences: { display: { sidebarMode?: string } } } }
+      | undefined;
+    return store?.getState().preferences.display.sidebarMode ?? null;
+  });
+  expect(savedMode).toBe("compact");
+});
+
+test("compact sidebar search opens as a floating palette and closes cleanly", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  const desktopSidebar = page.getByTestId("app-sidebar");
+
+  await dragElementBy(page, page.getByTestId("app-sidebar-resize-handle"), -164);
+  await page.waitForTimeout(250);
+
+  const trigger = desktopSidebar.getByTestId("compact-sidebar-search-trigger");
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+  await expect(page.getByTestId("compact-sidebar-search-palette")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("compact-sidebar-search-palette")).toHaveCount(0);
+});
+
 test("dragging from the desktop sidebar toggle starts a window drag without collapsing the sidebar", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
@@ -283,6 +364,99 @@ test("dragging from the desktop sidebar toggle starts a window drag without coll
 
   expect(postDragState.dragCalls).toBe(1);
   expect(postDragState.sidebarWidth).toBeGreaterThan(initialWidth - 4);
+});
+
+test("narrow labeled sidebar keeps source names visible and drops counts first", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(12);
+  const desktopSidebar = page.getByTestId("app-sidebar");
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddRssFeed: (feed: unknown) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            feeds: Record<string, unknown>;
+          };
+        }
+      | undefined;
+
+    const feedUrl = "https://bench.example/feed.xml";
+    await automerge.docAddRssFeed({
+      url: feedUrl,
+      title: "Navigation Feed",
+      siteUrl: "https://bench.example",
+      enabled: true,
+      trackUnread: true,
+      lastFetched: Date.now(),
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      const startedAt = Date.now();
+      const interval = window.setInterval(() => {
+        if (store?.getState().feeds[feedUrl]) {
+          clearInterval(interval);
+          resolve();
+          return;
+        }
+        if (Date.now() - startedAt > 5_000) {
+          clearInterval(interval);
+          reject(new Error("feed seed timeout"));
+        }
+      }, 50);
+    });
+  });
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          setState: (
+            updater: (state: {
+              unreadCountByPlatform: Record<string, number>;
+              itemCountByPlatform: Record<string, number>;
+              totalUnreadCount: number;
+              totalItemCount: number;
+            }) => Partial<{
+              unreadCountByPlatform: Record<string, number>;
+              itemCountByPlatform: Record<string, number>;
+              totalUnreadCount: number;
+              totalItemCount: number;
+            }>,
+          ) => void;
+        }
+      | undefined;
+
+    store?.setState((state) => ({
+      unreadCountByPlatform: {
+        ...state.unreadCountByPlatform,
+        x: 6,
+        rss: 58,
+      },
+      itemCountByPlatform: {
+        ...state.itemCountByPlatform,
+        x: 14,
+        rss: 106,
+      },
+      totalUnreadCount: Math.max(state.totalUnreadCount, 64),
+      totalItemCount: Math.max(state.totalItemCount, 120),
+    }));
+  });
+
+  await dragElementBy(page, page.getByTestId("app-sidebar-resize-handle"), -72);
+  await page.waitForTimeout(250);
+
+  await expect(desktopSidebar.getByTestId("source-row-x")).toContainText("X / Twitter");
+  await expect(desktopSidebar.getByTestId("source-counts-x")).toHaveCount(0);
+
+  await expect(desktopSidebar.getByTestId("source-row-rss")).toContainText("Feeds");
+  await expect(desktopSidebar.getByLabel(/Expand feeds|Collapse feeds/)).toBeVisible();
+  await expect(desktopSidebar.getByTestId("source-counts-rss")).toHaveCount(0);
 });
 
 test("dragging from a reader toolbar button starts a window drag without firing the button action", async ({ app, page }) => {
