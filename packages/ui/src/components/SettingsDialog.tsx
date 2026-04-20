@@ -662,6 +662,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // ── Scrollspy ────────────────────────────────────────────────────────────
   const [activeSection, setActiveSection] = useState<SectionId>("legal");
+  const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Keep a ref in sync with updateState.status so scroll/visibility callbacks
@@ -671,6 +672,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // Ref for the "Check for updates" button element.
   const checkButtonRef = useRef<HTMLDivElement>(null);
+  const MOBILE_CONTENT_TOP_INSET = 20;
+  const DESKTOP_SECTION_TOP_INSET = 20;
+  const scrollContainerBottomPadding = isMobile
+    ? "calc(2rem + env(safe-area-inset-bottom, 0px))"
+    : "calc(8rem + env(safe-area-inset-bottom, 0px))";
 
   // Auto-check when the button enters the scroll container's visible area.
   // Re-checks each time the button transitions from hidden → visible, so scrolling
@@ -721,9 +727,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }
   }, [searchLower, visibleSections]);
 
-  // ── Mobile nav state ──────────────────────────────────────────────────────
-  const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
-
   const scrollSectionIntoView = useCallback((id: SectionId, behavior: ScrollBehavior = "smooth") => {
     const container = scrollRef.current;
     if (!container) {
@@ -735,7 +738,15 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       return;
     }
 
-    const targetTop = Math.max(0, el.offsetTop - 16);
+    const contentAnchor = el.querySelector<HTMLElement>(":scope > :nth-child(2)");
+    const targetNode = isMobile ? (contentAnchor ?? el) : el;
+    const topInset = isMobile ? MOBILE_CONTENT_TOP_INSET : DESKTOP_SECTION_TOP_INSET;
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = targetNode.getBoundingClientRect();
+    const targetTop = Math.max(
+      0,
+      container.scrollTop + (targetRect.top - containerRect.top) - topInset,
+    );
 
     isScrollingProgrammatically.current = true;
     clearTimeout(scrollEndTimerRef.current);
@@ -756,7 +767,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     scrollEndTimerRef.current = setTimeout(clearScrolling, 800);
 
     container.scrollTo({ top: targetTop, behavior });
-  }, []);
+  }, [isMobile]);
 
   useEffect(() => {
     const root = scrollRef.current;
@@ -799,10 +810,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const scrollToSection = useCallback((id: SectionId) => {
     setActiveSection(id);
     if (isMobile && mobileView === "nav") {
+      isScrollingProgrammatically.current = true;
+      clearTimeout(scrollEndTimerRef.current);
       setMobileView("section");
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           scrollSectionIntoView(id, "auto");
+          setActiveSection(id);
         });
       });
       return;
@@ -826,9 +840,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     if (!open || !targetSection) return;
     const rafId = requestAnimationFrame(() => {
       setActiveSection(targetSection as SectionId);
+      isScrollingProgrammatically.current = true;
+      clearTimeout(scrollEndTimerRef.current);
       setMobileView("section");
       requestAnimationFrame(() => {
         scrollSectionIntoView(targetSection as SectionId, "auto");
+        setActiveSection(targetSection as SectionId);
       });
       clearTarget();
     });
@@ -874,6 +891,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   function renderSectionBlock(id: SectionId) {
     const isVisible = visibleSections.some((s) => s.id === id);
     if (!isVisible) return null;
+    const mobileSectionMinHeightClass = isMobile && mobileView === "section"
+      ? "min-h-[calc(100%+6rem)]"
+      : "min-h-full";
 
     // SectionContent and this wrapper both stay plain function calls because
     // they are defined inside SettingsDialog. Rendering either as JSX would
@@ -881,7 +901,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     // active subtree, which is visible as periodic flicker in provider sections
     // when sync health updates land.
     return (
-      <section data-section={id} className="pb-8 min-h-full flex flex-col">
+      <section data-section={id} className={`pb-8 flex flex-col ${mobileSectionMinHeightClass}`}>
         {SectionContent({ id })}
       </section>
     );
@@ -1437,7 +1457,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              <span className="truncate text-sm font-medium text-text-primary">
+              <span
+                className="truncate text-sm font-medium text-text-primary"
+                data-testid="settings-mobile-section-title"
+              >
                 {allSections.find((s) => s.id === activeSection)?.label}
               </span>
             </button>
@@ -1452,7 +1475,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             ref={scrollRef}
             data-testid="settings-scroll-container"
             className="flex-1 overflow-y-auto px-6 pt-6 [&>section+section]:mt-14"
-            style={{ paddingBottom: "calc(2rem + env(safe-area-inset-bottom, 0px))" }}
+            style={{ paddingBottom: scrollContainerBottomPadding }}
           >
             {searchLower && visibleSections.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center gap-2 pb-16 text-center">

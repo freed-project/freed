@@ -1488,6 +1488,36 @@ test.describe("FREED PWA", () => {
     await expect(sidebar).toHaveClass(/-translate-x-full/);
   });
 
+  test("mobile settings opens without hitting recovery", async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.goto("/");
+    await acceptLegalGate(page);
+
+    await page.click('button[aria-label="Open menu"]');
+    await page.getByRole("button", { name: "Settings" }).evaluate((element) => {
+      (element as HTMLButtonElement).click();
+    });
+
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(page.getByText("Freed hit a fatal error")).toHaveCount(0);
+    await expect(page.getByText("Cannot access 'mobileView' before initialization")).toHaveCount(0);
+  });
+
+  test("mobile settings navigation keeps the selected heading in sync", async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.goto("/");
+    await acceptLegalGate(page);
+
+    await page.click('button[aria-label="Open menu"]');
+    await page.getByRole("button", { name: "Settings" }).evaluate((element) => {
+      (element as HTMLButtonElement).click();
+    });
+    await page.getByRole("button", { name: "Updates", exact: true }).click();
+
+    await expect(page.getByTestId("settings-mobile-section-title")).toHaveText("Updates");
+    await expect(page.getByText("Installed version:", { exact: false }).first()).toBeVisible();
+  });
+
   test("app has correct colors and styling", async ({ page }) => {
     await page.goto("/");
     await acceptLegalGate(page);
