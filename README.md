@@ -169,6 +169,8 @@ If you want a cheap speculative worktree instead, opt in explicitly:
 ./scripts/worktree-add.sh ../freed-my-branch -b feat/my-branch origin/dev --install auto --target shared
 ```
 
+That is the better default when you are spinning up several speculative threads at once and only one or two of them will reach verification.
+
 When you are ready to preview the work locally, prefer the lightest useful surface:
 
 ```bash
@@ -186,6 +188,8 @@ When the work is ready to publish from the feature worktree:
   --test "Focused validation you ran"
 ```
 
+If the branch intentionally adds new files, stage them yourself first or pass `--include-untracked`. The helper refuses stray untracked files by default so local junk like temporary browser artifacts does not get vacuumed into a commit.
+
 When you run workspace commands by hand, do the same thing as the helpers:
 
 ```bash
@@ -194,8 +198,15 @@ PATH=../node_modules/.bin:$PATH npm run build
 ```
 
 Do not use root-level `npm run <script> --workspace=...` in this repo.
-The root `build`, `dev`, `test`, and `typecheck` scripts now fail fast if you try it, so the error is your cue to `cd` into the workspace and run the command there.
+The root `build`, `test`, and `typecheck` scripts fail fast if you try that dangerous workspace-dispatch path, and root `npm run dev` now refuses to fan out at all. Treat those errors as your cue to `cd` into the workspace and run the command there, or use `./scripts/worktree-preview.sh <target>`.
 For the helper smoke lane itself, run `npm run test:scripts`.
+
+Browser tooling is opt-in only. Only turn on Chrome DevTools MCP, Playwright MCP, or Computer Use when the task explicitly needs browser automation or browser debugging. When that work is done, clean the session with:
+
+```bash
+./scripts/dev-session-clean.sh
+npm run session:clean
+```
 
 ### Marketing Website (freed.wtf)
 

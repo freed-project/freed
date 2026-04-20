@@ -17,6 +17,7 @@ Create a product worktree branch from the latest remote `dev`, implement the fea
    - Confirm whether local `dev` or `main` are behind their remote counterparts.
    - If `origin/main` contains commits that are not in `origin/dev`, call that out before continuing so the user can decide whether `dev` needs to be refreshed first.
 5. Create a new worktree branch from `origin/dev` using `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --install full --target <desktop|pwa|shared>`.
+   - When you are spinning up multiple speculative threads at once, prefer `--install auto` until the worktree actually needs verification or a preview.
 6. If the worktree was created with deferred bootstrap on purpose, recover with `./scripts/worktree-bootstrap.sh <worktree> --target <desktop|pwa|shared>`.
 7. Implement the requested change.
 8. Verify with focused tests, then broader checks when shared behavior changed.
@@ -26,8 +27,11 @@ Create a product worktree branch from the latest remote `dev`, implement the fea
    - Use `./scripts/worktree-preview.sh desktop --native` only when the change depends on real Tauri behavior such as native windowing, tray behavior, updater wiring, filesystem or process plugins, native OAuth windows, or Rust-side integrations.
    - When native Desktop preview is running, report the preview label so parallel native windows can be matched to the worktree and thread that launched them.
 10. Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run commands from the workspace directory itself, and when a hoisted binary is needed, prefix `PATH` with `<worktree>/node_modules/.bin`.
-11. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>"`.
-12. Confirm the branch is pushed to `origin` and the PR targeting `dev` stays in draft state. Include the local preview URL or native preview label in the closeout.
+11. Browser tooling is opt-in only. Do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging.
+12. When browser tooling was needed, clean the session before closeout with `./scripts/dev-session-clean.sh`.
+13. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>"`.
+   - If the branch intentionally adds new files, stage them yourself first or re-run with `--include-untracked`.
+14. Confirm the branch is pushed to `origin` and the PR targeting `dev` stays in draft state. Include the local preview URL or native preview label in the closeout.
 
 ## Scope
 
