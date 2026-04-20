@@ -13,6 +13,9 @@ import {
   countAuthorsWithRecentLocationUpdates,
   countFriendsWithRecentLocationUpdates,
   getDefaultMapMode,
+  type DisplayPreferences,
+  type MapMode,
+  type MapTimeMode,
   type SidebarMode,
 } from "@freed/shared";
 import { AddFeedDialog } from "../AddFeedDialog.js";
@@ -154,10 +157,16 @@ export function Header({
     () => countAuthorsWithRecentLocationUpdates(items),
     [items],
   );
+  const socialAccountCount = useMemo(
+    () => Object.values(accounts).filter((account) => account.kind === "social").length,
+    [accounts],
+  );
   const effectiveMapMode = display.mapMode
     ?? getDefaultMapMode(mappedFriendCount, mappedAllContentCount);
   const effectiveFriendsMode = display.friendsMode ?? "all_content";
-  const showIdentityModeControls = activeView === "feed" || activeView === "map";
+  const showWorkspaceIdentityControls = activeView === "friends" || activeView === "map";
+  const showMapTimeControls = activeView === "map";
+  const showFeedBulkActions = activeView === "feed";
 
   const unreadCount =
     activeFilter.savedOnly || activeFilter.archivedOnly
@@ -195,7 +204,13 @@ export function Header({
     }
     if (activeView === "friends") {
       if (pendingMatchCount > 0) {
-        return `${friendCount.toLocaleString()} friends • ${pendingMatchCount.toLocaleString()} pending matches`;
+        if (effectiveFriendsMode === "all_content") {
+          return `${friendCount.toLocaleString()} friends • ${socialAccountCount.toLocaleString()} accounts • ${pendingMatchCount.toLocaleString()} pending suggestions`;
+        }
+        return `${friendCount.toLocaleString()} friends • ${pendingMatchCount.toLocaleString()} pending suggestions`;
+      }
+      if (effectiveFriendsMode === "all_content") {
+        return `${friendCount.toLocaleString()} friends • ${socialAccountCount.toLocaleString()} accounts`;
       }
       return `${friendCount.toLocaleString()} friends`;
     }
@@ -211,6 +226,7 @@ export function Header({
     return formatItemCount(filteredItems.length);
   }, [
     activeView,
+    effectiveFriendsMode,
     filteredItems.length,
     friendCount,
     effectiveMapMode,
@@ -219,17 +235,24 @@ export function Header({
     mappedFriendCount,
     pendingMatchCount,
     resultCount,
+    socialAccountCount,
     scopeLabel,
     selectedItem,
   ]);
 
-  const handleIdentityModeChange = useCallback((mode: "friends" | "all_content") => {
+  const updateDisplayPreference = useCallback((patch: Partial<DisplayPreferences>) => {
     void updatePreferences({
-      display: {
-        ...(activeView === "map" ? { mapMode: mode } : { friendsMode: mode }),
-      },
+      display: patch,
     } as Parameters<typeof updatePreferences>[0]);
-  }, [activeView, updatePreferences]);
+  }, [updatePreferences]);
+
+  const handleIdentityModeChange = useCallback((key: "friendsMode" | "mapMode", mode: MapMode) => {
+    updateDisplayPreference({ [key]: mode });
+  }, [updateDisplayPreference]);
+
+  const handleMapTimeModeChange = useCallback((mode: MapTimeMode) => {
+    updateDisplayPreference({ mapTimeMode: mode });
+  }, [updateDisplayPreference]);
 
   const handleCloseReader = useCallback(() => {
     if (display.reading.dualColumnMode && !isMobile && selectedItemId) {
@@ -696,8 +719,12 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showIdentityModeControls} width="10.75rem" className="flex min-w-0">
-                  {showIdentityModeControls ? (
+                <ToolbarAnimatedSlot
+                  visible={showWorkspaceIdentityControls}
+                  width={showMapTimeControls ? "min(22rem, 54vw)" : "min(10rem, 34vw)"}
+                  className="flex min-w-0"
+                >
+                  {showWorkspaceIdentityControls ? (
                     <div className="flex min-w-0 items-center gap-2 overflow-x-auto py-1">
                       <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_86%,transparent)] p-1">
                         {([
@@ -712,7 +739,7 @@ export function Header({
                             <button
                               key={`${activeView}-${mode}`}
                               type="button"
-                              onClick={() => handleIdentityModeChange(mode)}
+                              onClick={() => handleIdentityModeChange(activeView === "friends" ? "friendsMode" : "mapMode", mode)}
                               {...getToolbarControlProps()}
                               className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                                 isActive ? "theme-chip-active" : "theme-chip"
@@ -723,12 +750,34 @@ export function Header({
                           );
                         })}
                       </div>
+
+                      {showMapTimeControls ? (
+                        <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_86%,transparent)] p-1">
+                          {([
+                            ["current", "Current"],
+                            ["future", "Future"],
+                            ["past", "Past"],
+                          ] as const).map(([mode, label]) => (
+                            <button
+                              key={`map-time-${mode}`}
+                              type="button"
+                              onClick={() => handleMapTimeModeChange(mode)}
+                              {...getToolbarControlProps()}
+                              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                                (display.mapTimeMode ?? "current") === mode ? "theme-chip-active" : "theme-chip"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={unreadCount > 0} width="9.5rem" className="hidden lg:flex">
-                  {unreadCount > 0 ? (
+                <ToolbarAnimatedSlot visible={showFeedBulkActions && unreadCount > 0} width="9.5rem" className="hidden lg:flex">
+                  {showFeedBulkActions && unreadCount > 0 ? (
                     <Tooltip label={`Mark all ${unreadCount.toLocaleString()} items as read`} className="hidden lg:flex">
                       <button
                         onClick={() => markAllAsRead(activeFilter.platform)}
@@ -744,8 +793,8 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={archivableCount > 0} width="8rem" className="hidden lg:flex">
-                  {archivableCount > 0 ? (
+                <ToolbarAnimatedSlot visible={showFeedBulkActions && archivableCount > 0} width="8rem" className="hidden lg:flex">
+                  {showFeedBulkActions && archivableCount > 0 ? (
                     <Tooltip label={`Archive all ${archivableCount.toLocaleString()} read (unsaved) items`} className="hidden lg:flex">
                       <button
                         onClick={() => archiveAllReadUnsaved(activeFilter.platform, activeFilter.feedUrl)}

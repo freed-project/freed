@@ -1729,6 +1729,89 @@ test("map defaults to All content when only unlinked author locations exist", as
   await expect(page.locator('.freed-map-marker[aria-label="Ghost Noise"]')).toHaveCount(0);
 });
 
+test("friends and map move identity controls into the header and hide feed bulk actions", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(6);
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  const toolbar = page.getByTestId("workspace-toolbar");
+  const unreadButton = toolbar.locator("button").filter({ hasText: / unread$/ });
+  const archiveButton = toolbar.locator("button").filter({ hasText: / read$/ });
+
+  await expect(unreadButton).toHaveCount(1);
+  await unreadButton.click();
+  await expect(archiveButton).toHaveCount(1);
+
+  await page.getByRole("button", { name: /^Friends\b/ }).click();
+  await expect(toolbar.getByRole("button", { name: "Friends", exact: true })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "All content", exact: true })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Current", exact: true })).toHaveCount(0);
+  await expect(unreadButton).toHaveCount(0);
+  await expect(archiveButton).toHaveCount(0);
+
+  await page.getByRole("button", { name: /^Map/ }).click();
+  await expect(toolbar.getByRole("button", { name: "Friends", exact: true })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "All content", exact: true })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Current", exact: true })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Future", exact: true })).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "Past", exact: true })).toBeVisible();
+  await expect(unreadButton).toHaveCount(0);
+  await expect(archiveButton).toHaveCount(0);
+});
+
+test("unlinked map markers route into the friends account workflow and can link to an existing friend", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+  await app.seedAllContentLocationsWithoutFriends();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.getByRole("button", { name: /^Map/ }).click();
+  await page.getByRole("button", { name: "All content", exact: true }).click();
+  await openVisibleMapMarker(page, "Nora Quinn", "Link to existing friend");
+  await clickMapPopupAction(page, "Link to existing friend");
+
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | { getState: () => { activeView: string; selectedAccountId: string | null } }
+      | undefined;
+    const state = store?.getState();
+    return state?.activeView === "friends" && state.selectedAccountId === "social:instagram:nora-ig";
+  }, { timeout: 10_000 });
+
+  await expect(page.getByRole("button", { name: "Promote to friend", exact: true })).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.getByText("Link to existing friend")).toBeVisible({ timeout: 10_000 });
+  await page.getByRole("button", { name: /Ada Lovelace/ }).first().click();
+
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            activeView: string;
+            selectedPersonId: string | null;
+            accounts: Record<string, { personId?: string }>;
+          };
+        }
+      | undefined;
+    const state = store?.getState();
+    return (
+      state?.activeView === "friends" &&
+      state.selectedPersonId === "friend-ada" &&
+      state.accounts["social:instagram:nora-ig"]?.personId === "friend-ada"
+    );
+  }, { timeout: 10_000 });
+
+  await expect(page.getByRole("button", { name: "Back to all friends" })).toBeVisible({
+    timeout: 10_000,
+  });
+});
+
 test("recoverable story locations appear in All content mode and the mode persists", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();

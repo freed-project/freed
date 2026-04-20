@@ -1,6 +1,6 @@
 # Phase 8: Friends + Social Graph
 
-> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, and the map plus Friends surfaces resolve identity through linked accounts instead of embedded friend sources while the map can switch between current, future, and past location windows and scrub through historical posts plus future plan ranges
+> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, the Friends workspace now defaults to `All content` with confirmed friend hubs plus linked satellites and peripheral account nodes, and the map plus Friends surfaces share header-level identity controls while the map can switch between current, future, and past location windows and scrub through historical posts plus future plan ranges
 > **Dependencies:** Phase 7 (Facebook + Instagram capture provide most social content)
 
 ---
@@ -211,11 +211,14 @@ That Friends detail rail now uses the same floating shell-card treatment and gap
 Trackpad pinch zoom is now captured by the Friends graph itself, so zooming the workspace no longer zooms the whole browser window.
 Friend captions in the graph now use pill backgrounds and label-aware spacing, so names stay readable instead of collapsing into an overlapping word soup.
 Friend avatars now inherit a theme-authored tint across the Friends graph and map markers, so each theme stays coherent without a stray custom accent fighting the palette.
+The Friends graph now defaults to `All content`, keeps confirmed friends as larger center hubs, renders their linked channels as smaller radial satellites with straight connectors, and shows every other captured social account on the periphery inside provider-shaped metaball island regions.
+Unlinked accounts can now be promoted to friends or linked to an existing friend directly from the Friends sidebar workflow, while unlinked map markers route into that same account workflow instead of dead-ending.
 Map popovers now use a wider card layout and deliberately omit the old MapLibre tail, so place names and actions fit cleanly without the popup looking like a speech bubble from a cheaper app.
 Friends and Map now consume the same shared theme tokens, button treatments, shell backgrounds, surface recipes, and theme-native map palettes as the rest of Freed, so themes like Neon, Midas, Vesper, Ember, and Scriptorium land consistently across the graph, sidebars, popovers, mini-map cards, editor, contact-sync flows, and map basemap itself.
 The shared map now includes a persisted `Friends` / `All content` toggle. It restores the user's last mode from preferences and defaults to `All content` when the library has geolocatable followed accounts but no friend-linked pins yet.
 That same `Friends` / `All content` lens now lives in the shared toolbar for feed surfaces too, so the operator can collapse Freed down to real-world people without leaving the main reading views.
 The shared map now also persists a `Current` / `Future` / `Past` time filter. Future-dated `timeRange` windows stay out of the default current map until they start, upcoming travel or event windows can be previewed directly, and expired windows fall into a separate past view without hijacking the current last-seen map.
+Friends and Map now use the shared top toolbar for their identity and time controls, and feed-only bulk actions no longer appear in those workspaces.
 Past and future views now expose a timeline scrubber, so the operator can replay historical location posts or step through upcoming travel windows instead of staring at one collapsed "latest" pin and pretending that counts as time.
 
 ---
@@ -254,7 +257,9 @@ Past and future views now expose a timeline scrubber, so the operator can replay
 | 8.24 | Support Mozi-backed friend/location events in identity and map flows | Medium | Not Started |
 | 8.25 | Include Google contact sync state in desktop disaster-recovery snapshots | Low | Done |
 | 8.26 | Add persisted `Friends` / `All content` map modes with latest-author pins | Medium | Done |
-| 8.27 | Extend the shared `Friends` / `All content` toolbar lens to feed views | Medium | Done |
+| 8.27 | Friends workspace defaults to `All content` and renders friend hubs, linked satellites, and peripheral captured accounts | High | Done |
+| 8.28 | Move Friends and Map identity controls into the shared header and hide feed bulk actions in those views | Medium | Done |
+| 8.29 | Promote or link unconfirmed accounts from Friends and Map, including drag-to-friend linking from the graph | High | Done |
 
 ---
 
@@ -289,6 +294,10 @@ Past and future views now expose a timeline scrubber, so the operator can replay
 - [x] Feed views share the same persisted `Friends` and `All content` toolbar lens
 - [x] Map defaults to `All content` when there are valid author pins but no friend-linked pins
 - [x] `All content` mode shows the latest valid location per followed account
+- [x] Friends defaults to `All content` and shows peripheral captured accounts before confirmation
+- [x] Confirmed friend hubs render linked channel satellites with provider-shaped island backgrounds
+- [x] Friends and Map share header-level identity controls, and feed bulk actions stay feed-only
+- [x] Unlinked accounts can be promoted or linked from both the Friends workspace and Map popups
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map
 - [ ] macOS native contact picker (CNContactStore)
 - [x] Map promoted to live sidebar navigation

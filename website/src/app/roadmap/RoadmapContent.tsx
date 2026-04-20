@@ -765,7 +765,7 @@ const phases: Phase[] = [
     number: 8,
     title: "Friends + Social Graph",
     description:
-      "A people CRM with a canonical Person plus Account identity graph, a stable pan-and-zoom Friends workspace, Google Contacts imports that create friend people by default, suggestion-only same-person review across platforms, a shared Friends and All content toolbar lens across feed surfaces, and a map that resolves identity through linked accounts with current, future, and past filters plus a timeline scrubber for replaying history and upcoming plans while still showing followed accounts at the edge before confirmation.",
+      "A people CRM with a canonical Person plus Account identity graph, a stable pan-and-zoom Friends workspace that defaults to All content with confirmed friend hubs, linked channel satellites, and peripheral captured accounts, drag-and-drop plus sidebar linking and promotion flows, Google Contacts imports that create friend people by default, suggestion-only same-person review across platforms, and a map that resolves identity through linked accounts with shared header controls plus current, future, and past filters with a timeline scrubber for replaying history and upcoming plans.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-8-FRIENDS.md",

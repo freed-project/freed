@@ -340,3 +340,45 @@ export function accountsFromLegacyFriend(friend: Friend): Account[] {
     updatedAt: friend.updatedAt,
   });
 }
+
+export function friendFromPerson(
+  person: Person,
+  accounts: Record<string, Account>
+): Friend {
+  const socialSources = socialAccountsForPerson(accounts, person.id).map((account) => ({
+    platform: account.provider as Platform,
+    authorId: account.externalId,
+    handle: account.handle,
+    displayName: account.displayName,
+    avatarUrl: account.avatarUrl,
+    profileUrl: account.profileUrl,
+  }));
+
+  const primaryContact = primaryContactAccountForPerson(accounts, person.id);
+  const contact: Friend["contact"] = primaryContact
+    ? {
+        importedFrom:
+          primaryContact.provider === "google_contacts"
+            ? "google"
+            : primaryContact.provider === "macos_contacts"
+              ? "macos"
+              : primaryContact.provider === "ios_contacts"
+                ? "ios"
+                : primaryContact.provider === "android_contacts"
+                  ? "android"
+                  : "web",
+        name: primaryContact.displayName ?? person.name,
+        phone: primaryContact.phone,
+        email: primaryContact.email,
+        address: primaryContact.address,
+        nativeId: primaryContact.externalId,
+        importedAt: primaryContact.importedAt ?? primaryContact.createdAt,
+      }
+    : undefined;
+
+  return {
+    ...person,
+    sources: socialSources,
+    ...(contact ? { contact } : {}),
+  };
+}

@@ -71,6 +71,7 @@ export interface BaseAppState {
   activeFilter: FilterOptions;
   selectedItemId: string | null;
   selectedPersonId: string | null;
+  selectedAccountId: string | null;
   /** @deprecated Use selectedPersonId. */
   selectedFriendId: string | null;
 
@@ -133,6 +134,7 @@ export interface BaseAppState {
   setFilter: (filter: FilterOptions) => void;
   setSelectedItem: (id: string | null) => void;
   setSelectedPerson: (id: string | null) => void;
+  setSelectedAccount: (id: string | null) => void;
   /** @deprecated Use setSelectedPerson. */
   setSelectedFriend: (id: string | null) => void;
   setLoading: (loading: boolean) => void;

@@ -548,6 +548,9 @@ export interface DisplayPreferences {
   /** Friends workspace sidebar width in pixels (default: 360, min: 280, max: 520) */
   friendsSidebarWidth?: number;
 
+  /** Saved Friends workspace display mode. Unset defaults to all content. */
+  friendsMode?: MapMode;
+
   /** @deprecated Friend avatar tint is now derived from the active theme. */
   friendAvatarTint?: string;
 
@@ -556,9 +559,6 @@ export interface DisplayPreferences {
 
   /** Saved map display mode. Unset means compute a default from available data. */
   mapMode?: MapMode;
-
-  /** Saved feed identity mode. Unset means show all captured content. */
-  friendsMode?: MapMode;
 
   /** Saved map time filter. Unset means default to the current view. */
   mapTimeMode?: MapTimeMode;
