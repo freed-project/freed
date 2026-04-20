@@ -2,9 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "buildCommand": "cd ../.. && npm run build -w @freed/pwa",
-  "git": {
-    "deploymentEnabled": false
-  },
   "outputDirectory": "dist",
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }

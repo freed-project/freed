@@ -15,7 +15,7 @@ Large app store distribution is not part of the current strategy. The mobile rea
 **Key architectural decisions:**
 
 - **TypeScript capture via subprocess** — Existing `capture-x`, `capture-rss` packages run via Node/Bun subprocess, not rewritten in Rust
-- **Shared React codebase** — `packages/pwa/` is embedded in WebView and deployed standalone to `app.freed.wtf`, with dev prereleases pinned at `dev-app.freed.wtf`
+- **Shared React codebase:** `packages/pwa/` is embedded in WebView and deployed standalone to `app.freed.wtf`, while `dev-app.freed.wtf` follows the latest merge to `dev`
 - **X authentication via WebView** — User logs into X inside the app; cookies captured from WebView session
 - **Ranking runs here** — Desktop computes `priority` scores, syncs to PWA via Automerge
 - **Versioned legal gate** — Freed Desktop blocks startup side effects until the current legal bundle is accepted locally on-device

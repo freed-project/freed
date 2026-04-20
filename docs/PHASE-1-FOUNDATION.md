@@ -214,8 +214,7 @@ GitHub Actions workflows for continuous integration and deployment.
 
 **Deploy (Vercel):**
 
-Two Vercel projects now use branch-specific release lanes with GitHub Actions
-owning preview deploys:
+Two Vercel projects now use branch-specific release lanes:
 
 | Project      | Root Directory   | Domain                                          |
 | ------------ | ---------------- | ------------------------------------------------ |
@@ -227,18 +226,17 @@ Branch routing:
 - `www` is the public marketing branch for `freed.wtf`
 - PRs targeting `www` build and deploy website previews only
 - `dev` is the product integration branch
-- PRs targeting `dev` build PWA previews and run product checks
-- Dev prerelease tags deploy the persistent PWA dev lane at `dev-app.freed.wtf`
+- merges to `dev` redeploy `dev-app.freed.wtf` through native Vercel Git deploys
+- Vercel preview deployments handle PWA branch and PR previews
 - `main` remains the production app release branch
 - `main` no longer redeploys `freed.wtf` as a side effect
 
 Manual preview deploys for this monorepo now go through `./scripts/vercel-deploy-preview.sh website` and `./scripts/vercel-deploy-preview.sh pwa`. The helper stages a temporary monorepo slice with shared workspace packages before uploading to Vercel, which avoids the broken `npm install` failures caused by raw subdirectory deploys.
 
-The website and PWA preview workflows use the helpers directly so PRs only
-build the surface they target. Native Vercel preview deploys should stay
-disabled where GitHub Actions owns preview deployment. The website Vercel
-project only allows Git-triggered deploys from `www`, and the PWA project
-disables Git-triggered deploys entirely.
+The website preview workflow still uses the helper directly so PRs only build
+the marketing surface they target. The PWA keeps native Git deploys enabled so
+`dev-app.freed.wtf` can follow `dev` automatically while `app.freed.wtf` stays
+under the release workflow.
 
 The preview and production deploy helpers now resolve `npm` and `npx` from the
 active Node toolchain first, so they do not accidentally pick up an older
