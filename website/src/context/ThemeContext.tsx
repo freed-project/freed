@@ -11,46 +11,55 @@ import {
 import {
   DEFAULT_THEME_ID,
   THEME_DEFINITIONS,
-  getThemeCssVariables,
-  getThemeDefinition,
-  resolveThemeId,
   type ThemeId,
 } from "@freed/shared/themes";
-
-const THEME_STORAGE_KEY = "freed-theme";
+import {
+  applyThemeToDocument,
+  getStoredThemeId,
+  useThemePreviewController,
+} from "@freed/ui/lib/theme";
 
 interface ThemeContextValue {
   themeId: ThemeId;
+  activeThemeId: ThemeId;
   setThemeId: (themeId: ThemeId) => void;
+  previewTheme: (themeId: ThemeId) => void;
+  revertPreview: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [themeId, setThemeId] = useState<ThemeId>(DEFAULT_THEME_ID);
+  const {
+    activeThemeId,
+    commitTheme,
+    previewTheme,
+    revertPreview,
+  } = useThemePreviewController({
+    committedThemeId: themeId,
+    onCommitTheme: setThemeId,
+  });
 
   useEffect(() => {
-    const nextTheme = resolveThemeId(window.localStorage.getItem(THEME_STORAGE_KEY));
+    const nextTheme = getStoredThemeId();
     setThemeId(nextTheme);
   }, []);
 
   useEffect(() => {
-    const root = document.documentElement;
-    root.dataset.theme = themeId;
-    root.style.colorScheme = getThemeDefinition(themeId).surface;
-    const cssVariables = getThemeCssVariables(themeId);
-    for (const [name, value] of Object.entries(cssVariables)) {
-      root.style.setProperty(name, value);
-    }
-    window.localStorage.setItem(THEME_STORAGE_KEY, themeId);
+    applyThemeToDocument(themeId);
+    window.localStorage.setItem("freed-theme", themeId);
   }, [themeId]);
 
   const value = useMemo(
     () => ({
+      activeThemeId,
       themeId,
-      setThemeId,
+      setThemeId: commitTheme,
+      previewTheme,
+      revertPreview,
     }),
-    [themeId],
+    [activeThemeId, commitTheme, previewTheme, revertPreview, themeId],
   );
 
   return (
