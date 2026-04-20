@@ -13,7 +13,7 @@ Create a marketing worktree branch from `www`, implement the website change, ver
 1. Confirm the request is public marketing work targeting `www`.
 2. Reject or reroute product work targeting `dev`; use `freed-build-feature` instead.
 3. Create a new worktree branch from `www` using `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/www --install full --target website`.
-   - When you are spinning up multiple speculative threads at once, prefer `--install auto` until the worktree actually needs verification or a preview.
+   - When you are spinning up multiple speculative threads at once, prefer `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/www --swarm --target website` so bootstrap stays deferred until that thread actually needs verification or a preview.
 4. If the worktree was created with deferred bootstrap on purpose, recover with `./scripts/worktree-bootstrap.sh <worktree> --target website`.
 5. Keep changes scoped to marketing paths unless the user explicitly changes the destination.
 6. Run website checks from the workspace directory, at minimum `cd website && PATH=../node_modules/.bin:$PATH npm run build`.

@@ -7,6 +7,7 @@
 # Usage:
 #   ./scripts/worktree-add.sh ../freed-<slug> -b feat/my-feature origin/dev
 #   ./scripts/worktree-add.sh ../freed-<slug> -b feat/my-feature origin/dev --install full --target desktop
+#   ./scripts/worktree-add.sh ../freed-<slug> -b feat/my-feature origin/dev --swarm --target shared
 #
 # Why not symlink node_modules from the primary worktree?
 #   npm writes *through* symlinks. Running `npm install foo` in a symlinked
@@ -31,11 +32,12 @@ source "${SCRIPT_DIR}/lib/worktree-runtime.sh"
 usage() {
   cat <<'EOF'
 Usage:
-  ./scripts/worktree-add.sh <path> [-b <branch>] [<commit-ish>] [--install none|auto|full] [--target desktop|pwa|website|shared]
+  ./scripts/worktree-add.sh <path> [-b <branch>] [<commit-ish>] [--install none|auto|full] [--target desktop|pwa|website|shared] [--swarm]
 
 Options:
   --install  Dependency bootstrap mode. Default: full
   --target   Hint for later bootstrap or preview commands
+  --swarm    Alias for --install auto, tuned for speculative multi-thread worktrees
 EOF
 }
 
@@ -65,10 +67,16 @@ validate_target_hint() {
 
 INSTALL_MODE="full"
 TARGET_HINT=""
+SWARM_MODE=false
 PASSTHROUGH_ARGS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --swarm)
+      SWARM_MODE=true
+      INSTALL_MODE="auto"
+      shift
+      ;;
     --install)
       [[ $# -ge 2 ]] || { echo "Error: --install requires a value." >&2; exit 1; }
       INSTALL_MODE="$2"
@@ -142,6 +150,9 @@ case "${INSTALL_MODE}" in
     ;;
   auto)
     echo "Created ${NEW_WT} with deferred bootstrap."
+    if ${SWARM_MODE}; then
+      echo "Swarm mode is on, so bootstrap is deferred until this thread actually needs it."
+    fi
     if [[ -n "${TARGET_HINT}" ]]; then
       echo "When this worktree needs dependencies, run:"
       echo "  ./scripts/worktree-bootstrap.sh \"${NEW_WT}\" --target ${TARGET_HINT}"
