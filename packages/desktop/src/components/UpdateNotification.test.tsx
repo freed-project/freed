@@ -8,6 +8,7 @@ describe("UpdateNotification", () => {
       <UpdateNotification
         state={{
           phase: "available",
+          channel: "dev",
           update: {
             version: "26.4.109",
             body: `(AI Generated).
@@ -23,14 +24,13 @@ Map view, refined consent gates, and signed macOS installs
 `,
           } as never,
         }}
-        releaseChannel="dev"
         onInstall={() => {}}
         onRelaunch={() => {}}
         onDismiss={() => {}}
       />,
     );
 
-    expect(html).toContain("Update available on Dev, v26.4.109");
+    expect(html).toContain("Update available on Dev, v26.4.109-dev");
     expect(html).toContain("Map view, refined consent gates, and signed macOS installs");
     expect(html).not.toContain("<ul");
     expect(html).not.toContain("Shared map and friends workspace");
@@ -40,7 +40,6 @@ Map view, refined consent gates, and signed macOS installs
     const html = renderToStaticMarkup(
       <UpdateNotification
         state={{ phase: "downloading", percent: 100 }}
-        releaseChannel="production"
         onInstall={() => {}}
         onRelaunch={() => {}}
         onDismiss={() => {}}

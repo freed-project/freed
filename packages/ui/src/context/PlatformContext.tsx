@@ -49,6 +49,11 @@ export type UpdateDownloadProgress =
   | { phase: "downloading"; percent: number }
   | { phase: "error"; message: string };
 
+export interface AvailableUpdateInfo {
+  version: string;
+  channel: ReleaseChannel;
+}
+
 export type SyncProviderSectionSurface = "settings" | "debug-card";
 
 export interface SyncProviderSectionProps {
@@ -163,8 +168,8 @@ export interface PlatformConfig {
    */
   GoogleContactsSettingsContent: ComponentType | null;
 
-  /** Manual update check. Returns version string if available, null if up-to-date. */
-  checkForUpdates?: () => Promise<string | null>;
+  /** Manual update check. Returns available update info, null if up-to-date. */
+  checkForUpdates?: () => Promise<AvailableUpdateInfo | null>;
 
   /** Apply a detected update (PWA: reload, Desktop: handled by UpdateNotification). */
   applyUpdate?: () => void;

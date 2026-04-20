@@ -11,6 +11,7 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  formatReleaseVersion,
   RELEASE_CHANNEL_LABELS,
   RELEASE_CHANNELS,
   type ReleaseChannel,
@@ -238,7 +239,7 @@ type UpdateCheckState =
   | { status: "idle" }
   | { status: "checking" }
   | { status: "up-to-date" }
-  | { status: "available"; version: string }
+  | { status: "available"; version: string; channel: ReleaseChannel }
   | { status: "error" };
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -489,15 +490,16 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [updateState, setUpdateState] = useState<UpdateCheckState>({ status: "idle" });
   const fadeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const shouldRecheckAfterChannelChangeRef = useRef(false);
+  const displayVersion = formatReleaseVersion(__APP_VERSION__, releaseChannel ?? "production");
 
   const runUpdateCheck = useCallback(async () => {
     if (!checkForUpdates) return;
 
     setUpdateState({ status: "checking" });
     try {
-      const version = await checkForUpdates();
-      const next: UpdateCheckState = version
-        ? { status: "available", version }
+      const update = await checkForUpdates();
+      const next: UpdateCheckState = update
+        ? { status: "available", version: update.version, channel: update.channel }
         : { status: "up-to-date" };
       setUpdateState(next);
       if (next.status === "up-to-date") {
@@ -1014,14 +1016,14 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             <div className="space-y-3">
               <p className="text-xs text-text-muted">
                 Installed version:{" "}
-                <span className="text-sm font-bold font-mono">v{__APP_VERSION__}</span>
+                <span className="text-sm font-bold font-mono">v{displayVersion}</span>
               </p>
               {releaseChannel && setReleaseChannel && (
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0">
                     <p className="text-sm text-text-primary">Release channel</p>
                     <p className="mt-0.5 text-xs text-text-muted">
-                      Changing this affects future update checks. Dev follows the latest changes from the dev branch.
+                      Changing this affects future update checks. It does not change the installed version until an update is installed.
                     </p>
                   </div>
                   <select
@@ -1065,7 +1067,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   {updateState.status === "available" && (
                     <span className="flex items-center gap-2">
                       <span className="text-xs text-[var(--theme-accent-secondary)]">
-                        Update available on {RELEASE_CHANNEL_LABELS[releaseChannel ?? "production"]}
+                        Update available on {RELEASE_CHANNEL_LABELS[updateState.channel]}
                       </span>
                       {applyUpdate && (
                         <button
@@ -1311,11 +1313,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 }}
                 className="text-xs font-mono text-text-muted transition-colors tabular-nums hover:text-text-secondary"
               >
-                v{__APP_VERSION__}
+                v{displayVersion}
               </button>
             ) : (
               <span className="text-xs font-mono text-text-muted tabular-nums">
-                v{__APP_VERSION__}
+                v{displayVersion}
               </span>
             )}
             <a

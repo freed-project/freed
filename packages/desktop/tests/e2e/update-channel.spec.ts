@@ -1,9 +1,4 @@
-import { test, expect, resolveViteFsModulePath } from "./fixtures/app";
-
-const SETTINGS_STORE_PATH = resolveViteFsModulePath(
-  "../../../ui/src/lib/settings-store.ts",
-  import.meta.url,
-);
+import { test, expect } from "./fixtures/app";
 
 test("switching release channels clears stale update state and rechecks the new channel", async ({
   app,
@@ -12,15 +7,18 @@ test("switching release channels clears stale update state and rechecks the new 
   await app.goto();
   await app.waitForReady();
 
-  await page.evaluate(async (settingsStorePath) => {
-    const mod = await import(settingsStorePath);
-    mod.useSettingsStore.getState().openTo("updates");
-  }, SETTINGS_STORE_PATH);
+  const settingsButton = page.locator("button").filter({ hasText: /settings/i }).first();
+  await expect(settingsButton).toBeVisible({ timeout: 5_000 });
+  await settingsButton.click();
+
+  const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
+  const updatesNavButton = settingsDialog.getByRole("button", { name: /^Updates$/ });
+  await expect(updatesNavButton).toBeVisible({ timeout: 3_000 });
+  await updatesNavButton.click();
 
   await expect(page.getByRole("heading", { name: "Updates" }).last()).toBeVisible({
     timeout: 5_000,
   });
-  const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
   await expect(page.getByText("Installed version:")).toBeVisible();
 
   const releaseChannelSelect = page.getByTestId("settings-release-channel-select");
@@ -30,25 +28,30 @@ test("switching release channels clears stale update state and rechecks the new 
   await expect(page.getByText("You're up to date")).toBeVisible({ timeout: 5_000 });
 
   await page.evaluate(() => {
-    (window as Record<string, unknown>).__TAURI_MOCK_UPDATE__ = {
-      version: "26.4.1501",
-      body: "Dev build available",
+    (window as Record<string, unknown>).__TAURI_MOCK_UPDATE_BY_TARGET__ = {
+      "production-darwin-aarch64": {
+        version: "26.4.1800",
+        body: "Production build available",
+      },
     };
   });
 
   await releaseChannelSelect.selectOption("dev");
+  await expect(releaseChannelSelect).toHaveValue("dev");
 
   await expect(page.getByText("You're up to date")).toHaveCount(0);
-  await expect(settingsDialog.getByText("Update available on Dev", { exact: true })).toBeVisible({
-    timeout: 5_000,
-  });
+  await expect(
+    settingsDialog.getByText("Update available on Production", { exact: true }),
+  ).toBeVisible({ timeout: 5_000 });
 
   await expect.poll(async () => {
     return page.evaluate(() => {
-      const args = (window as Record<string, unknown>).__TAURI_MOCK_UPDATE_CHECK_ARGS__ as
-        | { target?: string }
+      const calls = (window as Record<string, unknown>).__TAURI_MOCK_UPDATE_CHECK_CALLS__ as
+        | Array<{ target?: string } | null>
         | undefined;
-      return args?.target ?? null;
+      return (calls ?? [])
+        .slice(-2)
+        .map((call) => call?.target ?? null);
     });
-  }).toBe("dev-darwin-aarch64");
+  }).toEqual(["dev-darwin-aarch64", "production-darwin-aarch64"]);
 });

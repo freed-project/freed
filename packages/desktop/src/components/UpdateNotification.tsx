@@ -1,11 +1,15 @@
 import type { Update } from "@tauri-apps/plugin-updater";
-import { RELEASE_CHANNEL_LABELS, type ReleaseChannel } from "@freed/shared";
+import {
+  formatReleaseVersion,
+  RELEASE_CHANNEL_LABELS,
+  type ReleaseChannel,
+} from "@freed/shared";
 import { UpdateProgressBar } from "@freed/ui/components/UpdateProgressBar";
 import { extractUpdatePreviewLine } from "../lib/update-release-preview";
 
 export type UpdateState =
   | { phase: "idle" }
-  | { phase: "available"; update: Update }
+  | { phase: "available"; update: Update; channel: ReleaseChannel }
   | { phase: "downloading"; percent: number }
   | { phase: "ready" }
   | { phase: "error"; message: string };
@@ -16,13 +20,11 @@ export type UpdateState =
  */
 export function UpdateNotification({
   state,
-  releaseChannel,
   onInstall,
   onRelaunch,
   onDismiss,
 }: {
   state: UpdateState;
-  releaseChannel: ReleaseChannel;
   onInstall: () => void;
   onRelaunch: () => void;
   onDismiss: () => void;
@@ -40,7 +42,6 @@ export function UpdateNotification({
           <div className="flex-1 min-w-0">
             <UpdateContent
               state={state}
-              releaseChannel={releaseChannel}
               onInstall={onInstall}
               onRelaunch={onRelaunch}
             />
@@ -105,21 +106,24 @@ function UpdateIcon({ phase }: { phase: UpdateState["phase"] }) {
 
 function UpdateContent({
   state,
-  releaseChannel,
   onInstall,
   onRelaunch,
 }: {
   state: UpdateState;
-  releaseChannel: ReleaseChannel;
   onInstall: () => void;
   onRelaunch: () => void;
 }) {
+  const availableVersion =
+    state.phase === "available"
+      ? formatReleaseVersion(state.update.version, state.channel)
+      : null;
+
   switch (state.phase) {
     case "available":
       return (
         <>
           <p className="text-sm font-medium text-text-primary">
-            Update available on {RELEASE_CHANNEL_LABELS[releaseChannel]}, v{state.update.version}
+            Update available on {RELEASE_CHANNEL_LABELS[state.channel]}, v{availableVersion}
           </p>
           {state.update.body && (() => {
             const preview = extractUpdatePreviewLine(state.update.body);

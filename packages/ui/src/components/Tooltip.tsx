@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
   type CSSProperties,
+  type FocusEvent,
 } from "react";
 import { createPortal } from "react-dom";
 
@@ -57,6 +58,8 @@ export function Tooltip({
   });
   const triggerRef = useRef<HTMLSpanElement | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const pointerDownRef = useRef(false);
+  const suppressHoverRef = useRef(false);
   const tooltipId = useId();
 
   useEffect(() => {
@@ -175,6 +178,47 @@ export function Tooltip({
     setOpen(true);
   };
 
+  const closeTooltip = () => {
+    setOpen(false);
+  };
+
+  const handlePointerEnter = () => {
+    if (suppressHoverRef.current) {
+      return;
+    }
+
+    openTooltip();
+  };
+
+  const handlePointerLeave = () => {
+    suppressHoverRef.current = false;
+    closeTooltip();
+  };
+
+  const handlePointerDown = () => {
+    pointerDownRef.current = true;
+    suppressHoverRef.current = true;
+    closeTooltip();
+  };
+
+  const handleFocus = (event: FocusEvent<HTMLSpanElement>) => {
+    if (!(event.target instanceof HTMLElement) || !event.target.matches(":focus-visible")) {
+      return;
+    }
+
+    if (pointerDownRef.current) {
+      return;
+    }
+
+    openTooltip();
+  };
+
+  const handleBlur = () => {
+    pointerDownRef.current = false;
+    suppressHoverRef.current = false;
+    closeTooltip();
+  };
+
   const tooltipStyle = {
     left: `${position.left}px`,
     top: `${position.top}px`,
@@ -188,10 +232,11 @@ export function Tooltip({
         ref={triggerRef}
         aria-describedby={open ? tooltipId : undefined}
         className={["relative inline-flex", className].filter(Boolean).join(" ")}
-        onMouseEnter={openTooltip}
-        onMouseLeave={() => setOpen(false)}
-        onFocus={openTooltip}
-        onBlur={() => setOpen(false)}
+        onPointerEnter={handlePointerEnter}
+        onPointerLeave={handlePointerLeave}
+        onPointerDown={handlePointerDown}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
       >
         {children}
       </span>
