@@ -53,6 +53,9 @@ export default defineConfig({
       allow: fsAllow,
     },
   },
+  build: {
+    target: 'esnext',
+  },
 
   plugins: [
     wasm(),
@@ -67,6 +70,7 @@ export default defineConfig({
       includeAssets: ['favicon.svg', 'icons/*.png'],
       manifest: false,
       workbox: {
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         runtimeCaching: [
           {
             // API routes must bypass the service worker entirely — Workbox's
