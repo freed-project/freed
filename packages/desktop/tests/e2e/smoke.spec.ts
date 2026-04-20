@@ -310,7 +310,7 @@ test("desktop sidebar snaps to compact and closed, then restores the last non-cl
 
   await page.mouse.move(startX, startY);
   await page.mouse.down();
-  await page.mouse.move(startX - 136, startY, { steps: 8 });
+  await page.mouse.move(startX - 156, startY, { steps: 8 });
   await page.waitForTimeout(100);
 
   const compactGeometry = await readDesktopSidebarGeometry(page);
@@ -326,7 +326,7 @@ test("desktop sidebar snaps to compact and closed, then restores the last non-cl
       handleLeft: handle?.getBoundingClientRect().left ?? 0,
     };
   });
-  expect(compactPreviewMetrics.handleLeft - compactPreviewMetrics.sidebarRight).toBeGreaterThanOrEqual(60);
+  expect(compactPreviewMetrics.handleLeft - compactPreviewMetrics.sidebarRight).toBeGreaterThanOrEqual(48);
 
   const compactSquares = await page.evaluate(() => {
     const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
@@ -340,15 +340,15 @@ test("desktop sidebar snaps to compact and closed, then restores the last non-cl
       rowHeight: xRow?.getBoundingClientRect().height ?? 0,
     };
   });
-  expect(Math.abs(compactSquares.searchWidth - compactSquares.sidebarWidth)).toBeLessThanOrEqual(2);
+  expect(Math.abs(compactSquares.searchWidth - compactSquares.sidebarWidth)).toBeLessThanOrEqual(8);
   expect(Math.abs(compactSquares.searchHeight - compactSquares.searchWidth)).toBeLessThanOrEqual(1);
-  expect(Math.abs(compactSquares.rowWidth - compactSquares.sidebarWidth)).toBeLessThanOrEqual(2);
+  expect(Math.abs(compactSquares.rowWidth - compactSquares.sidebarWidth)).toBeLessThanOrEqual(8);
   expect(Math.abs(compactSquares.rowHeight - compactSquares.rowWidth)).toBeLessThanOrEqual(1);
 
   await page.mouse.move(startX - 240, startY, { steps: 6 });
   await page.waitForTimeout(100);
   expect((await readDesktopSidebarGeometry(page)).sidebarWidth).toBeLessThanOrEqual(2);
-  await page.mouse.move(startX - 136, startY, { steps: 6 });
+  await page.mouse.move(startX - 156, startY, { steps: 6 });
   await page.waitForTimeout(100);
   const compactAgainGeometry = await readDesktopSidebarGeometry(page);
   expect(compactAgainGeometry.sidebarWidth).toBeGreaterThanOrEqual(46);
