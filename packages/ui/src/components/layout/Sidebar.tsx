@@ -825,7 +825,7 @@ export function Sidebar({
   }) => {
     const compactIcon = isValidElement<{ className?: string }>(args.icon)
       ? cloneElement(args.icon, {
-          className: `${args.icon.props.className ?? ""} h-8 w-8`.trim(),
+          className: `${args.icon.props.className ?? ""} h-6 w-6`.trim(),
         })
       : args.icon;
 
@@ -839,10 +839,10 @@ export function Sidebar({
             args.active
               ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
               : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
-          }`}
-          aria-label={args.label}
-        >
-          <span className="flex h-8 w-8 items-center justify-center">
+        }`}
+        aria-label={args.label}
+      >
+          <span className="flex h-6 w-6 items-center justify-center">
             {compactIcon}
           </span>
           {args.badge ? (
