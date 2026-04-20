@@ -577,14 +577,14 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
             {...(headerDragRegion ? { "data-tauri-drag-region": true, style: dragStyle } : {})}
           >
             {selectedItem ? (
-              <div className="flex min-w-0 items-center gap-2 px-2 py-1.5">
-                <button
-                  onClick={handleCloseReader}
-                  {...getToolbarControlProps()}
-                  data-testid="workspace-toolbar-reader-back"
-                  className="group flex shrink-0 items-center rounded-xl p-2 transition-colors hover:bg-[var(--theme-bg-muted)]"
-                  aria-label="Back to list"
-                >
+              <button
+                onClick={handleCloseReader}
+                {...getToolbarControlProps()}
+                data-testid="workspace-toolbar-reader-back"
+                className="group flex w-full min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-[var(--theme-bg-muted)]"
+                aria-label="Back to list"
+              >
+                <span className="pointer-events-none flex shrink-0 items-center rounded-xl p-2">
                   <svg
                     className="h-4 w-4 shrink-0 text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]"
                     fill="none"
@@ -593,12 +593,15 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                   </svg>
-                </button>
-                <div className="min-w-0 flex-1 cursor-default select-none">
+                </span>
+                <div
+                  data-testid="workspace-toolbar-reader-title-block"
+                  className="pointer-events-none min-w-0 flex-1 cursor-default select-none"
+                >
                   <p className="truncate text-sm font-medium text-[var(--theme-text-primary)]">{currentTitle}</p>
                   <p className="truncate text-xs text-[var(--theme-text-muted)]">{currentSubtitle}</p>
                 </div>
-              </div>
+              </button>
             ) : (
               <div
                 data-testid="workspace-toolbar-title-block"

@@ -19,12 +19,31 @@ export interface CheckOptions {
 }
 
 export async function check(options?: CheckOptions): Promise<Update | null> {
-  (
-    window as unknown as Record<string, unknown>
-  ).__TAURI_MOCK_UPDATE_CHECK_ARGS__ = options ?? null;
+  const mockWindow = window as unknown as Record<string, unknown>;
+  mockWindow.__TAURI_MOCK_UPDATE_CHECK_ARGS__ = options ?? null;
+  const checkCalls = Array.isArray(mockWindow.__TAURI_MOCK_UPDATE_CHECK_CALLS__)
+    ? (mockWindow.__TAURI_MOCK_UPDATE_CHECK_CALLS__ as Array<CheckOptions | null>)
+    : [];
+  checkCalls.push(options ?? null);
+  mockWindow.__TAURI_MOCK_UPDATE_CHECK_CALLS__ = checkCalls;
+
+  const targetOverrides = mockWindow.__TAURI_MOCK_UPDATE_BY_TARGET__;
+  if (targetOverrides && typeof targetOverrides === "object") {
+    const target = options?.target ?? "";
+    if (Object.prototype.hasOwnProperty.call(targetOverrides, target)) {
+      const override = (targetOverrides as Record<string, unknown>)[target];
+      if (!override) {
+        return null;
+      }
+      return {
+        ...(override as Partial<Update>),
+        downloadAndInstall: async () => {},
+      } as Update;
+    }
+  }
 
   // Honour __TAURI_MOCK_UPDATE__ so specific tests can simulate an update.
-  const override = (window as unknown as Record<string, unknown>).__TAURI_MOCK_UPDATE__;
+  const override = mockWindow.__TAURI_MOCK_UPDATE__;
   if (override) {
     return {
       ...(override as Partial<Update>),

@@ -1,10 +1,37 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  getDefaultMapMode,
+  getLatestAuthorLocationMarkers,
+  getLatestFriendLocationMarkers,
+  getLocationTimelineMoments,
+  type MapTimeMode,
+} from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useResolvedLocations } from "../../hooks/useResolvedLocations.js";
 import { openAccountFromMap, openFriendFromMap, openPostFromMap } from "../../lib/map-navigation.js";
 import { MapSurface } from "./MapSurface.js";
 
 const MAP_TIME_REFRESH_MS = 60_000;
+const timelineMomentFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+const timelineEdgeFormatter = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+});
+const DEFAULT_TIMELINE_INDEX: Record<Exclude<MapTimeMode, "current">, number> = {
+  past: -1,
+  future: 0,
+};
+
+function formatTimelineMoment(value: number): string {
+  return timelineMomentFormatter.format(value);
+}
+
+function formatTimelineEdge(value: number): string {
+  return timelineEdgeFormatter.format(value);
+}
 
 export function MapView() {
   const items = useAppStore((state) => state.items);
@@ -19,11 +46,59 @@ export function MapView() {
   const setSearchQuery = useAppStore((state) => state.setSearchQuery);
   const display = useAppStore((state) => state.preferences.display);
   const themeId = display.themeId;
+  const savedTimeMode = display.mapTimeMode ?? "current";
   const [referenceNow, setReferenceNow] = useState(() => Date.now());
-  const { friendMarkers, allContentMarkers, defaultMode } = useResolvedLocations(items, persons, accounts, {
-    timeMode: display.mapTimeMode ?? "current",
-    now: referenceNow,
+  const [timelineIndexes, setTimelineIndexes] = useState<Record<Exclude<MapTimeMode, "current">, number | null>>({
+    past: null,
+    future: null,
   });
+
+  const { resolvedItems } = useResolvedLocations(items, persons, accounts);
+  const timelineMoments = useMemo(
+    () => getLocationTimelineMoments(resolvedItems, { timeMode: savedTimeMode, now: referenceNow }),
+    [referenceNow, resolvedItems, savedTimeMode],
+  );
+  const selectedTimelineIndex =
+    savedTimeMode === "current"
+      ? null
+      : timelineIndexes[savedTimeMode];
+  const fallbackTimelineIndex =
+    savedTimeMode === "current"
+      ? null
+      : DEFAULT_TIMELINE_INDEX[savedTimeMode] < 0
+        ? Math.max(0, timelineMoments.length - 1)
+        : DEFAULT_TIMELINE_INDEX[savedTimeMode];
+  const effectiveTimelineIndex =
+    savedTimeMode === "current" || timelineMoments.length === 0
+      ? null
+      : Math.min(
+          selectedTimelineIndex ?? fallbackTimelineIndex ?? 0,
+          timelineMoments.length - 1,
+        );
+  const playbackAt =
+    effectiveTimelineIndex === null ? null : timelineMoments[effectiveTimelineIndex] ?? null;
+  const friendMarkers = useMemo(
+    () =>
+      getLatestFriendLocationMarkers(resolvedItems, {
+        timeMode: savedTimeMode,
+        now: referenceNow,
+        playbackAt,
+      }),
+    [playbackAt, referenceNow, resolvedItems, savedTimeMode],
+  );
+  const allContentMarkers = useMemo(
+    () =>
+      getLatestAuthorLocationMarkers(resolvedItems, {
+        timeMode: savedTimeMode,
+        now: referenceNow,
+        playbackAt,
+      }),
+    [playbackAt, referenceNow, resolvedItems, savedTimeMode],
+  );
+  const defaultMode = useMemo(
+    () => getDefaultMapMode(friendMarkers.length, allContentMarkers.length),
+    [allContentMarkers.length, friendMarkers.length],
+  );
   const effectiveMode = display.mapMode ?? defaultMode;
   const markers = effectiveMode === "friends" ? friendMarkers : allContentMarkers;
 
@@ -41,14 +116,22 @@ export function MapView() {
     [markers, selectedPersonId]
   );
 
+  const handleTimelineScrub = (nextIndex: number) => {
+    if (savedTimeMode === "current") return;
+    setTimelineIndexes((current) => ({
+      ...current,
+      [savedTimeMode]: nextIndex,
+    }));
+  };
+
   const emptyState = (() => {
-    if ((display.mapTimeMode ?? "current") === "future") {
+    if (savedTimeMode === "future") {
       return {
         title: "No future location windows yet.",
         body: "Future-dated travel or event plans will appear here once captured.",
       };
     }
-    if ((display.mapTimeMode ?? "current") === "past") {
+    if (savedTimeMode === "past") {
       return {
         title: effectiveMode === "friends" ? "No friend location history yet." : "No past location pins yet.",
         body:
@@ -68,6 +151,36 @@ export function MapView() {
 
   return (
     <div className="app-theme-shell relative h-full overflow-hidden">
+      {savedTimeMode !== "current" && timelineMoments.length > 0 && effectiveTimelineIndex !== null ? (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center px-4 pt-4">
+          <div
+            className="pointer-events-auto w-full max-w-[min(40rem,calc(100vw-2rem))] rounded-[24px] border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-elevated)_88%,transparent)] px-4 py-3 shadow-[var(--theme-glow-sm)] backdrop-blur-md"
+            data-testid="map-timeline-scrubber"
+          >
+            <div className="flex items-center justify-between gap-3 text-[11px] font-medium uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
+              <span>{savedTimeMode === "past" ? "History scrub" : "Future playback"}</span>
+              <span className="text-right normal-case tracking-normal text-[color:var(--theme-text-primary)]">
+                {formatTimelineMoment(timelineMoments[effectiveTimelineIndex])}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, timelineMoments.length - 1)}
+              step={1}
+              value={effectiveTimelineIndex}
+              aria-label="Map timeline scrubber"
+              className="mt-3 h-2 w-full accent-[var(--theme-accent-primary)]"
+              onChange={(event) => handleTimelineScrub(Number.parseInt(event.currentTarget.value, 10))}
+            />
+            <div className="mt-2 flex items-center justify-between text-[11px] text-[color:var(--theme-text-muted)]">
+              <span>{formatTimelineEdge(timelineMoments[0])}</span>
+              <span>{formatTimelineEdge(timelineMoments[timelineMoments.length - 1])}</span>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <MapSurface
         markers={markers}
         focusedMarkerKey={focusedMarker?.key ?? null}

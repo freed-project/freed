@@ -287,7 +287,7 @@ export async function captureDomFeed(
 - [x] Desktop perf memory checks now use CDP heap-usage sampling instead of the broken zero-value metric path, and they include a heavy preserved-text search scenario so renderer retention regressions show up in CI
 - [ ] Windows installer is code-signed (requires EV certificate)
 - [x] Update server runs on a Freed-owned domain instead of pointing the updater directly at GitHub Releases
-- [x] Desktop settings can switch this install between production and dev release channels
+- [x] Desktop settings can switch this install between production and dev release channels, and the dev channel will install a newer production release when no newer dev build exists without switching the saved channel
 
 > **Current state:**
 > macOS release builds are signed and notarized in GitHub Actions when the
@@ -297,7 +297,11 @@ export async function captureDomFeed(
 > obtained or enough installs build reputation. The shared desktop toolbar
 > now behaves like a real title bar again, including threshold-based window
 > dragging from toolbar controls plus normal cursor and selection treatment
-> for static toolbar labels. Desktop now also writes
+> for static toolbar labels. Desktop now also keeps dev installs on the
+> newest eligible build even when that build comes from the production
+> channel. When production gets ahead of the last dev build, the app now
+> offers that production update without flipping the saved channel away
+> from dev. Desktop now also writes
 > rotating local Automerge snapshots, including Google contact match state,
 > so catastrophic local corruption can be rolled back from Settings.
 > The desktop runtime now also emits periodic memory telemetry into the
