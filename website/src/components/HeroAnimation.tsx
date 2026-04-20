@@ -339,7 +339,7 @@ export default function HeroAnimation({
 }: {
   compact?: boolean;
 }) {
-  const { themeId } = useTheme();
+  const { activeThemeId } = useTheme();
   const logos = useMemo(() => buildLogos(), []);
   const centerBoxSize = compact ? COMPACT_CENTER_BOX_SIZE : DESKTOP_CENTER_BOX_SIZE;
   const centerBoxBounds = useMemo(
@@ -366,7 +366,7 @@ export default function HeroAnimation({
   return (
     <div className="relative w-full aspect-square">
       <svg
-        key={themeId}
+        key={activeThemeId}
         viewBox={`${viewBoxMin} ${viewBoxMin} ${viewBoxSize} ${viewBoxSize}`}
         className="w-full h-full"
       >

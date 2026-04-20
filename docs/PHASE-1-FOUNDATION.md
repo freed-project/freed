@@ -139,7 +139,7 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 - Marketing site no longer inherits the shared app scrollbar chrome, while Freed Desktop and Freed Web keep the themed scrollbar treatment inside app shells and dialogs
 - Theme-aware form controls across the marketing site and shared UI package
 - Shared theme-aware tooltip primitive across the marketing site and shared UI package
-- Homepage footer theme picker uses the same preview swatches as Freed Desktop, with hover tooltips for each theme
+- Homepage footer theme picker uses the same preview swatches as Freed Desktop, with hover tooltips for each theme plus live hover and focus previews that blur between themes and snap back unless the user clicks
 - Five authored themes: Neon, Midas, Vesper, Ember, and Scriptorium
 - Synced theme preference with `Neon` as the default for fresh installs
 - Mobile-responsive design
