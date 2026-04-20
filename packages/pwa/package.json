@@ -4,10 +4,10 @@
   "version": "26.4.1901",
   "type": "module",
   "scripts": {
-    "dev": "node ../../node_modules/vite/bin/vite.js",
-    "build": "tsc -b && node ../../node_modules/vite/bin/vite.js build",
+    "dev": "vite",
+    "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "node ../../node_modules/vite/bin/vite.js preview",
+    "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "node ../../node_modules/playwright/cli.js test",
     "test:unit": "vitest run",
