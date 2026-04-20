@@ -823,7 +823,7 @@ export function Sidebar({
   }) => {
     const compactIcon = isValidElement<{ className?: string }>(args.icon)
       ? cloneElement(args.icon, {
-          className: `${args.icon.props.className ?? ""} h-6 w-6`.trim(),
+          className: `${args.icon.props.className ?? ""} h-[18px] w-[18px]`.trim(),
         })
       : args.icon;
 
@@ -840,7 +840,7 @@ export function Sidebar({
         }`}
         aria-label={args.label}
       >
-          <span className="flex h-6 w-6 items-center justify-center">
+          <span className="flex h-[18px] w-[18px] items-center justify-center">
             {compactIcon}
           </span>
           {args.badge ? (

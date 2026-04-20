@@ -339,7 +339,7 @@ export function SearchJumpField({
             aria-haspopup="dialog"
             >
             <svg
-              className="h-6 w-6"
+              className="h-[18px] w-[18px]"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"

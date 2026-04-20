@@ -400,18 +400,34 @@ test("desktop sidebar snaps to compact and closed, then restores the last non-cl
     const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
     const searchTrigger = sidebar?.querySelector('[data-testid="compact-sidebar-search-trigger"]') as HTMLElement | null;
     const xRow = sidebar?.querySelector('[data-testid="source-row-x"]') as HTMLElement | null;
+    const searchIcon = searchTrigger?.querySelector("svg") as SVGElement | null;
+    const xIcon = xRow?.querySelector("svg") as SVGElement | null;
     return {
       sidebarWidth: sidebar?.getBoundingClientRect().width ?? 0,
       searchWidth: searchTrigger?.getBoundingClientRect().width ?? 0,
       searchHeight: searchTrigger?.getBoundingClientRect().height ?? 0,
       rowWidth: xRow?.getBoundingClientRect().width ?? 0,
       rowHeight: xRow?.getBoundingClientRect().height ?? 0,
+      searchIconWidth: searchIcon?.getBoundingClientRect().width ?? 0,
+      searchIconHeight: searchIcon?.getBoundingClientRect().height ?? 0,
+      xIconTag: xIcon?.tagName.toLowerCase() ?? null,
+      xIconWidth: xIcon?.getBoundingClientRect().width ?? 0,
+      xIconHeight: xIcon?.getBoundingClientRect().height ?? 0,
     };
   });
   expect(Math.abs(compactSquares.searchWidth - compactSquares.sidebarWidth)).toBeLessThanOrEqual(8);
   expect(Math.abs(compactSquares.searchHeight - compactSquares.searchWidth)).toBeLessThanOrEqual(1);
   expect(Math.abs(compactSquares.rowWidth - compactSquares.sidebarWidth)).toBeLessThanOrEqual(8);
   expect(Math.abs(compactSquares.rowHeight - compactSquares.rowWidth)).toBeLessThanOrEqual(1);
+  expect(compactSquares.searchIconWidth).toBeGreaterThanOrEqual(16);
+  expect(compactSquares.searchIconWidth).toBeLessThanOrEqual(19);
+  expect(compactSquares.searchIconHeight).toBeGreaterThanOrEqual(16);
+  expect(compactSquares.searchIconHeight).toBeLessThanOrEqual(19);
+  expect(compactSquares.xIconTag).toBe("svg");
+  expect(compactSquares.xIconWidth).toBeGreaterThanOrEqual(18);
+  expect(compactSquares.xIconWidth).toBeLessThanOrEqual(21);
+  expect(compactSquares.xIconHeight).toBeGreaterThanOrEqual(18);
+  expect(compactSquares.xIconHeight).toBeLessThanOrEqual(21);
 
   await page.mouse.move(startX - 240, startY, { steps: 6 });
   await page.waitForTimeout(100);
