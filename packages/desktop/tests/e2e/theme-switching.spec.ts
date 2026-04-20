@@ -101,13 +101,15 @@ test("hovering a theme previews it and leaving restores the committed theme", as
   await expect.poll(async () => {
     return page.evaluate(() => document.documentElement.dataset.theme);
   }).toBe("scriptorium");
-  await expect(scriptoriumButton).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /^Neon\./ })).toHaveAttribute("aria-pressed", "true");
+  await expect(scriptoriumButton).toHaveAttribute("aria-pressed", "false");
 
   await page.getByText("Mark read on scroll").hover();
 
   await expect.poll(async () => {
     return page.evaluate(() => document.documentElement.dataset.theme);
   }).toBe("neon");
+  await expect(page.getByRole("button", { name: /^Neon\./ })).toHaveAttribute("aria-pressed", "true");
   await expect(scriptoriumButton).toHaveAttribute("aria-pressed", "false");
 });
 
@@ -130,13 +132,15 @@ test("keyboard focus previews a theme and blur restores the committed theme", as
   await expect.poll(async () => {
     return page.evaluate(() => document.documentElement.dataset.theme);
   }).toBe("ember");
-  await expect(emberButton).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /^Neon\./ })).toHaveAttribute("aria-pressed", "true");
+  await expect(emberButton).toHaveAttribute("aria-pressed", "false");
 
   await readingToggle.focus();
 
   await expect.poll(async () => {
     return page.evaluate(() => document.documentElement.dataset.theme);
   }).toBe("neon");
+  await expect(page.getByRole("button", { name: /^Neon\./ })).toHaveAttribute("aria-pressed", "true");
   await expect(emberButton).toHaveAttribute("aria-pressed", "false");
 });
 

@@ -464,7 +464,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   }, [activateTouchThemePreview, flushPendingThemeSelection]);
 
   const {
-    activeThemeId,
     revertPreview: revertThemePreview,
     previewTheme,
     commitTheme,
@@ -878,7 +877,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   <p className="theme-settings-theme-card__label text-sm font-semibold text-text-primary">Theme</p>
                   <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
                     {THEME_DEFINITIONS.map((theme) => {
-                      const isActive = activeThemeId === theme.id;
+                      const isActive = display.themeId === theme.id;
                       return (
                         <Tooltip
                           key={theme.id}
