@@ -158,6 +158,15 @@ The helper now:
 - installs dependencies with the npm binary that matches the active Node runtime
 - avoids the broken "last worktree wins" assumption that can install into the wrong checkout
 
+When the branch is ready to publish, use:
+
+```bash
+./scripts/worktree-publish.sh --title "fix: describe the change" --summary "What changed for the user" --test "Focused check you ran"
+```
+
+That stages the worktree, creates the commit when needed, pushes the branch to
+`origin`, and opens a draft PR.
+
 ### Marketing Website (freed.wtf)
 
 ```bash
