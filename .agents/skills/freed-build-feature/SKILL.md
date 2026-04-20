@@ -25,7 +25,8 @@ Create a product worktree branch from the latest remote `dev`, implement the fea
    - Use `./scripts/worktree-preview.sh desktop` only when you need the Desktop shell running in the mocked browser preview.
    - Use `./scripts/worktree-preview.sh desktop --native` only when the change depends on real Tauri behavior such as native windowing, tray behavior, updater wiring, filesystem or process plugins, native OAuth windows, or Rust-side integrations.
    - When native Desktop preview is running, report the preview label so parallel native windows can be matched to the worktree and thread that launched them.
-10. Open a draft PR targeting `dev`, and include the local preview URL or native preview label in the closeout.
+10. Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run commands from the workspace directory itself, and when a hoisted binary is needed, prefix `PATH` with `<worktree>/node_modules/.bin`.
+11. Open a draft PR targeting `dev`, and include the local preview URL or native preview label in the closeout.
 
 ## Scope
 

@@ -9,10 +9,10 @@
   ],
   "scripts": {
     "postinstall": "node scripts/patch-automerge.mjs",
-    "build": "npm run build --workspaces --if-present",
-    "dev": "npm run dev --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "node scripts/run-workspace-fanout.mjs build",
+    "dev": "node scripts/run-workspace-fanout.mjs dev",
+    "test": "node scripts/run-workspace-fanout.mjs test",
+    "typecheck": "node scripts/run-workspace-fanout.mjs typecheck",
     "typecheck:graph": "tsc --build --dry"
   },
   "devDependencies": {

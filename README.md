@@ -159,6 +159,7 @@ The helper now:
 - avoids the broken "last worktree wins" assumption that can install into the wrong checkout
 - stays on the branch you asked for instead of inheriting some crusty local base by accident
 - works cleanly with tracked local previews, including readable labels for native preview windows
+- avoids root-level workspace npm dispatch in the preview and deploy helpers, because this monorepo can recurse badly when `npm run <script> --workspace=...` is launched from the repo root
 
 If you want a cheap speculative worktree instead, opt in explicitly:
 
@@ -173,6 +174,16 @@ When you are ready to preview the work locally, prefer the lightest useful surfa
 ./scripts/worktree-preview.sh website  # marketing site work
 ./scripts/worktree-preview.sh desktop --native  # only for real Tauri behavior
 ```
+
+When you run workspace commands by hand, do the same thing as the helpers:
+
+```bash
+cd website
+PATH=../node_modules/.bin:$PATH npm run build
+```
+
+Do not use root-level `npm run <script> --workspace=...` in this repo.
+The root `build`, `dev`, `test`, and `typecheck` scripts now fail fast if you try it, so the error is your cue to `cd` into the workspace and run the command there.
 
 ### Marketing Website (freed.wtf)
 

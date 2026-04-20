@@ -64,6 +64,9 @@ Prefer the lightest useful local preview before opening a draft PR:
 - product work usually uses `./scripts/worktree-preview.sh pwa`
 - website work uses `./scripts/worktree-preview.sh website`
 - use `./scripts/worktree-preview.sh desktop --native` only when real Tauri behavior matters, and report the preview label when you do
+- never run `npm run <script> --workspace=...` from the repo root in this monorepo, run from the workspace directory instead
+- the root fanout scripts now fail fast if you try that dangerous pattern, treat that error as a routing mistake and re-run from the workspace
+- if a workspace command needs a hoisted binary, prefix `PATH` with the worktree root `node_modules/.bin`
 
 **Branch naming:** `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/` prefix followed by a short kebab-case description.
 
@@ -166,13 +169,14 @@ with default IPC handlers for every command the app calls on startup.
 
 ```bash
 # Standard run (headless Chromium)
-npm run test:e2e --workspace=packages/desktop
+cd packages/desktop
+npm run test:e2e
 
 # Playwright UI mode (visual test runner, great for writing new tests)
-npm run test:e2e:ui --workspace=packages/desktop
+npm run test:e2e:ui
 
 # Step-through debugger (pauses on each action, shows browser)
-npm run test:e2e:debug --workspace=packages/desktop
+npm run test:e2e:debug
 ```
 
 All three commands start a Vite dev server automatically on port 1422 with `VITE_TEST_TAURI=1` and

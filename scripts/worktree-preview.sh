@@ -161,10 +161,13 @@ LOG_PATH=""
 URL=""
 ENV_VARS=()
 RUN_ARGS=()
+RUN_CWD=""
+ROOT_BIN_DIR="$(worktree_root_bin_dir "${WORKTREE_PATH}")"
 
 case "${TARGET}" in
   desktop)
     SLOT_KIND="desktop"
+    RUN_CWD="$(workspace_path_for_target "${WORKTREE_PATH}" "desktop")"
     if ${USE_NATIVE}; then
       DEFAULT_PORT="1420"
       PORT="${PORT:-${DEFAULT_PORT}}"
@@ -173,21 +176,23 @@ case "${TARGET}" in
         exit 1
       fi
       ENV_VARS=(
+        "PATH=${ROOT_BIN_DIR}:${PATH}"
         "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
         "FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL}"
       )
-      RUN_ARGS=("${NPM_BIN}" "run" "tauri:dev" "--workspace=packages/desktop")
-      COMMAND_DISPLAY="VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL} npm run tauri:dev --workspace=packages/desktop"
+      RUN_ARGS=("${NPM_BIN}" "run" "tauri:dev")
+      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL} npm run tauri:dev"
       URL="http://localhost:1420"
     else
       DEFAULT_PORT="1422"
       PORT="${PORT:-$(find_free_port "${DEFAULT_PORT}")}"
       ENV_VARS=(
+        "PATH=${ROOT_BIN_DIR}:${PATH}"
         "VITE_TEST_TAURI=1"
         "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
       )
-      RUN_ARGS=("${NPM_BIN}" "run" "dev" "--workspace=packages/desktop" "--" "--port" "${PORT}")
-      COMMAND_DISPLAY="VITE_TEST_TAURI=1 VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev --workspace=packages/desktop -- --port ${PORT}"
+      RUN_ARGS=("${NPM_BIN}" "run" "dev" "--" "--port" "${PORT}")
+      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_TEST_TAURI=1 VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT}"
       URL="http://localhost:${PORT}"
     fi
     ;;
@@ -195,18 +200,26 @@ case "${TARGET}" in
     SLOT_KIND="web"
     DEFAULT_PORT="1421"
     PORT="${PORT:-$(find_free_port "${DEFAULT_PORT}")}"
-    ENV_VARS=("VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}")
-    RUN_ARGS=("${NPM_BIN}" "run" "dev" "--workspace=packages/pwa" "--" "--port" "${PORT}")
-    COMMAND_DISPLAY="VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev --workspace=packages/pwa -- --port ${PORT}"
+    RUN_CWD="$(workspace_path_for_target "${WORKTREE_PATH}" "pwa")"
+    ENV_VARS=(
+      "PATH=${ROOT_BIN_DIR}:${PATH}"
+      "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
+    )
+    RUN_ARGS=("${NPM_BIN}" "run" "dev" "--" "--port" "${PORT}")
+    COMMAND_DISPLAY="cd packages/pwa && PATH=${ROOT_BIN_DIR}:\$PATH VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT}"
     URL="http://localhost:${PORT}"
     ;;
   website)
     SLOT_KIND="web"
     DEFAULT_PORT="3000"
     PORT="${PORT:-$(find_free_port "${DEFAULT_PORT}")}"
-    ENV_VARS=("NEXT_PUBLIC_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}")
-    RUN_ARGS=("${NPM_BIN}" "run" "dev" "--workspace=website" "--" "--port" "${PORT}")
-    COMMAND_DISPLAY="NEXT_PUBLIC_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev --workspace=website -- --port ${PORT}"
+    RUN_CWD="$(workspace_path_for_target "${WORKTREE_PATH}" "website")"
+    ENV_VARS=(
+      "PATH=${ROOT_BIN_DIR}:${PATH}"
+      "NEXT_PUBLIC_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
+    )
+    RUN_ARGS=("${NPM_BIN}" "run" "dev" "--" "--port" "${PORT}")
+    COMMAND_DISPLAY="cd website && PATH=${ROOT_BIN_DIR}:\$PATH NEXT_PUBLIC_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT}"
     URL="http://localhost:${PORT}"
     ;;
 esac
@@ -227,7 +240,7 @@ spawn_preview() {
     done
   fi
 
-  FREED_PREVIEW_ENV="${env_blob}" python3 - "${WORKTREE_PATH}" "${LOG_PATH}" "${RUN_ARGS[@]}" <<'PY'
+  FREED_PREVIEW_ENV="${env_blob}" python3 - "${RUN_CWD}" "${LOG_PATH}" "${RUN_ARGS[@]}" <<'PY'
 import os
 import subprocess
 import sys
