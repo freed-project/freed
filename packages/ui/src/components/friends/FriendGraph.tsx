@@ -683,7 +683,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   }, [findHitNode, fitAll, focusNode]);
 
   return (
-    <div ref={containerRef} className="theme-soft-viewport relative h-full w-full">
+    <div
+      ref={containerRef}
+      data-testid="friend-graph-viewport"
+      className="theme-soft-viewport relative h-full w-full"
+    >
       <div className="theme-soft-viewport-content">
         <canvas
           ref={canvasRef}

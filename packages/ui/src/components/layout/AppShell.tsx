@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback, type ReactNode } from "react";
+import { useEffect, useState, useRef, useCallback, type CSSProperties, type ReactNode } from "react";
 import { Sidebar } from "./Sidebar.js";
 import { Header } from "./Header.js";
 import { DebugPanel } from "../DebugPanel.js";
@@ -8,6 +8,7 @@ import { FriendsView } from "../friends/FriendsView.js";
 import { ContactSyncModal } from "../friends/ContactSyncModal.js";
 import { useContactSync } from "../../hooks/useContactSync.js";
 import { ContactSyncContext } from "../../context/ContactSyncContext.js";
+import { useIsMobile } from "../../hooks/useIsMobile.js";
 import {
   buildDiscoveredAccountsFromItems,
   type GoogleContact,
@@ -21,6 +22,11 @@ import {
 import { applyThemeToDocument, persistTheme } from "../../lib/theme.js";
 import { MapView } from "../map/MapView.js";
 import { BackgroundAtmosphere } from "./BackgroundAtmosphere.js";
+import {
+  AUXILIARY_DRAWER_GAP_WIDTH_PX,
+  PRIMARY_SIDEBAR_GAP_WIDTH_PX,
+  px,
+} from "./layoutConstants.js";
 
 const DEFAULT_DEBUG_WIDTH = 320;
 const MIN_DEBUG_WIDTH = 280;
@@ -32,6 +38,7 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const isMobile = useIsMobile();
   const debugVisible = useDebugStore((s) => s.visible);
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);
@@ -154,6 +161,15 @@ export function AppShell({ children }: AppShellProps) {
     persistTheme(themeId);
   }, [isInitialized, themeId]);
 
+  const workspaceMaskStyle = isMobile
+    ? undefined
+    : ({
+        "--theme-soft-viewport-base-comp-left":
+          desktopSidebarMode === "closed" ? "0px" : px(PRIMARY_SIDEBAR_GAP_WIDTH_PX),
+        "--theme-soft-viewport-base-comp-right":
+          debugVisible ? px(AUXILIARY_DRAWER_GAP_WIDTH_PX) : "0px",
+      } as CSSProperties);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "D" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
@@ -259,7 +275,10 @@ export function AppShell({ children }: AppShellProps) {
             desktopMode={desktopSidebarMode}
             onDesktopModeChange={persistDesktopSidebarMode}
           />
-          <main className="min-w-0 flex-1 md:min-h-0 md:overflow-hidden">
+          <main
+            className="min-w-0 flex-1 md:min-h-0 md:overflow-hidden"
+            style={workspaceMaskStyle}
+          >
             {activeView === "friends"
               ? <FriendsView />
               : activeView === "map"
@@ -271,7 +290,7 @@ export function AppShell({ children }: AppShellProps) {
             data-testid="debug-panel-drawer"
             className="relative hidden sm:flex flex-none overflow-hidden"
             style={{
-              width: debugVisible ? debugWidth + 12 : 0,
+              width: debugVisible ? debugWidth + AUXILIARY_DRAWER_GAP_WIDTH_PX : 0,
               opacity: debugVisible ? 1 : 0,
               transition: dragging.current ? "none" : "width 300ms ease-in-out, opacity 180ms ease-in-out",
             }}

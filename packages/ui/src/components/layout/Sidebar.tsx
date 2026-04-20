@@ -19,6 +19,10 @@ import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../ic
 import { TOP_SOURCE_ITEMS, type SourceNavigationItem } from "../../lib/source-navigation.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { SearchJumpField } from "./SearchJumpField.js";
+import {
+  PRIMARY_SIDEBAR_GAP_WIDTH_PX,
+  px,
+} from "./layoutConstants.js";
 
 const compactNumberFormatter = new Intl.NumberFormat(undefined, {
   notation: "compact",
@@ -567,10 +571,10 @@ export function Sidebar({
     paddingBottom: `calc(${sidebarPaddingPx}px + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))`,
   };
   const desktopShellWidth = dragWidth !== null
-    ? desktopWidth + 16
+    ? desktopWidth + PRIMARY_SIDEBAR_GAP_WIDTH_PX
     : desktopMode === "closed"
       ? 0
-      : (desktopMode === "compact" ? COMPACT_WIDTH : committedWidth) + 16;
+      : (desktopMode === "compact" ? COMPACT_WIDTH : committedWidth) + PRIMARY_SIDEBAR_GAP_WIDTH_PX;
   const desktopShellOpacity = dragWidth !== null ? 1 : desktopMode === "closed" ? 0 : 1;
   const desktopShellTopPadding = dragWidth !== null || desktopMode !== "closed"
     ? "var(--feed-card-gap, 8px)"
@@ -1545,7 +1549,7 @@ export function Sidebar({
           <aside
             data-testid="app-sidebar"
             className="theme-floating-panel relative z-10 flex h-full min-h-0 shrink-0 flex-col overflow-hidden"
-            style={{ width: `${desktopAsideWidth}px` }}
+            style={{ width: px(desktopAsideWidth) }}
           >
             {sidebarBody}
           </aside>

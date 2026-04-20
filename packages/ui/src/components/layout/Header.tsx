@@ -37,6 +37,11 @@ import {
   usePlatform,
 } from "../../context/PlatformContext.js";
 import { getFilterLabel } from "../../lib/feed-view-labels.js";
+import {
+  PRIMARY_SIDEBAR_GAP_WIDTH_PX,
+  TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
+  px,
+} from "./layoutConstants.js";
 
 interface HeaderProps {
   mobileSidebarOpen: boolean;
@@ -323,7 +328,10 @@ export function Header({
     : undefined;
   const sidebarSlotStyle =
     !isMobile && desktopSidebarMode !== "closed"
-      ? ({ width: "calc(var(--freed-sidebar-card-width, 240px) + 16px)", paddingRight: "8px" } as CSSProperties)
+      ? ({
+          width: `calc(var(--freed-sidebar-card-width, 240px) + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX)})`,
+          paddingRight: px(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX),
+        } as CSSProperties)
       : undefined;
   const leftToolbarStyle = sidebarSlotStyle
     ? {

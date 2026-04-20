@@ -25,7 +25,6 @@ export function openFriendFromMap(
 ): void {
   if (!marker.friend) return;
   actions.setSelectedPerson(marker.friend.id);
-  actions.setSelectedAccount(null);
   actions.setSelectedItem(null);
   actions.setActiveView("friends");
 }
@@ -53,7 +52,6 @@ export function openPostFromMap(
   actions.setFilter({});
   actions.setSearchQuery("");
   actions.setSelectedPerson(marker.friend?.id ?? null);
-  actions.setSelectedAccount(null);
   actions.setSelectedItem(marker.item.globalId);
   actions.setActiveView("feed");
 }

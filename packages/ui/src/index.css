@@ -818,10 +818,16 @@ html[data-theme="scriptorium"] .theme-panel-muted {
 }
 
 .theme-soft-viewport {
+  --theme-soft-viewport-mask-size: 20px;
+  --theme-soft-viewport-radius: 20px;
+  --theme-soft-viewport-comp-left: calc(var(--theme-soft-viewport-base-comp-left, 0px) + var(--theme-soft-viewport-extra-comp-left, 0px));
+  --theme-soft-viewport-comp-right: calc(var(--theme-soft-viewport-base-comp-right, 0px) + var(--theme-soft-viewport-extra-comp-right, 0px));
+  --theme-soft-viewport-comp-top: calc(var(--theme-soft-viewport-base-comp-top, 0px) + var(--theme-soft-viewport-extra-comp-top, 0px));
+  --theme-soft-viewport-comp-bottom: calc(var(--theme-soft-viewport-base-comp-bottom, 0px) + var(--theme-soft-viewport-extra-comp-bottom, 0px));
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  border-radius: 20px;
+  border-radius: var(--theme-soft-viewport-radius);
 }
 
 .theme-soft-viewport-content {
@@ -829,6 +835,7 @@ html[data-theme="scriptorium"] .theme-panel-muted {
   inset: 0;
   overflow: hidden;
   border-radius: inherit;
+  clip-path: inset(0 round var(--theme-soft-viewport-radius));
 }
 
 .theme-scroll-fade-y {
@@ -844,17 +851,17 @@ html[data-theme="scriptorium"] .theme-panel-muted {
     -webkit-mask-image:
       linear-gradient(
         to right,
-        transparent 0,
-        #000 20px,
-        #000 calc(100% - 20px),
-        transparent 100%
+        transparent calc(0px - var(--theme-soft-viewport-comp-left)),
+        #000 calc(var(--theme-soft-viewport-mask-size) - var(--theme-soft-viewport-comp-left)),
+        #000 calc(100% - var(--theme-soft-viewport-mask-size) + var(--theme-soft-viewport-comp-right)),
+        transparent calc(100% + var(--theme-soft-viewport-comp-right))
       ),
       linear-gradient(
         to bottom,
-        transparent 0,
-        #000 20px,
-        #000 calc(100% - 20px),
-        transparent 100%
+        transparent calc(0px - var(--theme-soft-viewport-comp-top)),
+        #000 calc(var(--theme-soft-viewport-mask-size) - var(--theme-soft-viewport-comp-top)),
+        #000 calc(100% - var(--theme-soft-viewport-mask-size) + var(--theme-soft-viewport-comp-bottom)),
+        transparent calc(100% + var(--theme-soft-viewport-comp-bottom))
       );
     -webkit-mask-repeat: no-repeat, no-repeat;
     -webkit-mask-size: 100% 100%, 100% 100%;
@@ -862,17 +869,17 @@ html[data-theme="scriptorium"] .theme-panel-muted {
     mask-image:
       linear-gradient(
         to right,
-        transparent 0,
-        #000 20px,
-        #000 calc(100% - 20px),
-        transparent 100%
+        transparent calc(0px - var(--theme-soft-viewport-comp-left)),
+        #000 calc(var(--theme-soft-viewport-mask-size) - var(--theme-soft-viewport-comp-left)),
+        #000 calc(100% - var(--theme-soft-viewport-mask-size) + var(--theme-soft-viewport-comp-right)),
+        transparent calc(100% + var(--theme-soft-viewport-comp-right))
       ),
       linear-gradient(
         to bottom,
-        transparent 0,
-        #000 20px,
-        #000 calc(100% - 20px),
-        transparent 100%
+        transparent calc(0px - var(--theme-soft-viewport-comp-top)),
+        #000 calc(var(--theme-soft-viewport-mask-size) - var(--theme-soft-viewport-comp-top)),
+        #000 calc(100% - var(--theme-soft-viewport-mask-size) + var(--theme-soft-viewport-comp-bottom)),
+        transparent calc(100% + var(--theme-soft-viewport-comp-bottom))
       );
     mask-repeat: no-repeat, no-repeat;
     mask-size: 100% 100%, 100% 100%;
