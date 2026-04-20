@@ -321,7 +321,7 @@ export function SearchJumpField({
 
   if (usesFloatingTrigger) {
     return (
-      <div className="relative z-20 mb-2 w-full">
+      <div className="relative z-20 w-full">
         <Tooltip label="Search or run a command" className="flex w-full">
           <button
             ref={triggerButtonRef}
@@ -337,9 +337,9 @@ export function SearchJumpField({
             aria-label="Search or run a command"
             aria-expanded={showPalette}
             aria-haspopup="dialog"
-          >
+            >
             <svg
-              className="h-4 w-4"
+              className="h-[18px] w-[18px]"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"

@@ -397,10 +397,10 @@ function SourceContextMenu({
 
 const MAX_WIDTH = 480;
 const DEFAULT_WIDTH = 256;
-const COMPACT_WIDTH = 56;
+const COMPACT_WIDTH = 48;
 const CLOSED_SNAP_THRESHOLD = 40;
-const COMPACT_SNAP_THRESHOLD = 72;
-const NARROW_LABEL_THRESHOLD = 232;
+const COMPACT_SNAP_THRESHOLD = 150;
+const LABEL_PRIORITY_THRESHOLD = 200;
 
 function getDesktopModeForWidth(width: number): SidebarMode {
   if (width <= CLOSED_SNAP_THRESHOLD) return "closed";
@@ -561,25 +561,29 @@ export function Sidebar({
       ? 0
       : rawDesktopWidth;
   const compactRail = renderMode === "compact";
-  const narrowLabeledSidebar = renderMode === "expanded" && desktopWidth < NARROW_LABEL_THRESHOLD;
+  const narrowLabeledSidebar = renderMode === "expanded" && desktopWidth < LABEL_PRIORITY_THRESHOLD;
   const rowCountsVisible = renderMode === "expanded" && !narrowLabeledSidebar;
   const sourceMenusVisible = renderMode === "expanded" && !narrowLabeledSidebar;
+  const sourceIndicatorsVisible = renderMode === "expanded" && !narrowLabeledSidebar;
+  const rssAccordionVisible = renderMode === "expanded" && !narrowLabeledSidebar;
+  const sourceStatusVisible = renderMode === "expanded" && !narrowLabeledSidebar;
   const searchVariant = compactRail ? "trigger" : "inline";
   const sidebarPaddingInlinePx = compactRail
     ? 0
-    : Math.round(interpolate(desktopWidth, COMPACT_SNAP_THRESHOLD, DEFAULT_WIDTH, 10, 16));
+    : Math.round(interpolate(desktopWidth, COMPACT_SNAP_THRESHOLD, DEFAULT_WIDTH, 8, 16));
   const sidebarPaddingBlockPx = compactRail
-    ? 8
-    : Math.round(interpolate(desktopWidth, COMPACT_SNAP_THRESHOLD, DEFAULT_WIDTH, 10, 16));
+    ? 0
+    : Math.round(interpolate(desktopWidth, COMPACT_SNAP_THRESHOLD, DEFAULT_WIDTH, 8, 16));
   const sidebarBodyStyle = {
     paddingTop: `${sidebarPaddingBlockPx}px`,
     paddingInline: `${sidebarPaddingInlinePx}px`,
-    paddingBottom: `calc(${sidebarPaddingBlockPx}px + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))`,
+    paddingBottom: compactRail
+      ? "0px"
+      : `calc(${sidebarPaddingBlockPx}px + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))`,
   };
   const desktopShellWidth = renderMode === "closed"
     ? 0
     : desktopWidth + PRIMARY_SIDEBAR_GAP_WIDTH_PX;
-  const desktopShellOpacity = renderMode === "closed" ? 0 : 1;
   const desktopShellTopPadding = renderMode !== "closed"
     ? "var(--feed-card-gap, 8px)"
     : 0;
@@ -589,6 +593,7 @@ export function Sidebar({
   const rowPaddingClass = compactRail ? "px-1.5" : "px-3";
   const rowLeadingPaddingClass = compactRail ? "pl-1.5" : "pl-3";
   const rowTrailingPaddingClass = compactRail ? "pr-1" : "pr-2";
+  const resizeHandleVisible = dragWidth !== null || renderMode !== "closed";
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -819,7 +824,7 @@ export function Sidebar({
         }`}
         aria-label={args.label}
       >
-        <span className="flex h-5 w-5 items-center justify-center">
+        <span className="flex h-[18px] w-[18px] items-center justify-center">
           {args.icon}
         </span>
         {args.badge ? (
@@ -833,7 +838,7 @@ export function Sidebar({
 
   const sidebarBody = (
     <nav
-      className={`flex-1 min-h-0 flex flex-col ${sidebarPaddingClass} pt-4 overflow-y-auto minimal-scroll`}
+      className={`flex-1 min-h-0 flex flex-col ${sidebarPaddingClass} overflow-y-auto minimal-scroll`}
       style={sidebarBodyStyle}
     >
           <SearchJumpField compactSidebar={compactSidebar} variant={searchVariant} />
@@ -877,7 +882,7 @@ export function Sidebar({
                           : "text-[var(--theme-text-secondary)] group-hover/source:text-[var(--theme-text-primary)]"
                       }
                     `}
-                  >
+                    >
                     <span className="w-5 flex items-center justify-center">{source.icon}</span>
                     <span className="min-w-0 flex-1 truncate">{source.label}</span>
                   </button>
@@ -885,7 +890,7 @@ export function Sidebar({
                     onClick={() => handleSourceClick(source)}
                     className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
                   >
-                    {SourceIndicator ? (
+                    {sourceIndicatorsVisible && SourceIndicator ? (
                       <span
                         data-testid={`source-indicator-slot-${sourceKey(source)}`}
                         className="flex h-4 w-4 shrink-0 items-center justify-center"
@@ -1162,31 +1167,33 @@ export function Sidebar({
                               <span className="w-5 flex items-center justify-center">{source.icon}</span>
                               <span className="min-w-0 truncate">{source.label}</span>
                             </div>
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setRssFeedsOpen((value) => !value);
-                              }}
-                              className="shrink-0 rounded p-1 text-[color:var(--theme-text-soft)] transition-colors hover:text-[color:var(--theme-text-secondary)]"
-                              aria-label={rssFeedsOpen ? "Collapse feeds" : "Expand feeds"}
-                              aria-expanded={rssFeedsOpen}
-                            >
-                              <svg
-                                className={`h-3 w-3 transition-transform ${rssFeedsOpen ? "rotate-90" : ""}`}
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
+                            {rssAccordionVisible ? (
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setRssFeedsOpen((value) => !value);
+                                }}
+                                className="shrink-0 rounded p-1 text-[color:var(--theme-text-soft)] transition-colors hover:text-[color:var(--theme-text-secondary)]"
+                                aria-label={rssFeedsOpen ? "Collapse feeds" : "Expand feeds"}
+                                aria-expanded={rssFeedsOpen}
                               >
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                              </svg>
-                            </button>
+                                <svg
+                                  className={`h-3 w-3 transition-transform ${rssFeedsOpen ? "rotate-90" : ""}`}
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                              </button>
+                            ) : null}
                           </div>
                           <div
                             onClick={() => handleSourceClick(source)}
                             className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
                           >
-                            {sourceStatus ? (
+                            {sourceStatusVisible && sourceStatus ? (
                               <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                                 <ProviderStatusIndicator
                                   tone={sourceStatus.tone}
@@ -1406,7 +1413,7 @@ export function Sidebar({
                       onClick={() => handleSourceClick(source)}
                       className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
                     >
-                      {SourceIndicator ? (
+                      {sourceIndicatorsVisible && SourceIndicator ? (
                         <span
                           data-testid={`source-indicator-slot-${sourceKey(source)}`}
                           className="flex h-4 w-4 shrink-0 items-center justify-center"
@@ -1552,27 +1559,34 @@ export function Sidebar({
 
       <div
         data-testid="app-sidebar-shell"
-        className="hidden md:flex flex-none overflow-hidden"
+        className="hidden md:flex flex-none overflow-visible"
         style={{
           width: desktopShellWidth,
-          opacity: desktopShellOpacity,
           paddingTop: desktopShellTopPadding,
           transition: dragging.current ? "none" : "width 220ms ease, opacity 180ms ease",
         }}
       >
-        <div className="flex h-full w-full items-stretch">
-          <aside
-            data-testid="app-sidebar"
-            className="theme-floating-panel relative z-10 flex h-full min-h-0 shrink-0 flex-col overflow-hidden"
-            style={{ width: px(desktopAsideWidth) }}
-          >
-            {sidebarBody}
-          </aside>
-          <div
-            data-testid="app-sidebar-resize-handle"
-            className="theme-resize-gap-handle h-full w-4 shrink-0"
-            onMouseDown={handleDragStart}
-          />
+        <div className="relative h-full w-full overflow-visible">
+          {renderMode !== "closed" ? (
+            <aside
+              data-testid="app-sidebar"
+              className="theme-floating-panel relative z-10 flex h-full min-h-0 shrink-0 flex-col overflow-hidden"
+              style={{
+                width: px(desktopAsideWidth),
+                transition: dragging.current ? "none" : "width 220ms ease",
+              }}
+            >
+              {sidebarBody}
+            </aside>
+          ) : null}
+          {resizeHandleVisible ? (
+            <div
+              data-testid="app-sidebar-resize-handle"
+              className="theme-resize-gap-handle absolute inset-y-0 z-20 w-4"
+              style={{ left: px(rawDesktopWidth) }}
+              onMouseDown={handleDragStart}
+            />
+          ) : null}
         </div>
       </div>
 

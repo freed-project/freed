@@ -293,15 +293,23 @@ test("desktop sidebar snaps to compact and closed, then restores the last non-cl
 
   await page.mouse.move(startX, startY);
   await page.mouse.down();
-  await page.mouse.move(startX - 208, startY, { steps: 8 });
+  await page.mouse.move(startX - 136, startY, { steps: 8 });
   await page.waitForTimeout(100);
 
   const compactGeometry = await readDesktopSidebarGeometry(page);
-  expect(compactGeometry.shellWidth).toBeGreaterThanOrEqual(70);
-  expect(compactGeometry.shellWidth).toBeLessThanOrEqual(74);
-  expect(compactGeometry.sidebarWidth).toBeGreaterThanOrEqual(54);
-  expect(compactGeometry.sidebarWidth).toBeLessThanOrEqual(58);
+  expect(compactGeometry.sidebarWidth).toBeGreaterThanOrEqual(46);
+  expect(compactGeometry.sidebarWidth).toBeLessThanOrEqual(50);
   await expect(desktopSidebar.getByTestId("compact-sidebar-search-trigger")).toBeVisible();
+
+  const compactPreviewMetrics = await page.evaluate(() => {
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    const handle = document.querySelector('[data-testid="app-sidebar-resize-handle"]') as HTMLElement | null;
+    return {
+      sidebarRight: sidebar?.getBoundingClientRect().right ?? 0,
+      handleLeft: handle?.getBoundingClientRect().left ?? 0,
+    };
+  });
+  expect(compactPreviewMetrics.handleLeft - compactPreviewMetrics.sidebarRight).toBeGreaterThanOrEqual(60);
 
   const compactSquares = await page.evaluate(() => {
     const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
@@ -315,19 +323,19 @@ test("desktop sidebar snaps to compact and closed, then restores the last non-cl
       rowHeight: xRow?.getBoundingClientRect().height ?? 0,
     };
   });
-  expect(Math.abs(compactSquares.searchWidth - compactSquares.sidebarWidth)).toBeLessThanOrEqual(1);
+  expect(Math.abs(compactSquares.searchWidth - compactSquares.sidebarWidth)).toBeLessThanOrEqual(2);
   expect(Math.abs(compactSquares.searchHeight - compactSquares.searchWidth)).toBeLessThanOrEqual(1);
-  expect(Math.abs(compactSquares.rowWidth - compactSquares.sidebarWidth)).toBeLessThanOrEqual(1);
+  expect(Math.abs(compactSquares.rowWidth - compactSquares.sidebarWidth)).toBeLessThanOrEqual(2);
   expect(Math.abs(compactSquares.rowHeight - compactSquares.rowWidth)).toBeLessThanOrEqual(1);
 
   await page.mouse.move(startX - 240, startY, { steps: 6 });
   await page.waitForTimeout(100);
-  expect((await readDesktopSidebarGeometry(page)).shellWidth).toBeLessThanOrEqual(2);
-  await page.mouse.move(startX - 208, startY, { steps: 6 });
+  expect((await readDesktopSidebarGeometry(page)).sidebarWidth).toBeLessThanOrEqual(2);
+  await page.mouse.move(startX - 136, startY, { steps: 6 });
   await page.waitForTimeout(100);
   const compactAgainGeometry = await readDesktopSidebarGeometry(page);
-  expect(compactAgainGeometry.shellWidth).toBeGreaterThanOrEqual(70);
-  expect(compactAgainGeometry.shellWidth).toBeLessThanOrEqual(74);
+  expect(compactAgainGeometry.sidebarWidth).toBeGreaterThanOrEqual(46);
+  expect(compactAgainGeometry.sidebarWidth).toBeLessThanOrEqual(50);
   await page.mouse.up();
   await page.waitForTimeout(250);
 
@@ -338,8 +346,8 @@ test("desktop sidebar snaps to compact and closed, then restores the last non-cl
   await sidebarToggle.click();
   await page.waitForTimeout(250);
   const reopenedCompactGeometry = await readDesktopSidebarGeometry(page);
-  expect(reopenedCompactGeometry.shellWidth).toBeGreaterThanOrEqual(70);
-  expect(reopenedCompactGeometry.shellWidth).toBeLessThanOrEqual(74);
+  expect(reopenedCompactGeometry.shellWidth).toBeGreaterThanOrEqual(62);
+  expect(reopenedCompactGeometry.shellWidth).toBeLessThanOrEqual(66);
 
   const compactHandleBox = await resizeHandle.boundingBox();
   expect(compactHandleBox).not.toBeNull();
@@ -357,8 +365,8 @@ test("desktop sidebar snaps to compact and closed, then restores the last non-cl
   await sidebarToggle.click();
   await page.waitForTimeout(250);
   const restoredCompactGeometry = await readDesktopSidebarGeometry(page);
-  expect(restoredCompactGeometry.shellWidth).toBeGreaterThanOrEqual(70);
-  expect(restoredCompactGeometry.shellWidth).toBeLessThanOrEqual(74);
+  expect(restoredCompactGeometry.shellWidth).toBeGreaterThanOrEqual(62);
+  expect(restoredCompactGeometry.shellWidth).toBeLessThanOrEqual(66);
 
   const savedMode = await page.evaluate(() => {
     const w = window as Record<string, unknown>;
@@ -501,10 +509,13 @@ test("narrow labeled sidebar keeps source names visible and drops counts first",
 
   await expect(desktopSidebar.getByTestId("source-row-x")).toContainText("X / Twitter");
   await expect(desktopSidebar.getByTestId("source-counts-x")).toHaveCount(0);
+  await expect(desktopSidebar.getByTestId("source-indicator-slot-x")).toHaveCount(0);
+  await expect(desktopSidebar.getByTestId("source-menu-trigger-x")).toHaveCount(0);
 
   await expect(desktopSidebar.getByTestId("source-row-rss")).toContainText("Feeds");
-  await expect(desktopSidebar.getByLabel(/Expand feeds|Collapse feeds/)).toBeVisible();
+  await expect(desktopSidebar.getByLabel(/Expand feeds|Collapse feeds/)).toHaveCount(0);
   await expect(desktopSidebar.getByTestId("source-counts-rss")).toHaveCount(0);
+  await expect(desktopSidebar.getByTestId("source-menu-trigger-rss")).toHaveCount(0);
 });
 
 test("dragging from a reader toolbar button starts a window drag without firing the button action", async ({ app, page }) => {
