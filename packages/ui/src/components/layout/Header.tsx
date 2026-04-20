@@ -100,6 +100,8 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
 
   const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
+  const persons = useAppStore((s) => s.persons);
+  const accounts = useAppStore((s) => s.accounts);
   const friends = useAppStore((s) => s.friends);
   const activeView = useAppStore((s) => s.activeView);
   const activeFilter = useAppStore((s) => s.activeFilter);
@@ -125,6 +127,10 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     searchQuery,
     activeFilter,
     searchCorpusVersion,
+    display.friendsMode ?? "all_content",
+    persons,
+    accounts,
+    friends,
   );
   const selectedItem = useMemo(
     () => (selectedItemId ? items.find((item) => item.globalId === selectedItemId) ?? null : null),
@@ -143,6 +149,8 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
   );
   const effectiveMapMode = display.mapMode
     ?? getDefaultMapMode(mappedFriendCount, mappedAllContentCount);
+  const effectiveFriendsMode = display.friendsMode ?? "all_content";
+  const showIdentityModeControls = activeView === "feed" || activeView === "map";
 
   const unreadCount =
     activeFilter.savedOnly || activeFilter.archivedOnly
@@ -207,6 +215,14 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     scopeLabel,
     selectedItem,
   ]);
+
+  const handleIdentityModeChange = useCallback((mode: "friends" | "all_content") => {
+    void updatePreferences({
+      display: {
+        ...(activeView === "map" ? { mapMode: mode } : { friendsMode: mode }),
+      },
+    } as Parameters<typeof updatePreferences>[0]);
+  }, [activeView, updatePreferences]);
 
   const handleCloseReader = useCallback(() => {
     if (display.reading.dualColumnMode && !isMobile && selectedItemId) {
@@ -668,6 +684,37 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
                   {HeaderSyncIndicator ? (
                     <div className="hidden md:flex">
                       <HeaderSyncIndicator />
+                    </div>
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot visible={showIdentityModeControls} width="10.75rem" className="flex min-w-0">
+                  {showIdentityModeControls ? (
+                    <div className="flex min-w-0 items-center gap-2 overflow-x-auto py-1">
+                      <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_86%,transparent)] p-1">
+                        {([
+                          ["friends", "Friends"],
+                          ["all_content", "All content"],
+                        ] as const).map(([mode, label]) => {
+                          const isActive = activeView === "map"
+                            ? effectiveMapMode === mode
+                            : effectiveFriendsMode === mode;
+
+                          return (
+                            <button
+                              key={`${activeView}-${mode}`}
+                              type="button"
+                              onClick={() => handleIdentityModeChange(mode)}
+                              {...getToolbarControlProps()}
+                              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                                isActive ? "theme-chip-active" : "theme-chip"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   ) : null}
                 </ToolbarAnimatedSlot>

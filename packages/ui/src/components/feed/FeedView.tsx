@@ -225,6 +225,9 @@ export function FeedView() {
   const canAddFeeds = !!addRssFeed;
   const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
+  const persons = useAppStore((s) => s.persons);
+  const accounts = useAppStore((s) => s.accounts);
+  const friends = useAppStore((s) => s.friends);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
@@ -237,6 +240,7 @@ export function FeedView() {
   const unarchiveSavedItems = useAppStore((s) => s.unarchiveSavedItems);
   const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
   const archivePruneDays = useAppStore((s) => s.preferences.display.archivePruneDays);
+  const friendsMode = useAppStore((s) => s.preferences.display.friendsMode ?? "all_content");
 
   const handleItemSave = useCallback(
     (item: FeedItem) => toggleSaved(item.globalId),
@@ -302,6 +306,10 @@ export function FeedView() {
     searchQuery,
     activeFilter,
     searchCorpusVersion,
+    friendsMode,
+    persons,
+    accounts,
+    friends,
   );
 
   const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds), [activeFilter, feeds]);

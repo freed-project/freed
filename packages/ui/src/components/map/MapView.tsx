@@ -4,7 +4,6 @@ import {
   getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
   getLocationTimelineMoments,
-  type MapMode,
   type MapTimeMode,
 } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
@@ -103,8 +102,7 @@ export function MapView() {
     [allContentMarkers.length, friendMarkers.length],
   );
   const savedMode = display.mapMode;
-  const [pendingMode, setPendingMode] = useState<MapMode | null>(null);
-  const effectiveMode = pendingMode ?? savedMode ?? defaultMode;
+  const effectiveMode = savedMode ?? defaultMode;
   const markers = effectiveMode === "friends" ? friendMarkers : allContentMarkers;
 
   useEffect(() => {
@@ -117,12 +115,6 @@ export function MapView() {
   }, []);
 
   useEffect(() => {
-    if (pendingMode && savedMode === pendingMode) {
-      setPendingMode(null);
-    }
-  }, [pendingMode, savedMode]);
-
-  useEffect(() => {
     if (pendingTimeMode && savedTimeMode === pendingTimeMode) {
       setPendingTimeMode(null);
     }
@@ -132,17 +124,6 @@ export function MapView() {
     () => markers.find((marker) => marker.friend?.id === selectedFriendId) ?? null,
     [markers, selectedFriendId]
   );
-
-  const handleModeChange = (mode: MapMode) => {
-    setPendingMode(mode);
-    void updatePreferences({
-      display: {
-        mapMode: mode,
-      },
-    } as Parameters<typeof updatePreferences>[0]).catch(() => {
-      setPendingMode(null);
-    });
-  };
 
   const handleTimeModeChange = (timeMode: MapTimeMode) => {
     setPendingTimeMode(timeMode);
@@ -193,25 +174,6 @@ export function MapView() {
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center px-4 pt-4">
         <div className="pointer-events-auto flex w-full max-w-[min(56rem,calc(100vw-2rem))] flex-col gap-2 rounded-[28px] border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-elevated)_88%,transparent)] p-2 shadow-[var(--theme-glow-sm)] backdrop-blur-md">
           <div className="flex flex-wrap items-center justify-center gap-2">
-            <div className="inline-flex items-center gap-1 rounded-full border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_82%,transparent)] p-1">
-              {([
-                ["friends", "Friends"],
-                ["all_content", "All content"],
-              ] as const).map(([mode, label]) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => handleModeChange(mode)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                    effectiveMode === mode
-                      ? "theme-chip-active"
-                      : "theme-chip"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
             <div className="inline-flex items-center gap-1 rounded-full border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_82%,transparent)] p-1">
               {([
                 ["current", "Current"],
