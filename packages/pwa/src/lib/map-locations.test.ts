@@ -463,15 +463,18 @@ describe("map navigation helpers", () => {
 
     const setActiveView = vi.fn();
     const setSelectedPerson = vi.fn();
+    const setSelectedAccount = vi.fn();
     const setSelectedItem = vi.fn();
 
     openFriendFromMap(marker, {
       setActiveView,
       setSelectedPerson,
+      setSelectedAccount,
       setSelectedItem,
     });
 
     expect(setSelectedPerson).toHaveBeenCalledWith(friend.id);
+    expect(setSelectedAccount).toHaveBeenCalledWith(null);
     expect(setSelectedItem).toHaveBeenCalledWith(null);
     expect(setActiveView).toHaveBeenCalledWith("friends");
   });
@@ -490,6 +493,7 @@ describe("map navigation helpers", () => {
 
     const setActiveView = vi.fn();
     const setSelectedPerson = vi.fn();
+    const setSelectedAccount = vi.fn();
     const setSelectedItem = vi.fn();
     const setFilter = vi.fn();
     const setSearchQuery = vi.fn();
@@ -497,6 +501,7 @@ describe("map navigation helpers", () => {
     openPostFromMap(marker, {
       setActiveView,
       setSelectedPerson,
+      setSelectedAccount,
       setSelectedItem,
       setFilter,
       setSearchQuery,
@@ -505,6 +510,7 @@ describe("map navigation helpers", () => {
     expect(setFilter).toHaveBeenCalledWith({});
     expect(setSearchQuery).toHaveBeenCalledWith("");
     expect(setSelectedPerson).toHaveBeenCalledWith(friend.id);
+    expect(setSelectedAccount).toHaveBeenCalledWith(null);
     expect(setSelectedItem).toHaveBeenCalledWith("ig:1");
     expect(setActiveView).toHaveBeenCalledWith("feed");
   });
