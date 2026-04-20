@@ -23,7 +23,11 @@ import { describeInstalledBuild, readBuildMetadata } from "../lib/build-info.js"
 import { useDebugStore } from "../lib/debug-store.js";
 import { useSettingsStore } from "../lib/settings-store.js";
 import { refreshSampleLibraryData } from "../lib/sample-library-seed.js";
-import { applyThemeToDocument, persistTheme } from "../lib/theme.js";
+import {
+  applyThemeToDocument,
+  persistTheme,
+  useThemePreviewController,
+} from "../lib/theme.js";
 import {
   getProviderStatusLabel,
   getProviderStatusTone,
@@ -435,38 +439,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }, 5000);
   }, [hasCoarsePointer]);
 
-  const handleThemeCardMouseEnter = useCallback(() => {
-    if (hasCoarsePointer) return;
-    setThemePreviewHovering(true);
-  }, [hasCoarsePointer]);
-
-  const handleThemeCardMouseLeave = useCallback(() => {
-    if (hasCoarsePointer) return;
-    setThemePreviewHovering(false);
-  }, [hasCoarsePointer]);
-
-  const handleThemeCardFocusCapture = useCallback(() => {
-    if (hasCoarsePointer) return;
-    setThemePreviewHovering(true);
-  }, [hasCoarsePointer]);
-
-  const handleThemeCardBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
-    if (hasCoarsePointer) return;
-    const nextFocused = event.relatedTarget;
-    if (nextFocused && event.currentTarget.contains(nextFocused)) {
-      return;
-    }
-    setThemePreviewHovering(false);
-  }, [hasCoarsePointer]);
-
-  const handleThemeSelect = useCallback((themeId: ThemeId) => {
+  const handleThemeCommit = useCallback((themeId: ThemeId) => {
     activateTouchThemePreview();
     setDisplay((prev) => (
       prev.themeId === themeId
         ? prev
         : { ...prev, themeId }
     ));
-    applyThemeToDocument(themeId);
     persistTheme(themeId);
 
     pendingThemeSaveSeqRef.current += 1;
@@ -485,6 +464,65 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       flushPendingThemeSelection(pendingThemeId, saveSeq);
     }, 500);
   }, [activateTouchThemePreview, flushPendingThemeSelection]);
+
+  const {
+    revertPreview: revertThemePreview,
+    previewTheme,
+    commitTheme,
+  } = useThemePreviewController({
+    committedThemeId: display.themeId,
+    onCommitTheme: handleThemeCommit,
+  });
+
+  const handleThemeCardMouseEnter = useCallback(() => {
+    if (hasCoarsePointer) return;
+    setThemePreviewHovering(true);
+  }, [hasCoarsePointer]);
+
+  const handleThemeCardMouseLeave = useCallback(() => {
+    if (hasCoarsePointer) return;
+    setThemePreviewHovering(false);
+    revertThemePreview();
+  }, [hasCoarsePointer, revertThemePreview]);
+
+  const handleThemeCardFocusCapture = useCallback(() => {
+    setThemePreviewHovering(true);
+  }, []);
+
+  const handleThemeCardBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
+    const nextFocused = event.relatedTarget;
+    if (nextFocused && event.currentTarget.contains(nextFocused)) {
+      return;
+    }
+    setThemePreviewHovering(false);
+    revertThemePreview();
+  }, [revertThemePreview]);
+
+  const handleThemeButtonMouseEnter = useCallback((themeId: ThemeId) => {
+    if (hasCoarsePointer) {
+      return;
+    }
+
+    previewTheme(themeId);
+  }, [hasCoarsePointer, previewTheme]);
+
+  const handleThemeButtonFocus = useCallback((themeId: ThemeId) => {
+    previewTheme(themeId);
+  }, [previewTheme]);
+
+  useEffect(() => {
+    if (open) {
+      return;
+    }
+
+    revertThemePreview();
+  }, [open, revertThemePreview]);
+
+  useEffect(() => {
+    return () => {
+      revertThemePreview();
+    };
+  }, [revertThemePreview]);
 
   const themeBackdropSuppressed = themePreviewHovering || themePreviewTouchActive;
 
@@ -854,7 +892,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                             theme={theme}
                             active={isActive}
                             variant="compact"
-                            onClick={() => handleThemeSelect(theme.id as ThemeId)}
+                            onMouseEnter={() => handleThemeButtonMouseEnter(theme.id as ThemeId)}
+                            onFocus={() => handleThemeButtonFocus(theme.id as ThemeId)}
+                            onClick={() => commitTheme(theme.id as ThemeId)}
                           />
                         </Tooltip>
                       );

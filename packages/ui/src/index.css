@@ -149,6 +149,10 @@ html[data-theme="neon"] {
     0 0 30px rgb(var(--theme-accent-secondary-rgb) / 0.3),
     0 0 60px rgb(var(--theme-accent-primary-rgb) / 0.16),
     0 0 100px rgb(var(--theme-accent-tertiary-rgb) / 0.08);
+  --theme-transition-blur: 0px;
+  --theme-transition-opacity: 1;
+  --theme-transition-saturate: 1;
+  --theme-transition-duration: 210ms;
 
   --sidebar-width: 240px;
   --card-radius: 8px;
@@ -676,6 +680,13 @@ body {
   font-weight: var(--theme-body-font-weight);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .theme-shell,
+  .app-theme-shell {
+    transition: none;
+  }
+}
+
 .font-logo {
   font-family: var(--font-logo);
   letter-spacing: -0.02em;
@@ -772,6 +783,14 @@ html[data-theme="scriptorium"] .theme-page-heading-accent {
   background-repeat: no-repeat;
   background-size: cover;
   color: var(--theme-text-primary);
+  filter:
+    blur(var(--theme-transition-blur))
+    saturate(var(--theme-transition-saturate));
+  opacity: var(--theme-transition-opacity);
+  transition:
+    filter var(--theme-transition-duration) cubic-bezier(0.22, 1, 0.36, 1),
+    opacity var(--theme-transition-duration) cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: filter, opacity;
 }
 
 .bg-gradient-orbs {

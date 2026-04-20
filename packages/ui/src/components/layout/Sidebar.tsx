@@ -778,6 +778,22 @@ export function Sidebar({
     );
   }, [totalFeedPages]);
 
+  const settingsButtonContent = (
+    <>
+      <span className="w-5 text-center">
+        <svg className="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </span>
+      <span>Settings</span>
+    </>
+  );
+
+  const handleOpenSettingsFromMobileSidebar = useCallback(() => {
+    onMobileClose();
+    openSettings();
+  }, [onMobileClose, openSettings]);
   const renderCompactRow = useCallback((args: {
     key: string;
     label: string;
@@ -1490,7 +1506,7 @@ export function Sidebar({
           )}
 
           {/* Settings — pushed to bottom */}
-          <div className="mt-auto shrink-0">
+          <div className="mt-auto hidden shrink-0 md:block">
             {compactRail ? (
               renderCompactRow({
                 key: "settings",
@@ -1581,6 +1597,16 @@ export function Sidebar({
           </button>
         </div>
         {sidebarBody}
+        <div
+          className={`shrink-0 border-t border-[var(--theme-border-subtle)] ${sidebarPaddingClass} pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-3`}
+        >
+          <button
+            onClick={handleOpenSettingsFromMobileSidebar}
+            className={`w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-2 rounded-lg text-left text-sm text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}
+          >
+            {settingsButtonContent}
+          </button>
+        </div>
       </aside>
 
       <SettingsDialog open={showSettings} onClose={closeSettings} />
