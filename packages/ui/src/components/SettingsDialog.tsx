@@ -535,7 +535,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [updateState, setUpdateState] = useState<UpdateCheckState>({ status: "idle" });
   const fadeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const shouldRecheckAfterChannelChangeRef = useRef(false);
-  const displayVersion = formatReleaseVersion(__APP_VERSION__, releaseChannel ?? "production");
+  const displayVersion = formatReleaseVersion(__APP_VERSION__);
 
   const runUpdateCheck = useCallback(async () => {
     if (!checkForUpdates) return;
