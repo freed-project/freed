@@ -18,41 +18,6 @@ behavior itself is the thing being tested.
 EOF
 }
 
-find_free_port() {
-  local start_port="$1"
-
-  python3 - "${start_port}" <<'PY'
-import socket
-import sys
-
-start = int(sys.argv[1])
-
-for port in range(start, start + 200):
-    is_in_use = False
-    probes = [(socket.AF_INET, ("127.0.0.1", port))]
-    if socket.has_ipv6:
-        probes.append((socket.AF_INET6, ("::1", port, 0, 0)))
-
-    for family, target in probes:
-        with socket.socket(family, socket.SOCK_STREAM) as sock:
-            sock.settimeout(0.1)
-            try:
-                if sock.connect_ex(target) == 0:
-                    is_in_use = True
-                    break
-            except OSError:
-                continue
-
-    if is_in_use:
-        continue
-
-    print(port)
-    break
-else:
-    raise SystemExit("No free port found in the requested range.")
-PY
-}
-
 existing_process_for_target() {
   local worktree_path="$1"
   local preview_target="$2"
@@ -134,6 +99,7 @@ fi
 WORKTREE_PATH="$(resolve_worktree_path "${WORKTREE_PATH}")"
 PROCESS_SCRIPT="${SCRIPT_DIR}/worktree-processes.sh"
 PREVIEW_LABEL="${PREVIEW_LABEL:-$(preview_label_for_worktree "${WORKTREE_PATH}")}"
+print_node_tooling_preflight
 
 if existing_manifest="$(existing_process_for_target "${WORKTREE_PATH}" "${TARGET}")"; then
   unset PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH PREVIEW_LABEL STARTED_AT
@@ -185,7 +151,7 @@ case "${TARGET}" in
       URL="http://localhost:1420"
     else
       DEFAULT_PORT="1422"
-      PORT="${PORT:-$(find_free_port "${DEFAULT_PORT}")}"
+      PORT="${PORT:-$("$(resolve_node_bin)" "${SCRIPT_DIR}/lib/find-free-port.mjs" "${DEFAULT_PORT}")}"
       ENV_VARS=(
         "PATH=${ROOT_BIN_DIR}:${PATH}"
         "VITE_TEST_TAURI=1"
@@ -199,7 +165,7 @@ case "${TARGET}" in
   pwa)
     SLOT_KIND="web"
     DEFAULT_PORT="1421"
-    PORT="${PORT:-$(find_free_port "${DEFAULT_PORT}")}"
+    PORT="${PORT:-$("$(resolve_node_bin)" "${SCRIPT_DIR}/lib/find-free-port.mjs" "${DEFAULT_PORT}")}"
     RUN_CWD="$(workspace_path_for_target "${WORKTREE_PATH}" "pwa")"
     ENV_VARS=(
       "PATH=${ROOT_BIN_DIR}:${PATH}"
@@ -212,7 +178,7 @@ case "${TARGET}" in
   website)
     SLOT_KIND="web"
     DEFAULT_PORT="3000"
-    PORT="${PORT:-$(find_free_port "${DEFAULT_PORT}")}"
+    PORT="${PORT:-$("$(resolve_node_bin)" "${SCRIPT_DIR}/lib/find-free-port.mjs" "${DEFAULT_PORT}")}"
     RUN_CWD="$(workspace_path_for_target "${WORKTREE_PATH}" "website")"
     ENV_VARS=(
       "PATH=${ROOT_BIN_DIR}:${PATH}"

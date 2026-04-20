@@ -106,6 +106,8 @@ if [[ ${#PASSTHROUGH_ARGS[@]} -eq 0 ]]; then
   exit 1
 fi
 
+print_node_tooling_preflight
+
 EXISTING_WORKTREES=()
 while IFS= read -r line; do
   EXISTING_WORKTREES+=("$line")

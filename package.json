@@ -13,6 +13,7 @@
     "dev": "node scripts/run-workspace-fanout.mjs dev",
     "session:clean": "bash scripts/dev-session-clean.sh",
     "test": "node scripts/run-workspace-fanout.mjs test",
+    "test:scripts": "bash -n scripts/*.sh scripts/lib/*.sh && node --test scripts/*.test.mjs",
     "typecheck": "node scripts/run-workspace-fanout.mjs typecheck",
     "typecheck:graph": "tsc --build --dry"
   },

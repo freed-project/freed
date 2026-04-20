@@ -69,6 +69,8 @@ Prefer the lightest useful local preview before opening a draft PR:
 - root `npm run dev` now fails fast on purpose, use `./scripts/worktree-preview.sh <target>` or run `npm run dev` from the workspace directory you actually want
 - the root fanout scripts now fail fast if you try the dangerous workspace-dispatch pattern, treat that error as a routing mistake and re-run from the workspace
 - if a workspace command needs a hoisted binary, prefix `PATH` with the worktree root `node_modules/.bin`
+- expect the worktree helpers to print the resolved `node` and `npm` pair before they do real work, and treat a surprising path there as a machine issue to fix before debugging the repo
+- rerunning `./scripts/worktree-publish.sh` should update the existing draft PR body and title, and push a ready PR back to draft when the local branch changes underneath it
 - browser tooling is opt-in only, do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging
 - after browser tooling work, run `./scripts/dev-session-clean.sh`
 - `./scripts/worktree-publish.sh` now refuses stray untracked files unless you stage them yourself first or pass `--include-untracked`

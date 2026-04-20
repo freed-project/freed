@@ -721,6 +721,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }
   }, [searchLower, visibleSections]);
 
+  // ── Mobile nav state ──────────────────────────────────────────────────────
+  const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
+
   const scrollSectionIntoView = useCallback((id: SectionId, behavior: ScrollBehavior = "smooth") => {
     const container = scrollRef.current;
     if (!container) {

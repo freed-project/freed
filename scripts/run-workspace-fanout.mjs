@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import fs from "node:fs";
+import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const scriptName = process.argv[2];
@@ -21,6 +23,16 @@ if (runningWorkspaceSelection) {
   process.exit(1);
 }
 
+function resolveNpmCommand() {
+  const siblingNpm = path.join(path.dirname(process.execPath), process.platform === "win32" ? "npm.cmd" : "npm");
+
+  if (fs.existsSync(siblingNpm)) {
+    return siblingNpm;
+  }
+
+  return "npm";
+}
+
 if (scriptName === "dev") {
   console.error('Refusing to run root "dev" from the monorepo root.');
   console.error("That path can start too many long-lived processes at once.");
@@ -30,7 +42,7 @@ if (scriptName === "dev") {
 }
 
 const child = spawnSync(
-  "npm",
+  resolveNpmCommand(),
   ["run", scriptName, "--workspaces", "--if-present", ...forwardedArgs],
   {
     stdio: "inherit",
