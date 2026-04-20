@@ -521,6 +521,8 @@ export interface ReadingEnhancements {
   dualColumnMode: boolean;
 }
 
+export type SidebarMode = "expanded" | "compact" | "closed";
+
 export interface DisplayPreferences {
   /** Items per page */
   itemsPerPage: number;
@@ -539,6 +541,9 @@ export interface DisplayPreferences {
 
   /** Sidebar width in pixels (default: 256, min: 180, max: 480) */
   sidebarWidth?: number;
+
+  /** Desktop sidebar mode (default: expanded) */
+  sidebarMode?: SidebarMode;
 
   /** Friends workspace sidebar width in pixels (default: 360, min: 280, max: 520) */
   friendsSidebarWidth?: number;

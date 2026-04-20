@@ -1463,7 +1463,7 @@ test.describe("FREED PWA", () => {
     await acceptLegalGate(page);
 
     // Sidebar should be hidden on mobile
-    const sidebar = page.locator("aside");
+    const sidebar = page.getByTestId("app-sidebar-mobile");
     await expect(sidebar).toHaveClass(/-translate-x-full/);
 
     // Click menu button to open sidebar
@@ -1471,6 +1471,10 @@ test.describe("FREED PWA", () => {
 
     // Sidebar should now be visible
     await expect(sidebar).toHaveClass(/translate-x-0/);
+
+    // Clicking the same menu button again should close the floating drawer.
+    await page.click('button[aria-label="Close menu"]');
+    await expect(sidebar).toHaveClass(/-translate-x-full/);
   });
 
   test("app has correct colors and styling", async ({ page }) => {
