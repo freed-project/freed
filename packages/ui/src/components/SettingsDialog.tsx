@@ -754,6 +754,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     };
   }, [open, searchLower]);
 
+  // ── Mobile nav state ──────────────────────────────────────────────────────
+  const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
+
   const scrollToSection = useCallback((id: SectionId) => {
     setActiveSection(id);
     if (scrollRef.current) {
@@ -780,9 +783,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     // On mobile, switch to section view
     setMobileView("section");
   }, []);
-
-  // ── Mobile nav state ──────────────────────────────────────────────────────
-  const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
 
   // Reset state on close
   useEffect(() => {
