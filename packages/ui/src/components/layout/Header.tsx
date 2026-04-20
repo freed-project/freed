@@ -30,6 +30,7 @@ import {
 } from "../icons.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
   MACOS_TRAFFIC_LIGHT_INSET,
@@ -108,6 +109,7 @@ export function Header({
     openUrl,
   } = usePlatform();
   const isMobile = useIsMobile();
+  const isMobileDevice = useIsMobileDevice();
 
   const canAddRss = !!addRssFeed;
   const canSaveContent = !!(saveUrl || importMarkdown || exportMarkdown);
@@ -529,19 +531,21 @@ export function Header({
               className={`flex shrink-0 items-center gap-2 pl-3 sm:pl-4 ${sidebarSlotStyle ? "justify-between" : ""}`}
               style={leftToolbarStyle}
             >
-              <Tooltip label="Menu" className="md:hidden">
-                <button
-                  onClick={onMobileMenuToggle}
-                  {...getToolbarControlProps()}
-                  className={`rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)] ${mobileSidebarOpen ? "bg-[var(--theme-bg-muted)]" : ""}`}
-                  aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
-                  aria-pressed={mobileSidebarOpen}
-                >
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                  </svg>
-                </button>
-              </Tooltip>
+              {isMobileDevice ? (
+                <Tooltip label="Menu">
+                  <button
+                    onClick={onMobileMenuToggle}
+                    {...getToolbarControlProps()}
+                    className={`rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)] ${mobileSidebarOpen ? "bg-[var(--theme-bg-muted)]" : ""}`}
+                    aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
+                    aria-pressed={mobileSidebarOpen}
+                  >
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                  </button>
+                </Tooltip>
+              ) : null}
 
               <span
                 data-testid="workspace-toolbar-wordmark"
@@ -550,21 +554,23 @@ export function Header({
                 FREED
               </span>
 
-              <Tooltip label={desktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"} className="hidden md:flex">
-                <button
-                  onClick={onDesktopSidebarToggle}
-                  {...getToolbarControlProps()}
-                  data-testid="desktop-sidebar-toggle"
-                  className="theme-subtle-button rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)]"
-                  aria-label={desktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
-                >
-                  {desktopSidebarMode === "closed" ? (
-                    <SidebarExpandIcon className="h-5 w-5" />
-                  ) : (
-                    <SidebarCollapseIcon className="h-5 w-5" />
-                  )}
-                </button>
-              </Tooltip>
+              {!isMobileDevice ? (
+                <Tooltip label={desktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}>
+                  <button
+                    onClick={onDesktopSidebarToggle}
+                    {...getToolbarControlProps()}
+                    data-testid="desktop-sidebar-toggle"
+                    className="theme-subtle-button rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)]"
+                    aria-label={desktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
+                  >
+                    {desktopSidebarMode === "closed" ? (
+                      <SidebarExpandIcon className="h-5 w-5" />
+                    ) : (
+                      <SidebarCollapseIcon className="h-5 w-5" />
+                    )}
+                  </button>
+                </Tooltip>
+              ) : null}
             </div>
 
             <ToolbarAnimatedSlot

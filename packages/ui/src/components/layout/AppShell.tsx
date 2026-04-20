@@ -9,6 +9,7 @@ import { ContactSyncModal } from "../friends/ContactSyncModal.js";
 import { useContactSync } from "../../hooks/useContactSync.js";
 import { ContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import {
   buildDiscoveredAccountsFromItems,
   type GoogleContact,
@@ -38,7 +39,8 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const isMobile = useIsMobile();
+  const isMobileViewport = useIsMobile();
+  const isMobileDevice = useIsMobileDevice();
   const debugVisible = useDebugStore((s) => s.visible);
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);
@@ -161,7 +163,7 @@ export function AppShell({ children }: AppShellProps) {
     persistTheme(themeId);
   }, [isInitialized, themeId]);
 
-  const workspaceMaskStyle = isMobile
+  const workspaceMaskStyle = isMobileDevice
     ? undefined
     : ({
         "--theme-soft-viewport-base-comp-left":
@@ -182,6 +184,12 @@ export function AppShell({ children }: AppShellProps) {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [toggleDebug, debugVisible]);
+
+  useEffect(() => {
+    if (!isMobileDevice && mobileSidebarOpen) {
+      setMobileSidebarOpen(false);
+    }
+  }, [isMobileDevice, mobileSidebarOpen]);
 
   useEffect(() => {
     const itemCount = items.length;
@@ -255,10 +263,10 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <ContactSyncContext.Provider value={{ ...contactSync, openReview }}>
-      {/* On mobile (<md), the layout flows naturally in the document so Safari can
-          collapse its address bar when the feed scrolls. min-h-0 and overflow-hidden
-          are desktop-only; they lock the layout to 100dvh for in-element scrolling. */}
-      <div className="app-theme-shell relative flex flex-1 flex-col md:min-h-0">
+      {/* On actual mobile devices, the layout flows naturally in the document so
+          Safari can collapse its address bar when the feed scrolls. Desktop devices
+          keep the fixed-height shell even when the viewport is narrow. */}
+      <div className={`app-theme-shell relative flex flex-1 flex-col ${isMobileDevice ? "" : "min-h-0"}`}>
         {showAtmosphere ? <BackgroundAtmosphere /> : null}
         <Header
           mobileSidebarOpen={mobileSidebarOpen}
@@ -267,7 +275,11 @@ export function AppShell({ children }: AppShellProps) {
           onDesktopSidebarToggle={handleDesktopSidebarToggle}
         />
 
-        <div className="relative z-10 flex flex-1 px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)] md:min-h-0 md:overflow-hidden">
+        <div
+          className={`relative z-10 flex flex-1 px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)] ${
+            isMobileDevice ? "" : "min-h-0 overflow-hidden"
+          }`}
+        >
           <Sidebar
             mobileOpen={mobileSidebarOpen}
             onMobileClose={() => setMobileSidebarOpen(false)}
@@ -276,7 +288,7 @@ export function AppShell({ children }: AppShellProps) {
             onDesktopModeChange={persistDesktopSidebarMode}
           />
           <main
-            className="min-w-0 flex-1 md:min-h-0 md:overflow-hidden"
+            className={`min-w-0 flex-1 ${isMobileDevice ? "" : "min-h-0 overflow-hidden"}`}
             style={workspaceMaskStyle}
           >
             {activeView === "friends"
@@ -308,7 +320,7 @@ export function AppShell({ children }: AppShellProps) {
             </div>
           </div>
         </div>
-        {debugVisible && (
+        {debugVisible && isMobileViewport && (
           <div className="sm:hidden">
             <DebugPanel variant="overlay" />
           </div>

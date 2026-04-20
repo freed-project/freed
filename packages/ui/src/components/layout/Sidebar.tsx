@@ -18,6 +18,7 @@ import { useSettingsStore } from "../../lib/settings-store.js";
 import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
 import { TOP_SOURCE_ITEMS, type SourceNavigationItem } from "../../lib/source-navigation.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { SearchJumpField } from "./SearchJumpField.js";
 import {
   PRIMARY_SIDEBAR_GAP_WIDTH_PX,
@@ -413,6 +414,8 @@ export function Sidebar({
 }: SidebarProps) {
   const { SourceIndicator, headerDragRegion, syncRssNow, syncSourceNow, getSourceStatus } = usePlatform();
   const isMobileViewport = useIsMobile();
+  const isMobileDevice = useIsMobileDevice();
+  const forceCompactDesktopRail = !isMobileDevice && isMobileViewport;
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
@@ -546,8 +549,10 @@ export function Sidebar({
 
   const rawDesktopWidth = dragWidth
     ?? (desktopMode === "compact" ? COMPACT_WIDTH : desktopMode === "closed" ? 0 : committedWidth);
-  const renderMode: SidebarMode = isMobileViewport
+  const renderMode: SidebarMode = isMobileDevice
     ? "expanded"
+    : forceCompactDesktopRail
+      ? (desktopMode === "closed" ? "closed" : "compact")
     : dragWidth !== null
       ? getDesktopModeForWidth(dragWidth)
       : desktopMode;
@@ -596,7 +601,7 @@ export function Sidebar({
   const rowPaddingClass = compactRail ? "px-1.5" : "px-3";
   const rowLeadingPaddingClass = compactRail ? "pl-1.5" : "pl-3";
   const rowTrailingPaddingClass = compactRail ? "pr-1" : "pr-2";
-  const resizeHandleVisible = dragWidth !== null || renderMode !== "closed";
+  const resizeHandleVisible = !forceCompactDesktopRail && (dragWidth !== null || renderMode !== "closed");
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -608,6 +613,9 @@ export function Sidebar({
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
+      if (forceCompactDesktopRail || isMobileDevice) {
+        return;
+      }
       e.preventDefault();
       dragging.current = true;
       const startX = e.clientX;
@@ -646,7 +654,7 @@ export function Sidebar({
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     },
-    [committedWidth, desktopMode, onDesktopModeChange, updatePreferences],
+    [committedWidth, desktopMode, forceCompactDesktopRail, isMobileDevice, onDesktopModeChange, updatePreferences],
   );
 
   const feedList = Object.values(feeds).filter((f) => f.enabled);
@@ -1528,7 +1536,8 @@ export function Sidebar({
           )}
 
           {/* Settings — pushed to bottom */}
-          <div className="mt-auto hidden shrink-0 md:block">
+          {!isMobileDevice ? (
+            <div className="mt-auto shrink-0">
             {compactRail ? (
               renderCompactRow({
                 key: "settings",
@@ -1556,22 +1565,24 @@ export function Sidebar({
                 <span>Settings</span>
               </button>
             )}
-          </div>
+            </div>
+          ) : null}
     </nav>
   );
 
   return (
     <>
-      {mobileOpen && (
+      {isMobileDevice && mobileOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/60 md:hidden"
           onClick={onMobileClose}
         />
       )}
 
+      {!isMobileDevice ? (
       <div
         data-testid="app-sidebar-shell"
-        className="hidden md:flex flex-none overflow-visible"
+        className="flex flex-none overflow-visible"
         style={{
           width: desktopShellWidth,
           paddingTop: desktopShellTopPadding,
@@ -1601,12 +1612,14 @@ export function Sidebar({
           ) : null}
         </div>
       </div>
+      ) : null}
 
+      {isMobileDevice ? (
       <aside
         data-testid="app-sidebar-mobile"
         className={`
           fixed inset-y-0 left-0 z-50 flex min-h-0 h-full flex-col overflow-hidden bg-[color-mix(in_oklab,var(--theme-bg-root)_88%,transparent)]
-          transform transition-transform duration-200 ease-in-out md:hidden
+          transform transition-transform duration-200 ease-in-out
           ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
         `}
         style={{ width: `${committedWidth}px` }}
@@ -1637,6 +1650,7 @@ export function Sidebar({
           </button>
         </div>
       </aside>
+      ) : null}
 
       <SettingsDialog open={showSettings} onClose={closeSettings} />
 

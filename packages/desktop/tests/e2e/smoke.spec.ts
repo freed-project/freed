@@ -290,6 +290,18 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
   expect(collapsedWidth).toBeLessThanOrEqual(2);
 });
 
+test("narrow desktop viewports keep the desktop compact rail instead of switching to the mobile drawer", async ({ app, page }) => {
+  await page.setViewportSize({ width: 700, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await expect(page.getByTestId("desktop-sidebar-toggle")).toBeVisible();
+  await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await expect(page.getByTestId("app-sidebar").getByTestId("compact-sidebar-search-trigger")).toBeVisible();
+  await expect(page.getByTestId("app-sidebar-mobile")).toHaveCount(0);
+  await expect(page.getByLabel("Open menu")).toHaveCount(0);
+});
+
 test("desktop sidebar snaps to compact and closed, then restores the last non-closed mode", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
