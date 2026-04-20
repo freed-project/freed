@@ -11,7 +11,7 @@ source "${SCRIPT_DIR}/lib/worktree-runtime.sh"
 usage() {
   cat <<'EOF'
 Usage:
-  ./scripts/worktree-preview.sh <desktop|pwa|website> [--worktree <path>] [--port <port>] [--native]
+  ./scripts/worktree-preview.sh <desktop|pwa|website> [--worktree <path>] [--port <port>] [--native] [--label <text>]
 
 Desktop defaults to the mocked browser preview. Use --native only when Tauri
 behavior itself is the thing being tested.
@@ -28,12 +28,24 @@ import sys
 start = int(sys.argv[1])
 
 for port in range(start, start + 200):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            sock.bind(("127.0.0.1", port))
-        except OSError:
-            continue
+    is_in_use = False
+    probes = [(socket.AF_INET, ("127.0.0.1", port))]
+    if socket.has_ipv6:
+        probes.append((socket.AF_INET6, ("::1", port, 0, 0)))
+
+    for family, target in probes:
+        with socket.socket(family, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.1)
+            try:
+                if sock.connect_ex(target) == 0:
+                    is_in_use = True
+                    break
+            except OSError:
+                continue
+
+    if is_in_use:
+        continue
+
     print(port)
     break
 else:
@@ -50,7 +62,7 @@ existing_process_for_target() {
 
   shopt -s nullglob
   for manifest in "$(process_state_dir)"/*.env; do
-    unset PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH STARTED_AT
+    unset PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH PREVIEW_LABEL STARTED_AT
     # shellcheck disable=SC1090
     source "${manifest}"
     if [[ "${WORKTREE_PATH:-}" == "${worktree_path}" && "${TARGET:-}" == "${preview_target}" ]]; then
@@ -67,6 +79,7 @@ TARGET=""
 WORKTREE_PATH=""
 PORT=""
 USE_NATIVE=false
+PREVIEW_LABEL=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -92,6 +105,11 @@ while [[ $# -gt 0 ]]; do
       USE_NATIVE=true
       shift
       ;;
+    --label)
+      [[ $# -ge 2 ]] || { echo "Error: --label requires a value." >&2; exit 1; }
+      PREVIEW_LABEL="$2"
+      shift 2
+      ;;
     --help|-h)
       usage
       exit 0
@@ -115,12 +133,16 @@ fi
 
 WORKTREE_PATH="$(resolve_worktree_path "${WORKTREE_PATH}")"
 PROCESS_SCRIPT="${SCRIPT_DIR}/worktree-processes.sh"
+PREVIEW_LABEL="${PREVIEW_LABEL:-$(preview_label_for_worktree "${WORKTREE_PATH}")}"
 
 if existing_manifest="$(existing_process_for_target "${WORKTREE_PATH}" "${TARGET}")"; then
-  unset PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH STARTED_AT
+  unset PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH PREVIEW_LABEL STARTED_AT
   # shellcheck disable=SC1090
   source "${existing_manifest}"
   echo "Preview already running for ${TARGET} in ${WORKTREE_PATH}: pid ${PID}, port ${PORT:-"-"}"
+  if [[ -n "${PREVIEW_LABEL:-}" ]]; then
+    echo "Label: ${PREVIEW_LABEL}"
+  fi
   if [[ -n "${LOG_PATH:-}" ]]; then
     echo "Log: ${LOG_PATH}"
   fi
@@ -139,10 +161,13 @@ LOG_PATH=""
 URL=""
 ENV_VARS=()
 RUN_ARGS=()
+RUN_CWD=""
+ROOT_BIN_DIR="$(worktree_root_bin_dir "${WORKTREE_PATH}")"
 
 case "${TARGET}" in
   desktop)
     SLOT_KIND="desktop"
+    RUN_CWD="$(workspace_path_for_target "${WORKTREE_PATH}" "desktop")"
     if ${USE_NATIVE}; then
       DEFAULT_PORT="1420"
       PORT="${PORT:-${DEFAULT_PORT}}"
@@ -150,15 +175,24 @@ case "${TARGET}" in
         echo "Error: native desktop preview is fixed to port 1420 by tauri.conf.json." >&2
         exit 1
       fi
-      RUN_ARGS=("${NPM_BIN}" "run" "tauri:dev" "--workspace=packages/desktop")
-      COMMAND_DISPLAY="npm run tauri:dev --workspace=packages/desktop"
+      ENV_VARS=(
+        "PATH=${ROOT_BIN_DIR}:${PATH}"
+        "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
+        "FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL}"
+      )
+      RUN_ARGS=("${NPM_BIN}" "run" "tauri:dev")
+      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} FREED_TAURI_WINDOW_TITLE=Freed Preview | ${PREVIEW_LABEL} npm run tauri:dev"
       URL="http://localhost:1420"
     else
       DEFAULT_PORT="1422"
       PORT="${PORT:-$(find_free_port "${DEFAULT_PORT}")}"
-      ENV_VARS=("VITE_TEST_TAURI=1")
-      RUN_ARGS=("${NPM_BIN}" "run" "dev" "--workspace=packages/desktop" "--" "--port" "${PORT}")
-      COMMAND_DISPLAY="VITE_TEST_TAURI=1 npm run dev --workspace=packages/desktop -- --port ${PORT}"
+      ENV_VARS=(
+        "PATH=${ROOT_BIN_DIR}:${PATH}"
+        "VITE_TEST_TAURI=1"
+        "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
+      )
+      RUN_ARGS=("${NPM_BIN}" "run" "dev" "--" "--port" "${PORT}")
+      COMMAND_DISPLAY="cd packages/desktop && PATH=${ROOT_BIN_DIR}:\$PATH VITE_TEST_TAURI=1 VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT}"
       URL="http://localhost:${PORT}"
     fi
     ;;
@@ -166,16 +200,26 @@ case "${TARGET}" in
     SLOT_KIND="web"
     DEFAULT_PORT="1421"
     PORT="${PORT:-$(find_free_port "${DEFAULT_PORT}")}"
-    RUN_ARGS=("${NPM_BIN}" "run" "dev" "--workspace=packages/pwa" "--" "--port" "${PORT}")
-    COMMAND_DISPLAY="npm run dev --workspace=packages/pwa -- --port ${PORT}"
+    RUN_CWD="$(workspace_path_for_target "${WORKTREE_PATH}" "pwa")"
+    ENV_VARS=(
+      "PATH=${ROOT_BIN_DIR}:${PATH}"
+      "VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
+    )
+    RUN_ARGS=("${NPM_BIN}" "run" "dev" "--" "--port" "${PORT}")
+    COMMAND_DISPLAY="cd packages/pwa && PATH=${ROOT_BIN_DIR}:\$PATH VITE_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT}"
     URL="http://localhost:${PORT}"
     ;;
   website)
     SLOT_KIND="web"
     DEFAULT_PORT="3000"
     PORT="${PORT:-$(find_free_port "${DEFAULT_PORT}")}"
-    RUN_ARGS=("${NPM_BIN}" "run" "dev" "--workspace=website" "--" "--port" "${PORT}")
-    COMMAND_DISPLAY="npm run dev --workspace=website -- --port ${PORT}"
+    RUN_CWD="$(workspace_path_for_target "${WORKTREE_PATH}" "website")"
+    ENV_VARS=(
+      "PATH=${ROOT_BIN_DIR}:${PATH}"
+      "NEXT_PUBLIC_FREED_PREVIEW_LABEL=${PREVIEW_LABEL}"
+    )
+    RUN_ARGS=("${NPM_BIN}" "run" "dev" "--" "--port" "${PORT}")
+    COMMAND_DISPLAY="cd website && PATH=${ROOT_BIN_DIR}:\$PATH NEXT_PUBLIC_FREED_PREVIEW_LABEL=${PREVIEW_LABEL} npm run dev -- --port ${PORT}"
     URL="http://localhost:${PORT}"
     ;;
 esac
@@ -196,7 +240,7 @@ spawn_preview() {
     done
   fi
 
-  FREED_PREVIEW_ENV="${env_blob}" python3 - "${WORKTREE_PATH}" "${LOG_PATH}" "${RUN_ARGS[@]}" <<'PY'
+  FREED_PREVIEW_ENV="${env_blob}" python3 - "${RUN_CWD}" "${LOG_PATH}" "${RUN_ARGS[@]}" <<'PY'
 import os
 import subprocess
 import sys
@@ -236,6 +280,7 @@ PID_VALUE="$(spawn_preview)"
   --worktree "${WORKTREE_PATH}" \
   --port "${PORT}" \
   --log "${LOG_PATH}" \
+  --label "${PREVIEW_LABEL}" \
   --command "${COMMAND_DISPLAY}"
 
 sleep 2
@@ -249,6 +294,7 @@ trap - EXIT
 
 echo "Started ${TARGET} preview."
 echo "Worktree: ${WORKTREE_PATH}"
+echo "Label: ${PREVIEW_LABEL}"
 echo "PID: ${PID_VALUE}"
 echo "Log: ${LOG_PATH}"
 if [[ -n "${URL}" ]]; then

@@ -77,6 +77,75 @@ current_timestamp() {
   date -u +"%Y-%m-%dT%H:%M:%SZ"
 }
 
+basename_without_freed_prefix() {
+  local path="$1"
+  local base_name
+
+  base_name="$(basename "${path}")"
+  printf '%s\n' "${base_name#freed-}"
+}
+
+preview_thread_label() {
+  local thread_id="${CODEX_THREAD_ID:-}"
+
+  if [[ -z "${thread_id}" ]]; then
+    return 0
+  fi
+
+  printf 'thread ...%s\n' "${thread_id: -8}"
+}
+
+preview_label_for_worktree() {
+  local path="$1"
+  local abs_path base_name thread_label
+
+  abs_path="$(resolve_worktree_path "${path}")"
+  base_name="$(basename_without_freed_prefix "${abs_path}")"
+  thread_label="$(preview_thread_label)"
+
+  if [[ -n "${thread_label}" ]]; then
+    printf '%s | %s\n' "${base_name}" "${thread_label}"
+    return 0
+  fi
+
+  printf '%s\n' "${base_name}"
+}
+
+workspace_path_for_target() {
+  local root_path="$1"
+  local target="$2"
+  local abs_root
+
+  abs_root="$(resolve_worktree_path "${root_path}")"
+
+  case "${target}" in
+    desktop)
+      printf '%s/packages/desktop\n' "${abs_root}"
+      ;;
+    pwa)
+      printf '%s/packages/pwa\n' "${abs_root}"
+      ;;
+    website)
+      printf '%s/website\n' "${abs_root}"
+      ;;
+    shared)
+      printf '%s\n' "${abs_root}"
+      ;;
+    *)
+      echo "Error: unsupported target '${target}'." >&2
+      return 1
+      ;;
+  esac
+}
+
+worktree_root_bin_dir() {
+  local root_path="$1"
+  local abs_root
+
+  abs_root="$(resolve_worktree_path "${root_path}")"
+  printf '%s/node_modules/.bin\n' "${abs_root}"
+}
+
 is_pid_running() {
   local pid="$1"
 
@@ -129,6 +198,7 @@ write_process_metadata() {
   local port="$5"
   local command="$6"
   local log_path="$7"
+  local preview_label="$8"
   local abs_path worktree_id manifest
 
   ensure_runtime_dirs
@@ -146,6 +216,7 @@ write_process_metadata() {
     write_shell_var "PORT" "${port}"
     write_shell_var "COMMAND" "${command}"
     write_shell_var "LOG_PATH" "${log_path}"
+    write_shell_var "PREVIEW_LABEL" "${preview_label}"
     write_shell_var "STARTED_AT" "$(current_timestamp)"
   } > "${manifest}"
 }

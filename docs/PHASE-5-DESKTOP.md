@@ -225,7 +225,7 @@ export async function captureDomFeed(
 - [x] Legal acceptance stays outside synced Automerge state
 - [x] Freed Desktop keeps rotating local database snapshots with a restore flow in Settings
 - [x] Desktop E2E test infrastructure bootstrapped (Playwright + VITE_TEST_TAURI=1 mock layer)
-- [x] Local desktop preview now defaults to the mocked browser harness, while tracked preview slots keep concurrent local threads to one desktop preview at a time unless native Tauri behavior is explicitly requested
+- [x] Local desktop preview now defaults to the mocked browser harness, while tracked preview slots keep concurrent local threads to one desktop preview at a time unless native Tauri behavior is explicitly requested, and native preview windows carry a visible worktree and thread label
 - [x] Desktop navigation history supports browser-style back and forward shortcuts for views and reader state
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Private diagnostic bundles are opt-in, redacted, and steered toward email instead of public GitHub attachment
@@ -341,7 +341,9 @@ export async function captureDomFeed(
 > Local developer workflow now also defaults desktop preview to the
 > `VITE_TEST_TAURI=1` browser harness, with tracked preview slots so
 > multiple concurrent worktrees do not each spin up their own native Tauri
-> stack by default.
+> stack by default. When a real native preview is needed, the launched
+> window now shows a worktree plus thread label so parallel preview apps
+> can be told apart at a glance.
 > Release notes now use a
 > checked-in review gate: `./scripts/release.sh` prepares draft notes and
 > daily editorial memory, then `./scripts/release-publish.sh` tags only after

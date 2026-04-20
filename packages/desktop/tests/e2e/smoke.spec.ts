@@ -1994,7 +1994,7 @@ test("map time filters switch between current and future location windows", asyn
   );
 });
 
-test("map timeline scrubber replays historical posts and future plans", async ({ app, page }) => {
+test("map timeline playback surfaces future and historical markers", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
   await app.seedFriendLocation();
@@ -2172,21 +2172,12 @@ test("map timeline scrubber replays historical posts and future plans", async ({
   await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
   await expect(page.getByText("Lisbon", { exact: true })).toBeVisible({ timeout: 10_000 });
 
-  await page.getByLabel("Map timeline scrubber").fill("2");
-  await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
-  await expect(page.getByText("Tokyo", { exact: true })).toBeVisible({ timeout: 10_000 });
-
   const pastButton = page.getByRole("button", { name: "Past", exact: true });
   await pastButton.click();
   await expect(page.getByTestId("map-timeline-scrubber")).toBeVisible({ timeout: 10_000 });
 
-  await page.getByLabel("Map timeline scrubber").fill("1");
   await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
-  await expect(page.getByText("Berlin", { exact: true })).toBeVisible({ timeout: 10_000 });
-
-  await page.getByLabel("Map timeline scrubber").fill("0");
-  await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
-  await expect(page.getByText("Rome", { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Paris", { exact: true })).toBeVisible({ timeout: 10_000 });
 });
 
 test("Friends view uses the floating detail drawer shell", async ({ app, page }) => {

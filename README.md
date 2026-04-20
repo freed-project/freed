@@ -149,14 +149,50 @@ binary instead.
 Use the helper instead of bare `git worktree add`:
 
 ```bash
-./scripts/worktree-add.sh ../freed-my-branch -b feat/my-branch
+./scripts/worktree-add.sh ../freed-my-branch -b feat/my-branch origin/dev --target shared
 ```
 
 The helper now:
 
 - detects the new worktree path by diffing the worktree list before and after creation
-- installs dependencies with the npm binary that matches the active Node runtime
+- defaults to a full install with the npm binary that matches the active Node runtime
 - avoids the broken "last worktree wins" assumption that can install into the wrong checkout
+- stays on the branch you asked for instead of inheriting some crusty local base by accident
+- works cleanly with tracked local previews, including readable labels for native preview windows
+- avoids root-level workspace npm dispatch in the preview and deploy helpers, because this monorepo can recurse badly when `npm run <script> --workspace=...` is launched from the repo root
+
+If you want a cheap speculative worktree instead, opt in explicitly:
+
+```bash
+./scripts/worktree-add.sh ../freed-my-branch -b feat/my-branch origin/dev --install auto --target shared
+```
+
+When you are ready to preview the work locally, prefer the lightest useful surface:
+
+```bash
+./scripts/worktree-preview.sh pwa      # default for most product work
+./scripts/worktree-preview.sh website  # marketing site work
+./scripts/worktree-preview.sh desktop --native  # only for real Tauri behavior
+```
+
+When the work is ready to publish from the feature worktree:
+
+```bash
+./scripts/worktree-publish.sh \
+  --title "fix: your change" \
+  --summary "What changed for the user" \
+  --test "Focused validation you ran"
+```
+
+When you run workspace commands by hand, do the same thing as the helpers:
+
+```bash
+cd website
+PATH=../node_modules/.bin:$PATH npm run build
+```
+
+Do not use root-level `npm run <script> --workspace=...` in this repo.
+The root `build`, `dev`, `test`, and `typecheck` scripts now fail fast if you try it, so the error is your cue to `cd` into the workspace and run the command there.
 
 ### Marketing Website (freed.wtf)
 

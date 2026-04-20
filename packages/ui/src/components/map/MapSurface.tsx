@@ -2,34 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { LocationMarkerSummary } from "@freed/shared";
 import { DEFAULT_THEME_ID, getThemeDefinition, type ThemeId } from "@freed/shared/themes";
+import type { Map as MapLibreMap, Marker as MapLibreMarker, Popup as MapLibrePopup } from "maplibre-gl";
 import { createMarkerElement } from "./MarkerElement.js";
 import { createFriendAvatarPalette } from "../../lib/friend-avatar-style.js";
 import { buildThemedMapStyle } from "../../lib/map-style.js";
 
-type PopupInstance = {
-  remove: () => void;
-  setDOMContent: (node: HTMLElement) => PopupInstance;
-  setLngLat: (coordinates: [number, number]) => PopupInstance;
-  addTo: (map: MapInstance) => PopupInstance;
-};
-
-type MarkerInstance = {
-  setLngLat: (coordinates: [number, number]) => MarkerInstance;
-  setPopup: (popup: PopupInstance) => MarkerInstance;
-  addTo: (map: MapInstance) => MarkerInstance;
-  remove: () => void;
-  getElement: () => HTMLElement;
-  togglePopup: () => void;
-};
-
-type MapInstance = {
-  remove: () => void;
-  resize: () => void;
-  fitBounds: (bounds: [[number, number], [number, number]], options?: unknown) => void;
-  flyTo: (options: { center: [number, number]; zoom?: number; duration?: number }) => void;
-  on: (event: string, handler: () => void) => void;
-  off: (event: string, handler: () => void) => void;
-};
+type PopupInstance = MapLibrePopup;
+type MarkerInstance = MapLibreMarker;
+type MapInstance = MapLibreMap;
 
 type MapLibreModule = typeof import("maplibre-gl");
 

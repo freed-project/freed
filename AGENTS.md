@@ -53,12 +53,20 @@ Run `./scripts/release.sh` with no args to auto-compute the next version.
 **Never work directly on `main`.** Always create a git worktree for feature work:
 
 ```bash
-./scripts/worktree-add.sh ../freed-<slug> -b <branch>
+./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --target shared
 # work in ../freed-<slug>/
 # remove when done: git worktree remove ../freed-<slug>
 ```
 
-`worktree-add.sh` is a drop-in replacement for `git worktree add` -- same args, same behavior, plus it runs `npm ci --prefer-offline` automatically so the new worktree has isolated `node_modules` and is ready to run immediately (~74s with a warm cache). Never use bare `git worktree add` directly.
+`worktree-add.sh` is a drop-in replacement for `git worktree add`. It defaults to a full isolated install so the new worktree is ready immediately, and it still supports `--install auto` or `--install none` when you intentionally want to defer bootstrap. Never use bare `git worktree add` directly.
+Pass an explicit remote base like `origin/dev` or `origin/www` so feature work does not inherit a stale local branch by accident.
+Prefer the lightest useful local preview before opening a draft PR:
+- product work usually uses `./scripts/worktree-preview.sh pwa`
+- website work uses `./scripts/worktree-preview.sh website`
+- use `./scripts/worktree-preview.sh desktop --native` only when real Tauri behavior matters, and report the preview label when you do
+- never run `npm run <script> --workspace=...` from the repo root in this monorepo, run from the workspace directory instead
+- the root fanout scripts now fail fast if you try that dangerous pattern, treat that error as a routing mistake and re-run from the workspace
+- if a workspace command needs a hoisted binary, prefix `PATH` with the worktree root `node_modules/.bin`
 
 **Branch naming:** `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/` prefix followed by a short kebab-case description.
 
@@ -161,13 +169,14 @@ with default IPC handlers for every command the app calls on startup.
 
 ```bash
 # Standard run (headless Chromium)
-npm run test:e2e --workspace=packages/desktop
+cd packages/desktop
+npm run test:e2e
 
 # Playwright UI mode (visual test runner, great for writing new tests)
-npm run test:e2e:ui --workspace=packages/desktop
+npm run test:e2e:ui
 
 # Step-through debugger (pauses on each action, shows browser)
-npm run test:e2e:debug --workspace=packages/desktop
+npm run test:e2e:debug
 ```
 
 All three commands start a Vite dev server automatically on port 1422 with `VITE_TEST_TAURI=1` and

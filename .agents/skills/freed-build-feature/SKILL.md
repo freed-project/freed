@@ -1,12 +1,12 @@
 ---
 name: freed-build-feature
-description: Scaffold product work in a dev-based worktree, implement it, verify it, and launch a preview only when the work actually needs one. Use for Desktop, PWA, shared packages, sync, capture packages, release tooling, app behavior, and product docs targeting dev. Do not use for public marketing changes targeting www.
+description: Scaffold product work in a dev-based worktree, implement it, verify it, launch the lightest useful local preview, and finish by committing, pushing, and opening a draft PR targeting dev. Use for Desktop, PWA, shared packages, sync, capture packages, release tooling, app behavior, and product docs targeting dev. Do not use for public marketing changes targeting www.
 disable-model-invocation: true
 ---
 
 # Build Feature
 
-Create a product worktree branch from the latest remote `dev`, implement the feature or fix, verify it, and launch the relevant preview only when the work reaches final verification or the user explicitly asks for one.
+Create a product worktree branch from the latest remote `dev`, implement the feature or fix, verify it, launch the lightest useful local preview, and finish by committing the work, pushing the branch, and opening a draft PR to `dev`.
 
 ## Workflow
 
@@ -16,15 +16,18 @@ Create a product worktree branch from the latest remote `dev`, implement the fea
 4. Check both `origin/dev` and `origin/main` before branching.
    - Confirm whether local `dev` or `main` are behind their remote counterparts.
    - If `origin/main` contains commits that are not in `origin/dev`, call that out before continuing so the user can decide whether `dev` needs to be refreshed first.
-5. Create a new worktree branch from `origin/dev` using `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --install auto --target <desktop|pwa|shared>`.
-6. Bootstrap dependencies only when the work actually needs them with `./scripts/worktree-bootstrap.sh <worktree> --target <desktop|pwa|shared>`.
+5. Create a new worktree branch from `origin/dev` using `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --install full --target <desktop|pwa|shared>`.
+6. If the worktree was created with deferred bootstrap on purpose, recover with `./scripts/worktree-bootstrap.sh <worktree> --target <desktop|pwa|shared>`.
 7. Implement the requested change.
 8. Verify with focused tests, then broader checks when shared behavior changed.
-9. Launch a preview only when final verification needs one or the user explicitly asks:
-   - For PWA work, use `./scripts/worktree-preview.sh pwa`.
-   - For desktop work, default to `./scripts/worktree-preview.sh desktop`.
-   - Use `./scripts/worktree-preview.sh desktop --native` only when Tauri-native behavior itself matters.
-10. Open a PR targeting `dev` when the work is ready.
+9. Before opening the draft PR, launch the lightest useful local preview for the changed surface:
+   - Default to `./scripts/worktree-preview.sh pwa` for normal product work, shared behavior, sync flows, reader UI, and most Desktop feature work.
+   - Use `./scripts/worktree-preview.sh desktop` only when you need the Desktop shell running in the mocked browser preview.
+   - Use `./scripts/worktree-preview.sh desktop --native` only when the change depends on real Tauri behavior such as native windowing, tray behavior, updater wiring, filesystem or process plugins, native OAuth windows, or Rust-side integrations.
+   - When native Desktop preview is running, report the preview label so parallel native windows can be matched to the worktree and thread that launched them.
+10. Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run commands from the workspace directory itself, and when a hoisted binary is needed, prefix `PATH` with `<worktree>/node_modules/.bin`.
+11. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>"`.
+12. Confirm the branch is pushed to `origin` and the PR targeting `dev` stays in draft state. Include the local preview URL or native preview label in the closeout.
 
 ## Scope
 
