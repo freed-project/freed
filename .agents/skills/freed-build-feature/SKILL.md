@@ -1,12 +1,12 @@
 ---
 name: freed-build-feature
-description: Scaffold product work in a dev-based worktree, implement it, verify it, launch the lightest useful local preview, and open a draft PR targeting dev. Use for Desktop, PWA, shared packages, sync, capture packages, release tooling, app behavior, and product docs targeting dev. Do not use for public marketing changes targeting www.
+description: Scaffold product work in a dev-based worktree, implement it, verify it, launch the lightest useful local preview, and finish by committing, pushing, and opening a draft PR targeting dev. Use for Desktop, PWA, shared packages, sync, capture packages, release tooling, app behavior, and product docs targeting dev. Do not use for public marketing changes targeting www.
 disable-model-invocation: true
 ---
 
 # Build Feature
 
-Create a product worktree branch from the latest remote `dev`, implement the feature or fix, verify it, launch the lightest useful local preview, and open a draft PR targeting `dev`.
+Create a product worktree branch from the latest remote `dev`, implement the feature or fix, verify it, launch the lightest useful local preview, and finish by committing the work, pushing the branch, and opening a draft PR to `dev`.
 
 ## Workflow
 
@@ -26,7 +26,8 @@ Create a product worktree branch from the latest remote `dev`, implement the fea
    - Use `./scripts/worktree-preview.sh desktop --native` only when the change depends on real Tauri behavior such as native windowing, tray behavior, updater wiring, filesystem or process plugins, native OAuth windows, or Rust-side integrations.
    - When native Desktop preview is running, report the preview label so parallel native windows can be matched to the worktree and thread that launched them.
 10. Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run commands from the workspace directory itself, and when a hoisted binary is needed, prefix `PATH` with `<worktree>/node_modules/.bin`.
-11. Open a draft PR targeting `dev`, and include the local preview URL or native preview label in the closeout.
+11. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --summary "<user-facing change>" --test "<focused check>"`.
+12. Confirm the branch is pushed to `origin` and the PR targeting `dev` stays in draft state. Include the local preview URL or native preview label in the closeout.
 
 ## Scope
 

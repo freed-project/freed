@@ -175,6 +175,15 @@ When you are ready to preview the work locally, prefer the lightest useful surfa
 ./scripts/worktree-preview.sh desktop --native  # only for real Tauri behavior
 ```
 
+When the work is ready to publish from the feature worktree:
+
+```bash
+./scripts/worktree-publish.sh \
+  --title "fix: your change" \
+  --summary "What changed for the user" \
+  --test "Focused validation you ran"
+```
+
 When you run workspace commands by hand, do the same thing as the helpers:
 
 ```bash
