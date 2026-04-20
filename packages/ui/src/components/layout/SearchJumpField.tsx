@@ -321,8 +321,8 @@ export function SearchJumpField({
 
   if (usesFloatingTrigger) {
     return (
-      <div className="relative z-20 mb-3 flex justify-center">
-        <Tooltip label="Search or run a command">
+      <div className="relative z-20 mb-2 w-full">
+        <Tooltip label="Search or run a command" className="flex w-full">
           <button
             ref={triggerButtonRef}
             type="button"
@@ -331,7 +331,7 @@ export function SearchJumpField({
               setIsTriggerOpen((value) => !value);
               setActiveIndex(-1);
             }}
-            className={`relative flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--theme-border-subtle)] bg-transparent text-[var(--theme-text-secondary)] transition-colors hover:border-[var(--theme-border-quiet)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)] ${
+            className={`relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-2xl border border-[var(--theme-border-subtle)] bg-transparent text-[var(--theme-text-secondary)] transition-colors hover:border-[var(--theme-border-quiet)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)] ${
               showPalette ? "border-[var(--theme-border-strong)] bg-[var(--theme-bg-muted)] text-[var(--theme-text-primary)]" : ""
             }`}
             aria-label="Search or run a command"

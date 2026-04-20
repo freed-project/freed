@@ -285,15 +285,51 @@ test("desktop sidebar snaps to compact and closed, then restores the last non-cl
   const initialGeometry = await readDesktopSidebarGeometry(page);
   expect(initialGeometry.shellWidth).toBeGreaterThan(200);
 
-  await dragElementBy(page, resizeHandle, -164);
-  await page.waitForTimeout(250);
+  const handleBox = await resizeHandle.boundingBox();
+  expect(handleBox).not.toBeNull();
+
+  const startX = handleBox!.x + handleBox!.width / 2;
+  const startY = handleBox!.y + handleBox!.height / 2;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX - 208, startY, { steps: 8 });
+  await page.waitForTimeout(100);
 
   const compactGeometry = await readDesktopSidebarGeometry(page);
-  expect(compactGeometry.shellWidth).toBeGreaterThanOrEqual(100);
-  expect(compactGeometry.shellWidth).toBeLessThanOrEqual(112);
-  expect(compactGeometry.sidebarWidth).toBeGreaterThanOrEqual(84);
-  expect(compactGeometry.sidebarWidth).toBeLessThanOrEqual(92);
+  expect(compactGeometry.shellWidth).toBeGreaterThanOrEqual(70);
+  expect(compactGeometry.shellWidth).toBeLessThanOrEqual(74);
+  expect(compactGeometry.sidebarWidth).toBeGreaterThanOrEqual(54);
+  expect(compactGeometry.sidebarWidth).toBeLessThanOrEqual(58);
   await expect(desktopSidebar.getByTestId("compact-sidebar-search-trigger")).toBeVisible();
+
+  const compactSquares = await page.evaluate(() => {
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    const searchTrigger = sidebar?.querySelector('[data-testid="compact-sidebar-search-trigger"]') as HTMLElement | null;
+    const xRow = sidebar?.querySelector('[data-testid="source-row-x"]') as HTMLElement | null;
+    return {
+      sidebarWidth: sidebar?.getBoundingClientRect().width ?? 0,
+      searchWidth: searchTrigger?.getBoundingClientRect().width ?? 0,
+      searchHeight: searchTrigger?.getBoundingClientRect().height ?? 0,
+      rowWidth: xRow?.getBoundingClientRect().width ?? 0,
+      rowHeight: xRow?.getBoundingClientRect().height ?? 0,
+    };
+  });
+  expect(Math.abs(compactSquares.searchWidth - compactSquares.sidebarWidth)).toBeLessThanOrEqual(1);
+  expect(Math.abs(compactSquares.searchHeight - compactSquares.searchWidth)).toBeLessThanOrEqual(1);
+  expect(Math.abs(compactSquares.rowWidth - compactSquares.sidebarWidth)).toBeLessThanOrEqual(1);
+  expect(Math.abs(compactSquares.rowHeight - compactSquares.rowWidth)).toBeLessThanOrEqual(1);
+
+  await page.mouse.move(startX - 240, startY, { steps: 6 });
+  await page.waitForTimeout(100);
+  expect((await readDesktopSidebarGeometry(page)).shellWidth).toBeLessThanOrEqual(2);
+  await page.mouse.move(startX - 208, startY, { steps: 6 });
+  await page.waitForTimeout(100);
+  const compactAgainGeometry = await readDesktopSidebarGeometry(page);
+  expect(compactAgainGeometry.shellWidth).toBeGreaterThanOrEqual(70);
+  expect(compactAgainGeometry.shellWidth).toBeLessThanOrEqual(74);
+  await page.mouse.up();
+  await page.waitForTimeout(250);
 
   await sidebarToggle.click();
   await page.waitForTimeout(250);
@@ -302,18 +338,27 @@ test("desktop sidebar snaps to compact and closed, then restores the last non-cl
   await sidebarToggle.click();
   await page.waitForTimeout(250);
   const reopenedCompactGeometry = await readDesktopSidebarGeometry(page);
-  expect(reopenedCompactGeometry.shellWidth).toBeGreaterThanOrEqual(100);
-  expect(reopenedCompactGeometry.shellWidth).toBeLessThanOrEqual(112);
+  expect(reopenedCompactGeometry.shellWidth).toBeGreaterThanOrEqual(70);
+  expect(reopenedCompactGeometry.shellWidth).toBeLessThanOrEqual(74);
 
-  await dragElementBy(page, resizeHandle, -72);
-  await page.waitForTimeout(250);
+  const compactHandleBox = await resizeHandle.boundingBox();
+  expect(compactHandleBox).not.toBeNull();
+  const compactStartX = compactHandleBox!.x + compactHandleBox!.width / 2;
+  const compactStartY = compactHandleBox!.y + compactHandleBox!.height / 2;
+
+  await page.mouse.move(compactStartX, compactStartY);
+  await page.mouse.down();
+  await page.mouse.move(compactStartX - 72, compactStartY, { steps: 6 });
+  await page.waitForTimeout(100);
   expect((await readDesktopSidebarGeometry(page)).shellWidth).toBeLessThanOrEqual(2);
+  await page.mouse.up();
+  await page.waitForTimeout(250);
 
   await sidebarToggle.click();
   await page.waitForTimeout(250);
   const restoredCompactGeometry = await readDesktopSidebarGeometry(page);
-  expect(restoredCompactGeometry.shellWidth).toBeGreaterThanOrEqual(100);
-  expect(restoredCompactGeometry.shellWidth).toBeLessThanOrEqual(112);
+  expect(restoredCompactGeometry.shellWidth).toBeGreaterThanOrEqual(70);
+  expect(restoredCompactGeometry.shellWidth).toBeLessThanOrEqual(74);
 
   const savedMode = await page.evaluate(() => {
     const w = window as Record<string, unknown>;
@@ -331,7 +376,7 @@ test("compact sidebar search opens as a floating palette and closes cleanly", as
   await app.waitForReady();
   const desktopSidebar = page.getByTestId("app-sidebar");
 
-  await dragElementBy(page, page.getByTestId("app-sidebar-resize-handle"), -164);
+  await dragElementBy(page, page.getByTestId("app-sidebar-resize-handle"), -208);
   await page.waitForTimeout(250);
 
   const trigger = desktopSidebar.getByTestId("compact-sidebar-search-trigger");

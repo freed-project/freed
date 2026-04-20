@@ -397,9 +397,9 @@ function SourceContextMenu({
 
 const MAX_WIDTH = 480;
 const DEFAULT_WIDTH = 256;
-const COMPACT_WIDTH = 88;
-const CLOSED_SNAP_THRESHOLD = 52;
-const COMPACT_SNAP_THRESHOLD = 132;
+const COMPACT_WIDTH = 56;
+const CLOSED_SNAP_THRESHOLD = 40;
+const COMPACT_SNAP_THRESHOLD = 72;
 const NARROW_LABEL_THRESHOLD = 232;
 
 function getDesktopModeForWidth(width: number): SidebarMode {
@@ -548,44 +548,44 @@ export function Sidebar({
     setCommittedWidth(persistedSidebarWidth);
   }, [dragWidth, persistedSidebarWidth]);
 
-  const desktopWidth = dragWidth ?? (desktopMode === "compact" ? COMPACT_WIDTH : committedWidth);
-  const renderMode: SidebarMode = isMobileViewport ? "expanded" : desktopMode;
+  const rawDesktopWidth = dragWidth
+    ?? (desktopMode === "compact" ? COMPACT_WIDTH : desktopMode === "closed" ? 0 : committedWidth);
+  const renderMode: SidebarMode = isMobileViewport
+    ? "expanded"
+    : dragWidth !== null
+      ? getDesktopModeForWidth(dragWidth)
+      : desktopMode;
+  const desktopWidth = renderMode === "compact"
+    ? COMPACT_WIDTH
+    : renderMode === "closed"
+      ? 0
+      : rawDesktopWidth;
   const compactRail = renderMode === "compact";
   const narrowLabeledSidebar = renderMode === "expanded" && desktopWidth < NARROW_LABEL_THRESHOLD;
   const rowCountsVisible = renderMode === "expanded" && !narrowLabeledSidebar;
   const sourceMenusVisible = renderMode === "expanded" && !narrowLabeledSidebar;
   const searchVariant = compactRail ? "trigger" : "inline";
-  const sidebarPaddingPx = compactRail
+  const sidebarPaddingInlinePx = compactRail
+    ? 0
+    : Math.round(interpolate(desktopWidth, COMPACT_SNAP_THRESHOLD, DEFAULT_WIDTH, 10, 16));
+  const sidebarPaddingBlockPx = compactRail
     ? 8
     : Math.round(interpolate(desktopWidth, COMPACT_SNAP_THRESHOLD, DEFAULT_WIDTH, 10, 16));
-  const rowPaddingXPx = compactRail
-    ? 8
-    : Math.round(interpolate(desktopWidth, COMPACT_SNAP_THRESHOLD, DEFAULT_WIDTH, 8, 12));
-  const rowPaddingYPx = compactRail
-    ? 8
-    : Math.round(interpolate(desktopWidth, COMPACT_SNAP_THRESHOLD, DEFAULT_WIDTH, 6, 8));
-  const rowStyle = { paddingBlock: `${rowPaddingYPx}px`, paddingInline: `${rowPaddingXPx}px` };
   const sidebarBodyStyle = {
-    paddingTop: `${sidebarPaddingPx}px`,
-    paddingInline: `${sidebarPaddingPx}px`,
-    paddingBottom: `calc(${sidebarPaddingPx}px + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))`,
+    paddingTop: `${sidebarPaddingBlockPx}px`,
+    paddingInline: `${sidebarPaddingInlinePx}px`,
+    paddingBottom: `calc(${sidebarPaddingBlockPx}px + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))`,
   };
-  const desktopShellWidth = dragWidth !== null
-    ? desktopWidth + PRIMARY_SIDEBAR_GAP_WIDTH_PX
-    : desktopMode === "closed"
-      ? 0
-      : (desktopMode === "compact" ? COMPACT_WIDTH : committedWidth) + PRIMARY_SIDEBAR_GAP_WIDTH_PX;
-  const desktopShellOpacity = dragWidth !== null ? 1 : desktopMode === "closed" ? 0 : 1;
-  const desktopShellTopPadding = dragWidth !== null || desktopMode !== "closed"
+  const desktopShellWidth = renderMode === "closed"
+    ? 0
+    : desktopWidth + PRIMARY_SIDEBAR_GAP_WIDTH_PX;
+  const desktopShellOpacity = renderMode === "closed" ? 0 : 1;
+  const desktopShellTopPadding = renderMode !== "closed"
     ? "var(--feed-card-gap, 8px)"
     : 0;
-  const desktopAsideWidth = dragWidth !== null
-    ? desktopWidth
-    : desktopMode === "compact"
-      ? COMPACT_WIDTH
-      : committedWidth;
+  const desktopAsideWidth = desktopWidth;
   const compactSidebar = compactRail;
-  const sidebarPaddingClass = compactRail ? "px-2" : "px-4";
+  const sidebarPaddingClass = compactRail ? "px-0" : "px-4";
   const rowPaddingClass = compactRail ? "px-1.5" : "px-3";
   const rowLeadingPaddingClass = compactRail ? "pl-1.5" : "pl-3";
   const rowTrailingPaddingClass = compactRail ? "pr-1" : "pr-2";
@@ -594,9 +594,9 @@ export function Sidebar({
     if (typeof document === "undefined") return;
     document.documentElement.style.setProperty(
       "--freed-sidebar-card-width",
-      desktopMode === "closed" && dragWidth === null ? "0px" : `${desktopAsideWidth}px`,
+      renderMode === "closed" ? "0px" : `${desktopAsideWidth}px`,
     );
-  }, [desktopAsideWidth, desktopMode, dragWidth]);
+  }, [desktopAsideWidth, renderMode]);
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -619,7 +619,6 @@ export function Sidebar({
         dragging.current = false;
         const final = Math.min(MAX_WIDTH, Math.max(0, startW + ev.clientX - startX));
         const nextMode = getDesktopModeForWidth(final);
-        setDragWidth(null);
         if (nextMode === "expanded") {
           pendingPersistedWidth.current = final;
           setCommittedWidth(final);
@@ -630,6 +629,7 @@ export function Sidebar({
           });
         }
         onDesktopModeChange(nextMode);
+        setDragWidth(null);
         document.body.style.cursor = previousCursor;
         document.body.style.userSelect = previousUserSelect;
         document.removeEventListener("mousemove", onMove);
@@ -807,17 +807,16 @@ export function Sidebar({
     testId?: string;
     badge?: ReactNode;
   }) => (
-    <Tooltip key={args.key} label={args.label}>
+    <Tooltip key={args.key} label={args.label} className="flex w-full">
       <button
         type="button"
         onClick={args.onClick}
         data-testid={args.testId}
-        className={`group/compact relative flex w-full items-center justify-center rounded-xl border transition-all ${
+        className={`group/compact relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-2xl border transition-all ${
           args.active
             ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
             : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
         }`}
-        style={rowStyle}
         aria-label={args.label}
       >
         <span className="flex h-5 w-5 items-center justify-center">
@@ -830,7 +829,7 @@ export function Sidebar({
         ) : null}
       </button>
     </Tooltip>
-  ), [rowStyle]);
+  ), []);
 
   const sidebarBody = (
     <nav
