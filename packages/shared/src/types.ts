@@ -543,6 +543,9 @@ export interface DisplayPreferences {
   /** Friends workspace sidebar width in pixels (default: 360, min: 280, max: 520) */
   friendsSidebarWidth?: number;
 
+  /** Saved Friends workspace display mode. Unset defaults to all content. */
+  friendsMode?: MapMode;
+
   /** @deprecated Friend avatar tint is now derived from the active theme. */
   friendAvatarTint?: string;
 
@@ -751,6 +754,7 @@ export function createDefaultPreferences(): UserPreferences {
         showReadInGrayscale: true,
         dualColumnMode: true,
       },
+      friendsMode: "all_content",
       mapTimeMode: "current",
       archivePruneDays: 30,
     },

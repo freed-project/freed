@@ -797,7 +797,14 @@ export function updatePerson(
 
   // Replace reachOutLog array by splicing
   const { reachOutLog, ...scalars } = updates;
-  Object.assign(existing, scalars);
+  const mutablePerson = existing as unknown as Record<string, unknown>;
+  for (const [key, value] of Object.entries(scalars)) {
+    if (value === undefined) {
+      delete mutablePerson[key];
+      continue;
+    }
+    mutablePerson[key] = value;
+  }
 
   if (reachOutLog !== undefined) {
     if (!existing.reachOutLog) {
@@ -882,7 +889,14 @@ export function updateAccount(
   ensureIdentityGraphRoots(doc);
   const existing = doc.accounts[id];
   if (!existing) return;
-  Object.assign(existing, stripUndefined(updates));
+  const mutableAccount = existing as unknown as Record<string, unknown>;
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === undefined) {
+      delete mutableAccount[key];
+      continue;
+    }
+    mutableAccount[key] = value;
+  }
   existing.updatedAt = Date.now();
 }
 

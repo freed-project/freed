@@ -13,6 +13,9 @@ import {
   countAuthorsWithRecentLocationUpdates,
   countFriendsWithRecentLocationUpdates,
   getDefaultMapMode,
+  type DisplayPreferences,
+  type MapMode,
+  type MapTimeMode,
 } from "@freed/shared";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
@@ -100,6 +103,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
 
   const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
+  const accounts = useAppStore((s) => s.accounts);
   const friends = useAppStore((s) => s.friends);
   const activeView = useAppStore((s) => s.activeView);
   const activeFilter = useAppStore((s) => s.activeFilter);
@@ -141,8 +145,16 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     () => countAuthorsWithRecentLocationUpdates(items),
     [items],
   );
+  const socialAccountCount = useMemo(
+    () => Object.values(accounts).filter((account) => account.kind === "social").length,
+    [accounts],
+  );
   const effectiveMapMode = display.mapMode
     ?? getDefaultMapMode(mappedFriendCount, mappedAllContentCount);
+  const effectiveFriendsMode = display.friendsMode ?? "all_content";
+  const showWorkspaceIdentityControls = activeView === "friends" || activeView === "map";
+  const showMapTimeControls = activeView === "map";
+  const showFeedBulkActions = activeView === "feed";
 
   const unreadCount =
     activeFilter.savedOnly || activeFilter.archivedOnly
@@ -180,7 +192,13 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     }
     if (activeView === "friends") {
       if (pendingMatchCount > 0) {
-        return `${friendCount.toLocaleString()} friends • ${pendingMatchCount.toLocaleString()} pending matches`;
+        if (effectiveFriendsMode === "all_content") {
+          return `${friendCount.toLocaleString()} friends • ${socialAccountCount.toLocaleString()} accounts • ${pendingMatchCount.toLocaleString()} pending suggestions`;
+        }
+        return `${friendCount.toLocaleString()} friends • ${pendingMatchCount.toLocaleString()} pending suggestions`;
+      }
+      if (effectiveFriendsMode === "all_content") {
+        return `${friendCount.toLocaleString()} friends • ${socialAccountCount.toLocaleString()} accounts`;
       }
       return `${friendCount.toLocaleString()} friends`;
     }
@@ -196,6 +214,7 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     return formatItemCount(filteredItems.length);
   }, [
     activeView,
+    effectiveFriendsMode,
     filteredItems.length,
     friendCount,
     effectiveMapMode,
@@ -204,9 +223,24 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
     mappedFriendCount,
     pendingMatchCount,
     resultCount,
+    socialAccountCount,
     scopeLabel,
     selectedItem,
   ]);
+
+  const updateDisplayPreference = useCallback((patch: Partial<DisplayPreferences>) => {
+    void updatePreferences({
+      display: patch,
+    } as Parameters<typeof updatePreferences>[0]);
+  }, [updatePreferences]);
+
+  const handleIdentityModeChange = useCallback((key: "friendsMode" | "mapMode", mode: MapMode) => {
+    updateDisplayPreference({ [key]: mode });
+  }, [updateDisplayPreference]);
+
+  const handleMapTimeModeChange = useCallback((mode: MapTimeMode) => {
+    updateDisplayPreference({ mapTimeMode: mode });
+  }, [updateDisplayPreference]);
 
   const handleCloseReader = useCallback(() => {
     if (display.reading.dualColumnMode && !isMobile && selectedItemId) {
@@ -669,8 +703,67 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={unreadCount > 0} width="9.5rem" className="hidden lg:flex">
-                  {unreadCount > 0 ? (
+                <ToolbarAnimatedSlot
+                  visible={showWorkspaceIdentityControls}
+                  width={showMapTimeControls ? "min(22rem, 54vw)" : "min(10rem, 34vw)"}
+                  className="flex min-w-0"
+                >
+                  {showWorkspaceIdentityControls ? (
+                    <div className="flex min-w-0 items-center gap-2 overflow-x-auto py-1">
+                      <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_86%,transparent)] p-1">
+                        {([
+                          ["friends", "Friends"],
+                          ["all_content", "All content"],
+                        ] as const).map(([mode, label]) => {
+                          const isActive =
+                            activeView === "friends"
+                              ? effectiveFriendsMode === mode
+                              : effectiveMapMode === mode;
+                          const preferenceKey = activeView === "friends" ? "friendsMode" : "mapMode";
+
+                          return (
+                            <button
+                              key={`${activeView}-${mode}`}
+                              type="button"
+                              onClick={() => handleIdentityModeChange(preferenceKey, mode)}
+                              {...getToolbarControlProps()}
+                              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                                isActive ? "theme-chip-active" : "theme-chip"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {showMapTimeControls ? (
+                        <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_86%,transparent)] p-1">
+                          {([
+                            ["current", "Current"],
+                            ["future", "Future"],
+                            ["past", "Past"],
+                          ] as const).map(([mode, label]) => (
+                            <button
+                              key={`map-time-${mode}`}
+                              type="button"
+                              onClick={() => handleMapTimeModeChange(mode)}
+                              {...getToolbarControlProps()}
+                              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                                (display.mapTimeMode ?? "current") === mode ? "theme-chip-active" : "theme-chip"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot visible={showFeedBulkActions && unreadCount > 0} width="9.5rem" className="hidden lg:flex">
+                  {showFeedBulkActions && unreadCount > 0 ? (
                     <Tooltip label={`Mark all ${unreadCount.toLocaleString()} items as read`} className="hidden lg:flex">
                       <button
                         onClick={() => markAllAsRead(activeFilter.platform)}
@@ -686,8 +779,8 @@ export function Header({ onMenuClick, sidebarExpanded, onSidebarToggle }: Header
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={archivableCount > 0} width="8rem" className="hidden lg:flex">
-                  {archivableCount > 0 ? (
+                <ToolbarAnimatedSlot visible={showFeedBulkActions && archivableCount > 0} width="8rem" className="hidden lg:flex">
+                  {showFeedBulkActions && archivableCount > 0 ? (
                     <Tooltip label={`Archive all ${archivableCount.toLocaleString()} read (unsaved) items`} className="hidden lg:flex">
                       <button
                         onClick={() => archiveAllReadUnsaved(activeFilter.platform, activeFilter.feedUrl)}

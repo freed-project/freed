@@ -118,6 +118,7 @@ interface AppState {
   activeFilter: FilterOptions;
   selectedItemId: string | null;
   selectedPersonId: string | null;
+  selectedAccountId: string | null;
   selectedFriendId: string | null;
 
   // Initialization
@@ -173,6 +174,7 @@ interface AppState {
   setFilter: (filter: FilterOptions) => void;
   setSelectedItem: (id: string | null) => void;
   setSelectedPerson: (id: string | null) => void;
+  setSelectedAccount: (id: string | null) => void;
   setSelectedFriend: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
   setSyncing: (syncing: boolean) => void;
@@ -317,6 +319,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeFilter: {},
   selectedItemId: null,
   selectedPersonId: null,
+  selectedAccountId: null,
   selectedFriendId: null,
   searchQuery: "",
   activeView: "feed",
@@ -580,8 +583,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   // UI actions
   setFilter: (filter) => set({ activeFilter: filter }),
   setSelectedItem: (id) => set({ selectedItemId: id }),
-  setSelectedPerson: (id) => set({ selectedPersonId: id, selectedFriendId: id }),
-  setSelectedFriend: (id) => set({ selectedPersonId: id, selectedFriendId: id }),
+  setSelectedPerson: (id) => set({ selectedPersonId: id, selectedAccountId: null, selectedFriendId: id }),
+  setSelectedAccount: (id) => set({ selectedPersonId: null, selectedAccountId: id, selectedFriendId: null }),
+  setSelectedFriend: (id) => set({ selectedPersonId: id, selectedAccountId: null, selectedFriendId: id }),
   setLoading: (isLoading) => set({ isLoading }),
   setSyncing: (isSyncing) => set({ isSyncing }),
   setProviderSyncing: (provider, syncing) =>
