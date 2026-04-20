@@ -68,13 +68,6 @@ interface SidebarProps {
   onDesktopModeChange: (nextMode: SidebarMode) => void;
 }
 
-function interpolate(value: number, minValue: number, maxValue: number, minResult: number, maxResult: number) {
-  if (value <= minValue) return minResult;
-  if (value >= maxValue) return maxResult;
-  const progress = (value - minValue) / (maxValue - minValue);
-  return minResult + (maxResult - minResult) * progress;
-}
-
 function SidebarSection({
   title,
   defaultOpen = true,
@@ -401,6 +394,9 @@ const COMPACT_WIDTH = 48;
 const CLOSED_SNAP_THRESHOLD = 40;
 const COMPACT_SNAP_THRESHOLD = 150;
 const LABEL_PRIORITY_THRESHOLD = 200;
+const EXPANDED_PADDING_CROSSOVER_WIDTH = 220;
+const EXPANDED_ROOMY_PADDING_PX = 16;
+const EXPANDED_CONDENSED_PADDING_PX = 8;
 
 function getDesktopModeForWidth(width: number): SidebarMode {
   if (width <= CLOSED_SNAP_THRESHOLD) return "closed";
@@ -568,18 +564,25 @@ export function Sidebar({
   const rssAccordionVisible = renderMode === "expanded" && !narrowLabeledSidebar;
   const sourceStatusVisible = renderMode === "expanded" && !narrowLabeledSidebar;
   const searchVariant = compactRail ? "trigger" : "inline";
+  const expandedSidebarUsesCondensedPadding =
+    renderMode === "expanded" && desktopWidth < EXPANDED_PADDING_CROSSOVER_WIDTH;
   const sidebarPaddingInlinePx = compactRail
     ? 0
-    : Math.round(interpolate(desktopWidth, COMPACT_SNAP_THRESHOLD, DEFAULT_WIDTH, 8, 16));
+    : expandedSidebarUsesCondensedPadding
+      ? EXPANDED_CONDENSED_PADDING_PX
+      : EXPANDED_ROOMY_PADDING_PX;
   const sidebarPaddingBlockPx = compactRail
     ? 0
-    : Math.round(interpolate(desktopWidth, COMPACT_SNAP_THRESHOLD, DEFAULT_WIDTH, 8, 16));
+    : expandedSidebarUsesCondensedPadding
+      ? EXPANDED_CONDENSED_PADDING_PX
+      : EXPANDED_ROOMY_PADDING_PX;
   const sidebarBodyStyle = {
     paddingTop: `${sidebarPaddingBlockPx}px`,
     paddingInline: `${sidebarPaddingInlinePx}px`,
     paddingBottom: compactRail
       ? "0px"
       : `calc(${sidebarPaddingBlockPx}px + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))`,
+    transition: "padding 180ms ease",
   };
   const desktopShellWidth = renderMode === "closed"
     ? 0
@@ -838,6 +841,7 @@ export function Sidebar({
 
   const sidebarBody = (
     <nav
+      data-testid="app-sidebar-body"
       className={`flex-1 min-h-0 flex flex-col ${sidebarPaddingClass} overflow-y-auto minimal-scroll`}
       style={sidebarBodyStyle}
     >

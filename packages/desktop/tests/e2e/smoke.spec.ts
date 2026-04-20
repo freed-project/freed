@@ -118,6 +118,23 @@ async function readDesktopSidebarGeometry(page: Page) {
   });
 }
 
+async function readDesktopSidebarPadding(page: Page) {
+  return page.evaluate(() => {
+    const sidebarBody = document.querySelector('[data-testid="app-sidebar-body"]') as HTMLElement | null;
+    if (!sidebarBody) {
+      return null;
+    }
+
+    const style = window.getComputedStyle(sidebarBody);
+    return {
+      paddingTop: Number.parseFloat(style.paddingTop),
+      paddingLeft: Number.parseFloat(style.paddingLeft),
+      paddingRight: Number.parseFloat(style.paddingRight),
+      paddingBottom: Number.parseFloat(style.paddingBottom),
+    };
+  });
+}
+
 const SETTINGS_STORE_PATH = resolveViteFsModulePath(
   "../../../ui/src/lib/settings-store.ts",
   import.meta.url,
@@ -516,6 +533,36 @@ test("narrow labeled sidebar keeps source names visible and drops counts first",
   await expect(desktopSidebar.getByLabel(/Expand feeds|Collapse feeds/)).toHaveCount(0);
   await expect(desktopSidebar.getByTestId("source-counts-rss")).toHaveCount(0);
   await expect(desktopSidebar.getByTestId("source-menu-trigger-rss")).toHaveCount(0);
+});
+
+test("expanded sidebar padding settles to roomy or condensed values instead of resting mid-way", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const resizeHandle = page.getByTestId("app-sidebar-resize-handle");
+  await expect(resizeHandle).toBeVisible();
+
+  const initialPadding = await readDesktopSidebarPadding(page);
+  expect(initialPadding).not.toBeNull();
+  expect(initialPadding?.paddingTop).toBe(16);
+  expect(initialPadding?.paddingLeft).toBe(16);
+
+  await dragElementBy(page, resizeHandle, -52);
+  await page.waitForTimeout(250);
+
+  const condensedPadding = await readDesktopSidebarPadding(page);
+  expect(condensedPadding).not.toBeNull();
+  expect(condensedPadding?.paddingTop).toBe(8);
+  expect(condensedPadding?.paddingLeft).toBe(8);
+
+  await dragElementBy(page, resizeHandle, 52);
+  await page.waitForTimeout(250);
+
+  const restoredPadding = await readDesktopSidebarPadding(page);
+  expect(restoredPadding).not.toBeNull();
+  expect(restoredPadding?.paddingTop).toBe(16);
+  expect(restoredPadding?.paddingLeft).toBe(16);
 });
 
 test("dragging from a reader toolbar button starts a window drag without firing the button action", async ({ app, page }) => {
