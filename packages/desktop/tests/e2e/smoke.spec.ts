@@ -268,6 +268,42 @@ test("desktop toolbar wordmark and passive title block avoid text-selection affo
   expect(styleState?.titleBlockUserSelect).toBe("none");
 });
 
+test("desktop toolbar title stays clear of the wordmark and sidebar toggle at narrow sidebar widths", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const desktopSidebar = page.getByTestId("app-sidebar");
+  await desktopSidebar.getByTestId("source-row-rss").click();
+  await dragElementBy(page, page.getByTestId("app-sidebar-resize-handle"), -72);
+  await page.waitForTimeout(250);
+
+  const toolbarLayout = await page.evaluate(() => {
+    const wordmark = document.querySelector('[data-testid="workspace-toolbar-wordmark"]') as HTMLElement | null;
+    const toggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
+    const titleBlock = document.querySelector('[data-testid="workspace-toolbar-title-block"]') as HTMLElement | null;
+    if (!wordmark || !toggle || !titleBlock) {
+      return null;
+    }
+
+    const wordmarkRect = wordmark.getBoundingClientRect();
+    const toggleRect = toggle.getBoundingClientRect();
+    const titleRect = titleBlock.getBoundingClientRect();
+
+    return {
+      titleLeft: titleRect.left,
+      wordmarkRight: wordmarkRect.right,
+      toggleRight: toggleRect.right,
+      titleWidth: titleRect.width,
+    };
+  });
+
+  expect(toolbarLayout).not.toBeNull();
+  expect(toolbarLayout!.titleWidth).toBeGreaterThan(0);
+  expect(toolbarLayout!.titleLeft).toBeGreaterThanOrEqual(toolbarLayout!.wordmarkRight + 8);
+  expect(toolbarLayout!.titleLeft).toBeGreaterThanOrEqual(toolbarLayout!.toggleRight + 8);
+});
+
 test("desktop sidebar toggle still clicks normally from the shared toolbar", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();

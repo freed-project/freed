@@ -55,6 +55,7 @@ const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
 const dragStyle = { WebkitAppRegion: "drag" } as CSSProperties;
 const toolbarControlStyle = { ...noDrag, userSelect: "none" } as CSSProperties;
 const TOOLBAR_DRAG_THRESHOLD_PX = 6;
+const MIN_DESKTOP_TOOLBAR_IDENTITY_SLOT_WIDTH_PX = 176;
 
 function formatItemCount(count: number): string {
   return `${count.toLocaleString()} item${count === 1 ? "" : "s"}`;
@@ -328,19 +329,26 @@ export function Header({
   const macosTrafficLightInsetStyle = headerDragRegion
     ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
     : undefined;
-  const sidebarSlotStyle =
+  const minimumToolbarIdentitySlotWidthPx =
+    MIN_DESKTOP_TOOLBAR_IDENTITY_SLOT_WIDTH_PX + (headerDragRegion ? MACOS_TRAFFIC_LIGHT_INSET : 0);
+  const sidebarSlotWidth =
     !isMobile && desktopSidebarMode !== "closed"
-      ? ({
-          width: `calc(var(--freed-sidebar-card-width, 240px) + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX)})`,
-          paddingRight: px(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX),
-        } as CSSProperties)
+      ? `calc(var(--freed-sidebar-card-width, 240px) + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX)})`
+      : null;
+  const leadingToolbarSlotWidth =
+    !isMobileDevice
+      ? (sidebarSlotWidth
+          ? `max(${sidebarSlotWidth}, ${px(minimumToolbarIdentitySlotWidthPx)})`
+          : px(minimumToolbarIdentitySlotWidthPx))
       : undefined;
-  const leftToolbarStyle = sidebarSlotStyle
-    ? {
-        ...sidebarSlotStyle,
+  const leftToolbarStyle = !isMobileDevice
+    ? ({
+        width: leadingToolbarSlotWidth,
+        minWidth: leadingToolbarSlotWidth,
+        paddingRight: px(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX),
         ...macosTrafficLightInsetStyle,
         ...(headerDragRegion ? noDrag : {}),
-      }
+      } as CSSProperties)
     : headerDragRegion
       ? {
           ...macosTrafficLightInsetStyle,
@@ -528,7 +536,7 @@ export function Header({
             className={`theme-toolbar-cluster flex shrink-0 items-center ${showReaderLayoutToggle ? "gap-0" : "gap-2"}`}
           >
             <div
-              className={`flex shrink-0 items-center gap-2 pl-3 sm:pl-4 ${sidebarSlotStyle ? "justify-between" : ""}`}
+              className={`flex shrink-0 items-center gap-2 pl-3 sm:pl-4 ${leadingToolbarSlotWidth ? "justify-between" : ""}`}
               style={leftToolbarStyle}
             >
               {isMobileDevice ? (
