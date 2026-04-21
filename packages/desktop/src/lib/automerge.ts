@@ -19,7 +19,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import { hashSavedUrl } from "@freed/capture-save";
+import { hashSavedUrl } from "@freed/capture-save/normalize";
 import { addDebugEvent, setDocSnapshot, registerDocAccessors } from "@freed/ui/lib/debug-store";
 import type { Account, FeedItem, Person, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";

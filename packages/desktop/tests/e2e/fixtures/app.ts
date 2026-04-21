@@ -46,8 +46,11 @@ export class AppFixture {
 
     if (!gateVisible) return false;
 
-    const checkbox = this.page.getByRole("checkbox");
-    await checkbox.check();
+    const checkboxes = this.page.getByRole("checkbox");
+    const checkboxCount = await checkboxes.count();
+    for (let index = 0; index < checkboxCount; index += 1) {
+      await checkboxes.nth(index).check();
+    }
     await expect(acceptButton).toBeEnabled({ timeout });
     await acceptButton.evaluate((element) => {
       (element as HTMLButtonElement).click();
