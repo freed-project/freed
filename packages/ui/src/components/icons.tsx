@@ -7,13 +7,28 @@ interface IconProps {
 
 // ─── Layout / navigation ────────────────────────────────────────────────────
 
-/** Three horizontal lines – "All sources" list icon. */
+/** Crystal core mark for the unified feed and all-sources navigation. */
 export function AllIcon({ className = "w-4 h-4", style }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={className} style={style} aria-hidden="true">
-      <line x1="3" y1="6" x2="21" y2="6" />
-      <line x1="3" y1="12" x2="21" y2="12" />
-      <line x1="3" y1="18" x2="21" y2="18" />
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      style={style}
+      aria-hidden="true"
+    >
+      <path d="M12 3.8v16.4" />
+      <path d="M4.9 7.9l14.2 8.2" />
+      <path d="M19.1 7.9L4.9 16.1" />
+      <polygon points="12,8.5 15.5,10.5 15.5,13.5 12,15.5 8.5,13.5 8.5,10.5" />
+      <path d="M12 3.8l-1.4 1.5" />
+      <path d="M12 3.8l1.4 1.5" />
+      <path d="M12 20.2l-1.4-1.5" />
+      <path d="M12 20.2l1.4-1.5" />
     </svg>
   );
 }

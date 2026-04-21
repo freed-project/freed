@@ -103,9 +103,11 @@ function CommandActionList({
 
 export function SearchJumpField({
   compactSidebar = false,
+  narrowSidebar = false,
   variant = "inline",
 }: {
   compactSidebar?: boolean;
+  narrowSidebar?: boolean;
   variant?: "inline" | "trigger";
 }) {
   const {
@@ -322,7 +324,7 @@ export function SearchJumpField({
   if (usesFloatingTrigger) {
     return (
       <div className="relative z-20 w-full">
-        <Tooltip label="Search or run a command" className="flex w-full">
+        <Tooltip label="Search or run a command" side="right" className="flex w-full">
           <button
             ref={triggerButtonRef}
             type="button"
@@ -409,7 +411,13 @@ export function SearchJumpField({
         aria-label="Search or run a command"
         aria-expanded={showPalette}
         aria-haspopup="listbox"
-        inputClassName={compactSidebar ? "pl-7 pr-6" : undefined}
+        inputClassName={
+          compactSidebar
+            ? "pl-7 pr-6"
+            : narrowSidebar
+              ? "pl-7 pr-4"
+              : "pl-8 pr-5"
+        }
       />
 
       {showPalette && (

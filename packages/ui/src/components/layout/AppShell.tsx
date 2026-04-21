@@ -25,6 +25,7 @@ import { MapView } from "../map/MapView.js";
 import { BackgroundAtmosphere } from "./BackgroundAtmosphere.js";
 import {
   AUXILIARY_DRAWER_GAP_WIDTH_PX,
+  DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX,
   PRIMARY_SIDEBAR_GAP_WIDTH_PX,
   px,
 } from "./layoutConstants.js";
@@ -67,9 +68,6 @@ export function AppShell({ children }: AppShellProps) {
   const dragging = useRef(false);
   const pendingPersistedDebugWidth = useRef<number | null>(null);
   const pendingPersistedDesktopSidebarMode = useRef<SidebarMode | null>(null);
-  const lastNonClosedDesktopSidebarModeRef = useRef<SidebarMode>(
-    persistedDesktopSidebarMode === "closed" ? "expanded" : persistedDesktopSidebarMode,
-  );
   const discoveredAccountScanRef = useRef({ itemCount: 0, accountCount: 0 });
 
   useEffect(() => {
@@ -89,18 +87,12 @@ export function AppShell({ children }: AppShellProps) {
       pendingPersistedDesktopSidebarMode.current = null;
     }
     setDesktopSidebarMode(persistedDesktopSidebarMode);
-    if (persistedDesktopSidebarMode !== "closed") {
-      lastNonClosedDesktopSidebarModeRef.current = persistedDesktopSidebarMode;
-    }
   }, [persistedDesktopSidebarMode]);
 
   const debugWidth = dragWidth ?? committedDebugWidth;
 
   const persistDesktopSidebarMode = useCallback((nextMode: SidebarMode) => {
     setDesktopSidebarMode(nextMode);
-    if (nextMode !== "closed") {
-      lastNonClosedDesktopSidebarModeRef.current = nextMode;
-    }
     pendingPersistedDesktopSidebarMode.current = nextMode;
     void updatePreferences({ display: { sidebarMode: nextMode } } as Parameters<typeof updatePreferences>[0]).catch(() => {
       if (pendingPersistedDesktopSidebarMode.current === nextMode) {
@@ -110,11 +102,24 @@ export function AppShell({ children }: AppShellProps) {
   }, [updatePreferences]);
 
   const handleDesktopSidebarToggle = useCallback(() => {
-    const nextMode = desktopSidebarMode === "closed"
-      ? lastNonClosedDesktopSidebarModeRef.current
-      : "closed";
-    persistDesktopSidebarMode(nextMode);
-  }, [desktopSidebarMode, persistDesktopSidebarMode]);
+    if (desktopSidebarMode === "closed") {
+      pendingPersistedDesktopSidebarMode.current = "expanded";
+      setDesktopSidebarMode("expanded");
+      void updatePreferences({
+        display: {
+          sidebarMode: "expanded",
+          sidebarWidth: DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX,
+        },
+      } as Parameters<typeof updatePreferences>[0]).catch(() => {
+        if (pendingPersistedDesktopSidebarMode.current === "expanded") {
+          pendingPersistedDesktopSidebarMode.current = null;
+        }
+      });
+      return;
+    }
+
+    persistDesktopSidebarMode("closed");
+  }, [desktopSidebarMode, persistDesktopSidebarMode, updatePreferences]);
 
   const handleDebugDragStart = useCallback(
     (e: React.MouseEvent) => {

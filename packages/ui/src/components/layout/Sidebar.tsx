@@ -21,6 +21,7 @@ import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { SearchJumpField } from "./SearchJumpField.js";
 import {
+  DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX,
   PRIMARY_SIDEBAR_GAP_WIDTH_PX,
   px,
 } from "./layoutConstants.js";
@@ -36,6 +37,7 @@ function fmt(n: number): string {
 }
 
 const FEEDS_PAGE_SIZE = 10;
+const COMPACT_RAIL_OUTER_INSET_PX = 4;
 
 function scoreFeedMatch(feed: RssFeed, queryTerms: string[]): number {
   if (queryTerms.length === 0) return 0;
@@ -390,7 +392,7 @@ function SourceContextMenu({
 }
 
 const MAX_WIDTH = 480;
-const DEFAULT_WIDTH = 256;
+const DEFAULT_WIDTH = DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX;
 const COMPACT_WIDTH = 48;
 const CLOSED_SNAP_THRESHOLD = 40;
 const COMPACT_SNAP_THRESHOLD = 100;
@@ -556,6 +558,8 @@ export function Sidebar({
     : dragWidth !== null
       ? getDesktopModeForWidth(dragWidth)
       : desktopMode;
+  const closedPreviewActive = dragWidth !== null && renderMode === "closed";
+  const snapPreviewActive = dragWidth !== null && renderMode !== "expanded";
   const desktopWidth = renderMode === "compact"
     ? COMPACT_WIDTH
     : renderMode === "closed"
@@ -570,12 +574,12 @@ export function Sidebar({
   const expandedSidebarUsesCondensedPadding =
     renderMode === "expanded" && desktopWidth < EXPANDED_PADDING_CROSSOVER_WIDTH;
   const sidebarPaddingInlinePx = compactRail
-    ? 0
+    ? COMPACT_RAIL_OUTER_INSET_PX
     : expandedSidebarUsesCondensedPadding
       ? EXPANDED_CONDENSED_PADDING_PX
       : EXPANDED_ROOMY_PADDING_PX;
   const sidebarPaddingBlockPx = compactRail
-    ? 0
+    ? COMPACT_RAIL_OUTER_INSET_PX
     : expandedSidebarUsesCondensedPadding
       ? EXPANDED_CONDENSED_PADDING_PX
       : EXPANDED_ROOMY_PADDING_PX;
@@ -590,24 +594,35 @@ export function Sidebar({
   const desktopShellWidth = renderMode === "closed"
     ? 0
     : desktopWidth + PRIMARY_SIDEBAR_GAP_WIDTH_PX;
-  const desktopShellTopPadding = renderMode !== "closed"
+  const desktopShellTopPadding = renderMode !== "closed" || closedPreviewActive
     ? "var(--feed-card-gap, 8px)"
     : 0;
   const desktopAsideWidth = desktopWidth;
+  const desktopAsideRenderedWidth = closedPreviewActive ? COMPACT_WIDTH : desktopAsideWidth;
   const compactSidebar = compactRail;
   const sidebarPaddingClass = compactRail ? "px-0" : "px-4";
-  const rowPaddingClass = compactRail ? "px-1.5" : "px-3";
-  const rowLeadingPaddingClass = compactRail ? "pl-1.5" : "pl-3";
-  const rowTrailingPaddingClass = compactRail ? "pr-1" : "pr-2";
+  const rowPaddingClass = compactRail ? "px-1.5" : narrowLabeledSidebar ? "px-2" : "px-2.5";
+  const rowLeadingPaddingClass = compactRail ? "pl-1.5" : narrowLabeledSidebar ? "pl-2" : "pl-2.5";
+  const rowTrailingPaddingClass = compactRail ? "pr-1" : narrowLabeledSidebar ? "pr-1" : "pr-1.5";
+  const rowGapClass = narrowLabeledSidebar ? "gap-2" : "gap-3";
+  const desktopShellTransition = dragWidth !== null && !snapPreviewActive
+    ? "none"
+    : "width 220ms ease, opacity 180ms ease";
+  const desktopAsideTransition = dragWidth !== null && !snapPreviewActive
+    ? "none"
+    : "width 220ms ease, transform 220ms ease, opacity 180ms ease";
+  const desktopAsideTransform = renderMode === "closed"
+    ? `translateX(calc(-100% - ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX)}))`
+    : "translateX(0)";
   const resizeHandleVisible = !forceCompactDesktopRail && (dragWidth !== null || renderMode !== "closed");
 
   useEffect(() => {
     if (typeof document === "undefined") return;
     document.documentElement.style.setProperty(
       "--freed-sidebar-card-width",
-      renderMode === "closed" ? "0px" : `${desktopAsideWidth}px`,
+      renderMode === "closed" && !closedPreviewActive ? "0px" : `${desktopAsideRenderedWidth}px`,
     );
-  }, [desktopAsideWidth, renderMode]);
+  }, [closedPreviewActive, desktopAsideRenderedWidth, renderMode]);
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -820,15 +835,16 @@ export function Sidebar({
     icon: ReactNode;
     testId?: string;
     badge?: ReactNode;
+    iconSizeClass?: string;
   }) => {
     const compactIcon = isValidElement<{ className?: string }>(args.icon)
       ? cloneElement(args.icon, {
-          className: `${args.icon.props.className ?? ""} h-[18px] w-[18px]`.trim(),
+          className: `${args.icon.props.className ?? ""} ${args.iconSizeClass ?? "h-[18px] w-[18px]"}`.trim(),
         })
       : args.icon;
 
     return (
-      <Tooltip key={args.key} label={args.label} className="flex w-full">
+      <Tooltip key={args.key} label={args.label} side="right" className="flex w-full">
         <button
           type="button"
           onClick={args.onClick}
@@ -840,11 +856,11 @@ export function Sidebar({
         }`}
         aria-label={args.label}
       >
-          <span className="flex h-[18px] w-[18px] items-center justify-center">
+          <span className={`flex items-center justify-center ${args.iconSizeClass ?? "h-[18px] w-[18px]"}`}>
             {compactIcon}
           </span>
           {args.badge ? (
-            <span className="pointer-events-none absolute right-1 top-1">
+            <span className="pointer-events-none absolute right-0 top-0">
               {args.badge}
             </span>
           ) : null}
@@ -854,12 +870,12 @@ export function Sidebar({
   }, []);
 
   const renderSidebarIconBadge = useCallback((badge: ReactNode) => (
-    <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[color:var(--theme-bg-root)]">
+    <span className="flex h-3.5 w-3.5 items-center justify-center">
       {badge}
     </span>
   ), []);
 
-  const renderSidebarRowIcon = useCallback((icon: ReactNode, badge?: ReactNode, iconSizeClass = "h-5 w-5") => {
+  const renderSidebarRowIcon = useCallback((icon: ReactNode, badge?: ReactNode, iconSizeClass = "h-4 w-4") => {
     const resolvedIcon = isValidElement<{ className?: string }>(icon)
       ? cloneElement(icon, {
           className: `${icon.props.className ?? ""} ${iconSizeClass}`.trim(),
@@ -870,13 +886,21 @@ export function Sidebar({
       <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">
         {resolvedIcon}
         {badge ? (
-          <span className="pointer-events-none absolute -right-1 -top-1">
+          <span className="pointer-events-none absolute -right-2 -top-2">
             {badge}
           </span>
         ) : null}
       </span>
     );
   }, []);
+
+  const labeledSourceIconSizeClass = useCallback((sourceId?: string) => (
+    sourceId === "facebook" ? "h-[17px] w-[17px]" : "h-4 w-4"
+  ), []);
+
+  const compactSourceIconSizeClass = useCallback((sourceId?: string) => (
+    sourceId === "facebook" ? "h-[19px] w-[19px]" : "h-[18px] w-[18px]"
+  ), []);
 
   const getSourceBadge = useCallback((source: SourceNavigationItem, sourceStatus?: SidebarSourceStatusSummary | null) => {
     if (sourceStatus) {
@@ -901,7 +925,7 @@ export function Sidebar({
   const pendingFriendsBadge = pendingMatchCount > 0
     ? renderSidebarIconBadge(<span className="flex h-2.5 w-2.5 rounded-full bg-[var(--theme-accent-secondary)]" />)
     : undefined;
-  const sidebarLabelClass = "min-w-0 flex-1 overflow-hidden whitespace-nowrap pr-1.5 [text-overflow:clip]";
+  const sidebarLabelClass = `min-w-0 flex-1 overflow-hidden whitespace-nowrap ${narrowLabeledSidebar ? "pr-0.5" : "pr-1"} [text-overflow:clip]`;
   const sidebarFeedLabelClass = `${sidebarLabelClass} text-xs`;
 
   const sidebarBody = (
@@ -910,9 +934,9 @@ export function Sidebar({
       className={`flex-1 min-h-0 flex flex-col ${sidebarPaddingClass} overflow-y-auto minimal-scroll`}
       style={sidebarBodyStyle}
     >
-          <SearchJumpField compactSidebar={compactSidebar} variant={searchVariant} />
+          <SearchJumpField compactSidebar={compactSidebar} narrowSidebar={narrowLabeledSidebar} variant={searchVariant} />
 
-          <ul className="flex flex-col gap-1">
+          <ul className={`flex flex-col ${compactRail ? "gap-0" : "gap-1"}`}>
             {[allSource].map((source) => (
               compactRail ? (
                 <li key={source.id ?? "all"} className="order-1">
@@ -924,6 +948,7 @@ export function Sidebar({
                     icon: source.icon,
                     testId: `source-row-${sourceKey(source)}`,
                     badge: getSourceBadge(source),
+                    iconSizeClass: compactSourceIconSizeClass(source.id),
                   })}
                 </li>
               ) : (
@@ -939,7 +964,7 @@ export function Sidebar({
                     onClick={() => handleSourceClick(source)}
                     data-testid={`source-row-${sourceKey(source)}`}
                     className={`
-                      flex-1 cursor-pointer flex items-center gap-3 ${rowLeadingPaddingClass} py-1.5 min-w-0
+                      flex-1 cursor-pointer flex items-center ${rowGapClass} ${rowLeadingPaddingClass} py-1.5 min-w-0
                       text-left text-sm transition-all
                       ${
                         isTopSourceActive(source)
@@ -948,7 +973,11 @@ export function Sidebar({
                       }
                     `}
                     >
-                    {renderSidebarRowIcon(source.icon, getSourceBadge(source))}
+                    {renderSidebarRowIcon(
+                      source.icon,
+                      getSourceBadge(source),
+                      labeledSourceIconSizeClass(source.id),
+                    )}
                     <span className={sidebarLabelClass}>{source.label}</span>
                   </button>
                   <div
@@ -990,7 +1019,7 @@ export function Sidebar({
                 <button
                   onClick={() => showFeed({ savedOnly: true })}
                   className={`
-                    w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-1.5 rounded-lg
+                    w-full cursor-pointer flex items-center ${rowGapClass} ${rowPaddingClass} py-1.5 rounded-lg
                     text-left text-sm transition-all border
                     ${
                       isFeedView && activeFilter.savedOnly
@@ -1020,7 +1049,7 @@ export function Sidebar({
                 <button
                   onClick={() => showFeed({ archivedOnly: true })}
                   className={`
-                    w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-1.5 rounded-lg
+                    w-full cursor-pointer flex items-center ${rowGapClass} ${rowPaddingClass} py-1.5 rounded-lg
                     text-left text-sm transition-all border
                     ${
                       isFeedView && activeFilter.archivedOnly
@@ -1063,7 +1092,7 @@ export function Sidebar({
                   }}
                   data-testid="source-row-friends"
                   className={`
-                    w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-1.5 rounded-lg
+                    w-full cursor-pointer flex items-center ${rowGapClass} ${rowPaddingClass} py-1.5 rounded-lg
                     text-left text-sm transition-all border
                     ${
                       activeView === "friends"
@@ -1158,6 +1187,7 @@ export function Sidebar({
                         icon: source.icon,
                         testId: `source-row-${sourceKey(source)}`,
                         badge: compactBadge,
+                        iconSizeClass: compactSourceIconSizeClass(source.id),
                       })}
                     </li>
                   );
@@ -1197,7 +1227,7 @@ export function Sidebar({
                           >
                             <div
                               className={`
-                                flex min-w-0 max-w-full flex-1 items-center gap-3 text-left text-sm transition-all
+                                flex min-w-0 max-w-full flex-1 items-center ${rowGapClass} text-left text-sm transition-all
                                 ${
                                   isTopSourceActive(source)
                                     ? "text-[color:var(--theme-text-primary)]"
@@ -1205,7 +1235,11 @@ export function Sidebar({
                                 }
                               `}
                             >
-                              {renderSidebarRowIcon(source.icon, getSourceBadge(source, sourceStatus))}
+                              {renderSidebarRowIcon(
+                                source.icon,
+                                getSourceBadge(source, sourceStatus),
+                                labeledSourceIconSizeClass(source.id),
+                              )}
                               <span className={sidebarLabelClass}>{source.label}</span>
                             </div>
                             {rssAccordionVisible ? (
@@ -1289,7 +1323,7 @@ export function Sidebar({
                           </div>
                         </div>
 
-                        {rssFeedsOpen && (
+                        {rssAccordionVisible && rssFeedsOpen && (
                           <div className="space-y-2">
                             {visibleFeedList.length > 0 ? (
                               <>
@@ -1427,7 +1461,7 @@ export function Sidebar({
                       onClick={() => handleSourceClick(source)}
                       data-testid={`source-row-${sourceKey(source)}`}
                       className={`
-                        flex-1 cursor-pointer flex items-center gap-3 ${rowLeadingPaddingClass} py-1.5 min-w-0
+                        flex-1 cursor-pointer flex items-center ${rowGapClass} ${rowLeadingPaddingClass} py-1.5 min-w-0
                         text-left text-sm transition-all
                         ${
                           isTopSourceActive(source)
@@ -1436,7 +1470,11 @@ export function Sidebar({
                         }
                       `}
                     >
-                      {renderSidebarRowIcon(source.icon, getSourceBadge(source, getSourceStatus?.(source.id) ?? null))}
+                      {renderSidebarRowIcon(
+                        source.icon,
+                        getSourceBadge(source, getSourceStatus?.(source.id) ?? null),
+                        labeledSourceIconSizeClass(source.id),
+                      )}
                       <span className={sidebarLabelClass}>{source.label}</span>
                     </button>
                     <div
@@ -1556,7 +1594,7 @@ export function Sidebar({
             ) : (
               <button
                 onClick={openSettings}
-                className={`w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-1.5 rounded-lg text-left text-sm text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}
+                className={`w-full cursor-pointer flex items-center ${rowGapClass} ${rowPaddingClass} py-1.5 rounded-lg text-left text-sm text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}
               >
                 <span className="w-5 text-center">
                   <svg className="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1588,17 +1626,18 @@ export function Sidebar({
         style={{
           width: desktopShellWidth,
           paddingTop: desktopShellTopPadding,
-          transition: dragging.current ? "none" : "width 220ms ease, opacity 180ms ease",
+          transition: desktopShellTransition,
         }}
       >
         <div className="relative h-full w-full overflow-visible">
-          {renderMode !== "closed" ? (
+          {renderMode !== "closed" || closedPreviewActive ? (
             <aside
               data-testid="app-sidebar"
               className="theme-floating-panel relative z-10 flex h-full min-h-0 shrink-0 flex-col overflow-hidden"
               style={{
-                width: px(desktopAsideWidth),
-                transition: dragging.current ? "none" : "width 220ms ease",
+                width: px(desktopAsideRenderedWidth),
+                transform: desktopAsideTransform,
+                transition: desktopAsideTransition,
               }}
             >
               {sidebarBody}

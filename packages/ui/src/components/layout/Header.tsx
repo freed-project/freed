@@ -39,7 +39,6 @@ import {
 } from "../../context/PlatformContext.js";
 import { getFilterLabel } from "../../lib/feed-view-labels.js";
 import {
-  PRIMARY_SIDEBAR_GAP_WIDTH_PX,
   TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
   px,
 } from "./layoutConstants.js";
@@ -331,20 +330,27 @@ export function Header({
     : undefined;
   const minimumToolbarIdentitySlotWidthPx =
     MIN_DESKTOP_TOOLBAR_IDENTITY_SLOT_WIDTH_PX + (headerDragRegion ? MACOS_TRAFFIC_LIGHT_INSET : 0);
+  const compactDesktopSidebarRail = !isMobileDevice && desktopSidebarMode === "compact";
   const sidebarSlotWidth =
-    !isMobile && desktopSidebarMode !== "closed"
-      ? `calc(var(--freed-sidebar-card-width, 240px) + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX)})`
+    !isMobile && desktopSidebarMode === "expanded"
+      ? "var(--freed-sidebar-card-width, 240px)"
       : null;
   const leadingToolbarSlotWidth =
     !isMobileDevice
-      ? (sidebarSlotWidth
+      ? (compactDesktopSidebarRail
+          ? undefined
+          : sidebarSlotWidth
           ? `max(${sidebarSlotWidth}, ${px(minimumToolbarIdentitySlotWidthPx)})`
           : px(minimumToolbarIdentitySlotWidthPx))
       : undefined;
   const leftToolbarStyle = !isMobileDevice
     ? ({
-        width: leadingToolbarSlotWidth,
-        minWidth: leadingToolbarSlotWidth,
+        ...(leadingToolbarSlotWidth
+          ? {
+              width: leadingToolbarSlotWidth,
+              minWidth: leadingToolbarSlotWidth,
+            }
+          : {}),
         paddingRight: px(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX),
         ...macosTrafficLightInsetStyle,
         ...(headerDragRegion ? noDrag : {}),
@@ -574,7 +580,7 @@ export function Header({
                     {desktopSidebarMode === "closed" ? (
                       <SidebarExpandIcon className="h-5 w-5" />
                     ) : (
-                      <SidebarCollapseIcon className="h-5 w-5" />
+                      <SidebarCollapseIcon className="h-5 w-5 translate-x-1.5" />
                     )}
                   </button>
                 </Tooltip>

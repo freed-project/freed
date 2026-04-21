@@ -1291,6 +1291,7 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
 .theme-tooltip-arrow {
   position: absolute;
   left: var(--theme-tooltip-arrow-left, 50%);
+  top: var(--theme-tooltip-arrow-top, 50%);
   width: 10px;
   height: 10px;
   background: color-mix(in oklab, var(--theme-bg-surface) 92%, black);
@@ -1318,6 +1319,22 @@ html[data-theme="scriptorium"] .theme-tooltip-arrow {
   bottom: 100%;
   margin-bottom: -4px;
   border-right: 0;
+  border-bottom: 0;
+}
+
+.theme-tooltip-arrow-right {
+  left: 0;
+  margin-left: -4px;
+  transform: translateY(-50%) rotate(45deg);
+  border-right: 0;
+  border-top: 0;
+}
+
+.theme-tooltip-arrow-left {
+  left: 100%;
+  margin-left: -6px;
+  transform: translateY(-50%) rotate(45deg);
+  border-left: 0;
   border-bottom: 0;
 }
 
