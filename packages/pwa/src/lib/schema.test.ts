@@ -54,6 +54,23 @@ function makeFeed(overrides: Partial<RssFeed> & { url: string; title: string }):
   };
 }
 
+function makeAccount(overrides: Partial<Account> & {
+  id: string;
+  kind: Account["kind"];
+  provider: Account["provider"];
+  externalId: string;
+}): Account {
+  return {
+    personId: "person-1",
+    firstSeenAt: 1,
+    lastSeenAt: 1,
+    discoveredFrom: "captured_item",
+    createdAt: 1,
+    updatedAt: 1,
+    ...overrides,
+  };
+}
+
 // =============================================================================
 // createEmptyDoc
 // =============================================================================
@@ -199,24 +216,20 @@ describe("deduplicateDocFeedItems", () => {
         updatedAt: 1,
       });
       addAccounts(d, [
-        {
+        makeAccount({
           id: "person-1:facebook:casey-fb",
           personId: "person-1",
           kind: "social",
           provider: "facebook",
           externalId: "casey-fb",
-          createdAt: 1,
-          updatedAt: 1,
-        },
-        {
+        }),
+        makeAccount({
           id: "person-1:instagram:casey-ig",
           personId: "person-1",
           kind: "social",
           provider: "instagram",
           externalId: "casey-ig",
-          createdAt: 1,
-          updatedAt: 1,
-        },
+        }),
       ]);
 
       addFeedItem(d, makeItem({
@@ -289,24 +302,20 @@ describe("deduplicateDocFeedItems", () => {
         updatedAt: 1,
       });
       addAccounts(d, [
-        {
+        makeAccount({
           id: "person-1:facebook:casey-fb",
           personId: "person-1",
           kind: "social",
           provider: "facebook",
           externalId: "casey-fb",
-          createdAt: 1,
-          updatedAt: 1,
-        },
-        {
+        }),
+        makeAccount({
           id: "person-2:instagram:jordan-ig",
           personId: "person-2",
           kind: "social",
           provider: "instagram",
           externalId: "jordan-ig",
-          createdAt: 1,
-          updatedAt: 1,
-        },
+        }),
       ]);
 
       addFeedItem(d, makeItem({
