@@ -1,0 +1,65 @@
+{
+  "tag": "v26.4.2100",
+  "version": "26.4.2100",
+  "channel": "production",
+  "dayKey": "26.4.21",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-21T20:39:04.296Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.4.1602",
+    "previousPublishedDayTag": "v26.4.1602",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.2100"
+    ],
+    "relatedBuildTags": [
+      "v26.4.1700-dev",
+      "v26.4.1800-dev",
+      "v26.4.1802-dev",
+      "v26.4.1900-dev",
+      "v26.4.1901-dev",
+      "v26.4.2001-dev",
+      "v26.4.2002-dev",
+      "v26.4.2100"
+    ],
+    "prNumbers": [
+      227,
+      274
+    ],
+    "commitSubjects": [
+      "fix: harden npm dev workflow (#274)",
+      "fix: finalize explicit www release flow on main",
+      "fix: carry dev prereleases into production changelog (#227)"
+    ]
+  },
+  "release": {
+    "deck": "Time-aware map filtering, expand friends and map identity workflows, and PWA install prompt flow",
+    "features": [
+      "Time-aware map filtering",
+      "Replay historical posts and future plans with a shared map timeline scrubber",
+      "Expand friends and map identity workflows"
+    ],
+    "fixes": [
+      "Sync and update reliability fixes",
+      "Reader, feed, and header polish",
+      "Release build and type-safety cleanup",
+      "Dedupe Facebook and Instagram cross-posts",
+      "Migrates older friend data into the person and account graph during startup so existing identities keep loading cleanly after the update",
+      "Shows the -dev suffix consistently in desktop update surfaces and settings"
+    ],
+    "followUps": [
+      "Refactor friends into a person account identity graph",
+      "Migrate legacy identity graph on startup",
+      "Map timeline scrubber, startup recovery, and clearer dev updates",
+      "Tri-state source sidebar",
+      "Friends lens to feed toolbar",
+      "Refine settings section jump alignment, harden worktree helper flow, and harden helper session workflow",
+      "This dev build improves install flow and tightens startup, capture, and release stability"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2100\n\nTime-aware map filtering, expand friends and map identity workflows, and PWA install prompt flow\n\n### Features\n\n- Time-aware map filtering\n- Replay historical posts and future plans with a shared map timeline scrubber\n- Expand friends and map identity workflows\n\n### Fixes\n\n- Sync and update reliability fixes\n- Reader, feed, and header polish\n- Release build and type-safety cleanup\n- Dedupe Facebook and Instagram cross-posts\n- Migrates older friend data into the person and account graph during startup so existing identities keep loading cleanly after the update\n- Shows the -dev suffix consistently in desktop update surfaces and settings\n\n### Follow-ups\n\n- Refactor friends into a person account identity graph\n- Migrate legacy identity graph on startup\n- Map timeline scrubber, startup recovery, and clearer dev updates\n- Tri-state source sidebar\n- Friends lens to feed toolbar\n- Refine settings section jump alignment, harden worktree helper flow, and harden helper session workflow\n- This dev build improves install flow and tightens startup, capture, and release stability\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
