@@ -1,0 +1,59 @@
+{
+  "tag": "v26.4.2100",
+  "version": "26.4.2100",
+  "channel": "production",
+  "dayKey": "26.4.21",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-21T20:39:04.296Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.4.1602",
+    "previousPublishedDayTag": "v26.4.1602",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.2100"
+    ],
+    "relatedBuildTags": [
+      "v26.4.1700-dev",
+      "v26.4.1800-dev",
+      "v26.4.1802-dev",
+      "v26.4.1900-dev",
+      "v26.4.1901-dev",
+      "v26.4.2001-dev",
+      "v26.4.2002-dev",
+      "v26.4.2100"
+    ],
+    "prNumbers": [
+      227,
+      274
+    ],
+    "commitSubjects": [
+      "fix: harden npm dev workflow (#274)",
+      "fix: finalize explicit www release flow on main",
+      "fix: carry dev prereleases into production changelog (#227)"
+    ]
+  },
+  "release": {
+    "deck": "Map timeline playback, cleaner identity migration, and smoother install and update flows",
+    "features": [
+      "Filter maps with a shared timeline scrubber",
+      "Replay historical posts and future plans from one map timeline",
+      "Manage friends and map identities through the new person and account graph"
+    ],
+    "fixes": [
+      "Migrates older friend data into the new person and account graph during startup so existing identities keep loading cleanly after the update",
+      "Dedupes Facebook and Instagram cross-posts",
+      "Keeps the install prompt and update channel labeling clearer across the app",
+      "Tightens reader, feed, header, sync, and release reliability"
+    ],
+    "followUps": [
+      "Adds a tri-state source sidebar for faster filtering",
+      "Brings the Friends lens into the feed toolbar",
+      "Polishes settings jumps and hardens helper workflow stability"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2100\n\nMap timeline playback, cleaner identity migration, and smoother install and update flows\n\n### Features\n\n- Filter maps with a shared timeline scrubber\n- Replay historical posts and future plans from one map timeline\n- Manage friends and map identities through the new person and account graph\n\n### Fixes\n\n- Migrates older friend data into the new person and account graph during startup so existing identities keep loading cleanly after the update\n- Dedupes Facebook and Instagram cross-posts\n- Keeps the install prompt and update channel labeling clearer across the app\n- Tightens reader, feed, header, sync, and release reliability\n\n### Follow-ups\n\n- Adds a tri-state source sidebar for faster filtering\n- Brings the Friends lens into the feed toolbar\n- Polishes settings jumps and hardens helper workflow stability\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
