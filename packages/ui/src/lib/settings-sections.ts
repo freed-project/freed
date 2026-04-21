@@ -111,6 +111,12 @@ export const GOOGLE_CONTACTS_SECTION_META: SectionMeta = {
   keywords: ["google contacts", "contacts", "people api", "friends", "address book", "connect", "sync"],
 };
 
+export const AI_SECTION_META: SectionMeta = {
+  id: "ai",
+  label: "AI",
+  keywords: ["ai", "summary", "summarize", "topics", "ollama", "openai", "anthropic", "gemini"],
+};
+
 /** Shown only when the platform supports factory reset (desktop). */
 export const DANGER_SECTION_META: SectionMeta = {
   id: "danger",

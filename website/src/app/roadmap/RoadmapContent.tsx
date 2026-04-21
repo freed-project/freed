@@ -719,8 +719,8 @@ const phases: Phase[] = [
     number: 3,
     title: "Save for Later",
     description:
-      "Save any URL from desktop or mobile. Full offline reading with layered content cache. AI summarization and tag navigation.",
-    status: "complete",
+      "Desktop save is full. PWA save now attempts full article capture, then falls back to desktop healing when a site blocks extraction. Layered reader fallback, AI controls, and tag navigation are shipped.",
+    status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-3-SAVE-FOR-LATER.md",
   },

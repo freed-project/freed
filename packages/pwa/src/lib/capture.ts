@@ -2,8 +2,8 @@
  * Feed management for the PWA
  *
  * The PWA is a reader — it displays items synced from the desktop app
- * via Automerge. Feed subscription and fetching are desktop-only
- * capabilities (the PWA has no CORS proxy).
+ * via Automerge. RSS subscription and feed fetching are desktop-only
+ * capabilities. The PWA has a saved-article proxy, but not an RSS fetch path.
  *
  * The PWA CAN subscribe to feeds by writing a stub entry to the CRDT doc.
  * The desktop poller detects the stub (title === url sentinel) on next sync
@@ -18,7 +18,7 @@ import { toast } from "@freed/ui/components/Toast";
 /**
  * Subscribe to an RSS feed from the PWA.
  *
- * The PWA cannot fetch RSS content directly (CORS). Instead, this writes a
+ * The PWA cannot fetch RSS content directly. Instead, this writes a
  * stub subscription to the Automerge doc using the URL as a sentinel title.
  * The desktop poller recognises the sentinel on next sync, fetches real
  * metadata and content, and heals the title in-place.
