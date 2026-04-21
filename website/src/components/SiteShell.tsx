@@ -29,10 +29,10 @@ export default function SiteShell({
 
   return (
     <>
+      {!isQrGallery && <Navigation />}
+
       <div className="theme-shell flex flex-col overflow-hidden relative">
         <BackgroundGradients />
-
-        {!isQrGallery && <Navigation />}
 
         <main
           id="main-content"

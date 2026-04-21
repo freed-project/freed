@@ -4,6 +4,8 @@ import {
   useEffect,
   useRef,
   useState,
+  type FocusEvent as ReactFocusEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
 import type { ThemeId } from "@freed/shared/themes";
@@ -25,6 +27,8 @@ export default function ThemeSelector({ compact = false }: ThemeSelectorProps) {
   const { themeId, setThemeId, previewTheme, revertPreview } = useTheme();
   const gapClassName = compact ? "gap-2" : "gap-3";
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const floatingLayerRef = useRef<HTMLDivElement | null>(null);
+  const ignoreNextInlineMouseLeaveRef = useRef(false);
   const [floatingRect, setFloatingRect] = useState<FloatingRect | null>(null);
   const isFloating = compact && floatingRect !== null;
 
@@ -50,6 +54,7 @@ export default function ThemeSelector({ compact = false }: ThemeSelectorProps) {
     if (compact && floatingRect === null) {
       const rect = wrapperRef.current?.getBoundingClientRect();
       if (rect) {
+        ignoreNextInlineMouseLeaveRef.current = true;
         setFloatingRect({
           left: rect.left,
           top: rect.top,
@@ -62,47 +67,79 @@ export default function ThemeSelector({ compact = false }: ThemeSelectorProps) {
   }
 
   function clearPreview() {
+    ignoreNextInlineMouseLeaveRef.current = false;
     setFloatingRect(null);
     revertPreview();
   }
 
   function commitTheme(themeId: ThemeId) {
+    ignoreNextInlineMouseLeaveRef.current = false;
     setFloatingRect(null);
     setThemeId(themeId);
   }
 
-  function renderSelectorContent() {
+  function shouldKeepPreview(
+    event:
+      | ReactFocusEvent<HTMLDivElement>
+      | ReactMouseEvent<HTMLDivElement>,
+  ) {
+    const nextTarget = event.relatedTarget;
+    if (!(nextTarget instanceof Node)) {
+      return false;
+    }
+
+    if (event.currentTarget.contains(nextTarget)) {
+      return true;
+    }
+
+    return floatingLayerRef.current?.contains(nextTarget) ?? false;
+  }
+
+  function handleMouseLeave(
+    layer: "inline" | "floating",
+    event: ReactMouseEvent<HTMLDivElement>,
+  ) {
+    if (layer === "inline" && ignoreNextInlineMouseLeaveRef.current) {
+      ignoreNextInlineMouseLeaveRef.current = false;
+      return;
+    }
+
+    if (shouldKeepPreview(event)) {
+      return;
+    }
+
+    clearPreview();
+  }
+
+  function handleBlurCapture(event: ReactFocusEvent<HTMLDivElement>) {
+    if (shouldKeepPreview(event)) {
+      return;
+    }
+
+    clearPreview();
+  }
+
+  function renderSelectorContent(layer: "inline" | "floating") {
     return (
       <>
         <h4 className="mb-4 text-text-primary font-semibold">Theme</h4>
         <div
           className={`flex flex-wrap items-center ${gapClassName}`}
-          onMouseLeave={clearPreview}
-          onBlurCapture={(event) => {
-            const nextFocused = event.relatedTarget;
-            if (nextFocused && event.currentTarget.contains(nextFocused)) {
-              return;
-            }
-
-            clearPreview();
-          }}
+          onMouseLeave={(event) => handleMouseLeave(layer, event)}
+          onBlurCapture={handleBlurCapture}
         >
           {THEME_DEFINITIONS.map((theme) => (
-            <div
-              key={theme.id}
-              className="flex items-center"
-              onMouseEnter={() => activatePreview(theme.id)}
-            >
+            <div key={theme.id} className="flex items-center">
               <Tooltip
                 side="top"
                 label={theme.name}
                 description={theme.description}
-                className="h-[2.2rem] items-center sm:h-[2.4rem]"
               >
                 <ThemePreviewButton
                   theme={theme}
                   active={themeId === theme.id}
                   variant="compact"
+                  onMouseEnter={() => activatePreview(theme.id)}
                   onFocus={() => previewTheme(theme.id)}
                   onClick={() => commitTheme(theme.id)}
                 />
@@ -121,11 +158,12 @@ export default function ThemeSelector({ compact = false }: ThemeSelectorProps) {
         className="flex flex-col"
         style={isFloating ? { visibility: "hidden" } : undefined}
       >
-        {renderSelectorContent()}
+        {renderSelectorContent("inline")}
       </div>
       {isFloating && typeof document !== "undefined"
         ? createPortal(
           <div
+            ref={floatingLayerRef}
             className="fixed z-[80]"
             style={{
               left: `${floatingRect!.left}px`,
@@ -134,7 +172,7 @@ export default function ThemeSelector({ compact = false }: ThemeSelectorProps) {
             }}
           >
             <div className="flex flex-col">
-              {renderSelectorContent()}
+              {renderSelectorContent("floating")}
             </div>
           </div>,
           document.body,
