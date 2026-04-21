@@ -508,15 +508,20 @@ fn recovery_window_html() -> String {
         --text: #f3f0ff;
         --muted: rgba(243, 240, 255, 0.68);
         --accent: #7c5cff;
-        --accent-strong: #6d4cf6;
+        --accent-hover: #8b73ff;
         --danger: #ff8577;
+        --button-radius: 14px;
       }}
       * {{
         box-sizing: border-box;
       }}
+      html,
       body {{
         margin: 0;
-        min-height: 100vh;
+        min-height: 100%;
+        height: 100%;
+      }}
+      body {{
         font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         background:
           radial-gradient(circle at top left, rgba(124, 92, 255, 0.26), transparent 32%),
@@ -526,14 +531,20 @@ fn recovery_window_html() -> String {
         display: grid;
         place-items: center;
         padding: 28px;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
       }}
       .panel {{
         width: min(100%, 560px);
+        max-height: calc(100vh - 56px);
         border-radius: 24px;
         border: 1px solid var(--border);
         background: var(--panel);
         box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
         padding: 32px;
+        overflow-y: auto;
+        overscroll-behavior-y: auto;
+        -webkit-overflow-scrolling: touch;
       }}
       h1 {{
         margin: 0 0 12px;
@@ -560,30 +571,45 @@ fn recovery_window_html() -> String {
       }}
       button {{
         appearance: none;
-        border: 0;
-        border-radius: 14px;
-        padding: 13px 18px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 50px;
+        border-radius: var(--button-radius);
+        border: 1px solid transparent;
+        padding: 14px 20px;
         font: inherit;
+        font-size: 17px;
         font-weight: 600;
         cursor: pointer;
-        transition: transform 120ms ease, opacity 120ms ease, background 120ms ease;
-      }}
-      button:hover {{
-        transform: translateY(-1px);
+        transition:
+          border-color 0.18s ease,
+          background-color 0.18s ease,
+          color 0.18s ease,
+          box-shadow 0.18s ease,
+          opacity 0.18s ease;
       }}
       button:disabled {{
         cursor: wait;
         opacity: 0.72;
-        transform: none;
       }}
       .primary {{
         color: white;
-        background: linear-gradient(180deg, var(--accent) 0%, var(--accent-strong) 100%);
+        background: var(--accent);
+        border-color: rgb(255 255 255 / 0.06);
+        box-shadow: 0 8px 24px rgb(124 92 255 / 0.18);
+      }}
+      .primary:hover {{
+        background: var(--accent-hover);
       }}
       .secondary {{
         color: var(--text);
         background: rgba(255, 255, 255, 0.07);
         border: 1px solid rgba(255, 255, 255, 0.1);
+      }}
+      .secondary:hover {{
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.16);
       }}
       .status {{
         min-height: 22px;
@@ -603,10 +629,6 @@ fn recovery_window_html() -> String {
   <body>
     <main class="panel">
       <h1>Freed did not finish loading last time.</h1>
-      <p>
-        This window lives outside the main app, so you can still retry startup or download a newer
-        build even if the renderer crashes before React boots.
-      </p>
       <div class="callout">
         <p>
           Keep this window open while you retry. It will close itself after Freed reaches a healthy

@@ -20,6 +20,7 @@ Create a product worktree branch from the latest remote `dev`, implement the fea
    - When you are spinning up multiple speculative threads at once, prefer `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --swarm --target <desktop|pwa|shared>` so bootstrap stays deferred until that thread actually needs verification or a preview.
 6. If the worktree was created with deferred bootstrap on purpose, recover with `./scripts/worktree-bootstrap.sh <worktree> --target <desktop|pwa|shared>`.
 7. Implement the requested change.
+   - When a changed surface includes buttons, dialogs, or native fallback HTML, follow the repo's established primary and secondary control styling. Do not add hover lift, vertical motion, bounce, or ad hoc glossy or gradient CTA treatments.
 8. Verify with focused tests, then broader checks when shared behavior changed.
 9. Before opening the draft PR, launch the lightest useful local preview for the changed surface:
    - Default to `./scripts/worktree-preview.sh pwa` for normal product work, shared behavior, sync flows, reader UI, and most Desktop feature work.
