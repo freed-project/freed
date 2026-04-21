@@ -3,7 +3,7 @@
   "version": "26.4.2002-dev",
   "channel": "dev",
   "dayKey": "26.4.20",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-21T03:45:13.271Z",
   "model": "heuristic",
@@ -65,17 +65,22 @@
     ]
   },
   "release": {
-    "deck": "Refine settings section jump alignment, harden worktree helper flow, and harden helper session workflow, pwa install prompt flow, and polish mobile settings navigation",
+    "deck": "This dev build improves install flow and tightens startup, capture, and release stability.",
     "features": [
-      "Pwa install prompt flow"
+      "PWA install prompt flow"
     ],
     "fixes": [
+      "Stop the desktop dev launch crash and clean up the recovery dialog",
+      "Dedupe Facebook and Instagram cross-posts",
       "Reset preview banners to bottom center on load",
       "Harden build fanout and swarm worktree setup",
       "Keep installed version stable across release channels",
+      "Polish mobile settings navigation",
       "Refine live theme preview interactions"
     ],
-    "followUps": []
+    "followUps": [
+      "Refine settings section jump alignment, harden worktree helper flow, and harden helper session workflow"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2002-dev\n\nRefine settings section jump alignment, harden worktree helper flow, and harden helper session workflow, pwa install prompt flow, and polish mobile settings navigation\n\n### Features\n\n- Pwa install prompt flow\n\n### Fixes\n\n- Reset preview banners to bottom center on load\n- Harden build fanout and swarm worktree setup\n- Keep installed version stable across release channels\n- Refine live theme preview interactions\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2002-dev\n\nThis dev build improves install flow and tightens startup, capture, and release stability.\n\n### Features\n\n- PWA install prompt flow\n\n### Fixes\n\n- Stop the desktop dev launch crash and clean up the recovery dialog\n- Dedupe Facebook and Instagram cross-posts\n- Reset preview banners to bottom center on load\n- Harden build fanout and swarm worktree setup\n- Keep installed version stable across release channels\n- Polish mobile settings navigation\n- Refine live theme preview interactions\n\n### Follow-ups\n\n- Refine settings section jump alignment, harden worktree helper flow, and harden helper session workflow\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
