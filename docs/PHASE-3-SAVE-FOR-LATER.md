@@ -1,236 +1,88 @@
 # Phase 3: Save for Later (`capture-save`)
 
-> **Status:** Complete  
+> **Status:** Current  
 > **Dependencies:** Phase 1-2 (Capture layers)
 >
-> All 6 core tasks complete. Implemented: URL save flow (desktop + PWA stub), browser-safe
-> content extraction, Freed Markdown import/export, hierarchical tag navigation, layered
-> content cache (Tauri FS + PWA Cache API), background content fetcher, AI summarization
-> pipeline, and secure API key storage.
+> Save for Later is functional across desktop and PWA. Desktop has full article
+> extraction, local HTML caching, Markdown import/export, background fetch
+> healing, user-visible AI controls, and hierarchical tag navigation. The PWA
+> now attempts full article capture through a server fetch proxy and falls back
+> to a sync-healed stub when a site blocks extraction or exceeds limits.
 
 ---
 
 ## Overview
 
-Independent capture layer for manually saved URLs. Follows the same architecture as `capture-x` and `capture-rss`.
+Phase 3 covers manually saved URLs and the reader flow around them. The core
+architecture is now:
+
+1. Save a URL from desktop or PWA.
+2. Extract metadata plus article content with Readability-safe browser parsing.
+3. Keep full HTML in a device-local cache, never in Automerge.
+4. Sync compact preserved text through Automerge for cross-device fallback.
+5. Render reader content through a layered waterfall:
+   1. Local cached HTML
+   2. Synced preserved text
+   3. Live fetch on open
 
 ---
 
-## Package Structure
+## Shipped Behavior
 
-```
-packages/capture-save/
-├── src/
-│   ├── index.ts          # Public API
-│   ├── extract.ts        # URL metadata + content extraction
-│   ├── readability.ts    # Article content parser
-│   ├── normalize.ts      # URL -> FeedItem
-│   └── types.ts          # Save-specific types
-├── package.json
-└── tsconfig.json
-```
+### Save Flow
 
----
+- **Desktop:** fetches raw HTML through Tauri, extracts readable content, caches
+  article HTML locally, and writes a sync-safe saved item to Automerge.
+- **PWA:** posts the URL to a same-origin server fetch proxy, extracts readable
+  content in the browser, caches article HTML in the Cache API, and writes a
+  full saved item to Automerge.
+- **PWA fallback:** when proxy fetch or extraction fails, the app writes a stub
+  saved item so desktop sync can heal it later.
 
-## Core Implementation
+### Reader And Cache Layers
 
-### URL Metadata Extraction
+- **Layer 1:** device-local HTML cache
+  - Desktop uses Tauri FS
+  - PWA uses the Cache API
+- **Layer 2:** synced `preservedContent.text`
+- **Layer 3:** live fetch on open when online
 
-```typescript
-// packages/capture-save/src/extract.ts
-export interface UrlMetadata {
-  url: string;
-  title: string;
-  description?: string;
-  imageUrl?: string;
-  siteName?: string;
-  author?: string;
-  publishedAt?: number;
-}
+### Library Management
 
-export async function extractMetadata(url: string): Promise<UrlMetadata> {
-  const response = await fetch(url);
-  const html = await response.text();
+- Freed Markdown import and export are implemented.
+- Imported folder paths become hierarchical tags.
+- Sidebar tag navigation supports parent and child tag filtering.
 
-  // Parse Open Graph and meta tags
-  const title =
-    extractOgTag(html, "og:title") ||
-    extractMetaTag(html, "title") ||
-    extractTitleTag(html);
+### AI Summaries
 
-  const description =
-    extractOgTag(html, "og:description") || extractMetaTag(html, "description");
-
-  const imageUrl = extractOgTag(html, "og:image");
-  const siteName = extractOgTag(html, "og:site_name");
-  const author = extractMetaTag(html, "author");
-
-  return { url, title, description, imageUrl, siteName, author };
-}
-```
-
-### Article Content Extraction
-
-```typescript
-// packages/capture-save/src/readability.ts
-import { Readability } from "@mozilla/readability";
-import { JSDOM } from "jsdom";
-
-export interface ExtractedContent {
-  html: string;
-  text: string;
-  wordCount: number;
-  readingTime: number;
-}
-
-export async function extractContent(url: string): Promise<ExtractedContent> {
-  const response = await fetch(url);
-  const html = await response.text();
-
-  const dom = new JSDOM(html, { url });
-  const reader = new Readability(dom.window.document);
-  const article = reader.parse();
-
-  if (!article) {
-    throw new Error("Could not extract article content");
-  }
-
-  const wordCount = article.textContent.split(/\s+/).length;
-  const readingTime = Math.ceil(wordCount / 200); // 200 WPM
-
-  return {
-    html: article.content,
-    text: article.textContent,
-    wordCount,
-    readingTime,
-  };
-}
-```
-
-### Normalize to FeedItem
-
-```typescript
-// packages/capture-save/src/normalize.ts
-import { FeedItem, PreservedContent } from "@freed/shared";
-import { UrlMetadata } from "./extract";
-import { ExtractedContent } from "./readability";
-
-export function urlToFeedItem(
-  metadata: UrlMetadata,
-  content: ExtractedContent
-): FeedItem {
-  const preserved: PreservedContent = {
-    html: content.html,
-    text: content.text,
-    author: metadata.author,
-    wordCount: content.wordCount,
-    readingTime: content.readingTime,
-    preservedAt: Date.now(),
-  };
-
-  return {
-    globalId: `saved:${metadata.url}`,
-    platform: "saved",
-    contentType: "article",
-    capturedAt: Date.now(),
-    publishedAt: metadata.publishedAt ?? Date.now(),
-    author: {
-      id: metadata.siteName ?? new URL(metadata.url).hostname,
-      handle: new URL(metadata.url).hostname,
-      displayName: metadata.siteName ?? new URL(metadata.url).hostname,
-    },
-    content: {
-      text: metadata.description ?? content.text.slice(0, 300),
-      mediaUrls: metadata.imageUrl ? [metadata.imageUrl] : [],
-      mediaTypes: metadata.imageUrl ? ["image"] : [],
-      linkPreview: {
-        url: metadata.url,
-        title: metadata.title,
-        description: metadata.description,
-        imageUrl: metadata.imageUrl,
-      },
-    },
-    preservedContent: preserved,
-    userState: {
-      hidden: false,
-      saved: true,
-      savedAt: Date.now(),
-      archived: false,
-      tags: [],
-    },
-    topics: [],
-  };
-}
-```
-
----
-
-## OpenClaw Skill
-
-```
-skills/capture-save/
-├── SKILL.md
-├── src/
-│   └── index.ts
-└── package.json
-```
-
-### SKILL.md
-
-```yaml
----
-name: capture-save
-description: Save any URL to your Freed library
-user-invocable: true
-metadata: {"requires": {"bins": ["bun"]}}
----
-
-# Save for Later
-
-Capture any URL to your Freed library with full article extraction.
-
-## Usage
-
-- `capture-save add <url>` - Save a URL
-- `capture-save list` - List saved items
-- `capture-save search <query>` - Search saved content
-
-## What Gets Saved
-
-- Page metadata (title, description, image)
-- Full article content (reader view)
-- Word count and reading time estimate
-```
+- Desktop background fetch can summarize newly cached saved articles.
+- The AI settings section is available in Settings.
+- Topic extraction now respects the `extractTopics` toggle instead of always
+  writing topics whenever summarization succeeds.
 
 ---
 
 ## Tasks
 
-| Task | Description                                   | Status | Complexity |
-| ---- | --------------------------------------------- | ------ | ---------- |
-| 3.1  | Create `@freed/capture-save` package scaffold | ☐      | Low        |
-| 3.2  | Implement URL metadata extraction             | ☐      | Medium     |
-| 3.3  | Implement Readability-style content parser    | ☐      | Medium     |
-| 3.4  | Normalize to FeedItem with PreservedContent   | ☐      | Low        |
-| 3.5  | Create OpenClaw skill wrapper                 | ☐      | Low        |
-| 3.6  | CLI commands (add, list, search)              | ☐      | Medium     |
+| Task | Description | Status | Notes |
+| ---- | ----------- | ------ | ----- |
+| 3.1 | Create `@freed/capture-save` package scaffold | ✓ Complete | Package exists in `packages/capture-save/` |
+| 3.2 | Implement browser-safe metadata and article extraction | ✓ Complete | Shared browser parser used by desktop and PWA |
+| 3.3 | Implement desktop full save flow with local HTML cache | ✓ Complete | Uses Tauri `fetch_url` + FS cache |
+| 3.4 | Implement PWA full save flow with fallback stub mode | ✓ Complete | Uses `/api/fetch-url` plus Cache API |
+| 3.5 | Layered reader fallback for offline reading | ✓ Complete | Cache → preserved text → live fetch |
+| 3.6 | Hierarchical tag navigation | ✓ Complete | Sidebar tag tree is live |
+| 3.7 | Freed Markdown import/export | ✓ Complete | Import, export, and background fetch healing shipped |
+| 3.8 | User-facing AI summarization controls | ✓ Complete | Settings UI is live, desktop-only key storage stays local |
+| 3.9 | Broader mobile validation across hostile sites | ☐ Ongoing | Fallback stub mode remains intentional for blocked or oversized pages |
 
 ---
 
-## Deliverable
+## Current Constraints
 
-`@freed/capture-save` package and OpenClaw skill for saving any URL with full article extraction.
-
----
-
-## Dependencies
-
-```json
-{
-  "dependencies": {
-    "@freed/shared": "*",
-    "@mozilla/readability": "^0.5.0",
-    "jsdom": "^24.0.0"
-  }
-}
-```
+- The PWA fetch proxy only accepts `http` and `https` URLs.
+- Oversized articles are rejected server-side and fall back to stub mode.
+- AI summarization still runs on desktop because API key storage is device-local
+  there.
+- Phase 3 remains marked `Current` until broader mobile validation is complete,
+  even though the missing core implementation gaps are now closed.

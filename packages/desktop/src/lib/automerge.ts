@@ -19,6 +19,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { hashSavedUrl } from "@freed/capture-save/normalize";
 import { addDebugEvent, setDocSnapshot, registerDocAccessors } from "@freed/ui/lib/debug-store";
 import type { Account, FeedItem, Person, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
@@ -599,13 +600,7 @@ export async function docDeduplicateFeedItems(): Promise<void> {
  * Returns the stub so callers that use the FeedItem directly are unchanged.
  */
 export async function docAddStubItem(url: string, tags: string[] = []): Promise<FeedItem> {
-  let hash = 0;
-  for (let i = 0; i < url.length; i++) {
-    const ch = url.charCodeAt(i);
-    hash = (hash << 5) - hash + ch;
-    hash = hash & hash;
-  }
-  const globalId = `saved:${Math.abs(hash).toString(36)}`;
+  const globalId = `saved:${hashSavedUrl(url)}`;
   const now = Date.now();
   let hostname = url;
   try { hostname = new URL(url).hostname; } catch { /* malformed */ }

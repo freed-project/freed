@@ -474,7 +474,7 @@ describe("map navigation helpers", () => {
     });
 
     expect(setSelectedPerson).toHaveBeenCalledWith(friend.id);
-    expect(setSelectedAccount).toHaveBeenCalledWith(null);
+    expect(setSelectedAccount).not.toHaveBeenCalled();
     expect(setSelectedItem).toHaveBeenCalledWith(null);
     expect(setActiveView).toHaveBeenCalledWith("friends");
   });
@@ -510,7 +510,7 @@ describe("map navigation helpers", () => {
     expect(setFilter).toHaveBeenCalledWith({});
     expect(setSearchQuery).toHaveBeenCalledWith("");
     expect(setSelectedPerson).toHaveBeenCalledWith(friend.id);
-    expect(setSelectedAccount).toHaveBeenCalledWith(null);
+    expect(setSelectedAccount).not.toHaveBeenCalled();
     expect(setSelectedItem).toHaveBeenCalledWith("ig:1");
     expect(setActiveView).toHaveBeenCalledWith("feed");
   });

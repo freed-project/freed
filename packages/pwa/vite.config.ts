@@ -39,6 +39,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      '@freed/capture-save': src('capture-save'),
       '@freed/ui': src('ui'),
       '@freed/shared': src('shared'),
       '@freed/sync': src('sync'),
