@@ -27,9 +27,11 @@ export default function ThemeSelector({ compact = false }: ThemeSelectorProps) {
   const { themeId, setThemeId, previewTheme, revertPreview } = useTheme();
   const gapClassName = compact ? "gap-2" : "gap-3";
   const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const floatingLayerRef = useRef<HTMLDivElement | null>(null);
+  const inlineRowRef = useRef<HTMLDivElement | null>(null);
+  const floatingRowRef = useRef<HTMLDivElement | null>(null);
   const ignoreNextInlineMouseLeaveRef = useRef(false);
   const [floatingRect, setFloatingRect] = useState<FloatingRect | null>(null);
+  const [stableHeight, setStableHeight] = useState<number | null>(null);
   const isFloating = compact && floatingRect !== null;
 
   useEffect(() => {
@@ -49,6 +51,40 @@ export default function ThemeSelector({ compact = false }: ThemeSelectorProps) {
       window.removeEventListener("scroll", clearFloatingPreview, true);
     };
   }, [isFloating, revertPreview]);
+
+  useEffect(() => {
+    if (!wrapperRef.current || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const recordHeight = () => {
+      if (!wrapperRef.current) {
+        return;
+      }
+
+      const nextHeight = Math.ceil(wrapperRef.current.getBoundingClientRect().height);
+      setStableHeight((currentHeight) => {
+        if (currentHeight !== null && currentHeight >= nextHeight) {
+          return currentHeight;
+        }
+
+        return nextHeight;
+      });
+    };
+
+    recordHeight();
+
+    const observer = new ResizeObserver(() => {
+      recordHeight();
+    });
+    observer.observe(wrapperRef.current);
+    window.addEventListener("resize", recordHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", recordHeight);
+    };
+  }, []);
 
   function activatePreview(themeId: ThemeId) {
     if (compact && floatingRect === null) {
@@ -92,7 +128,11 @@ export default function ThemeSelector({ compact = false }: ThemeSelectorProps) {
       return true;
     }
 
-    return floatingLayerRef.current?.contains(nextTarget) ?? false;
+    return (
+      inlineRowRef.current?.contains(nextTarget)
+      || floatingRowRef.current?.contains(nextTarget)
+      || false
+    );
   }
 
   function handleMouseLeave(
@@ -119,11 +159,29 @@ export default function ThemeSelector({ compact = false }: ThemeSelectorProps) {
     clearPreview();
   }
 
+  function handleButtonMouseLeave(
+    layer: "inline" | "floating",
+    event: ReactMouseEvent<HTMLButtonElement>,
+  ) {
+    if (layer === "inline" && ignoreNextInlineMouseLeaveRef.current) {
+      ignoreNextInlineMouseLeaveRef.current = false;
+      return;
+    }
+
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Element && nextTarget.closest(".theme-preview-button")) {
+      return;
+    }
+
+    clearPreview();
+  }
+
   function renderSelectorContent(layer: "inline" | "floating") {
     return (
       <>
         <h4 className="mb-4 text-text-primary font-semibold">Theme</h4>
         <div
+          ref={layer === "inline" ? inlineRowRef : floatingRowRef}
           className={`flex flex-wrap items-center ${gapClassName}`}
           onMouseLeave={(event) => handleMouseLeave(layer, event)}
           onBlurCapture={handleBlurCapture}
@@ -140,6 +198,7 @@ export default function ThemeSelector({ compact = false }: ThemeSelectorProps) {
                   active={themeId === theme.id}
                   variant="compact"
                   onMouseEnter={() => activatePreview(theme.id)}
+                  onMouseLeave={(event) => handleButtonMouseLeave(layer, event)}
                   onFocus={() => previewTheme(theme.id)}
                   onClick={() => commitTheme(theme.id)}
                 />
@@ -152,7 +211,11 @@ export default function ThemeSelector({ compact = false }: ThemeSelectorProps) {
   }
 
   return (
-    <div ref={wrapperRef} className="relative">
+    <div
+      ref={wrapperRef}
+      className="relative"
+      style={stableHeight ? { minHeight: `${stableHeight}px` } : undefined}
+    >
       <div
         aria-hidden={isFloating || undefined}
         className="flex flex-col"
@@ -163,7 +226,6 @@ export default function ThemeSelector({ compact = false }: ThemeSelectorProps) {
       {isFloating && typeof document !== "undefined"
         ? createPortal(
           <div
-            ref={floatingLayerRef}
             className="fixed z-[80]"
             style={{
               left: `${floatingRect!.left}px`,
