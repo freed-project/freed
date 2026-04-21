@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
   getWebsiteHostForChannel,
   type ReleaseChannel,
@@ -9,7 +9,7 @@ import { FeedView } from "@freed/ui/components/feed";
 import { GoogleContactsSection } from "@freed/ui/components/settings/GoogleContactsSection";
 import { FatalErrorScreen } from "@freed/ui/components/FatalErrorScreen";
 import { LocalPreviewBadge } from "@freed/ui/components/LocalPreviewBadge";
-import { ToastContainer } from "@freed/ui/components/Toast";
+import { ToastContainer, toast } from "@freed/ui/components/Toast";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { OAuthCallback } from "./components/OAuthCallback";
 import {
@@ -54,6 +54,13 @@ import {
   buildPwaReleaseChannelUrl,
   persistReleaseChannel,
 } from "@freed/ui/lib/release-channel";
+import {
+  clearInstallNoticeDismissal,
+  dismissInstallNotice,
+  getInitialInstallNotice,
+  watchInstallPrompt,
+  type InstallNotice,
+} from "./lib/pwa-install";
 
 const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
 
@@ -65,20 +72,73 @@ function OAuthRouter() {
   return <App />;
 }
 
+function FloatingNotice({
+  title,
+  body,
+  actionLabel,
+  onAction,
+  onDismiss,
+  testId,
+}: {
+  title: string;
+  body: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  onDismiss: () => void;
+  testId?: string;
+}) {
+  return (
+    <div
+      className="theme-panel flex items-start gap-3 rounded-xl p-4 shadow-[0_24px_60px_rgb(0_0_0/0.28)]"
+      data-testid={testId}
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-[var(--theme-text-primary)]">{title}</p>
+        <p className="mt-0.5 text-xs leading-relaxed text-[var(--theme-text-muted)]">{body}</p>
+      </div>
+      {actionLabel && onAction && (
+        <button
+          onClick={onAction}
+          className="btn-primary shrink-0 px-3 py-1.5 text-xs font-semibold"
+          data-testid={testId ? `${testId}-action` : undefined}
+        >
+          {actionLabel}
+        </button>
+      )}
+      <button
+        onClick={onDismiss}
+        className="shrink-0 text-[var(--theme-text-muted)] transition-colors hover:text-[var(--theme-text-primary)]"
+        aria-label="Dismiss"
+        data-testid={testId ? `${testId}-dismiss` : undefined}
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 function App() {
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
   const error = useAppStore((state) => state.error);
   const setSyncConnected = useAppStore((state) => state.setSyncConnected);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
+  const [installNotice, setInstallNotice] = useState<InstallNotice | null>(null);
   const [legalResolved, setLegalResolved] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [releaseChannel, setReleaseChannelState] = useState<ReleaseChannel>(() =>
     bootstrapReleaseChannel(),
   );
   const fatalError = useFatalRuntimeError();
+  const legalAcceptedRef = useRef(legalAccepted);
 
   useBrowserNavigationHistory(legalAccepted);
+
+  useEffect(() => {
+    legalAcceptedRef.current = legalAccepted;
+  }, [legalAccepted]);
 
   useEffect(() => {
     setLegalAccepted(hasAcceptedPwaBundle());
@@ -129,6 +189,23 @@ function App() {
     };
   }, [legalAccepted]);
 
+  useEffect(() => {
+    if (!legalResolved) return;
+
+    setInstallNotice(getInitialInstallNotice());
+
+    return watchInstallPrompt({
+      onInstallPrompt: (notice) => setInstallNotice(notice),
+      onInstalled: () => {
+        clearInstallNoticeDismissal();
+        setInstallNotice(null);
+        if (legalAcceptedRef.current) {
+          toast.success("Freed is installed");
+        }
+      },
+    });
+  }, [legalResolved]);
+
   const checkForUpdates = useCallback(async (): Promise<AvailableUpdateInfo | null> => {
     const version = await checkForPwaUpdate();
     return version ? { version, channel: releaseChannel } : null;
@@ -160,6 +237,27 @@ function App() {
     await clearLocalDoc();
     location.reload();
   }, []);
+  const handleDismissInstallNotice = useCallback(() => {
+    dismissInstallNotice();
+    setInstallNotice(null);
+  }, []);
+  const handleInstallAction = useCallback(async () => {
+    if (!installNotice || installNotice.kind !== "browser") {
+      return;
+    }
+
+    try {
+      await installNotice.promptEvent.prompt();
+      const choice = await installNotice.promptEvent.userChoice;
+      if (choice.outcome !== "accepted") {
+        dismissInstallNotice();
+      }
+      setInstallNotice(null);
+    } catch {
+      dismissInstallNotice();
+      setInstallNotice(null);
+    }
+  }, [installNotice]);
 
   const platform: PlatformConfig = useMemo(
     () => ({
@@ -274,29 +372,34 @@ function App() {
           <FeedView />
         </AppShell>
         <ToastContainer />
-        {showUpdateBanner && (
-          <div className="fixed bottom-4 right-4 z-[120] max-w-sm animate-slide-up">
-            <div className="theme-panel flex items-center gap-3 rounded-xl p-4">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-[var(--theme-text-primary)]">New version available</p>
-                <p className="mt-0.5 text-xs text-[var(--theme-text-muted)]">Reload to apply the update.</p>
-              </div>
-              <button
-                onClick={applyPwaUpdate}
-                className="btn-primary shrink-0 px-3 py-1.5 text-xs font-semibold"
-              >
-                Reload
-              </button>
-              <button
-                onClick={() => setShowUpdateBanner(false)}
-                className="shrink-0 text-[var(--theme-text-muted)] transition-colors hover:text-[var(--theme-text-primary)]"
-                aria-label="Dismiss"
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                </svg>
-              </button>
-            </div>
+        {(installNotice || showUpdateBanner) && (
+          <div className="fixed bottom-20 left-4 right-4 z-[120] flex flex-col gap-3 sm:bottom-4 sm:left-auto sm:w-[min(24rem,calc(100vw-2rem))]">
+            {installNotice && (
+              <FloatingNotice
+                title="Install Freed"
+                body={
+                  installNotice.kind === "browser"
+                    ? "Add Freed to your home screen for faster launch and offline reading."
+                    : "Add Freed to your home screen for faster launch and offline reading. In Safari, open Share, then tap Add to Home Screen."
+                }
+                actionLabel={installNotice.kind === "browser" ? "Install" : undefined}
+                onAction={installNotice.kind === "browser" ? () => {
+                  void handleInstallAction();
+                } : undefined}
+                onDismiss={handleDismissInstallNotice}
+                testId="pwa-install-notice"
+              />
+            )}
+            {showUpdateBanner && (
+              <FloatingNotice
+                title="New version available"
+                body="Reload to apply the update."
+                actionLabel="Reload"
+                onAction={applyPwaUpdate}
+                onDismiss={() => setShowUpdateBanner(false)}
+                testId="pwa-update-notice"
+              />
+            )}
           </div>
         )}
       </BugReportBoundary>

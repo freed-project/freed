@@ -847,6 +847,57 @@ test.describe("FREED PWA", () => {
     await expect(page.locator("main")).toBeVisible();
   });
 
+  test("browser install prompt surfaces an install notice and respects dismissal", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await expect(page.getByTestId("legal-gate-accept")).toBeVisible();
+    await page.waitForTimeout(150);
+
+    await page.evaluate(() => {
+      const promptEvent = new Event("beforeinstallprompt", {
+        cancelable: true,
+      }) as Event & {
+        prompt: () => Promise<void>;
+        promptCalled?: boolean;
+        userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+      };
+
+      promptEvent.promptCalled = false;
+      promptEvent.prompt = async () => {
+        promptEvent.promptCalled = true;
+      };
+      promptEvent.userChoice = Promise.resolve({
+        outcome: "dismissed",
+        platform: "web",
+      });
+
+      (window as Record<string, unknown>).__FREED_TEST_INSTALL_EVENT__ = promptEvent;
+      window.dispatchEvent(promptEvent);
+    });
+
+    await acceptLegalGate(page);
+    await waitForPwaReady(page);
+
+    const installNotice = page.getByTestId("pwa-install-notice");
+    await expect(installNotice).toBeVisible();
+    await page.getByTestId("pwa-install-notice-action").click();
+
+    await expect
+      .poll(async () => page.evaluate(() => {
+        const event = (window as Record<string, unknown>).__FREED_TEST_INSTALL_EVENT__ as {
+          promptCalled?: boolean;
+        };
+        return event.promptCalled === true;
+      }))
+      .toBe(true);
+
+    await expect(installNotice).toBeHidden();
+
+    await page.reload();
+    await expect(page.getByTestId("pwa-install-notice")).toBeHidden();
+  });
+
   test("oauth callback route bypasses the first-run gate until it returns home", async ({
     page,
   }) => {
