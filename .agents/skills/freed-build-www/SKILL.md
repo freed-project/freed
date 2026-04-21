@@ -1,12 +1,12 @@
 ---
 name: freed-build-www
-description: Build marketing-site work in a www-based worktree, verify website changes, launch a local website preview, and prepare a draft PR targeting www. Use for homepage, public changelog presentation, public roadmap presentation, marketing copy, legal or marketing pages, and website-only changes intended for freed.wtf.
+description: Build marketing-site work in a www-based worktree, verify website changes, launch a local website preview, optionally deploy a shareable website preview, and prepare a draft PR targeting www. Use for homepage, public changelog presentation, public roadmap presentation, marketing copy, legal or marketing pages, and website-only changes intended for freed.wtf.
 disable-model-invocation: true
 ---
 
 # Build WWW
 
-Create a marketing worktree branch from `www`, implement the website change, verify it, launch a local website preview, and open a draft PR targeting `www`.
+Create a marketing worktree branch from `www`, implement the website change, verify it, launch a local website preview, optionally deploy a shareable website preview, and open a draft PR targeting `www`.
 
 ## Workflow
 
@@ -21,8 +21,9 @@ Create a marketing worktree branch from `www`, implement the website change, ver
 8. Before opening the draft PR, launch the local website preview with `./scripts/worktree-preview.sh website`.
 9. Deploy `./scripts/vercel-deploy-preview.sh website` only when a shareable remote preview is needed.
 10. If browser tooling was needed, clean the session before closeout with `./scripts/dev-session-clean.sh`.
-11. Open a draft PR targeting `www`, and include the local preview URL in the closeout.
+11. Finish the branch with `./scripts/worktree-publish.sh --title "<conventional-commit title>" --base www --summary "<user-facing change>" --test "cd website && PATH=../node_modules/.bin:$PATH npm run build"`.
    - If the branch intentionally adds new files, stage them yourself first or re-run `./scripts/worktree-publish.sh` with `--include-untracked`.
+12. Confirm the branch is pushed to `origin`, the draft PR targets `www`, and the closeout includes the local preview URL.
 
 Never run `npm run <script> --workspace=...` from the repo root in this monorepo. Run website commands from `website/`, and prefix `PATH` with the worktree root `node_modules/.bin` when a hoisted binary like `next` or `tsx` is required.
 

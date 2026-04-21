@@ -11,11 +11,15 @@
     "postinstall": "node scripts/patch-automerge.mjs",
     "build": "node scripts/run-workspace-fanout.mjs build",
     "dev": "node scripts/run-workspace-fanout.mjs dev",
+    "lint": "node scripts/run-workspace-fanout.mjs lint",
     "session:clean": "bash scripts/dev-session-clean.sh",
     "test": "node scripts/run-workspace-fanout.mjs test",
     "test:scripts": "bash -n scripts/*.sh scripts/lib/*.sh && node --test scripts/*.test.mjs",
     "typecheck": "node scripts/run-workspace-fanout.mjs typecheck",
-    "typecheck:graph": "tsc --build --dry"
+    "typecheck:graph": "tsc --build --dry",
+    "validate:feature": "node scripts/validate-worktree.mjs --mode feature",
+    "validate:dev": "node scripts/validate-worktree.mjs --mode dev",
+    "validate:release": "node scripts/validate-worktree.mjs --mode release"
   },
   "devDependencies": {
     "typescript": "^5.3.0"

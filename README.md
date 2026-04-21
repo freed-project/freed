@@ -214,6 +214,28 @@ Browser tooling is opt-in only. Only turn on Chrome DevTools MCP, Playwright MCP
 npm run session:clean
 ```
 
+When the branch is ready to publish, use:
+
+```bash
+./scripts/worktree-publish.sh --title "fix: describe the change" --summary "What changed for the user" --test "Focused check you ran"
+```
+
+That stages the worktree, creates the commit when needed, pushes the branch to
+`origin`, and opens a draft PR.
+
+Validation tiers:
+
+```bash
+npm run validate:feature
+npm run validate:dev
+npm run validate:release
+```
+
+`validate:feature` is the default feature-branch lane. It always runs the root
+typecheck, then scopes the rest of the checks from the changed path set.
+`validate:dev` is the full integration suite for `dev`, and `validate:release`
+is the heaviest lane for release prep on `main`.
+
 ### Marketing Website (freed.wtf)
 
 ```bash

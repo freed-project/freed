@@ -1,31 +1,245 @@
 [
   {
-    "version": "26.4.1500-dev",
-    "tagName": "v26.4.1500-dev",
+    "version": "26.4.1900-dev",
+    "tagName": "v26.4.1900-dev",
     "channel": "dev",
-    "date": "2026-04-15T16:35:42Z",
-    "deck": "Stability fixes for recovery and UI checks",
+    "date": "2026-04-20T00:07:02Z",
+    "deck": "Map timeline scrubber, startup recovery, and clearer dev updates",
+    "features": [
+      {
+        "text": "Replay historical posts and future plans with a shared map timeline scrubber."
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Shows a native startup recovery window before React loads, so startup failures still expose recovery actions."
+      },
+      {
+        "text": "Lets dev installs take a newer production update when no newer dev build exists, without switching release channels."
+      },
+      {
+        "text": "Shows the `-dev` suffix consistently in desktop update surfaces and settings."
+      },
+      {
+        "text": "Restores desktop window dragging and makes the reader toolbar title region navigate back again."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1900-dev",
+    "prNumbers": [
+      239,
+      241,
+      242,
+      243,
+      244
+    ],
+    "builds": [
+      "26.4.1900-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.1900-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1900-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.4.1802-dev",
+    "tagName": "v26.4.1802-dev",
+    "channel": "dev",
+    "date": "2026-04-18T20:09:06Z",
+    "deck": "Time-aware map filtering and migrate legacy identity graph on startup",
+    "features": [
+      {
+        "text": "Time-aware map filtering"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Migrates older friend data into the person and account graph during startup so existing identities keep loading cleanly after the update."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1802-dev",
+    "prNumbers": [
+      233,
+      235,
+      238
+    ],
+    "builds": [
+      "26.4.1800-dev",
+      "26.4.1802-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.1800-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1800-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.1802-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1802-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.4.1700-dev",
+    "tagName": "v26.4.1700-dev",
+    "channel": "dev",
+    "date": "2026-04-18T04:42:45Z",
+    "deck": "Refactor friends into a person account identity graph",
     "features": [],
+    "fixes": [],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1700-dev",
+    "prNumbers": [
+      225,
+      226,
+      228,
+      229,
+      230
+    ],
+    "builds": [
+      "26.4.1700-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.1700-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1700-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.4.1602",
+    "tagName": "v26.4.1602",
+    "channel": "production",
+    "date": "2026-04-17T02:06:16Z",
+    "deck": "Freed Desktop keeps update dialogs visible, restores read state correctly, and trims sync memory growth on large saves",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Update dialogs stay above the floating new button, and the Updates settings view labels the installed version clearly when you switch release channels."
+      },
+      {
+        "text": "Read state and related UI updates restore correctly after merge recovery paths."
+      },
+      {
+        "text": "Map view background tiles render again across the refreshed style palette."
+      },
+      {
+        "text": "Desktop sync trims preserved article text before it reaches Automerge, which reduces sync memory growth on large saves."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1602",
+    "prNumbers": [
+      213,
+      215,
+      216,
+      222,
+      223,
+      224
+    ],
+    "builds": [
+      "26.4.1600",
+      "26.4.1601-dev",
+      "26.4.1602"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.1600",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1600",
+        "channel": "production"
+      },
+      {
+        "version": "26.4.1601-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1601-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.1602",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1602",
+        "channel": "production"
+      }
+    ]
+  },
+  {
+    "version": "26.4.1601-dev",
+    "tagName": "v26.4.1601-dev",
+    "channel": "dev",
+    "date": "2026-04-17T00:12:58Z",
+    "deck": "Map tiles are back, and desktop sync carries less preserved article text",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Map view background tiles render again across the refreshed style palette"
+      },
+      {
+        "text": "Desktop sync now trims preserved article text before it reaches Automerge, which reduces sync memory growth on large saves"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1601-dev",
+    "prNumbers": [
+      223,
+      224
+    ],
+    "builds": [
+      "26.4.1601-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.1601-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1601-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.4.1501-dev",
+    "tagName": "v26.4.1501-dev",
+    "channel": "dev",
+    "date": "2026-04-15T20:29:20Z",
+    "deck": "Explicit website release flow and stability fixes for recovery and UI checks",
+    "features": [
+      {
+        "text": "Explicit website release flow"
+      }
+    ],
     "fixes": [
       {
         "text": "Crash reports now keep cleaner diagnostic state"
       },
       {
         "text": "Map popup smoke tests and reader rail alignment checks are steadier"
+      },
+      {
+        "text": "Crash reporting and WebKit recovery are now more stable"
       }
     ],
     "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1500-dev",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1501-dev",
     "prNumbers": [
-      214
+      214,
+      217,
+      218
     ],
     "builds": [
-      "26.4.1500-dev"
+      "26.4.1500-dev",
+      "26.4.1501-dev"
     ],
     "buildLinks": [
       {
         "version": "26.4.1500-dev",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1500-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.1501-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1501-dev",
         "channel": "dev"
       }
     ]
