@@ -132,27 +132,28 @@ Compose and publish through your own site.
 ### Prerequisites
 
 ```bash
+# Match the repo toolchain
+nvm use
+
 # Clone and install dependencies
 git clone https://github.com/cyberspatial/freed.git
 cd freed
-npm install
+npm run setup
 ```
 
 ### Marketing Website (freed.wtf)
 
 ```bash
-cd website
-npm run dev        # Dev server at http://localhost:3000
-npm run build      # Production build
+npm run website:dev    # Dev server at http://localhost:3000
+npm run website:build  # Production build
 ```
 
 ### PWA Reader
 
 ```bash
-cd packages/pwa
-npm run dev        # Dev server at http://localhost:5173
-npm run build      # Production build
-npm run test       # Run Playwright tests
+npm run pwa:dev    # Dev server at http://localhost:5173
+npm run pwa:build  # Production build
+npm run pwa:test   # Run Playwright tests
 ```
 
 ### Desktop App (Tauri)
@@ -160,9 +161,8 @@ npm run test       # Run Playwright tests
 Requires [Rust](https://rustup.rs/) and platform-specific dependencies. See [Tauri prerequisites](https://tauri.app/start/prerequisites/).
 
 ```bash
-cd packages/desktop
-npm run tauri:dev    # Dev mode with hot reload
-npm run tauri:build  # Build distributable (DMG, EXE, etc.)
+npm run desktop:dev    # Dev mode with hot reload
+npm run desktop:build  # Build distributable (DMG, EXE, etc.)
 ```
 
 ### Capture Skills (CLI)

@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+run_npm() {
+  node "${ROOT_DIR}/scripts/npmw.mjs" "$@"
+}
+
 if [[ $# -lt 1 || $# -gt 2 ]]; then
   echo "Usage: $0 website|pwa [vercel-token]" >&2
   exit 1
@@ -8,7 +15,6 @@ fi
 
 TARGET="$1"
 VERCEL_TOKEN="${2:-${VERCEL_TOKEN:-}}"
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/freed-vercel-production.XXXXXX")"
 
 cleanup() {
@@ -87,11 +93,11 @@ fi
 echo "Verifying production bundle for $TARGET from $TEMP_DIR"
 (
   cd "$TEMP_DIR"
-  npm install
+  run_npm install
   if [[ "$TARGET" == "website" ]]; then
-    npm run build --workspace=website
+    run_npm run build --workspace=website
   else
-    npm run build -w @freed/pwa
+    run_npm run build -w @freed/pwa
   fi
 )
 
@@ -101,18 +107,18 @@ if [[ -n "$VERCEL_TOKEN" ]]; then
 fi
 
 echo "Pulling Vercel settings for $TARGET"
-npx vercel pull --yes --environment production --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}"
+run_npm exec --yes vercel@latest -- pull --yes --environment production --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}"
 
 if [[ "$TARGET" == "website" ]]; then
   echo "Building $TARGET production bundle with Vercel"
-  "$NPX_BIN" vercel build --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" --prod
+  run_npm exec --yes vercel@latest -- build --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" --prod
 
   echo "Deploying $TARGET production build to Vercel"
-  "$NPX_BIN" vercel deploy --prebuilt --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" -y --prod
+  run_npm exec --yes vercel@latest -- deploy --prebuilt --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" -y --prod
 else
   echo "Building $TARGET production bundle with Vercel"
-  npx vercel build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" --prod
+  run_npm exec --yes vercel@latest -- build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" --prod
 
   echo "Deploying $TARGET production build to Vercel"
-  npx vercel deploy --prebuilt --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" -y --prod
+  run_npm exec --yes vercel@latest -- deploy --prebuilt --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" -y --prod
 fi
