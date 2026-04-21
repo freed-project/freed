@@ -10,6 +10,7 @@
 - **Before creating any new component or hook:** `SemanticSearch` or `Grep` the package for existing code that does the same thing. Duplication is never acceptable — if two surfaces need the same UI or logic, extract a shared primitive and have both import it.
 - **Before shipping any feature:** Verify that every exported function/class you added or touched is actually _called_ from an appropriate entry point. Exported-but-never-called code is a bug. Grep for each new export name to confirm it appears in a consumer.
 - **Platform copy:** Never write "for Mac", "for Windows", or "for desktop" in user-facing strings. The correct product name is "Freed Desktop". Use that.
+- **Buttons and dialog controls:** Do not invent custom CTA styling when the repo already has an established button hierarchy. For dialogs, recovery surfaces, and other utility UI, use standard primary and secondary control treatment with the repo's usual sizing, radius, and typography. Never add hover lift, vertical motion, bounce, or "raise on hover" effects to buttons. Never introduce ad hoc glossy or gradient CTA buttons for utility UI.
 - **Async-before-await is synchronous:** Code before the first `await` in an `async` function runs synchronously in the caller's microtask even if the caller doesn't await. Never put O(n) work (e.g. `Array.from(largeUint8Array)`, `A.save()`, serialization) before an `await` in a `subscribe()` callback or any other fire-and-forget async call on a hot path.
 - **Vercel deployments -- always use `--scope aubreyfs-projects`:** The only permitted Vercel team for this project is `aubreyfs-projects` (personal account). Never run `vercel deploy`, `vercel link`, or any Vercel CLI command without the `--scope aubreyfs-projects` flag. Never use the `deploy_to_vercel` MCP tool -- it accepts no arguments and silently deploys to whatever team the CLI defaults to. Never run `vercel` from the repo root.
   - This monorepo uses local workspace packages. Raw subdirectory deploys like `vercel deploy website/` and `vercel deploy packages/pwa/` can upload an incomplete tree and fail at `npm install`.
@@ -53,12 +54,27 @@ Run `./scripts/release.sh` with no args to auto-compute the next version.
 **Never work directly on `main`.** Always create a git worktree for feature work:
 
 ```bash
-./scripts/worktree-add.sh ../freed-<slug> -b <branch>
+./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --target shared
 # work in ../freed-<slug>/
 # remove when done: git worktree remove ../freed-<slug>
 ```
 
-`worktree-add.sh` is a drop-in replacement for `git worktree add` -- same args, same behavior, plus it runs `npm ci --prefer-offline` automatically so the new worktree has isolated `node_modules` and is ready to run immediately (~74s with a warm cache). Never use bare `git worktree add` directly.
+`worktree-add.sh` is a drop-in replacement for `git worktree add`. It defaults to a full isolated install so the new worktree is ready immediately, and it still supports `--install auto` or `--install none` when you intentionally want to defer bootstrap. Never use bare `git worktree add` directly.
+Pass an explicit remote base like `origin/dev` or `origin/www` so feature work does not inherit a stale local branch by accident.
+For multi-thread or speculative worktree swarms, prefer `--swarm`. That maps to deferred bootstrap until the thread actually needs verification or a preview.
+Prefer the lightest useful local preview before opening a draft PR:
+- product work usually uses `./scripts/worktree-preview.sh pwa`
+- website work uses `./scripts/worktree-preview.sh website`
+- use `./scripts/worktree-preview.sh desktop --native` only when real Tauri behavior matters, and report the preview label when you do
+- never run `npm run <script> --workspace=...` from the repo root in this monorepo, run from the workspace directory instead
+- root `npm run dev` now fails fast on purpose, use `./scripts/worktree-preview.sh <target>` or run `npm run dev` from the workspace directory you actually want
+- the root fanout scripts now fail fast if you try the dangerous workspace-dispatch pattern, treat that error as a routing mistake and re-run from the workspace
+- if a workspace command needs a hoisted binary, prefix `PATH` with the worktree root `node_modules/.bin`
+- expect the worktree helpers to print the resolved `node` and `npm` pair before they do real work, and treat a surprising path there as a machine issue to fix before debugging the repo
+- rerunning `./scripts/worktree-publish.sh` should update the existing draft PR body and title, and push a ready PR back to draft when the local branch changes underneath it
+- browser tooling is opt-in only, do not launch Chrome DevTools MCP, Playwright MCP, or Computer Use unless the task explicitly needs browser automation or browser debugging
+- after browser tooling work, run `./scripts/dev-session-clean.sh`
+- `./scripts/worktree-publish.sh` now refuses stray untracked files unless you stage them yourself first or pass `--include-untracked`
 
 **Branch naming:** `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/` prefix followed by a short kebab-case description.
 
@@ -117,11 +133,18 @@ Treat `dev`, `main`, and `www` as separate lanes with explicit promotion points.
 - `dev` is the default branch for ongoing product work.
 - `main` is the production release branch. Do not use it as a second development branch.
 - Promote `dev` into `main` when shipping a reviewed production release.
-- Merge `main` back into `dev` only when `main` has diverged with a production-only fix, release-only adjustment, or other reviewed change that `dev` does not already contain.
-- If a hotfix lands on `main`, merge or cherry-pick it back into `dev` immediately after the production release is stable. Do not let `main` drift sit around.
+- After every production release, open a dedicated reverse-integration PR that merges `main` back into `dev`.
+- If a hotfix lands on `main`, include it in that reverse-integration PR immediately after the production release is stable. Do not let `main` drift sit around.
 - `www` is the public marketing branch. Sync approved `main` changes into `www` when the website or checked-in changelog needs them. Never sync `www` from `dev`.
-- Do not talk about routine `main` and `dev` sync. The normal flow is promotion from `dev` to `main`, with rare repair merges from `main` back to `dev`.
+- Treat the `main` back into `dev` reverse merge as part of the production release closeout, not as an optional cleanup.
 - When release tooling or deployment helpers exist on more than one long-lived branch, update the matching copies in the same sweep or document why they intentionally differ.
+
+### Validation Tiers
+
+- `npm run validate:feature` is the default feature-branch check. It always runs root typecheck, then scopes the rest of the checks from the changed path set.
+- `npm run validate:dev` is the full integration suite for merges and pushes to `dev`.
+- `npm run validate:release` is the heaviest lane for release-prep work on `main`.
+- Do not default feature threads to the full integration suite when the touched surface is narrow.
 
 **Never use `git log main..branch` to check whether a branch has been merged.** Squash merge creates a new commit hash on `main`, so the original branch commits are never reachable from `main`'s history. The branch always looks "ahead" even when its content is fully shipped. Use these instead:
 
@@ -161,13 +184,14 @@ with default IPC handlers for every command the app calls on startup.
 
 ```bash
 # Standard run (headless Chromium)
-npm run test:e2e --workspace=packages/desktop
+cd packages/desktop
+npm run test:e2e
 
 # Playwright UI mode (visual test runner, great for writing new tests)
-npm run test:e2e:ui --workspace=packages/desktop
+npm run test:e2e:ui
 
 # Step-through debugger (pauses on each action, shows browser)
-npm run test:e2e:debug --workspace=packages/desktop
+npm run test:e2e:debug
 ```
 
 All three commands start a Vite dev server automatically on port 1422 with `VITE_TEST_TAURI=1` and

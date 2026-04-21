@@ -2164,7 +2164,7 @@ test("map defaults to All content when only unlinked author locations exist", as
 
   await page.getByRole("button", { name: /^Map/ }).click();
   const allContentButton = page.getByRole("button", { name: "All content", exact: true });
-  await expect(allContentButton).toHaveClass(/theme-chip-active/, { timeout: 10_000 });
+  await expect(allContentButton).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
   await expect(page.locator('.freed-map-marker[aria-label="Nora Quinn"]')).toBeVisible({
     timeout: 10_000,
   });
@@ -2264,7 +2264,7 @@ test("recoverable story locations appear in All content mode and the mode persis
   await page.getByRole("button", { name: /^Map/ }).click();
   const allContentButton = page.getByRole("button", { name: "All content", exact: true });
   await allContentButton.click();
-  await expect(allContentButton).toHaveClass(/theme-chip-active/, { timeout: 10_000 });
+  await expect(allContentButton).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
 
   await openVisibleMapMarker(page, "Nora Quinn");
   await expect(page.getByText("Big Bear California")).toBeVisible({ timeout: 10_000 });
@@ -2273,8 +2273,9 @@ test("recoverable story locations appear in All content mode and the mode persis
   await app.waitForReady();
   await dismissCloudSyncNudgeIfPresent(page);
   await page.getByRole("button", { name: /^Map/ }).click();
-  await expect(page.getByRole("button", { name: "All content", exact: true })).toHaveClass(
-    /theme-chip-active/,
+  await expect(page.getByRole("button", { name: "All content", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
     { timeout: 10_000 },
   );
   await expect(page.locator('.freed-map-marker[aria-label="Nora Quinn"]')).toBeVisible({
@@ -2357,8 +2358,9 @@ test("map time filters switch between current and future location windows", asyn
   });
 
   await page.getByRole("button", { name: /^Map/ }).click();
-  await expect(page.getByRole("button", { name: "Current", exact: true })).toHaveClass(
-    /theme-chip-active/,
+  await expect(page.getByRole("button", { name: "Current", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
     { timeout: 10_000 },
   );
 
@@ -2368,20 +2370,21 @@ test("map time filters switch between current and future location windows", asyn
 
   const futureButton = page.getByRole("button", { name: "Future", exact: true });
   await futureButton.click();
-  await expect(futureButton).toHaveClass(/theme-chip-active/, { timeout: 10_000 });
+  await expect(futureButton).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
   await expect(page.getByText("Lisbon", { exact: true })).toBeVisible({ timeout: 10_000 });
 
   await page.reload();
   await app.waitForReady();
   await dismissCloudSyncNudgeIfPresent(page);
   await page.getByRole("button", { name: /^Map/ }).click();
-  await expect(page.getByRole("button", { name: "Future", exact: true })).toHaveClass(
-    /theme-chip-active/,
+  await expect(page.getByRole("button", { name: "Future", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
     { timeout: 10_000 },
   );
 });
 
-test("map timeline scrubber replays historical posts and future plans", async ({ app, page }) => {
+test("map timeline playback surfaces future and historical markers", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
   await app.seedFriendLocation();
@@ -2559,21 +2562,12 @@ test("map timeline scrubber replays historical posts and future plans", async ({
   await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
   await expect(page.getByText("Lisbon", { exact: true })).toBeVisible({ timeout: 10_000 });
 
-  await page.getByLabel("Map timeline scrubber").fill("2");
-  await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
-  await expect(page.getByText("Tokyo", { exact: true })).toBeVisible({ timeout: 10_000 });
-
   const pastButton = page.getByRole("button", { name: "Past", exact: true });
   await pastButton.click();
   await expect(page.getByTestId("map-timeline-scrubber")).toBeVisible({ timeout: 10_000 });
 
-  await page.getByLabel("Map timeline scrubber").fill("1");
   await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
-  await expect(page.getByText("Berlin", { exact: true })).toBeVisible({ timeout: 10_000 });
-
-  await page.getByLabel("Map timeline scrubber").fill("0");
-  await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
-  await expect(page.getByText("Rome", { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Paris", { exact: true })).toBeVisible({ timeout: 10_000 });
 });
 
 test("Friends view uses the floating detail drawer shell", async ({ app, page }) => {

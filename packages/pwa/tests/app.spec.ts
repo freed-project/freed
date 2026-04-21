@@ -847,6 +847,57 @@ test.describe("FREED PWA", () => {
     await expect(page.locator("main")).toBeVisible();
   });
 
+  test("browser install prompt surfaces an install notice and respects dismissal", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await expect(page.getByTestId("legal-gate-accept")).toBeVisible();
+    await page.waitForTimeout(150);
+
+    await page.evaluate(() => {
+      const promptEvent = new Event("beforeinstallprompt", {
+        cancelable: true,
+      }) as Event & {
+        prompt: () => Promise<void>;
+        promptCalled?: boolean;
+        userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+      };
+
+      promptEvent.promptCalled = false;
+      promptEvent.prompt = async () => {
+        promptEvent.promptCalled = true;
+      };
+      promptEvent.userChoice = Promise.resolve({
+        outcome: "dismissed",
+        platform: "web",
+      });
+
+      (window as Record<string, unknown>).__FREED_TEST_INSTALL_EVENT__ = promptEvent;
+      window.dispatchEvent(promptEvent);
+    });
+
+    await acceptLegalGate(page);
+    await waitForPwaReady(page);
+
+    const installNotice = page.getByTestId("pwa-install-notice");
+    await expect(installNotice).toBeVisible();
+    await page.getByTestId("pwa-install-notice-action").click();
+
+    await expect
+      .poll(async () => page.evaluate(() => {
+        const event = (window as Record<string, unknown>).__FREED_TEST_INSTALL_EVENT__ as {
+          promptCalled?: boolean;
+        };
+        return event.promptCalled === true;
+      }))
+      .toBe(true);
+
+    await expect(installNotice).toBeHidden();
+
+    await page.reload();
+    await expect(page.getByTestId("pwa-install-notice")).toBeHidden();
+  });
+
   test("oauth callback route bypasses the first-run gate until it returns home", async ({
     page,
   }) => {
@@ -1376,15 +1427,24 @@ test.describe("FREED PWA", () => {
   });
 
   test("map popovers show update time and keep only one open", async ({ page }) => {
+    const mapAssetResponses: Array<{ url: string; status: number }> = [];
+    page.on("response", (response) => {
+      const url = response.url();
+      if (url.includes("maplibre-gl")) {
+        mapAssetResponses.push({ url, status: response.status() });
+      }
+    });
+
     await page.goto("/");
     await acceptLegalGate(page);
     await seedMultipleFriendLocations(page);
 
     await page.getByRole("button", { name: "Map" }).click();
+    await expect(page.getByText("Map failed to load")).toHaveCount(0);
     await page.getByRole("button", { name: "Omar Hassan" }).click();
     await expect(page.getByText("Reykjavik, Capital Region, Iceland")).toBeVisible();
     await expect(page.getByText(/ago/).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Open Friend" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Open Post" })).toHaveCount(1);
     const livePopup = page.locator(".maplibregl-popup-content");
     const fallbackPopup = page.getByTestId("map-fallback-popup");
     const useLivePopup = await livePopup.isVisible().catch(() => false);
@@ -1400,7 +1460,9 @@ test.describe("FREED PWA", () => {
     await page.getByRole("button", { name: "Samir Dutta" }).click();
     await expect(page.getByText("Paris")).toBeVisible();
     await expect(page.getByText("Reykjavik, Capital Region, Iceland")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Open Friend" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Open Post" })).toHaveCount(1);
+    expect(mapAssetResponses.length).toBeGreaterThan(0);
+    expect(mapAssetResponses.some(({ status }) => status === 403)).toBeFalsy();
   });
 
   test("can add an RSS feed", async ({ page }) => {
@@ -1475,6 +1537,36 @@ test.describe("FREED PWA", () => {
     // Clicking the same menu button again should close the floating drawer.
     await page.click('button[aria-label="Close menu"]');
     await expect(sidebar).toHaveClass(/-translate-x-full/);
+  });
+
+  test("mobile settings opens without hitting recovery", async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.goto("/");
+    await acceptLegalGate(page);
+
+    await page.click('button[aria-label="Open menu"]');
+    await page.getByRole("button", { name: "Settings" }).evaluate((element) => {
+      (element as HTMLButtonElement).click();
+    });
+
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(page.getByText("Freed hit a fatal error")).toHaveCount(0);
+    await expect(page.getByText("Cannot access 'mobileView' before initialization")).toHaveCount(0);
+  });
+
+  test("mobile settings navigation keeps the selected heading in sync", async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.goto("/");
+    await acceptLegalGate(page);
+
+    await page.click('button[aria-label="Open menu"]');
+    await page.getByRole("button", { name: "Settings" }).evaluate((element) => {
+      (element as HTMLButtonElement).click();
+    });
+    await page.getByRole("button", { name: "Updates", exact: true }).click();
+
+    await expect(page.getByTestId("settings-mobile-section-title")).toHaveText("Updates");
+    await expect(page.getByText("Installed version:", { exact: false }).first()).toBeVisible();
   });
 
   test("app has correct colors and styling", async ({ page }) => {

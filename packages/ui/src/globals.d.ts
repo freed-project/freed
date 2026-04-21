@@ -5,4 +5,7 @@ declare global {
   const __BUILD_COMMIT_REF__: string | null;
   const __BUILD_DEPLOYED_AT__: string | null;
 }
+
+declare module "*.css";
+
 export {};

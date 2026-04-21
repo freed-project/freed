@@ -4,6 +4,7 @@ import { AppShell } from "@freed/ui/components/layout";
 import { FeedView } from "@freed/ui/components/feed";
 import { BugReportBoundary } from "@freed/ui/components/BugReportBoundary";
 import { FatalErrorScreen } from "@freed/ui/components/FatalErrorScreen";
+import { LocalPreviewBadge } from "@freed/ui/components/LocalPreviewBadge";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { GoogleContactsSection } from "@freed/ui/components/settings/GoogleContactsSection";
 import { ToastContainer } from "@freed/ui/components/Toast";
@@ -84,6 +85,7 @@ import {
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const JUST_UPDATED_KEY = "freed-updated-to";
 const IS_LOCAL_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1";
+const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
 const RENDERER_HEARTBEAT_INTERVAL_MS = 60 * 1000;
 const DOWNLOAD_PAGE_URL = "https://freed.wtf/get";
 
@@ -642,6 +644,7 @@ function App() {
           <>
             <BugReportBoundary>
               <div className="h-screen flex flex-col bg-transparent">
+                <LocalPreviewBadge label={LOCAL_PREVIEW_LABEL} />
                 <AppShell>
                   <FeedView />
                 </AppShell>
@@ -660,7 +663,7 @@ function App() {
                     <path d="M3 8l3.5 3.5L13 5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                   <span className="text-sm text-text-primary">
-                    Updated to <span className="font-mono font-bold">v{formatReleaseVersion(justUpdated, releaseChannel)}</span>
+                    Updated to <span className="font-mono font-bold">v{formatReleaseVersion(justUpdated)}</span>
                   </span>
                 </div>
               </div>

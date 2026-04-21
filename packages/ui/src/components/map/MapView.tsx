@@ -152,14 +152,14 @@ export function MapView() {
   return (
     <div className="app-theme-shell relative h-full overflow-hidden">
       {savedTimeMode !== "current" && timelineMoments.length > 0 && effectiveTimelineIndex !== null ? (
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center px-4 pt-4">
+        <div className="pointer-events-none absolute bottom-4 left-4 z-20 flex justify-start">
           <div
-            className="pointer-events-auto w-full max-w-[min(40rem,calc(100vw-2rem))] rounded-[24px] border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-elevated)_88%,transparent)] px-4 py-3 shadow-[var(--theme-glow-sm)] backdrop-blur-md"
+            className="pointer-events-auto theme-floating-panel w-[min(25rem,calc(100vw-2rem))] px-4 py-3"
             data-testid="map-timeline-scrubber"
           >
-            <div className="flex items-center justify-between gap-3 text-[11px] font-medium uppercase tracking-[0.22em] text-[color:var(--theme-text-muted)]">
-              <span>{savedTimeMode === "past" ? "History scrub" : "Future playback"}</span>
-              <span className="text-right normal-case tracking-normal text-[color:var(--theme-text-primary)]">
+            <div className="flex items-center justify-between gap-3 text-[10px] font-medium text-[color:var(--theme-text-muted)]">
+              <span>{savedTimeMode === "past" ? "History" : "Future"}</span>
+              <span className="text-right text-[color:var(--theme-text-secondary)]">
                 {formatTimelineMoment(timelineMoments[effectiveTimelineIndex])}
               </span>
             </div>
@@ -170,10 +170,10 @@ export function MapView() {
               step={1}
               value={effectiveTimelineIndex}
               aria-label="Map timeline scrubber"
-              className="mt-3 h-2 w-full accent-[var(--theme-accent-primary)]"
+              className="mt-3 h-2 w-full accent-[var(--theme-accent-secondary)]"
               onChange={(event) => handleTimelineScrub(Number.parseInt(event.currentTarget.value, 10))}
             />
-            <div className="mt-2 flex items-center justify-between text-[11px] text-[color:var(--theme-text-muted)]">
+            <div className="mt-2 flex items-center justify-between text-[10px] text-[color:var(--theme-text-soft)]">
               <span>{formatTimelineEdge(timelineMoments[0])}</span>
               <span>{formatTimelineEdge(timelineMoments[timelineMoments.length - 1])}</span>
             </div>

@@ -149,14 +149,92 @@ binary instead.
 Use the helper instead of bare `git worktree add`:
 
 ```bash
-./scripts/worktree-add.sh ../freed-my-branch -b feat/my-branch
+./scripts/worktree-add.sh ../freed-my-branch -b feat/my-branch origin/dev --target shared
 ```
 
 The helper now:
 
 - detects the new worktree path by diffing the worktree list before and after creation
-- installs dependencies with the npm binary that matches the active Node runtime
+- defaults to a full install with the npm binary that matches the active Node runtime
+- prints the resolved `node` and `npm` pair before bootstrap, preview, or publish work so stale global toolchains are obvious
 - avoids the broken "last worktree wins" assumption that can install into the wrong checkout
+- stays on the branch you asked for instead of inheriting some crusty local base by accident
+- works cleanly with tracked local previews, including readable labels for native preview windows
+- reruns of `worktree-publish.sh` update the existing PR title and body, and flip a ready PR back to draft instead of pretending nothing happened
+- avoids root-level workspace npm dispatch in the preview and deploy helpers, because this monorepo can recurse badly when `npm run <script> --workspace=...` is launched from the repo root
+
+If you want a cheap speculative worktree instead, opt in explicitly:
+
+```bash
+./scripts/worktree-add.sh ../freed-my-branch -b feat/my-branch origin/dev --install auto --target shared
+```
+
+If you are spinning up several speculative threads at once, use the swarm alias instead:
+
+```bash
+./scripts/worktree-add.sh ../freed-my-branch -b feat/my-branch origin/dev --swarm --target shared
+```
+
+That is the better default when only one or two of those threads will reach verification.
+
+When you are ready to preview the work locally, prefer the lightest useful surface:
+
+```bash
+./scripts/worktree-preview.sh pwa      # default for most product work
+./scripts/worktree-preview.sh website  # marketing site work
+./scripts/worktree-preview.sh desktop --native  # only for real Tauri behavior
+```
+
+When the work is ready to publish from the feature worktree:
+
+```bash
+./scripts/worktree-publish.sh \
+  --title "fix: your change" \
+  --summary "What changed for the user" \
+  --test "Focused validation you ran"
+```
+
+If the branch intentionally adds new files, stage them yourself first or pass `--include-untracked`. The helper refuses stray untracked files by default so local junk like temporary browser artifacts does not get vacuumed into a commit.
+
+When you run workspace commands by hand, do the same thing as the helpers:
+
+```bash
+cd website
+PATH=../node_modules/.bin:$PATH npm run build
+```
+
+Do not use root-level `npm run <script> --workspace=...` in this repo.
+The root `build`, `test`, and `typecheck` scripts fail fast if you try that dangerous workspace-dispatch path, and root `npm run dev` now refuses to fan out at all. Treat those errors as your cue to `cd` into the workspace and run the command there, or use `./scripts/worktree-preview.sh <target>`.
+For the helper smoke lane itself, run `npm run test:scripts`.
+
+Browser tooling is opt-in only. Only turn on Chrome DevTools MCP, Playwright MCP, or Computer Use when the task explicitly needs browser automation or browser debugging. When that work is done, clean the session with:
+
+```bash
+./scripts/dev-session-clean.sh
+npm run session:clean
+```
+
+When the branch is ready to publish, use:
+
+```bash
+./scripts/worktree-publish.sh --title "fix: describe the change" --summary "What changed for the user" --test "Focused check you ran"
+```
+
+That stages the worktree, creates the commit when needed, pushes the branch to
+`origin`, and opens a draft PR.
+
+Validation tiers:
+
+```bash
+npm run validate:feature
+npm run validate:dev
+npm run validate:release
+```
+
+`validate:feature` is the default feature-branch lane. It always runs the root
+typecheck, then scopes the rest of the checks from the changed path set.
+`validate:dev` is the full integration suite for `dev`, and `validate:release`
+is the heaviest lane for release prep on `main`.
 
 ### Marketing Website (freed.wtf)
 

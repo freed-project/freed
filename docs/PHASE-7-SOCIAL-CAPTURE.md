@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress — Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, silent background media guarding, provider health summaries, smart backoff, Facebook group controls, preserved Instagram story location metadata for map recovery, and captured authors now feeding the Phase 8 account catalog for identity review
+> **Status:** 🚧 In Progress — Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, silent background media guarding, provider health summaries, smart backoff, Facebook group controls, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, and captured authors now feeding the Phase 8 account catalog for identity review
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -142,7 +142,7 @@ const RATE_LIMITS = {
 | 7.12 | Social engagement write-back (like, seen)   | ✓ Complete  |
 | 7.13 | Outbox processor for cross-device sync      | ✓ Complete  |
 | 7.14 | Comment links (open on platform)            | ✓ Complete  |
-| 7.15 | Cross-platform dedup (IG/FB cross-posts)    | Not Started |
+| 7.15 | Cross-platform dedup (IG/FB cross-posts)    | ✓ Complete  |
 
 ---
 
@@ -177,7 +177,7 @@ const RATE_LIMITS = {
 - [ ] Facebook feed posts validated against real account (selector tuning)
 - [ ] Instagram feed posts validated against real account (selector tuning)
 - [~] Stories captured, with IG + FB story scraping integrated and Instagram story location URLs preserved for map recovery. Stable IG story IDs and selector tuning still need work.
-- [ ] Cross-platform dedup (task 7.15): IG/FB cross-posted stories/posts create duplicate FeedItems because globalId is platform-prefixed (ig: vs fb:). The existing docDeduplicateFeedItems only deduplicates by linkPreview.url. A content-similarity pass is needed: match items by same Friend identity + similar text (first 120 chars) + timestamps within a few minutes.
+- [x] Cross-platform dedup (task 7.15): linked Facebook and Instagram stories or posts with similar text now collapse into one item when they land within a few minutes of each other, while preserving saved state, tags, and richer map metadata
 - [x] Like button with outbox pattern: intent recorded immediately, synced to platform async
 - [x] Two-state like UI: "noted" (amber) vs "memorialized" (red confirmed on platform)
 - [x] Seen-sync via WebView navigation (FB/IG) - best-effort, confirmed via seenSyncedAt
