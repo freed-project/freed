@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # worktree-add.sh
 #
-# Wrapper around `git worktree add` that immediately runs `npm ci` so the
-# new worktree has its own isolated node_modules and is ready to use.
+# Wrapper around `git worktree add` that immediately runs a compatible `npm ci`
+# so the new worktree has its own isolated node_modules and is ready to use.
 #
 # Usage (identical args to git worktree add):
 #   ./scripts/worktree-add.sh ../freed-<slug> -b feat/my-feature
@@ -20,18 +20,48 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
 if [[ $# -eq 0 ]]; then
   echo "Usage: ./scripts/worktree-add.sh <path> [-b <branch>] [<commit-ish>]"
   exit 1
 fi
 
+BEFORE_WORKTREES=()
+while IFS= read -r worktree_path; do
+  BEFORE_WORKTREES+=("$worktree_path")
+done < <(git worktree list --porcelain | awk '/^worktree / { print $2 }')
 git worktree add "$@"
 
-# The new worktree is always the last entry in the list.
-NEW_WT=$(git worktree list --porcelain | awk '/^worktree/ {path=$2} END {print path}')
+AFTER_WORKTREES=()
+while IFS= read -r worktree_path; do
+  AFTER_WORKTREES+=("$worktree_path")
+done < <(git worktree list --porcelain | awk '/^worktree / { print $2 }')
+NEW_WT=""
+
+for candidate in "${AFTER_WORKTREES[@]}"; do
+  found="false"
+  for existing in "${BEFORE_WORKTREES[@]}"; do
+    if [[ "$candidate" == "$existing" ]]; then
+      found="true"
+      break
+    fi
+  done
+
+  if [[ "$found" == "false" ]]; then
+    NEW_WT="$candidate"
+    break
+  fi
+done
+
+if [[ -z "$NEW_WT" ]]; then
+  echo "Failed to resolve the new worktree path after git worktree add." >&2
+  exit 1
+fi
 
 echo ""
 echo "Installing node_modules in $NEW_WT (~74s with warm cache) ..."
-npm ci --prefer-offline --prefix "$NEW_WT"
+node "${ROOT_DIR}/scripts/npmw.mjs" ci --prefer-offline --prefix "$NEW_WT"
 echo ""
 echo "Done. Worktree is ready."

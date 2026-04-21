@@ -155,13 +155,13 @@ with default IPC handlers for every command the app calls on startup.
 
 ```bash
 # Standard run (headless Chromium)
-npm run test:e2e --workspace=packages/desktop
+npm run desktop:e2e
 
 # Playwright UI mode (visual test runner, great for writing new tests)
-npm run test:e2e:ui --workspace=packages/desktop
+npm run desktop:e2e:ui
 
 # Step-through debugger (pauses on each action, shows browser)
-npm run test:e2e:debug --workspace=packages/desktop
+npm run desktop:e2e:debug
 ```
 
 All three commands start a Vite dev server automatically on port 1422 with `VITE_TEST_TAURI=1` and

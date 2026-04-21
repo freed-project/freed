@@ -1,18 +1,35 @@
 {
   "name": "freed",
   "private": true,
+  "packageManager": "npm@11.11.0",
+  "engines": {
+    "node": ">=20",
+    "npm": ">=10"
+  },
   "workspaces": [
     "packages/*",
     "skills/*",
     "website"
   ],
   "scripts": {
+    "preinstall": "node scripts/check-toolchain.mjs",
     "postinstall": "node scripts/patch-automerge.mjs",
-    "build": "npm run build --workspaces --if-present",
-    "dev": "npm run dev --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "typecheck:graph": "tsc --build --dry"
+    "setup": "node scripts/npmw.mjs ci --prefer-offline",
+    "build": "node scripts/npmw.mjs run build --workspaces --if-present --include-workspace-root=false",
+    "dev": "node scripts/npmw.mjs run dev --workspaces --if-present --include-workspace-root=false",
+    "test": "node scripts/npmw.mjs run test --workspaces --if-present --include-workspace-root=false",
+    "typecheck": "node scripts/npmw.mjs run typecheck --workspaces --if-present --include-workspace-root=false",
+    "typecheck:graph": "tsc --build --dry",
+    "website:dev": "node scripts/npmw.mjs run dev --workspace=website",
+    "website:build": "node scripts/npmw.mjs run build --workspace=website",
+    "pwa:dev": "node scripts/npmw.mjs run dev --workspace=@freed/pwa",
+    "pwa:build": "node scripts/npmw.mjs run build --workspace=@freed/pwa",
+    "pwa:test": "node scripts/npmw.mjs run test --workspace=@freed/pwa",
+    "desktop:dev": "node scripts/npmw.mjs run tauri:dev --workspace=@freed/desktop",
+    "desktop:build": "node scripts/npmw.mjs run tauri:build --workspace=@freed/desktop",
+    "desktop:e2e": "node scripts/npmw.mjs run test:e2e --workspace=@freed/desktop",
+    "desktop:e2e:ui": "node scripts/npmw.mjs run test:e2e:ui --workspace=@freed/desktop",
+    "desktop:e2e:debug": "node scripts/npmw.mjs run test:e2e:debug --workspace=@freed/desktop"
   },
   "devDependencies": {
     "typescript": "^5.3.0"
