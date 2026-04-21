@@ -1,8 +1,8 @@
 import {
-  buildSavedFeedItem,
   extractContentBrowser,
   extractMetadataBrowser,
-} from "@freed/capture-save";
+} from "@freed/capture-save/browser";
+import { buildSavedFeedItem } from "@freed/capture-save/normalize";
 import { toast } from "@freed/ui/components/Toast";
 import { docAddFeedItem, docAddStubItem } from "./automerge";
 

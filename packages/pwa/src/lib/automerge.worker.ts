@@ -12,7 +12,7 @@
 
 import * as A from "@automerge/automerge";
 import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
-import { hashSavedUrl } from "@freed/capture-save";
+import { hashSavedUrl } from "@freed/capture-save/normalize";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
   createEmptyDoc,

@@ -18,10 +18,13 @@ vi.mock("@freed/ui/components/Toast", () => ({
   },
 }));
 
-vi.mock("@freed/capture-save", () => ({
-  buildSavedFeedItem: mockBuildSavedFeedItem,
+vi.mock("@freed/capture-save/browser", () => ({
   extractMetadataBrowser: mockExtractMetadataBrowser,
   extractContentBrowser: mockExtractContentBrowser,
+}));
+
+vi.mock("@freed/capture-save/normalize", () => ({
+  buildSavedFeedItem: mockBuildSavedFeedItem,
 }));
 
 describe("saveUrlInPwa", () => {
