@@ -22,6 +22,7 @@
   var MEDIA_GUARD_STATE_KEY = "__freedBackgroundScraperMediaGuardState__";
   var MEDIA_GUARD_BOUND_KEY = "__freedMediaGuardBound__";
   var MEDIA_GUARD_REPORTED_KEY = "__freedMediaGuardReported__";
+  var MEDIA_GUARD_SILENCING_KEY = "__freedMediaGuardSilencing__";
   var MAX_MEDIA_DIAG_EVENTS = 8;
   var cloakIntervalId = null;
 
@@ -133,33 +134,42 @@
 
   function silenceMediaElement(mediaEl, reason) {
     if (!(mediaEl instanceof HTMLMediaElement)) return;
+    if (mediaEl[MEDIA_GUARD_SILENCING_KEY]) return;
+
+    mediaEl[MEDIA_GUARD_SILENCING_KEY] = true;
 
     try {
-      mediaEl.defaultMuted = true;
-    } catch (_e) {}
-    try {
-      mediaEl.muted = true;
-    } catch (_e) {}
-    try {
-      mediaEl.volume = 0;
-    } catch (_e) {}
-    try {
-      mediaEl.setAttribute("muted", "");
-    } catch (_e) {}
-
-    if (mediaEl instanceof HTMLAudioElement) {
       try {
-        mediaEl.pause();
+        mediaEl.defaultMuted = true;
       } catch (_e) {}
-    }
+      try {
+        mediaEl.muted = true;
+      } catch (_e) {}
+      try {
+        mediaEl.volume = 0;
+      } catch (_e) {}
+      try {
+        mediaEl.setAttribute("muted", "");
+      } catch (_e) {}
 
-    reportMediaSilenced(mediaEl, reason);
+      if (mediaEl instanceof HTMLAudioElement) {
+        try {
+          mediaEl.pause();
+        } catch (_e) {}
+      }
+
+      reportMediaSilenced(mediaEl, reason);
+    } finally {
+      mediaEl[MEDIA_GUARD_SILENCING_KEY] = false;
+    }
   }
 
   function bindMediaElement(mediaEl) {
     if (!(mediaEl instanceof HTMLMediaElement)) return;
     if (mediaEl[MEDIA_GUARD_BOUND_KEY]) {
-      silenceMediaElement(mediaEl, "re-scan");
+      if (!mediaEl.muted || mediaEl.volume !== 0 || !mediaEl.paused) {
+        silenceMediaElement(mediaEl, "re-scan");
+      }
       return;
     }
 

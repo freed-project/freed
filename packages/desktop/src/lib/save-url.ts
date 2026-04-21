@@ -10,11 +10,11 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import { buildSavedFeedItem } from "@freed/capture-save";
 import {
   extractMetadataBrowser,
   extractContentBrowser,
 } from "@freed/capture-save/browser";
+import { buildSavedFeedItem } from "@freed/capture-save/normalize";
 import type { FeedItem } from "@freed/shared";
 import { contentCache } from "./content-cache.js";
 import { docAddFeedItem } from "./automerge.js";
