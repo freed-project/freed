@@ -55,9 +55,12 @@ case "$TARGET" in
     ;;
 esac
 
-mkdir -p "$TEMP_DIR/scripts" "$TEMP_DIR/.vercel"
+mkdir -p "$TEMP_DIR/scripts/lib" "$TEMP_DIR/.vercel"
 
 cp "$ROOT_DIR/scripts/patch-automerge.mjs" "$TEMP_DIR/scripts/patch-automerge.mjs"
+cp "$ROOT_DIR/scripts/lib/build-metadata.mjs" "$TEMP_DIR/scripts/lib/build-metadata.mjs"
+cp "$ROOT_DIR/scripts/lib/build-metadata.d.ts" "$TEMP_DIR/scripts/lib/build-metadata.d.ts"
+cp "$ROOT_DIR/scripts/lib/build-metadata.d.mts" "$TEMP_DIR/scripts/lib/build-metadata.d.mts"
 
 if [[ "$STAGE_AT_ROOT" == "true" ]]; then
   cp "$ROOT_DIR/tsconfig.base.json" "$TEMP_DIR/tsconfig.base.json"
@@ -75,8 +78,8 @@ else
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "buildCommand": "cd packages/pwa && PATH=../../node_modules/.bin:$PATH npm run build",
-  "outputDirectory": "packages/pwa/dist",
+  "buildCommand": "PATH=../../node_modules/.bin:$PATH npm run build",
+  "outputDirectory": "dist",
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }
 EOF
