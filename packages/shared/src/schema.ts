@@ -8,6 +8,7 @@ import * as A from "@automerge/automerge";
 import type {
   Account,
   FeedItem,
+  Friend,
   LegacyDeviceContact,
   LegacyFriendSource,
   Person,
@@ -18,6 +19,7 @@ import type {
   FacebookCapturePreferences,
 } from "./types.js";
 import { createDefaultPreferences, createDefaultMeta } from "./types.js";
+import { friendForAuthor, personForAuthor } from "./friends.js";
 
 // =============================================================================
 // Document Schema
@@ -366,6 +368,428 @@ function stripUndefined<T>(value: T): T {
     return result as T;
   }
   return value;
+}
+
+const CROSS_POST_WINDOW_MS = 5 * 60 * 1000;
+const CROSS_POST_TEXT_PREFIX_LENGTH = 120;
+const CROSS_POST_MIN_TEXT_LENGTH = 24;
+const CROSS_POST_PLATFORMS = new Set<FeedItem["platform"]>([
+  "facebook",
+  "instagram",
+]);
+
+type LegacyFriendRoot = FreedDoc & {
+  friends?: Record<string, Friend>;
+};
+
+function dedupLinkPreviewScore(
+  preview: FeedItem["content"]["linkPreview"] | undefined,
+): number {
+  if (!preview) return 0;
+  return (preview.url ? 1 : 0) + (preview.title ? 1 : 0) + (preview.description ? 1 : 0);
+}
+
+function dedupMediaScore(item: FeedItem): number {
+  return (item.content.mediaUrls?.length ?? 0) + (item.content.mediaTypes?.length ?? 0);
+}
+
+function dedupUserStateScore(item: FeedItem): number {
+  const userState = item.userState;
+  return (
+    (userState.saved ? 100 : 0) +
+    ((userState.tags?.length ?? 0) * 10) +
+    ((userState.highlights?.length ?? 0) * 10) +
+    (userState.archived ? 5 : 0) +
+    (userState.readAt ? 1 : 0) +
+    (userState.liked ? 2 : 0)
+  );
+}
+
+function dedupMetadataScore(item: FeedItem): number {
+  return (
+    (item.location ? 40 : 0) +
+    (item.timeRange ? 35 : 0) +
+    (item.preservedContent ? 30 : 0) +
+    dedupMediaScore(item) * 3 +
+    dedupLinkPreviewScore(item.content.linkPreview) * 5 +
+    (item.sourceUrl ? 5 : 0) +
+    (item.fbGroup ? 2 : 0) +
+    ((item.content.text?.length ?? 0) >= 120 ? 4 : 0)
+  );
+}
+
+function dedupKeeperScore(item: FeedItem): number {
+  return dedupUserStateScore(item) + dedupMetadataScore(item);
+}
+
+function normalizedDedupText(item: FeedItem): string | null {
+  const raw = item.content.text ?? item.content.linkPreview?.title ?? "";
+  const normalized = raw
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/www\.\S+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (normalized.length < CROSS_POST_MIN_TEXT_LENGTH) return null;
+  return normalized.slice(0, CROSS_POST_TEXT_PREFIX_LENGTH).trim();
+}
+
+function dedupIdentityKey(doc: FreedDoc, item: FeedItem): string | null {
+  const person = personForAuthor(doc.persons ?? {}, doc.accounts ?? {}, item.platform, item.author.id);
+  if (person) return `person:${person.id}`;
+
+  const legacyFriends = (doc as LegacyFriendRoot).friends;
+  if (!legacyFriends) return null;
+  const legacyFriend = friendForAuthor(legacyFriends, item.platform, item.author.id);
+  return legacyFriend ? `friend:${legacyFriend.id}` : null;
+}
+
+function ensureParent(parent: Map<string, string>, id: string): string {
+  const existing = parent.get(id);
+  if (existing) return existing;
+  parent.set(id, id);
+  return id;
+}
+
+function findParent(parent: Map<string, string>, id: string): string {
+  const root = ensureParent(parent, id);
+  if (root === id) return root;
+  const resolved = findParent(parent, root);
+  parent.set(id, resolved);
+  return resolved;
+}
+
+function unionParents(parent: Map<string, string>, left: string, right: string): void {
+  const leftRoot = findParent(parent, left);
+  const rightRoot = findParent(parent, right);
+  if (leftRoot !== rightRoot) {
+    parent.set(rightRoot, leftRoot);
+  }
+}
+
+function addDedupGroup(parent: Map<string, string>, ids: string[]): void {
+  if (ids.length <= 1) return;
+  const [first, ...rest] = ids;
+  ensureParent(parent, first);
+  for (const id of rest) {
+    unionParents(parent, first, id);
+  }
+}
+
+function mergeUniqueStrings(target: string[], source: string[] | undefined): void {
+  if (!source || source.length === 0) return;
+  const seen = new Set(target);
+  for (const value of source) {
+    if (seen.has(value)) continue;
+    seen.add(value);
+    target.push(value);
+  }
+}
+
+function assignOptionalField(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): void {
+  if (value === undefined) {
+    delete target[key];
+    return;
+  }
+  target[key] = value;
+}
+
+function mergeHighlights(
+  target: FeedItem["userState"],
+  source: FeedItem["userState"],
+): void {
+  if (!source.highlights || source.highlights.length === 0) return;
+  if (!target.highlights) {
+    target.highlights = [];
+  }
+  const seen = new Set(target.highlights.map((entry) => JSON.stringify(entry)));
+  for (const highlight of source.highlights) {
+    const key = JSON.stringify(highlight);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    target.highlights.push(stripUndefined(highlight));
+  }
+}
+
+function mergeTimestamp(
+  left?: number,
+  right?: number,
+  mode: "min" | "max" = "min",
+): number | undefined {
+  if (left === undefined) return right;
+  if (right === undefined) return left;
+  return mode === "min" ? Math.min(left, right) : Math.max(left, right);
+}
+
+function mergeSyncedTimestamp(left?: number, right?: number): number | undefined {
+  if (left === undefined) return right;
+  if (right === undefined) return left;
+  if (left > 0 || right > 0) {
+    if (left <= 0) return right;
+    if (right <= 0) return left;
+    return Math.max(left, right);
+  }
+  return Math.min(left, right);
+}
+
+function mergeUserState(target: FeedItem["userState"], source: FeedItem["userState"]): void {
+  target.hidden = target.hidden || source.hidden;
+  target.saved = target.saved || source.saved;
+  target.archived = target.archived || source.archived;
+  assignOptionalField(
+    target as unknown as Record<string, unknown>,
+    "liked",
+    target.liked || source.liked || undefined,
+  );
+  assignOptionalField(
+    target as unknown as Record<string, unknown>,
+    "readAt",
+    mergeTimestamp(target.readAt, source.readAt, "min"),
+  );
+  assignOptionalField(
+    target as unknown as Record<string, unknown>,
+    "savedAt",
+    mergeTimestamp(target.savedAt, source.savedAt, "min"),
+  );
+  assignOptionalField(
+    target as unknown as Record<string, unknown>,
+    "archivedAt",
+    mergeTimestamp(target.archivedAt, source.archivedAt, "min"),
+  );
+  assignOptionalField(
+    target as unknown as Record<string, unknown>,
+    "likedAt",
+    mergeTimestamp(target.likedAt, source.likedAt, "min"),
+  );
+  assignOptionalField(
+    target as unknown as Record<string, unknown>,
+    "likedSyncedAt",
+    mergeSyncedTimestamp(target.likedSyncedAt, source.likedSyncedAt),
+  );
+  assignOptionalField(
+    target as unknown as Record<string, unknown>,
+    "seenSyncedAt",
+    mergeSyncedTimestamp(target.seenSyncedAt, source.seenSyncedAt),
+  );
+  mergeUniqueStrings(target.tags, source.tags);
+  mergeHighlights(target, source);
+}
+
+function mergeEngagement(target: FeedItem, source: FeedItem): void {
+  if (!source.engagement) return;
+  if (!target.engagement) {
+    target.engagement = stripUndefined(source.engagement);
+    return;
+  }
+  assignOptionalField(
+    target.engagement as unknown as Record<string, unknown>,
+    "likes",
+    Math.max(target.engagement.likes ?? 0, source.engagement.likes ?? 0) || undefined,
+  );
+  assignOptionalField(
+    target.engagement as unknown as Record<string, unknown>,
+    "reposts",
+    Math.max(target.engagement.reposts ?? 0, source.engagement.reposts ?? 0) || undefined,
+  );
+  assignOptionalField(
+    target.engagement as unknown as Record<string, unknown>,
+    "comments",
+    Math.max(target.engagement.comments ?? 0, source.engagement.comments ?? 0) || undefined,
+  );
+  assignOptionalField(
+    target.engagement as unknown as Record<string, unknown>,
+    "views",
+    Math.max(target.engagement.views ?? 0, source.engagement.views ?? 0) || undefined,
+  );
+}
+
+function mergeLinkPreview(target: FeedItem["content"], source: FeedItem["content"]): void {
+  if (!source.linkPreview) return;
+  if (!target.linkPreview) {
+    target.linkPreview = stripUndefined(source.linkPreview);
+    return;
+  }
+  if (!target.linkPreview.url && source.linkPreview.url) {
+    target.linkPreview.url = source.linkPreview.url;
+  }
+  if (
+    source.linkPreview.title &&
+    (!target.linkPreview.title || source.linkPreview.title.length > target.linkPreview.title.length)
+  ) {
+    target.linkPreview.title = source.linkPreview.title;
+  }
+  if (
+    source.linkPreview.description &&
+    (!target.linkPreview.description || source.linkPreview.description.length > target.linkPreview.description.length)
+  ) {
+    target.linkPreview.description = source.linkPreview.description;
+  }
+}
+
+function mergeFeedItemInto(target: FeedItem, source: FeedItem): void {
+  target.capturedAt = Math.min(target.capturedAt, source.capturedAt);
+  target.publishedAt = Math.min(target.publishedAt, source.publishedAt);
+
+  if ((source.content.text?.length ?? 0) > (target.content.text?.length ?? 0)) {
+    target.content.text = source.content.text;
+  }
+  mergeLinkPreview(target.content, source.content);
+  mergeUniqueStrings(target.content.mediaUrls, source.content.mediaUrls);
+  mergeUniqueStrings(target.content.mediaTypes, source.content.mediaTypes);
+
+  if (!target.location && source.location) {
+    target.location = stripUndefined(source.location);
+  } else if (target.location && source.location) {
+    if (!target.location.coordinates && source.location.coordinates) {
+      target.location.coordinates = stripUndefined(source.location.coordinates);
+    }
+    if (!target.location.url && source.location.url) {
+      target.location.url = source.location.url;
+    }
+    if ((!target.location.name || target.location.name === "Location") && source.location.name) {
+      target.location.name = source.location.name;
+    }
+  }
+
+  if (!target.timeRange && source.timeRange) {
+    target.timeRange = stripUndefined(source.timeRange);
+  }
+  if (!target.rssSource && source.rssSource) {
+    target.rssSource = stripUndefined(source.rssSource);
+  }
+  if (!target.fbGroup && source.fbGroup) {
+    target.fbGroup = stripUndefined(source.fbGroup);
+  }
+  if (!target.preservedContent && source.preservedContent) {
+    target.preservedContent = stripUndefined(source.preservedContent);
+  }
+  if (!target.sourceUrl && source.sourceUrl) {
+    target.sourceUrl = source.sourceUrl;
+  }
+  if (
+    (source.author.avatarUrl?.length ?? 0) > (target.author.avatarUrl?.length ?? 0)
+  ) {
+    target.author.avatarUrl = source.author.avatarUrl;
+  }
+  if (
+    source.author.displayName &&
+    (!target.author.displayName || source.author.displayName.length > target.author.displayName.length)
+  ) {
+    target.author.displayName = source.author.displayName;
+  }
+  mergeUniqueStrings(target.topics, source.topics);
+  mergeEngagement(target, source);
+  assignOptionalField(
+    target as unknown as Record<string, unknown>,
+    "priority",
+    Math.max(target.priority ?? 0, source.priority ?? 0) || undefined,
+  );
+  assignOptionalField(
+    target as unknown as Record<string, unknown>,
+    "priorityComputedAt",
+    mergeTimestamp(
+      target.priorityComputedAt,
+      source.priorityComputedAt,
+      "max",
+    ),
+  );
+  mergeUserState(target.userState, source.userState);
+}
+
+function dedupKeeperId(doc: FreedDoc, ids: string[]): string {
+  return [...ids].sort((leftId, rightId) => {
+    const left = doc.feedItems[leftId];
+    const right = doc.feedItems[rightId];
+    return (
+      dedupKeeperScore(right) - dedupKeeperScore(left) ||
+      right.publishedAt - left.publishedAt ||
+      rightId.localeCompare(leftId)
+    );
+  })[0];
+}
+
+export function deduplicateDocFeedItems(doc: FreedDoc): number {
+  const unions = new Map<string, string>();
+  const exactUrlGroups = new Map<string, string[]>();
+
+  for (const [id, item] of Object.entries(doc.feedItems) as [string, FeedItem][]) {
+    const url = item.content.linkPreview?.url;
+    if (!url) continue;
+    const group = exactUrlGroups.get(url);
+    if (group) group.push(id);
+    else exactUrlGroups.set(url, [id]);
+  }
+
+  for (const ids of exactUrlGroups.values()) {
+    addDedupGroup(unions, ids);
+  }
+
+  const crossPostGroups = new Map<string, FeedItem[]>();
+  for (const item of Object.values(doc.feedItems) as FeedItem[]) {
+    if (!CROSS_POST_PLATFORMS.has(item.platform)) continue;
+    const identityKey = dedupIdentityKey(doc, item);
+    const textKey = normalizedDedupText(item);
+    if (!identityKey || !textKey) continue;
+    const groupKey = `${identityKey}:${item.contentType}:${textKey}`;
+    const group = crossPostGroups.get(groupKey);
+    if (group) group.push(item);
+    else crossPostGroups.set(groupKey, [item]);
+  }
+
+  for (const group of crossPostGroups.values()) {
+    if (group.length <= 1) continue;
+    const sorted = [...group].sort(
+      (left, right) => left.publishedAt - right.publishedAt || left.globalId.localeCompare(right.globalId),
+    );
+    let cluster: FeedItem[] = [];
+    for (const item of sorted) {
+      if (
+        cluster.length === 0 ||
+        item.publishedAt - cluster[0].publishedAt <= CROSS_POST_WINDOW_MS
+      ) {
+        cluster.push(item);
+        continue;
+      }
+      if (new Set(cluster.map((entry) => entry.platform)).size > 1) {
+        addDedupGroup(unions, cluster.map((entry) => entry.globalId));
+      }
+      cluster = [item];
+    }
+    if (new Set(cluster.map((entry) => entry.platform)).size > 1) {
+      addDedupGroup(unions, cluster.map((entry) => entry.globalId));
+    }
+  }
+
+  const components = new Map<string, string[]>();
+  for (const id of unions.keys()) {
+    const root = findParent(unions, id);
+    const group = components.get(root);
+    if (group) group.push(id);
+    else components.set(root, [id]);
+  }
+
+  let deleted = 0;
+  for (const ids of components.values()) {
+    if (ids.length <= 1) continue;
+    const keepId = dedupKeeperId(doc, ids);
+    const keeper = doc.feedItems[keepId];
+    if (!keeper) continue;
+    for (const id of ids) {
+      if (id === keepId) continue;
+      const duplicate = doc.feedItems[id];
+      if (!duplicate) continue;
+      mergeFeedItemInto(keeper, duplicate);
+      delete doc.feedItems[id];
+      deleted += 1;
+    }
+  }
+
+  return deleted;
 }
 
 function normalizePerson(person: Person): Person {

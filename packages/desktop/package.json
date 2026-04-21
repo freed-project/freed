@@ -1,12 +1,12 @@
 {
   "name": "@freed/desktop",
   "private": true,
-  "version": "26.4.1900",
+  "version": "26.4.2001",
   "type": "module",
   "scripts": {
-    "dev": "node ../../node_modules/vite/bin/vite.js",
-    "build": "tsc -b && node -e \"process.env.VERCEL||require('child_process').execSync('node ../../node_modules/vite/bin/vite.js build',{stdio:'inherit'})\"",
-    "preview": "node ../../node_modules/vite/bin/vite.js preview",
+    "dev": "vite",
+    "build": "tsc -b && node -e \"process.env.VERCEL||require('child_process').execSync('vite build',{stdio:'inherit',shell:true})\"",
+    "preview": "vite preview",
     "tauri": "node ./scripts/tauri-cli.mjs",
     "tauri:dev": "node ./scripts/tauri-cli.mjs dev",
     "tauri:build": "node ./scripts/tauri-cli.mjs build",
@@ -17,7 +17,11 @@
     "test:e2e:debug": "node ../../node_modules/playwright/cli.js test --debug"
   },
   "dependencies": {
+    "@automerge/automerge": "^2.2.8",
+    "@freed/capture-facebook": "*",
+    "@freed/capture-instagram": "*",
     "@freed/capture-rss": "*",
+    "@freed/capture-save": "*",
     "@freed/capture-x": "*",
     "@freed/shared": "*",
     "@freed/sync": "*",

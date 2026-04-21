@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import wasm from 'vite-plugin-wasm'
 import topLevelAwait from 'vite-plugin-top-level-await'
 import { VitePWA } from 'vite-plugin-pwa'
+import { realpathSync } from 'fs'
 import { fileURLToPath } from 'url'
 import pkg from './package.json' with { type: 'json' }
 import { getBuildMetadata } from '../../scripts/lib/build-metadata.mjs'
@@ -11,6 +12,20 @@ import { getBuildMetadata } from '../../scripts/lib/build-metadata.mjs'
 // worktrees don't need to build dist/ artifacts before running the dev server.
 const src = (name: string) =>
   fileURLToPath(new URL(`../${name}/src`, import.meta.url))
+
+const workspaceRoot = fileURLToPath(new URL('../..', import.meta.url))
+const workspaceNodeModules = fileURLToPath(new URL('../../node_modules', import.meta.url))
+const fsAllow = [
+  workspaceRoot,
+  workspaceNodeModules,
+  (() => {
+    try {
+      return realpathSync(workspaceNodeModules)
+    } catch {
+      return workspaceNodeModules
+    }
+  })(),
+]
 
 const buildMetadata = getBuildMetadata(pkg.version)
 
@@ -33,6 +48,14 @@ export default defineConfig({
     format: 'es',
     plugins: () => [wasm(), topLevelAwait()],
   },
+  server: {
+    fs: {
+      allow: fsAllow,
+    },
+  },
+  build: {
+    target: 'esnext',
+  },
 
   plugins: [
     wasm(),
@@ -47,6 +70,7 @@ export default defineConfig({
       includeAssets: ['favicon.svg', 'icons/*.png'],
       manifest: false,
       workbox: {
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         runtimeCaching: [
           {
             // API routes must bypass the service worker entirely — Workbox's

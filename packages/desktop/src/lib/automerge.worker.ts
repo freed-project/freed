@@ -22,6 +22,7 @@ import {
   addAccount,
   addAccounts,
   addFeedItem,
+  deduplicateDocFeedItems,
   hasLegacyIdentityGraphData,
   migrateLegacyIdentityGraph,
   addPerson,
@@ -574,6 +575,9 @@ async function handleRequest(
           for (const item of req.items) {
             if (!doc.feedItems[item.globalId]) addFeedItem(doc, item);
           }
+          if (req.items.some((item) => item.platform === "facebook" || item.platform === "instagram")) {
+            deduplicateDocFeedItems(doc);
+          }
         }, `Add ${req.items.length} feed items`, true);
         ack(req.reqId);
         break;
@@ -786,31 +790,8 @@ async function handleRequest(
 
       case "DEDUPLICATE_ITEMS":
         await applyRequestChange((doc) => {
-          const linkToIds = new Map<string, string[]>();
-          for (const [id, item] of Object.entries(doc.feedItems) as [string, FeedItem][]) {
-            const url = item.content.linkPreview?.url;
-            if (!url) continue;
-            const group = linkToIds.get(url);
-            if (group) group.push(id);
-            else linkToIds.set(url, [id]);
-          }
-          for (const ids of linkToIds.values()) {
-            if (ids.length <= 1) continue;
-            const scored = ids.map((id) => {
-              const s = (doc.feedItems[id] as FeedItem).userState;
-              return {
-                id,
-                score:
-                  (s.saved ? 100 : 0) +
-                  ((s.tags?.length ?? 0) * 10) +
-                  (s.archived ? 5 : 0) +
-                  (s.readAt ? 1 : 0),
-              };
-            });
-            scored.sort((a, b) => b.score - a.score || b.id.localeCompare(a.id));
-            for (let i = 1; i < scored.length; i++) delete doc.feedItems[scored[i].id];
-          }
-        }, "Deduplicate feed items by article link URL", true);
+          deduplicateDocFeedItems(doc);
+        }, "Deduplicate feed items by article link URL and linked social cross-posts", true);
         ack(req.reqId);
         break;
 

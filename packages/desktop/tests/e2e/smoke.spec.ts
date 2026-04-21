@@ -20,6 +20,9 @@ import { tauriInitScript } from "./fixtures/tauri-init";
 
 const SIDEBAR_ALIGNMENT_TOLERANCE_PX = 4;
 const READER_RAIL_ALIGNMENT_TOLERANCE_PX = 8;
+const PRIMARY_SIDEBAR_GAP_WIDTH = "16px";
+const AUXILIARY_DRAWER_GAP_WIDTH = "12px";
+const SOFT_VIEWPORT_RADIUS = "20px";
 
 async function dismissCloudSyncNudgeIfPresent(page: Page) {
   const dismissButton = page.getByRole("button", { name: "Dismiss", exact: true });
@@ -643,6 +646,58 @@ test("desktop toolbar tooltips still open on keyboard focus", async ({ app, page
 
   await expect(sidebarToggle).toBeFocused();
   await expect(page.getByRole("tooltip")).toHaveText("Collapse sidebar");
+});
+
+test("desktop masked workspaces compensate for adjacent shell gaps", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.getByRole("button", { name: /^Map/ }).click();
+  await expect(page.getByTestId("map-surface")).toBeVisible({ timeout: 10_000 });
+
+  const initialMapMaskState = await page.evaluate(() => {
+    const mapSurface = document.querySelector('[data-testid="map-surface"]') as HTMLElement | null;
+    const content = mapSurface?.querySelector(".theme-soft-viewport-content") as HTMLElement | null;
+    const styles = mapSurface ? window.getComputedStyle(mapSurface) : null;
+    const contentStyles = content ? window.getComputedStyle(content) : null;
+
+    return {
+      leftBase: styles?.getPropertyValue("--theme-soft-viewport-base-comp-left").trim() ?? "",
+      rightBase: styles?.getPropertyValue("--theme-soft-viewport-base-comp-right").trim() ?? "",
+      radius: styles?.getPropertyValue("--theme-soft-viewport-radius").trim() ?? "",
+      clipPath: contentStyles?.clipPath ?? "",
+    };
+  });
+
+  expect(initialMapMaskState.leftBase).toBe(PRIMARY_SIDEBAR_GAP_WIDTH);
+  expect(initialMapMaskState.rightBase).toBe("0px");
+  expect(initialMapMaskState.radius).toBe(SOFT_VIEWPORT_RADIUS);
+  expect(initialMapMaskState.clipPath).toContain(SOFT_VIEWPORT_RADIUS);
+
+  await page.keyboard.press("Control+Shift+D");
+  await expect(page.getByTestId("debug-panel-drawer")).toBeVisible();
+
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const mapSurface = document.querySelector('[data-testid="map-surface"]') as HTMLElement | null;
+      return mapSurface
+        ? window.getComputedStyle(mapSurface).getPropertyValue("--theme-soft-viewport-base-comp-right").trim()
+        : "";
+    });
+  }).toBe(AUXILIARY_DRAWER_GAP_WIDTH);
+
+  await page.getByTestId("desktop-sidebar-toggle").click();
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const mapSurface = document.querySelector('[data-testid="map-surface"]') as HTMLElement | null;
+      return mapSurface
+        ? window.getComputedStyle(mapSurface).getPropertyValue("--theme-soft-viewport-base-comp-left").trim()
+        : "";
+    });
+  }).toBe("0px");
 });
 
 test("main content area renders", async ({ app }) => {
@@ -1644,10 +1699,10 @@ test("Map view popup exposes friend actions and supports post navigation", async
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
-      | { getState: () => { activeView: string; selectedFriendId: string | null } }
+      | { getState: () => { activeView: string; selectedPersonId: string | null } }
       | undefined;
     const state = store?.getState();
-    return state?.activeView === "friends" && state.selectedFriendId === "friend-ada";
+    return state?.activeView === "friends" && state.selectedPersonId === "friend-ada";
   }, { timeout: 10_000 });
   await expect(page.getByRole("button", { name: "Back to all friends" })).toBeVisible({
     timeout: 10_000,
@@ -1704,10 +1759,10 @@ test("Friend detail last seen card opens the full Map view", async ({ app }) => 
   await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
-      | { getState: () => { activeView: string; selectedFriendId: string | null } }
+      | { getState: () => { activeView: string; selectedPersonId: string | null } }
       | undefined;
     const state = store?.getState();
-    return state?.activeView === "map" && state.selectedFriendId === "friend-ada";
+    return state?.activeView === "map" && state.selectedPersonId === "friend-ada";
   }, { timeout: 10_000 });
   await expect(page.locator('.freed-map-marker[aria-label="Ada Lovelace"]')).toBeVisible({
     timeout: 10_000,
@@ -1722,7 +1777,7 @@ test("map defaults to All content when only unlinked author locations exist", as
 
   await page.getByRole("button", { name: /^Map/ }).click();
   const allContentButton = page.getByRole("button", { name: "All content", exact: true });
-  await expect(allContentButton).toHaveClass(/theme-chip-active/, { timeout: 10_000 });
+  await expect(allContentButton).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
   await expect(page.locator('.freed-map-marker[aria-label="Nora Quinn"]')).toBeVisible({
     timeout: 10_000,
   });
@@ -1822,7 +1877,7 @@ test("recoverable story locations appear in All content mode and the mode persis
   await page.getByRole("button", { name: /^Map/ }).click();
   const allContentButton = page.getByRole("button", { name: "All content", exact: true });
   await allContentButton.click();
-  await expect(allContentButton).toHaveClass(/theme-chip-active/, { timeout: 10_000 });
+  await expect(allContentButton).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
 
   await openVisibleMapMarker(page, "Nora Quinn");
   await expect(page.getByText("Big Bear California")).toBeVisible({ timeout: 10_000 });
@@ -1831,8 +1886,9 @@ test("recoverable story locations appear in All content mode and the mode persis
   await app.waitForReady();
   await dismissCloudSyncNudgeIfPresent(page);
   await page.getByRole("button", { name: /^Map/ }).click();
-  await expect(page.getByRole("button", { name: "All content", exact: true })).toHaveClass(
-    /theme-chip-active/,
+  await expect(page.getByRole("button", { name: "All content", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
     { timeout: 10_000 },
   );
   await expect(page.locator('.freed-map-marker[aria-label="Nora Quinn"]')).toBeVisible({
@@ -1915,8 +1971,9 @@ test("map time filters switch between current and future location windows", asyn
   });
 
   await page.getByRole("button", { name: /^Map/ }).click();
-  await expect(page.getByRole("button", { name: "Current", exact: true })).toHaveClass(
-    /theme-chip-active/,
+  await expect(page.getByRole("button", { name: "Current", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
     { timeout: 10_000 },
   );
 
@@ -1926,20 +1983,21 @@ test("map time filters switch between current and future location windows", asyn
 
   const futureButton = page.getByRole("button", { name: "Future", exact: true });
   await futureButton.click();
-  await expect(futureButton).toHaveClass(/theme-chip-active/, { timeout: 10_000 });
+  await expect(futureButton).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
   await expect(page.getByText("Lisbon", { exact: true })).toBeVisible({ timeout: 10_000 });
 
   await page.reload();
   await app.waitForReady();
   await dismissCloudSyncNudgeIfPresent(page);
   await page.getByRole("button", { name: /^Map/ }).click();
-  await expect(page.getByRole("button", { name: "Future", exact: true })).toHaveClass(
-    /theme-chip-active/,
+  await expect(page.getByRole("button", { name: "Future", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
     { timeout: 10_000 },
   );
 });
 
-test("map timeline scrubber replays historical posts and future plans", async ({ app, page }) => {
+test("map timeline playback surfaces future and historical markers", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
   await app.seedFriendLocation();
@@ -2117,21 +2175,12 @@ test("map timeline scrubber replays historical posts and future plans", async ({
   await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
   await expect(page.getByText("Lisbon", { exact: true })).toBeVisible({ timeout: 10_000 });
 
-  await page.getByLabel("Map timeline scrubber").fill("2");
-  await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
-  await expect(page.getByText("Tokyo", { exact: true })).toBeVisible({ timeout: 10_000 });
-
   const pastButton = page.getByRole("button", { name: "Past", exact: true });
   await pastButton.click();
   await expect(page.getByTestId("map-timeline-scrubber")).toBeVisible({ timeout: 10_000 });
 
-  await page.getByLabel("Map timeline scrubber").fill("1");
   await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
-  await expect(page.getByText("Berlin", { exact: true })).toBeVisible({ timeout: 10_000 });
-
-  await page.getByLabel("Map timeline scrubber").fill("0");
-  await openVisibleMapMarker(page, "Ada Lovelace", "Open Post");
-  await expect(page.getByText("Rome", { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Paris", { exact: true })).toBeVisible({ timeout: 10_000 });
 });
 
 test("Friends view uses the floating detail drawer shell", async ({ app, page }) => {
@@ -2147,18 +2196,23 @@ test("Friends view uses the floating detail drawer shell", async ({ app, page })
     const sidebar = document.querySelector('[data-testid="friends-sidebar"]') as HTMLElement | null;
     const shell = document.querySelector('[data-testid="friends-sidebar-shell"]') as HTMLElement | null;
     const handle = document.querySelector('[aria-label="Resize friends sidebar"]') as HTMLElement | null;
+    const viewport = document.querySelector('[data-testid="friend-graph-viewport"]') as HTMLElement | null;
 
     return {
       sidebarIsFloating: sidebar?.classList.contains("theme-floating-panel") ?? false,
       shellWidth: shell?.getBoundingClientRect().width ?? 0,
       sidebarWidth: sidebar?.getBoundingClientRect().width ?? 0,
       handleUsesGapGrip: handle?.classList.contains("theme-resize-gap-handle") ?? false,
+      extraRightComp: viewport
+        ? window.getComputedStyle(viewport).getPropertyValue("--theme-soft-viewport-extra-comp-right").trim()
+        : "",
     };
   });
 
   expect(shellState.sidebarIsFloating).toBe(true);
   expect(shellState.handleUsesGapGrip).toBe(true);
   expect(shellState.shellWidth).toBeGreaterThanOrEqual(shellState.sidebarWidth);
+  expect(shellState.extraRightComp).toBe(AUXILIARY_DRAWER_GAP_WIDTH);
 });
 
 // ---------------------------------------------------------------------------

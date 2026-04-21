@@ -2,40 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { LocationMarkerSummary } from "@freed/shared";
 import { DEFAULT_THEME_ID, getThemeDefinition, type ThemeId } from "@freed/shared/themes";
+import type { Map as MapLibreMap, Marker as MapLibreMarker, Popup as MapLibrePopup } from "maplibre-gl";
 import { createMarkerElement } from "./MarkerElement.js";
 import { createFriendAvatarPalette } from "../../lib/friend-avatar-style.js";
 import { buildThemedMapStyle } from "../../lib/map-style.js";
 
-type PopupInstance = {
-  remove: () => void;
-  setDOMContent: (node: HTMLElement) => PopupInstance;
-  setLngLat: (coordinates: [number, number]) => PopupInstance;
-  addTo: (map: MapInstance) => PopupInstance;
-};
+type PopupInstance = MapLibrePopup;
+type MarkerInstance = MapLibreMarker;
+type MapInstance = MapLibreMap;
 
-type MarkerInstance = {
-  setLngLat: (coordinates: [number, number]) => MarkerInstance;
-  setPopup: (popup: PopupInstance) => MarkerInstance;
-  addTo: (map: MapInstance) => MarkerInstance;
-  remove: () => void;
-  getElement: () => HTMLElement;
-  togglePopup: () => void;
-};
-
-type MapInstance = {
-  remove: () => void;
-  resize: () => void;
-  fitBounds: (bounds: [[number, number], [number, number]], options?: unknown) => void;
-  flyTo: (options: { center: [number, number]; zoom?: number; duration?: number }) => void;
-  on: (event: string, handler: () => void) => void;
-  off: (event: string, handler: () => void) => void;
-};
-
-type MapLibreModule = {
-  Map: new (options: unknown) => MapInstance;
-  Marker: new (options: { element: HTMLElement }) => MarkerInstance;
-  Popup: new (options?: unknown) => PopupInstance;
-};
+type MapLibreModule = typeof import("maplibre-gl");
 
 interface MapSurfaceProps {
   markers: LocationMarkerSummary[];
@@ -50,19 +26,7 @@ interface MapSurfaceProps {
   emptyBody?: string;
 }
 
-const MAPLIBRE_MODULE_PATH =
-  new URL(
-    "../../../../../node_modules/maplibre-gl/dist/maplibre-gl.js",
-    import.meta.url
-  ).href;
-const MAPLIBRE_CSS_PATH =
-  new URL(
-    "../../../../../node_modules/maplibre-gl/dist/maplibre-gl.css",
-    import.meta.url
-  ).href;
-
 let mapLibreLoader: Promise<MapLibreModule> | null = null;
-let mapLibreCssLoaded = false;
 const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
@@ -109,52 +73,21 @@ function popupMeta(marker: LocationMarkerSummary): string {
   return `${popupRelativeTime(marker.seenAt)} · ${popupAbsoluteTime(marker.seenAt)}`;
 }
 
-function ensureMapLibreCss() {
-  if (typeof document === "undefined" || mapLibreCssLoaded) return;
-  const existing = document.querySelector(`link[data-freed-maplibre="true"]`);
-  if (existing) {
-    mapLibreCssLoaded = true;
-    return;
-  }
-
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = MAPLIBRE_CSS_PATH;
-  link.dataset.freedMaplibre = "true";
-  document.head.appendChild(link);
-  mapLibreCssLoaded = true;
-}
-
 function loadMapLibre(): Promise<MapLibreModule> {
   if (typeof window === "undefined") {
     return Promise.reject(new Error("window is unavailable"));
   }
 
-  const globalModule = (
-    window as Window & { maplibregl?: MapLibreModule }
-  ).maplibregl;
-  if (globalModule) {
-    return Promise.resolve(globalModule);
-  }
-
   if (mapLibreLoader) return mapLibreLoader;
 
-  mapLibreLoader = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = MAPLIBRE_MODULE_PATH;
-    script.async = true;
-    script.onload = () => {
-      const loadedModule = (
-        window as Window & { maplibregl?: MapLibreModule }
-      ).maplibregl;
-      if (loadedModule) {
-        resolve(loadedModule);
-        return;
-      }
-      reject(new Error("maplibregl global was not initialized"));
-    };
-    script.onerror = () => reject(new Error("Failed to load maplibre-gl"));
-    document.head.appendChild(script);
+  // Let Vite own the asset URLs so parallel worktrees do not depend on raw
+  // @fs paths into whichever checkout currently holds node_modules.
+  mapLibreLoader = Promise.all([
+    import("maplibre-gl"),
+    import("maplibre-gl/dist/maplibre-gl.css"),
+  ]).then(([module]) => module).catch((error) => {
+    mapLibreLoader = null;
+    throw error;
   });
 
   return mapLibreLoader;
@@ -568,8 +501,6 @@ export function MapSurface({
         mapRef.current = null;
       };
     }
-
-    ensureMapLibreCss();
 
     void Promise.all([
       loadMapLibre(),

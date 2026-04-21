@@ -1,19 +1,13 @@
 import { getThemeDefinition, type ThemeId, type ThemeMapPalette } from "@freed/shared/themes";
+import type { StyleSpecification } from "maplibre-gl";
 
 const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/positron";
 
-type MapStyleLayer = {
-  id: string;
-  type?: string;
+type MapStyleLayer = StyleSpecification["layers"][number] & {
   paint?: Record<string, unknown>;
-  [key: string]: unknown;
 };
 
-type MapStyle = {
-  version: number;
-  layers: MapStyleLayer[];
-  [key: string]: unknown;
-};
+type MapStyle = StyleSpecification;
 
 let baseStyleLoader: Promise<MapStyle> | null = null;
 const themedStyleCache = new Map<ThemeId, Promise<MapStyle>>();

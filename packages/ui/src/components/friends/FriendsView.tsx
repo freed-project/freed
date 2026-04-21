@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef, type CSSProperties } from "react";
 import type {
   Account,
   DeviceContact,
@@ -34,6 +34,10 @@ import {
   buildSuggestionsByPerson,
   type AccountLinkSuggestion,
 } from "../../lib/account-link-suggestions.js";
+import {
+  FRIENDS_SIDEBAR_GAP_WIDTH_PX,
+  px,
+} from "../layout/layoutConstants.js";
 
 const DEFAULT_SIDEBAR_WIDTH = 360;
 const MIN_SIDEBAR_WIDTH = 280;
@@ -377,6 +381,11 @@ export function FriendsView() {
   }, [dragWidth, savedSidebarWidth]);
 
   const sidebarWidth = dragWidth ?? committedSidebarWidth;
+  const graphViewportStyle = isMobile
+    ? undefined
+    : ({
+        "--theme-soft-viewport-extra-comp-right": px(FRIENDS_SIDEBAR_GAP_WIDTH_PX),
+      } as CSSProperties);
 
   const focusGraphNode = useCallback((id: string) => {
     graphRef.current?.focusNode(id);
@@ -903,7 +912,7 @@ export function FriendsView() {
   return (
     <div className="app-theme-shell flex h-full flex-col overflow-hidden">
       <div className={`flex min-h-0 flex-1 ${isMobile ? "flex-col" : "flex-row"}`}>
-        <div className="relative min-h-0 min-w-0 flex-1">
+        <div className="relative min-h-0 min-w-0 flex-1" style={graphViewportStyle}>
           {(effectiveMode === "friends" && friendList.length === 0) || (effectiveMode === "all_content" && socialAccountCount === 0 && friendList.length === 0) ? (
             renderGraphEmptyState()
           ) : (
@@ -954,7 +963,7 @@ export function FriendsView() {
             <aside
               data-testid="friends-sidebar"
               className="theme-floating-panel flex h-full min-h-0 w-full flex-col overflow-hidden"
-              style={{ width: `${sidebarWidth}px` }}
+              style={{ width: px(sidebarWidth) }}
             >
               {activeSidebar}
             </aside>

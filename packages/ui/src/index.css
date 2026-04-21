@@ -149,6 +149,10 @@ html[data-theme="neon"] {
     0 0 30px rgb(var(--theme-accent-secondary-rgb) / 0.3),
     0 0 60px rgb(var(--theme-accent-primary-rgb) / 0.16),
     0 0 100px rgb(var(--theme-accent-tertiary-rgb) / 0.08);
+  --theme-transition-blur: 0px;
+  --theme-transition-opacity: 1;
+  --theme-transition-saturate: 1;
+  --theme-transition-duration: 210ms;
 
   --sidebar-width: 240px;
   --card-radius: 8px;
@@ -676,6 +680,13 @@ body {
   font-weight: var(--theme-body-font-weight);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .theme-shell,
+  .app-theme-shell {
+    transition: none;
+  }
+}
+
 .font-logo {
   font-family: var(--font-logo);
   letter-spacing: -0.02em;
@@ -772,6 +783,14 @@ html[data-theme="scriptorium"] .theme-page-heading-accent {
   background-repeat: no-repeat;
   background-size: cover;
   color: var(--theme-text-primary);
+  filter:
+    blur(var(--theme-transition-blur))
+    saturate(var(--theme-transition-saturate));
+  opacity: var(--theme-transition-opacity);
+  transition:
+    filter var(--theme-transition-duration) cubic-bezier(0.22, 1, 0.36, 1),
+    opacity var(--theme-transition-duration) cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: filter, opacity;
 }
 
 .bg-gradient-orbs {
@@ -818,10 +837,16 @@ html[data-theme="scriptorium"] .theme-panel-muted {
 }
 
 .theme-soft-viewport {
+  --theme-soft-viewport-mask-size: 20px;
+  --theme-soft-viewport-radius: 20px;
+  --theme-soft-viewport-comp-left: calc(var(--theme-soft-viewport-base-comp-left, 0px) + var(--theme-soft-viewport-extra-comp-left, 0px));
+  --theme-soft-viewport-comp-right: calc(var(--theme-soft-viewport-base-comp-right, 0px) + var(--theme-soft-viewport-extra-comp-right, 0px));
+  --theme-soft-viewport-comp-top: calc(var(--theme-soft-viewport-base-comp-top, 0px) + var(--theme-soft-viewport-extra-comp-top, 0px));
+  --theme-soft-viewport-comp-bottom: calc(var(--theme-soft-viewport-base-comp-bottom, 0px) + var(--theme-soft-viewport-extra-comp-bottom, 0px));
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  border-radius: 20px;
+  border-radius: var(--theme-soft-viewport-radius);
 }
 
 .theme-soft-viewport-content {
@@ -829,6 +854,7 @@ html[data-theme="scriptorium"] .theme-panel-muted {
   inset: 0;
   overflow: hidden;
   border-radius: inherit;
+  clip-path: inset(0 round var(--theme-soft-viewport-radius));
 }
 
 .theme-scroll-fade-y {
@@ -844,17 +870,17 @@ html[data-theme="scriptorium"] .theme-panel-muted {
     -webkit-mask-image:
       linear-gradient(
         to right,
-        transparent 0,
-        #000 20px,
-        #000 calc(100% - 20px),
-        transparent 100%
+        transparent calc(0px - var(--theme-soft-viewport-comp-left)),
+        #000 calc(var(--theme-soft-viewport-mask-size) - var(--theme-soft-viewport-comp-left)),
+        #000 calc(100% - var(--theme-soft-viewport-mask-size) + var(--theme-soft-viewport-comp-right)),
+        transparent calc(100% + var(--theme-soft-viewport-comp-right))
       ),
       linear-gradient(
         to bottom,
-        transparent 0,
-        #000 20px,
-        #000 calc(100% - 20px),
-        transparent 100%
+        transparent calc(0px - var(--theme-soft-viewport-comp-top)),
+        #000 calc(var(--theme-soft-viewport-mask-size) - var(--theme-soft-viewport-comp-top)),
+        #000 calc(100% - var(--theme-soft-viewport-mask-size) + var(--theme-soft-viewport-comp-bottom)),
+        transparent calc(100% + var(--theme-soft-viewport-comp-bottom))
       );
     -webkit-mask-repeat: no-repeat, no-repeat;
     -webkit-mask-size: 100% 100%, 100% 100%;
@@ -862,17 +888,17 @@ html[data-theme="scriptorium"] .theme-panel-muted {
     mask-image:
       linear-gradient(
         to right,
-        transparent 0,
-        #000 20px,
-        #000 calc(100% - 20px),
-        transparent 100%
+        transparent calc(0px - var(--theme-soft-viewport-comp-left)),
+        #000 calc(var(--theme-soft-viewport-mask-size) - var(--theme-soft-viewport-comp-left)),
+        #000 calc(100% - var(--theme-soft-viewport-mask-size) + var(--theme-soft-viewport-comp-right)),
+        transparent calc(100% + var(--theme-soft-viewport-comp-right))
       ),
       linear-gradient(
         to bottom,
-        transparent 0,
-        #000 20px,
-        #000 calc(100% - 20px),
-        transparent 100%
+        transparent calc(0px - var(--theme-soft-viewport-comp-top)),
+        #000 calc(var(--theme-soft-viewport-mask-size) - var(--theme-soft-viewport-comp-top)),
+        #000 calc(100% - var(--theme-soft-viewport-mask-size) + var(--theme-soft-viewport-comp-bottom)),
+        transparent calc(100% + var(--theme-soft-viewport-comp-bottom))
       );
     mask-repeat: no-repeat, no-repeat;
     mask-size: 100% 100%, 100% 100%;
@@ -1455,6 +1481,7 @@ html[data-theme="scriptorium"] .theme-floating-panel {
 }
 
 .theme-subtle-button {
+  cursor: pointer;
   color: var(--theme-text-muted);
   transition:
     color 0.18s ease,
@@ -1468,6 +1495,7 @@ html[data-theme="scriptorium"] .theme-floating-panel {
 }
 
 .theme-accent-button {
+  cursor: pointer;
   background: rgb(var(--theme-accent-secondary-rgb) / 0.16);
   color: var(--theme-accent-secondary);
   border: 1px solid rgb(var(--theme-accent-secondary-rgb) / 0.24);
@@ -1475,6 +1503,58 @@ html[data-theme="scriptorium"] .theme-floating-panel {
 
 .theme-accent-button:hover {
   background: rgb(var(--theme-accent-secondary-rgb) / 0.24);
+}
+
+.theme-toolbar-button-neutral {
+  cursor: pointer;
+  border: 1px solid var(--theme-border-subtle);
+  background: var(--theme-button-secondary-background);
+  color: var(--theme-text-secondary);
+  transition:
+    color 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.theme-toolbar-button-neutral:hover {
+  color: var(--theme-text-primary);
+  background: var(--theme-bg-muted);
+  border-color: var(--theme-border-subtle);
+}
+
+.theme-toolbar-button-ghost {
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--theme-text-secondary);
+  transition:
+    color 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.theme-toolbar-button-ghost:hover {
+  color: var(--theme-text-primary);
+  background: var(--theme-bg-muted);
+  border-color: var(--theme-border-subtle);
+}
+
+.theme-toolbar-button-active {
+  cursor: pointer;
+  border: 1px solid rgb(var(--theme-accent-secondary-rgb) / 0.72);
+  background: rgb(var(--theme-accent-secondary-rgb) / 0.16);
+  color: var(--theme-text-primary);
+  box-shadow: inset 0 0 0 1px rgb(var(--theme-accent-secondary-rgb) / 0.18);
+  transition:
+    color 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.theme-toolbar-button-active:hover {
+  background: rgb(var(--theme-accent-secondary-rgb) / 0.2);
+  border-color: rgb(var(--theme-accent-secondary-rgb) / 0.82);
 }
 
 .theme-fab-button {
@@ -1509,7 +1589,7 @@ html[data-theme="scriptorium"] .theme-floating-panel {
 }
 
 .theme-toolbar-cluster > .theme-toolbar-slot + .theme-toolbar-slot {
-  margin-inline-start: 0.5rem;
+  margin-inline-start: 0.75rem;
 }
 
 .theme-reader-rail-slot {
@@ -1518,18 +1598,22 @@ html[data-theme="scriptorium"] .theme-floating-panel {
 
 .theme-toolbar-slot {
   display: flex;
-  flex: 0 0 var(--toolbar-slot-width, auto);
   align-items: center;
   min-width: 0;
-  width: var(--toolbar-slot-width, auto);
   max-width: var(--toolbar-slot-width, 16rem);
   overflow: hidden;
   opacity: 1;
   transform: translateX(0);
   transition:
+    max-width 0.24s cubic-bezier(0.22, 1, 0.36, 1),
     opacity 0.18s ease,
     transform 0.24s cubic-bezier(0.22, 1, 0.36, 1),
     margin-inline-start 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.theme-toolbar-slot-visible {
+  overflow: visible;
+  max-width: fit-content;
 }
 
 .theme-toolbar-slot-hidden {
@@ -1537,6 +1621,8 @@ html[data-theme="scriptorium"] .theme-floating-panel {
   opacity: 0;
   transform: translateX(10px);
   pointer-events: none;
+  overflow: hidden;
+  margin-inline-start: 0 !important;
 }
 
 .theme-toolbar-slot-hidden > * {
@@ -2034,6 +2120,93 @@ html[data-theme="scriptorium"] .btn-primary:hover {
   );
   color: var(--theme-text-primary);
   box-shadow: var(--theme-glow-sm);
+}
+
+.theme-toolbar-segmented {
+  display: inline-flex;
+  align-items: center;
+  height: 2.25rem;
+  overflow: hidden;
+  border: 1px solid var(--theme-border-subtle);
+  border-radius: var(--button-radius);
+  background: var(--theme-button-secondary-background);
+}
+
+.theme-toolbar-segmented-compact {
+  height: 2.25rem;
+}
+
+.theme-toolbar-segment {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  height: 100%;
+  padding: 0 0.95rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.theme-toolbar-segment:first-child {
+  border-top-left-radius: calc(var(--button-radius) - 1px);
+  border-bottom-left-radius: calc(var(--button-radius) - 1px);
+}
+
+.theme-toolbar-segment:last-child {
+  border-top-right-radius: calc(var(--button-radius) - 1px);
+  border-bottom-right-radius: calc(var(--button-radius) - 1px);
+}
+
+.theme-toolbar-segment-inactive {
+  color: var(--theme-text-secondary);
+}
+
+.theme-toolbar-segment-inactive:hover {
+  background: var(--theme-bg-muted);
+  color: var(--theme-text-primary);
+}
+
+.theme-toolbar-segment-active {
+  background: rgb(var(--theme-accent-secondary-rgb) / 0.16);
+  color: var(--theme-text-primary);
+  box-shadow: inset 0 0 0 1px rgb(var(--theme-accent-secondary-rgb) / 0.72);
+  z-index: 1;
+}
+
+.theme-toolbar-segment + .theme-toolbar-segment {
+  position: relative;
+}
+
+.theme-toolbar-segment + .theme-toolbar-segment::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.35rem;
+  bottom: 0.35rem;
+  width: 1px;
+  background: var(--theme-border-subtle);
+  pointer-events: none;
+}
+
+.theme-toolbar-segmented-compact .theme-toolbar-segment {
+  padding-inline: 0.9rem;
+  font-size: 0.9rem;
+}
+
+[data-testid="app-sidebar"] button,
+[data-testid="app-sidebar-mobile"] button,
+[data-testid="app-sidebar"] [role="button"],
+[data-testid="app-sidebar-mobile"] [role="button"] {
+  cursor: pointer;
 }
 
 .theme-section {

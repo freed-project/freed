@@ -5,6 +5,7 @@ import {
   useMemo,
   useCallback,
   type CSSProperties,
+  type ButtonHTMLAttributes,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -36,7 +37,12 @@ import {
   useAppStore,
   usePlatform,
 } from "../../context/PlatformContext.js";
-import { getFilterLabel } from "../../lib/feed-view-labels.js";
+import { getFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
+import {
+  PRIMARY_SIDEBAR_GAP_WIDTH_PX,
+  TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
+  px,
+} from "./layoutConstants.js";
 
 interface HeaderProps {
   mobileSidebarOpen: boolean;
@@ -86,6 +92,48 @@ function ToolbarAnimatedSlot({
   );
 }
 
+function ToolbarToggleGroup<T extends string>({
+  options,
+  value,
+  onChange,
+  compact = false,
+  dataTestId,
+  getButtonProps,
+}: {
+  options: Array<{ value: T; label: string }>;
+  value: T;
+  onChange: (value: T) => void;
+  compact?: boolean;
+  dataTestId?: string;
+  getButtonProps?: () => ButtonHTMLAttributes<HTMLButtonElement>;
+}) {
+  return (
+    <div
+      data-testid={dataTestId}
+      className={`theme-toolbar-segmented inline-flex items-center ${compact ? "theme-toolbar-segmented-compact" : ""}`}
+      role="tablist"
+    >
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            aria-pressed={selected}
+            className={`theme-toolbar-segment whitespace-nowrap ${
+              selected ? "theme-toolbar-segment-active" : "theme-toolbar-segment-inactive"
+            }`}
+            {...getButtonProps?.()}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Header({
   mobileSidebarOpen,
   onMobileMenuToggle,
@@ -126,6 +174,8 @@ export function Header({
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const markAllAsRead = useAppStore((s) => s.markAllAsRead);
   const archiveAllReadUnsaved = useAppStore((s) => s.archiveAllReadUnsaved);
+  const unarchiveSavedItems = useAppStore((s) => s.unarchiveSavedItems);
+  const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
@@ -161,12 +211,18 @@ export function Header({
     () => Object.values(accounts).filter((account) => account.kind === "social").length,
     [accounts],
   );
+  const savedArchivedCount = useMemo(
+    () => items.filter((item) => item.userState.saved && item.userState.archived).length,
+    [items],
+  );
   const effectiveMapMode = display.mapMode
     ?? getDefaultMapMode(mappedFriendCount, mappedAllContentCount);
   const effectiveFriendsMode = display.friendsMode ?? "all_content";
   const showWorkspaceIdentityControls = activeView === "friends" || activeView === "map";
   const showMapTimeControls = activeView === "map";
   const showFeedBulkActions = activeView === "feed";
+  const showArchivedToolbar = activeView === "feed" && activeFilter.archivedOnly === true;
+  const showArchivedDeleteAction = showArchivedToolbar && (display.archivePruneDays ?? 30) > 0;
 
   const unreadCount =
     activeFilter.savedOnly || activeFilter.archivedOnly
@@ -302,6 +358,9 @@ export function Header({
     });
   }, [display, updatePreferences]);
 
+  const [deleteConfirmArmed, setDeleteConfirmArmed] = useState(false);
+  const deleteConfirmTimerRef = useRef<number | null>(null);
+
   const handleOpenReaderUrl = useCallback(() => {
     if (!selectedItem?.sourceUrl) return;
     if (openUrl) {
@@ -310,6 +369,30 @@ export function Header({
     }
     window.open(selectedItem.sourceUrl, "_blank", "noopener,noreferrer");
   }, [openUrl, selectedItem]);
+
+  const handleDeleteArchivedClick = useCallback(() => {
+    if (!deleteConfirmArmed) {
+      setDeleteConfirmArmed(true);
+      if (deleteConfirmTimerRef.current) {
+        window.clearTimeout(deleteConfirmTimerRef.current);
+      }
+      deleteConfirmTimerRef.current = window.setTimeout(() => {
+        setDeleteConfirmArmed(false);
+        deleteConfirmTimerRef.current = null;
+      }, 3000);
+      return;
+    }
+    if (deleteConfirmTimerRef.current) {
+      window.clearTimeout(deleteConfirmTimerRef.current);
+      deleteConfirmTimerRef.current = null;
+    }
+    setDeleteConfirmArmed(false);
+    void deleteAllArchived();
+  }, [deleteAllArchived, deleteConfirmArmed]);
+
+  const handleUnarchiveSavedClick = useCallback(() => {
+    void unarchiveSavedItems();
+  }, [unarchiveSavedItems]);
 
   const showReaderLayoutToggle =
     !isMobile &&
@@ -323,7 +406,10 @@ export function Header({
     : undefined;
   const sidebarSlotStyle =
     !isMobile && desktopSidebarMode !== "closed"
-      ? ({ width: "calc(var(--freed-sidebar-card-width, 240px) + 16px)", paddingRight: "8px" } as CSSProperties)
+      ? ({
+          width: `calc(var(--freed-sidebar-card-width, 240px) + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX)})`,
+          paddingRight: px(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX),
+        } as CSSProperties)
       : undefined;
   const leftToolbarStyle = sidebarSlotStyle
     ? {
@@ -474,9 +560,24 @@ export function Header({
     }
   }, [addFeedOpen, savedContentOpen]);
 
+  useEffect(() => {
+    if (activeFilter.archivedOnly) {
+      return;
+    }
+    if (deleteConfirmTimerRef.current) {
+      window.clearTimeout(deleteConfirmTimerRef.current);
+      deleteConfirmTimerRef.current = null;
+    }
+    setDeleteConfirmArmed(false);
+  }, [activeFilter.archivedOnly]);
+
   useEffect(() => () => {
     finishToolbarDragGesture();
     clearSuppressedToolbarClick();
+    if (deleteConfirmTimerRef.current) {
+      window.clearTimeout(deleteConfirmTimerRef.current);
+      deleteConfirmTimerRef.current = null;
+    }
   }, [clearSuppressedToolbarClick, finishToolbarDragGesture]);
 
   useEffect(() => {
@@ -525,7 +626,9 @@ export function Header({
                 <button
                   onClick={onMobileMenuToggle}
                   {...getToolbarControlProps()}
-                  className={`rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)] ${mobileSidebarOpen ? "bg-[var(--theme-bg-muted)]" : ""}`}
+                  className={`rounded-lg p-1.5 ${
+                    mobileSidebarOpen ? "theme-toolbar-button-active" : "theme-toolbar-button-neutral"
+                  }`}
                   aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
                   aria-pressed={mobileSidebarOpen}
                 >
@@ -547,7 +650,7 @@ export function Header({
                   onClick={onDesktopSidebarToggle}
                   {...getToolbarControlProps()}
                   data-testid="desktop-sidebar-toggle"
-                  className="theme-subtle-button rounded-lg p-1.5 transition-colors hover:bg-[var(--theme-bg-muted)]"
+                  className="theme-toolbar-button-neutral rounded-lg p-1.5"
                   aria-label={desktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
                 >
                   {desktopSidebarMode === "closed" ? (
@@ -570,7 +673,11 @@ export function Header({
                   <button
                     onClick={handleToggleDualColumn}
                     {...getToolbarControlProps()}
-                    className="theme-subtle-button rounded-lg p-2 transition-colors hover:bg-[var(--theme-bg-muted)]"
+                    className={`rounded-lg p-2 ${
+                      display.reading.dualColumnMode
+                        ? "theme-toolbar-button-active"
+                        : "theme-toolbar-button-neutral"
+                    }`}
                     aria-pressed={display.reading.dualColumnMode}
                     aria-label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
                   >
@@ -636,10 +743,10 @@ export function Header({
                     <button
                       onClick={handleToggleFocusMode}
                       {...getToolbarControlProps()}
-                      className={`rounded-lg px-2.5 py-2 text-sm font-bold transition-colors lg:inline-flex ${
+                      className={`rounded-lg px-2.5 py-2 text-sm font-bold lg:inline-flex ${
                         display.reading.focusMode
-                          ? "theme-accent-button"
-                          : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                          ? "theme-toolbar-button-active"
+                          : "theme-toolbar-button-neutral"
                       }`}
                       aria-pressed={display.reading.focusMode}
                       aria-label="Toggle focus reading mode"
@@ -657,10 +764,10 @@ export function Header({
                     <button
                       onClick={handleToggleReaderSaved}
                       {...getToolbarControlProps()}
-                      className={`rounded-lg p-2 transition-colors ${
+                      className={`rounded-lg p-2 ${
                         selectedItem.userState.saved
-                          ? "theme-accent-button"
-                          : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                          ? "theme-toolbar-button-active"
+                          : "theme-toolbar-button-neutral"
                       }`}
                       aria-label={selectedItem.userState.saved ? "Unsave" : "Save"}
                     >
@@ -681,10 +788,10 @@ export function Header({
                     <button
                       onClick={handleToggleReaderArchived}
                       {...getToolbarControlProps()}
-                      className={`rounded-lg p-2 transition-colors ${
+                      className={`rounded-lg p-2 ${
                         selectedItem.userState.archived
                           ? "theme-status-pill-success hover:bg-[rgb(var(--theme-feedback-success-rgb)/0.18)]"
-                          : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
+                          : "theme-toolbar-button-neutral"
                       }`}
                       aria-label={selectedItem.userState.archived ? "Unarchive" : "Archive"}
                     >
@@ -698,7 +805,7 @@ export function Header({
                     <button
                       onClick={handleOpenReaderUrl}
                       {...getToolbarControlProps()}
-                      className="theme-subtle-button inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm"
+                      className="theme-toolbar-button-neutral inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm"
                       aria-label="Open"
                     >
                       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -719,60 +826,77 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot
-                  visible={showWorkspaceIdentityControls}
-                  width={showMapTimeControls ? "min(22rem, 54vw)" : "min(10rem, 34vw)"}
-                  className="flex min-w-0"
-                >
+                <ToolbarAnimatedSlot visible={showWorkspaceIdentityControls} width="12rem">
                   {showWorkspaceIdentityControls ? (
-                    <div className="flex min-w-0 items-center gap-2 overflow-x-auto py-1">
-                      <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_86%,transparent)] p-1">
-                        {([
-                          ["friends", "Friends"],
-                          ["all_content", "All content"],
-                        ] as const).map(([mode, label]) => {
-                          const isActive = activeView === "map"
-                            ? effectiveMapMode === mode
-                            : effectiveFriendsMode === mode;
+                    <ToolbarToggleGroup
+                      dataTestId={activeView === "map" ? "map-toolbar-scope" : "friends-toolbar-lens"}
+                      options={[
+                        { value: "friends", label: "Friends" },
+                        { value: "all_content", label: "All content" },
+                      ]}
+                      value={activeView === "map" ? effectiveMapMode : effectiveFriendsMode}
+                      onChange={(mode) =>
+                        handleIdentityModeChange(activeView === "friends" ? "friendsMode" : "mapMode", mode)
+                      }
+                      getButtonProps={getToolbarControlProps}
+                    />
+                  ) : null}
+                </ToolbarAnimatedSlot>
 
-                          return (
-                            <button
-                              key={`${activeView}-${mode}`}
-                              type="button"
-                              onClick={() => handleIdentityModeChange(activeView === "friends" ? "friendsMode" : "mapMode", mode)}
-                              {...getToolbarControlProps()}
-                              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                                isActive ? "theme-chip-active" : "theme-chip"
-                              }`}
-                            >
-                              {label}
-                            </button>
-                          );
-                        })}
-                      </div>
+                <ToolbarAnimatedSlot visible={showMapTimeControls} width="14rem">
+                  {showMapTimeControls ? (
+                    <ToolbarToggleGroup
+                      dataTestId="map-toolbar-timeframe"
+                      options={[
+                        { value: "current", label: "Current" },
+                        { value: "future", label: "Future" },
+                        { value: "past", label: "Past" },
+                      ]}
+                      value={display.mapTimeMode ?? "current"}
+                      onChange={handleMapTimeModeChange}
+                      compact
+                      getButtonProps={getToolbarControlProps}
+                    />
+                  ) : null}
+                </ToolbarAnimatedSlot>
 
-                      {showMapTimeControls ? (
-                        <div className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[color:var(--theme-border-subtle)] bg-[color:color-mix(in_oklab,var(--theme-bg-surface)_86%,transparent)] p-1">
-                          {([
-                            ["current", "Current"],
-                            ["future", "Future"],
-                            ["past", "Past"],
-                          ] as const).map(([mode, label]) => (
-                            <button
-                              key={`map-time-${mode}`}
-                              type="button"
-                              onClick={() => handleMapTimeModeChange(mode)}
-                              {...getToolbarControlProps()}
-                              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                                (display.mapTimeMode ?? "current") === mode ? "theme-chip-active" : "theme-chip"
-                              }`}
-                            >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
+                <ToolbarAnimatedSlot visible={showArchivedToolbar} width="11rem" className="hidden xl:flex">
+                  {showArchivedToolbar ? (
+                    <span className="text-xs text-[var(--theme-text-muted)]">
+                      {getRetentionLabel(display.archivePruneDays ?? 30)}
+                    </span>
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot
+                  visible={showArchivedToolbar && savedArchivedCount > 0}
+                  width="11rem"
+                  className="hidden lg:flex"
+                >
+                  {showArchivedToolbar && savedArchivedCount > 0 ? (
+                    <button
+                      onClick={handleUnarchiveSavedClick}
+                      {...getToolbarControlProps()}
+                      className="theme-toolbar-button-ghost rounded-lg px-3 py-1.5 text-sm"
+                    >
+                      Unarchive saved
+                    </button>
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot visible={showArchivedDeleteAction} width="11rem" className="hidden lg:flex">
+                  {showArchivedDeleteAction ? (
+                    <button
+                      onClick={handleDeleteArchivedClick}
+                      {...getToolbarControlProps()}
+                      className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
+                        deleteConfirmArmed
+                          ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                          : "theme-toolbar-button-ghost"
+                      }`}
+                    >
+                      {deleteConfirmArmed ? "Confirm delete?" : "Delete archived"}
+                    </button>
                   ) : null}
                 </ToolbarAnimatedSlot>
 
@@ -782,7 +906,7 @@ export function Header({
                       <button
                         onClick={() => markAllAsRead(activeFilter.platform)}
                         {...getToolbarControlProps()}
-                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+                        className="theme-toolbar-button-ghost flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm"
                       >
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -799,7 +923,7 @@ export function Header({
                       <button
                         onClick={() => archiveAllReadUnsaved(activeFilter.platform, activeFilter.feedUrl)}
                         {...getToolbarControlProps()}
-                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+                        className="theme-toolbar-button-ghost flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm"
                       >
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />

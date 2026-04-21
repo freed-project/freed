@@ -92,3 +92,26 @@ test("saved settings overview survives items arriving while open", async ({ app,
   await expect(page.getByText("Saved overview")).toBeVisible();
   await expect(page.getByText("Freed Desktop hit a fatal error")).toBeHidden();
 });
+
+test("saved settings jump lands on readable content", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  const settingsBtn = page.locator("button").filter({ hasText: /settings/i }).first();
+  const iconBtn = page.locator('[aria-label*="settings" i]').first();
+  const btn = (await settingsBtn.isVisible()) ? settingsBtn : iconBtn;
+
+  await expect(btn).toBeVisible({ timeout: 5_000 });
+  await btn.click();
+
+  const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
+  const scrollContainer = page.getByTestId("settings-scroll-container");
+  await expect(settingsDialog).toBeVisible({ timeout: 5_000 });
+
+  await settingsDialog.getByRole("button", { name: "Saved", exact: true }).click();
+
+  const heading = settingsDialog.getByRole("heading", { name: "Saved Content", level: 3 }).last();
+  const emptyState = page.getByText("No saved items yet.");
+  await expect(heading).toBeVisible();
+  await expect(emptyState).toBeVisible();
+});

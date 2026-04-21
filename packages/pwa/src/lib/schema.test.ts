@@ -9,9 +9,11 @@ import { describe, it, expect } from "vitest";
 import * as A from "@automerge/automerge";
 import {
   addAccounts,
+  addPerson,
   createEmptyDoc,
   createDocFromData,
   addFeedItem,
+  deduplicateDocFeedItems,
   hasLegacyIdentityGraphData,
   migrateLegacyIdentityGraph,
   removeFeedItem,
@@ -142,6 +144,199 @@ describe("removeFeedItem", () => {
     expect(() => {
       doc = A.change(doc, (d) => removeFeedItem(d, "nonexistent"));
     }).not.toThrow();
+  });
+});
+
+describe("deduplicateDocFeedItems", () => {
+  it("deduplicates exact URL matches and preserves the richer user state", () => {
+    let doc = createEmptyDoc();
+
+    doc = A.change(doc, (d) => {
+      addFeedItem(d, makeItem({
+        globalId: "rss:item-1",
+        content: {
+          text: "Same article",
+          mediaUrls: [],
+          mediaTypes: [],
+          linkPreview: { url: "https://example.com/article", title: "Article" },
+        },
+      }));
+      addFeedItem(d, makeItem({
+        globalId: "rss:item-2",
+        content: {
+          text: "Same article mirrored",
+          mediaUrls: [],
+          mediaTypes: [],
+          linkPreview: { url: "https://example.com/article", title: "Article" },
+        },
+        userState: {
+          hidden: false,
+          saved: true,
+          savedAt: 100,
+          archived: false,
+          tags: ["keep-me"],
+        },
+      }));
+      deduplicateDocFeedItems(d);
+    });
+
+    expect(Object.keys(doc.feedItems)).toHaveLength(1);
+    const [survivor] = Object.values(doc.feedItems);
+    expect(survivor.userState.saved).toBe(true);
+    expect(survivor.userState.tags).toContain("keep-me");
+  });
+
+  it("deduplicates likely Facebook and Instagram cross-posts for the same linked person", () => {
+    let doc = createEmptyDoc();
+
+    doc = A.change(doc, (d) => {
+      addPerson(d, {
+        id: "person-1",
+        name: "Casey",
+        relationshipStatus: "friend",
+        careLevel: 4,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      addAccounts(d, [
+        {
+          id: "person-1:facebook:casey-fb",
+          personId: "person-1",
+          kind: "social",
+          provider: "facebook",
+          externalId: "casey-fb",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          id: "person-1:instagram:casey-ig",
+          personId: "person-1",
+          kind: "social",
+          provider: "instagram",
+          externalId: "casey-ig",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]);
+
+      addFeedItem(d, makeItem({
+        globalId: "facebook:1",
+        platform: "facebook",
+        contentType: "story",
+        publishedAt: 1_000,
+        author: { id: "casey-fb", handle: "casey", displayName: "Casey" },
+        content: {
+          text: "Brunch in Echo Park with too much sun and exactly enough coffee.",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        userState: {
+          hidden: false,
+          saved: true,
+          savedAt: 1_100,
+          archived: false,
+          tags: ["brunch"],
+        },
+      }));
+
+      addFeedItem(d, makeItem({
+        globalId: "instagram:1",
+        platform: "instagram",
+        contentType: "story",
+        publishedAt: 1_000 + 60_000,
+        author: { id: "casey-ig", handle: "casey", displayName: "Casey Nguyen" },
+        content: {
+          text: "Brunch in Echo Park with too much sun and exactly enough coffee!!!",
+          mediaUrls: ["https://img.example.com/story.jpg"],
+          mediaTypes: ["image"],
+        },
+        location: {
+          name: "Echo Park",
+          source: "sticker",
+          url: "https://maps.example.com/echo-park",
+        },
+      }));
+
+      deduplicateDocFeedItems(d);
+    });
+
+    expect(Object.keys(doc.feedItems)).toHaveLength(1);
+    const [survivor] = Object.values(doc.feedItems);
+    expect(survivor.userState.saved).toBe(true);
+    expect(survivor.userState.tags).toContain("brunch");
+    expect(survivor.location?.name).toBe("Echo Park");
+    expect(survivor.content.mediaUrls).toContain("https://img.example.com/story.jpg");
+  });
+
+  it("keeps same-text social posts when the linked person or time window does not match", () => {
+    let doc = createEmptyDoc();
+
+    doc = A.change(doc, (d) => {
+      addPerson(d, {
+        id: "person-1",
+        name: "Casey",
+        relationshipStatus: "friend",
+        careLevel: 4,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      addPerson(d, {
+        id: "person-2",
+        name: "Jordan",
+        relationshipStatus: "friend",
+        careLevel: 4,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      addAccounts(d, [
+        {
+          id: "person-1:facebook:casey-fb",
+          personId: "person-1",
+          kind: "social",
+          provider: "facebook",
+          externalId: "casey-fb",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          id: "person-2:instagram:jordan-ig",
+          personId: "person-2",
+          kind: "social",
+          provider: "instagram",
+          externalId: "jordan-ig",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]);
+
+      addFeedItem(d, makeItem({
+        globalId: "facebook:2",
+        platform: "facebook",
+        publishedAt: 1_000,
+        author: { id: "casey-fb", handle: "casey", displayName: "Casey" },
+        content: {
+          text: "Sunset walk by the reservoir and a terrible joke about pelicans.",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+      }));
+
+      addFeedItem(d, makeItem({
+        globalId: "instagram:2",
+        platform: "instagram",
+        publishedAt: 1_000 + 12 * 60_000,
+        author: { id: "jordan-ig", handle: "jordan", displayName: "Jordan" },
+        content: {
+          text: "Sunset walk by the reservoir and a terrible joke about pelicans.",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+      }));
+
+      deduplicateDocFeedItems(d);
+    });
+
+    expect(Object.keys(doc.feedItems)).toHaveLength(2);
   });
 });
 

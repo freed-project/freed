@@ -15,7 +15,7 @@ Usage:
 
 Internal:
   ./scripts/worktree-processes.sh claim --kind <desktop|web> --worktree <path> --pid <pid>
-  ./scripts/worktree-processes.sh track --pid <pid> --kind <desktop|web> --target <name> --worktree <path> [--port <port>] [--log <path>] --command <command>
+  ./scripts/worktree-processes.sh track --pid <pid> --kind <desktop|web> --target <name> --worktree <path> [--port <port>] [--log <path>] [--label <text>] --command <command>
   ./scripts/worktree-processes.sh release --kind <desktop|web> [--pid <pid>]
 EOF
 }
@@ -77,11 +77,11 @@ list_processes() {
 
   prune_runtime_state
 
-  printf '%-8s %-10s %-7s %-6s %s\n' "kind" "target" "pid" "port" "worktree"
+  printf '%-8s %-10s %-7s %-6s %-32s %s\n' "kind" "target" "pid" "port" "label" "worktree"
 
   shopt -s nullglob
   for manifest in "$(process_state_dir)"/*.env; do
-    unset PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH STARTED_AT
+    unset PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH PREVIEW_LABEL STARTED_AT
     # shellcheck disable=SC1090
     source "${manifest}"
 
@@ -89,11 +89,12 @@ list_processes() {
       continue
     fi
 
-    printf '%-8s %-10s %-7s %-6s %s\n' \
+    printf '%-8s %-10s %-7s %-6s %-32s %s\n' \
       "${PROCESS_KIND:-}" \
       "${TARGET:-}" \
       "${PID:-}" \
       "${PORT:-"-"}" \
+      "${PREVIEW_LABEL:-"-"}" \
       "${WORKTREE_PATH:-}"
     found=1
   done
@@ -114,7 +115,7 @@ stop_processes() {
 
   shopt -s nullglob
   for manifest in "$(process_state_dir)"/*.env; do
-    unset PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH STARTED_AT
+    unset PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH PREVIEW_LABEL STARTED_AT
     # shellcheck disable=SC1090
     source "${manifest}"
 
@@ -179,9 +180,10 @@ track_process() {
   local port="$5"
   local log_path="$6"
   local command="$7"
+  local preview_label="$8"
 
   validate_kind "${kind}"
-  write_process_metadata "${pid}" "${kind}" "${target}" "${worktree_path}" "${port}" "${command}" "${log_path}"
+  write_process_metadata "${pid}" "${kind}" "${target}" "${worktree_path}" "${port}" "${command}" "${log_path}" "${preview_label}"
   write_lock_metadata "${kind}" "${pid}" "${worktree_path}" "${target}" "${port}"
 }
 
@@ -274,6 +276,7 @@ case "${SUBCOMMAND}" in
     WORKTREE_PATH=""
     PORT_VALUE=""
     LOG_PATH_VALUE=""
+    PREVIEW_LABEL_VALUE=""
     COMMAND_VALUE=""
 
     while [[ $# -gt 0 ]]; do
@@ -302,6 +305,10 @@ case "${SUBCOMMAND}" in
           LOG_PATH_VALUE="$2"
           shift 2
           ;;
+        --label)
+          PREVIEW_LABEL_VALUE="$2"
+          shift 2
+          ;;
         --command)
           COMMAND_VALUE="$2"
           shift 2
@@ -318,7 +325,7 @@ case "${SUBCOMMAND}" in
       exit 1
     }
 
-    track_process "${PID_VALUE}" "${KIND}" "${TARGET_VALUE}" "${WORKTREE_PATH}" "${PORT_VALUE}" "${LOG_PATH_VALUE}" "${COMMAND_VALUE}"
+    track_process "${PID_VALUE}" "${KIND}" "${TARGET_VALUE}" "${WORKTREE_PATH}" "${PORT_VALUE}" "${LOG_PATH_VALUE}" "${COMMAND_VALUE}" "${PREVIEW_LABEL_VALUE}"
     ;;
   release)
     KIND=""

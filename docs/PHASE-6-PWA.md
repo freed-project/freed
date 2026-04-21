@@ -1,6 +1,6 @@
 # Phase 6: PWA Reader
 
-> **Status:** ✅ Core Complete (first-run legal gate shipped, public-safe bug reporting shipped, offline image cache + homescreen install testing pending)
+> **Status:** ✅ Core Complete (first-run legal gate shipped, public-safe bug reporting shipped, homescreen install flow shipped, offline access verification pending)
 > **Dependencies:** Phase 4 (Sync Layer), Phase 5 (Desktop App)
 
 ---
@@ -248,10 +248,11 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] PWA Settings surfaces X / Twitter, Facebook, Instagram, and LinkedIn with Freed Desktop sync and download handoff states
 - [x] Theme changes in Settings temporarily clear the frosted backdrop on touch devices so the active page treatment stays visible while previewing themes
+- [x] Mobile Settings now open as a full-height sheet with a persistent close button, larger back target, and reliable section jumps instead of snapping back to the last scrolled provider section
 - [x] Appearance exposes `Show read in grayscale`, and mark-read-on-scroll now subtracts the feed list offset before marking mobile rows as passed
 - [x] The shared floating mobile sidebar now behaves like a real toggle, so the same hamburger button opens and closes it cleanly
 - [x] Private diagnostics stay opt-in and are clearly separated from public GitHub sharing
-- [ ] PWA installable on mobile (add to homescreen) — manifest exists, needs testing
+- [x] PWA installable on mobile (add to homescreen) — manifest ids and scope set, browser install notice shipped, iOS Safari homescreen guidance shipped, Playwright coverage added
 - [ ] Offline access works (service worker + image cache) — SW registered, image cache pending
 
 ---
