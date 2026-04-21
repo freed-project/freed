@@ -2,10 +2,7 @@
 //!
 //! Native desktop app that bundles capture, sync relay, and reader UI.
 
-use base64::{
-    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
-    Engine,
-};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
 use rand::RngCore;
@@ -15,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock as StdRwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{Menu, MenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Listener, Manager};
 use tauri_plugin_shell::ShellExt;
@@ -34,6 +31,8 @@ use tokio_tungstenite::{
 #[cfg(target_os = "macos")]
 use objc2::rc::Retained;
 #[cfg(target_os = "macos")]
+use objc2::{msg_send, runtime::AnyObject};
+#[cfg(target_os = "macos")]
 use objc2_foundation::{ns_string, MainThreadMarker, NSObjectNSKeyValueCoding, NSString};
 #[cfg(target_os = "macos")]
 use objc2_web_kit::WKWebViewConfiguration;
@@ -41,6 +40,8 @@ use objc2_web_kit::WKWebViewConfiguration;
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
 const DEFAULT_SYNC_RELAY_PORT: u16 = 8765;
+const PRIMARY_MENU_ITEM_SHOW: &str = "show";
+const PRIMARY_MENU_ITEM_QUIT: &str = "quit";
 
 fn sync_relay_port() -> u16 {
     std::env::var("FREED_SYNC_PORT")
@@ -54,6 +55,7 @@ const DEFAULT_WEBKIT_SAFARI_UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
 const SOCIAL_SCRAPER_WINDOW_LABELS: [&str; 3] = ["fb-scraper", "ig-scraper", "li-scraper"];
 const STARTUP_RECOVERY_STATE_FILE: &str = "startup-recovery.json";
+const STARTUP_RECOVERY_HTML_FILE: &str = "startup-recovery.html";
 const RECOVERY_WINDOW_LABEL: &str = "startup-recovery";
 const RECOVERY_DOWNLOAD_URL: &str = "https://freed.wtf/get";
 const ENABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
@@ -376,6 +378,39 @@ fn startup_recovery_state_path(data_dir: &Path) -> PathBuf {
     data_dir.join(STARTUP_RECOVERY_STATE_FILE)
 }
 
+fn startup_recovery_html_path(data_dir: &Path) -> PathBuf {
+    data_dir.join(STARTUP_RECOVERY_HTML_FILE)
+}
+
+#[cfg(target_os = "macos")]
+fn clear_saved_window_state(app: &tauri::AppHandle) {
+    let Some(home_dir) = std::env::var_os("HOME") else {
+        return;
+    };
+
+    let bundle_id = &app.config().identifier;
+    let saved_state_path = PathBuf::from(home_dir)
+        .join("Library")
+        .join("Saved Application State")
+        .join(format!("{bundle_id}.savedState"));
+
+    if !saved_state_path.exists() {
+        return;
+    }
+
+    match std::fs::remove_dir_all(&saved_state_path) {
+        Ok(()) => info!(
+            "[main-window] cleared saved macOS window state at {}",
+            saved_state_path.display()
+        ),
+        Err(error) => warn!(
+            "[main-window] failed to clear saved macOS window state at {}: {}",
+            saved_state_path.display(),
+            error
+        ),
+    }
+}
+
 fn load_startup_recovery_state(data_dir: &Path) -> StartupRecoveryState {
     let path = startup_recovery_state_path(data_dir);
     let Ok(raw) = std::fs::read_to_string(&path) else {
@@ -400,7 +435,10 @@ fn save_startup_recovery_state(data_dir: &Path, state: &StartupRecoveryState) {
     let serialized = match serde_json::to_vec_pretty(state) {
         Ok(serialized) => serialized,
         Err(error) => {
-            warn!("[recovery] failed to serialize startup recovery state: {}", error);
+            warn!(
+                "[recovery] failed to serialize startup recovery state: {}",
+                error
+            );
             return;
         }
     };
@@ -460,7 +498,7 @@ fn recovery_window_html() -> String {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Freed Recovery</title>
+    <title>Freed</title>
     <style>
       :root {{
         color-scheme: dark;
@@ -470,15 +508,20 @@ fn recovery_window_html() -> String {
         --text: #f3f0ff;
         --muted: rgba(243, 240, 255, 0.68);
         --accent: #7c5cff;
-        --accent-strong: #6d4cf6;
+        --accent-hover: #8b73ff;
         --danger: #ff8577;
+        --button-radius: 14px;
       }}
       * {{
         box-sizing: border-box;
       }}
+      html,
       body {{
         margin: 0;
-        min-height: 100vh;
+        min-height: 100%;
+        height: 100%;
+      }}
+      body {{
         font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         background:
           radial-gradient(circle at top left, rgba(124, 92, 255, 0.26), transparent 32%),
@@ -488,21 +531,20 @@ fn recovery_window_html() -> String {
         display: grid;
         place-items: center;
         padding: 28px;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
       }}
       .panel {{
         width: min(100%, 560px);
+        max-height: calc(100vh - 56px);
         border-radius: 24px;
         border: 1px solid var(--border);
         background: var(--panel);
         box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
         padding: 32px;
-      }}
-      .eyebrow {{
-        margin: 0 0 12px;
-        color: #f19988;
-        font-size: 11px;
-        letter-spacing: 0.16em;
-        text-transform: uppercase;
+        overflow-y: auto;
+        overscroll-behavior-y: auto;
+        -webkit-overflow-scrolling: touch;
       }}
       h1 {{
         margin: 0 0 12px;
@@ -529,30 +571,45 @@ fn recovery_window_html() -> String {
       }}
       button {{
         appearance: none;
-        border: 0;
-        border-radius: 14px;
-        padding: 13px 18px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 50px;
+        border-radius: var(--button-radius);
+        border: 1px solid transparent;
+        padding: 14px 20px;
         font: inherit;
+        font-size: 17px;
         font-weight: 600;
         cursor: pointer;
-        transition: transform 120ms ease, opacity 120ms ease, background 120ms ease;
-      }}
-      button:hover {{
-        transform: translateY(-1px);
+        transition:
+          border-color 0.18s ease,
+          background-color 0.18s ease,
+          color 0.18s ease,
+          box-shadow 0.18s ease,
+          opacity 0.18s ease;
       }}
       button:disabled {{
         cursor: wait;
         opacity: 0.72;
-        transform: none;
       }}
       .primary {{
         color: white;
-        background: linear-gradient(180deg, var(--accent) 0%, var(--accent-strong) 100%);
+        background: var(--accent);
+        border-color: rgb(255 255 255 / 0.06);
+        box-shadow: 0 8px 24px rgb(124 92 255 / 0.18);
+      }}
+      .primary:hover {{
+        background: var(--accent-hover);
       }}
       .secondary {{
         color: var(--text);
         background: rgba(255, 255, 255, 0.07);
         border: 1px solid rgba(255, 255, 255, 0.1);
+      }}
+      .secondary:hover {{
+        background: rgba(255, 255, 255, 0.1);
+        border-color: rgba(255, 255, 255, 0.16);
       }}
       .status {{
         min-height: 22px;
@@ -571,12 +628,7 @@ fn recovery_window_html() -> String {
   </head>
   <body>
     <main class="panel">
-      <p class="eyebrow">Recovery</p>
       <h1>Freed did not finish loading last time.</h1>
-      <p>
-        This window lives outside the main app, so you can still retry startup or download a newer
-        build even if the renderer crashes before React boots.
-      </p>
       <div class="callout">
         <p>
           Keep this window open while you retry. It will close itself after Freed reaches a healthy
@@ -605,7 +657,7 @@ fn recovery_window_html() -> String {
 
       async function call(command, busyMessage) {{
         if (!invoke) {{
-          setStatus("Recovery commands are unavailable in this build.", true);
+          setStatus("These actions are unavailable in this build.", true);
           return false;
         }}
 
@@ -656,22 +708,27 @@ fn open_or_focus_recovery_window(
     }
 
     let html = recovery_window_html();
-    let url = format!("data:text/html;base64,{}", STANDARD.encode(html));
+    let data_dir = app.path().app_data_dir()?;
+    std::fs::create_dir_all(&data_dir)?;
+    let html_path = startup_recovery_html_path(&data_dir);
+    std::fs::write(&html_path, html)?;
+    let url = url::Url::from_file_path(&html_path)
+        .map_err(|_| tauri::Error::InvalidWebviewUrl("failed to create recovery file URL"))?;
     let window = tauri::WebviewWindowBuilder::new(
         app,
         RECOVERY_WINDOW_LABEL,
-        tauri::WebviewUrl::External(
-            url.parse()
-                .expect("startup recovery data URL should always be valid"),
-        ),
+        tauri::WebviewUrl::External(url),
     )
-    .title("Freed Recovery")
+    .title("Freed")
     .inner_size(560.0, 520.0)
     .min_inner_size(480.0, 420.0)
     .center()
     .resizable(true)
     .focused(true)
     .build()?;
+
+    #[cfg(target_os = "macos")]
+    disable_window_restoration(&window);
 
     let _ = window.show();
     let _ = window.set_focus();
@@ -3474,6 +3531,19 @@ fn main_window_webview_configuration() -> Retained<WKWebViewConfiguration> {
     config
 }
 
+#[cfg(target_os = "macos")]
+fn disable_window_restoration(window: &tauri::WebviewWindow) {
+    let Ok(ns_window) = window.ns_window() else {
+        return;
+    };
+
+    let ns_window = ns_window.cast::<AnyObject>();
+    unsafe {
+        let _: () = msg_send![ns_window, setRestorable: false];
+        let _: () = msg_send![ns_window, disableSnapshotRestoration];
+    }
+}
+
 fn show_webview_window(window: &tauri::WebviewWindow) {
     let _ = window.show();
     let _ = window.set_focus();
@@ -3502,7 +3572,12 @@ fn create_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, ta
     #[cfg(target_os = "macos")]
     let builder = builder.with_webview_configuration(main_window_webview_configuration());
 
-    builder.build()
+    let window = builder.build()?;
+
+    #[cfg(target_os = "macos")]
+    disable_window_restoration(&window);
+
+    Ok(window)
 }
 
 fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tauri::Error> {
@@ -3553,6 +3628,54 @@ fn show_primary_window(app: &tauri::AppHandle) {
     }
 }
 
+fn handle_primary_menu_action(app: &tauri::AppHandle, id: &str) -> bool {
+    match id {
+        PRIMARY_MENU_ITEM_SHOW => {
+            show_primary_window(app);
+            true
+        }
+        PRIMARY_MENU_ITEM_QUIT => {
+            app.exit(0);
+            true
+        }
+        _ => false,
+    }
+}
+
+fn build_primary_action_items<R: tauri::Runtime, M: Manager<R>>(
+    manager: &M,
+) -> tauri::Result<(MenuItem<R>, MenuItem<R>)> {
+    Ok((
+        MenuItem::with_id(
+            manager,
+            PRIMARY_MENU_ITEM_SHOW,
+            "Show Freed",
+            true,
+            None::<&str>,
+        )?,
+        MenuItem::with_id(
+            manager,
+            PRIMARY_MENU_ITEM_QUIT,
+            "Quit Freed",
+            true,
+            None::<&str>,
+        )?,
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn build_macos_app_menu<R: tauri::Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<R>> {
+    let (show_item, quit_item) = build_primary_action_items(manager)?;
+    let app_menu = Submenu::with_items(
+        manager,
+        manager.app_handle().package_info().name.clone(),
+        true,
+        &[&show_item, &quit_item],
+    )?;
+
+    Menu::with_items(manager, &[&app_menu])
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // When built with --features perf, initialise a JSON tracing subscriber so
@@ -3596,7 +3719,7 @@ pub fn run() {
         builder.build()
     };
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         // Debug builds log to stdout and the webview so local startup is not
         // blocked by host filesystem permissions. Release builds keep
         // structured rotating file logs in the OS log directory.
@@ -3607,8 +3730,18 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .manage(relay_state)
-        .manage(CaptureState::new())
-        .setup(move |app| {
+        .manage(CaptureState::new());
+
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .enable_macos_default_menu(false)
+        .menu(build_macos_app_menu);
+
+    let builder = builder.on_menu_event(|app, event| {
+        let _ = handle_primary_menu_action(app, event.id().as_ref());
+    });
+
+    builder.setup(move |app| {
             let app_handle = app.handle().clone();
 
             let data_dir = app
@@ -3616,6 +3749,9 @@ pub fn run() {
                 .app_data_dir()
                 .expect("Failed to resolve app data directory");
             std::fs::create_dir_all(&data_dir).ok();
+
+            #[cfg(target_os = "macos")]
+            clear_saved_window_state(&app_handle);
 
             let startup_recovery_state = reconcile_startup_recovery_state(&data_dir);
             if startup_requires_recovery(&startup_recovery_state) {
@@ -3634,8 +3770,7 @@ pub fn run() {
             *relay_state_clone.pairing_token.write().unwrap() = token;
 
             // Build system tray
-            let show_item = MenuItem::with_id(app, "show", "Show Freed", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Quit Freed", true, None::<&str>)?;
+            let (show_item, quit_item) = build_primary_action_items(app)?;
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
             let _tray = TrayIconBuilder::new()
@@ -3643,13 +3778,9 @@ pub fn run() {
                 .menu(&menu)
                 .tooltip("Freed — Sync running")
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        show_primary_window(&app.app_handle());
+                    id => {
+                        let _ = handle_primary_menu_action(&app.app_handle(), id);
                     }
-                    "quit" => {
-                        app.exit(0);
-                    }
-                    _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
