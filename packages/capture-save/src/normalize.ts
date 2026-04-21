@@ -1,6 +1,23 @@
 import type { FeedItem, PreservedContent } from "@freed/shared";
 import type { UrlMetadata, ExtractedContent, SaveOptions } from "./types.js";
 
+export interface BuildSavedFeedItemOptions {
+  tags?: string[];
+  includeHtmlInPreservedContent?: boolean;
+  includeSourceUrl?: boolean;
+  includePriorityFields?: boolean;
+  preservedText?: string;
+  now?: number;
+}
+
+function hostnameForUrl(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return url;
+  }
+}
+
 /**
  * Convert extracted URL data to a FeedItem
  */
@@ -9,13 +26,39 @@ export function urlToFeedItem(
   content: ExtractedContent | null,
   options: SaveOptions = {},
 ): FeedItem {
-  const now = Date.now();
+  return buildSavedFeedItem(metadata, content, {
+    tags: options.tags,
+    includeHtmlInPreservedContent: true,
+    includeSourceUrl: true,
+    includePriorityFields: true,
+  });
+}
 
-  // Build preserved content if we have full extraction
+/**
+ * Create a short hash of a URL for use as an ID
+ */
+export function hashSavedUrl(url: string): string {
+  let hash = 0;
+  for (let i = 0; i < url.length; i++) {
+    const char = url.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash).toString(36);
+}
+
+export function buildSavedFeedItem(
+  metadata: UrlMetadata,
+  content: ExtractedContent | null,
+  options: BuildSavedFeedItemOptions = {},
+): FeedItem {
+  const now = options.now ?? Date.now();
+  const hostname = metadata.siteName ?? hostnameForUrl(metadata.url);
+
   const preservedContent: PreservedContent | undefined = content
     ? {
-        html: content.html,
-        text: content.text,
+        ...(options.includeHtmlInPreservedContent ? { html: content.html } : {}),
+        text: options.preservedText ?? content.text,
         author: content.author || metadata.author,
         publishedAt: metadata.publishedAt,
         wordCount: content.wordCount,
@@ -24,19 +67,16 @@ export function urlToFeedItem(
       }
     : undefined;
 
-  // Generate a URL-safe ID
-  const urlHash = hashUrl(metadata.url);
-
   return {
-    globalId: `saved:${urlHash}`,
+    globalId: `saved:${hashSavedUrl(metadata.url)}`,
     platform: "saved",
     contentType: "article",
     capturedAt: now,
     publishedAt: metadata.publishedAt ?? now,
     author: {
-      id: metadata.siteName ?? new URL(metadata.url).hostname,
-      handle: new URL(metadata.url).hostname,
-      displayName: metadata.siteName ?? new URL(metadata.url).hostname,
+      id: hostname,
+      handle: hostname,
+      displayName: hostname,
     },
     content: {
       text: metadata.description ?? content?.text.slice(0, 300) ?? "",
@@ -49,7 +89,7 @@ export function urlToFeedItem(
       },
     },
     preservedContent,
-    sourceUrl: metadata.url,
+    ...(options.includeSourceUrl ? { sourceUrl: metadata.url } : {}),
     userState: {
       hidden: false,
       saved: true,
@@ -58,20 +98,11 @@ export function urlToFeedItem(
       tags: options.tags ?? [],
     },
     topics: [],
-    priority: 50, // Default priority, will be recalculated by ranking
-    priorityComputedAt: now,
+    ...(options.includePriorityFields
+      ? {
+          priority: 50,
+          priorityComputedAt: now,
+        }
+      : {}),
   };
-}
-
-/**
- * Create a short hash of a URL for use as an ID
- */
-function hashUrl(url: string): string {
-  let hash = 0;
-  for (let i = 0; i < url.length; i++) {
-    const char = url.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  return Math.abs(hash).toString(36);
 }

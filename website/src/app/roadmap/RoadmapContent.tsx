@@ -701,7 +701,7 @@ const phases: Phase[] = [
     number: 1,
     title: "Foundation",
     description:
-      "Marketing site, QR gallery, monorepo, Automerge schema, CI/CD, public legal docs with download clickwrap, a protected newsletter signup flow, and ready-to-run local worktree bootstrap with tracked preview tooling, a swarm shortcut for deferred speculative worktrees, light-by-default preview routing, safer root command routing, rerunnable draft-PR publish automation that rejects stray untracked files, visible local preview labels, labeled native windows, helper smoke coverage, a local session cleanup helper for stale browser sidecars, plus optional deferred installs when you actually want them.",
+      "Marketing site, QR gallery, monorepo, Automerge schema, CI/CD, public legal docs with download clickwrap, a protected newsletter signup flow, ready-to-run local worktree bootstrap with tracked preview tooling, deferred swarm worktrees, tiered validation commands, rerunnable draft PR publish automation, and a reverse-integration release policy.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-1-FOUNDATION.md",
@@ -719,8 +719,8 @@ const phases: Phase[] = [
     number: 3,
     title: "Save for Later",
     description:
-      "Save any URL from desktop or mobile. Full offline reading with layered content cache. AI summarization and tag navigation.",
-    status: "complete",
+      "Desktop save is full. PWA save now attempts full article capture, then falls back to desktop healing when a site blocks extraction. Layered reader fallback, AI controls, and tag navigation are shipped.",
+    status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-3-SAVE-FOR-LATER.md",
   },

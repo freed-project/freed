@@ -179,7 +179,7 @@ async function processNext(): Promise<void> {
       const aiResult = await summarize(content.text, prefs, apiKey);
       if (aiResult) {
         summaryText = toSyncedPreservedText(aiResult.summary);
-        extraTopics = aiResult.topics;
+        extraTopics = prefs.extractTopics ? aiResult.topics : [];
       }
     }
 

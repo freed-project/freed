@@ -40,6 +40,7 @@ import {
   UPDATES_SECTION_META,
   DANGER_SECTION_META,
   GOOGLE_CONTACTS_SECTION_META,
+  AI_SECTION_META,
   X_SECTION_META,
   FB_SECTION_META,
   IG_SECTION_META,
@@ -49,6 +50,7 @@ import {
 } from "../lib/settings-sections.js";
 import { FeedsSection } from "./settings/FeedsSection.js";
 import { SavedSection } from "./settings/SavedSection.js";
+import { AISection } from "./settings/AISection.js";
 import { SettingsToggle } from "./SettingsToggle.js";
 import { ReportComposer } from "./report/ReportComposer.js";
 import { SearchField } from "./SearchField.js";
@@ -286,7 +288,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // Flat section list — drives scrollspy and right-pane rendering.
   // Keywords live in settings-sections.ts so Header's command palette can share them.
-  // ── AI section is coming soon -- preserve ICONS.ai, do not delete ──
   const allSections: Section[] = [
     { ...baseSectionById.appearance, icon: ICONS.appearance },
     { ...baseSectionById.sync, icon: ICONS.sync },
@@ -297,6 +298,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     ...(InstagramSettingsContent ? [{ ...IG_SECTION_META, icon: ICONS.instagram }] : []),
     ...(LinkedInSettingsContent ? [{ ...LI_SECTION_META, icon: ICONS.linkedin }] : []),
     { ...baseSectionById.feeds, icon: ICONS.feeds },
+    { ...AI_SECTION_META, icon: ICONS.ai },
     ...(checkForUpdates ? [{ ...UPDATES_SECTION_META, icon: ICONS.updates }] : []),
     { ...baseSectionById.legal, icon: ICONS.legal },
     { ...baseSectionById.support, icon: ICONS.support },
@@ -323,7 +325,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         sectionById.feeds,
       ],
     },
-    // sectionById.ai, // AI coming soon -- do not delete
+    sectionById.ai,
     ...(checkForUpdates ? [sectionById.updates] : []),
     sectionById.legal,
     sectionById.support,
@@ -1070,8 +1072,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         ) : null;
 
       case "ai":
-        // AI section is coming soon -- AISection component is preserved, do not delete.
-        return null;
+        return (
+          <>
+            <SectionHeading label="AI" />
+            <AISection />
+          </>
+        );
 
       case "feeds":
         return (

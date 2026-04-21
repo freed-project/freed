@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@automerge/automerge": "^2.2.8",
+    "@freed/capture-save": "*",
     "@freed/shared": "*",
     "@freed/sync": "*",
     "@freed/ui": "*",

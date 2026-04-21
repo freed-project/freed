@@ -12,6 +12,7 @@
 
 import * as A from "@automerge/automerge";
 import { IndexedDBStorage } from "@freed/sync/storage/indexeddb";
+import { hashSavedUrl } from "@freed/capture-save";
 import type { FreedDoc } from "@freed/shared/schema";
 import {
   createEmptyDoc,
@@ -514,13 +515,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
       case "ADD_STUB_ITEM": {
         // Build the stub inside the worker so the globalId is consistent
-        let hash = 0;
-        for (let i = 0; i < req.url.length; i++) {
-          const ch = req.url.charCodeAt(i);
-          hash = (hash << 5) - hash + ch;
-          hash = hash & hash;
-        }
-        const globalId = `saved:${Math.abs(hash).toString(36)}`;
+        const globalId = `saved:${hashSavedUrl(req.url)}`;
         const now = Date.now();
         let hostname = req.url;
         try { hostname = new URL(req.url).hostname; } catch { /* malformed */ }

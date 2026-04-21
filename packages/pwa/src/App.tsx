@@ -32,7 +32,7 @@ import {
   clearCloudSync,
   deleteCloudFile,
 } from "./lib/sync";
-import { clearLocalDoc, docAddStubItem } from "./lib/automerge";
+import { clearLocalDoc } from "./lib/automerge";
 import { checkForPwaUpdate, applyPwaUpdate, initPwaUpdater, onUpdateAvailable } from "./lib/pwa-updater";
 import { pickContactViaWebApi } from "./lib/contacts";
 import { PwaFeedEmptyState } from "./components/PwaFeedEmptyState";
@@ -54,6 +54,7 @@ import {
   buildPwaReleaseChannelUrl,
   persistReleaseChannel,
 } from "@freed/ui/lib/release-channel";
+import { saveUrlInPwa } from "./lib/save-url";
 import {
   clearInstallNoticeDismissal,
   dismissInstallNotice,
@@ -286,9 +287,10 @@ function App() {
         if (p === "dropbox") return "Dropbox";
         return null;
       },
-      // PWA save URL: writes a stub that the desktop fetcher picks up via relay
+      // PWA save URL: fetches and caches article content when possible, then
+      // falls back to a desktop-healed stub for sites that refuse extraction.
       saveUrl: async (url, options) => {
-        await docAddStubItem(url, options?.tags);
+        await saveUrlInPwa(url, options);
       },
       // PWA local content: check the Workbox Cache API
       getLocalContent: async (globalId: string) => {
