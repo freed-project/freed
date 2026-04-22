@@ -225,10 +225,10 @@ Branch routing:
 
 - `dev` deploys to `dev.freed.wtf`
 - `dev` deploys to `dev-app.freed.wtf`
-- `main` deploys to `freed.wtf`
+- `www` deploys to `freed.wtf`
 - `main` deploys to `app.freed.wtf`
 
-Manual preview deploys for this monorepo now go through `./scripts/vercel-deploy-preview.sh website` and `./scripts/vercel-deploy-preview.sh pwa`. The helper stages a temporary monorepo slice with shared workspace packages before uploading to Vercel, which avoids the broken `npm install` failures caused by raw subdirectory deploys.
+Website preview and production deploys now come from Vercel Git integration on the `www` branch. The PWA still uses `./scripts/vercel-deploy-preview.sh pwa` and `./scripts/vercel-deploy-production.sh pwa` because raw subdirectory deploys can upload an incomplete monorepo slice and fail during install.
 
 ---
 
