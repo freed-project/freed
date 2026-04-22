@@ -1,6 +1,6 @@
 # Phase 6: PWA Reader
 
-> **Status:** ✅ Core Complete (first-run legal gate shipped, public-safe bug reporting shipped, homescreen install flow shipped, offline access verification pending)
+> **Status:** ✅ Complete (first-run legal gate shipped, public-safe bug reporting shipped, homescreen install flow shipped, offline article and image caching shipped)
 > **Dependencies:** Phase 4 (Sync Layer), Phase 5 (Desktop App)
 
 ---
@@ -253,7 +253,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] The shared floating mobile sidebar now behaves like a real toggle, so the same hamburger button opens and closes it cleanly
 - [x] Private diagnostics stay opt-in and are clearly separated from public GitHub sharing
 - [x] PWA installable on mobile (add to homescreen) — manifest ids and scope set, browser install notice shipped, iOS Safari homescreen guidance shipped, Playwright coverage added
-- [ ] Offline access works (service worker + image cache) — SW registered, image cache pending
+- [x] Offline access works (service worker + image cache) — article HTML and cacheable reader images are warmed locally for offline reading
 
 ---
 
@@ -285,4 +285,4 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 
 ## Deliverable
 
-Mobile-friendly PWA at [app.freed.wtf](https://app.freed.wtf), plus the dev channel at `dev-app.freed.wtf`, with offline support.
+Mobile-friendly PWA at [app.freed.wtf](https://app.freed.wtf), plus the dev channel at `dev-app.freed.wtf`, with offline article and image support.
