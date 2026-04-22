@@ -9,6 +9,7 @@ import { ContactSyncModal } from "../friends/ContactSyncModal.js";
 import { useContactSync } from "../../hooks/useContactSync.js";
 import { ContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import {
   buildDiscoveredAccountsFromItems,
   type GoogleContact,
@@ -24,6 +25,7 @@ import { MapView } from "../map/MapView.js";
 import { BackgroundAtmosphere } from "./BackgroundAtmosphere.js";
 import {
   AUXILIARY_DRAWER_GAP_WIDTH_PX,
+  DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX,
   PRIMARY_SIDEBAR_GAP_WIDTH_PX,
   px,
 } from "./layoutConstants.js";
@@ -38,7 +40,8 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const isMobile = useIsMobile();
+  const isMobileViewport = useIsMobile();
+  const isMobileDevice = useIsMobileDevice();
   const debugVisible = useDebugStore((s) => s.visible);
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);
@@ -62,12 +65,10 @@ export function AppShell({ children }: AppShellProps) {
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const [committedDebugWidth, setCommittedDebugWidth] = useState(persistedDebugWidth);
   const [desktopSidebarMode, setDesktopSidebarMode] = useState<SidebarMode>(persistedDesktopSidebarMode);
+  const [desktopSidebarDisplayMode, setDesktopSidebarDisplayMode] = useState<SidebarMode>(persistedDesktopSidebarMode);
   const dragging = useRef(false);
   const pendingPersistedDebugWidth = useRef<number | null>(null);
   const pendingPersistedDesktopSidebarMode = useRef<SidebarMode | null>(null);
-  const lastNonClosedDesktopSidebarModeRef = useRef<SidebarMode>(
-    persistedDesktopSidebarMode === "closed" ? "expanded" : persistedDesktopSidebarMode,
-  );
   const discoveredAccountScanRef = useRef({ itemCount: 0, accountCount: 0 });
 
   useEffect(() => {
@@ -87,18 +88,13 @@ export function AppShell({ children }: AppShellProps) {
       pendingPersistedDesktopSidebarMode.current = null;
     }
     setDesktopSidebarMode(persistedDesktopSidebarMode);
-    if (persistedDesktopSidebarMode !== "closed") {
-      lastNonClosedDesktopSidebarModeRef.current = persistedDesktopSidebarMode;
-    }
+    setDesktopSidebarDisplayMode(persistedDesktopSidebarMode);
   }, [persistedDesktopSidebarMode]);
 
   const debugWidth = dragWidth ?? committedDebugWidth;
 
   const persistDesktopSidebarMode = useCallback((nextMode: SidebarMode) => {
     setDesktopSidebarMode(nextMode);
-    if (nextMode !== "closed") {
-      lastNonClosedDesktopSidebarModeRef.current = nextMode;
-    }
     pendingPersistedDesktopSidebarMode.current = nextMode;
     void updatePreferences({ display: { sidebarMode: nextMode } } as Parameters<typeof updatePreferences>[0]).catch(() => {
       if (pendingPersistedDesktopSidebarMode.current === nextMode) {
@@ -108,11 +104,24 @@ export function AppShell({ children }: AppShellProps) {
   }, [updatePreferences]);
 
   const handleDesktopSidebarToggle = useCallback(() => {
-    const nextMode = desktopSidebarMode === "closed"
-      ? lastNonClosedDesktopSidebarModeRef.current
-      : "closed";
-    persistDesktopSidebarMode(nextMode);
-  }, [desktopSidebarMode, persistDesktopSidebarMode]);
+    if (desktopSidebarMode === "closed") {
+      pendingPersistedDesktopSidebarMode.current = "expanded";
+      setDesktopSidebarMode("expanded");
+      void updatePreferences({
+        display: {
+          sidebarMode: "expanded",
+          sidebarWidth: DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX,
+        },
+      } as Parameters<typeof updatePreferences>[0]).catch(() => {
+        if (pendingPersistedDesktopSidebarMode.current === "expanded") {
+          pendingPersistedDesktopSidebarMode.current = null;
+        }
+      });
+      return;
+    }
+
+    persistDesktopSidebarMode("closed");
+  }, [desktopSidebarMode, persistDesktopSidebarMode, updatePreferences]);
 
   const handleDebugDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -161,11 +170,11 @@ export function AppShell({ children }: AppShellProps) {
     persistTheme(themeId);
   }, [isInitialized, themeId]);
 
-  const workspaceMaskStyle = isMobile
+  const workspaceMaskStyle = isMobileDevice
     ? undefined
     : ({
         "--theme-soft-viewport-base-comp-left":
-          desktopSidebarMode === "closed" ? "0px" : px(PRIMARY_SIDEBAR_GAP_WIDTH_PX),
+          desktopSidebarDisplayMode === "closed" ? "0px" : px(PRIMARY_SIDEBAR_GAP_WIDTH_PX),
         "--theme-soft-viewport-base-comp-right":
           debugVisible ? px(AUXILIARY_DRAWER_GAP_WIDTH_PX) : "0px",
       } as CSSProperties);
@@ -182,6 +191,12 @@ export function AppShell({ children }: AppShellProps) {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [toggleDebug, debugVisible]);
+
+  useEffect(() => {
+    if (!isMobileDevice && mobileSidebarOpen) {
+      setMobileSidebarOpen(false);
+    }
+  }, [isMobileDevice, mobileSidebarOpen]);
 
   useEffect(() => {
     const itemCount = items.length;
@@ -255,28 +270,34 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <ContactSyncContext.Provider value={{ ...contactSync, openReview }}>
-      {/* On mobile (<md), the layout flows naturally in the document so Safari can
-          collapse its address bar when the feed scrolls. min-h-0 and overflow-hidden
-          are desktop-only; they lock the layout to 100dvh for in-element scrolling. */}
-      <div className="app-theme-shell relative flex flex-1 flex-col md:min-h-0">
+      {/* On actual mobile devices, the layout flows naturally in the document so
+          Safari can collapse its address bar when the feed scrolls. Desktop devices
+          keep the fixed-height shell even when the viewport is narrow. */}
+      <div className={`app-theme-shell relative flex flex-1 flex-col ${isMobileDevice ? "" : "min-h-0"}`}>
         {showAtmosphere ? <BackgroundAtmosphere /> : null}
         <Header
           mobileSidebarOpen={mobileSidebarOpen}
           onMobileMenuToggle={() => setMobileSidebarOpen((value) => !value)}
           desktopSidebarMode={desktopSidebarMode}
+          desktopSidebarDisplayMode={desktopSidebarDisplayMode}
           onDesktopSidebarToggle={handleDesktopSidebarToggle}
         />
 
-        <div className="relative z-10 flex flex-1 px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)] md:min-h-0 md:overflow-hidden">
+        <div
+          className={`relative z-10 flex flex-1 px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)] ${
+            isMobileDevice ? "" : "min-h-0 overflow-hidden"
+          }`}
+        >
           <Sidebar
             mobileOpen={mobileSidebarOpen}
             onMobileClose={() => setMobileSidebarOpen(false)}
             onMobileToggle={() => setMobileSidebarOpen((value) => !value)}
             desktopMode={desktopSidebarMode}
             onDesktopModeChange={persistDesktopSidebarMode}
+            onDesktopDisplayModeChange={setDesktopSidebarDisplayMode}
           />
           <main
-            className="min-w-0 flex-1 md:min-h-0 md:overflow-hidden"
+            className={`min-w-0 flex-1 ${isMobileDevice ? "" : "min-h-0 overflow-hidden"}`}
             style={workspaceMaskStyle}
           >
             {activeView === "friends"
@@ -308,7 +329,7 @@ export function AppShell({ children }: AppShellProps) {
             </div>
           </div>
         </div>
-        {debugVisible && (
+        {debugVisible && isMobileViewport && (
           <div className="sm:hidden">
             <DebugPanel variant="overlay" />
           </div>

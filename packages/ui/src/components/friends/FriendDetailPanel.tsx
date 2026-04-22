@@ -16,6 +16,7 @@ import {
   InstagramIcon,
   LinkedInIcon,
   RssIcon,
+  XIcon,
   UsersIcon,
   YoutubeIcon,
   RedditIcon,
@@ -34,7 +35,7 @@ import { resolveFriendAvatarUrl } from "../../lib/friend-avatar.js";
 
 const cls = "w-3.5 h-3.5";
 const platformIcons: Record<string, ReactNode> = {
-  x: <span className="text-xs font-bold leading-none">𝕏</span>,
+  x: <XIcon className={cls} />,
   rss: <RssIcon className={cls} />,
   youtube: <YoutubeIcon className={cls} />,
   reddit: <RedditIcon className={cls} />,

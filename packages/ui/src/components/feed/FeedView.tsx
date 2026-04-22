@@ -7,6 +7,7 @@ import { AddFeedDialog } from "../AddFeedDialog.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import type { FeedItem } from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 
@@ -277,9 +278,11 @@ export function FeedView() {
   );
 
   const dualColumnMode = useAppStore((s) => s.preferences.display.reading.dualColumnMode);
-  const isMobile = useIsMobile();
-  const showInlineReader = !!selectedItemId && !isMobile;
-  const showDualColumn = dualColumnMode && showInlineReader;
+  const isMobileViewport = useIsMobile();
+  const isMobileDevice = useIsMobileDevice();
+  const autoCollapseReaderRail = !isMobileDevice && isMobileViewport;
+  const showInlineReader = !!selectedItemId && !isMobileDevice;
+  const showDualColumn = dualColumnMode && showInlineReader && !autoCollapseReaderRail;
 
   // Store only the ID so the rendered item stays in sync with the store.
   // Holding the full FeedItem in state would freeze userState (saved, archived,
@@ -299,14 +302,14 @@ export function FeedView() {
         markAsRead(item.globalId);
       };
 
-      if (dualColumnMode && !isMobile && !selectedItemId) {
+      if (showDualColumn && !selectedItemId) {
         runFeedLayoutTransition(selectItem);
         return;
       }
 
       selectItem();
     },
-    [dualColumnMode, isMobile, markAsRead, runFeedLayoutTransition, selectedItemId, setSelectedItem],
+    [markAsRead, runFeedLayoutTransition, selectedItemId, setSelectedItem, showDualColumn],
   );
 
   const openItemDirect = useCallback((item: FeedItem) => {
@@ -316,14 +319,14 @@ export function FeedView() {
 
   const closeItem = useCallback(() => {
     setCompactSelectionDirection(0);
-    if (dualColumnMode && !isMobile && selectedItemId) {
+    if (showDualColumn && selectedItemId) {
       runFeedLayoutTransition(() => {
         setSelectedItem(null);
       });
       return;
     }
     setSelectedItem(null);
-  }, [dualColumnMode, isMobile, runFeedLayoutTransition, selectedItemId, setSelectedItem]);
+  }, [runFeedLayoutTransition, selectedItemId, setSelectedItem, showDualColumn]);
 
   // Keyboard navigation: j/k to move, Enter/o to open, Escape to close.
   // The HTMLInputElement guard means j/k won't fire while the search bar is focused.
