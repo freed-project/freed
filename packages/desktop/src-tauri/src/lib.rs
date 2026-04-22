@@ -15,7 +15,6 @@ use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::menu::{Menu, MenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Listener, Manager};
-use tauri_plugin_shell::ShellExt;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, RwLock};
@@ -55,9 +54,8 @@ const DEFAULT_WEBKIT_SAFARI_UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
 const SOCIAL_SCRAPER_WINDOW_LABELS: [&str; 3] = ["fb-scraper", "ig-scraper", "li-scraper"];
 const STARTUP_RECOVERY_STATE_FILE: &str = "startup-recovery.json";
-const STARTUP_RECOVERY_HTML_FILE: &str = "startup-recovery.html";
 const RECOVERY_WINDOW_LABEL: &str = "startup-recovery";
-const RECOVERY_DOWNLOAD_URL: &str = "https://freed.wtf/get";
+const RECOVERY_WINDOW_ROUTE: &str = "startup-recovery.html";
 const ENABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
     (function() {
         var token = "__freed_background_scraper__";
@@ -378,10 +376,6 @@ fn startup_recovery_state_path(data_dir: &Path) -> PathBuf {
     data_dir.join(STARTUP_RECOVERY_STATE_FILE)
 }
 
-fn startup_recovery_html_path(data_dir: &Path) -> PathBuf {
-    data_dir.join(STARTUP_RECOVERY_HTML_FILE)
-}
-
 #[cfg(target_os = "macos")]
 fn clear_saved_window_state(app: &tauri::AppHandle) {
     let Some(home_dir) = std::env::var_os("HOME") else {
@@ -491,213 +485,6 @@ fn startup_requires_recovery(state: &StartupRecoveryState) -> bool {
     state.consecutive_failed_boots > 0
 }
 
-fn recovery_window_html() -> String {
-    format!(
-        r#"<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Freed</title>
-    <style>
-      :root {{
-        color-scheme: dark;
-        --bg: #0b0b10;
-        --panel: rgba(24, 24, 34, 0.96);
-        --border: rgba(255, 255, 255, 0.08);
-        --text: #f3f0ff;
-        --muted: rgba(243, 240, 255, 0.68);
-        --accent: #7c5cff;
-        --accent-hover: #8b73ff;
-        --danger: #ff8577;
-        --button-radius: 14px;
-      }}
-      * {{
-        box-sizing: border-box;
-      }}
-      html,
-      body {{
-        margin: 0;
-        min-height: 100%;
-        height: 100%;
-      }}
-      body {{
-        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background:
-          radial-gradient(circle at top left, rgba(124, 92, 255, 0.26), transparent 32%),
-          radial-gradient(circle at bottom right, rgba(255, 133, 119, 0.18), transparent 28%),
-          linear-gradient(180deg, #0b0b10 0%, #09090d 100%);
-        color: var(--text);
-        display: grid;
-        place-items: center;
-        padding: 28px;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-      }}
-      .panel {{
-        width: min(100%, 560px);
-        max-height: calc(100vh - 56px);
-        border-radius: 24px;
-        border: 1px solid var(--border);
-        background: var(--panel);
-        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
-        padding: 32px;
-        overflow-y: auto;
-        overscroll-behavior-y: auto;
-        -webkit-overflow-scrolling: touch;
-      }}
-      h1 {{
-        margin: 0 0 12px;
-        font-size: 30px;
-        line-height: 1.12;
-      }}
-      p {{
-        margin: 0;
-        color: var(--muted);
-        line-height: 1.55;
-      }}
-      .callout {{
-        margin-top: 20px;
-        border-radius: 18px;
-        border: 1px solid rgba(255, 133, 119, 0.22);
-        background: rgba(255, 133, 119, 0.08);
-        padding: 16px 18px;
-      }}
-      .actions {{
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        margin-top: 24px;
-      }}
-      button {{
-        appearance: none;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 50px;
-        border-radius: var(--button-radius);
-        border: 1px solid transparent;
-        padding: 14px 20px;
-        font: inherit;
-        font-size: 17px;
-        font-weight: 600;
-        cursor: pointer;
-        transition:
-          border-color 0.18s ease,
-          background-color 0.18s ease,
-          color 0.18s ease,
-          box-shadow 0.18s ease,
-          opacity 0.18s ease;
-      }}
-      button:disabled {{
-        cursor: wait;
-        opacity: 0.72;
-      }}
-      .primary {{
-        color: white;
-        background: var(--accent);
-        border-color: rgb(255 255 255 / 0.06);
-        box-shadow: 0 8px 24px rgb(124 92 255 / 0.18);
-      }}
-      .primary:hover {{
-        background: var(--accent-hover);
-      }}
-      .secondary {{
-        color: var(--text);
-        background: rgba(255, 255, 255, 0.07);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-      }}
-      .secondary:hover {{
-        background: rgba(255, 255, 255, 0.1);
-        border-color: rgba(255, 255, 255, 0.16);
-      }}
-      .status {{
-        min-height: 22px;
-        margin-top: 18px;
-        font-size: 14px;
-        color: var(--muted);
-      }}
-      .status.error {{
-        color: var(--danger);
-      }}
-      .footer {{
-        margin-top: 22px;
-        font-size: 12px;
-      }}
-    </style>
-  </head>
-  <body>
-    <main class="panel">
-      <h1>Freed did not finish loading last time.</h1>
-      <div class="callout">
-        <p>
-          Keep this window open while you retry. It will close itself after Freed reaches a healthy
-          startup state.
-        </p>
-      </div>
-      <div class="actions">
-        <button id="retry" class="primary" type="button">Try opening Freed again</button>
-        <button id="download" class="secondary" type="button">Download latest Freed Desktop</button>
-      </div>
-      <p id="status" class="status" aria-live="polite"></p>
-      <p class="footer">Version {}</p>
-    </main>
-    <script>
-      const statusEl = document.getElementById("status");
-      const retryButton = document.getElementById("retry");
-      const downloadButton = document.getElementById("download");
-      const invoke = window.__TAURI__ && window.__TAURI__.core && typeof window.__TAURI__.core.invoke === "function"
-        ? window.__TAURI__.core.invoke
-        : null;
-
-      function setStatus(message, isError) {{
-        statusEl.textContent = message || "";
-        statusEl.classList.toggle("error", !!isError);
-      }}
-
-      async function call(command, busyMessage) {{
-        if (!invoke) {{
-          setStatus("These actions are unavailable in this build.", true);
-          return false;
-        }}
-
-        retryButton.disabled = true;
-        downloadButton.disabled = true;
-        setStatus(busyMessage, false);
-
-        try {{
-          await invoke(command);
-          return true;
-        }} catch (error) {{
-          setStatus(String(error), true);
-          return false;
-        }} finally {{
-          retryButton.disabled = false;
-          downloadButton.disabled = false;
-        }}
-      }}
-
-      retryButton.addEventListener("click", async () => {{
-        const ok = await call("retry_startup_after_crash", "Trying to reopen Freed...");
-        if (ok) {{
-          setStatus("Retry launched. This window will close after the app finishes loading.", false);
-        }}
-      }});
-
-      downloadButton.addEventListener("click", async () => {{
-        const ok = await call("open_recovery_download_page", "Opening the latest build in your browser...");
-        if (ok) {{
-          setStatus("Browser opened. Install the latest build over this one, then relaunch Freed.", false);
-        }}
-      }});
-    </script>
-  </body>
-</html>
-"#,
-        env!("CARGO_PKG_VERSION")
-    )
-}
-
 fn open_or_focus_recovery_window(
     app: &tauri::AppHandle,
 ) -> Result<tauri::WebviewWindow, tauri::Error> {
@@ -707,17 +494,10 @@ fn open_or_focus_recovery_window(
         return Ok(window);
     }
 
-    let html = recovery_window_html();
-    let data_dir = app.path().app_data_dir()?;
-    std::fs::create_dir_all(&data_dir)?;
-    let html_path = startup_recovery_html_path(&data_dir);
-    std::fs::write(&html_path, html)?;
-    let url = url::Url::from_file_path(&html_path)
-        .map_err(|_| tauri::Error::InvalidWebviewUrl("failed to create recovery file URL"))?;
     let window = tauri::WebviewWindowBuilder::new(
         app,
         RECOVERY_WINDOW_LABEL,
-        tauri::WebviewUrl::External(url),
+        tauri::WebviewUrl::App(RECOVERY_WINDOW_ROUTE.into()),
     )
     .title("Freed")
     .inner_size(560.0, 520.0)
@@ -1515,14 +1295,6 @@ fn show_window(app: tauri::AppHandle) {
 fn retry_startup_after_crash(app: tauri::AppHandle) -> Result<(), String> {
     let _ = start_main_window(&app).map_err(|error| error.to_string())?;
     Ok(())
-}
-
-#[tauri::command]
-fn open_recovery_download_page(app: tauri::AppHandle) -> Result<(), String> {
-    #[allow(deprecated)]
-    app.shell()
-        .open(RECOVERY_DOWNLOAD_URL, None)
-        .map_err(|error| error.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -4111,7 +3883,6 @@ pub fn run() {
             get_platform,
             get_updater_target,
             retry_startup_after_crash,
-            open_recovery_download_page,
             fetch_url,
             x_api_request,
             get_local_ip,

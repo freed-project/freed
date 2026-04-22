@@ -9,6 +9,7 @@ import { extractUpdatePreviewLine } from "../lib/update-release-preview";
 
 export type UpdateState =
   | { phase: "idle" }
+  | { phase: "checking" }
   | { phase: "available"; update: Update; channel: ReleaseChannel }
   | { phase: "downloading"; percent: number }
   | { phase: "ready" }
@@ -29,7 +30,7 @@ export function UpdateNotification({
   onRelaunch: () => void;
   onDismiss: () => void;
 }) {
-  if (state.phase === "idle") return null;
+  if (state.phase === "idle" || state.phase === "checking") return null;
 
   return (
     <div className="fixed bottom-4 right-4 z-[120] max-w-sm animate-slide-up">
