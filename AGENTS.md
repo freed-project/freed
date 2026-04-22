@@ -13,9 +13,11 @@
 - **Async-before-await is synchronous:** Code before the first `await` in an `async` function runs synchronously in the caller's microtask even if the caller doesn't await. Never put O(n) work (e.g. `Array.from(largeUint8Array)`, `A.save()`, serialization) before an `await` in a `subscribe()` callback or any other fire-and-forget async call on a hot path.
 - **Vercel deployments -- always use `--scope aubreyfs-projects`:** The only permitted Vercel team for this project is `aubreyfs-projects` (personal account). Never run `vercel deploy`, `vercel link`, or any Vercel CLI command without the `--scope aubreyfs-projects` flag. Never use the `deploy_to_vercel` MCP tool -- it accepts no arguments and silently deploys to whatever team the CLI defaults to. Never run `vercel` from the repo root.
   - This monorepo uses local workspace packages. Raw subdirectory deploys like `vercel deploy website/` and `vercel deploy packages/pwa/` can upload an incomplete tree and fail at `npm install`.
-  - Always use the preview helper instead:
-    - Website: `./scripts/vercel-deploy-preview.sh website`
-    - PWA: `./scripts/vercel-deploy-preview.sh pwa`
+  - Website preview and production deploys should come from Vercel Git integration on the `www` branch.
+  - Keep the website helper scripts only for explicit manual fallback work.
+  - The PWA still uses the helper scripts:
+    - Preview: `./scripts/vercel-deploy-preview.sh pwa`
+    - Production: `./scripts/vercel-deploy-production.sh pwa`
 
 ## Versioning
 
