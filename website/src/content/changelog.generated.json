@@ -1,5 +1,288 @@
 [
   {
+    "version": "26.4.2100",
+    "tagName": "v26.4.2100",
+    "channel": "production",
+    "date": "2026-04-21T20:57:19Z",
+    "deck": "Map timeline playback, cleaner identity migration, and smoother install and update flows",
+    "features": [
+      {
+        "text": "Filter maps with a shared timeline scrubber"
+      },
+      {
+        "text": "Replay historical posts and future plans from one map timeline"
+      },
+      {
+        "text": "Manage friends and map identities through the new person and account graph"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Migrates older friend data into the new person and account graph during startup so existing identities keep loading cleanly after the update"
+      },
+      {
+        "text": "Dedupes Facebook and Instagram cross-posts"
+      },
+      {
+        "text": "Keeps the install prompt and update channel labeling clearer across the app"
+      },
+      {
+        "text": "Tightens reader, feed, header, sync, and release reliability"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Adds a tri-state source sidebar for faster filtering"
+      },
+      {
+        "text": "Brings the Friends lens into the feed toolbar"
+      },
+      {
+        "text": "Polishes settings jumps and hardens helper workflow stability"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2100",
+    "prNumbers": [
+      227,
+      274
+    ],
+    "builds": [
+      "26.4.1700-dev",
+      "26.4.1800-dev",
+      "26.4.1802-dev",
+      "26.4.1900-dev",
+      "26.4.1901-dev",
+      "26.4.2001-dev",
+      "26.4.2002-dev",
+      "26.4.2100"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.1700-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1700-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.1800-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1800-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.1802-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1802-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.1900-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1900-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.1901-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1901-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.2001-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2001-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.2002-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2002-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.2100",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2100",
+        "channel": "production"
+      }
+    ]
+  },
+  {
+    "version": "26.4.2002-dev",
+    "tagName": "v26.4.2002-dev",
+    "channel": "dev",
+    "date": "2026-04-21T04:39:59Z",
+    "deck": "This dev build improves install flow and tightens startup, capture, and release stability.",
+    "features": [
+      {
+        "text": "PWA install prompt flow"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Stop the desktop dev launch crash and clean up the recovery dialog"
+      },
+      {
+        "text": "Dedupe Facebook and Instagram cross-posts"
+      },
+      {
+        "text": "Reset preview banners to bottom center on load"
+      },
+      {
+        "text": "Harden build fanout and swarm worktree setup"
+      },
+      {
+        "text": "Keep installed version stable across release channels"
+      },
+      {
+        "text": "Polish mobile settings navigation"
+      },
+      {
+        "text": "Refine live theme preview interactions"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Refine settings section jump alignment, harden worktree helper flow, and harden helper session workflow"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2002-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.4.2001-dev",
+      "26.4.2002-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.2001-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2001-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.2002-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2002-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.4.1901-dev",
+    "tagName": "v26.4.1901-dev",
+    "channel": "dev",
+    "date": "2026-04-20T03:41:16Z",
+    "deck": "Expand friends and map identity workflows, tri-state source sidebar, and Friends lens to feed toolbar",
+    "features": [
+      {
+        "text": "Expand friends and map identity workflows"
+      },
+      {
+        "text": "Tri-state source sidebar"
+      },
+      {
+        "text": "Friends lens to feed toolbar"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Redeploy dev pwa on dev merges"
+      },
+      {
+        "text": "Dismiss sticky tooltips after pointer activation"
+      },
+      {
+        "text": "Show -dev suffix for dev build versions"
+      },
+      {
+        "text": "Desktop toolbar dragging and back target restored"
+      },
+      {
+        "text": "Fall back to newer production updates on dev"
+      },
+      {
+        "text": "Add native startup recovery window"
+      },
+      {
+        "text": "Lets dev installs take a newer production update when no newer dev build exists, without switching release channels"
+      },
+      {
+        "text": "Shows the -dev suffix consistently in desktop update surfaces and settings"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Map timeline scrubber"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1901-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.4.1900-dev",
+      "26.4.1901-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.1900-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1900-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.1901-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1901-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.4.1802-dev",
+    "tagName": "v26.4.1802-dev",
+    "channel": "dev",
+    "date": "2026-04-18T20:09:06Z",
+    "deck": "Time-aware map filtering and migrate legacy identity graph on startup",
+    "features": [
+      {
+        "text": "Time-aware map filtering"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Migrates older friend data into the person and account graph during startup so existing identities keep loading cleanly after the update."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1802-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.4.1800-dev",
+      "26.4.1802-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.1800-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1800-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.1802-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1802-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.4.1700-dev",
+    "tagName": "v26.4.1700-dev",
+    "channel": "dev",
+    "date": "2026-04-18T04:42:45Z",
+    "deck": "Refactor friends into a person account identity graph",
+    "features": [],
+    "fixes": [],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1700-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.4.1700-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.1700-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1700-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
     "version": "26.4.1602",
     "tagName": "v26.4.1602",
     "channel": "production",

@@ -231,13 +231,7 @@ Branch routing:
 - `main` remains the production app release branch
 - `main` no longer redeploys `freed.wtf` as a side effect
 
-Manual preview deploys for this monorepo now go through `./scripts/vercel-deploy-preview.sh website` and `./scripts/vercel-deploy-preview.sh pwa`. The helper stages a temporary monorepo slice with shared workspace packages before uploading to Vercel, which avoids the broken `npm install` failures caused by raw subdirectory deploys.
-
-The website and PWA preview workflows use the helpers directly so PRs only
-build the surface they target. Native Vercel preview deploys should stay
-disabled where GitHub Actions owns preview deployment. The website Vercel
-project only allows Git-triggered deploys from `www`, and the PWA project
-disables Git-triggered deploys entirely.
+Website preview and production deploys now come from Vercel Git integration on the `www` branch. The website GitHub workflow only verifies that PRs targeting `www` still build cleanly. The PWA still uses `./scripts/vercel-deploy-preview.sh pwa` and `./scripts/vercel-deploy-production.sh pwa` because raw subdirectory deploys can upload an incomplete monorepo slice and fail during install.
 
 The preview and production deploy helpers now resolve `npm` and `npx` from the
 active Node toolchain first, so they do not accidentally pick up an older
