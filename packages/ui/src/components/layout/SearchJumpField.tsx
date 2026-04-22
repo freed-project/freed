@@ -136,6 +136,7 @@ export function SearchJumpField({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerButtonRef = useRef<HTMLButtonElement | null>(null);
   const triggerPaletteRef = useRef<HTMLDivElement | null>(null);
+  const hasActiveSearch = searchQuery.trim().length > 0;
 
   useEffect(() => {
     setMounted(true);
@@ -202,6 +203,7 @@ export function SearchJumpField({
       )
       .slice(0, 6);
   }, [allCommandActions, inputValue]);
+  const inlinePlaceholder = narrowSidebar ? "Search" : "Search or jump to...";
 
   useEffect(() => {
     setActiveIndex(-1);
@@ -324,6 +326,8 @@ export function SearchJumpField({
   }
 
   if (usesFloatingTrigger) {
+    const compactTriggerActive = showPalette || hasActiveSearch;
+
     return (
       <div className="relative z-20 w-full">
         <Tooltip label="Search or run a command" side="right" className="flex w-full">
@@ -335,11 +339,14 @@ export function SearchJumpField({
               setIsTriggerOpen((value) => !value);
               setActiveIndex(-1);
             }}
-            className={`relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-[var(--card-radius)] bg-transparent text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)] ${
-              showPalette ? "bg-[var(--theme-bg-muted)] text-[var(--theme-text-primary)]" : ""
+            className={`relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-[var(--card-radius)] border transition-colors ${
+              compactTriggerActive
+                ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
+                : "border-transparent bg-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
             }`}
             aria-label="Search or run a command"
             aria-expanded={showPalette}
+            aria-pressed={compactTriggerActive}
             aria-haspopup="dialog"
             >
             <svg
@@ -364,7 +371,7 @@ export function SearchJumpField({
               <div
                 ref={triggerPaletteRef}
                 data-testid="compact-sidebar-search-palette"
-                className="theme-dialog-shell fixed z-[320] w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-2 shadow-2xl shadow-black/50"
+                className="theme-dialog-shell fixed z-[320] w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-[var(--card-radius)] border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-2 shadow-2xl shadow-black/50"
                 style={palettePosition}
               >
                 <SearchField
@@ -409,7 +416,7 @@ export function SearchJumpField({
         }}
         onKeyDown={handleKeyDown}
         onClear={clearSearch}
-        placeholder="Search or jump to..."
+        placeholder={inlinePlaceholder}
         aria-label="Search or run a command"
         aria-expanded={showPalette}
         aria-haspopup="listbox"

@@ -15,13 +15,19 @@ export interface SourceNavigationItem {
   icon: ReactNode;
 }
 
+export function getTopSourceItems(useShortLabels = false): readonly SourceNavigationItem[] {
+  return [
+    { id: undefined, label: useShortLabels ? "Feed" : "Unified Feed", icon: <AllIcon /> },
+    { id: "rss", label: "Feeds", icon: <RssIcon /> },
+    { id: "x", label: "X / Twitter", icon: <XIcon /> },
+    { id: "facebook", label: "Facebook", icon: <FacebookIcon /> },
+    { id: "instagram", label: "Instagram", icon: <InstagramIcon /> },
+    { id: "linkedin", label: "LinkedIn", icon: <LinkedInIcon /> },
+  ] as const;
+}
+
 export const TOP_SOURCE_ITEMS: readonly SourceNavigationItem[] = [
-  { id: undefined, label: "Unified Feed", icon: <AllIcon /> },
-  { id: "rss", label: "Feeds", icon: <RssIcon /> },
-  { id: "x", label: "X / Twitter", icon: <XIcon /> },
-  { id: "facebook", label: "Facebook", icon: <FacebookIcon /> },
-  { id: "instagram", label: "Instagram", icon: <InstagramIcon /> },
-  { id: "linkedin", label: "LinkedIn", icon: <LinkedInIcon /> },
+  ...getTopSourceItems(false),
 ] as const;
 
 export const COMING_SOON_SOURCE_ITEMS: readonly SourceNavigationItem[] = [

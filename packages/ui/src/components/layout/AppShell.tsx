@@ -65,6 +65,7 @@ export function AppShell({ children }: AppShellProps) {
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const [committedDebugWidth, setCommittedDebugWidth] = useState(persistedDebugWidth);
   const [desktopSidebarMode, setDesktopSidebarMode] = useState<SidebarMode>(persistedDesktopSidebarMode);
+  const [desktopSidebarDisplayMode, setDesktopSidebarDisplayMode] = useState<SidebarMode>(persistedDesktopSidebarMode);
   const dragging = useRef(false);
   const pendingPersistedDebugWidth = useRef<number | null>(null);
   const pendingPersistedDesktopSidebarMode = useRef<SidebarMode | null>(null);
@@ -87,6 +88,7 @@ export function AppShell({ children }: AppShellProps) {
       pendingPersistedDesktopSidebarMode.current = null;
     }
     setDesktopSidebarMode(persistedDesktopSidebarMode);
+    setDesktopSidebarDisplayMode(persistedDesktopSidebarMode);
   }, [persistedDesktopSidebarMode]);
 
   const debugWidth = dragWidth ?? committedDebugWidth;
@@ -172,7 +174,7 @@ export function AppShell({ children }: AppShellProps) {
     ? undefined
     : ({
         "--theme-soft-viewport-base-comp-left":
-          desktopSidebarMode === "closed" ? "0px" : px(PRIMARY_SIDEBAR_GAP_WIDTH_PX),
+          desktopSidebarDisplayMode === "closed" ? "0px" : px(PRIMARY_SIDEBAR_GAP_WIDTH_PX),
         "--theme-soft-viewport-base-comp-right":
           debugVisible ? px(AUXILIARY_DRAWER_GAP_WIDTH_PX) : "0px",
       } as CSSProperties);
@@ -277,6 +279,7 @@ export function AppShell({ children }: AppShellProps) {
           mobileSidebarOpen={mobileSidebarOpen}
           onMobileMenuToggle={() => setMobileSidebarOpen((value) => !value)}
           desktopSidebarMode={desktopSidebarMode}
+          desktopSidebarDisplayMode={desktopSidebarDisplayMode}
           onDesktopSidebarToggle={handleDesktopSidebarToggle}
         />
 
@@ -291,6 +294,7 @@ export function AppShell({ children }: AppShellProps) {
             onMobileToggle={() => setMobileSidebarOpen((value) => !value)}
             desktopMode={desktopSidebarMode}
             onDesktopModeChange={persistDesktopSidebarMode}
+            onDesktopDisplayModeChange={setDesktopSidebarDisplayMode}
           />
           <main
             className={`min-w-0 flex-1 ${isMobileDevice ? "" : "min-h-0 overflow-hidden"}`}

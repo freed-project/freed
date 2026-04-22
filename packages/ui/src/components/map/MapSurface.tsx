@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { LocationMarkerSummary } from "@freed/shared";
 import { DEFAULT_THEME_ID, getThemeDefinition, type ThemeId } from "@freed/shared/themes";
@@ -35,6 +35,13 @@ const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
 });
 const MAP_POPUP_MAX_WIDTH = 560;
 const MAP_POPUP_VIEWPORT_MARGIN = 40;
+const MAP_VIEWPORT_MASK_STYLE = {
+  "--theme-soft-viewport-base-comp-left": "0px",
+  "--theme-soft-viewport-base-comp-right": "0px",
+  "--theme-soft-viewport-base-comp-top": "6px",
+  "--theme-soft-viewport-base-comp-bottom": "0px",
+  "--theme-soft-viewport-mask-size": "28px",
+} as CSSProperties;
 
 function shouldForceMapFallback() {
   if (typeof window === "undefined") return false;
@@ -401,6 +408,51 @@ function fallbackScanBackground(background: string, water: string) {
   `;
 }
 
+function mapEdgeVignetteBackground() {
+  return `
+    radial-gradient(
+      120px 88px at 0% 0%,
+      rgb(var(--theme-shell-rgb) / 0.18) 0%,
+      transparent 74%
+    ),
+    radial-gradient(
+      124px 82px at 100% 0%,
+      rgb(var(--theme-shell-rgb) / 0.14) 0%,
+      transparent 76%
+    ),
+    radial-gradient(
+      132px 96px at 0% 100%,
+      rgb(var(--theme-shell-rgb) / 0.18) 0%,
+      transparent 76%
+    ),
+    radial-gradient(
+      148px 112px at 100% 100%,
+      rgb(var(--theme-shell-rgb) / 0.24) 0%,
+      transparent 78%
+    ),
+    linear-gradient(
+      to bottom,
+      rgb(var(--theme-shell-rgb) / 0.22) 0%,
+      transparent 56px
+    ),
+    linear-gradient(
+      to top,
+      rgb(var(--theme-shell-rgb) / 0.18) 0%,
+      transparent 64px
+    ),
+    linear-gradient(
+      to right,
+      rgb(var(--theme-shell-rgb) / 0.14) 0%,
+      transparent 44px
+    ),
+    linear-gradient(
+      to left,
+      rgb(var(--theme-shell-rgb) / 0.16) 0%,
+      transparent 44px
+    )
+  `;
+}
+
 function fitMarkers(map: MapInstance, markers: LocationMarkerSummary[], focusedMarkerKey?: string | null) {
   if (markers.length === 0) return;
 
@@ -603,6 +655,7 @@ export function MapSurface({
       data-testid="map-surface"
       data-map-theme={resolvedThemeId}
       className="freed-map-shell theme-soft-viewport relative h-full w-full"
+      style={MAP_VIEWPORT_MASK_STYLE}
     >
       <style>{mapStyles(interactive)}</style>
       <div className="theme-soft-viewport-content">
@@ -615,6 +668,12 @@ export function MapSurface({
           style={{
             backgroundImage: mapGridBackground(mapPalette.boundary),
             opacity: mapPalette.gridOpacity,
+          }}
+        />
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background: mapEdgeVignetteBackground(),
           }}
         />
 

@@ -45,6 +45,9 @@ function formatBytes(bytes: number): string {
 }
 
 async function sampleRuntimeMemory(reason: "startup" | "interval"): Promise<void> {
+  const fetcher = getContentFetcherStatus();
+  const renderer = getRendererMemoryStats();
+  const domNodeCount = getDomNodeCount();
   const native = isTauri()
     ? await invoke<NativeRuntimeMemoryStats>("get_runtime_memory_stats")
     : {
@@ -53,9 +56,6 @@ async function sampleRuntimeMemory(reason: "startup" | "interval"): Promise<void
         relayDocBytes: 0,
         relayClientCount: 0,
       };
-  const fetcher = getContentFetcherStatus();
-  const renderer = getRendererMemoryStats();
-  const domNodeCount = getDomNodeCount();
 
   peakResidentBytes = Math.max(peakResidentBytes, native.processResidentBytes);
   peakRelayDocBytes = Math.max(peakRelayDocBytes, native.relayDocBytes);

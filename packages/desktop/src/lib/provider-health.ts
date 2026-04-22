@@ -190,6 +190,9 @@ function fallbackWrite(state: PersistedHealthState): void {
 }
 
 async function getStore(): Promise<Store> {
+  if (!isTauri()) {
+    throw new Error("Native health store is unavailable outside Freed Desktop");
+  }
   if (!healthStore) {
     healthStore = await load(HEALTH_STORE_FILE, { defaults: {}, autoSave: true });
   }

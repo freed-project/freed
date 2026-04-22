@@ -21,6 +21,7 @@ import {
 } from "@freed/shared";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
+import { SearchField } from "../SearchField.js";
 import { Tooltip } from "../Tooltip.js";
 import {
   ArchiveIcon,
@@ -40,6 +41,8 @@ import {
 } from "../../context/PlatformContext.js";
 import { getFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
 import {
+  TOOLBAR_BOUNDARY_BUTTON_GAP_PX,
+  TOOLBAR_ICON_BUTTON_SIZE_PX,
   TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
   px,
 } from "./layoutConstants.js";
@@ -48,6 +51,7 @@ interface HeaderProps {
   mobileSidebarOpen: boolean;
   onMobileMenuToggle: () => void;
   desktopSidebarMode: SidebarMode;
+  desktopSidebarDisplayMode?: SidebarMode;
   onDesktopSidebarToggle: () => void;
 }
 
@@ -56,6 +60,8 @@ const dragStyle = { WebkitAppRegion: "drag" } as CSSProperties;
 const toolbarControlStyle = { ...noDrag, userSelect: "none" } as CSSProperties;
 const TOOLBAR_DRAG_THRESHOLD_PX = 6;
 const MIN_DESKTOP_TOOLBAR_IDENTITY_SLOT_WIDTH_PX = 176;
+const TOOLBAR_ICON_BUTTON_CLASS =
+  "theme-toolbar-icon-button rounded-lg";
 
 function formatItemCount(count: number): string {
   return `${count.toLocaleString()} item${count === 1 ? "" : "s"}`;
@@ -139,6 +145,7 @@ export function Header({
   mobileSidebarOpen,
   onMobileMenuToggle,
   desktopSidebarMode,
+  desktopSidebarDisplayMode,
   onDesktopSidebarToggle,
 }: HeaderProps) {
   const {
@@ -153,6 +160,7 @@ export function Header({
   } = usePlatform();
   const isMobile = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
+  const visibleDesktopSidebarMode = desktopSidebarDisplayMode ?? desktopSidebarMode;
 
   const canAddRss = !!addRssFeed;
   const canSaveContent = !!(saveUrl || importMarkdown || exportMarkdown);
@@ -182,6 +190,7 @@ export function Header({
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
+  const setSearchQuery = useAppStore((s) => s.setSearchQuery);
   const display = useAppStore((s) => s.preferences.display);
 
   const { filteredItems, isSearching, resultCount } = useSearchResults(
@@ -399,38 +408,27 @@ export function Header({
   const showReaderLayoutToggle =
     !isMobile &&
     !!selectedItem;
+  const activeSearchQuery = searchQuery.trim();
+  const showToolbarSearch = !selectedItem && activeSearchQuery.length > 0;
   const canManuallyDragToolbarControls = !!(headerDragRegion && startWindowDrag);
-  const showReaderRailToolbar =
-    showReaderLayoutToggle &&
-    display.reading.dualColumnMode;
   const macosTrafficLightInsetStyle = headerDragRegion
     ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
     : undefined;
   const minimumToolbarIdentitySlotWidthPx =
     MIN_DESKTOP_TOOLBAR_IDENTITY_SLOT_WIDTH_PX + (headerDragRegion ? MACOS_TRAFFIC_LIGHT_INSET : 0);
-  const compactDesktopSidebarRail = !isMobileDevice && desktopSidebarMode === "compact";
-  const sidebarSlotWidth =
-    !isMobile && desktopSidebarMode === "expanded"
-      ? "var(--freed-sidebar-card-width, 240px)"
-      : null;
+  const sidebarHandleCenterline = "var(--freed-sidebar-handle-centerline, 264px)";
+  const boundaryButtonOffsetPx = TOOLBAR_ICON_BUTTON_SIZE_PX + TOOLBAR_BOUNDARY_BUTTON_GAP_PX / 2;
   const leadingToolbarSlotWidth =
     !isMobileDevice
-      ? (compactDesktopSidebarRail
-          ? undefined
-          : sidebarSlotWidth
-          ? `max(${sidebarSlotWidth}, ${px(minimumToolbarIdentitySlotWidthPx)})`
-          : px(minimumToolbarIdentitySlotWidthPx))
+      ? `max(${px(minimumToolbarIdentitySlotWidthPx)}, calc(${sidebarHandleCenterline} + ${px(
+          TOOLBAR_ICON_BUTTON_SIZE_PX + TOOLBAR_BOUNDARY_BUTTON_GAP_PX / 2 + TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
+        )}))`
       : undefined;
   const leftToolbarStyle = !isMobileDevice
     ? ({
-        ...(leadingToolbarSlotWidth
-          ? {
-              width: leadingToolbarSlotWidth,
-              minWidth: leadingToolbarSlotWidth,
-            }
-          : {}),
-        paddingRight: px(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX),
-        ...macosTrafficLightInsetStyle,
+        position: "relative",
+        width: leadingToolbarSlotWidth,
+        minWidth: leadingToolbarSlotWidth,
         ...(headerDragRegion ? noDrag : {}),
       } as CSSProperties)
     : headerDragRegion
@@ -439,16 +437,31 @@ export function Header({
           ...noDrag,
         }
       : macosTrafficLightInsetStyle;
-  const readerRailSlotStyle = showReaderLayoutToggle
-    ? ({
-        width: showReaderRailToolbar ? "var(--freed-reader-rail-width, 0px)" : "auto",
-      } as CSSProperties)
-    : undefined;
+  const toolbarLogoRowStyle = {
+    paddingLeft: headerDragRegion ? `${MACOS_TRAFFIC_LIGHT_INSET}px` : undefined,
+    paddingRight: px(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX),
+  } as CSSProperties;
+  const boundaryButtonCommonStyle = {
+    position: "absolute",
+    top: "50%",
+    transform: "translateY(-50%)",
+  } as CSSProperties;
+  const collapseButtonStyle = {
+    ...boundaryButtonCommonStyle,
+    left: `calc(${sidebarHandleCenterline} - ${px(boundaryButtonOffsetPx + TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX)})`,
+  } as CSSProperties;
+  const readerRailButtonStyle = {
+    ...boundaryButtonCommonStyle,
+    left: `calc(${sidebarHandleCenterline} + ${px(TOOLBAR_BOUNDARY_BUTTON_GAP_PX / 2 - TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX)})`,
+  } as CSSProperties;
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [addFeedOpen, setAddFeedOpen] = useState(false);
   const [savedContentOpen, setSavedContentOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const leftToolbarSlotRef = useRef<HTMLDivElement | null>(null);
+  const wordmarkRef = useRef<HTMLSpanElement | null>(null);
+  const toolbarSearchInputRef = useRef<HTMLInputElement | null>(null);
   const toolbarDragGestureRef = useRef<{
     pointerId: number;
     startX: number;
@@ -457,6 +470,45 @@ export function Header({
   } | null>(null);
   const suppressedToolbarClickRef = useRef<EventTarget | null>(null);
   const suppressedToolbarClickTimeoutRef = useRef<number | null>(null);
+  const [minimumBoundaryButtonLeftPx, setMinimumBoundaryButtonLeftPx] = useState(
+    minimumToolbarIdentitySlotWidthPx,
+  );
+
+  useEffect(() => {
+    const slotElement = leftToolbarSlotRef.current;
+    const wordmarkElement = wordmarkRef.current;
+    if (!slotElement || !wordmarkElement) return;
+
+    const updateBoundaryButtonClamp = () => {
+      const slotRect = slotElement.getBoundingClientRect();
+      const wordmarkRect = wordmarkElement.getBoundingClientRect();
+      const minimumLeft = Math.max(
+        0,
+        Math.ceil(wordmarkRect.right - slotRect.left + TOOLBAR_BOUNDARY_BUTTON_GAP_PX * 2),
+      );
+      setMinimumBoundaryButtonLeftPx(minimumLeft);
+    };
+
+    updateBoundaryButtonClamp();
+
+    const observer = new ResizeObserver(() => {
+      updateBoundaryButtonClamp();
+    });
+
+    observer.observe(slotElement);
+    observer.observe(wordmarkElement);
+    window.addEventListener("resize", updateBoundaryButtonClamp);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateBoundaryButtonClamp);
+    };
+  }, [minimumToolbarIdentitySlotWidthPx]);
+
+  const clampedCollapseButtonStyle = {
+    ...collapseButtonStyle,
+    left: `max(${px(minimumBoundaryButtonLeftPx)}, ${collapseButtonStyle.left})`,
+  } as CSSProperties;
 
   const clearSuppressedToolbarClick = useCallback(() => {
     suppressedToolbarClickRef.current = null;
@@ -571,6 +623,12 @@ export function Header({
   }, [dropdownOpen]);
 
   useEffect(() => {
+    if (!showToolbarSearch) return;
+    toolbarSearchInputRef.current?.focus();
+    toolbarSearchInputRef.current?.setSelectionRange(searchQuery.length, searchQuery.length);
+  }, [showToolbarSearch]);
+
+  useEffect(() => {
     if (addFeedOpen || savedContentOpen) {
       setDropdownOpen(false);
     }
@@ -632,10 +690,11 @@ export function Header({
             : {})}
         >
           <div
-            className={`theme-toolbar-cluster flex shrink-0 items-center ${showReaderLayoutToggle ? "gap-0" : "gap-2"}`}
+            className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex shrink-0 items-center ${showReaderLayoutToggle ? "gap-0" : "gap-2"}`}
           >
             <div
-              className={`flex shrink-0 items-center gap-2 pl-3 sm:pl-4 ${leadingToolbarSlotWidth ? "justify-between" : ""}`}
+              className="relative flex h-full shrink-0 items-center"
+              ref={leftToolbarSlotRef}
               style={leftToolbarStyle}
             >
               {isMobileDevice ? (
@@ -643,7 +702,7 @@ export function Header({
                 <button
                   onClick={onMobileMenuToggle}
                   {...getToolbarControlProps()}
-                  className={`rounded-lg p-1.5 ${
+                  className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
                     mobileSidebarOpen ? "theme-toolbar-button-active" : "theme-toolbar-button-neutral"
                   }`}
                   aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
@@ -656,44 +715,48 @@ export function Header({
               </Tooltip>
               ) : null}
 
-              <span
-                data-testid="workspace-toolbar-wordmark"
-                className="cursor-default select-none text-lg font-bold gradient-text font-logo"
-              >
-                FREED
-              </span>
+              <div className="flex h-full items-center pl-3 sm:pl-4" style={toolbarLogoRowStyle}>
+                <span
+                  ref={wordmarkRef}
+                  data-testid="workspace-toolbar-wordmark"
+                  className="cursor-default select-none text-lg font-bold gradient-text font-logo"
+                >
+                  FREED
+                </span>
+              </div>
 
               {!isMobileDevice ? (
-              <Tooltip label={desktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}>
+              <Tooltip
+                label={visibleDesktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
+                className="absolute"
+                triggerStyle={clampedCollapseButtonStyle}
+              >
                 <button
                   onClick={onDesktopSidebarToggle}
                   {...getToolbarControlProps()}
                   data-testid="desktop-sidebar-toggle"
-                  className="theme-toolbar-button-neutral rounded-lg p-1.5"
-                  aria-label={desktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
+                  className={`${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-neutral`}
+                  aria-label={visibleDesktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
                 >
-                  {desktopSidebarMode === "closed" ? (
+                  {visibleDesktopSidebarMode === "closed" ? (
                     <SidebarExpandIcon className="h-5 w-5" />
                   ) : (
-                    <SidebarCollapseIcon className="h-5 w-5 translate-x-1.5" />
+                    <SidebarCollapseIcon className="h-5 w-5" />
                   )}
                 </button>
               </Tooltip>
               ) : null}
-            </div>
 
-            <ToolbarAnimatedSlot
-              visible={showReaderLayoutToggle}
-              width={showReaderRailToolbar ? "var(--freed-reader-rail-width, 0px)" : "3rem"}
-              className="theme-reader-rail-slot hidden shrink-0 md:flex items-center"
-              style={headerDragRegion ? noDrag : undefined}
-            >
-              <div className="flex items-center" style={readerRailSlotStyle}>
-                <Tooltip label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}>
+              {showReaderLayoutToggle ? (
+                <Tooltip
+                  label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
+                  className="absolute"
+                  triggerStyle={readerRailButtonStyle}
+                >
                   <button
                     onClick={handleToggleDualColumn}
                     {...getToolbarControlProps()}
-                    className={`rounded-lg p-2 ${
+                    className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
                       display.reading.dualColumnMode
                         ? "theme-toolbar-button-active"
                         : "theme-toolbar-button-neutral"
@@ -708,8 +771,8 @@ export function Header({
                     )}
                   </button>
                 </Tooltip>
-              </div>
-            </ToolbarAnimatedSlot>
+              ) : null}
+            </div>
           </div>
 
           <div
@@ -721,10 +784,10 @@ export function Header({
                 onClick={handleCloseReader}
                 {...getToolbarControlProps()}
                 data-testid="workspace-toolbar-reader-back"
-                className="group flex w-full min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-[var(--theme-bg-muted)]"
+                className="group flex w-full min-w-0 items-center gap-1 rounded-xl pl-0.5 pr-1.5 py-1.5 text-left transition-colors hover:bg-[var(--theme-bg-muted)]"
                 aria-label="Back to list"
               >
-                <span className="pointer-events-none flex shrink-0 items-center rounded-xl p-2">
+                <span className="pointer-events-none flex shrink-0 items-center rounded-xl p-1.5">
                   <svg
                     className="h-4 w-4 shrink-0 text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]"
                     fill="none"
@@ -742,6 +805,19 @@ export function Header({
                   <p className="truncate text-xs text-[var(--theme-text-muted)]">{currentSubtitle}</p>
                 </div>
               </button>
+            ) : showToolbarSearch ? (
+              <div className="px-1" style={headerDragRegion ? noDrag : undefined}>
+                <SearchField
+                  ref={toolbarSearchInputRef}
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.currentTarget.value)}
+                  onClear={() => setSearchQuery("")}
+                  placeholder="Search"
+                  aria-label="Search all sources"
+                  containerClassName="w-full"
+                  inputClassName="h-10 rounded-xl bg-[var(--theme-bg-input)] text-sm"
+                />
+              </div>
             ) : (
               <div
                 data-testid="workspace-toolbar-title-block"
@@ -754,7 +830,7 @@ export function Header({
           </div>
 
           <div
-            className="theme-toolbar-cluster flex shrink-0 items-center pr-3 sm:pr-4"
+            className="theme-toolbar-cluster theme-toolbar-cluster-tight flex shrink-0 items-center pr-2 sm:pr-2.5"
           >
             {selectedItem ? (
               <>
@@ -779,12 +855,12 @@ export function Header({
                   </Tooltip>
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={true} width="3rem">
+                <ToolbarAnimatedSlot visible={true} width="2.5rem">
                   <Tooltip label={selectedItem.userState.saved ? "Remove bookmark" : "Bookmark"}>
                     <button
                       onClick={handleToggleReaderSaved}
                       {...getToolbarControlProps()}
-                      className={`rounded-lg p-2 ${
+                      className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
                         selectedItem.userState.saved
                           ? "theme-toolbar-button-active"
                           : "theme-toolbar-button-neutral"
@@ -803,14 +879,14 @@ export function Header({
                   </Tooltip>
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={true} width="3rem">
+                <ToolbarAnimatedSlot visible={true} width="2.5rem">
                   <Tooltip label={selectedItem.userState.archived ? "Unarchive" : "Archive"}>
                     <button
                       onClick={handleToggleReaderArchived}
                       {...getToolbarControlProps()}
-                      className={`rounded-lg p-2 ${
+                      className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
                         selectedItem.userState.archived
-                          ? "theme-status-pill-success hover:bg-[rgb(var(--theme-feedback-success-rgb)/0.18)]"
+                          ? "theme-toolbar-button-success-active"
                           : "theme-toolbar-button-neutral"
                       }`}
                       aria-label={selectedItem.userState.archived ? "Unarchive" : "Archive"}
@@ -820,7 +896,7 @@ export function Header({
                   </Tooltip>
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={!!selectedItem.sourceUrl} width="5rem">
+                <ToolbarAnimatedSlot visible={!!selectedItem.sourceUrl} width="4.5rem">
                   {selectedItem.sourceUrl ? (
                     <button
                       onClick={handleOpenReaderUrl}

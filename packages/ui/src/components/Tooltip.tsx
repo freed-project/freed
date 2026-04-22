@@ -19,6 +19,7 @@ interface TooltipProps {
   shortcut?: string;
   side?: "top" | "bottom" | "left" | "right";
   className?: string;
+  triggerStyle?: CSSProperties;
   badge?: ReactNode;
 }
 
@@ -46,6 +47,7 @@ export function Tooltip({
   shortcut,
   side = "bottom",
   className = "",
+  triggerStyle,
   badge,
 }: TooltipProps) {
   const [open, setOpen] = useState(false);
@@ -268,6 +270,7 @@ export function Tooltip({
         ref={triggerRef}
         aria-describedby={open ? tooltipId : undefined}
         className={["relative inline-flex", className].filter(Boolean).join(" ")}
+        style={triggerStyle}
         onPointerEnter={handlePointerEnter}
         onPointerLeave={handlePointerLeave}
         onPointerDown={handlePointerDown}

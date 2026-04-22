@@ -30,6 +30,9 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Balanced sidebar icon scale** — Labeled desktop sidebar rows now use a smaller icon baseline that matches the Settings row more closely, while the compact rail keeps its larger touch-friendly glyphs and Facebook gets a small visual correction
 - **Tighter labeled sidebar gutters** — Desktop labeled sidebar rows now spend less width on left padding, icon gaps, and right-side clip gutters, especially in the narrow simplified state, so icons sit closer to the shell edge and labels crop later
 - **Lateral compact tooltips** — Icon-only desktop sidebar tooltips now open to the right of the rail instead of below the trigger, which keeps the compact column readable in dense layouts
+- **Inline Feeds chevron** — In the labeled desktop sidebar, the Feeds expand and collapse control now sits immediately after the `Feeds` label instead of aligning against the far-right count lane
+- **Balanced compact rail inset** — The icon-only desktop sidebar now uses the same outer inset on the bottom edge as it already uses on the top and sides, so the Settings button no longer sits flush against the floor
+- **Live toolbar reopen cue** — During desktop drag preview, once the primary sidebar crosses into the closed state, the toolbar control now swaps immediately from collapse to expand so the reopen affordance stays truthful before mouseup
 
 ---
 
@@ -395,6 +398,47 @@ export async function captureDomFeed(
 > production tag can build. Dev releases refresh the public changelog from
 > current `www` without ever moving `www` to `dev`. See
 > `RELEASE-SECRETS.md` for the full setup checklist.
+>
+> The reader header toolbar now uses one consistent icon-button geometry for
+> sidebar, rail, bookmark, and archive controls. Back navigation reaches
+> farther left, action buttons no longer reserve bogus slot space between one
+> another, the archive action no longer changes apparent size when active, and
+> the trailing reader actions sit closer to the content instead of drifting
+> inside an oversized right gutter.
+>
+> The map surface now overrides the generic sidebar-gap viewport compensation
+> and uses its own balanced vignette overlay. That removes the hard left edge
+> the inherited mask was creating, softens the visible boundary around the map,
+> and evens out the top-right corner so the feathering reads consistently on
+> all four sides.
+>
+> The unified feed crystal-core icon now renders slightly larger than the rest
+> of the sidebar icon set in both labeled and compact rail modes, so it carries
+> the same visual weight as the platform marks without forcing another global
+> icon-size rebalance.
+>
+> Compact-sidebar search now stays visibly active whenever the floating search
+> palette is open or a query is currently filtering content. The floating
+> palette uses the same corner radius as the sidebar shell, and active search
+> on non-reader views now promotes a clearable search field into the center of
+> the top toolbar instead of leaving stale scope copy there.
+>
+> The desktop sidebar and header now share one live boundary contract instead
+> of guessing at one another's geometry. The toolbar controls track the real
+> sidebar handle during drag preview, the collapse and rail toggles now use the
+> same fixed icon-button box without off-center glyph hacks, expanded padding
+> stays on the two requested presets, and narrow labeled mode keeps the older
+> cleanup rules intact at the same time: `Feed`, `Search`, no counts, no
+> subfeeds, and clipped labels with a small right gutter instead of ellipses.
+> Sidebar status badges also use one shared overlay position in labeled and
+> compact modes, with the dark backplate removed. The narrow labeled sidebar
+> also trims its label-side right padding further now, so clipped text can run
+> closer to the shell edge without turning into edge-to-edge soup.
+>
+> Local browser preview now keeps desktop snapshots, legal consent, provider
+> health persistence, and runtime memory telemetry on browser-safe fallbacks
+> instead of calling native Tauri APIs, so accepting the desktop legal gate no
+> longer crashes the `4173` preview into the recovery screen.
 
 ### Mobile
 

@@ -16,12 +16,21 @@ import { Tooltip } from "../Tooltip.js";
 import { useDebugStore } from "../../lib/debug-store.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
-import { TOP_SOURCE_ITEMS, type SourceNavigationItem } from "../../lib/source-navigation.js";
+import { getTopSourceItems, type SourceNavigationItem } from "../../lib/source-navigation.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { SearchJumpField } from "./SearchJumpField.js";
 import {
+  CLOSED_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX,
+  COMPACT_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX,
+  COMPACT_PRIMARY_SIDEBAR_WIDTH_PX,
+  COMPACT_RAIL_OUTER_INSET_PX,
   DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX,
+  EXPANDED_SIDEBAR_CONDENSED_PADDING_PX,
+  EXPANDED_SIDEBAR_PADDING_CROSSOVER_WIDTH_PX,
+  EXPANDED_SIDEBAR_ROOMY_PADDING_PX,
+  MAX_PRIMARY_SIDEBAR_WIDTH_PX,
+  NARROW_LABELED_SIDEBAR_THRESHOLD_PX,
   PRIMARY_SIDEBAR_GAP_WIDTH_PX,
   px,
 } from "./layoutConstants.js";
@@ -37,7 +46,6 @@ function fmt(n: number): string {
 }
 
 const FEEDS_PAGE_SIZE = 10;
-const COMPACT_RAIL_OUTER_INSET_PX = 4;
 
 function scoreFeedMatch(feed: RssFeed, queryTerms: string[]): number {
   if (queryTerms.length === 0) return 0;
@@ -69,6 +77,7 @@ interface SidebarProps {
   onMobileToggle: () => void;
   desktopMode: SidebarMode;
   onDesktopModeChange: (nextMode: SidebarMode) => void;
+  onDesktopDisplayModeChange?: (nextMode: SidebarMode) => void;
 }
 
 function SidebarSection({
@@ -391,19 +400,13 @@ function SourceContextMenu({
   );
 }
 
-const MAX_WIDTH = 480;
+const MAX_WIDTH = MAX_PRIMARY_SIDEBAR_WIDTH_PX;
 const DEFAULT_WIDTH = DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX;
-const COMPACT_WIDTH = 48;
-const CLOSED_SNAP_THRESHOLD = 40;
-const COMPACT_SNAP_THRESHOLD = 100;
-const LABEL_PRIORITY_THRESHOLD = 200;
-const EXPANDED_PADDING_CROSSOVER_WIDTH = 220;
-const EXPANDED_ROOMY_PADDING_PX = 8;
-const EXPANDED_CONDENSED_PADDING_PX = 4;
+const COMPACT_WIDTH = COMPACT_PRIMARY_SIDEBAR_WIDTH_PX;
 
 function getDesktopModeForWidth(width: number): SidebarMode {
-  if (width <= CLOSED_SNAP_THRESHOLD) return "closed";
-  if (width <= COMPACT_SNAP_THRESHOLD) return "compact";
+  if (width <= CLOSED_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX) return "closed";
+  if (width <= COMPACT_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX) return "compact";
   return "expanded";
 }
 
@@ -413,6 +416,7 @@ export function Sidebar({
   onMobileToggle,
   desktopMode,
   onDesktopModeChange,
+  onDesktopDisplayModeChange,
 }: SidebarProps) {
   const { SourceIndicator, headerDragRegion, syncRssNow, syncSourceNow, getSourceStatus } = usePlatform();
   const isMobileViewport = useIsMobile();
@@ -566,28 +570,29 @@ export function Sidebar({
       ? 0
       : rawDesktopWidth;
   const compactRail = renderMode === "compact";
-  const narrowLabeledSidebar = renderMode === "expanded" && desktopWidth < LABEL_PRIORITY_THRESHOLD;
+  const narrowLabeledSidebar =
+    renderMode === "expanded" && desktopWidth < NARROW_LABELED_SIDEBAR_THRESHOLD_PX;
   const rowCountsVisible = renderMode === "expanded" && !narrowLabeledSidebar;
   const sourceMenusVisible = renderMode === "expanded" && !narrowLabeledSidebar;
   const rssAccordionVisible = renderMode === "expanded" && !narrowLabeledSidebar;
   const searchVariant = compactRail ? "trigger" : "inline";
   const expandedSidebarUsesCondensedPadding =
-    renderMode === "expanded" && desktopWidth < EXPANDED_PADDING_CROSSOVER_WIDTH;
+    renderMode === "expanded" && desktopWidth < EXPANDED_SIDEBAR_PADDING_CROSSOVER_WIDTH_PX;
   const sidebarPaddingInlinePx = compactRail
     ? COMPACT_RAIL_OUTER_INSET_PX
     : expandedSidebarUsesCondensedPadding
-      ? EXPANDED_CONDENSED_PADDING_PX
-      : EXPANDED_ROOMY_PADDING_PX;
+      ? EXPANDED_SIDEBAR_CONDENSED_PADDING_PX
+      : EXPANDED_SIDEBAR_ROOMY_PADDING_PX;
   const sidebarPaddingBlockPx = compactRail
     ? COMPACT_RAIL_OUTER_INSET_PX
     : expandedSidebarUsesCondensedPadding
-      ? EXPANDED_CONDENSED_PADDING_PX
-      : EXPANDED_ROOMY_PADDING_PX;
+      ? EXPANDED_SIDEBAR_CONDENSED_PADDING_PX
+      : EXPANDED_SIDEBAR_ROOMY_PADDING_PX;
   const sidebarBodyStyle = {
     paddingTop: `${sidebarPaddingBlockPx}px`,
     paddingInline: `${sidebarPaddingInlinePx}px`,
     paddingBottom: compactRail
-      ? "0px"
+      ? `${COMPACT_RAIL_OUTER_INSET_PX}px`
       : `calc(${sidebarPaddingBlockPx}px + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))`,
     transition: "padding 180ms ease",
   };
@@ -597,10 +602,13 @@ export function Sidebar({
   const desktopShellTopPadding = renderMode !== "closed" || closedPreviewActive
     ? "var(--feed-card-gap, 8px)"
     : 0;
+  const sidebarHandleCenterlinePx =
+    renderMode === "closed" && !closedPreviewActive
+      ? PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2
+      : rawDesktopWidth + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
   const desktopAsideWidth = desktopWidth;
   const desktopAsideRenderedWidth = closedPreviewActive ? COMPACT_WIDTH : desktopAsideWidth;
   const compactSidebar = compactRail;
-  const sidebarPaddingClass = compactRail ? "px-0" : "px-4";
   const rowPaddingClass = compactRail ? "px-1.5" : narrowLabeledSidebar ? "px-2" : "px-2.5";
   const rowLeadingPaddingClass = compactRail ? "pl-1.5" : narrowLabeledSidebar ? "pl-2" : "pl-2.5";
   const rowTrailingPaddingClass = compactRail ? "pr-1" : narrowLabeledSidebar ? "pr-1" : "pr-1.5";
@@ -617,12 +625,30 @@ export function Sidebar({
   const resizeHandleVisible = !forceCompactDesktopRail && (dragWidth !== null || renderMode !== "closed");
 
   useEffect(() => {
+    onDesktopDisplayModeChange?.(renderMode);
+  }, [onDesktopDisplayModeChange, renderMode]);
+
+  useEffect(() => {
     if (typeof document === "undefined") return;
     document.documentElement.style.setProperty(
       "--freed-sidebar-card-width",
       renderMode === "closed" && !closedPreviewActive ? "0px" : `${desktopAsideRenderedWidth}px`,
     );
-  }, [closedPreviewActive, desktopAsideRenderedWidth, renderMode]);
+    document.documentElement.style.setProperty(
+      "--freed-sidebar-shell-width",
+      `${desktopShellWidth}px`,
+    );
+    document.documentElement.style.setProperty(
+      "--freed-sidebar-handle-centerline",
+      `${sidebarHandleCenterlinePx}px`,
+    );
+  }, [
+    closedPreviewActive,
+    desktopAsideRenderedWidth,
+    desktopShellWidth,
+    renderMode,
+    sidebarHandleCenterlinePx,
+  ]);
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -742,8 +768,12 @@ export function Sidebar({
       : (itemCountByPlatform[source.id] ?? 0);
 
   const sourceKey = (source: SourceNavigationItem) => source.id ?? "all";
-  const allSource = TOP_SOURCE_ITEMS[0];
-  const providerSourceItems = TOP_SOURCE_ITEMS.slice(1);
+  const topSourceItems = useMemo(
+    () => getTopSourceItems(narrowLabeledSidebar),
+    [narrowLabeledSidebar],
+  );
+  const allSource = topSourceItems[0];
+  const providerSourceItems = topSourceItems.slice(1);
 
   const sourceOrderClass = (source: SourceNavigationItem) => {
     switch (source.id) {
@@ -782,7 +812,7 @@ export function Sidebar({
     source.id === "linkedin";
 
   const selectedMenuSource = openMenuSourceKey
-    ? TOP_SOURCE_ITEMS.find((source) => sourceKey(source) === openMenuSourceKey) ?? null
+    ? topSourceItems.find((source) => sourceKey(source) === openMenuSourceKey) ?? null
     : null;
   const selectedMenuSourceId = selectedMenuSource?.id;
   const selectedMenuStatus = useMemo(
@@ -860,9 +890,12 @@ export function Sidebar({
             {compactIcon}
           </span>
           {args.badge ? (
-            <span className="pointer-events-none absolute right-0 top-0">
-              {args.badge}
-            </span>
+          <span
+            className="pointer-events-none absolute"
+            style={{ right: "-4px", top: "-4px" }}
+          >
+            {args.badge}
+          </span>
           ) : null}
         </button>
       </Tooltip>
@@ -886,7 +919,10 @@ export function Sidebar({
       <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">
         {resolvedIcon}
         {badge ? (
-          <span className="pointer-events-none absolute -right-2 -top-2">
+          <span
+            className="pointer-events-none absolute"
+            style={{ right: "-4px", top: "-4px" }}
+          >
             {badge}
           </span>
         ) : null}
@@ -895,11 +931,19 @@ export function Sidebar({
   }, []);
 
   const labeledSourceIconSizeClass = useCallback((sourceId?: string) => (
-    sourceId === "facebook" ? "h-[17px] w-[17px]" : "h-4 w-4"
+    sourceId === undefined
+      ? "h-[18px] w-[18px]"
+      : sourceId === "facebook"
+        ? "h-[17px] w-[17px]"
+        : "h-4 w-4"
   ), []);
 
   const compactSourceIconSizeClass = useCallback((sourceId?: string) => (
-    sourceId === "facebook" ? "h-[19px] w-[19px]" : "h-[18px] w-[18px]"
+    sourceId === undefined
+      ? "h-[20px] w-[20px]"
+      : sourceId === "facebook"
+        ? "h-[19px] w-[19px]"
+        : "h-[18px] w-[18px]"
   ), []);
 
   const getSourceBadge = useCallback((source: SourceNavigationItem, sourceStatus?: SidebarSourceStatusSummary | null) => {
@@ -925,13 +969,13 @@ export function Sidebar({
   const pendingFriendsBadge = pendingMatchCount > 0
     ? renderSidebarIconBadge(<span className="flex h-2.5 w-2.5 rounded-full bg-[var(--theme-accent-secondary)]" />)
     : undefined;
-  const sidebarLabelClass = `min-w-0 flex-1 overflow-hidden whitespace-nowrap ${narrowLabeledSidebar ? "pr-0.5" : "pr-1"} [text-overflow:clip]`;
+  const sidebarLabelClass = `min-w-0 flex-1 overflow-hidden whitespace-nowrap ${narrowLabeledSidebar ? "pr-px" : "pr-1"} [text-overflow:clip]`;
   const sidebarFeedLabelClass = `${sidebarLabelClass} text-xs`;
 
   const sidebarBody = (
     <nav
       data-testid="app-sidebar-body"
-      className={`flex-1 min-h-0 flex flex-col ${sidebarPaddingClass} overflow-y-auto minimal-scroll`}
+      className="minimal-scroll flex min-h-0 flex-1 flex-col overflow-y-auto"
       style={sidebarBodyStyle}
     >
           <SearchJumpField compactSidebar={compactSidebar} narrowSidebar={narrowLabeledSidebar} variant={searchVariant} />
@@ -1240,29 +1284,33 @@ export function Sidebar({
                                 getSourceBadge(source, sourceStatus),
                                 labeledSourceIconSizeClass(source.id),
                               )}
-                              <span className={sidebarLabelClass}>{source.label}</span>
+                              <div className="flex min-w-0 flex-1 items-center gap-1">
+                                <span className="min-w-0 overflow-hidden whitespace-nowrap pr-px [text-overflow:clip]">
+                                  {source.label}
+                                </span>
+                                {rssAccordionVisible ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setRssFeedsOpen((value) => !value);
+                                    }}
+                                    className="shrink-0 rounded p-1 text-[color:var(--theme-text-soft)] transition-colors hover:text-[color:var(--theme-text-secondary)]"
+                                    aria-label={rssFeedsOpen ? "Collapse feeds" : "Expand feeds"}
+                                    aria-expanded={rssFeedsOpen}
+                                  >
+                                    <svg
+                                      className={`h-3 w-3 transition-transform ${rssFeedsOpen ? "rotate-90" : ""}`}
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
+                                  </button>
+                                ) : null}
+                              </div>
                             </div>
-                            {rssAccordionVisible ? (
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setRssFeedsOpen((value) => !value);
-                                }}
-                                className="shrink-0 rounded p-1 text-[color:var(--theme-text-soft)] transition-colors hover:text-[color:var(--theme-text-secondary)]"
-                                aria-label={rssFeedsOpen ? "Collapse feeds" : "Expand feeds"}
-                                aria-expanded={rssFeedsOpen}
-                              >
-                                <svg
-                                  className={`h-3 w-3 transition-transform ${rssFeedsOpen ? "rotate-90" : ""}`}
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  stroke="currentColor"
-                                >
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                </svg>
-                              </button>
-                            ) : null}
                           </div>
                           <div
                             onClick={() => handleSourceClick(source)}
@@ -1681,7 +1729,13 @@ export function Sidebar({
         </div>
         {sidebarBody}
         <div
-          className={`shrink-0 border-t border-[var(--theme-border-subtle)] ${sidebarPaddingClass} pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-3`}
+          className="shrink-0 border-t border-[var(--theme-border-subtle)] pt-3"
+          style={{
+            paddingInline: `${sidebarPaddingInlinePx}px`,
+            paddingBottom: compactRail
+              ? `calc(${COMPACT_RAIL_OUTER_INSET_PX}px + env(safe-area-inset-bottom) + 1rem)`
+              : `calc(${sidebarPaddingBlockPx}px + env(safe-area-inset-bottom) + 1rem)`,
+          }}
         >
           <button
             onClick={handleOpenSettingsFromMobileSidebar}

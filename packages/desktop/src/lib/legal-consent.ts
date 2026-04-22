@@ -19,6 +19,9 @@ const FALLBACK_STORAGE_PREFIX = "freed.legal.";
 let legalStore: Store | null = null;
 
 async function getStore(): Promise<Store> {
+  if (!isTauri()) {
+    throw new Error("Native consent store is unavailable outside Freed Desktop");
+  }
   if (!legalStore) {
     legalStore = await load("legal.json", { defaults: {}, autoSave: true });
   }
