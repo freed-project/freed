@@ -9,20 +9,15 @@ fi
 VERSION="${1#v}"
 TAG="v${VERSION}"
 RELEASE_FILE="release-notes/releases/${TAG}.json"
-NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Keep release publish on the same Node toolchain as the rest of the repo helpers.
+source "${SCRIPT_DIR}/lib/node-tooling.sh"
+NODE_BIN="$(resolve_node_bin)"
+use_resolved_node_path
 CHANNEL="production"
 
 if [[ "$VERSION" == *-dev ]]; then
   CHANNEL="dev"
-fi
-
-if [[ -z "${NODE_BIN}" && -x "${HOME}/.nvm/versions/node/v22.12.0/bin/node" ]]; then
-  NODE_BIN="${HOME}/.nvm/versions/node/v22.12.0/bin/node"
-fi
-
-if [[ -z "${NODE_BIN}" ]]; then
-  echo "Error: could not find node. Set NODE_BIN or add node to PATH." >&2
-  exit 1
 fi
 
 if ! git diff --quiet HEAD; then
@@ -44,6 +39,11 @@ fi
 if [[ "$CURRENT_BRANCH" != "$EXPECTED_BRANCH" ]]; then
   echo "Error: ${CHANNEL} releases must be published from the ${EXPECTED_BRANCH} branch." >&2
   exit 1
+fi
+
+if [[ "$CHANNEL" == "production" ]]; then
+  git fetch origin dev main
+  "${NODE_BIN}" scripts/validate-release-promotion.mjs --from-ref=origin/dev --to-ref=HEAD
 fi
 
 APPROVED=$("${NODE_BIN}" -e "

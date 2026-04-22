@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -218,7 +218,7 @@ export async function captureDomFeed(
 - [x] QR code pairing works (token-authenticated; local SVG render, no third-party QR API)
 - [x] System tray shows sync status
 - [x] App runs in background after window close
-- [x] Auto-updater checks GitHub Releases and installs updates in-app
+- [x] Auto-updater checks GitHub Releases on launch and in the background, then installs updates in-app
 - [x] CI/CD release pipeline builds for macOS (ARM + Intel), Windows, Linux on tag push
 - [x] App icons generated for all platforms
 - [x] macOS DMG builds
@@ -235,10 +235,11 @@ export async function captureDomFeed(
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Private diagnostic bundles are opt-in, redacted, and steered toward email instead of public GitHub attachment
 - [x] Freed Desktop emits native renderer heartbeats and warns in the local log when the main window goes silent long enough to suggest a renderer hang or crash
-- [x] If the renderer dies before the app finishes booting, the next launch opens a native recovery window with retry and latest-build download actions outside the React tree
+- [x] If the renderer dies before the app finishes booting, the next launch opens a native recovery window with retry, immediate in-place update install, and channel-aware browser download fallback actions outside the React tree
 - [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
 - [x] macOS DMG is notarized in CI releases
 - [x] Checked-in release notes are reviewed before a release tag can publish
+- [x] Production release prep and publish refuse stale `main` snapshots until current `dev` has been promoted into `main`, and PRs targeting `main` reject direct product edits outside the promotion flow
 - [x] Debug panel Health tab charts provider reliability plus daily and hourly pull volume across RSS, X, Facebook, Instagram, LinkedIn, Google Drive, and Dropbox
 - [x] Failing RSS feeds can be reviewed and unsubscribed from the health panel, with optional article/history deletion
 - [x] Sidebar source actions and source settings surface degraded or paused provider health outside the debug panel
@@ -336,7 +337,10 @@ export async function captureDomFeed(
 > only rescans when the document item count actually changes. The outbox also
 > prunes completed retry bookkeeping instead of letting that map grow across
 > a long session, and removing RSS feeds now also forgets their saved health
-> history instead of leaving dead diagnostics behind. Desktop feed-state
+> history instead of leaving dead diagnostics behind. Local browser preview
+> now also short-circuits native-only snapshot, consent-store, provider-health,
+> memory-monitor, and background refresh paths so legal acceptance no longer
+> dumps the preview into the recovery screen after a reload. Desktop feed-state
 > updates also now cap preserved article text previews and fetch the full
 > preserved text only for the reader item that is actually open, instead of
 > cloning full article bodies through the live UI state on every mutation.
@@ -384,9 +388,13 @@ export async function captureDomFeed(
 > published release instead of waiting for a later production ship. Production
 > desktop tags still come from `main`, and production website deploys still
 > require the reviewed website and changelog state to be merged into `www`
-> first. Dev releases refresh the public changelog from current `www` without
-> ever moving `www` to `dev`. See `RELEASE-SECRETS.md` for the full setup
-> checklist.
+> first. Production prep and publish now also validate that `main` still
+> matches current `dev` on product-owned paths, PRs to `main` reject direct
+> product edits unless they come from a `chore/promote-dev-to-main-*`
+> promotion branch, and the release workflow rechecks that same guard before a
+> production tag can build. Dev releases refresh the public changelog from
+> current `www` without ever moving `www` to `dev`. See
+> `RELEASE-SECRETS.md` for the full setup checklist.
 
 ### Mobile
 

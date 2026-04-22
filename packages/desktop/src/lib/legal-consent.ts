@@ -8,6 +8,7 @@ import {
   type LegalAcceptanceRecord,
   type ProviderRiskId,
 } from "@freed/shared";
+import { isTauri } from "@tauri-apps/api/core";
 import { Store, load } from "@tauri-apps/plugin-store";
 import { log } from "./logger";
 
@@ -50,6 +51,9 @@ function writeFallbackRecord(key: string, record: LegalAcceptanceRecord): void {
 }
 
 async function readRecord(key: string): Promise<LegalAcceptanceRecord | null> {
+  if (!isTauri()) {
+    return readFallbackRecord(key);
+  }
   try {
     const store = await getStore();
     return coerceLegalAcceptanceRecord(await store.get<unknown>(key));
@@ -69,6 +73,10 @@ async function writeRecord(
   surface: Parameters<typeof createAcceptanceRecord>[1],
 ): Promise<LegalAcceptanceRecord> {
   const record = createAcceptanceRecord(version, surface);
+  if (!isTauri()) {
+    writeFallbackRecord(key, record);
+    return record;
+  }
   try {
     const store = await getStore();
     await store.set(key, record);

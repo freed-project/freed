@@ -419,7 +419,7 @@ Reward security researchers for responsible disclosure.
 
 | Task  | Description                     | Complexity |
 | ----- | ------------------------------- | ---------- |
-| 10.23 | Crash / stale-bundle recovery dialog | Medium |
+| 10.23 | Crash / stale-bundle recovery dialog with in-place updater fallback | Medium |
 | 10.24 | Public-safe and private bug reporting flow | Medium |
 
 ---
@@ -451,7 +451,7 @@ Reward security researchers for responsible disclosure.
 
 ### Resilience
 
-- [x] On hard crash or unreachable JSON update bundle, a friendly recovery dialog is shown directing the user to [freed.wtf/get](https://freed.wtf/get) to download the latest version, rendered outside the React tree so it survives total renderer failure
+- [x] On hard crash or unreachable JSON update bundle, a friendly recovery dialog is shown outside the React tree, auto-checks for updates immediately, offers in-place install and restart when available, and keeps a channel-aware browser download fallback for the latest installer
 - [x] Desktop and PWA expose a shared bug report flow with public-safe bundles by default and private diagnostics as an explicit opt-in path
 
 ---

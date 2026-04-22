@@ -1,3 +1,4 @@
+import { isTauri } from "@tauri-apps/api/core";
 import { Store, load } from "@tauri-apps/plugin-store";
 import { toast } from "@freed/ui/components/Toast";
 import {
@@ -649,6 +650,10 @@ function publishState(state: PersistedHealthState): void {
 }
 
 async function persistState(state: PersistedHealthState): Promise<void> {
+  if (!isTauri()) {
+    fallbackWrite(state);
+    return;
+  }
   try {
     const store = await getStore();
     await store.set(HEALTH_STORE_KEY, state);
@@ -663,6 +668,9 @@ async function persistState(state: PersistedHealthState): Promise<void> {
 }
 
 async function readState(): Promise<PersistedHealthState> {
+  if (!isTauri()) {
+    return fallbackRead() ?? createEmptyState();
+  }
   try {
     const store = await getStore();
     const value = await store.get<unknown>(HEALTH_STORE_KEY);

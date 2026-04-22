@@ -21,6 +21,9 @@ import { getBuildMetadata } from "../../scripts/lib/build-metadata.mjs";
 var src = function (name) {
     return fileURLToPath(new URL("../".concat(name, "/src"), import.meta.url));
 };
+var rootFile = function (name) {
+    return fileURLToPath(new URL(name, import.meta.url));
+};
 // When VITE_TEST_TAURI=1, swap every @tauri-apps/* import for a thin mock
 // module so the UI runs in plain Chromium without a Tauri binary.
 var mock = function (name) {
@@ -83,6 +86,12 @@ export default defineConfig({
         target: "esnext",
         minify: !process.env.TAURI_DEBUG ? "esbuild" : false,
         sourcemap: !!process.env.TAURI_DEBUG,
+        rollupOptions: {
+            input: {
+                main: rootFile("index.html"),
+                startupRecovery: rootFile("startup-recovery.html"),
+            },
+        },
     },
     // Unit test configuration
     test: {

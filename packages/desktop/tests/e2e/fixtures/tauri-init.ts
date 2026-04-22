@@ -38,6 +38,7 @@ export function tauriInitScript(): string {
         relayClientCount: 0,
       }),
       get_updater_target: () => 'darwin-aarch64',
+      retry_startup_after_crash: () => null,
       reset_pairing_token: () => null,
       get_recent_logs: () => [],
       start_relay: () => null,
