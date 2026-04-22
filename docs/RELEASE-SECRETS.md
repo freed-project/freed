@@ -159,13 +159,29 @@ render release bullets inside the install toast.
 ## How to publish a reviewed release
 
 ```bash
+# if production main is behind dev, promote dev into main first
+./scripts/promote-dev-to-main.sh ../freed-prod-promotion
+# merge the promotion PR to main
+
 ./scripts/release.sh 26.4.107 --channel=production
 # review the generated release-notes files
 git add release-notes
 git commit -m "docs: review release notes for v26.4.107"
+# ensure the approved website and changelog state is merged to www
 ./scripts/release-publish.sh 26.4.107
 git push origin main --follow-tags
 ```
+
+Production release prep now validates that `HEAD` matches `origin/dev` on
+product-owned paths before it will prepare or publish a tag. If `dev` is ahead,
+`./scripts/release.sh` and `./scripts/release-publish.sh` both fail with the
+exact stale file list instead of silently shipping old code from `main`.
+
+PRs targeting `main` also now have a scope guard. Product changes to `main`
+must come from a promotion branch named `chore/promote-dev-to-main-*`, and
+that promotion branch must still match current `origin/dev`. Release-only
+metadata updates remain allowed on `main`, while website-owned files are still
+rejected there.
 
 The `v*` tag triggers the release workflow which builds all platforms and
 creates a **draft** GitHub Release using the approved checked-in release body.
@@ -178,9 +194,10 @@ release. After any GitHub release is published, the release workflow also
 redeploys the public website from current `www` so the static changelog
 snapshot is rebuilt against the latest release list. Production website deploys
 still require the reviewed website and changelog state to already be merged
-into `www`. After the production release is stable, open the dedicated `main`
-back into `dev` reverse-integration PR before more feature work piles onto
-`dev`.
+into `www`. The release workflow now also rechecks production promotion state
+at tag time, so a stale `main` tag cannot slip through after `dev` advances.
+After the production release is stable, open the dedicated `main` back into
+`dev` reverse-integration PR before more feature work piles onto `dev`.
 
 Dev releases are published as GitHub prereleases with a `-dev` suffix and do
 not deploy the PWA. `dev-app.freed.wtf` instead follows merges to `dev`

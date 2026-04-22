@@ -13,9 +13,39 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  promotion:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Refresh release refs
+        run: git fetch origin dev main
+
+      - name: Validate production promotion state
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [[ "$TAG" == *-dev ]]; then
+            echo "Dev release detected, skipping production promotion validation."
+            exit 0
+          fi
+
+          node scripts/validate-release-promotion.mjs --from-ref=origin/dev --to-ref="$GITHUB_SHA"
+
   # Load the reviewed, checked-in release notes for this tag.
   # The workflow refuses to freestyle release prose on its own.
   notes:
+    needs: promotion
     runs-on: ubuntu-latest
     permissions:
       contents: read

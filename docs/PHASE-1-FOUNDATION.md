@@ -229,6 +229,7 @@ Branch routing:
 - merges to `dev` redeploy `dev-app.freed.wtf` through native Vercel Git deploys
 - Vercel preview deployments handle PWA branch and PR previews
 - `main` remains the production app release branch
+- production release prep now refuses stale `main` snapshots, so `dev` must be promoted into `main` before a production tag can be prepared or published
 - `main` no longer redeploys `freed.wtf` as a side effect
 
 Manual preview deploys for this monorepo now go through `./scripts/vercel-deploy-preview.sh website` and `./scripts/vercel-deploy-preview.sh pwa`. The helper stages a temporary monorepo slice with shared workspace packages before uploading to Vercel, which avoids the broken `npm install` failures caused by raw subdirectory deploys.

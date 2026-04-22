@@ -77,6 +77,11 @@ if [[ "$CURRENT_BRANCH" != "$EXPECTED_BRANCH" ]]; then
   exit 1
 fi
 
+if [[ "$CHANNEL" == "production" ]]; then
+  git fetch origin dev main
+  "${NODE_BIN}" scripts/validate-release-promotion.mjs --from-ref=origin/dev --to-ref=HEAD
+fi
+
 if [[ -n "$VERSION_INPUT" ]]; then
   VERSION="${VERSION_INPUT}"
 else

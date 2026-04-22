@@ -234,6 +234,7 @@ export async function captureDomFeed(
 - [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
 - [x] macOS DMG is notarized in CI releases
 - [x] Checked-in release notes are reviewed before a release tag can publish
+- [x] Production release prep and publish refuse stale `main` snapshots until current `dev` has been promoted into `main`, and PRs targeting `main` reject direct product edits outside the promotion flow
 - [x] Debug panel Health tab charts provider reliability plus daily and hourly pull volume across RSS, X, Facebook, Instagram, LinkedIn, Google Drive, and Dropbox
 - [x] Failing RSS feeds can be reviewed and unsubscribed from the health panel, with optional article/history deletion
 - [x] Sidebar source actions and source settings surface degraded or paused provider health outside the debug panel
@@ -372,9 +373,13 @@ export async function captureDomFeed(
 > published release instead of waiting for a later production ship. Production
 > desktop tags still come from `main`, and production website deploys still
 > require the reviewed website and changelog state to be merged into `www`
-> first. Dev releases refresh the public changelog from current `www` without
-> ever moving `www` to `dev`. See `RELEASE-SECRETS.md` for the full setup
-> checklist.
+> first. Production prep and publish now also validate that `main` still
+> matches current `dev` on product-owned paths, PRs to `main` reject direct
+> product edits unless they come from a `chore/promote-dev-to-main-*`
+> promotion branch, and the release workflow rechecks that same guard before a
+> production tag can build. Dev releases refresh the public changelog from
+> current `www` without ever moving `www` to `dev`. See
+> `RELEASE-SECRETS.md` for the full setup checklist.
 
 ### Mobile
 
