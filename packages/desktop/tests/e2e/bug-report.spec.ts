@@ -21,7 +21,9 @@ test("fatal runtime errors show the crash reporting screen", async ({ app, ipc }
   await expect(app.page.getByRole("button", { name: "Open GitHub issue" })).toBeVisible();
 
   await app.page.getByRole("button", { name: "Download latest Freed Desktop" }).click();
-  await expect.poll(async () => (await ipc.openedUrls())[0]).toBe("https://freed.wtf/get");
+  await expect.poll(async () => (await ipc.openedUrls())[0]).toBe(
+    "https://freed.wtf/api/downloads/mac-arm",
+  );
 });
 
 test("fatal recovery still surfaces available app updates", async ({ app }) => {

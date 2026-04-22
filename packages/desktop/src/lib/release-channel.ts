@@ -13,17 +13,27 @@ export function persistDesktopReleaseChannel(channel: ReleaseChannel): void {
   persistReleaseChannel(channel);
 }
 
-export async function getDesktopUpdateTargets(
+export async function getNativeUpdaterTarget(): Promise<string> {
+  return invoke<string>("get_updater_target");
+}
+
+export function buildDesktopUpdateTargets(
   channel: ReleaseChannel,
-): Promise<Array<{ channel: ReleaseChannel; target: string }>> {
-  const baseTarget = await invoke<string>("get_updater_target");
-  const primaryTarget = { channel, target: `${channel}-${baseTarget}` };
+  nativeUpdaterTarget: string,
+): Array<{ channel: ReleaseChannel; target: string }> {
+  const primaryTarget = { channel, target: `${channel}-${nativeUpdaterTarget}` };
   if (channel !== "dev") {
     return [primaryTarget];
   }
 
   return [
     primaryTarget,
-    { channel: "production", target: `production-${baseTarget}` },
+    { channel: "production", target: `production-${nativeUpdaterTarget}` },
   ];
+}
+
+export async function getDesktopUpdateTargets(
+  channel: ReleaseChannel,
+): Promise<Array<{ channel: ReleaseChannel; target: string }>> {
+  return buildDesktopUpdateTargets(channel, await getNativeUpdaterTarget());
 }

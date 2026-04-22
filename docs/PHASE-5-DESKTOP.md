@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -213,7 +213,7 @@ export async function captureDomFeed(
 - [x] QR code pairing works (token-authenticated; local SVG render, no third-party QR API)
 - [x] System tray shows sync status
 - [x] App runs in background after window close
-- [x] Auto-updater checks GitHub Releases and installs updates in-app
+- [x] Auto-updater checks GitHub Releases on launch and in the background, then installs updates in-app
 - [x] CI/CD release pipeline builds for macOS (ARM + Intel), Windows, Linux on tag push
 - [x] App icons generated for all platforms
 - [x] macOS DMG builds
@@ -230,7 +230,7 @@ export async function captureDomFeed(
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Private diagnostic bundles are opt-in, redacted, and steered toward email instead of public GitHub attachment
 - [x] Freed Desktop emits native renderer heartbeats and warns in the local log when the main window goes silent long enough to suggest a renderer hang or crash
-- [x] If the renderer dies before the app finishes booting, the next launch opens a native recovery window with retry and latest-build download actions outside the React tree
+- [x] If the renderer dies before the app finishes booting, the next launch opens a native recovery window with retry, immediate in-place update install, and channel-aware browser download fallback actions outside the React tree
 - [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
 - [x] macOS DMG is notarized in CI releases
 - [x] Checked-in release notes are reviewed before a release tag can publish
