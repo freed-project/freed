@@ -1,6 +1,6 @@
 [package]
 name = "freed-desktop"
-version = "26.4.2100"
+version = "26.4.2002"
 description = "Freed Desktop - Escape algorithmic manipulation"
 authors = ["Freed"]
 edition = "2021"

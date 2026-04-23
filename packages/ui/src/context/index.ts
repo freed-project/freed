@@ -5,6 +5,7 @@ export {
   MACOS_TRAFFIC_LIGHT_INSET,
   type ContactSyncActions,
   type BugReportingConfig,
+  type AvailableUpdateInfo,
   type PlatformConfig,
   type SidebarSourceStatusSummary,
   type SyncProviderSectionProps,

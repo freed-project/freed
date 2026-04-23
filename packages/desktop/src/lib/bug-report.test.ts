@@ -78,7 +78,6 @@ describe("desktop bug reporting", () => {
           "snapshot-metadata",
           "raw-stack",
         ],
-        screenshot: null,
       },
     });
 
@@ -102,7 +101,6 @@ describe("desktop bug reporting", () => {
         expectedBehavior: "",
         actualBehavior: "",
         selectedArtifacts: ["crash-context"],
-        screenshot: null,
       },
     });
 
@@ -136,7 +134,6 @@ describe("desktop bug reporting", () => {
           "snapshot-metadata",
           "raw-stack",
         ],
-        screenshot: null,
       },
     });
 

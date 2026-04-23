@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes } from "react";
+import { forwardRef, type InputHTMLAttributes } from "react";
 
 type SearchFieldDensity = "default" | "compact";
 
@@ -20,16 +20,19 @@ function joinClasses(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-export function SearchField({
-  containerClassName,
-  inputClassName,
-  clearButtonAriaLabel = "Clear search",
-  density = "default",
-  onClear,
-  type,
-  value,
-  ...inputProps
-}: SearchFieldProps) {
+export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(function SearchField(
+  {
+    containerClassName,
+    inputClassName,
+    clearButtonAriaLabel = "Clear search",
+    density = "default",
+    onClear,
+    type,
+    value,
+    ...inputProps
+  },
+  ref,
+) {
   const hasValue =
     typeof value === "string" ? value.length > 0 : typeof value === "number";
 
@@ -52,6 +55,7 @@ export function SearchField({
 
       <input
         {...inputProps}
+        ref={ref}
         type={type ?? "text"}
         value={value}
         className={joinClasses(
@@ -87,4 +91,4 @@ export function SearchField({
       ) : null}
     </div>
   );
-}
+});

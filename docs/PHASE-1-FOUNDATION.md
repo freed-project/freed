@@ -214,8 +214,7 @@ GitHub Actions workflows for continuous integration and deployment.
 
 **Deploy (Vercel):**
 
-Two Vercel projects now use branch-specific release lanes with GitHub Actions
-owning preview deploys:
+Two Vercel projects now use branch-specific release lanes:
 
 | Project      | Root Directory   | Domain                                          |
 | ------------ | ---------------- | ------------------------------------------------ |
@@ -227,15 +226,31 @@ Branch routing:
 - `www` is the public marketing branch for `freed.wtf`
 - PRs targeting `www` build and deploy website previews only
 - `dev` is the product integration branch
-- PRs targeting `dev` build PWA previews and run product checks
+- merges to `dev` redeploy `dev-app.freed.wtf` through native Vercel Git deploys
+- Vercel preview deployments handle PWA branch and PR previews
 - `main` remains the production app release branch
+- production release prep now refuses stale `main` snapshots, so `dev` must be promoted into `main` before a production tag can be prepared or published
 - `main` no longer redeploys `freed.wtf` as a side effect
 
-Website preview and production deploys now come from Vercel Git integration on the `www` branch. The website GitHub workflow only verifies that PRs targeting `www` still build cleanly. The PWA still uses `./scripts/vercel-deploy-preview.sh pwa` and `./scripts/vercel-deploy-production.sh pwa` because raw subdirectory deploys can upload an incomplete monorepo slice and fail during install.
+Manual preview deploys for this monorepo now go through `./scripts/vercel-deploy-preview.sh website` and `./scripts/vercel-deploy-preview.sh pwa`. The helper stages a temporary monorepo slice with shared workspace packages before uploading to Vercel, which avoids the broken `npm install` failures caused by raw subdirectory deploys.
+
+The website preview workflow still uses the helper directly so PRs only build
+the marketing surface they target. The PWA keeps native Git deploys enabled so
+`dev-app.freed.wtf` can follow `dev` automatically while `app.freed.wtf` stays
+under the release workflow.
 
 The preview and production deploy helpers now resolve `npm` and `npx` from the
 active Node toolchain first, so they do not accidentally pick up an older
-system npm from the shell `PATH`.
+system npm from the shell `PATH`. The root workspace fanout runner now does the
+same thing, which cuts out another stale-global-`npm` failure mode when local
+or CI commands fan out across workspaces.
+
+Local product worktrees now default to a ready-to-run full bootstrap so the next command does not trip over missing `node_modules`. `./scripts/worktree-add.sh` still supports `--install none|auto|full`, a `--swarm` shortcut for deferred speculative worktrees, and `--target desktop|pwa|website|shared` when you intentionally want to steer bootstrap and preview behavior, the worktree helpers now print the resolved `node` and `npm` pair before they bootstrap, preview, or publish, `./scripts/worktree-bootstrap.sh` handles the on-demand install, `./scripts/worktree-preview.sh` launches tracked previews with one desktop slot and one web slot per repo, defaults product work to the lightest useful preview surface, automatically skips an occupied website port even when the listener is only on IPv6, and now surfaces the local preview label inside the marketing site too, root `npm run dev` now fails fast instead of fanning out across every workspace, `./scripts/worktree-publish.sh` refuses stray untracked files unless you explicitly include them, still opens a draft PR with the required `(AI Generated).` body prefix, and now updates that PR in place on reruns, `./scripts/dev-session-clean.sh` stops tracked previews and kills stale browser automation sidecars, preview labels are stamped with the worktree plus thread tail so concurrent native windows stay identifiable, `npm run test:scripts` covers the helper smoke lane in CI, and `./scripts/worktree-cleanup.sh` stops tracked previews before removing merged worktrees.
+
+Feature worktrees now also default to layered validation. `npm run validate:feature` always runs root typecheck, then scopes website, PWA, desktop, capture-package, and release-tooling checks from the changed path set. `npm run validate:dev` is the full integration suite for merges and pushes to `dev`, and `npm run validate:release` adds release-build checks for release prep on `main`.
+
+Production release closeout now also requires a dedicated `main` back into `dev` reverse-integration PR so shipped production fixes and release-tooling changes do not drift out of the product branch.
+
 ---
 
 ## Key Decisions
@@ -265,6 +280,7 @@ system npm from the shell `PATH`.
 | 1.9  | Generate RSS feed at build time              | ✓      |
 | 1.10 | Add public legal docs and versioned website clickwrap | ✓ |
 | 1.11 | Add unified shared theme system across website, Freed Desktop, and PWA | ✓ |
+| 1.12 | Add ready-to-run worktree bootstrap controls, deferred swarm worktrees, safer root command routing, tracked preview and draft PR tooling, tiered validation commands, and reverse-integration policy | ✓ |
 
 ---
 

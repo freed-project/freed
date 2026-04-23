@@ -28,6 +28,16 @@ export interface SectionMeta {
   keywords: string[];
 }
 
+export interface SettingsSectionAvailability {
+  hasGoogleContacts: boolean;
+  hasX: boolean;
+  hasFacebook: boolean;
+  hasInstagram: boolean;
+  hasLinkedIn: boolean;
+  hasUpdateChecks: boolean;
+  hasFactoryReset: boolean;
+}
+
 /** Sections always present, regardless of platform capabilities. */
 export const BASE_SECTION_METAS: readonly SectionMeta[] = [
   {
@@ -111,6 +121,12 @@ export const GOOGLE_CONTACTS_SECTION_META: SectionMeta = {
   keywords: ["google contacts", "contacts", "people api", "friends", "address book", "connect", "sync"],
 };
 
+export const AI_SECTION_META: SectionMeta = {
+  id: "ai",
+  label: "AI",
+  keywords: ["ai", "summary", "summarize", "topics", "ollama", "openai", "anthropic", "gemini"],
+};
+
 /** Shown only when the platform supports factory reset (desktop). */
 export const DANGER_SECTION_META: SectionMeta = {
   id: "danger",
@@ -121,3 +137,31 @@ export const DANGER_SECTION_META: SectionMeta = {
     "sample", "populate", "seed", "test data", "regression",
   ],
 };
+
+export function buildSettingsSectionMetas(
+  availability: SettingsSectionAvailability,
+): SectionMeta[] {
+  const baseSectionById = Object.fromEntries(
+    BASE_SECTION_METAS.map((section) => [section.id, section]),
+  ) as Record<
+    Exclude<SectionId, "ai" | "updates" | "danger" | "googleContacts" | "x" | "facebook" | "instagram" | "linkedin">,
+    SectionMeta
+  >;
+
+  return [
+    baseSectionById.appearance,
+    baseSectionById.sync,
+    ...(availability.hasGoogleContacts ? [GOOGLE_CONTACTS_SECTION_META] : []),
+    baseSectionById.saved,
+    ...(availability.hasX ? [X_SECTION_META] : []),
+    ...(availability.hasFacebook ? [FB_SECTION_META] : []),
+    ...(availability.hasInstagram ? [IG_SECTION_META] : []),
+    ...(availability.hasLinkedIn ? [LI_SECTION_META] : []),
+    baseSectionById.feeds,
+    AI_SECTION_META,
+    ...(availability.hasUpdateChecks ? [UPDATES_SECTION_META] : []),
+    baseSectionById.legal,
+    baseSectionById.support,
+    ...(availability.hasFactoryReset ? [DANGER_SECTION_META] : []),
+  ];
+}

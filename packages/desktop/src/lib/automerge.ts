@@ -19,8 +19,9 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { hashSavedUrl } from "@freed/capture-save/normalize";
 import { addDebugEvent, setDocSnapshot, registerDocAccessors } from "@freed/ui/lib/debug-store";
-import type { FeedItem, Friend, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
+import type { Account, FeedItem, Person, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
 import { log } from "./logger.js";
 export type { DocState } from "./automerge-types";
@@ -502,33 +503,65 @@ export async function docUpdateLastSync(): Promise<void> {
   return request({ reqId, type: "UPDATE_LAST_SYNC" });
 }
 
-export async function docAddFriend(friend: Friend): Promise<void> {
+export async function docAddPerson(person: Person): Promise<void> {
   const reqId = nextReqId++;
-  return request({ reqId, type: "ADD_FRIEND", friend });
+  return request({ reqId, type: "ADD_PERSON", person });
 }
 
-export async function docAddFriends(friends: Friend[]): Promise<void> {
+export async function docAddPersons(persons: Person[]): Promise<void> {
   const reqId = nextReqId++;
-  return request({ reqId, type: "ADD_FRIENDS", friends });
+  return request({ reqId, type: "ADD_PERSONS", persons });
 }
 
-export async function docUpdateFriend(
-  friendId: string,
-  updates: Partial<Friend>,
+export async function docUpdatePerson(
+  personId: string,
+  updates: Partial<Person>,
 ): Promise<void> {
   const reqId = nextReqId++;
-  return request({ reqId, type: "UPDATE_FRIEND", friendId, updates });
+  return request({ reqId, type: "UPDATE_PERSON", personId, updates });
 }
 
-export async function docRemoveFriend(friendId: string): Promise<void> {
+export async function docRemovePerson(personId: string): Promise<void> {
   const reqId = nextReqId++;
-  return request({ reqId, type: "REMOVE_FRIEND", friendId });
+  return request({ reqId, type: "REMOVE_PERSON", personId });
 }
 
-export async function docLogReachOut(friendId: string, entry: ReachOutLog): Promise<void> {
+export async function docLogReachOut(personId: string, entry: ReachOutLog): Promise<void> {
   const reqId = nextReqId++;
-  return request({ reqId, type: "LOG_REACH_OUT", friendId, entry });
+  return request({ reqId, type: "LOG_REACH_OUT", personId, entry });
 }
+
+export async function docAddAccount(account: Account): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "ADD_ACCOUNT", account });
+}
+
+export async function docAddAccounts(accounts: Account[]): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "ADD_ACCOUNTS", accounts });
+}
+
+export async function docUpdateAccount(
+  accountId: string,
+  updates: Partial<Account>,
+): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "UPDATE_ACCOUNT", accountId, updates });
+}
+
+export async function docRemoveAccount(accountId: string): Promise<void> {
+  const reqId = nextReqId++;
+  return request({ reqId, type: "REMOVE_ACCOUNT", accountId });
+}
+
+/** @deprecated Use docAddPerson. */
+export const docAddFriend = docAddPerson;
+/** @deprecated Use docAddPersons. */
+export const docAddFriends = docAddPersons;
+/** @deprecated Use docUpdatePerson. */
+export const docUpdateFriend = docUpdatePerson;
+/** @deprecated Use docRemovePerson. */
+export const docRemoveFriend = docRemovePerson;
 
 // ─── Desktop-specific mutations ─────────────────────────────────────────────
 
@@ -567,13 +600,7 @@ export async function docDeduplicateFeedItems(): Promise<void> {
  * Returns the stub so callers that use the FeedItem directly are unchanged.
  */
 export async function docAddStubItem(url: string, tags: string[] = []): Promise<FeedItem> {
-  let hash = 0;
-  for (let i = 0; i < url.length; i++) {
-    const ch = url.charCodeAt(i);
-    hash = (hash << 5) - hash + ch;
-    hash = hash & hash;
-  }
-  const globalId = `saved:${Math.abs(hash).toString(36)}`;
+  const globalId = `saved:${hashSavedUrl(url)}`;
   const now = Date.now();
   let hostname = url;
   try { hostname = new URL(url).hostname; } catch { /* malformed */ }

@@ -3,6 +3,7 @@ import { formatDistanceToNow } from "date-fns";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform, MACOS_TRAFFIC_LIGHT_INSET } from "../../context/PlatformContext.js";
 import { applyFocusMode, type FocusOptions } from "@freed/shared";
+import { cacheArticleHtml, warmArticleImageCache } from "../../lib/article-cache.js";
 import { Tooltip } from "../Tooltip.js";
 import { ExternalLinkIcon, TrashIcon } from "../icons.js";
 
@@ -757,18 +758,11 @@ async function liveFetch(
     const html = await resp.text();
     if (cancelled) return;
 
-    if ("caches" in window) {
-      try {
-        const cache = await caches.open("freed-articles-v1");
-        await cache.put(url, new Response(html, {
-          headers: { "Content-Type": "text/html; charset=utf-8" },
-        }));
-        await cache.put(`/content/${globalId}`, new Response(html, {
-          headers: { "Content-Type": "text/html; charset=utf-8" },
-        }));
-      } catch {
-        // Cache write failure is non-fatal
-      }
+    try {
+      await cacheArticleHtml(url, globalId, html);
+      void warmArticleImageCache(html, url);
+    } catch {
+      // Cache write failure is non-fatal
     }
 
     onDone(html);

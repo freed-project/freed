@@ -5,7 +5,7 @@
  * implement, enabling shared UI components to work with either store.
  */
 
-import type { FeedItem, Friend, ReachOutLog, UserPreferences, RssFeed } from "./types.js";
+import type { Account, FeedItem, Friend, Person, ReachOutLog, UserPreferences, RssFeed } from "./types.js";
 
 export interface RemoveFeedOptions {
   includeItems?: boolean;
@@ -33,8 +33,14 @@ export interface FilterOptions {
 export interface BaseAppState {
   // Data (derived from Automerge doc)
   items: FeedItem[];
+  /** Bumps only when search-relevant corpus content changes. */
+  searchCorpusVersion: number;
   feeds: Record<string, RssFeed>;
-  /** Friends (unified identities) — keyed by Friend.id */
+  /** Canonical same-human identities — keyed by Person.id */
+  persons: Record<string, Person>;
+  /** Attached social/contact nodes — keyed by Account.id */
+  accounts: Record<string, Account>;
+  /** @deprecated Use persons. */
   friends: Record<string, Friend>;
   preferences: UserPreferences;
   /** Unread item count per RSS feed URL. Derived in hydrateFromDoc so shared
@@ -64,6 +70,9 @@ export interface BaseAppState {
   error: string | null;
   activeFilter: FilterOptions;
   selectedItemId: string | null;
+  selectedPersonId: string | null;
+  selectedAccountId: string | null;
+  /** @deprecated Use selectedPersonId. */
   selectedFriendId: string | null;
 
   // Initialization
@@ -99,12 +108,24 @@ export interface BaseAppState {
   /** Remove all feed subscriptions. Pass `includeItems: true` to also wipe all articles. */
   removeAllFeeds: (includeItems: boolean) => Promise<void>;
 
-  // Friend actions
+  // Person actions
+  addPerson: (person: Person) => Promise<void>;
+  addPersons: (persons: Person[]) => Promise<void>;
+  updatePerson: (id: string, updates: Partial<Person>) => Promise<void>;
+  removePerson: (id: string) => Promise<void>;
+  /** @deprecated Use addPerson. */
   addFriend: (friend: Friend) => Promise<void>;
+  /** @deprecated Use addPersons. */
   addFriends: (friends: Friend[]) => Promise<void>;
+  /** @deprecated Use updatePerson. */
   updateFriend: (id: string, updates: Partial<Friend>) => Promise<void>;
+  /** @deprecated Use removePerson. */
   removeFriend: (id: string) => Promise<void>;
   logReachOut: (id: string, entry: ReachOutLog) => Promise<void>;
+  addAccount: (account: Account) => Promise<void>;
+  addAccounts: (accounts: Account[]) => Promise<void>;
+  updateAccount: (id: string, updates: Partial<Account>) => Promise<void>;
+  removeAccount: (id: string) => Promise<void>;
 
   // Preference actions
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;
@@ -112,6 +133,9 @@ export interface BaseAppState {
   // UI actions
   setFilter: (filter: FilterOptions) => void;
   setSelectedItem: (id: string | null) => void;
+  setSelectedPerson: (id: string | null) => void;
+  setSelectedAccount: (id: string | null) => void;
+  /** @deprecated Use setSelectedPerson. */
   setSelectedFriend: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
   setSyncing: (syncing: boolean) => void;

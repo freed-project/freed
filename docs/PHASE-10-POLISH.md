@@ -108,17 +108,17 @@ export async function exportToCsv(items: FeedItem[]): Promise<string> {
 
 ### Command Bar / Action Launcher
 
-The global search bar is the foundation of a keyboard-driven command launcher. It already searches feed content and surfaces settings sections as quick-jump actions (arrow keys to navigate, Enter to select). The long-term goal is for every action in the app to be reachable from this bar without touching the mouse.
+Freed now has a real global command palette, opened with `Cmd/Ctrl+K`, mounted from `AppShell`, and rendered as a centered desktop modal or a mobile `BottomSheet`. The old sidebar search field is feed search only again.
 
-Planned action categories beyond the current settings navigation:
+The command palette now covers:
 
-- **Feeds** — subscribe to a new RSS feed, unsubscribe, open a specific source
-- **Navigation** — jump to Saved, Archived, a specific tag, or a feed
-- **Content** — save current item, mark all read, archive all read
-- **Preferences** — toggle Focus Mode, engagement counts, and other settings directly
-- **Custom actions** — user-defined shortcuts via the plugin API (see Plugin/Extension API below)
+- **Navigation**: Unified Feed, Saved, Archived, Friends, Map, every top source, every RSS feed, top-level tag scopes, and every visible settings section
+- **Create flows**: Add RSS Feed, Save URL, import Freed Markdown, export Freed Markdown
+- **Current item actions**: Open original URL, close reader, save or unsave, archive or unarchive, like or unlike when supported
+- **Current scope actions**: Mark current scope read, archive current scope read items, unarchive saved items, sync RSS, sync the current provider, and check for updates when supported
+- **Danger actions**: Delete all archived items plus local or cloud-backed factory reset, guarded by typed confirmation
 
-The `CommandAction` interface in `packages/ui/src/components/layout/Header.tsx` and the `buildSettingsActions()` helper are the current extension point. New action categories are added by returning additional `CommandAction[]` arrays and merging them into `allCommandActions`.
+The shared extension points now live in `packages/ui/src/lib/command-palette.ts`, `packages/ui/src/lib/command-palette-registry.ts`, and `packages/ui/src/lib/command-surface-store.ts`.
 
 ### Keyboard Shortcuts
 
@@ -385,7 +385,7 @@ Reward security researchers for responsible disclosure.
 | 10.7  | Reduced motion support             | Low        |
 | 10.8  | Color contrast audit               | Low        |
 | 10.9  | Native Liquid Glass buttons        | High       |
-| 10.24 | Command bar — full action launcher | High       |
+| 10.24 | Command bar — full action launcher | High       | ✓ Complete (Global `Cmd/Ctrl+K` palette with navigation, creation, current-item, sync, and danger actions)
 
 ### AI Features
 
@@ -419,7 +419,7 @@ Reward security researchers for responsible disclosure.
 
 | Task  | Description                     | Complexity |
 | ----- | ------------------------------- | ---------- |
-| 10.23 | Crash / stale-bundle recovery dialog | Medium |
+| 10.23 | Crash / stale-bundle recovery dialog with in-place updater fallback | Medium |
 | 10.24 | Public-safe and private bug reporting flow | Medium |
 
 ---
@@ -434,7 +434,7 @@ Reward security researchers for responsible disclosure.
 - [ ] Keyboard navigation complete
 - [ ] Screen reader accessible
 - [ ] Reduced motion respected
-- [ ] Command bar can trigger every major app action without a mouse
+- [x] Command bar can trigger every major app action without a mouse
 
 ### AI
 
@@ -451,7 +451,7 @@ Reward security researchers for responsible disclosure.
 
 ### Resilience
 
-- [ ] On hard crash or unreachable JSON update bundle, a friendly recovery dialog is shown directing the user to [freed.wtf](https://freed.wtf) to download the latest version — rendered outside the React tree (plain HTML fallback in the Tauri shell or PWA service worker) so it survives total renderer failure
+- [x] On hard crash or unreachable JSON update bundle, a friendly recovery dialog is shown outside the React tree, auto-checks for updates immediately, offers in-place install and restart when available, and keeps a channel-aware browser download fallback for the latest installer
 - [x] Desktop and PWA expose a shared bug report flow with public-safe bundles by default and private diagnostics as an explicit opt-in path
 
 ---

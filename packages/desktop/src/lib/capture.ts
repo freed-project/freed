@@ -6,7 +6,7 @@
  * layer lives here because it must go through Tauri's fetch_url IPC.
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { FeedItem, RssFeed, OPMLFeedEntry } from "@freed/shared";
 import { generateOPML, downloadFile } from "@freed/shared";
 import { parseFeedXml, feedToFeedItems, feedToRssFeed } from "@freed/capture-rss/browser";
@@ -23,6 +23,13 @@ import { isProviderPaused, recordProviderHealthEvent } from "./provider-health";
  * Fetch URL via Tauri backend (bypasses CORS)
  */
 async function fetchUrl(url: string): Promise<string> {
+  if (!isTauri()) {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Fetch failed with ${response.status.toLocaleString()}`);
+    }
+    return response.text();
+  }
   return invoke<string>("fetch_url", { url });
 }
 
@@ -102,6 +109,10 @@ const FETCH_CONCURRENCY = 5;
  * silently unless every single feed failed (in which case the user is told).
  */
 export async function refreshAllFeeds(): Promise<void> {
+  if (!isTauri()) {
+    addDebugEvent("change", "[Capture] Browser preview skips native background refresh");
+    return;
+  }
   const store = useAppStore.getState();
   const feeds = Object.values(store.feeds).filter((f) => f.enabled);
 

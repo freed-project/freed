@@ -1,15 +1,41 @@
-import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo, cloneElement, isValidElement, type ReactNode } from "react";
 
-import { countFriendsWithRecentLocationUpdates, type FilterOptions, type RssFeed } from "@freed/shared";
+import {
+  countAuthorsWithRecentLocationUpdates,
+  countFriendsWithRecentLocationUpdates,
+  getDefaultMapMode,
+  type FilterOptions,
+  type RssFeed,
+  type SidebarMode,
+} from "@freed/shared";
 import { useAppStore, usePlatform, type SidebarSourceStatusSummary } from "../../context/PlatformContext.js";
 import { ProviderStatusIndicator } from "../ProviderStatusIndicator.js";
 import { SettingsDialog } from "../SettingsDialog.js";
 import { toast } from "../Toast.js";
+import { Tooltip } from "../Tooltip.js";
 import { useDebugStore } from "../../lib/debug-store.js";
 import { useSettingsStore } from "../../lib/settings-store.js";
 import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon } from "../icons.js";
-import { TOP_SOURCE_ITEMS, type SourceNavigationItem } from "../../lib/source-navigation.js";
+import { getTopSourceItems, type SourceNavigationItem } from "../../lib/source-navigation.js";
+import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { SearchJumpField } from "./SearchJumpField.js";
+import { buildTopLevelTagFilters, childTagsOf, collectAllTags } from "../../lib/tag-navigation.js";
+import { navigateToFeedView } from "../../lib/workspace-navigation.js";
+import {
+  CLOSED_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX,
+  COMPACT_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX,
+  COMPACT_PRIMARY_SIDEBAR_WIDTH_PX,
+  COMPACT_RAIL_OUTER_INSET_PX,
+  DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX,
+  EXPANDED_SIDEBAR_CONDENSED_PADDING_PX,
+  EXPANDED_SIDEBAR_PADDING_CROSSOVER_WIDTH_PX,
+  EXPANDED_SIDEBAR_ROOMY_PADDING_PX,
+  MAX_PRIMARY_SIDEBAR_WIDTH_PX,
+  NARROW_LABELED_SIDEBAR_THRESHOLD_PX,
+  PRIMARY_SIDEBAR_GAP_WIDTH_PX,
+  px,
+} from "./layoutConstants.js";
 
 const compactNumberFormatter = new Intl.NumberFormat(undefined, {
   notation: "compact",
@@ -48,9 +74,12 @@ function scoreFeedMatch(feed: RssFeed, queryTerms: string[]): number {
 }
 
 interface SidebarProps {
-  open: boolean;
-  onClose: () => void;
-  desktopExpanded?: boolean;
+  mobileOpen: boolean;
+  onMobileClose: () => void;
+  onMobileToggle: () => void;
+  desktopMode: SidebarMode;
+  onDesktopModeChange: (nextMode: SidebarMode) => void;
+  onDesktopDisplayModeChange?: (nextMode: SidebarMode) => void;
 }
 
 function SidebarSection({
@@ -373,20 +402,37 @@ function SourceContextMenu({
   );
 }
 
-const MIN_WIDTH = 180;
-const MAX_WIDTH = 480;
-const DEFAULT_WIDTH = 256;
+const MAX_WIDTH = MAX_PRIMARY_SIDEBAR_WIDTH_PX;
+const DEFAULT_WIDTH = DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX;
+const COMPACT_WIDTH = COMPACT_PRIMARY_SIDEBAR_WIDTH_PX;
 
-export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps) {
+function getDesktopModeForWidth(width: number): SidebarMode {
+  if (width <= CLOSED_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX) return "closed";
+  if (width <= COMPACT_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX) return "compact";
+  return "expanded";
+}
+
+export function Sidebar({
+  mobileOpen,
+  onMobileClose,
+  onMobileToggle,
+  desktopMode,
+  onDesktopModeChange,
+  onDesktopDisplayModeChange,
+}: SidebarProps) {
   const { SourceIndicator, headerDragRegion, syncRssNow, syncSourceNow, getSourceStatus } = usePlatform();
+  const isMobileViewport = useIsMobile();
+  const isMobileDevice = useIsMobileDevice();
+  const forceCompactDesktopRail = !isMobileDevice && isMobileViewport;
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
-  const setSelectedFriend = useAppStore((s) => s.setSelectedFriend);
+  const setSelectedFriend = useAppStore((s) => s.setSelectedPerson);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const feeds = useAppStore((s) => s.feeds);
-  const friends = useAppStore((s) => s.friends);
+  const friends = useAppStore((s) => s.persons);
+  const accounts = useAppStore((s) => s.accounts);
   const feedUnreadCounts = useAppStore((s) => s.feedUnreadCounts);
   const feedTotalCounts = useAppStore((s) => s.feedTotalCounts);
   const renameFeed = useAppStore((s) => s.renameFeed);
@@ -407,15 +453,25 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
   const activeView = useAppStore((s) => s.activeView);
   const setActiveView = useAppStore((s) => s.setActiveView);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
+  const display = useAppStore((s) => s.preferences.display);
   const health = useDebugStore((s) => s.health);
 
   const savedCount = useMemo(() => items.filter((i) => i.userState.saved).length, [items]);
   const archivedCount = useMemo(() => items.filter((i) => i.userState.archived).length, [items]);
   const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
   const mapFriendCount = useMemo(
-    () => countFriendsWithRecentLocationUpdates(items, friends),
-    [friends, items]
+    () => countFriendsWithRecentLocationUpdates(items, friends, accounts),
+    [accounts, friends, items]
   );
+  const mapAllContentCount = useMemo(
+    () => countAuthorsWithRecentLocationUpdates(items),
+    [items],
+  );
+  const effectiveMapMode = display.mapMode
+    ?? getDefaultMapMode(mapFriendCount, mapAllContentCount);
+  const mapCount = effectiveMapMode === "all_content"
+    ? mapAllContentCount
+    : mapFriendCount;
 
   const { open: showSettings, openDefault: openSettings, close: closeSettings } = useSettingsStore();
   const [dragWidth, setDragWidth] = useState<number | null>(null);
@@ -450,34 +506,15 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
   // ─── Tag tree ────────────────────────────────────────────────────────────────
 
   /** All unique tags collected from the library, sorted alphabetically */
-  const allTags = useMemo(() => {
-    const tagSet = new Set<string>();
-    for (const item of items) {
-      for (const tag of item.userState.tags ?? []) {
-        tagSet.add(tag);
-      }
-    }
-    return Array.from(tagSet).sort();
-  }, [items]);
-
-  /**
-   * Top-level tag segments (before the first "/").
-   * E.g. ["Technology/AI", "Technology/React", "Science"] → ["Science", "Technology"]
-   */
-  const topLevelTags = useMemo(() => {
-    const tops = new Set<string>();
-    for (const tag of allTags) {
-      tops.add(tag.split("/")[0]);
-    }
-    return Array.from(tops).sort();
-  }, [allTags]);
-
-  /** All descendant tag paths under a given top-level segment */
-  const childTagsOf = (top: string) =>
-    allTags.filter((t) => t === top || t.startsWith(`${top}/`));
+  const allTags = useMemo(() => collectAllTags(items), [items]);
+  const topLevelTagFilters = useMemo(() => buildTopLevelTagFilters(allTags), [allTags]);
+  const topLevelTags = useMemo(
+    () => topLevelTagFilters.map((tagFilter) => tagFilter.label),
+    [topLevelTagFilters],
+  );
 
   const handleTagClick = (tag: string) => {
-    const children = childTagsOf(tag);
+    const children = childTagsOf(allTags, tag);
     showFeed({ tags: children });
   };
 
@@ -487,7 +524,7 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
     if (!isFeedView) return false;
     const active = activeFilter.tags;
     if (!active || active.length === 0) return false;
-    return childTagsOf(tag).some((t) => active.includes(t));
+    return childTagsOf(allTags, tag).some((t) => active.includes(t));
   };
 
   useEffect(() => {
@@ -499,27 +536,116 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
     setCommittedWidth(persistedSidebarWidth);
   }, [dragWidth, persistedSidebarWidth]);
 
-  const width = dragWidth ?? committedWidth;
-  const compactSidebar = width < 220;
-  const sidebarPaddingClass = compactSidebar ? "px-2" : "px-4";
-  const rowPaddingClass = compactSidebar ? "px-1.5" : "px-3";
-  const rowLeadingPaddingClass = compactSidebar ? "pl-1.5" : "pl-3";
-  const rowTrailingPaddingClass = compactSidebar ? "pr-1" : "pr-2";
+  const rawDesktopWidth = dragWidth
+    ?? (desktopMode === "compact" ? COMPACT_WIDTH : desktopMode === "closed" ? 0 : committedWidth);
+  const renderMode: SidebarMode = isMobileDevice
+    ? "expanded"
+    : forceCompactDesktopRail
+      ? (desktopMode === "closed" ? "closed" : "compact")
+    : dragWidth !== null
+      ? getDesktopModeForWidth(dragWidth)
+      : desktopMode;
+  const closedPreviewActive = dragWidth !== null && renderMode === "closed";
+  const snapPreviewActive = dragWidth !== null && renderMode !== "expanded";
+  const desktopWidth = renderMode === "compact"
+    ? COMPACT_WIDTH
+    : renderMode === "closed"
+      ? 0
+      : rawDesktopWidth;
+  const compactRail = renderMode === "compact";
+  const narrowLabeledSidebar =
+    renderMode === "expanded" && desktopWidth < NARROW_LABELED_SIDEBAR_THRESHOLD_PX;
+  const rowCountsVisible = renderMode === "expanded" && !narrowLabeledSidebar;
+  const sourceMenusVisible = renderMode === "expanded" && !narrowLabeledSidebar;
+  const rssAccordionVisible = renderMode === "expanded" && !narrowLabeledSidebar;
+  const searchVariant = compactRail ? "trigger" : "inline";
+  const expandedSidebarUsesCondensedPadding =
+    renderMode === "expanded" && desktopWidth < EXPANDED_SIDEBAR_PADDING_CROSSOVER_WIDTH_PX;
+  const sidebarPaddingInlinePx = compactRail
+    ? COMPACT_RAIL_OUTER_INSET_PX
+    : expandedSidebarUsesCondensedPadding
+      ? EXPANDED_SIDEBAR_CONDENSED_PADDING_PX
+      : EXPANDED_SIDEBAR_ROOMY_PADDING_PX;
+  const sidebarPaddingBlockPx = compactRail
+    ? COMPACT_RAIL_OUTER_INSET_PX
+    : expandedSidebarUsesCondensedPadding
+      ? EXPANDED_SIDEBAR_CONDENSED_PADDING_PX
+      : EXPANDED_SIDEBAR_ROOMY_PADDING_PX;
+  const sidebarBodyStyle = {
+    paddingTop: `${sidebarPaddingBlockPx}px`,
+    paddingInline: `${sidebarPaddingInlinePx}px`,
+    paddingBottom: compactRail
+      ? `${COMPACT_RAIL_OUTER_INSET_PX}px`
+      : `calc(${sidebarPaddingBlockPx}px + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))`,
+    transition: "padding 180ms ease",
+  };
+  const desktopShellWidth = renderMode === "closed"
+    ? 0
+    : desktopWidth + PRIMARY_SIDEBAR_GAP_WIDTH_PX;
+  const desktopShellTopPadding = renderMode !== "closed" || closedPreviewActive
+    ? "var(--feed-card-gap, 8px)"
+    : 0;
+  const sidebarHandleCenterlinePx =
+    renderMode === "closed" && !closedPreviewActive
+      ? PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2
+      : rawDesktopWidth + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
+  const desktopAsideWidth = desktopWidth;
+  const desktopAsideRenderedWidth = closedPreviewActive ? COMPACT_WIDTH : desktopAsideWidth;
+  const compactSidebar = compactRail;
+  const rowPaddingClass = compactRail ? "px-1.5" : narrowLabeledSidebar ? "px-2" : "px-2.5";
+  const rowLeadingPaddingClass = compactRail ? "pl-1.5" : narrowLabeledSidebar ? "pl-2" : "pl-2.5";
+  const rowTrailingPaddingClass = compactRail ? "pr-1" : narrowLabeledSidebar ? "pr-1" : "pr-1.5";
+  const rowGapClass = narrowLabeledSidebar ? "gap-2" : "gap-3";
+  const desktopShellTransition = dragWidth !== null && !snapPreviewActive
+    ? "none"
+    : snapPreviewActive
+      ? "width 220ms ease, opacity 180ms ease"
+      : "width 220ms ease, opacity 180ms ease";
+  const desktopAsideTransition = dragWidth !== null && !snapPreviewActive
+    ? "none"
+    : snapPreviewActive
+      ? "width 220ms ease, transform 220ms ease, opacity 180ms ease"
+      : "width 220ms ease, transform 220ms ease, opacity 180ms ease";
+  const desktopAsideTransform = renderMode === "closed"
+    ? `translateX(calc(-100% - ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)}))`
+    : "translateX(0)";
+  const resizeHandleVisible = !forceCompactDesktopRail && (dragWidth !== null || renderMode !== "closed");
+
+  useEffect(() => {
+    onDesktopDisplayModeChange?.(renderMode);
+  }, [onDesktopDisplayModeChange, renderMode]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
     document.documentElement.style.setProperty(
       "--freed-sidebar-card-width",
-      desktopExpanded ? `${width}px` : "0px",
+      renderMode === "closed" && !closedPreviewActive ? "0px" : `${desktopAsideRenderedWidth}px`,
     );
-  }, [desktopExpanded, width]);
+    document.documentElement.style.setProperty(
+      "--freed-sidebar-shell-width",
+      `${desktopShellWidth}px`,
+    );
+    document.documentElement.style.setProperty(
+      "--freed-sidebar-handle-centerline",
+      `${sidebarHandleCenterlinePx}px`,
+    );
+  }, [
+    closedPreviewActive,
+    desktopAsideRenderedWidth,
+    desktopShellWidth,
+    renderMode,
+    sidebarHandleCenterlinePx,
+  ]);
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
+      if (forceCompactDesktopRail || isMobileDevice) {
+        return;
+      }
       e.preventDefault();
       dragging.current = true;
       const startX = e.clientX;
-      const startW = width;
+      const startW = desktopMode === "compact" ? COMPACT_WIDTH : committedWidth;
       const previousCursor = document.body.style.cursor;
       const previousUserSelect = document.body.style.userSelect;
 
@@ -528,20 +654,24 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
 
       const onMove = (ev: MouseEvent) => {
         if (!dragging.current) return;
-        const next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startW + ev.clientX - startX));
+        const next = Math.min(MAX_WIDTH, Math.max(0, startW + ev.clientX - startX));
         setDragWidth(next);
       };
       const onUp = (ev: MouseEvent) => {
         dragging.current = false;
-        const final = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startW + ev.clientX - startX));
-        pendingPersistedWidth.current = final;
-        setCommittedWidth(final);
+        const final = Math.min(MAX_WIDTH, Math.max(0, startW + ev.clientX - startX));
+        const nextMode = getDesktopModeForWidth(final);
+        if (nextMode === "expanded") {
+          pendingPersistedWidth.current = final;
+          setCommittedWidth(final);
+          void updatePreferences({ display: { sidebarWidth: final } } as Parameters<typeof updatePreferences>[0]).catch(() => {
+            if (pendingPersistedWidth.current === final) {
+              pendingPersistedWidth.current = null;
+            }
+          });
+        }
+        onDesktopModeChange(nextMode);
         setDragWidth(null);
-        void updatePreferences({ display: { sidebarWidth: final } } as Parameters<typeof updatePreferences>[0]).catch(() => {
-          if (pendingPersistedWidth.current === final) {
-            pendingPersistedWidth.current = null;
-          }
-        });
         document.body.style.cursor = previousCursor;
         document.body.style.userSelect = previousUserSelect;
         document.removeEventListener("mousemove", onMove);
@@ -550,7 +680,7 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     },
-    [width, updatePreferences],
+    [committedWidth, desktopMode, forceCompactDesktopRail, isMobileDevice, onDesktopModeChange, updatePreferences],
   );
 
   const feedList = Object.values(feeds).filter((f) => f.enabled);
@@ -585,12 +715,17 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
   );
 
   const showFeed = useCallback((filter: FilterOptions) => {
-    setActiveView("feed");
-    setSelectedFriend(null);
-    setSelectedItem(null);
-    setFilter(filter);
-    onClose();
-  }, [onClose, setActiveView, setFilter, setSelectedFriend, setSelectedItem]);
+    navigateToFeedView(
+      {
+        setActiveView,
+        setSelectedPerson: setSelectedFriend,
+        setSelectedItem,
+        setFilter,
+      },
+      filter,
+    );
+    onMobileClose();
+  }, [onMobileClose, setActiveView, setFilter, setSelectedFriend, setSelectedItem]);
 
   const handleSourceClick = (source: SourceNavigationItem) => {
     showFeed({ platform: source.id });
@@ -602,6 +737,9 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
 
   const isTopSourceActive = (source: SourceNavigationItem) => {
     if (!isFeedView) return false;
+    if (compactRail && source.id === "rss" && activeFilter.platform === "rss") {
+      return true;
+    }
     if (source.id === "rss" && activeFilter.platform === "rss") {
       return !activeFilter.feedUrl || !activeFeedVisibleOnCurrentPage;
     }
@@ -622,8 +760,12 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
       : (itemCountByPlatform[source.id] ?? 0);
 
   const sourceKey = (source: SourceNavigationItem) => source.id ?? "all";
-  const allSource = TOP_SOURCE_ITEMS[0];
-  const providerSourceItems = TOP_SOURCE_ITEMS.slice(1);
+  const topSourceItems = useMemo(
+    () => getTopSourceItems(narrowLabeledSidebar),
+    [narrowLabeledSidebar],
+  );
+  const allSource = topSourceItems[0];
+  const providerSourceItems = topSourceItems.slice(1);
 
   const sourceOrderClass = (source: SourceNavigationItem) => {
     switch (source.id) {
@@ -662,7 +804,7 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
     source.id === "linkedin";
 
   const selectedMenuSource = openMenuSourceKey
-    ? TOP_SOURCE_ITEMS.find((source) => sourceKey(source) === openMenuSourceKey) ?? null
+    ? topSourceItems.find((source) => sourceKey(source) === openMenuSourceKey) ?? null
     : null;
   const selectedMenuSourceId = selectedMenuSource?.id;
   const selectedMenuStatus = useMemo(
@@ -691,15 +833,165 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
     );
   }, [totalFeedPages]);
 
+  const settingsButtonContent = (
+    <>
+      <span className="w-5 text-center">
+        <svg className="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </span>
+      <span>Settings</span>
+    </>
+  );
+
+  const handleOpenSettingsFromMobileSidebar = useCallback(() => {
+    onMobileClose();
+    openSettings();
+  }, [onMobileClose, openSettings]);
+  const renderCompactRow = useCallback((args: {
+    key: string;
+    label: string;
+    active: boolean;
+    onClick: () => void;
+    icon: ReactNode;
+    testId?: string;
+    badge?: ReactNode;
+    iconSizeClass?: string;
+  }) => {
+    const compactIcon = isValidElement<{ className?: string }>(args.icon)
+      ? cloneElement(args.icon, {
+          className: `${args.icon.props.className ?? ""} ${args.iconSizeClass ?? "h-[18px] w-[18px]"}`.trim(),
+        })
+      : args.icon;
+
+    return (
+      <Tooltip key={args.key} label={args.label} side="right" className="flex w-full">
+        <button
+          type="button"
+          onClick={args.onClick}
+          data-testid={args.testId}
+          className={`group/compact relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-[var(--card-radius)] border transition-all ${
+            args.active
+              ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
+              : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
+        }`}
+        aria-label={args.label}
+      >
+          <span className={`flex items-center justify-center ${args.iconSizeClass ?? "h-[18px] w-[18px]"}`}>
+            {compactIcon}
+          </span>
+          {args.badge ? (
+          <span
+            className="pointer-events-none absolute"
+            style={{ right: "-4px", top: "-4px" }}
+          >
+            {args.badge}
+          </span>
+          ) : null}
+        </button>
+      </Tooltip>
+    );
+  }, []);
+
+  const renderSidebarIconBadge = useCallback((badge: ReactNode) => (
+    <span className="flex h-3.5 w-3.5 items-center justify-center">
+      {badge}
+    </span>
+  ), []);
+
+  const renderSidebarRowIcon = useCallback((icon: ReactNode, badge?: ReactNode, iconSizeClass = "h-4 w-4") => {
+    const resolvedIcon = isValidElement<{ className?: string }>(icon)
+      ? cloneElement(icon, {
+          className: `${icon.props.className ?? ""} ${iconSizeClass}`.trim(),
+        })
+      : icon;
+
+    return (
+      <span className="relative flex h-5 w-5 shrink-0 items-center justify-center">
+        {resolvedIcon}
+        {badge ? (
+          <span
+            className="pointer-events-none absolute"
+            style={{ right: "-4px", top: "-4px" }}
+          >
+            {badge}
+          </span>
+        ) : null}
+      </span>
+    );
+  }, []);
+
+  const labeledSourceIconSizeClass = useCallback((sourceId?: string) => (
+    sourceId === undefined
+      ? "h-[18px] w-[18px]"
+      : sourceId === "facebook"
+        ? "h-[17px] w-[17px]"
+        : "h-4 w-4"
+  ), []);
+
+  const compactSourceIconSizeClass = useCallback((sourceId?: string) => (
+    sourceId === undefined
+      ? "h-[20px] w-[20px]"
+      : sourceId === "facebook"
+        ? "h-[19px] w-[19px]"
+        : "h-[18px] w-[18px]"
+  ), []);
+
+  const getSourceBadge = useCallback((source: SourceNavigationItem, sourceStatus?: SidebarSourceStatusSummary | null) => {
+    if (source.id && source.id !== "rss" && SourceIndicator) {
+      return renderSidebarIconBadge(<SourceIndicator sourceId={source.id} />);
+    }
+
+    if (sourceStatus) {
+      return renderSidebarIconBadge(
+        <ProviderStatusIndicator
+          tone={sourceStatus.tone}
+          syncing={sourceStatus.syncing}
+          label={sourceStatus.label}
+          size="xxs"
+          testId={`source-status-${sourceKey(source)}`}
+        />,
+      );
+    }
+
+    if (SourceIndicator) {
+      return renderSidebarIconBadge(<SourceIndicator sourceId={source.id ?? "all"} />);
+    }
+
+    return undefined;
+  }, [SourceIndicator, renderSidebarIconBadge]);
+
+  const pendingFriendsBadge = pendingMatchCount > 0
+    ? renderSidebarIconBadge(<span className="flex h-2.5 w-2.5 rounded-full bg-[var(--theme-accent-secondary)]" />)
+    : undefined;
+  const sidebarLabelClass = `min-w-0 flex-1 truncate whitespace-nowrap ${narrowLabeledSidebar ? "pr-[2px]" : "pr-1"} [text-overflow:clip]`;
+  const sidebarFeedLabelClass = `${sidebarLabelClass} text-xs`;
+
   const sidebarBody = (
     <nav
-      className={`flex-1 min-h-0 flex flex-col ${sidebarPaddingClass} pt-4 overflow-y-auto minimal-scroll`}
-      style={{ paddingBottom: "calc(1rem + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))" }}
+      data-testid="app-sidebar-body"
+      className="minimal-scroll flex min-h-0 flex-1 flex-col overflow-y-auto"
+      style={sidebarBodyStyle}
     >
-          <SearchJumpField compactSidebar={compactSidebar} />
+          <SearchJumpField compactSidebar={compactSidebar} narrowSidebar={narrowLabeledSidebar} variant={searchVariant} />
 
-          <ul className="flex flex-col gap-1">
+          <ul className={`flex flex-col ${compactRail ? "gap-0" : "gap-1"}`}>
             {[allSource].map((source) => (
+              compactRail ? (
+                <li key={source.id ?? "all"} className="order-1">
+                  {renderCompactRow({
+                    key: sourceKey(source),
+                    label: source.label,
+                    active: isTopSourceActive(source),
+                    onClick: () => handleSourceClick(source),
+                    icon: source.icon,
+                    testId: `source-row-${sourceKey(source)}`,
+                    badge: getSourceBadge(source),
+                    iconSizeClass: compactSourceIconSizeClass(source.id),
+                  })}
+                </li>
+              ) : (
                 <li
                   key={source.id ?? "all"}
                   className={`order-1 group/source flex items-stretch gap-2 rounded-lg border transition-all ${
@@ -712,7 +1004,7 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
                     onClick={() => handleSourceClick(source)}
                     data-testid={`source-row-${sourceKey(source)}`}
                     className={`
-                      flex-1 cursor-pointer flex items-center gap-3 ${rowLeadingPaddingClass} py-1.5 min-w-0
+                      flex-1 cursor-pointer flex items-center ${rowGapClass} ${rowLeadingPaddingClass} py-1.5 min-w-0
                       text-left text-sm transition-all
                       ${
                         isTopSourceActive(source)
@@ -720,24 +1012,20 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
                           : "text-[var(--theme-text-secondary)] group-hover/source:text-[var(--theme-text-primary)]"
                       }
                     `}
-                  >
-                    <span className="w-5 flex items-center justify-center">{source.icon}</span>
-                    <span className="min-w-0 flex-1 truncate">{source.label}</span>
+                    >
+                    {renderSidebarRowIcon(
+                      source.icon,
+                      getSourceBadge(source),
+                      labeledSourceIconSizeClass(source.id),
+                    )}
+                    <span className={sidebarLabelClass}>{source.label}</span>
                   </button>
                   <div
                     onClick={() => handleSourceClick(source)}
                     className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
                   >
-                    {SourceIndicator ? (
-                      <span
-                        data-testid={`source-indicator-slot-${sourceKey(source)}`}
-                        className="flex h-4 w-4 shrink-0 items-center justify-center"
-                      >
-                        <SourceIndicator sourceId={source.id ?? "all"} />
-                      </span>
-                    ) : null}
-                    <div className="relative ml-1.5 h-6 w-[54px] shrink-0">
-                      {sourceTotalCount(source) > 0 && (
+                    <div className={`relative h-6 shrink-0 ${rowCountsVisible ? "ml-0.5 w-[54px]" : "ml-0 w-0"}`}>
+                      {rowCountsVisible && sourceTotalCount(source) > 0 && (
                         <span
                           data-testid={`source-counts-${sourceKey(source)}`}
                           className={`absolute inset-y-0 right-0 flex items-center gap-0.5 text-[10px] leading-none tabular-nums transition-all duration-200 ease-in-out ${
@@ -756,120 +1044,194 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
                     </div>
                   </div>
                 </li>
-              ))}
+              )
+            ))}
             <li className="order-4">
-              <button
-                onClick={() => showFeed({ savedOnly: true })}
-                className={`
-                  w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-1.5 rounded-lg
-                  text-left text-sm transition-all border
-                  ${
-                    isFeedView && activeFilter.savedOnly
-                      ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
-                      : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-                  }
-                `}
-              >
-                <span className="w-5 flex items-center justify-center"><BookmarkIcon /></span>
-                <span className="flex-1">Saved</span>
-                {savedCount > 0 && (
-                  <span className="text-[10px] tabular-nums text-[color:var(--theme-text-soft)]">{fmt(savedCount)}</span>
-                )}
-              </button>
+              {compactRail ? (
+                renderCompactRow({
+                  key: "saved",
+                  label: "Saved",
+                  active: isFeedView && !!activeFilter.savedOnly,
+                  onClick: () => showFeed({ savedOnly: true }),
+                  icon: <BookmarkIcon />,
+                })
+              ) : (
+                <button
+                  onClick={() => showFeed({ savedOnly: true })}
+                  className={`
+                    w-full cursor-pointer flex items-center ${rowGapClass} ${rowPaddingClass} py-1.5 rounded-lg
+                    text-left text-sm transition-all border
+                    ${
+                      isFeedView && activeFilter.savedOnly
+                        ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
+                        : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+                    }
+                  `}
+                >
+                  {renderSidebarRowIcon(<BookmarkIcon />)}
+                  <span className={sidebarLabelClass}>Saved</span>
+                  {rowCountsVisible && savedCount > 0 && (
+                    <span className="text-[10px] tabular-nums text-[color:var(--theme-text-soft)]">{fmt(savedCount)}</span>
+                  )}
+                </button>
+              )}
             </li>
             <li className="order-5">
-              <button
-                onClick={() => showFeed({ archivedOnly: true })}
-                className={`
-                  w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-1.5 rounded-lg
-                  text-left text-sm transition-all border
-                  ${
-                    isFeedView && activeFilter.archivedOnly
-                      ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
-                      : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
-                  }
-                `}
-              >
-                <span className="w-5 flex items-center justify-center"><ArchiveIcon /></span>
-                <span className="flex-1">Archived</span>
-                {archivedCount > 0 && (
-                  <span className="text-[10px] tabular-nums text-[color:var(--theme-text-soft)]">{fmt(archivedCount)}</span>
-                )}
-              </button>
+              {compactRail ? (
+                renderCompactRow({
+                  key: "archived",
+                  label: "Archived",
+                  active: isFeedView && !!activeFilter.archivedOnly,
+                  onClick: () => showFeed({ archivedOnly: true }),
+                  icon: <ArchiveIcon />,
+                })
+              ) : (
+                <button
+                  onClick={() => showFeed({ archivedOnly: true })}
+                  className={`
+                    w-full cursor-pointer flex items-center ${rowGapClass} ${rowPaddingClass} py-1.5 rounded-lg
+                    text-left text-sm transition-all border
+                    ${
+                      isFeedView && activeFilter.archivedOnly
+                        ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
+                        : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
+                    }
+                  `}
+                >
+                  {renderSidebarRowIcon(<ArchiveIcon />)}
+                  <span className={sidebarLabelClass}>Archived</span>
+                  {rowCountsVisible && archivedCount > 0 && (
+                    <span className="text-[10px] tabular-nums text-[color:var(--theme-text-soft)]">{fmt(archivedCount)}</span>
+                  )}
+                </button>
+              )}
             </li>
             <li className="order-2">
-              <button
-                onClick={() => {
-                  setActiveView("friends");
-                  setSelectedFriend(null);
-                  setSelectedItem(null);
-                  onClose();
-                }}
-                data-testid="source-row-friends"
-                className={`
-                  w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-1.5 rounded-lg
-                  text-left text-sm transition-all border
-                  ${
-                    activeView === "friends"
-                      ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
-                      : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-                  }
-                `}
-              >
-                <span className="w-5 flex items-center justify-center"><UsersIcon /></span>
-                <span className="flex-1">Friends</span>
-                {pendingMatchCount > 0 && (
-                  <span className="shrink-0 rounded-full bg-[rgb(var(--theme-accent-secondary-rgb)/0.22)] px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-[var(--theme-text-primary)]">
-                    {fmt(pendingMatchCount)}
-                  </span>
-                )}
-                {friendCount > 0 && (
-                  <span
-                    className={`shrink-0 text-[10px] tabular-nums ${
-                      activeView === "friends" ? "text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"
-                    }`}
-                  >
-                    {fmt(friendCount)}
-                  </span>
-                )}
-              </button>
+              {compactRail ? (
+                renderCompactRow({
+                  key: "friends",
+                  label: "Friends",
+                  active: activeView === "friends",
+                  onClick: () => {
+                    setActiveView("friends");
+                    setSelectedFriend(null);
+                    setSelectedItem(null);
+                    onMobileClose();
+                  },
+                  icon: <UsersIcon />,
+                  testId: "source-row-friends",
+                  badge: pendingFriendsBadge,
+                })
+              ) : (
+                <button
+                  onClick={() => {
+                    setActiveView("friends");
+                    setSelectedFriend(null);
+                    setSelectedItem(null);
+                    onMobileClose();
+                  }}
+                  data-testid="source-row-friends"
+                  className={`
+                    w-full cursor-pointer flex items-center ${rowGapClass} ${rowPaddingClass} py-1.5 rounded-lg
+                    text-left text-sm transition-all border
+                    ${
+                      activeView === "friends"
+                        ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
+                        : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+                    }
+                  `}
+                >
+                  {renderSidebarRowIcon(<UsersIcon />, pendingFriendsBadge)}
+                  <span className={sidebarLabelClass}>Friends</span>
+                  {rowCountsVisible && pendingMatchCount > 0 && (
+                    <span className="shrink-0 rounded-full bg-[rgb(var(--theme-accent-secondary-rgb)/0.22)] px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-[var(--theme-text-primary)]">
+                      {fmt(pendingMatchCount)}
+                    </span>
+                  )}
+                  {rowCountsVisible && friendCount > 0 && (
+                    <span
+                      className={`shrink-0 text-[10px] tabular-nums ${
+                        activeView === "friends" ? "text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"
+                      }`}
+                    >
+                      {fmt(friendCount)}
+                    </span>
+                  )}
+                </button>
+              )}
             </li>
             <li className="order-3">
-              <button
-                onClick={() => {
-                  setActiveView("map");
-                  setSelectedFriend(null);
-                  setSelectedItem(null);
-                  setSearchQuery("");
-                  onClose();
-                }}
-                data-testid="source-row-map"
-                className={`
-                  w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-1.5 rounded-lg
-                  text-left text-sm transition-all border
-                  ${
-                    activeView === "map"
-                      ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
-                      : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-                  }
-                `}
-              >
-                <span className="w-5 flex items-center justify-center"><MapPinIcon /></span>
-                <span className="flex-1">Map</span>
-                {mapFriendCount > 0 && (
-                  <span
-                    className={`shrink-0 text-[10px] tabular-nums ${
-                      activeView === "map" ? "text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"
-                    }`}
-                  >
-                    {fmt(mapFriendCount)}
-                  </span>
-                )}
-              </button>
+              {compactRail ? (
+                renderCompactRow({
+                  key: "map",
+                  label: "Map",
+                  active: activeView === "map",
+                  onClick: () => {
+                    setActiveView("map");
+                    setSelectedFriend(null);
+                    setSelectedItem(null);
+                    setSearchQuery("");
+                    onMobileClose();
+                  },
+                  icon: <MapPinIcon />,
+                  testId: "source-row-map",
+                })
+              ) : (
+                <button
+                  onClick={() => {
+                    setActiveView("map");
+                    setSelectedFriend(null);
+                    setSelectedItem(null);
+                    setSearchQuery("");
+                    onMobileClose();
+                  }}
+                  data-testid="source-row-map"
+                  className={`
+                    w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-1.5 rounded-lg
+                    text-left text-sm transition-all border
+                    ${
+                      activeView === "map"
+                        ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
+                        : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
+                    }
+                  `}
+                >
+                  {renderSidebarRowIcon(<MapPinIcon />)}
+                  <span className={sidebarLabelClass}>Map</span>
+                  {rowCountsVisible && mapCount > 0 && (
+                    <span
+                      className={`shrink-0 text-[10px] tabular-nums ${
+                        activeView === "map" ? "text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"
+                      }`}
+                    >
+                      {fmt(mapCount)}
+                    </span>
+                  )}
+                </button>
+              )}
             </li>
             {providerSourceItems.map((source) => {
-                const isRssSource = source.id === "rss" && feedList.length > 0;
+                const isRssSource = source.id === "rss" && feedList.length > 0 && !compactRail;
                 const sourceStatus = getSourceStatus?.(source.id) ?? null;
+
+                if (compactRail) {
+                  const compactBadge = getSourceBadge(source, sourceStatus);
+
+                  return (
+                    <li key={source.id ?? "all"} className={sourceOrderClass(source)}>
+                      {renderCompactRow({
+                        key: sourceKey(source),
+                        label: source.label,
+                        active: isTopSourceActive(source),
+                        onClick: () => handleSourceClick(source),
+                        icon: source.icon,
+                        testId: `source-row-${sourceKey(source)}`,
+                        badge: compactBadge,
+                        iconSizeClass: compactSourceIconSizeClass(source.id),
+                      })}
+                    </li>
+                  );
+                }
 
                 if (isRssSource) {
                   return (
@@ -905,7 +1267,7 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
                           >
                             <div
                               className={`
-                                flex min-w-0 max-w-full items-center gap-3 text-left text-sm transition-all
+                                flex min-w-0 max-w-full flex-1 items-center ${rowGapClass} text-left text-sm transition-all
                                 ${
                                   isTopSourceActive(source)
                                     ? "text-[color:var(--theme-text-primary)]"
@@ -913,34 +1275,65 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
                                 }
                               `}
                             >
-                              <span className="w-5 flex items-center justify-center">{source.icon}</span>
-                              <span className="min-w-0 truncate">{source.label}</span>
+                              {narrowLabeledSidebar && sourceStatus ? (
+                                <span className="relative shrink-0">
+                                  {renderSidebarRowIcon(
+                                    source.icon,
+                                    undefined,
+                                    labeledSourceIconSizeClass(source.id),
+                                  )}
+                                  <span className="pointer-events-none absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center">
+                                    <span className="flex h-4 w-4 items-center justify-center">
+                                      <ProviderStatusIndicator
+                                        tone={sourceStatus.tone}
+                                        syncing={sourceStatus.syncing}
+                                        label={sourceStatus.label}
+                                        size="xxs"
+                                        testId={`source-status-${sourceKey(source)}`}
+                                      />
+                                    </span>
+                                  </span>
+                                </span>
+                              ) : (
+                                renderSidebarRowIcon(
+                                  source.icon,
+                                  undefined,
+                                  labeledSourceIconSizeClass(source.id),
+                                )
+                              )}
+                              <div className="flex min-w-0 flex-1 items-center gap-1">
+                                <span className="min-w-0 overflow-hidden whitespace-nowrap pr-[2px] [text-overflow:clip]">
+                                  {source.label}
+                                </span>
+                                {rssAccordionVisible ? (
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setRssFeedsOpen((value) => !value);
+                                    }}
+                                    className="shrink-0 rounded p-1 text-[color:var(--theme-text-soft)] transition-colors hover:text-[color:var(--theme-text-secondary)]"
+                                    aria-label={rssFeedsOpen ? "Collapse feeds" : "Expand feeds"}
+                                    aria-expanded={rssFeedsOpen}
+                                  >
+                                    <svg
+                                      className={`h-3 w-3 transition-transform ${rssFeedsOpen ? "rotate-90" : ""}`}
+                                      fill="none"
+                                      viewBox="0 0 24 24"
+                                      stroke="currentColor"
+                                    >
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
+                                  </button>
+                                ) : null}
+                              </div>
                             </div>
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setRssFeedsOpen((value) => !value);
-                              }}
-                              className="shrink-0 rounded p-1 text-[color:var(--theme-text-soft)] transition-colors hover:text-[color:var(--theme-text-secondary)]"
-                              aria-label={rssFeedsOpen ? "Collapse feeds" : "Expand feeds"}
-                              aria-expanded={rssFeedsOpen}
-                            >
-                              <svg
-                                className={`h-3 w-3 transition-transform ${rssFeedsOpen ? "rotate-90" : ""}`}
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                              >
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                              </svg>
-                            </button>
                           </div>
                           <div
                             onClick={() => handleSourceClick(source)}
                             className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
                           >
-                            {sourceStatus ? (
+                            {!narrowLabeledSidebar && sourceStatus ? (
                               <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                                 <ProviderStatusIndicator
                                   tone={sourceStatus.tone}
@@ -951,8 +1344,8 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
                                 />
                               </span>
                             ) : null}
-                            <div className="relative ml-1.5 h-6 w-[54px] shrink-0">
-                              {sourceTotalCount(source) > 0 && (
+                            <div className={`relative h-6 shrink-0 ${rowCountsVisible || sourceMenusVisible ? "ml-1.5 w-[54px]" : "ml-0 w-0"}`}>
+                              {rowCountsVisible && sourceTotalCount(source) > 0 && (
                                 <span
                                   data-testid={`source-counts-${sourceKey(source)}`}
                                   className={`absolute inset-y-0 right-0 flex items-center gap-0.5 text-[10px] leading-none tabular-nums transition-all duration-200 ease-in-out ${
@@ -968,7 +1361,7 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
                                   <span className="text-[var(--theme-text-soft)]">{fmt(sourceTotalCount(source))}</span>
                                 </span>
                               )}
-                              {canShowSourceMenu(source) ? (
+                              {sourceMenusVisible && canShowSourceMenu(source) ? (
                                 <button
                                   aria-label={`Options for ${source.label}`}
                                   data-testid={`source-menu-trigger-${sourceKey(source)}`}
@@ -1006,11 +1399,11 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
                           </div>
                         </div>
 
-                        {rssFeedsOpen && (
+                        {rssAccordionVisible && rssFeedsOpen && (
                           <div className="space-y-2">
                             {visibleFeedList.length > 0 ? (
                               <>
-                                <div className={compactSidebar ? "pl-3" : "pl-6"}>
+                                <div className={narrowLabeledSidebar ? "pl-2" : "pl-6"}>
                                   <ul className="space-y-0.5">
                                   {pagedFeeds.map((feed) => {
                                     const unread = feedUnreadCounts[feed.url] ?? 0;
@@ -1042,14 +1435,14 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
                                           ) : (
                                             <RssIcon className="w-4 h-4 shrink-0 text-[color:var(--theme-text-soft)]" />
                                           )}
-                                          <span className="flex-1 truncate text-xs">{feed.title}</span>
+                                          <span className={sidebarFeedLabelClass}>{feed.title}</span>
                                         </button>
 
                                         <div
                                           onClick={() => handleFeedClick(feed.url)}
                                           className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
                                         >
-                                          {total > 0 && (
+                                          {rowCountsVisible && total > 0 && (
                                             <span className={`${menuOpen ? "hidden" : "flex group-hover/feed:hidden"} items-center gap-0.5 text-[10px] tabular-nums`}>
                                               <span className={unread > 0 ? "font-medium text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"}>
                                                 {fmt(unread)}
@@ -1078,7 +1471,7 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
                                                 setMenuAnchorElement(e.currentTarget);
                                               }
                                             }}
-                                            className={`${menuOpen ? "flex bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-primary)]" : "hidden group-hover/feed:flex text-[color:var(--theme-text-muted)]"} items-center rounded-md p-1 transition-colors hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]`}
+                                            className={`${menuOpen ? "flex bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-primary)]" : sourceMenusVisible ? "hidden group-hover/feed:flex text-[color:var(--theme-text-muted)]" : "hidden"} items-center rounded-md p-1 transition-colors hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]`}
                                           >
                                             <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                                               <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
@@ -1144,7 +1537,7 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
                       onClick={() => handleSourceClick(source)}
                       data-testid={`source-row-${sourceKey(source)}`}
                       className={`
-                        flex-1 cursor-pointer flex items-center gap-3 ${rowLeadingPaddingClass} py-1.5 min-w-0
+                        flex-1 cursor-pointer flex items-center ${rowGapClass} ${rowLeadingPaddingClass} py-1.5 min-w-0
                         text-left text-sm transition-all
                         ${
                           isTopSourceActive(source)
@@ -1153,8 +1546,12 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
                         }
                       `}
                     >
-                      <span className="w-5 flex items-center justify-center">{source.icon}</span>
-                      <span className="min-w-0 flex-1 truncate">{source.label}</span>
+                      {renderSidebarRowIcon(
+                        source.icon,
+                        undefined,
+                        labeledSourceIconSizeClass(source.id),
+                      )}
+                      <span className={sidebarLabelClass}>{source.label}</span>
                     </button>
                     <div
                       onClick={() => handleSourceClick(source)}
@@ -1168,8 +1565,8 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
                           <SourceIndicator sourceId={source.id ?? "all"} />
                         </span>
                       ) : null}
-                      <div className="relative ml-1.5 h-6 w-[54px] shrink-0">
-                        {sourceTotalCount(source) > 0 && (
+                      <div className={`relative h-6 shrink-0 ${rowCountsVisible || sourceMenusVisible ? "ml-1.5 w-[54px]" : "ml-0 w-0"}`}>
+                        {rowCountsVisible && sourceTotalCount(source) > 0 && (
                           <span
                             data-testid={`source-counts-${sourceKey(source)}`}
                             className={`absolute inset-y-0 right-0 flex items-center gap-0.5 text-[10px] leading-none tabular-nums transition-all duration-200 ease-in-out ${
@@ -1185,7 +1582,7 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
                             <span className="text-[var(--theme-text-soft)]">{fmt(sourceTotalCount(source))}</span>
                           </span>
                         )}
-                        {canShowSourceMenu(source) ? (
+                        {sourceMenusVisible && canShowSourceMenu(source) ? (
                           <button
                             aria-label={`Options for ${source.label}`}
                             data-testid={`source-menu-trigger-${sourceKey(source)}`}
@@ -1226,13 +1623,11 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
           </ul>
 
           {/* Tags */}
-          {topLevelTags.length > 0 && (
+          {!compactRail && topLevelTags.length > 0 && (
             <SidebarSection title="Tags" defaultOpen={true} count={allTags.length}>
               <ul className="space-y-0.5">
                 {topLevelTags.map((top) => {
-                  const children = allTags.filter(
-                    (t) => t.startsWith(`${top}/`) && t !== top,
-                  );
+                  const children = childTagsOf(allTags, top).filter((tag) => tag !== top);
                   const hasChildren = children.length > 0;
                   const active = isTagActive(top);
                   return (
@@ -1263,79 +1658,128 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
           )}
 
           {/* Settings — pushed to bottom */}
-          <div className="mt-auto shrink-0">
-            <button
-              onClick={openSettings}
-              className={`w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-1.5 rounded-lg text-left text-sm text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}
-            >
-              <span className="w-5 text-center">
-                <svg className="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </span>
-              <span>Settings</span>
-            </button>
-          </div>
+          {!isMobileDevice ? (
+            <div className="mt-auto shrink-0">
+            {compactRail ? (
+              renderCompactRow({
+                key: "settings",
+                label: "Settings",
+                active: false,
+                onClick: openSettings,
+                icon: (
+                  <svg className="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                ),
+              })
+            ) : (
+              <button
+                onClick={openSettings}
+                className={`w-full cursor-pointer flex items-center ${rowGapClass} ${rowPaddingClass} py-1.5 rounded-lg text-left text-sm text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}
+              >
+                <span className="w-5 text-center">
+                  <svg className="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </span>
+                <span className={sidebarLabelClass}>Settings</span>
+              </button>
+            )}
+            </div>
+          ) : null}
     </nav>
   );
 
   return (
     <>
-      {open && (
+      {isMobileDevice && mobileOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/60 md:hidden"
-          onClick={onClose}
+          onClick={onMobileClose}
         />
       )}
 
+      {!isMobileDevice ? (
       <div
         data-testid="app-sidebar-shell"
-        className="hidden md:flex flex-none overflow-hidden"
+        className="flex flex-none overflow-visible"
         style={{
-          width: desktopExpanded ? width + 16 : 0,
-          opacity: desktopExpanded ? 1 : 0,
-          paddingTop: desktopExpanded ? "var(--feed-card-gap, 8px)" : 0,
-          transition: dragging.current ? "none" : "width 220ms ease, opacity 180ms ease",
+          width: desktopShellWidth,
+          paddingTop: desktopShellTopPadding,
+          transition: desktopShellTransition,
         }}
       >
-        <div className="flex h-full w-full items-stretch">
-          <aside
-            data-testid="app-sidebar"
-            className="theme-floating-panel relative z-10 flex h-full min-h-0 shrink-0 flex-col overflow-hidden"
-            style={{ width: `${width}px` }}
-          >
-            {sidebarBody}
-          </aside>
-          <div
-            data-testid="app-sidebar-resize-handle"
-            className="theme-resize-gap-handle h-full w-4 shrink-0"
-            onMouseDown={handleDragStart}
-          />
+        <div className="relative h-full w-full overflow-visible">
+          {renderMode !== "closed" || closedPreviewActive ? (
+            <aside
+              data-testid="app-sidebar"
+              className="theme-floating-panel relative z-10 flex h-full min-h-0 shrink-0 flex-col overflow-hidden"
+              style={{
+                width: px(desktopAsideRenderedWidth),
+                transform: desktopAsideTransform,
+                transition: desktopAsideTransition,
+              }}
+            >
+              {sidebarBody}
+            </aside>
+          ) : null}
+          {resizeHandleVisible ? (
+            <div
+              data-testid="app-sidebar-resize-handle"
+              className="theme-resize-gap-handle absolute inset-y-0 z-20 w-4"
+              style={{ left: px(rawDesktopWidth) }}
+              onMouseDown={handleDragStart}
+            />
+          ) : null}
         </div>
       </div>
+      ) : null}
 
+      {isMobileDevice ? (
       <aside
         data-testid="app-sidebar-mobile"
         className={`
           fixed inset-y-0 left-0 z-50 flex min-h-0 h-full flex-col overflow-hidden bg-[color-mix(in_oklab,var(--theme-bg-root)_88%,transparent)]
-          transform transition-transform duration-200 ease-in-out md:hidden
-          ${open ? "translate-x-0" : "-translate-x-full"}
+          transform transition-transform duration-200 ease-in-out
+          ${mobileOpen ? "translate-x-0" : "-translate-x-full"}
         `}
-        style={{ width: `${width}px` }}
+        style={{ width: `${committedWidth}px` }}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-[var(--theme-border-subtle)] p-4 pt-[calc(env(safe-area-inset-top)+1rem)]">
           {!headerDragRegion && (
             <span className="text-lg font-bold gradient-text font-logo">FREED</span>
           )}
-          <button onClick={onClose} className="ml-auto rounded-lg p-2 transition-colors hover:bg-[var(--theme-bg-muted)]">
+          <button
+            onClick={onMobileToggle}
+            aria-label="Close menu"
+            className="ml-auto rounded-lg p-2 transition-colors hover:bg-[var(--theme-bg-muted)]"
+          >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
         </div>
         {sidebarBody}
+        <div
+          className="shrink-0 border-t border-[var(--theme-border-subtle)] pt-3"
+          style={{
+            paddingInline: `${sidebarPaddingInlinePx}px`,
+            paddingBottom: compactRail
+              ? `calc(${COMPACT_RAIL_OUTER_INSET_PX}px + env(safe-area-inset-bottom) + 1rem)`
+              : `calc(${sidebarPaddingBlockPx}px + env(safe-area-inset-bottom) + 1rem)`,
+          }}
+        >
+          <button
+            onClick={handleOpenSettingsFromMobileSidebar}
+            className={`w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-2 rounded-lg text-left text-sm text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}
+          >
+            {settingsButtonContent}
+          </button>
+        </div>
       </aside>
+      ) : null}
 
       <SettingsDialog open={showSettings} onClose={closeSettings} />
 
@@ -1385,7 +1829,7 @@ export function Sidebar({ open, onClose, desktopExpanded = true }: SidebarProps)
             settingsSectionForSource(selectedMenuSource)
               ? () => {
                   useSettingsStore.getState().openTo(settingsSectionForSource(selectedMenuSource)!);
-                  onClose();
+                  onMobileClose();
                 }
               : undefined
           }
@@ -1438,7 +1882,7 @@ function TagTreeNode({
           <svg className="w-3 h-3 shrink-0 text-[color:var(--theme-text-soft)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
           </svg>
-          <span className="truncate">{label}</span>
+          <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap pr-1.5 [text-overflow:clip]">{label}</span>
         </button>
         {hasChildren && (
           <button

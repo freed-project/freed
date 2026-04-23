@@ -1,3 +1,4 @@
+import { isTauri } from "@tauri-apps/api/core";
 import { Store, load } from "@tauri-apps/plugin-store";
 import { toast } from "@freed/ui/components/Toast";
 import {
@@ -22,6 +23,7 @@ import { storeLiAuthState } from "./li-auth";
 const HEALTH_STORE_FILE = "sync-health.json";
 const HEALTH_STORE_KEY = "provider-health";
 const FALLBACK_STORAGE_KEY = "freed.provider-health";
+const MOCK_STORE_STORAGE_KEY = `__TAURI_MOCK_STORE__:${HEALTH_STORE_FILE}`;
 const MAX_PROVIDER_ATTEMPTS = 20;
 const MAX_FEED_ATTEMPTS = 20;
 const PROVIDERS: HealthProviderId[] = [
@@ -173,8 +175,18 @@ function createEmptyState(now = Date.now()): PersistedHealthState {
 function fallbackRead(): PersistedHealthState | null {
   try {
     const raw = window.localStorage.getItem(FALLBACK_STORAGE_KEY);
+    if (raw) {
+      return coercePersistedHealthState(JSON.parse(raw));
+    }
+  } catch {
+    // Ignore fallback storage failures.
+  }
+
+  try {
+    const raw = window.localStorage.getItem(MOCK_STORE_STORAGE_KEY);
     if (!raw) return null;
-    return coercePersistedHealthState(JSON.parse(raw));
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return coercePersistedHealthState(parsed[HEALTH_STORE_KEY]);
   } catch {
     return null;
   }
@@ -186,9 +198,22 @@ function fallbackWrite(state: PersistedHealthState): void {
   } catch {
     // Ignore fallback storage failures.
   }
+
+  try {
+    const raw = window.localStorage.getItem(MOCK_STORE_STORAGE_KEY);
+    const parsed =
+      raw && raw.length > 0 ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    parsed[HEALTH_STORE_KEY] = state;
+    window.localStorage.setItem(MOCK_STORE_STORAGE_KEY, JSON.stringify(parsed));
+  } catch {
+    // Ignore mock store persistence failures.
+  }
 }
 
 async function getStore(): Promise<Store> {
+  if (!isTauri()) {
+    throw new Error("Native health store is unavailable outside Freed Desktop");
+  }
   if (!healthStore) {
     healthStore = await load(HEALTH_STORE_FILE, { defaults: {}, autoSave: true });
   }
@@ -279,6 +304,180 @@ function coercePause(value: unknown): ProviderPauseState | null {
   };
 }
 
+function inferOutcomeFromSnapshot(
+  snapshot: Partial<ProviderHealthSnapshot>,
+): HealthOutcome | undefined {
+  if (typeof snapshot.lastOutcome === "string") {
+    return snapshot.lastOutcome as HealthOutcome;
+  }
+  if (snapshot.status === "healthy") return "success";
+  if (snapshot.status === "paused") {
+    const pauseReason = snapshot.pause?.pauseReason?.toLocaleLowerCase() ?? "";
+    if (pauseReason.includes("cooling down")) return "cooldown";
+    return "provider_rate_limit";
+  }
+  if (snapshot.status === "degraded") return "error";
+  return undefined;
+}
+
+function synthesizeProviderAttempts(
+  provider: HealthProviderId,
+  snapshotLike: Partial<PersistedProviderHealth & ProviderHealthSnapshot>,
+): ProviderHealthAttempt[] {
+  const attempts: ProviderHealthAttempt[] = [];
+  const lastSuccessfulAt =
+    typeof snapshotLike.lastSuccessfulAt === "number"
+      ? snapshotLike.lastSuccessfulAt
+      : undefined;
+  const inferredOutcome = inferOutcomeFromSnapshot(snapshotLike);
+  const lastAttemptAt =
+    typeof snapshotLike.lastAttemptAt === "number"
+      ? snapshotLike.lastAttemptAt
+      : lastSuccessfulAt;
+  const reason =
+    typeof snapshotLike.lastError === "string"
+      ? snapshotLike.lastError
+      : typeof snapshotLike.currentMessage === "string"
+        ? snapshotLike.currentMessage
+        : snapshotLike.pause?.pauseReason;
+
+  if (
+    typeof lastSuccessfulAt === "number" &&
+    (inferredOutcome !== "success" || lastAttemptAt !== lastSuccessfulAt)
+  ) {
+    attempts.push({
+      id: `${lastSuccessfulAt}-success`,
+      provider,
+      scope: "provider",
+      outcome: "success",
+      startedAt: lastSuccessfulAt,
+      finishedAt: lastSuccessfulAt,
+      durationMs: 0,
+      itemsSeen: 0,
+      itemsAdded: 0,
+      bytesMoved: 0,
+      signalType: "none",
+    });
+  }
+
+  if (typeof lastAttemptAt === "number" && inferredOutcome) {
+    attempts.push({
+      id: `${lastAttemptAt}-${provider}`,
+      provider,
+      scope: "provider",
+      outcome: inferredOutcome,
+      reason,
+      startedAt: lastAttemptAt,
+      finishedAt: lastAttemptAt,
+      durationMs: 0,
+      itemsSeen: 0,
+      itemsAdded: 0,
+      bytesMoved: 0,
+      signalType: "none",
+    });
+  }
+
+  return attempts.sort((a, b) => b.finishedAt - a.finishedAt);
+}
+
+function synthesizeFeedAttempts(
+  feedUrl: string,
+  feedState: Partial<PersistedFeedHealth & RssFeedHealthSnapshot>,
+): ProviderHealthAttempt[] {
+  const attempts: ProviderHealthAttempt[] = [];
+  const lastAttemptAt =
+    typeof feedState.lastAttemptAt === "number" ? feedState.lastAttemptAt : undefined;
+  const lastSuccessfulAt =
+    typeof feedState.lastSuccessfulAt === "number" ? feedState.lastSuccessfulAt : undefined;
+  const failedAttemptsSinceSuccess = Math.max(
+    0,
+    Number(feedState.failedAttemptsSinceSuccess ?? 0),
+  );
+  const impliedFailureCount =
+    failedAttemptsSinceSuccess > 0
+      ? failedAttemptsSinceSuccess
+      : feedState.status === "failing"
+        ? 3
+        : 0;
+
+  if (
+    impliedFailureCount > 0 &&
+    typeof lastAttemptAt === "number"
+  ) {
+    const outageSince =
+      typeof feedState.outageSince === "number"
+        ? feedState.outageSince
+        : lastSuccessfulAt ?? lastAttemptAt;
+    const safeOutageStart =
+      typeof lastSuccessfulAt === "number" && outageSince <= lastSuccessfulAt
+        ? lastSuccessfulAt + 60_000
+        : outageSince;
+    const spreadMs = Math.max(60_000, lastAttemptAt - safeOutageStart);
+    const stepMs =
+      impliedFailureCount > 1
+        ? Math.max(60_000, Math.floor(spreadMs / (impliedFailureCount - 1)))
+        : 0;
+
+    for (let index = 0; index < impliedFailureCount; index += 1) {
+      const finishedAt = lastAttemptAt - stepMs * index;
+      attempts.push({
+        id: `${finishedAt}-${index}`,
+        provider: "rss",
+        scope: "rss_feed",
+        feedUrl,
+        feedTitle: feedState.feedTitle,
+        outcome: "error",
+        reason: feedState.lastError,
+        startedAt: finishedAt,
+        finishedAt,
+        durationMs: 0,
+        itemsSeen: 0,
+        itemsAdded: 0,
+        bytesMoved: 0,
+        signalType: "none",
+      });
+    }
+  }
+
+  if (typeof lastSuccessfulAt === "number") {
+    attempts.push({
+      id: `${lastSuccessfulAt}-success`,
+      provider: "rss",
+      scope: "rss_feed",
+      feedUrl,
+      feedTitle: feedState.feedTitle,
+      outcome: "success",
+      startedAt: lastSuccessfulAt,
+      finishedAt: lastSuccessfulAt,
+      durationMs: 0,
+      itemsSeen: 0,
+      itemsAdded: 0,
+      bytesMoved: 0,
+      signalType: "none",
+    });
+  }
+
+  if (attempts.length === 0 && typeof lastAttemptAt === "number") {
+    attempts.push({
+      id: `${lastAttemptAt}-rss`,
+      provider: "rss",
+      scope: "rss_feed",
+      feedUrl,
+      feedTitle: feedState.feedTitle,
+      outcome: "success",
+      startedAt: lastAttemptAt,
+      finishedAt: lastAttemptAt,
+      durationMs: 0,
+      itemsSeen: 0,
+      itemsAdded: 0,
+      bytesMoved: 0,
+      signalType: "none",
+    });
+  }
+
+  return attempts.sort((a, b) => b.finishedAt - a.finishedAt);
+}
+
 function coercePersistedHealthState(value: unknown): PersistedHealthState {
   const now = Date.now();
   const defaults = createEmptyState(now);
@@ -293,6 +492,10 @@ function coercePersistedHealthState(value: unknown): PersistedHealthState {
   for (const provider of PROVIDERS) {
     const next = rawProviders[provider];
     if (!next) continue;
+    const latestAttempts = coerceAttempts(
+      next.latestAttempts,
+      MAX_PROVIDER_ATTEMPTS,
+    );
     providers[provider] = {
       provider,
       dailyBuckets: coerceBuckets(
@@ -305,10 +508,10 @@ function coercePersistedHealthState(value: unknown): PersistedHealthState {
         defaultHourlyBuckets(now),
         "hourKey",
       ),
-      latestAttempts: coerceAttempts(
-        next.latestAttempts,
-        MAX_PROVIDER_ATTEMPTS,
-      ),
+      latestAttempts:
+        latestAttempts.length > 0
+          ? latestAttempts
+          : synthesizeProviderAttempts(provider, next),
       pause: coercePause(next.pause),
       lastPauseLevel:
         next.lastPauseLevel === 2 || next.lastPauseLevel === 3
@@ -341,8 +544,45 @@ function coercePersistedHealthState(value: unknown): PersistedHealthState {
         defaultHourlyBuckets(now),
         "hourKey",
       ),
-      latestAttempts: coerceAttempts(next.latestAttempts, MAX_FEED_ATTEMPTS),
+      latestAttempts: (() => {
+        const latestAttempts = coerceAttempts(next.latestAttempts, MAX_FEED_ATTEMPTS);
+        return latestAttempts.length > 0
+          ? latestAttempts
+          : synthesizeFeedAttempts(feedUrl, next);
+      })(),
     };
+  }
+
+  const rawFailingFeeds = (raw as Partial<{ failingRssFeeds: RssFeedHealthSnapshot[] }>).failingRssFeeds;
+  if (Array.isArray(rawFailingFeeds)) {
+    for (const feedState of rawFailingFeeds) {
+      if (!feedState || typeof feedState !== "object" || typeof feedState.feedUrl !== "string") {
+        continue;
+      }
+      rssFeeds[feedState.feedUrl] = {
+        feedUrl: feedState.feedUrl,
+        feedTitle:
+          typeof feedState.feedTitle === "string" && feedState.feedTitle.length > 0
+            ? feedState.feedTitle
+            : feedState.feedUrl,
+        dailyBuckets: coerceBuckets(
+          feedState.dailyBuckets,
+          defaultDailyBuckets(now),
+          "dateKey",
+        ),
+        hourlyBuckets: coerceBuckets(
+          feedState.hourlyBuckets,
+          defaultHourlyBuckets(now),
+          "hourKey",
+        ),
+        latestAttempts: (() => {
+          const latestAttempts = coerceAttempts(feedState.latestAttempts, MAX_FEED_ATTEMPTS);
+          return latestAttempts.length > 0
+            ? latestAttempts
+            : synthesizeFeedAttempts(feedState.feedUrl, feedState);
+        })(),
+      };
+    }
   }
 
   return {
@@ -649,6 +889,10 @@ function publishState(state: PersistedHealthState): void {
 }
 
 async function persistState(state: PersistedHealthState): Promise<void> {
+  if (!isTauri()) {
+    fallbackWrite(state);
+    return;
+  }
   try {
     const store = await getStore();
     await store.set(HEALTH_STORE_KEY, state);
@@ -663,6 +907,9 @@ async function persistState(state: PersistedHealthState): Promise<void> {
 }
 
 async function readState(): Promise<PersistedHealthState> {
+  if (!isTauri()) {
+    return fallbackRead() ?? createEmptyState();
+  }
   try {
     const store = await getStore();
     const value = await store.get<unknown>(HEALTH_STORE_KEY);

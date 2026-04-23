@@ -37,6 +37,15 @@ declare module "@tauri-apps/api/path" {
   export function appDataDir(): Promise<string>;
 }
 
+declare module "@tauri-apps/api/window" {
+  export interface CurrentWindow {
+    label: string;
+    startDragging(): Promise<void>;
+  }
+
+  export function getCurrentWindow(): CurrentWindow;
+}
+
 declare module "@tauri-apps/plugin-process" {
   export function relaunch(): Promise<never>;
   export function exit(code?: number): Promise<void>;

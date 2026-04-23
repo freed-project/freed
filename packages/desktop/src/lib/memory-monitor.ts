@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { setRuntimeMemory, type RuntimeMemorySnapshot } from "@freed/ui/lib/debug-store";
 import { getStatus as getContentFetcherStatus } from "./content-fetcher";
 import { log } from "./logger";
@@ -45,10 +45,17 @@ function formatBytes(bytes: number): string {
 }
 
 async function sampleRuntimeMemory(reason: "startup" | "interval"): Promise<void> {
-  const native = await invoke<NativeRuntimeMemoryStats>("get_runtime_memory_stats");
   const fetcher = getContentFetcherStatus();
   const renderer = getRendererMemoryStats();
   const domNodeCount = getDomNodeCount();
+  const native = isTauri()
+    ? await invoke<NativeRuntimeMemoryStats>("get_runtime_memory_stats")
+    : {
+        processResidentBytes: 0,
+        processVirtualBytes: 0,
+        relayDocBytes: 0,
+        relayClientCount: 0,
+      };
 
   peakResidentBytes = Math.max(peakResidentBytes, native.processResidentBytes);
   peakRelayDocBytes = Math.max(peakRelayDocBytes, native.relayDocBytes);
@@ -73,13 +80,13 @@ async function sampleRuntimeMemory(reason: "startup" | "interval"): Promise<void
   const shouldLog =
     reason === "startup" ||
     sampleCount % MEMORY_LOG_INTERVAL === 0 ||
-    native.processResidentBytes >= HIGH_RESIDENT_BYTES ||
+    (isTauri() && native.processResidentBytes >= HIGH_RESIDENT_BYTES) ||
     native.relayDocBytes >= HIGH_RELAY_DOC_BYTES;
 
   if (!shouldLog) return;
 
   const level =
-    native.processResidentBytes >= HIGH_RESIDENT_BYTES ||
+    (isTauri() && native.processResidentBytes >= HIGH_RESIDENT_BYTES) ||
     native.relayDocBytes >= HIGH_RELAY_DOC_BYTES
       ? "warn"
       : "info";

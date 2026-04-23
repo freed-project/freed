@@ -2,34 +2,24 @@
   "name": "freed",
   "private": true,
   "packageManager": "npm@11.11.0",
-  "engines": {
-    "node": ">=20",
-    "npm": ">=10"
-  },
   "workspaces": [
     "packages/*",
     "skills/*",
     "website"
   ],
   "scripts": {
-    "preinstall": "node scripts/check-toolchain.mjs",
     "postinstall": "node scripts/patch-automerge.mjs",
-    "setup": "node scripts/npmw.mjs ci --prefer-offline",
-    "build": "node scripts/npmw.mjs run build --workspaces --if-present --include-workspace-root=false",
-    "dev": "node scripts/npmw.mjs run dev --workspaces --if-present --include-workspace-root=false",
-    "test": "node scripts/npmw.mjs run test --workspaces --if-present --include-workspace-root=false",
-    "typecheck": "node scripts/npmw.mjs run typecheck --workspaces --if-present --include-workspace-root=false",
+    "build": "node scripts/run-workspace-fanout.mjs build",
+    "dev": "node scripts/run-workspace-fanout.mjs dev",
+    "lint": "node scripts/run-workspace-fanout.mjs lint",
+    "session:clean": "bash scripts/dev-session-clean.sh",
+    "test": "node scripts/run-workspace-fanout.mjs test",
+    "test:scripts": "bash -n scripts/*.sh scripts/lib/*.sh && node --test scripts/*.test.mjs",
+    "typecheck": "node scripts/run-workspace-fanout.mjs typecheck",
     "typecheck:graph": "tsc --build --dry",
-    "website:dev": "node scripts/npmw.mjs run dev --workspace=website",
-    "website:build": "node scripts/npmw.mjs run build --workspace=website",
-    "pwa:dev": "node scripts/npmw.mjs run dev --workspace=@freed/pwa",
-    "pwa:build": "node scripts/npmw.mjs run build --workspace=@freed/pwa",
-    "pwa:test": "node scripts/npmw.mjs run test --workspace=@freed/pwa",
-    "desktop:dev": "node scripts/npmw.mjs run tauri:dev --workspace=@freed/desktop",
-    "desktop:build": "node scripts/npmw.mjs run tauri:build --workspace=@freed/desktop",
-    "desktop:e2e": "node scripts/npmw.mjs run test:e2e --workspace=@freed/desktop",
-    "desktop:e2e:ui": "node scripts/npmw.mjs run test:e2e:ui --workspace=@freed/desktop",
-    "desktop:e2e:debug": "node scripts/npmw.mjs run test:e2e:debug --workspace=@freed/desktop"
+    "validate:feature": "node scripts/validate-worktree.mjs --mode feature",
+    "validate:dev": "node scripts/validate-worktree.mjs --mode dev",
+    "validate:release": "node scripts/validate-worktree.mjs --mode release"
   },
   "devDependencies": {
     "typescript": "^5.3.0"

@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -15,7 +15,7 @@ Large app store distribution is not part of the current strategy. The mobile rea
 **Key architectural decisions:**
 
 - **TypeScript capture via subprocess** — Existing `capture-x`, `capture-rss` packages run via Node/Bun subprocess, not rewritten in Rust
-- **Shared React codebase** — `packages/pwa/` is embedded in WebView and deployed standalone to `app.freed.wtf`, with the dev channel on `dev-app.freed.wtf`
+- **Shared React codebase:** `packages/pwa/` is embedded in WebView and deployed standalone to `app.freed.wtf`, while `dev-app.freed.wtf` follows the latest merge to `dev`
 - **X authentication via WebView** — User logs into X inside the app; cookies captured from WebView session
 - **Ranking runs here** — Desktop computes `priority` scores, syncs to PWA via Automerge
 - **Versioned legal gate** — Freed Desktop blocks startup side effects until the current legal bundle is accepted locally on-device
@@ -25,6 +25,14 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Internal navigation history** — Desktop keeps a browser-style serialized navigation stack so `Cmd+[` and `Cmd+]` move through views and open reader state
 - **Blank-state testing escape hatch** — Desktop empty states now offer a lightweight sample-data section below the primary blank-state prompt, so fresh installs can seed realistic data without detouring into Settings
 - **Archived saved-item repair control** — Archived views now surface a one-click `Unarchive Saved Content` action when legacy or imported items end up both saved and archived
+- **Live sidebar snap preview** — During desktop resize drag, the expanded card still tracks the grab rail directly, while compact and closed thresholds now animate in place so the sidebar snaps to the icon rail or slides offscreen before mouseup
+- **Inset compact rail** — The icon-only sidebar now keeps a real outer inset around square buttons instead of rendering full bleed against the shell, while stacked icon rows stay visually tight
+- **Balanced sidebar icon scale** — Labeled desktop sidebar rows now use a smaller icon baseline that matches the Settings row more closely, while the compact rail keeps its larger touch-friendly glyphs and Facebook gets a small visual correction
+- **Tighter labeled sidebar gutters** — Desktop labeled sidebar rows now spend less width on left padding, icon gaps, and right-side clip gutters, especially in the narrow simplified state, so icons sit closer to the shell edge and labels crop later
+- **Lateral compact tooltips** — Icon-only desktop sidebar tooltips now open to the right of the rail instead of below the trigger, which keeps the compact column readable in dense layouts
+- **Inline Feeds chevron** — In the labeled desktop sidebar, the Feeds expand and collapse control now sits immediately after the `Feeds` label instead of aligning against the far-right count lane
+- **Balanced compact rail inset** — The icon-only desktop sidebar now uses the same outer inset on the bottom edge as it already uses on the top and sides, so the Settings button no longer sits flush against the floor
+- **Live toolbar reopen cue** — During desktop drag preview, once the primary sidebar crosses into the closed state, the toolbar control now swaps immediately from collapse to expand so the reopen affordance stays truthful before mouseup
 
 ---
 
@@ -199,6 +207,7 @@ export async function captureDomFeed(
 | 5.31 | Provider health dashboard, charts, and unsubscribe flow                 | Medium     |
 | 5.32 | Rotating local database snapshots + restore UI                          | Medium     |
 | 5.33 | Public-safe and private bug report bundles                              | Medium     |
+| 5.34 | Native startup recovery window outside the React tree                  | Medium     |
 
 ---
 
@@ -212,7 +221,7 @@ export async function captureDomFeed(
 - [x] QR code pairing works (token-authenticated; local SVG render, no third-party QR API)
 - [x] System tray shows sync status
 - [x] App runs in background after window close
-- [x] Auto-updater checks GitHub Releases and installs updates in-app
+- [x] Auto-updater checks GitHub Releases on launch and in the background, then installs updates in-app
 - [x] CI/CD release pipeline builds for macOS (ARM + Intel), Windows, Linux on tag push
 - [x] App icons generated for all platforms
 - [x] macOS DMG builds
@@ -224,13 +233,16 @@ export async function captureDomFeed(
 - [x] Legal acceptance stays outside synced Automerge state
 - [x] Freed Desktop keeps rotating local database snapshots with a restore flow in Settings
 - [x] Desktop E2E test infrastructure bootstrapped (Playwright + VITE_TEST_TAURI=1 mock layer)
+- [x] Local desktop preview now defaults to the mocked browser harness, while tracked preview slots keep concurrent local threads to one desktop preview at a time unless native Tauri behavior is explicitly requested, and native preview windows carry a visible worktree and thread label
 - [x] Desktop navigation history supports browser-style back and forward shortcuts for views and reader state
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Private diagnostic bundles are opt-in, redacted, and steered toward email instead of public GitHub attachment
 - [x] Freed Desktop emits native renderer heartbeats and warns in the local log when the main window goes silent long enough to suggest a renderer hang or crash
+- [x] If the renderer dies before the app finishes booting, the next launch opens a native recovery window with retry, immediate in-place update install, and channel-aware browser download fallback actions outside the React tree
 - [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
 - [x] macOS DMG is notarized in CI releases
 - [x] Checked-in release notes are reviewed before a release tag can publish
+- [x] Production release prep and publish refuse stale `main` snapshots until current `dev` has been promoted into `main`, and PRs targeting `main` reject direct product edits outside the promotion flow
 - [x] Debug panel Health tab charts provider reliability plus daily and hourly pull volume across RSS, X, Facebook, Instagram, LinkedIn, Google Drive, and Dropbox
 - [x] Failing RSS feeds can be reviewed and unsubscribed from the health panel, with optional article/history deletion
 - [x] Sidebar source actions and source settings surface degraded or paused provider health outside the debug panel
@@ -257,14 +269,25 @@ export async function captureDomFeed(
 - [x] Facebook group settings show active group counts in the header, keep refresh with the bulk actions, and split scraped `Last active ...` text into its own smaller right-aligned column instead of mashing it into the group name
 - [x] The redundant desktop header sync dropdown has been removed, leaving the sidebar source menus and provider settings as the canonical sync status and action surfaces
 - [x] Desktop view chrome now routes through one shared top toolbar, so feed, reader, and Friends stop stacking separate bars on top of each other
+- [x] Desktop top-toolbar controls now keep normal click behavior, but a full drag gesture from the wordmark, title area, or toolbar buttons repositions the native window the way a title bar should
+- [x] Desktop top-toolbar title and subtitle blocks now reserve enough space for the wordmark, sidebar toggle, and traffic-light inset so view captions never overlap the left controls as the sidebar narrows
+- [x] Narrow desktop reader mode now stays inline instead of falling into the full-screen mobile overlay, auto-collapses the thumbnail rail, and keeps the compact desktop sidebar accessible while an item is open
 - [x] The primary sidebar and right debug drawer now render as floating shell cards using the same glassy header treatment as the marketing navbar
 - [x] Reader toolbar controls now lock to the live sidebar and thumbnail-rail widths, so the sidebar toggle, dual-column toggle, and back-to-list control stay aligned with the floating cards below them
-- [x] Settings now use a shared polished dropdown treatment, and Appearance keeps the theme selector as one compact row instead of a descriptive mini card
-- [x] Settings use a stronger modal shadow plus a blur-only frosted backdrop, and the backdrop temporarily clears while previewing themes so desktop and touch users can see the active page treatment underneath
+- [x] Settings now use a shared polished dropdown treatment, and Appearance keeps the theme selector as one compact row instead of a descriptive mini card with live hover and focus previews across every theme
+- [x] Settings use a stronger modal shadow plus a blur-only frosted backdrop, the backdrop temporarily clears while previewing themes so desktop and touch users can see the active page treatment underneath, and hover previews now blur between the previous and next theme before snapping back unless the user clicks
+- [x] The shared Settings shell now keeps the desktop close control aligned with the left sidebar header, while the mobile sheet runs flush to the top edge with a tighter toolbar and reliable section-to-section navigation
 - [x] Appearance now exposes `Show read in grayscale`, and mark-read-on-scroll correctly normalizes mobile list offsets before deciding which rows have scrolled past
 - [x] Desktop resize grips now live in the gaps between floating panels and use neutral hover feedback instead of a loud accent stripe
 - [x] Friends and Map sit directly under `All` in the primary Sources sidebar so navigation order matches the product's main reading flow
 - [x] Feeds sidebar status uses aggregate feed health, stays green when at least one followed feed is healthy, turns amber only when every followed feed is failing, and shows a spinner while RSS sync is actively running
+- [x] The unified feed no longer reuses a bland hamburger glyph and now uses the chosen Crystal Core mark in the shared navigation icon set
+- [x] Sidebar source badges no longer paint dark circular backplates over the icons, and the colored dots or spinners now sit farther out toward the upper-right corner without the black halo
+- [x] The desktop toolbar now measures against the actual sidebar card instead of the outer shell gap, keeps the collapse control visually flush with the sidebar's right edge in expanded mode, and still tucks it directly beside the wordmark in the compact icon rail
+- [x] Reopening the primary sidebar from a fully closed state now always restores the default expanded width instead of resurrecting the last dragged width or compact rail state
+- [x] Once the primary sidebar crosses into its simplified narrow labeled state or the compact icon rail, the RSS section always behaves as closed and never renders inline sub-feed rows
+- [x] The primary sidebar now resizes without a minimum width, previews its expanded, compact, and fully closed snap states live during drag, keeps the resize handle under the cursor while the card itself snaps, uses a tighter square-button compact rail with quieter 18px glyphs, lightly boosts the visually smaller brand marks like `X` and Facebook so they sit with the rest of the source icons, shell-matched corner radii, keeps narrow desktop windows on that compact desktop rail, and only falls back to the floating drawer on actual mobile devices
+- [x] Expanded sidebar padding now flips between tighter roomy and condensed presets at a crossover instead of interpolating linearly, labeled widths below 200px drop counts, chevrons, and similar trailing chrome before labels, narrow-width labels now clip cleanly without ellipses and keep a small inner right gutter before the shell edge, provider status dots and spinners now ride on the source icons at every sidebar width, widths below 100px snap into the compact rail, compact search moves into a floating palette, and the shared mobile drawer now closes when the same hamburger button is tapped again
 - [x] Provider sync actions swap to an inline spinner while that specific provider is actively syncing
 - [x] Provider health badges and section headers use specific state labels like `Cooling down`, `Paused`, `Reconnect required`, and `Sync issue` instead of generic attention copy
 - [x] Settings > Feeds can filter to one needs-review bucket and bulk unsubscribe the currently shown set from a toolbar above the list, while each row still shows whether the feed looks likely dead or just failing
@@ -279,16 +302,25 @@ export async function captureDomFeed(
 - [x] Removing RSS feeds now also drops their retained provider-health diagnostics instead of keeping dead feed histories in memory and storage forever
 - [x] Desktop live UI state now caps preserved article text previews and fetches full preserved text on demand for the active reader item, instead of cloning entire article bodies through every feed-state update
 - [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation
+- [x] Search now drops its MiniSearch index as soon as the query clears, rebuilds only when the worker says the searchable corpus changed, and indexes a smaller preserved-text window so one exploratory search cannot pin a second full-text copy of the library in renderer memory
+- [x] Desktop perf memory checks now use CDP heap-usage sampling instead of the broken zero-value metric path, and they include a heavy preserved-text search scenario so renderer retention regressions show up in CI
 - [ ] Windows installer is code-signed (requires EV certificate)
 - [x] Update server runs on a Freed-owned domain instead of pointing the updater directly at GitHub Releases
-- [x] Desktop settings can switch this install between production and dev release channels
+- [x] Desktop settings can switch this install between production and dev release channels, and the dev channel will install a newer production release when no newer dev build exists without switching the saved channel
 
 > **Current state:**
 > macOS release builds are signed and notarized in GitHub Actions when the
 > required Apple secrets are present. The release workflow now fails fast
 > instead of silently shipping an unsigned macOS artifact. Windows
 > SmartScreen warnings will still appear until an EV certificate is
-> obtained or enough installs build reputation. Desktop now also writes
+> obtained or enough installs build reputation. The shared desktop toolbar
+> now behaves like a real title bar again, including threshold-based window
+> dragging from toolbar controls plus normal cursor and selection treatment
+> for static toolbar labels. Desktop now also keeps dev installs on the
+> newest eligible build even when that build comes from the production
+> channel. When production gets ahead of the last dev build, the app now
+> offers that production update without flipping the saved channel away
+> from dev. Desktop now also writes
 > rotating local Automerge snapshots, including Google contact match state,
 > so catastrophic local corruption can be rolled back from Settings.
 > The desktop runtime now also emits periodic memory telemetry into the
@@ -308,13 +340,30 @@ export async function captureDomFeed(
 > only rescans when the document item count actually changes. The outbox also
 > prunes completed retry bookkeeping instead of letting that map grow across
 > a long session, and removing RSS feeds now also forgets their saved health
-> history instead of leaving dead diagnostics behind. Desktop feed-state
+> history instead of leaving dead diagnostics behind. Local browser preview
+> now also short-circuits native-only snapshot, consent-store, provider-health,
+> memory-monitor, and background refresh paths so legal acceptance no longer
+> dumps the preview into the recovery screen after a reload. Desktop feed-state
 > updates also now cap preserved article text previews and fetch the full
 > preserved text only for the reader item that is actually open, instead of
 > cloning full article bodies through the live UI state on every mutation.
+> Search now tears down its MiniSearch index as soon as the query clears,
+> rebuilds it only when the worker reports a real corpus change, and indexes
+> a smaller preserved-text window so a one-off search cannot keep a second
+> library-sized text copy resident in renderer memory for the rest of the
+> session. The desktop perf harness also switched from Chromium's broken
+> zero-value heap metric path to `Runtime.getHeapUsage()` and added a heavy
+> preserved-text search scenario, so memory regressions stop passing CI by
+> emitting a very confident `0.0 MB`.
 > Desktop persistence also now appends Automerge incremental saves to the
 > last stored snapshot and compacts back to a fresh snapshot only when the
 > incremental tail has grown large enough to justify it.
+> Local developer workflow now also defaults desktop preview to the
+> `VITE_TEST_TAURI=1` browser harness, with tracked preview slots so
+> multiple concurrent worktrees do not each spin up their own native Tauri
+> stack by default. When a real native preview is needed, the launched
+> window now shows a worktree plus thread label so parallel preview apps
+> can be told apart at a glance.
 > Release notes now use a
 > checked-in review gate: `./scripts/release.sh` prepares draft notes and
 > daily editorial memory, then `./scripts/release-publish.sh` tags only after
@@ -336,15 +385,60 @@ export async function captureDomFeed(
 > and Freed Desktop can switch locally between production releases from `main`
 > and dev prereleases from `dev` without syncing that preference through the
 > shared document.
-> The public marketing site is controlled by the `www` branch. After the
-> GitHub release is published, the workflow now
-> redeploys `freed.wtf` from the `www` branch so the changelog snapshot
-> rebuilds against the newly published release instead of the earlier draft
-> state. Production desktop tags still come from `main`, but production
-> website deploys must first merge the reviewed website and changelog state to
-> `www`. Dev releases should still refresh the static marketing changelog from
-> current `www` without ever moving `www` to `dev`. See `RELEASE-SECRETS.md`
-> for the full setup checklist.
+> The public marketing site is controlled by the `www` branch. After any
+> GitHub release is published, the workflow now redeploys `freed.wtf` from the
+> current `www` branch so the changelog snapshot rebuilds against the newly
+> published release instead of waiting for a later production ship. Production
+> desktop tags still come from `main`, and production website deploys still
+> require the reviewed website and changelog state to be merged into `www`
+> first. Production prep and publish now also validate that `main` still
+> matches current `dev` on product-owned paths, PRs to `main` reject direct
+> product edits unless they come from a `chore/promote-dev-to-main-*`
+> promotion branch, and the release workflow rechecks that same guard before a
+> production tag can build. Dev releases refresh the public changelog from
+> current `www` without ever moving `www` to `dev`. See
+> `RELEASE-SECRETS.md` for the full setup checklist.
+>
+> The reader header toolbar now uses one consistent icon-button geometry for
+> sidebar, rail, bookmark, and archive controls. Back navigation reaches
+> farther left, action buttons no longer reserve bogus slot space between one
+> another, the archive action no longer changes apparent size when active, and
+> the trailing reader actions sit closer to the content instead of drifting
+> inside an oversized right gutter.
+>
+> The map surface now overrides the generic sidebar-gap viewport compensation
+> and uses its own balanced vignette overlay. That removes the hard left edge
+> the inherited mask was creating, softens the visible boundary around the map,
+> and evens out the top-right corner so the feathering reads consistently on
+> all four sides.
+>
+> The unified feed crystal-core icon now renders slightly larger than the rest
+> of the sidebar icon set in both labeled and compact rail modes, so it carries
+> the same visual weight as the platform marks without forcing another global
+> icon-size rebalance.
+>
+> Compact-sidebar search now stays visibly active whenever the floating search
+> palette is open or a query is currently filtering content. The floating
+> palette uses the same corner radius as the sidebar shell, and active search
+> on non-reader views now promotes a clearable search field into the center of
+> the top toolbar instead of leaving stale scope copy there.
+>
+> The desktop sidebar and header now share one live boundary contract instead
+> of guessing at one another's geometry. The toolbar controls track the real
+> sidebar handle during drag preview, the collapse and rail toggles now use the
+> same fixed icon-button box without off-center glyph hacks, expanded padding
+> stays on the two requested presets, and narrow labeled mode keeps the older
+> cleanup rules intact at the same time: `Feed`, `Search`, no counts, no
+> subfeeds, and clipped labels with a small right gutter instead of ellipses.
+> Sidebar status badges also use one shared overlay position in labeled and
+> compact modes, with the dark backplate removed. The narrow labeled sidebar
+> also trims its label-side right padding further now, so clipped text can run
+> closer to the shell edge without turning into edge-to-edge soup.
+>
+> Local browser preview now keeps desktop snapshots, legal consent, provider
+> health persistence, and runtime memory telemetry on browser-safe fallbacks
+> instead of calling native Tauri APIs, so accepting the desktop legal gate no
+> longer crashes the `4173` preview into the recovery screen.
 
 ### Mobile
 

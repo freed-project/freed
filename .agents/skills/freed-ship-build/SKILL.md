@@ -13,20 +13,18 @@ Ship a new versioned build from the correct release branch using GitHub Actions.
 1. Ask whether this should be a `dev` release or a `production` release before doing anything else.
 2. Ensure you are on the correct branch with a clean working tree:
    - `dev` releases ship from the `dev` branch
-   - `production` desktop releases ship from the `main` branch
-   - `production` website deploys ship from the `www` branch
-3. Before any production website deploy, ensure the website and changelog changes have already been merged to `www`.
-   - Never assume a production website deploy can safely build from `main`
-   - If a production release updates website changelog content, merge those reviewed website changes to `www` before the deploy runs
+   - `production` releases ship from the `main` branch
+3. For `production` releases, fetch `origin/dev` and `origin/main` first.
+   - If `main` does not match `dev` on product-owned paths, run `./scripts/promote-dev-to-main.sh <worktree-path>` and merge that promotion PR before tagging anything.
+   - Do not prepare a production release from a stale `main`. The release scripts and release workflow now fail fast when `dev` is ahead.
 4. Run `./scripts/release.sh --channel=<dev|production>` to compute the next CalVer version and prepare the release tag.
-5. Monitor the GitHub Actions build to ensure it succeeds for all platforms and that any production website deploy is pulled from `www`.
-6. If the build fails:
+5. For `production` releases, ensure the reviewed website and changelog state is already merged to `www` before `./scripts/release-publish.sh` pushes the tag.
+6. Monitor the GitHub Actions build to ensure it succeeds for all platforms.
+7. If the build fails:
    - Create a new branch and open a PR with the fix.
    - Iterate until CI passes on the PR.
-   - Squash-merge the PR to `dev` for dev-release fixes.
-   - Squash-merge production desktop release fixes to `main`.
-   - Squash-merge production website fixes to `www`.
+   - Squash-merge the PR to `dev` for dev-release fixes, or to `main` for production-release fixes.
    - Initiate a follow-up build from the matching release branch.
-7. Repeat until all platform builds are successful.
-8. For production releases, ensure the reviewed website and changelog state is already merged to `www` before the workflow deploys `freed.wtf` from that branch.
-9. After a dev release ships successfully, use `freed-ship-www` in changelog refresh mode so the static public changelog can include the newly published release without merging `dev` into `www`.
+8. Repeat until all platform builds are successful.
+9. After every successful production release, create a dedicated reverse-integration branch from `origin/dev`, merge `origin/main` into it with a merge commit, run `npm run validate:dev`, and open a draft PR targeting `dev`.
+10. After a dev or production release ships successfully, use `freed-ship-www` in changelog refresh mode so the static public changelog can include the newly published release without merging `dev` into `www`.

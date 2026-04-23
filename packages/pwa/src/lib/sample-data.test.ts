@@ -8,8 +8,8 @@ describe("sample data batches", () => {
 
     expect(batchA.friends).toHaveLength(25);
     expect(batchB.friends).toHaveLength(25);
-    expect(batchA.items).toHaveLength(155);
-    expect(batchB.items).toHaveLength(155);
+    expect(batchA.items).toHaveLength(195);
+    expect(batchB.items).toHaveLength(195);
 
     const friendIds = new Set([
       ...batchA.friends.map((friend) => friend.id),
@@ -25,8 +25,8 @@ describe("sample data batches", () => {
     ]);
 
     expect(friendIds.size).toBe(50);
-    expect(itemIds.size).toBe(310);
-    expect(feedUrls.size).toBe(20);
+    expect(itemIds.size).toBe(390);
+    expect(feedUrls.size).toBe(30);
   });
 
   it("keeps friend source links aligned with the generated social posts", () => {

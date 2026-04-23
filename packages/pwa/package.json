@@ -1,13 +1,13 @@
 {
   "name": "@freed/pwa",
   "private": true,
-  "version": "26.4.2100",
+  "version": "26.4.2002",
   "type": "module",
   "scripts": {
-    "dev": "node ../../node_modules/vite/bin/vite.js",
-    "build": "tsc -b && node ../../node_modules/vite/bin/vite.js build",
+    "dev": "vite",
+    "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "node ../../node_modules/vite/bin/vite.js preview",
+    "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "node ../../node_modules/playwright/cli.js test",
     "test:unit": "vitest run",
@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@automerge/automerge": "^2.2.8",
+    "@freed/capture-save": "*",
     "@freed/shared": "*",
     "@freed/sync": "*",
     "@freed/ui": "*",
@@ -52,6 +53,7 @@
     "vite-plugin-pwa": "^1.2.0",
     "vite-plugin-top-level-await": "^1.6.0",
     "vite-plugin-wasm": "^3.5.0",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "workbox-window": "^7.4.0"
   }
 }

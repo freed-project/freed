@@ -21,17 +21,17 @@
  * item IDs, titles, text, tags, and highlights. Plain state changes (readAt,
  * saved) don't appear in the content key, so they don't trigger a rebuild.
  *
- * Preserved article text is truncated to 3 000 chars before indexing — full
- * articles can be 20 k+ words and the marginal recall gain past that point is
- * negligible while the indexing cost is not.
+ * Preserved article text is truncated to 1 200 chars before indexing — full
+ * articles can be 20 k+ words and the marginal recall gain past the opening
+ * section is small while the memory cost of duplicating that text is not.
  */
 
 import { useMemo, useRef } from "react";
 import MiniSearch from "minisearch";
-import { filterFeedItems, sortByPriority } from "@freed/shared";
-import type { FeedItem, FilterOptions } from "@freed/shared";
+import { filterFeedItems, isFriendAuthoredItem, sortByPriority } from "@freed/shared";
+import type { Account, FeedItem, FilterOptions, Friend, Person } from "@freed/shared";
 
-const PRESERVED_TEXT_LIMIT = 3_000;
+const SEARCH_PRESERVED_TEXT_LIMIT = 1_200;
 
 /** Flat document shape fed to MiniSearch (one per FeedItem). */
 interface SearchDoc {
@@ -57,7 +57,7 @@ function toSearchDoc(item: FeedItem): SearchDoc {
     authorName: item.author.displayName,
     authorHandle: item.author.handle,
     feedTitle: item.rssSource?.feedTitle ?? "",
-    preservedText: item.preservedContent?.text?.slice(0, PRESERVED_TEXT_LIMIT) ?? "",
+    preservedText: item.preservedContent?.text?.slice(0, SEARCH_PRESERVED_TEXT_LIMIT) ?? "",
     topics: item.topics.join(" "),
     tags: (item.userState.tags ?? []).join(" "),
     highlights: (item.userState.highlights ?? [])
@@ -93,23 +93,6 @@ const FIELD_BOOST: Partial<Record<keyof Omit<SearchDoc, "id">, number>> = {
   preservedText: 1,
 };
 
-/**
- * Derive a stable string that changes only when searchable content changes --
- * not when userState.readAt / saved / archived flip. This prevents a full index
- * rebuild on every scroll-to-read or bookmark toggle while a query is active.
- */
-function contentFingerprint(items: FeedItem[]): string {
-  // Fast path: join IDs + searchable-content lengths. Not a cryptographic hash,
-  // but false-positive rebuilds (same content, same fingerprint) are safe.
-  return items
-    .map((item) => {
-      const tagsKey = (item.userState.tags ?? []).join(",");
-      const hlKey = (item.userState.highlights ?? []).length;
-      return `${item.globalId}:${item.content.text?.length ?? 0}:${item.preservedContent?.text?.length ?? 0}:${tagsKey}:${hlKey}`;
-    })
-    .join("|");
-}
-
 function buildIndex(items: FeedItem[]): MiniSearch<SearchDoc> {
   const ms = new MiniSearch<SearchDoc>({
     idField: "id",
@@ -142,29 +125,44 @@ export function useSearchResults(
   items: FeedItem[],
   searchQuery: string,
   activeFilter: FilterOptions,
+  searchCorpusVersion: number,
+  identityMode: "friends" | "all_content",
+  persons: Record<string, Person>,
+  accounts: Record<string, Account>,
+  friends: Record<string, Friend>,
 ): SearchResults {
   const trimmedQuery = searchQuery.trim();
 
-  // Cache the index and the fingerprint it was built from across renders.
+  // Cache the index and the corpus version it was built from across renders.
   // Using refs instead of useMemo lets us control invalidation independently of
   // React's referential equality check on `items`.
   const indexRef = useRef<MiniSearch<SearchDoc> | null>(null);
-  const fingerprintRef = useRef<string>("");
+  const versionRef = useRef<number>(-1);
+
+  if (!trimmedQuery) {
+    indexRef.current = null;
+    versionRef.current = -1;
+  }
 
   // When a query is active, ensure the index is up to date with the current
-  // corpus. We only rebuild if the content fingerprint has changed.
+  // corpus. The worker bumps searchCorpusVersion only for search-relevant
+  // changes, so mark-as-read, save, and archive churn does not rebuild.
   if (trimmedQuery) {
-    const fp = contentFingerprint(items);
-    if (!indexRef.current || fp !== fingerprintRef.current) {
+    if (!indexRef.current || searchCorpusVersion !== versionRef.current) {
       indexRef.current = buildIndex(items);
-      fingerprintRef.current = fp;
+      versionRef.current = searchCorpusVersion;
     }
   }
 
   return useMemo(() => {
+    const filterIdentityMode = (candidateItems: FeedItem[]): FeedItem[] =>
+      identityMode === "friends"
+        ? candidateItems.filter((item) => isFriendAuthoredItem(item, persons, accounts, friends))
+        : candidateItems;
+
     if (!trimmedQuery) {
       // Normal feed: apply active filter then sort by priority. No MiniSearch work.
-      const filtered = filterFeedItems(items, activeFilter);
+      const filtered = filterFeedItems(filterIdentityMode(items), activeFilter);
       const byFeed = activeFilter.feedUrl
         ? filtered.filter((item) => item.rssSource?.feedUrl === activeFilter.feedUrl)
         : filtered;
@@ -187,7 +185,7 @@ export function useSearchResults(
       .map((r) => itemById.get(r.id as string))
       .filter((item): item is FeedItem => item !== undefined);
 
-    const filtered = filterFeedItems(matchingItems, activeFilter);
+    const filtered = filterFeedItems(filterIdentityMode(matchingItems), activeFilter);
     const byFeed = activeFilter.feedUrl
       ? filtered.filter((item) => item.rssSource?.feedUrl === activeFilter.feedUrl)
       : filtered;
@@ -199,5 +197,5 @@ export function useSearchResults(
     );
 
     return { filteredItems: sorted, isSearching: true, resultCount: sorted.length };
-  }, [items, trimmedQuery, activeFilter]);
+  }, [accounts, activeFilter, friends, identityMode, items, persons, searchCorpusVersion, trimmedQuery]);
 }

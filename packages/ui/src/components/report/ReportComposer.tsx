@@ -75,11 +75,11 @@ export function ReportComposer({
     ...createDefaultBugReportDraft(initialIssueType),
     ...(bugReporting?.createDraft?.(initialIssueType) ?? {}),
   }));
-  const [working, setWorking] = useState<null | "export" | "github" | "private-share" | "screenshot">(null);
+  const [working, setWorking] = useState<null | "export" | "github" | "private-share">(null);
   const [lastBundleName, setLastBundleName] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  const privacyTier = getReportPrivacyTier(draft.selectedArtifacts, draft.screenshot);
+  const privacyTier = getReportPrivacyTier(draft.selectedArtifacts);
 
   const toggleArtifact = (artifactId: BugReportArtifactId, nextChecked: boolean) => {
     setDraft((current) => {
@@ -91,46 +91,6 @@ export function ReportComposer({
       }
       return { ...current, selectedArtifacts: Array.from(selected) };
     });
-  };
-
-  const handleScreenshotArtifactToggle = async (nextChecked: boolean) => {
-    if (!nextChecked) {
-      setDraft((current) => {
-        const selected = current.selectedArtifacts.filter((artifact) => artifact !== "screenshot");
-        return {
-          ...current,
-          selectedArtifacts: selected,
-          screenshot: null,
-        };
-      });
-      setStatusMessage(null);
-      return;
-    }
-
-    if (!bugReporting?.captureScreenshot) {
-      toast.error("Screenshot capture is not available here.");
-      return;
-    }
-
-    setWorking("screenshot");
-    setStatusMessage(null);
-    try {
-      const screenshot = await bugReporting.captureScreenshot();
-      if (!screenshot) {
-        toast.error("No screenshot was captured.");
-        return;
-      }
-      setDraft((current) => ({
-        ...current,
-        screenshot,
-        selectedArtifacts: current.selectedArtifacts.includes("screenshot")
-          ? current.selectedArtifacts
-          : [...current.selectedArtifacts, "screenshot"],
-      }));
-      toast.success("Captured a screenshot for this report.");
-    } finally {
-      setWorking(null);
-    }
   };
 
   const githubUrl = useMemo(() => {
@@ -323,53 +283,14 @@ export function ReportComposer({
             Turning these on may expose more of your local environment. Email these bundles instead of posting them publicly.
           </p>
         </div>
-        {PRIVATE_ARTIFACTS.map((artifact) =>
-          artifact.id === "screenshot" ? (
-            <div key={artifact.id} className="space-y-3">
-              <ArtifactToggle
-                artifact={artifact}
-                checked={draft.selectedArtifacts.includes("screenshot")}
-                onChange={handleScreenshotArtifactToggle}
-                disabled={working === "screenshot"}
-              />
-              {draft.screenshot ? (
-                <div className="theme-dialog-section rounded-xl p-3">
-                  <img
-                    src={draft.screenshot.dataUrl}
-                    alt="Captured screenshot preview"
-                    className="max-h-56 w-full rounded-xl border border-[color:var(--theme-border-subtle)] object-contain"
-                  />
-                  <label className="theme-dialog-section mt-3 flex cursor-pointer items-start gap-3 rounded-xl p-3">
-                    <input
-                      type="checkbox"
-                      checked={draft.screenshot.safeForPublic}
-                      onChange={(event) =>
-                        updateDraft("screenshot", {
-                          ...draft.screenshot!,
-                          safeForPublic: event.target.checked,
-                        })
-                      }
-                      className="mt-0.5 h-4 w-4 rounded border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-input)] text-[var(--theme-accent-secondary)] focus:ring-[color:var(--theme-focus-ring)] focus:ring-offset-0"
-                    />
-                    <div>
-                      <p className="text-sm text-[color:var(--theme-text-primary)]">This screenshot is safe to post publicly.</p>
-                      <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                        Leave this off if it shows private content, account names, or anything sensitive.
-                      </p>
-                    </div>
-                  </label>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <ArtifactToggle
-              key={artifact.id}
-              artifact={artifact}
-              checked={draft.selectedArtifacts.includes(artifact.id)}
-              onChange={(checked) => toggleArtifact(artifact.id, checked)}
-            />
-          ),
-        )}
+        {PRIVATE_ARTIFACTS.map((artifact) => (
+          <ArtifactToggle
+            key={artifact.id}
+            artifact={artifact}
+            checked={draft.selectedArtifacts.includes(artifact.id)}
+            onChange={(checked) => toggleArtifact(artifact.id, checked)}
+          />
+        ))}
       </div>
 
       <div
