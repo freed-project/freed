@@ -1,10 +1,10 @@
 [
   {
-    "version": "26.4.2301",
-    "tagName": "v26.4.2301",
+    "version": "26.4.2303",
+    "tagName": "v26.4.2303",
     "channel": "production",
-    "date": "2026-04-23T17:54:30Z",
-    "deck": "This build ships the new Friends graph workspace and hardens desktop preview, diagnostics, and graph performance.",
+    "date": "2026-04-23T22:36:04Z",
+    "deck": "Pixi WebGL Friends graph with linked people, channels, and feeds, desktop details rail controls and a mobile Details mode for the Friends workspace, and sync UI package exports before production release",
     "features": [
       {
         "text": "Pixi WebGL Friends graph with linked people, channels, and feeds"
@@ -26,14 +26,23 @@
     ],
     "followUps": [
       {
-        "text": "Promote dev into main before production release and stop the desktop release workflow from deploying the website"
+        "text": "Promote dev into main for production release and stop release workflow deploying website"
+      },
+      {
+        "text": "This build ships the new Friends graph workspace and hardens desktop preview, diagnostics, and graph performance"
       }
     ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2301",
-    "prNumbers": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2303",
+    "prNumbers": [
+      279,
+      285,
+      290,
+      294
+    ],
     "builds": [
       "26.4.2300",
-      "26.4.2301"
+      "26.4.2301",
+      "26.4.2303"
     ],
     "buildLinks": [
       {
@@ -44,6 +53,11 @@
       {
         "version": "26.4.2301",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2301",
+        "channel": "production"
+      },
+      {
+        "version": "26.4.2303",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2303",
         "channel": "production"
       }
     ]

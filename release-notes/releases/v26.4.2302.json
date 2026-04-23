@@ -1,0 +1,62 @@
+{
+  "tag": "v26.4.2302",
+  "version": "26.4.2302",
+  "channel": "production",
+  "dayKey": "26.4.23",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-23T21:35:47.140Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.4.2301",
+    "previousPublishedDayTag": "v26.4.2100",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.2300",
+      "v26.4.2301",
+      "v26.4.2302"
+    ],
+    "relatedBuildTags": [
+      "v26.4.2300",
+      "v26.4.2301",
+      "v26.4.2302"
+    ],
+    "prNumbers": [
+      279,
+      285,
+      290,
+      294
+    ],
+    "commitSubjects": [
+      "chore: promote latest dev into main",
+      "fix: repair release validation for v26.4.2301 (#294)",
+      "release: approve v26.4.2301",
+      "release: v26.4.2301",
+      "chore: sync ui package exports before production release",
+      "chore: promote dev into main for production release",
+      "chore: promote dev into main after validation fixes (#290)",
+      "release: approve v26.4.2300",
+      "release: v26.4.2300",
+      "chore: promote dev into main for production release (#285)",
+      "chore: stop release workflow deploying website (#279)"
+    ]
+  },
+  "release": {
+    "deck": "Pixi WebGL Friends graph with linked people, channels, and feeds, desktop details rail controls and a mobile Details mode for the Friends workspace, and this build ships the new Friends graph workspace and hardens desktop preview, diagnostics, and graph performance",
+    "features": [
+      "Pixi WebGL Friends graph with linked people, channels, and feeds",
+      "Desktop details rail controls and a mobile Details mode for the Friends workspace"
+    ],
+    "fixes": [
+      "Smoother pan and pinch behavior with cleaner four-edge vignette feathering in the Friends graph",
+      "Browser preview no longer crashes on native-only snapshot, LinkedIn, and capture paths",
+      "Crash report exports now label and gate public-safe versus private bundles correctly"
+    ],
+    "followUps": [
+      "Promote dev into main for production release and stop release workflow deploying website"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2302\n\nPixi WebGL Friends graph with linked people, channels, and feeds, desktop details rail controls and a mobile Details mode for the Friends workspace, and this build ships the new Friends graph workspace and hardens desktop preview, diagnostics, and graph performance\n\n### Features\n\n- Pixi WebGL Friends graph with linked people, channels, and feeds\n- Desktop details rail controls and a mobile Details mode for the Friends workspace\n\n### Fixes\n\n- Smoother pan and pinch behavior with cleaner four-edge vignette feathering in the Friends graph\n- Browser preview no longer crashes on native-only snapshot, LinkedIn, and capture paths\n- Crash report exports now label and gate public-safe versus private bundles correctly\n\n### Follow-ups\n\n- Promote dev into main for production release and stop release workflow deploying website\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

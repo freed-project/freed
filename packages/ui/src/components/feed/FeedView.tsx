@@ -136,27 +136,10 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
       selectionMoveDirection > 0
         ? Math.min(selectedIndex + 1, items.length - 1)
         : Math.max(selectedIndex - 1, 0);
-    const scrollPadding = CARD_V_GAP;
-    const lookaheadStart =
-      lookaheadIndex === 0
-        ? 0
-        : firstItemHeight + (lookaheadIndex - 1) * itemHeight;
-    const lookaheadSize = lookaheadIndex === 0 ? firstItemHeight : itemHeight;
-    const lookaheadEnd = lookaheadStart + lookaheadSize;
-    const visibleTop = el.scrollTop;
-    const visibleBottom = visibleTop + el.clientHeight;
-
-    if (selectionMoveDirection > 0) {
-      const nextTop = lookaheadEnd - (el.clientHeight - scrollPadding);
-      if (lookaheadEnd > visibleBottom - scrollPadding) {
-        el.scrollTo({ top: Math.max(0, nextTop), behavior });
-      }
-    } else {
-      const nextTop = lookaheadStart - scrollPadding;
-      if (lookaheadStart < visibleTop + scrollPadding) {
-        el.scrollTo({ top: Math.max(0, nextTop), behavior });
-      }
-    }
+    virtualizer.scrollToIndex(lookaheadIndex, {
+      align: selectionMoveDirection > 0 ? "end" : "start",
+      behavior,
+    });
 
     didInitialScroll.current = true;
   }, [
@@ -276,6 +259,10 @@ export function FeedView() {
     accounts,
     friends,
   );
+  const itemsById = useMemo(
+    () => new Map(items.map((item) => [item.globalId, item])),
+    [items],
+  );
 
   const dualColumnMode = useAppStore((s) => s.preferences.display.reading.dualColumnMode);
   const isMobileViewport = useIsMobile();
@@ -285,19 +272,46 @@ export function FeedView() {
   const showInlineReader = !!selectedItemId && canShowInlineReader;
   const showDualColumn = dualColumnMode && canShowInlineReader && !autoCollapseReaderRail;
 
+  const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const [keyboardFocusDirection, setKeyboardFocusDirection] = useState<-1 | 0 | 1>(0);
+  const [compactSelectionDirection, setCompactSelectionDirection] = useState<-1 | 0 | 1>(0);
+  const readerItemIdsRef = useRef<string[]>([]);
+  const [readerItemIds, setReaderItemIds] = useState<string[]>([]);
+  const captureReaderItems = useCallback((nextItems: FeedItem[]) => {
+    const nextIds = nextItems.map((item) => item.globalId);
+    readerItemIdsRef.current = nextIds;
+    setReaderItemIds(nextIds);
+  }, []);
+  const clearReaderItems = useCallback(() => {
+    readerItemIdsRef.current = [];
+    setReaderItemIds([]);
+  }, []);
+  const readerItems = useMemo(
+    () =>
+      readerItemIds
+        .map((id) => itemsById.get(id))
+        .filter((item): item is FeedItem => item !== undefined),
+    [itemsById, readerItemIds],
+  );
   // Store only the ID so the rendered item stays in sync with the store.
   // Holding the full FeedItem in state would freeze userState (saved, archived,
   // tags) at the moment the user clicked, making toolbar toggles appear broken.
   const selectedItem = useMemo(
-    () => (selectedItemId ? filteredItems.find((i) => i.globalId === selectedItemId) ?? null : null),
-    [filteredItems, selectedItemId],
+    () =>
+      selectedItemId
+        ? readerItems.find((item) => item.globalId === selectedItemId) ??
+          filteredItems.find((item) => item.globalId === selectedItemId) ??
+          null
+        : null,
+    [filteredItems, readerItems, selectedItemId],
   );
-  const [focusedIndex, setFocusedIndex] = useState<number>(-1);
-  const [keyboardFocusDirection, setKeyboardFocusDirection] = useState<-1 | 0 | 1>(0);
-  const [compactSelectionDirection, setCompactSelectionDirection] = useState<-1 | 0 | 1>(0);
 
   const openItem = useCallback(
     (item: FeedItem) => {
+      if (!selectedItemId) {
+        captureReaderItems(filteredItems);
+      }
+
       const selectItem = () => {
         setSelectedItem(item.globalId);
         markAsRead(item.globalId);
@@ -310,7 +324,15 @@ export function FeedView() {
 
       selectItem();
     },
-    [markAsRead, runFeedLayoutTransition, selectedItemId, setSelectedItem, showDualColumn],
+    [
+      captureReaderItems,
+      filteredItems,
+      markAsRead,
+      runFeedLayoutTransition,
+      selectedItemId,
+      setSelectedItem,
+      showDualColumn,
+    ],
   );
 
   const openItemDirect = useCallback((item: FeedItem) => {
@@ -320,6 +342,7 @@ export function FeedView() {
 
   const closeItem = useCallback(() => {
     setCompactSelectionDirection(0);
+    clearReaderItems();
     if (showDualColumn && selectedItemId) {
       runFeedLayoutTransition(() => {
         setSelectedItem(null);
@@ -327,31 +350,45 @@ export function FeedView() {
       return;
     }
     setSelectedItem(null);
-  }, [runFeedLayoutTransition, selectedItemId, setSelectedItem, showDualColumn]);
+  }, [clearReaderItems, runFeedLayoutTransition, selectedItemId, setSelectedItem, showDualColumn]);
 
   // Keyboard navigation: j/k to move, Enter/o to open, Escape to close.
   // The HTMLInputElement guard means j/k won't fire while the search bar is focused.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
+      const isReaderArrowKey =
+        !!selectedItemId && showDualColumn && (e.key === "ArrowDown" || e.key === "ArrowUp");
       if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
+        !isReaderArrowKey &&
+        (e.target instanceof HTMLInputElement ||
+          e.target instanceof HTMLTextAreaElement)
       )
         return;
 
-      if (selectedItem) {
+      if (selectedItemId) {
         if (showDualColumn && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
           e.preventDefault();
-          const currentIndex = filteredItems.findIndex((item) => item.globalId === selectedItem.globalId);
+          const navigationIds =
+            readerItemIdsRef.current.length > 0
+              ? readerItemIdsRef.current
+              : filteredItems.map((item) => item.globalId);
+          const currentIndex = navigationIds.indexOf(selectedItemId);
           if (currentIndex < 0) return;
 
           const direction = e.key === "ArrowDown" ? 1 : -1;
-          const nextIndex = Math.max(0, Math.min(currentIndex + direction, filteredItems.length - 1));
+          const nextIndex = Math.max(0, Math.min(currentIndex + direction, navigationIds.length - 1));
           if (nextIndex === currentIndex) return;
+
+          const nextItemId = navigationIds[nextIndex];
+          const nextItem = nextItemId
+            ? itemsById.get(nextItemId) ??
+              filteredItems.find((item) => item.globalId === nextItemId)
+            : undefined;
+          if (!nextItem) return;
 
           setCompactSelectionDirection(direction);
           setFocusedIndex(nextIndex);
-          openItem(filteredItems[nextIndex]);
+          openItem(nextItem);
           return;
         }
 
@@ -373,16 +410,17 @@ export function FeedView() {
       }
     };
 
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [selectedItem, showDualColumn, filteredItems, focusedIndex, openItem, openItemDirect, closeItem]);
+    document.addEventListener("keydown", handleKey, { capture: true });
+    return () => document.removeEventListener("keydown", handleKey, { capture: true });
+  }, [selectedItemId, showDualColumn, filteredItems, focusedIndex, itemsById, openItem, openItemDirect, closeItem]);
 
   // Reset keyboard focus when the active filter or search query changes.
   useEffect(() => {
     setCompactSelectionDirection(0);
     setKeyboardFocusDirection(0);
     setFocusedIndex(-1);
-  }, [activeFilter, searchQuery]);
+    clearReaderItems();
+  }, [activeFilter, clearReaderItems, searchQuery]);
 
   const handleFocusChange = useCallback((index: number) => {
     setKeyboardFocusDirection(0);
@@ -440,7 +478,7 @@ export function FeedView() {
           {showDualColumn ? (
             <>
               <CompactFeedPanel
-                items={filteredItems}
+                items={readerItems.length > 0 ? readerItems : filteredItems}
                 selectedId={selectedItem.globalId}
                 selectionMoveDirection={compactSelectionDirection}
                 onItemClick={openItemDirect}

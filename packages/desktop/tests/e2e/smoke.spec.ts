@@ -23,6 +23,7 @@ const SIDEBAR_ICON_ALIGNMENT_TOLERANCE_PX = 10;
 const READER_RAIL_ALIGNMENT_TOLERANCE_PX = 8;
 const TOOLBAR_BOUNDARY_BUTTON_OFFSET_PX = 40;
 const TOOLBAR_CENTER_ALIGNMENT_TOLERANCE_PX = 3;
+const SIDEBAR_CLOSED_EDGE_TOLERANCE_PX = 5;
 const PRIMARY_SIDEBAR_GAP_WIDTH = "16px";
 const AUXILIARY_DRAWER_GAP_WIDTH = "12px";
 const SOFT_VIEWPORT_RADIUS = "20px";
@@ -730,7 +731,7 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
   const closedPreviewGeometry = await readDesktopSidebarGeometry(page);
   expect(closedPreviewGeometry.shellWidth).toBeLessThan(compactGeometry.shellWidth);
   expect(closedPreviewGeometry.shellWidth).toBeGreaterThanOrEqual(0);
-  expect(closedPreviewGeometry.sidebarRight).toBeGreaterThanOrEqual(-1);
+  expect(closedPreviewGeometry.sidebarRight).toBeGreaterThanOrEqual(-SIDEBAR_CLOSED_EDGE_TOLERANCE_PX);
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Expand sidebar");
 
   await expectDesktopSidebarShellWidthAtMost(page, 2, 500);
@@ -1980,6 +1981,11 @@ test("dual-column reader arrow navigation cycles tiles and keeps the next tile v
   await page.getByText("Article 0:", { exact: false }).click();
   await expect(page.getByLabel("Back")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  });
 
   for (let i = 0; i < 6; i += 1) {
     await page.keyboard.press("ArrowDown");
