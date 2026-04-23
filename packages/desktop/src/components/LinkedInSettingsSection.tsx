@@ -7,6 +7,7 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { SyncProviderSectionProps } from "@freed/ui/context";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
@@ -132,6 +133,8 @@ export function LinkedInSettingsSection({
 
   // Auto-detect login success from the WebView's on_navigation callback
   useEffect(() => {
+    if (!isTauri()) return;
+
     const unlisten = listen<{ loggedIn: boolean }>("li-auth-result", (event) => {
       if (event.payload.loggedIn) {
         const newState = { isAuthenticated: true, lastCheckedAt: Date.now() };

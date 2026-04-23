@@ -11,6 +11,7 @@ import { ContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import {
+  buildProvisionalPersonCandidates,
   buildDiscoveredAccountsFromItems,
   type GoogleContact,
   type IdentitySuggestion,
@@ -26,6 +27,7 @@ import { BackgroundAtmosphere } from "./BackgroundAtmosphere.js";
 import {
   AUXILIARY_DRAWER_GAP_WIDTH_PX,
   DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX,
+  FRIENDS_SIDEBAR_GAP_WIDTH_PX,
   PRIMARY_SIDEBAR_GAP_WIDTH_PX,
   px,
 } from "./layoutConstants.js";
@@ -38,8 +40,12 @@ interface AppShellProps {
   children: ReactNode;
 }
 
+type FriendsMobileSurface = "graph" | "details";
+
 export function AppShell({ children }: AppShellProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [friendsMobileSurface, setFriendsMobileSurface] =
+    useState<FriendsMobileSurface>("graph");
   const isMobileViewport = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
   const debugVisible = useDebugStore((s) => s.visible);
@@ -47,11 +53,17 @@ export function AppShell({ children }: AppShellProps) {
   const activeView = useAppStore((s) => s.activeView);
   const items = useAppStore((s) => s.items);
   const accounts = useAppStore((s) => s.accounts);
+  const persons = useAppStore((s) => s.persons);
   const addPerson = useAppStore((s) => s.addPerson);
   const addAccounts = useAppStore((s) => s.addAccounts);
+  const createConnectionPersonFromAccounts = useAppStore((s) => s.createConnectionPersonFromAccounts);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const themeId = useAppStore((s) => s.preferences.display.themeId);
   const showAtmosphere = activeView !== "friends" && activeView !== "map";
+  const effectivePrimarySidebarGapWidthPx =
+    activeView === "friends"
+      ? FRIENDS_SIDEBAR_GAP_WIDTH_PX
+      : PRIMARY_SIDEBAR_GAP_WIDTH_PX;
 
   // Mount the contact sync hook here (not in FriendsView) so the 15-minute
   // interval and focus listener run regardless of which view is active.
@@ -61,6 +73,8 @@ export function AppShell({ children }: AppShellProps) {
     useAppStore((s) => s.preferences.display.debugPanelWidth) ?? DEFAULT_DEBUG_WIDTH;
   const persistedDesktopSidebarMode =
     useAppStore((s) => s.preferences.display.sidebarMode) ?? "expanded";
+  const friendsSidebarOpen =
+    useAppStore((s) => s.preferences.display.friendsSidebarOpen) ?? true;
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const [committedDebugWidth, setCommittedDebugWidth] = useState(persistedDebugWidth);
@@ -70,6 +84,7 @@ export function AppShell({ children }: AppShellProps) {
   const pendingPersistedDebugWidth = useRef<number | null>(null);
   const pendingPersistedDesktopSidebarMode = useRef<SidebarMode | null>(null);
   const discoveredAccountScanRef = useRef({ itemCount: 0, accountCount: 0 });
+  const provisionalPersonScanRef = useRef({ personCount: 0, accountCount: 0 });
 
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
@@ -123,6 +138,14 @@ export function AppShell({ children }: AppShellProps) {
     persistDesktopSidebarMode("closed");
   }, [desktopSidebarMode, persistDesktopSidebarMode, updatePreferences]);
 
+  const handleFriendsSidebarOpenChange = useCallback((open: boolean) => {
+    void updatePreferences({
+      display: {
+        friendsSidebarOpen: open,
+      },
+    } as Parameters<typeof updatePreferences>[0]);
+  }, [updatePreferences]);
+
   const handleDebugDragStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -174,7 +197,7 @@ export function AppShell({ children }: AppShellProps) {
     ? undefined
     : ({
         "--theme-soft-viewport-base-comp-left":
-          desktopSidebarDisplayMode === "closed" ? "0px" : px(PRIMARY_SIDEBAR_GAP_WIDTH_PX),
+          desktopSidebarDisplayMode === "closed" ? "0px" : px(effectivePrimarySidebarGapWidthPx),
         "--theme-soft-viewport-base-comp-right":
           debugVisible ? px(AUXILIARY_DRAWER_GAP_WIDTH_PX) : "0px",
       } as CSSProperties);
@@ -199,6 +222,11 @@ export function AppShell({ children }: AppShellProps) {
   }, [isMobileDevice, mobileSidebarOpen]);
 
   useEffect(() => {
+    if (activeView === "friends" && isMobileViewport) return;
+    setFriendsMobileSurface("graph");
+  }, [activeView, isMobileViewport]);
+
+  useEffect(() => {
     const itemCount = items.length;
     const accountCount = Object.keys(accounts).length;
     const previous = discoveredAccountScanRef.current;
@@ -210,6 +238,24 @@ export function AppShell({ children }: AppShellProps) {
     if (missingAccounts.length === 0) return;
     void addAccounts(missingAccounts);
   }, [accounts, addAccounts, items]);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+    const personCount = Object.keys(persons).length;
+    const accountCount = Object.keys(accounts).length;
+    const previous = provisionalPersonScanRef.current;
+    if (personCount === previous.personCount && accountCount === previous.accountCount) {
+      return;
+    }
+    provisionalPersonScanRef.current = { personCount, accountCount };
+    const candidates = buildProvisionalPersonCandidates(persons, accounts);
+    if (candidates.length === 0) return;
+    void (async () => {
+      for (const candidate of candidates) {
+        await createConnectionPersonFromAccounts(candidate.accountIds, candidate.person);
+      }
+    })();
+  }, [accounts, createConnectionPersonFromAccounts, isInitialized, persons]);
 
   const handleLinkSuggestion = useCallback(async (suggestion: IdentitySuggestion) => {
     const match = contactSync.getMatchForSuggestion(suggestion.id);
@@ -281,6 +327,12 @@ export function AppShell({ children }: AppShellProps) {
           desktopSidebarMode={desktopSidebarMode}
           desktopSidebarDisplayMode={desktopSidebarDisplayMode}
           onDesktopSidebarToggle={handleDesktopSidebarToggle}
+          friendsSidebarOpen={friendsSidebarOpen}
+          onFriendsSidebarToggle={() =>
+            handleFriendsSidebarOpenChange(!friendsSidebarOpen)
+          }
+          friendsMobileSurface={friendsMobileSurface}
+          onFriendsMobileSurfaceChange={setFriendsMobileSurface}
         />
 
         <div
@@ -301,7 +353,13 @@ export function AppShell({ children }: AppShellProps) {
             style={workspaceMaskStyle}
           >
             {activeView === "friends"
-              ? <FriendsView />
+              ? (
+                <FriendsView
+                  friendsSidebarOpen={friendsSidebarOpen}
+                  onFriendsSidebarOpenChange={handleFriendsSidebarOpenChange}
+                  mobileSurface={friendsMobileSurface}
+                />
+              )
               : activeView === "map"
                 ? <MapView />
                 : children}

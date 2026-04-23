@@ -126,6 +126,8 @@ export interface BaseAppState {
   addAccounts: (accounts: Account[]) => Promise<void>;
   updateAccount: (id: string, updates: Partial<Account>) => Promise<void>;
   removeAccount: (id: string) => Promise<void>;
+  linkAccountToPerson: (accountId: string, personId: string | null) => Promise<void>;
+  createConnectionPersonFromAccounts: (accountIds: string[], person?: Person) => Promise<string>;
 
   // Preference actions
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;

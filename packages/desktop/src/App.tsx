@@ -159,7 +159,9 @@ function App() {
     startSync();
     // Resume cloud sync loops for any previously authenticated providers.
     startAllCloudSyncs();
-    void startSnapshotManager();
+    if (isTauri()) {
+      void startSnapshotManager();
+    }
     // Start background content fetcher -- processes article HTML fetch queue.
     startContentFetcher();
     startMemoryMonitor();

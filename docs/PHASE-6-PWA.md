@@ -246,6 +246,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] First launch is blocked behind a local-only legal clickwrap gate
 - [x] Active view, feed filters, and reader selection round-trip through the URL for browser back/forward navigation
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
+- [x] Bug report actions now label whether they download a public-safe or private bundle, and private diagnostics can be toggled as one group before emailing a report
 - [x] PWA Settings surfaces X / Twitter, Facebook, Instagram, and LinkedIn with Freed Desktop sync and download handoff states
 - [x] Theme changes in Settings temporarily clear the frosted backdrop on touch devices so the active page treatment stays visible while previewing themes
 - [x] Mobile Settings now open as a full-height sheet with a persistent close button, larger back target, and reliable section jumps instead of snapping back to the last scrolled provider section

@@ -53,7 +53,13 @@ interface HeaderProps {
   desktopSidebarMode: SidebarMode;
   desktopSidebarDisplayMode?: SidebarMode;
   onDesktopSidebarToggle: () => void;
+  friendsSidebarOpen: boolean;
+  onFriendsSidebarToggle: () => void;
+  friendsMobileSurface: "graph" | "details";
+  onFriendsMobileSurfaceChange: (surface: "graph" | "details") => void;
 }
+
+type FriendsToolbarMode = MapMode | "details";
 
 const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
 const dragStyle = { WebkitAppRegion: "drag" } as CSSProperties;
@@ -147,6 +153,10 @@ export function Header({
   desktopSidebarMode,
   desktopSidebarDisplayMode,
   onDesktopSidebarToggle,
+  friendsSidebarOpen,
+  onFriendsSidebarToggle,
+  friendsMobileSurface,
+  onFriendsMobileSurfaceChange,
 }: HeaderProps) {
   const {
     HeaderSyncIndicator,
@@ -317,6 +327,15 @@ export function Header({
     updateDisplayPreference({ [key]: mode });
   }, [updateDisplayPreference]);
 
+  const handleFriendsToolbarModeChange = useCallback((mode: FriendsToolbarMode) => {
+    if (mode === "details") {
+      onFriendsMobileSurfaceChange("details");
+      return;
+    }
+    handleIdentityModeChange("friendsMode", mode);
+    onFriendsMobileSurfaceChange("graph");
+  }, [handleIdentityModeChange, onFriendsMobileSurfaceChange]);
+
   const handleMapTimeModeChange = useCallback((mode: MapTimeMode) => {
     updateDisplayPreference({ mapTimeMode: mode });
   }, [updateDisplayPreference]);
@@ -410,6 +429,11 @@ export function Header({
     !!selectedItem;
   const activeSearchQuery = searchQuery.trim();
   const showToolbarSearch = !selectedItem && activeSearchQuery.length > 0;
+  const showFriendsSidebarToggle = activeView === "friends" && !isMobile;
+  const friendsToolbarValue: FriendsToolbarMode =
+    isMobile && activeView === "friends" && friendsMobileSurface === "details"
+      ? "details"
+      : effectiveFriendsMode;
   const canManuallyDragToolbarControls = !!(headerDragRegion && startWindowDrag);
   const macosTrafficLightInsetStyle = headerDragRegion
     ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
@@ -922,18 +946,34 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showWorkspaceIdentityControls} width="12rem">
+                <ToolbarAnimatedSlot
+                  visible={showWorkspaceIdentityControls}
+                  width={activeView === "friends" && isMobile ? "13.75rem" : "12rem"}
+                >
                   {showWorkspaceIdentityControls ? (
                     <ToolbarToggleGroup
                       dataTestId={activeView === "map" ? "map-toolbar-scope" : "friends-toolbar-lens"}
-                      options={[
-                        { value: "friends", label: "Friends" },
-                        { value: "all_content", label: "All content" },
-                      ]}
-                      value={activeView === "map" ? effectiveMapMode : effectiveFriendsMode}
-                      onChange={(mode) =>
-                        handleIdentityModeChange(activeView === "friends" ? "friendsMode" : "mapMode", mode)
+                      options={
+                        activeView === "friends" && isMobile
+                          ? [
+                              { value: "friends", label: "Friends" },
+                              { value: "all_content", label: "All content" },
+                              { value: "details", label: "Details" },
+                            ]
+                          : [
+                              { value: "friends", label: "Friends" },
+                              { value: "all_content", label: "All content" },
+                            ]
                       }
+                      value={activeView === "map" ? effectiveMapMode : friendsToolbarValue}
+                      onChange={(mode) => {
+                        if (activeView === "map") {
+                          handleIdentityModeChange("mapMode", mode as MapMode);
+                          return;
+                        }
+                        handleFriendsToolbarModeChange(mode as FriendsToolbarMode);
+                      }}
+                      compact={activeView === "friends" && isMobile}
                       getButtonProps={getToolbarControlProps}
                     />
                   ) : null}
@@ -1025,6 +1065,31 @@ export function Header({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                         </svg>
                         <span>{archivableCount.toLocaleString()} read</span>
+                      </button>
+                    </Tooltip>
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot visible={showFriendsSidebarToggle} width="3rem" className="hidden md:flex">
+                  {showFriendsSidebarToggle ? (
+                    <Tooltip label={friendsSidebarOpen ? "Hide details" : "Show details"}>
+                      <button
+                        onClick={onFriendsSidebarToggle}
+                        {...getToolbarControlProps()}
+                        data-testid="friends-sidebar-toggle"
+                        className={`rounded-lg p-2 ${
+                          friendsSidebarOpen
+                            ? "theme-toolbar-button-active"
+                            : "theme-toolbar-button-neutral"
+                        }`}
+                        aria-pressed={friendsSidebarOpen}
+                        aria-label={friendsSidebarOpen ? "Hide details" : "Show details"}
+                      >
+                        {friendsSidebarOpen ? (
+                          <ReaderRailShowIcon className="h-5 w-5" />
+                        ) : (
+                          <ReaderRailHideIcon className="h-5 w-5" />
+                        )}
                       </button>
                     </Tooltip>
                   ) : null}
