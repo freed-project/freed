@@ -295,9 +295,19 @@ export function FeedView() {
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const [keyboardFocusDirection, setKeyboardFocusDirection] = useState<-1 | 0 | 1>(0);
   const [compactSelectionDirection, setCompactSelectionDirection] = useState<-1 | 0 | 1>(0);
+  const selectedNavigationIndexRef = useRef<{ globalId: string; index: number } | null>(null);
 
   const openItem = useCallback(
     (item: FeedItem) => {
+      const navigationIndex = filteredItems.findIndex((candidate) => candidate.globalId === item.globalId);
+      if (
+        navigationIndex >= 0 &&
+        selectedNavigationIndexRef.current?.globalId !== item.globalId
+      ) {
+        selectedNavigationIndexRef.current = { globalId: item.globalId, index: navigationIndex };
+        setFocusedIndex(navigationIndex);
+      }
+
       const selectItem = () => {
         setSelectedItem(item.globalId);
         markAsRead(item.globalId);
@@ -310,7 +320,7 @@ export function FeedView() {
 
       selectItem();
     },
-    [markAsRead, runFeedLayoutTransition, selectedItemId, setSelectedItem, showDualColumn],
+    [filteredItems, markAsRead, runFeedLayoutTransition, selectedItemId, setSelectedItem, showDualColumn],
   );
 
   const openItemDirect = useCallback((item: FeedItem) => {
@@ -320,6 +330,7 @@ export function FeedView() {
 
   const closeItem = useCallback(() => {
     setCompactSelectionDirection(0);
+    selectedNavigationIndexRef.current = null;
     if (showDualColumn && selectedItemId) {
       runFeedLayoutTransition(() => {
         setSelectedItem(null);
@@ -342,13 +353,24 @@ export function FeedView() {
       if (selectedItem) {
         if (showDualColumn && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
           e.preventDefault();
-          const currentIndex = filteredItems.findIndex((item) => item.globalId === selectedItem.globalId);
+          const rememberedIndex =
+            selectedNavigationIndexRef.current?.globalId === selectedItem.globalId
+              ? selectedNavigationIndexRef.current.index
+              : -1;
+          const currentIndex =
+            rememberedIndex >= 0
+              ? rememberedIndex
+              : filteredItems.findIndex((item) => item.globalId === selectedItem.globalId);
           if (currentIndex < 0) return;
 
           const direction = e.key === "ArrowDown" ? 1 : -1;
           const nextIndex = Math.max(0, Math.min(currentIndex + direction, filteredItems.length - 1));
           if (nextIndex === currentIndex) return;
 
+          selectedNavigationIndexRef.current = {
+            globalId: filteredItems[nextIndex].globalId,
+            index: nextIndex,
+          };
           setCompactSelectionDirection(direction);
           setFocusedIndex(nextIndex);
           openItem(filteredItems[nextIndex]);

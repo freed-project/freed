@@ -1,6 +1,7 @@
 import {
   useState,
   useEffect,
+  useLayoutEffect,
   useRef,
   useMemo,
   useCallback,
@@ -66,9 +67,22 @@ const toolbarControlStyle = { ...noDrag, userSelect: "none" } as CSSProperties;
 const TOOLBAR_DRAG_THRESHOLD_PX = 6;
 const TOOLBAR_ICON_BUTTON_CLASS =
   "theme-toolbar-icon-button rounded-lg";
+const LAYOUT_CONTROL_BUTTON_SIZE_PX = 40;
+const LAYOUT_CONTROL_BUTTON_GAP_PX = 8;
+const LAYOUT_CONTROL_PAIR_WIDTH_PX =
+  LAYOUT_CONTROL_BUTTON_SIZE_PX * 2 + LAYOUT_CONTROL_BUTTON_GAP_PX;
+const LAYOUT_CONTROL_SAFE_GAP_PX = 8;
+const CLOSED_SIDEBAR_TOGGLE_LEFT_PX = 12;
+const DEFAULT_LAYOUT_CONTROL_SAFE_LEFT_PX = 180;
+const DEFAULT_LAYOUT_CONTROL_RESERVED_WIDTH_PX = 280;
 
 function formatItemCount(count: number): string {
   return `${count.toLocaleString()} item${count === 1 ? "" : "s"}`;
+}
+
+function parsePixelValue(value: string, fallback: number): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function ToolbarAnimatedSlot({
@@ -435,6 +449,12 @@ export function Header({
   const showReaderLayoutToggle =
     !isMobile &&
     !!selectedItem;
+  const showDesktopReaderLayoutToggle =
+    showReaderLayoutToggle && visibleDesktopSidebarMode !== "closed";
+  const [layoutControlMetrics, setLayoutControlMetrics] = useState({
+    clusterLeftPx: DEFAULT_LAYOUT_CONTROL_SAFE_LEFT_PX,
+    reservedWidthPx: DEFAULT_LAYOUT_CONTROL_RESERVED_WIDTH_PX,
+  });
   const activeSearchQuery = searchQuery.trim();
   const showToolbarSearch = !selectedItem && activeSearchQuery.length > 0;
   const showFriendsSidebarToggle = activeView === "friends" && !isMobile;
@@ -451,10 +471,16 @@ export function Header({
     ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
     : undefined;
   const sidebarHandleCenterline = "var(--freed-sidebar-handle-centerline, 264px)";
-  const leftToolbarWidth =
+  const layoutControlClusterWidthPx = showDesktopReaderLayoutToggle
+    ? LAYOUT_CONTROL_PAIR_WIDTH_PX
+    : LAYOUT_CONTROL_BUTTON_SIZE_PX;
+  const toolbarBoundaryWidth =
     showReaderLayoutToggle
       ? `calc(${sidebarHandleCenterline} + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)} + var(--freed-reader-rail-width, 0px))`
       : `calc(${sidebarHandleCenterline} + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)})`;
+  const leftToolbarWidth = !isMobileDevice
+    ? px(layoutControlMetrics.reservedWidthPx)
+    : toolbarBoundaryWidth;
   const leftToolbarStyle = !isMobileDevice
     ? ({
         position: "relative",
@@ -472,25 +498,17 @@ export function Header({
     paddingLeft: headerDragRegion ? `${MACOS_TRAFFIC_LIGHT_INSET}px` : undefined,
     paddingRight: px(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX),
   } as CSSProperties;
-  const boundaryButtonCommonStyle = {
-    position: "absolute",
-    top: "50%",
-    transform: "translateY(-50%)",
-  } as CSSProperties;
-  const collapseButtonStyle = {
-    ...boundaryButtonCommonStyle,
-    left: visibleDesktopSidebarMode === "closed"
-      ? "12px"
-      : `calc(${sidebarHandleCenterline} - 52px)`,
-  } as CSSProperties;
-  const readerRailButtonStyle = {
-    ...boundaryButtonCommonStyle,
-    left: `calc(${sidebarHandleCenterline} + 28px)`,
+  const layoutControlClusterStyle = {
+    left: px(layoutControlMetrics.clusterLeftPx),
+    gap: px(LAYOUT_CONTROL_BUTTON_GAP_PX),
+    ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const toolbarSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const layoutControlHostRef = useRef<HTMLDivElement | null>(null);
+  const wordmarkRef = useRef<HTMLSpanElement | null>(null);
   const toolbarDragGestureRef = useRef<{
     pointerId: number;
     startX: number;
@@ -618,6 +636,106 @@ export function Header({
     toolbarSearchInputRef.current?.setSelectionRange(searchQuery.length, searchQuery.length);
   }, [showToolbarSearch]);
 
+  useLayoutEffect(() => {
+    if (isMobileDevice) return undefined;
+
+    let active = true;
+    const updateLayoutControlMetrics = () => {
+      const host = layoutControlHostRef.current;
+      const wordmark = wordmarkRef.current;
+      if (!host || !wordmark) return;
+
+      const hostRect = host.getBoundingClientRect();
+      const wordmarkRect = wordmark.getBoundingClientRect();
+      const safeLeftPx = Math.ceil(
+        wordmarkRect.right - hostRect.left + LAYOUT_CONTROL_SAFE_GAP_PX,
+      );
+      const rootStyles = window.getComputedStyle(document.documentElement);
+      const fallbackHandleCenterPx = parsePixelValue(
+        rootStyles.getPropertyValue("--freed-sidebar-handle-centerline"),
+        264,
+      );
+      const readerRailWidthPx = parsePixelValue(
+        rootStyles.getPropertyValue("--freed-reader-rail-width"),
+        0,
+      );
+      const resizeHandle = document.querySelector(
+        '[data-testid="app-sidebar-resize-handle"]',
+      ) as HTMLElement | null;
+      const resizeHandleRect = resizeHandle?.getBoundingClientRect() ?? null;
+      const handleCenterPx = resizeHandleRect
+        ? resizeHandleRect.left + resizeHandleRect.width / 2 - hostRect.left
+        : fallbackHandleCenterPx;
+      const idealClusterLeftPx = visibleDesktopSidebarMode === "closed"
+        ? CLOSED_SIDEBAR_TOGGLE_LEFT_PX
+        : handleCenterPx - LAYOUT_CONTROL_PAIR_WIDTH_PX / 2;
+      const clusterLeftPx = Math.ceil(Math.max(idealClusterLeftPx, safeLeftPx));
+      const toolbarBoundaryWidthPx = showReaderLayoutToggle
+        ? handleCenterPx + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2 + readerRailWidthPx
+        : handleCenterPx + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
+      const reservedWidthPx = Math.ceil(
+        Math.max(
+          clusterLeftPx + layoutControlClusterWidthPx + TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
+          toolbarBoundaryWidthPx,
+        ),
+      );
+
+      setLayoutControlMetrics((current) => {
+        if (
+          Math.abs(current.clusterLeftPx - clusterLeftPx) < 1 &&
+          Math.abs(current.reservedWidthPx - reservedWidthPx) < 1
+        ) {
+          return current;
+        }
+
+        return { clusterLeftPx, reservedWidthPx };
+      });
+    };
+
+    updateLayoutControlMetrics();
+
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(updateLayoutControlMetrics);
+    if (layoutControlHostRef.current) {
+      resizeObserver?.observe(layoutControlHostRef.current);
+    }
+    if (wordmarkRef.current) {
+      resizeObserver?.observe(wordmarkRef.current);
+    }
+
+    const mutationObserver =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(updateLayoutControlMetrics);
+    mutationObserver?.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["style"],
+    });
+
+    void document.fonts?.ready.then(() => {
+      if (active) updateLayoutControlMetrics();
+    });
+    window.addEventListener("resize", updateLayoutControlMetrics);
+    window.addEventListener("mousemove", updateLayoutControlMetrics);
+    window.addEventListener("pointermove", updateLayoutControlMetrics);
+
+    return () => {
+      active = false;
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+      window.removeEventListener("resize", updateLayoutControlMetrics);
+      window.removeEventListener("mousemove", updateLayoutControlMetrics);
+      window.removeEventListener("pointermove", updateLayoutControlMetrics);
+    };
+  }, [
+    isMobileDevice,
+    layoutControlClusterWidthPx,
+    showReaderLayoutToggle,
+    visibleDesktopSidebarMode,
+  ]);
+
   useEffect(() => {
     if (addFeedOpen || savedContentOpen) {
       setDropdownOpen(false);
@@ -683,6 +801,7 @@ export function Header({
             className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex shrink-0 items-center ${showReaderLayoutToggle ? "gap-0" : "gap-2"}`}
           >
             <div
+              ref={layoutControlHostRef}
               className="relative flex h-full shrink-0 items-center"
               style={leftToolbarStyle}
             >
@@ -706,6 +825,7 @@ export function Header({
 
               <div className="flex h-full items-center pl-3 sm:pl-4" style={toolbarLogoRowStyle}>
                 <span
+                  ref={wordmarkRef}
                   data-testid="workspace-toolbar-wordmark"
                   className="cursor-default select-none text-lg font-bold gradient-text font-logo"
                 >
@@ -714,51 +834,53 @@ export function Header({
               </div>
 
               {!isMobileDevice ? (
-              <Tooltip
-                label={visibleDesktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
-                className="absolute"
-                triggerStyle={collapseButtonStyle}
-              >
-                <button
-                  onClick={onDesktopSidebarToggle}
-                  {...getToolbarControlProps()}
-                  data-testid="desktop-sidebar-toggle"
-                  className={`${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-neutral`}
-                  aria-label={visibleDesktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
+                <div
+                  data-testid="desktop-layout-control-cluster"
+                  className="absolute top-1/2 flex -translate-y-1/2 items-center"
+                  style={layoutControlClusterStyle}
                 >
-                  {visibleDesktopSidebarMode === "closed" ? (
-                    <SidebarExpandIcon className="h-5 w-5" />
-                  ) : (
-                    <SidebarCollapseIcon className="h-5 w-5" />
-                  )}
-                </button>
-              </Tooltip>
-              ) : null}
-
-              {showReaderLayoutToggle ? (
-                <Tooltip
-                  label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
-                  className="absolute"
-                  triggerStyle={readerRailButtonStyle}
-                >
-                  <button
-                    onClick={handleToggleDualColumn}
-                    {...getToolbarControlProps()}
-                    className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                      display.reading.dualColumnMode
-                        ? "theme-toolbar-button-active"
-                        : "theme-toolbar-button-neutral"
-                    }`}
-                    aria-pressed={display.reading.dualColumnMode}
-                    aria-label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
+                  <Tooltip
+                    label={visibleDesktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
                   >
-                    {display.reading.dualColumnMode ? (
-                      <ReaderRailHideIcon className="h-5 w-5" />
-                    ) : (
-                      <ReaderRailShowIcon className="h-5 w-5" />
-                    )}
-                  </button>
-                </Tooltip>
+                    <button
+                      onClick={onDesktopSidebarToggle}
+                      {...getToolbarControlProps()}
+                      data-testid="desktop-sidebar-toggle"
+                      className={`${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-neutral`}
+                      aria-label={visibleDesktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
+                    >
+                      {visibleDesktopSidebarMode === "closed" ? (
+                        <SidebarExpandIcon className="h-5 w-5" />
+                      ) : (
+                        <SidebarCollapseIcon className="h-5 w-5" />
+                      )}
+                    </button>
+                  </Tooltip>
+
+                  {showDesktopReaderLayoutToggle ? (
+                    <Tooltip
+                      label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
+                    >
+                      <button
+                        onClick={handleToggleDualColumn}
+                        {...getToolbarControlProps()}
+                        className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
+                          display.reading.dualColumnMode
+                            ? "theme-toolbar-button-active"
+                            : "theme-toolbar-button-neutral"
+                        }`}
+                        aria-pressed={display.reading.dualColumnMode}
+                        aria-label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
+                      >
+                        {display.reading.dualColumnMode ? (
+                          <ReaderRailHideIcon className="h-5 w-5" />
+                        ) : (
+                          <ReaderRailShowIcon className="h-5 w-5" />
+                        )}
+                      </button>
+                    </Tooltip>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           </div>
