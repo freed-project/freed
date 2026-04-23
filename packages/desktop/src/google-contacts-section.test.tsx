@@ -48,7 +48,7 @@ describe("GoogleContactsSection", () => {
         getToken: () => null,
         connect,
       },
-    } as PlatformConfig;
+    } as unknown as PlatformConfig;
 
     const contactSyncValue: ContactSyncContextValue = {
       syncState,
