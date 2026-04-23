@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  getDefaultMapMode,
   getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
   getLocationTimelineMoments,
+  resolveMapMode,
   type MapTimeMode,
 } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
@@ -95,11 +95,11 @@ export function MapView() {
       }),
     [playbackAt, referenceNow, resolvedItems, savedTimeMode],
   );
-  const defaultMode = useMemo(
-    () => getDefaultMapMode(friendMarkers.length, allContentMarkers.length),
-    [allContentMarkers.length, friendMarkers.length],
+  const effectiveMode = resolveMapMode(
+    display.mapMode,
+    friendMarkers.length,
+    allContentMarkers.length,
   );
-  const effectiveMode = display.mapMode ?? defaultMode;
   const markers = effectiveMode === "friends" ? friendMarkers : allContentMarkers;
 
   useEffect(() => {

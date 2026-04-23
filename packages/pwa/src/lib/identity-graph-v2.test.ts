@@ -4,6 +4,7 @@ import { buildProvisionalPersonCandidates } from "@freed/shared";
 import {
   nudgeOverlapsBucketed,
   buildIdentityGraphLayout,
+  type IdentityGraphLayoutNode,
 } from "../../../ui/src/lib/identity-graph-layout";
 import {
   buildIdentityGraphActivityIndex,
@@ -108,7 +109,11 @@ describe("identity graph v2 model", () => {
         platform: "rss",
         contentType: "article",
         author: { id: "feed-author", handle: "feed-author", displayName: "Feed Author" },
-        rssSource: { feedUrl: "https://example.com/feed.xml", feedTitle: "Example Feed" },
+        rssSource: {
+          feedUrl: "https://example.com/feed.xml",
+          feedTitle: "Example Feed",
+          siteUrl: "https://example.com",
+        },
       }),
     };
 
@@ -146,7 +151,11 @@ describe("identity graph v2 model", () => {
         platform: "rss",
         contentType: "article",
         author: { id: "feed-author", handle: "feed-author", displayName: "Feed Author" },
-        rssSource: { feedUrl: "https://example.com/feed.xml", feedTitle: "Example Feed" },
+        rssSource: {
+          feedUrl: "https://example.com/feed.xml",
+          feedTitle: "Example Feed",
+          siteUrl: "https://example.com",
+        },
       }),
     };
 
@@ -260,7 +269,7 @@ describe("identity graph v2 model", () => {
         id: `person-${index}`,
         name: `Person ${index}`,
         relationshipStatus: index < 120 ? "friend" : "connection",
-        careLevel: index < 120 ? 3 + (index % 3) : 2,
+        careLevel: (index < 120 ? 3 + (index % 3) : 2) as 1 | 2 | 3 | 4 | 5,
       }),
     );
     const accountEntries = Object.fromEntries(
@@ -306,6 +315,7 @@ describe("identity graph v2 model", () => {
               ? {
                   feedUrl: `https://example.com/feed-${index % 240}.xml`,
                   feedTitle: `Feed ${index % 240}`,
+                  siteUrl: `https://example.com/site-${index % 240}`,
                 }
               : undefined,
         }),
@@ -378,7 +388,7 @@ describe("provisional identity candidates", () => {
 
 describe("identity graph v2 layout", () => {
   it("bucketed overlap nudging preserves minimum spacing", () => {
-    const nodes = [
+    const nodes: IdentityGraphLayoutNode[] = [
       { id: "a", kind: "friend_person", label: "A", radius: 20, labelPriority: 100, ring: 0, weight: 100, interactive: true, x: 0, y: 0 },
       { id: "b", kind: "friend_person", label: "B", radius: 20, labelPriority: 100, ring: 0, weight: 100, interactive: true, x: 5, y: 0 },
       { id: "c", kind: "connection_person", label: "C", radius: 18, labelPriority: 80, ring: 1, weight: 80, interactive: true, x: 8, y: 5 },
@@ -453,7 +463,7 @@ describe("identity graph v2 layout", () => {
 describe("identity graph interactive label quality", () => {
   it("hides low-priority outer labels during motion", () => {
     const highlighted = new Set<string>();
-    const feedNode = {
+    const feedNode: IdentityGraphLayoutNode = {
       id: "feed:example",
       kind: "feed",
       label: "Example Feed",
@@ -467,7 +477,7 @@ describe("identity graph interactive label quality", () => {
       x: 0,
       y: 0,
     };
-    const linkedAccountNode = {
+    const linkedAccountNode: IdentityGraphLayoutNode = {
       id: "account:linked",
       kind: "account",
       label: "Linked Account",
