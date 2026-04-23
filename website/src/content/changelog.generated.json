@@ -1,45 +1,225 @@
 [
   {
-    "version": "26.4.1900-dev",
-    "tagName": "v26.4.1900-dev",
-    "channel": "dev",
-    "date": "2026-04-20T00:07:02Z",
-    "deck": "Map timeline scrubber, startup recovery, and clearer dev updates",
+    "version": "26.4.2100",
+    "tagName": "v26.4.2100",
+    "channel": "production",
+    "date": "2026-04-21T20:57:19Z",
+    "deck": "Map timeline playback, cleaner identity migration, and smoother install and update flows",
     "features": [
       {
-        "text": "Replay historical posts and future plans with a shared map timeline scrubber."
+        "text": "Filter maps with a shared timeline scrubber"
+      },
+      {
+        "text": "Replay historical posts and future plans from one map timeline"
+      },
+      {
+        "text": "Manage friends and map identities through the new person and account graph"
       }
     ],
     "fixes": [
       {
-        "text": "Shows a native startup recovery window before React loads, so startup failures still expose recovery actions."
+        "text": "Migrates older friend data into the new person and account graph during startup so existing identities keep loading cleanly after the update"
       },
       {
-        "text": "Lets dev installs take a newer production update when no newer dev build exists, without switching release channels."
+        "text": "Dedupes Facebook and Instagram cross-posts"
       },
       {
-        "text": "Shows the `-dev` suffix consistently in desktop update surfaces and settings."
+        "text": "Keeps the install prompt and update channel labeling clearer across the app"
       },
       {
-        "text": "Restores desktop window dragging and makes the reader toolbar title region navigate back again."
+        "text": "Tightens reader, feed, header, sync, and release reliability"
       }
     ],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1900-dev",
+    "followUps": [
+      {
+        "text": "Adds a tri-state source sidebar for faster filtering"
+      },
+      {
+        "text": "Brings the Friends lens into the feed toolbar"
+      },
+      {
+        "text": "Polishes settings jumps and hardens helper workflow stability"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2100",
     "prNumbers": [
-      239,
-      241,
-      242,
-      243,
-      244
+      227,
+      274
     ],
     "builds": [
-      "26.4.1900-dev"
+      "26.4.1700-dev",
+      "26.4.1800-dev",
+      "26.4.1802-dev",
+      "26.4.1900-dev",
+      "26.4.1901-dev",
+      "26.4.2001-dev",
+      "26.4.2002-dev",
+      "26.4.2100"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.1700-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1700-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.1800-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1800-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.1802-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1802-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.1900-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1900-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.1901-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1901-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.2001-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2001-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.2002-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2002-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.2100",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2100",
+        "channel": "production"
+      }
+    ]
+  },
+  {
+    "version": "26.4.2002-dev",
+    "tagName": "v26.4.2002-dev",
+    "channel": "dev",
+    "date": "2026-04-21T04:39:59Z",
+    "deck": "This dev build improves install flow and tightens startup, capture, and release stability.",
+    "features": [
+      {
+        "text": "PWA install prompt flow"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Stop the desktop dev launch crash and clean up the recovery dialog"
+      },
+      {
+        "text": "Dedupe Facebook and Instagram cross-posts"
+      },
+      {
+        "text": "Reset preview banners to bottom center on load"
+      },
+      {
+        "text": "Harden build fanout and swarm worktree setup"
+      },
+      {
+        "text": "Keep installed version stable across release channels"
+      },
+      {
+        "text": "Polish mobile settings navigation"
+      },
+      {
+        "text": "Refine live theme preview interactions"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Refine settings section jump alignment, harden worktree helper flow, and harden helper session workflow"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2002-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.4.2001-dev",
+      "26.4.2002-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.2001-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2001-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.2002-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2002-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.4.1901-dev",
+    "tagName": "v26.4.1901-dev",
+    "channel": "dev",
+    "date": "2026-04-20T03:41:16Z",
+    "deck": "Expand friends and map identity workflows, tri-state source sidebar, and Friends lens to feed toolbar",
+    "features": [
+      {
+        "text": "Expand friends and map identity workflows"
+      },
+      {
+        "text": "Tri-state source sidebar"
+      },
+      {
+        "text": "Friends lens to feed toolbar"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Redeploy dev pwa on dev merges"
+      },
+      {
+        "text": "Dismiss sticky tooltips after pointer activation"
+      },
+      {
+        "text": "Show -dev suffix for dev build versions"
+      },
+      {
+        "text": "Desktop toolbar dragging and back target restored"
+      },
+      {
+        "text": "Fall back to newer production updates on dev"
+      },
+      {
+        "text": "Add native startup recovery window"
+      },
+      {
+        "text": "Lets dev installs take a newer production update when no newer dev build exists, without switching release channels"
+      },
+      {
+        "text": "Shows the -dev suffix consistently in desktop update surfaces and settings"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Map timeline scrubber"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1901-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.4.1900-dev",
+      "26.4.1901-dev"
     ],
     "buildLinks": [
       {
         "version": "26.4.1900-dev",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1900-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.1901-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1901-dev",
         "channel": "dev"
       }
     ]
@@ -62,11 +242,7 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1802-dev",
-    "prNumbers": [
-      233,
-      235,
-      238
-    ],
+    "prNumbers": [],
     "builds": [
       "26.4.1800-dev",
       "26.4.1802-dev"
@@ -94,13 +270,7 @@
     "fixes": [],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1700-dev",
-    "prNumbers": [
-      225,
-      226,
-      228,
-      229,
-      230
-    ],
+    "prNumbers": [],
     "builds": [
       "26.4.1700-dev"
     ],
@@ -183,10 +353,7 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1601-dev",
-    "prNumbers": [
-      223,
-      224
-    ],
+    "prNumbers": [],
     "builds": [
       "26.4.1601-dev"
     ],
@@ -222,11 +389,7 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1501-dev",
-    "prNumbers": [
-      214,
-      217,
-      218
-    ],
+    "prNumbers": [],
     "builds": [
       "26.4.1500-dev",
       "26.4.1501-dev"
@@ -296,179 +459,7 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1403-dev",
-    "prNumbers": [
-      4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      11,
-      12,
-      13,
-      16,
-      27,
-      31,
-      32,
-      34,
-      35,
-      36,
-      37,
-      38,
-      39,
-      40,
-      41,
-      42,
-      43,
-      44,
-      45,
-      46,
-      47,
-      48,
-      49,
-      50,
-      51,
-      52,
-      55,
-      56,
-      57,
-      58,
-      59,
-      71,
-      72,
-      73,
-      74,
-      75,
-      76,
-      77,
-      78,
-      79,
-      80,
-      81,
-      82,
-      83,
-      84,
-      85,
-      86,
-      87,
-      89,
-      90,
-      91,
-      92,
-      93,
-      94,
-      95,
-      96,
-      97,
-      98,
-      100,
-      101,
-      102,
-      103,
-      104,
-      105,
-      106,
-      107,
-      108,
-      109,
-      110,
-      111,
-      112,
-      113,
-      114,
-      115,
-      116,
-      117,
-      118,
-      119,
-      120,
-      121,
-      122,
-      123,
-      124,
-      125,
-      126,
-      127,
-      128,
-      129,
-      130,
-      131,
-      132,
-      133,
-      134,
-      135,
-      136,
-      137,
-      138,
-      139,
-      140,
-      141,
-      142,
-      143,
-      144,
-      145,
-      146,
-      147,
-      148,
-      150,
-      151,
-      152,
-      153,
-      154,
-      155,
-      156,
-      157,
-      158,
-      159,
-      161,
-      162,
-      163,
-      164,
-      165,
-      166,
-      167,
-      168,
-      169,
-      170,
-      171,
-      172,
-      173,
-      174,
-      175,
-      176,
-      177,
-      178,
-      179,
-      180,
-      181,
-      182,
-      184,
-      185,
-      186,
-      187,
-      188,
-      190,
-      191,
-      192,
-      193,
-      194,
-      195,
-      196,
-      197,
-      198,
-      199,
-      200,
-      201,
-      202,
-      203,
-      204,
-      205,
-      208,
-      209,
-      210,
-      212
-    ],
+    "prNumbers": [],
     "builds": [
       "26.4.1403-dev"
     ],

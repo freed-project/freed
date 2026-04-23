@@ -8,13 +8,14 @@
  * be rendered by both desktop and (future) platforms.
  */
 
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import type { ImportSummary, ProgressFn } from "./LibraryDialog.types.js";
 
 export type { ImportSummary, ProgressFn };
 
 interface LibraryDialogProps {
   onClose: () => void;
+  initialTab?: Tab;
   /**
    * Platform-provided import handler.
    * When undefined the Import tab shows a "not available" message.
@@ -31,15 +32,22 @@ type Tab = "import" | "export";
 
 export function LibraryDialog({
   onClose,
+  initialTab = "import",
   importMarkdown,
   exportMarkdown,
 }: LibraryDialogProps) {
-  const [tab, setTab] = useState<Tab>("import");
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setTab(initialTab);
+    setSummary(null);
+    setProgress(null);
+  }, [initialTab]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;

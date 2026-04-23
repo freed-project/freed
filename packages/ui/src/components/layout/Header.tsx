@@ -19,8 +19,6 @@ import {
   type MapTimeMode,
   type SidebarMode,
 } from "@freed/shared";
-import { AddFeedDialog } from "../AddFeedDialog.js";
-import { SavedContentDialog } from "../SavedContentDialog.js";
 import { SearchField } from "../SearchField.js";
 import { Tooltip } from "../Tooltip.js";
 import {
@@ -33,6 +31,7 @@ import {
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
+import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
   MACOS_TRAFFIC_LIGHT_INSET,
@@ -41,8 +40,7 @@ import {
 } from "../../context/PlatformContext.js";
 import { getFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
 import {
-  TOOLBAR_BOUNDARY_BUTTON_GAP_PX,
-  TOOLBAR_ICON_BUTTON_SIZE_PX,
+  PRIMARY_SIDEBAR_GAP_WIDTH_PX,
   TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
   px,
 } from "./layoutConstants.js";
@@ -57,6 +55,7 @@ interface HeaderProps {
   onFriendsSidebarToggle: () => void;
   friendsMobileSurface: "graph" | "details";
   onFriendsMobileSurfaceChange: (surface: "graph" | "details") => void;
+  onOpenCommandPalette: () => void;
 }
 
 type FriendsToolbarMode = MapMode | "details";
@@ -65,7 +64,6 @@ const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
 const dragStyle = { WebkitAppRegion: "drag" } as CSSProperties;
 const toolbarControlStyle = { ...noDrag, userSelect: "none" } as CSSProperties;
 const TOOLBAR_DRAG_THRESHOLD_PX = 6;
-const MIN_DESKTOP_TOOLBAR_IDENTITY_SLOT_WIDTH_PX = 176;
 const TOOLBAR_ICON_BUTTON_CLASS =
   "theme-toolbar-icon-button rounded-lg";
 
@@ -157,6 +155,7 @@ export function Header({
   onFriendsSidebarToggle,
   friendsMobileSurface,
   onFriendsMobileSurfaceChange,
+  onOpenCommandPalette,
 }: HeaderProps) {
   const {
     HeaderSyncIndicator,
@@ -175,6 +174,10 @@ export function Header({
   const canAddRss = !!addRssFeed;
   const canSaveContent = !!(saveUrl || importMarkdown || exportMarkdown);
   const showNewButton = canAddRss || canSaveContent;
+  const addFeedOpen = useCommandSurfaceStore((s) => s.addFeedOpen);
+  const savedContentOpen = useCommandSurfaceStore((s) => s.savedContentOpen);
+  const openAddFeedDialog = useCommandSurfaceStore((s) => s.openAddFeedDialog);
+  const openSavedContentDialog = useCommandSurfaceStore((s) => s.openSavedContentDialog);
 
   const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
@@ -377,14 +380,16 @@ export function Header({
   }, [display, updatePreferences]);
 
   const handleToggleDualColumn = useCallback(() => {
-    void updatePreferences({
-      display: {
-        ...display,
-        reading: {
-          ...display.reading,
-          dualColumnMode: !display.reading.dualColumnMode,
+    runFeedLayoutTransition(() => {
+      void updatePreferences({
+        display: {
+          ...display,
+          reading: {
+            ...display.reading,
+            dualColumnMode: !display.reading.dualColumnMode,
+          },
         },
-      },
+      });
     });
   }, [display, updatePreferences]);
 
@@ -435,24 +440,23 @@ export function Header({
       ? "details"
       : effectiveFriendsMode;
   const canManuallyDragToolbarControls = !!(headerDragRegion && startWindowDrag);
+  const commandShortcutHint =
+    typeof navigator !== "undefined" && /(Mac|iPhone|iPad)/i.test(navigator.platform)
+      ? "Cmd K"
+      : "Ctrl K";
   const macosTrafficLightInsetStyle = headerDragRegion
     ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
     : undefined;
-  const minimumToolbarIdentitySlotWidthPx =
-    MIN_DESKTOP_TOOLBAR_IDENTITY_SLOT_WIDTH_PX + (headerDragRegion ? MACOS_TRAFFIC_LIGHT_INSET : 0);
   const sidebarHandleCenterline = "var(--freed-sidebar-handle-centerline, 264px)";
-  const boundaryButtonOffsetPx = TOOLBAR_ICON_BUTTON_SIZE_PX + TOOLBAR_BOUNDARY_BUTTON_GAP_PX / 2;
-  const leadingToolbarSlotWidth =
-    !isMobileDevice
-      ? `max(${px(minimumToolbarIdentitySlotWidthPx)}, calc(${sidebarHandleCenterline} + ${px(
-          TOOLBAR_ICON_BUTTON_SIZE_PX + TOOLBAR_BOUNDARY_BUTTON_GAP_PX / 2 + TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
-        )}))`
-      : undefined;
+  const leftToolbarWidth =
+    showReaderLayoutToggle
+      ? `calc(${sidebarHandleCenterline} + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)} + var(--freed-reader-rail-width, 0px))`
+      : `calc(${sidebarHandleCenterline} + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)})`;
   const leftToolbarStyle = !isMobileDevice
     ? ({
         position: "relative",
-        width: leadingToolbarSlotWidth,
-        minWidth: leadingToolbarSlotWidth,
+        width: leftToolbarWidth,
+        minWidth: leftToolbarWidth,
         ...(headerDragRegion ? noDrag : {}),
       } as CSSProperties)
     : headerDragRegion
@@ -472,19 +476,17 @@ export function Header({
   } as CSSProperties;
   const collapseButtonStyle = {
     ...boundaryButtonCommonStyle,
-    left: `calc(${sidebarHandleCenterline} - ${px(boundaryButtonOffsetPx + TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX)})`,
+    left: visibleDesktopSidebarMode === "closed"
+      ? "12px"
+      : `calc(${sidebarHandleCenterline} - 52px)`,
   } as CSSProperties;
   const readerRailButtonStyle = {
     ...boundaryButtonCommonStyle,
-    left: `calc(${sidebarHandleCenterline} + ${px(TOOLBAR_BOUNDARY_BUTTON_GAP_PX / 2 - TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX)})`,
+    left: `calc(${sidebarHandleCenterline} + 28px)`,
   } as CSSProperties;
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [addFeedOpen, setAddFeedOpen] = useState(false);
-  const [savedContentOpen, setSavedContentOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const leftToolbarSlotRef = useRef<HTMLDivElement | null>(null);
-  const wordmarkRef = useRef<HTMLSpanElement | null>(null);
   const toolbarSearchInputRef = useRef<HTMLInputElement | null>(null);
   const toolbarDragGestureRef = useRef<{
     pointerId: number;
@@ -494,45 +496,6 @@ export function Header({
   } | null>(null);
   const suppressedToolbarClickRef = useRef<EventTarget | null>(null);
   const suppressedToolbarClickTimeoutRef = useRef<number | null>(null);
-  const [minimumBoundaryButtonLeftPx, setMinimumBoundaryButtonLeftPx] = useState(
-    minimumToolbarIdentitySlotWidthPx,
-  );
-
-  useEffect(() => {
-    const slotElement = leftToolbarSlotRef.current;
-    const wordmarkElement = wordmarkRef.current;
-    if (!slotElement || !wordmarkElement) return;
-
-    const updateBoundaryButtonClamp = () => {
-      const slotRect = slotElement.getBoundingClientRect();
-      const wordmarkRect = wordmarkElement.getBoundingClientRect();
-      const minimumLeft = Math.max(
-        0,
-        Math.ceil(wordmarkRect.right - slotRect.left + TOOLBAR_BOUNDARY_BUTTON_GAP_PX * 2),
-      );
-      setMinimumBoundaryButtonLeftPx(minimumLeft);
-    };
-
-    updateBoundaryButtonClamp();
-
-    const observer = new ResizeObserver(() => {
-      updateBoundaryButtonClamp();
-    });
-
-    observer.observe(slotElement);
-    observer.observe(wordmarkElement);
-    window.addEventListener("resize", updateBoundaryButtonClamp);
-
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", updateBoundaryButtonClamp);
-    };
-  }, [minimumToolbarIdentitySlotWidthPx]);
-
-  const clampedCollapseButtonStyle = {
-    ...collapseButtonStyle,
-    left: `max(${px(minimumBoundaryButtonLeftPx)}, ${collapseButtonStyle.left})`,
-  } as CSSProperties;
 
   const clearSuppressedToolbarClick = useCallback(() => {
     suppressedToolbarClickRef.current = null;
@@ -718,7 +681,6 @@ export function Header({
           >
             <div
               className="relative flex h-full shrink-0 items-center"
-              ref={leftToolbarSlotRef}
               style={leftToolbarStyle}
             >
               {isMobileDevice ? (
@@ -741,7 +703,6 @@ export function Header({
 
               <div className="flex h-full items-center pl-3 sm:pl-4" style={toolbarLogoRowStyle}>
                 <span
-                  ref={wordmarkRef}
                   data-testid="workspace-toolbar-wordmark"
                   className="cursor-default select-none text-lg font-bold gradient-text font-logo"
                 >
@@ -753,7 +714,7 @@ export function Header({
               <Tooltip
                 label={visibleDesktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
                 className="absolute"
-                triggerStyle={clampedCollapseButtonStyle}
+                triggerStyle={collapseButtonStyle}
               >
                 <button
                   onClick={onDesktopSidebarToggle}
@@ -808,10 +769,10 @@ export function Header({
                 onClick={handleCloseReader}
                 {...getToolbarControlProps()}
                 data-testid="workspace-toolbar-reader-back"
-                className="group flex w-full min-w-0 items-center gap-1 rounded-xl pl-0.5 pr-1.5 py-1.5 text-left transition-colors hover:bg-[var(--theme-bg-muted)]"
+                className="group flex w-full min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-[var(--theme-bg-muted)]"
                 aria-label="Back to list"
               >
-                <span className="pointer-events-none flex shrink-0 items-center rounded-xl p-1.5">
+                <span className="pointer-events-none flex shrink-0 items-center rounded-xl p-2">
                   <svg
                     className="h-4 w-4 shrink-0 text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]"
                     fill="none"
@@ -858,6 +819,30 @@ export function Header({
           >
             {selectedItem ? (
               <>
+                <Tooltip label={`Command palette (${commandShortcutHint})`}>
+                  <button
+                    type="button"
+                    onClick={onOpenCommandPalette}
+                    {...getToolbarControlProps()}
+                    data-testid="command-palette-trigger"
+                    className="theme-toolbar-button-neutral inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm"
+                    aria-label="Open command palette"
+                  >
+                    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                    <span className="hidden md:inline">Commands</span>
+                    <span className="hidden lg:inline text-xs text-[var(--theme-text-soft)]">
+                      {commandShortcutHint}
+                    </span>
+                  </button>
+                </Tooltip>
+
                 <ToolbarAnimatedSlot visible={!isMobile} width="5.25rem" className="hidden lg:flex">
                   <Tooltip label={display.reading.focusMode ? "Disable focus mode" : "Enable focus mode"}>
                     <button
@@ -938,6 +923,30 @@ export function Header({
               </>
             ) : (
               <>
+                <Tooltip label={`Command palette (${commandShortcutHint})`}>
+                  <button
+                    type="button"
+                    onClick={onOpenCommandPalette}
+                    {...getToolbarControlProps()}
+                    data-testid="command-palette-trigger"
+                    className="theme-toolbar-button-neutral inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm"
+                    aria-label="Open command palette"
+                  >
+                    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                    <span className="hidden md:inline">Commands</span>
+                    <span className="hidden lg:inline text-xs text-[var(--theme-text-soft)]">
+                      {commandShortcutHint}
+                    </span>
+                  </button>
+                </Tooltip>
+
                 <ToolbarAnimatedSlot visible={!!HeaderSyncIndicator} width="4.5rem" className="hidden md:flex">
                   {HeaderSyncIndicator ? (
                     <div className="hidden md:flex">
@@ -1113,7 +1122,7 @@ export function Header({
                 <button
                   onClick={() => {
                     setDropdownOpen(false);
-                    setAddFeedOpen(true);
+                    openAddFeedDialog();
                   }}
                   className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                 >
@@ -1127,7 +1136,7 @@ export function Header({
                 <button
                   onClick={() => {
                     setDropdownOpen(false);
-                    setSavedContentOpen(true);
+                    openSavedContentDialog();
                   }}
                   className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                 >
@@ -1155,12 +1164,6 @@ export function Header({
           </Tooltip>
         </div>
       )}
-
-      <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
-      <SavedContentDialog
-        open={savedContentOpen}
-        onClose={() => setSavedContentOpen(false)}
-      />
     </>
   );
 }

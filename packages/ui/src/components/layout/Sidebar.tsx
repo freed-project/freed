@@ -20,6 +20,8 @@ import { getTopSourceItems, type SourceNavigationItem } from "../../lib/source-n
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { SearchJumpField } from "./SearchJumpField.js";
+import { buildTopLevelTagFilters, childTagsOf, collectAllTags } from "../../lib/tag-navigation.js";
+import { navigateToFeedView } from "../../lib/workspace-navigation.js";
 import {
   CLOSED_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX,
   COMPACT_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX,
@@ -505,34 +507,15 @@ export function Sidebar({
   // ─── Tag tree ────────────────────────────────────────────────────────────────
 
   /** All unique tags collected from the library, sorted alphabetically */
-  const allTags = useMemo(() => {
-    const tagSet = new Set<string>();
-    for (const item of items) {
-      for (const tag of item.userState.tags ?? []) {
-        tagSet.add(tag);
-      }
-    }
-    return Array.from(tagSet).sort();
-  }, [items]);
-
-  /**
-   * Top-level tag segments (before the first "/").
-   * E.g. ["Technology/AI", "Technology/React", "Science"] → ["Science", "Technology"]
-   */
-  const topLevelTags = useMemo(() => {
-    const tops = new Set<string>();
-    for (const tag of allTags) {
-      tops.add(tag.split("/")[0]);
-    }
-    return Array.from(tops).sort();
-  }, [allTags]);
-
-  /** All descendant tag paths under a given top-level segment */
-  const childTagsOf = (top: string) =>
-    allTags.filter((t) => t === top || t.startsWith(`${top}/`));
+  const allTags = useMemo(() => collectAllTags(items), [items]);
+  const topLevelTagFilters = useMemo(() => buildTopLevelTagFilters(allTags), [allTags]);
+  const topLevelTags = useMemo(
+    () => topLevelTagFilters.map((tagFilter) => tagFilter.label),
+    [topLevelTagFilters],
+  );
 
   const handleTagClick = (tag: string) => {
-    const children = childTagsOf(tag);
+    const children = childTagsOf(allTags, tag);
     showFeed({ tags: children });
   };
 
@@ -542,7 +525,7 @@ export function Sidebar({
     if (!isFeedView) return false;
     const active = activeFilter.tags;
     if (!active || active.length === 0) return false;
-    return childTagsOf(tag).some((t) => active.includes(t));
+    return childTagsOf(allTags, tag).some((t) => active.includes(t));
   };
 
   useEffect(() => {
@@ -620,10 +603,14 @@ export function Sidebar({
   const rowGapClass = narrowLabeledSidebar ? "gap-2" : "gap-3";
   const desktopShellTransition = dragWidth !== null && !snapPreviewActive
     ? "none"
-    : "width 220ms ease, opacity 180ms ease";
+    : snapPreviewActive
+      ? "width 180ms ease, opacity 160ms ease"
+      : "width 220ms ease, opacity 180ms ease";
   const desktopAsideTransition = dragWidth !== null && !snapPreviewActive
     ? "none"
-    : "width 220ms ease, transform 220ms ease, opacity 180ms ease";
+    : snapPreviewActive
+      ? "width 180ms ease, transform 180ms ease, opacity 160ms ease"
+      : "width 220ms ease, transform 220ms ease, opacity 180ms ease";
   const desktopAsideTransform = renderMode === "closed"
     ? `translateX(calc(-100% - ${px(effectiveGapWidthPx)}))`
     : "translateX(0)";
@@ -733,10 +720,15 @@ export function Sidebar({
   );
 
   const showFeed = useCallback((filter: FilterOptions) => {
-    setActiveView("feed");
-    setSelectedFriend(null);
-    setSelectedItem(null);
-    setFilter(filter);
+    navigateToFeedView(
+      {
+        setActiveView,
+        setSelectedPerson: setSelectedFriend,
+        setSelectedItem,
+        setFilter,
+      },
+      filter,
+    );
     onMobileClose();
   }, [onMobileClose, setActiveView, setFilter, setSelectedFriend, setSelectedItem]);
 
@@ -952,6 +944,10 @@ export function Sidebar({
   ), []);
 
   const getSourceBadge = useCallback((source: SourceNavigationItem, sourceStatus?: SidebarSourceStatusSummary | null) => {
+    if (source.id && source.id !== "rss" && SourceIndicator) {
+      return renderSidebarIconBadge(<SourceIndicator sourceId={source.id} />);
+    }
+
     if (sourceStatus) {
       return renderSidebarIconBadge(
         <ProviderStatusIndicator
@@ -974,7 +970,7 @@ export function Sidebar({
   const pendingFriendsBadge = pendingMatchCount > 0
     ? renderSidebarIconBadge(<span className="flex h-2.5 w-2.5 rounded-full bg-[var(--theme-accent-secondary)]" />)
     : undefined;
-  const sidebarLabelClass = `min-w-0 flex-1 overflow-hidden whitespace-nowrap ${narrowLabeledSidebar ? "pr-px" : "pr-1"} [text-overflow:clip]`;
+  const sidebarLabelClass = `min-w-0 flex-1 truncate whitespace-nowrap ${narrowLabeledSidebar ? "pr-[2px]" : "pr-1"} [text-overflow:clip]`;
   const sidebarFeedLabelClass = `${sidebarLabelClass} text-xs`;
 
   const sidebarBody = (
@@ -1220,8 +1216,11 @@ export function Sidebar({
               )}
             </li>
             {providerSourceItems.map((source) => {
-                const isRssSource = source.id === "rss" && feedList.length > 0 && !compactRail;
                 const sourceStatus = getSourceStatus?.(source.id) ?? null;
+                const isRssSource =
+                  source.id === "rss" &&
+                  !compactRail &&
+                  (feedList.length > 0 || sourceStatus !== null);
 
                 if (compactRail) {
                   const compactBadge = getSourceBadge(source, sourceStatus);
@@ -1284,13 +1283,34 @@ export function Sidebar({
                                 }
                               `}
                             >
-                              {renderSidebarRowIcon(
-                                source.icon,
-                                getSourceBadge(source, sourceStatus),
-                                labeledSourceIconSizeClass(source.id),
+                              {narrowLabeledSidebar && sourceStatus ? (
+                                <span className="relative shrink-0">
+                                  {renderSidebarRowIcon(
+                                    source.icon,
+                                    undefined,
+                                    labeledSourceIconSizeClass(source.id),
+                                  )}
+                                  <span className="pointer-events-none absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center">
+                                    <span className="flex h-4 w-4 items-center justify-center">
+                                      <ProviderStatusIndicator
+                                        tone={sourceStatus.tone}
+                                        syncing={sourceStatus.syncing}
+                                        label={sourceStatus.label}
+                                        size="xxs"
+                                        testId={`source-status-${sourceKey(source)}`}
+                                      />
+                                    </span>
+                                  </span>
+                                </span>
+                              ) : (
+                                renderSidebarRowIcon(
+                                  source.icon,
+                                  undefined,
+                                  labeledSourceIconSizeClass(source.id),
+                                )
                               )}
                               <div className="flex min-w-0 flex-1 items-center gap-1">
-                                <span className="min-w-0 overflow-hidden whitespace-nowrap pr-px [text-overflow:clip]">
+                                <span className="min-w-0 overflow-hidden whitespace-nowrap pr-[2px] [text-overflow:clip]">
                                   {source.label}
                                 </span>
                                 {rssAccordionVisible ? (
@@ -1321,7 +1341,18 @@ export function Sidebar({
                             onClick={() => handleSourceClick(source)}
                             className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
                           >
-                            <div className={`relative h-6 shrink-0 ${rowCountsVisible || sourceMenusVisible ? "ml-0.5 w-[54px]" : "ml-0 w-0"}`}>
+                            {!narrowLabeledSidebar && sourceStatus ? (
+                              <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                                <ProviderStatusIndicator
+                                  tone={sourceStatus.tone}
+                                  syncing={sourceStatus.syncing}
+                                  label={sourceStatus.label}
+                                  size="xxs"
+                                  testId={`source-status-${sourceKey(source)}`}
+                                />
+                              </span>
+                            ) : null}
+                            <div className={`relative h-6 shrink-0 ${rowCountsVisible || sourceMenusVisible ? "ml-1.5 w-[54px]" : "ml-0 w-0"}`}>
                               {rowCountsVisible && sourceTotalCount(source) > 0 && (
                                 <span
                                   data-testid={`source-counts-${sourceKey(source)}`}
@@ -1525,7 +1556,7 @@ export function Sidebar({
                     >
                       {renderSidebarRowIcon(
                         source.icon,
-                        getSourceBadge(source, getSourceStatus?.(source.id) ?? null),
+                        undefined,
                         labeledSourceIconSizeClass(source.id),
                       )}
                       <span className={sidebarLabelClass}>{source.label}</span>
@@ -1534,7 +1565,15 @@ export function Sidebar({
                       onClick={() => handleSourceClick(source)}
                       className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
                     >
-                      <div className={`relative h-6 shrink-0 ${rowCountsVisible || sourceMenusVisible ? "ml-0.5 w-[54px]" : "ml-0 w-0"}`}>
+                      {SourceIndicator ? (
+                        <span
+                          data-testid={`source-indicator-slot-${sourceKey(source)}`}
+                          className="flex h-4 w-4 shrink-0 items-center justify-center"
+                        >
+                          <SourceIndicator sourceId={source.id ?? "all"} />
+                        </span>
+                      ) : null}
+                      <div className={`relative h-6 shrink-0 ${rowCountsVisible || sourceMenusVisible ? "ml-1.5 w-[54px]" : "ml-0 w-0"}`}>
                         {rowCountsVisible && sourceTotalCount(source) > 0 && (
                           <span
                             data-testid={`source-counts-${sourceKey(source)}`}
@@ -1596,9 +1635,7 @@ export function Sidebar({
             <SidebarSection title="Tags" defaultOpen={true} count={allTags.length}>
               <ul className="space-y-0.5">
                 {topLevelTags.map((top) => {
-                  const children = allTags.filter(
-                    (t) => t.startsWith(`${top}/`) && t !== top,
-                  );
+                  const children = childTagsOf(allTags, top).filter((tag) => tag !== top);
                   const hasChildren = children.length > 0;
                   const active = isTagActive(top);
                   return (
