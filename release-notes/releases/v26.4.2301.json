@@ -1,0 +1,46 @@
+{
+  "tag": "v26.4.2301",
+  "version": "26.4.2301",
+  "channel": "production",
+  "dayKey": "26.4.23",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-23T16:57:19.312Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.4.2300",
+    "previousPublishedDayTag": "v26.4.2100",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.2300",
+      "v26.4.2301"
+    ],
+    "relatedBuildTags": [
+      "v26.4.2300",
+      "v26.4.2301"
+    ],
+    "prNumbers": [
+      279,
+      285,
+      290
+    ],
+    "commitSubjects": [
+      "chore: sync ui package exports before production release",
+      "chore: promote dev into main for production release",
+      "chore: promote dev into main after validation fixes (#290)",
+      "release: approve v26.4.2300",
+      "release: v26.4.2300",
+      "chore: promote dev into main for production release (#285)",
+      "chore: stop release workflow deploying website (#279)"
+    ]
+  },
+  "release": {
+    "deck": "Promote dev into main for production release and stop release workflow deploying website",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2301\n\nPromote dev into main for production release and stop release workflow deploying website\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
