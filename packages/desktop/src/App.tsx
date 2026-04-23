@@ -73,7 +73,7 @@ import { refreshSampleLibraryData } from "@freed/ui/lib/sample-library-seed";
 import { acceptDesktopBundle, hasAcceptedDesktopBundle } from "./lib/legal-consent";
 import { clearProviderPause, forgetRssFeedHealth, initProviderHealth } from "./lib/provider-health";
 import { getDesktopSourceStatus } from "./lib/source-status";
-import { clearContactSyncState } from "./lib/contact-sync-storage";
+import { clearContactSyncState, setContactSyncError } from "./lib/contact-sync-storage";
 import { clearSnapshots, startSnapshotManager, stopSnapshotManager } from "./lib/snapshots";
 import { useDesktopNavigationHistory } from "./lib/navigation-history";
 import { desktopBugReporting } from "./lib/bug-report";
@@ -435,18 +435,36 @@ function App() {
     await startCloudSync(provider, token);
   }, []);
 
-  const reconnectCloudProvider = useCallback(async (provider: CloudProvider) => {
-    clearCloudProvider(provider);
-    const token = await initiateDesktopOAuth(provider);
-    storeCloudToken(provider, token);
-    await startCloudSync(provider, token);
+  const recordGoogleContactsConnectError = useCallback((error: unknown) => {
+    const message = error instanceof Error ? error.message : "Google Contacts connection failed.";
+    setContactSyncError(message, "auth");
+    log.warn(`[contacts] Google reconnect failed: ${message}`);
   }, []);
 
+  const reconnectCloudProvider = useCallback(async (provider: CloudProvider) => {
+    clearCloudProvider(provider);
+    try {
+      const token = await initiateDesktopOAuth(provider);
+      storeCloudToken(provider, token);
+      await startCloudSync(provider, token);
+    } catch (error) {
+      if (provider === "gdrive") {
+        recordGoogleContactsConnectError(error);
+      }
+      throw error;
+    }
+  }, [recordGoogleContactsConnectError]);
+
   const connectGoogleContacts = useCallback(async () => {
-    const token = await initiateDesktopOAuth("gdrive");
-    storeCloudToken("gdrive", token);
-    await startCloudSync("gdrive", token);
-  }, []);
+    try {
+      const token = await initiateDesktopOAuth("gdrive");
+      storeCloudToken("gdrive", token);
+      await startCloudSync("gdrive", token);
+    } catch (error) {
+      recordGoogleContactsConnectError(error);
+      throw error;
+    }
+  }, [recordGoogleContactsConnectError]);
 
   // Fake-authenticate all social providers for local testing. Writes stub
   // credentials to localStorage (matching the real auth persistence format)
