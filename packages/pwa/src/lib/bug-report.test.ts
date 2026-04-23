@@ -46,22 +46,13 @@ describe("pwa bug reporting", () => {
           "state-summary",
           "crash-context",
           "raw-stack",
-          "screenshot",
         ],
-        screenshot: {
-          name: "capture.png",
-          mimeType: "image/png",
-          dataUrl: "data:image/png;base64,AA==",
-          safeForPublic: false,
-          capturedAt: Date.now(),
-        },
       },
     });
 
     const zip = await JSZip.loadAsync(bundle.blob);
     expect(bundle.manifest.includedArtifacts).not.toContain("raw-stack");
-    expect(bundle.manifest.includedArtifacts).not.toContain("screenshot");
-    expect(zip.file("screenshots/capture.png")).toBeNull();
+    expect(Object.keys(zip.files).some((path) => path.startsWith("screenshots/"))).toBe(false);
   });
 
   it("omits unchecked public-safe artifacts from exported zips", async () => {
@@ -75,7 +66,6 @@ describe("pwa bug reporting", () => {
         expectedBehavior: "",
         actualBehavior: "",
         selectedArtifacts: ["crash-context"],
-        screenshot: null,
       },
     });
 

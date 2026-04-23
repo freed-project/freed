@@ -18,7 +18,6 @@ import type {
   ContactSyncState,
   BugReportDraft,
   BugReportIssueType,
-  BugReportScreenshot,
   GeneratedBugReportBundle,
   ImportProgress,
   ReportPrivacyTier,
@@ -50,6 +49,11 @@ export type UpdateDownloadProgress =
   | { phase: "downloading"; percent: number }
   | { phase: "error"; message: string };
 
+export interface AvailableUpdateInfo {
+  version: string;
+  channel: ReleaseChannel;
+}
+
 export type SyncProviderSectionSurface = "settings" | "debug-card";
 
 export interface SyncProviderSectionProps {
@@ -72,7 +76,6 @@ export interface BugReportingConfig {
     draft: BugReportDraft;
     privacyTier: ReportPrivacyTier;
   }) => Promise<GeneratedBugReportBundle>;
-  captureScreenshot?: () => Promise<BugReportScreenshot | null>;
   exportBundle?: (bundle: GeneratedBugReportBundle) => Promise<void>;
   openUrl?: (url: string) => void;
 }
@@ -111,6 +114,12 @@ export interface PlatformConfig {
 
   /** When true, Header becomes a native draggable title bar with traffic light padding */
   headerDragRegion?: boolean;
+
+  /**
+   * Start a native window drag gesture from an interactive toolbar control.
+   * Desktop only.
+   */
+  startWindowDrag?: () => Promise<void>;
 
   // -- Layout slot components (null = not rendered) --
 
@@ -159,8 +168,8 @@ export interface PlatformConfig {
    */
   GoogleContactsSettingsContent: ComponentType | null;
 
-  /** Manual update check. Returns version string if available, null if up-to-date. */
-  checkForUpdates?: () => Promise<string | null>;
+  /** Manual update check. Returns available update info, null if up-to-date. */
+  checkForUpdates?: () => Promise<AvailableUpdateInfo | null>;
 
   /** Apply a detected update (PWA: reload, Desktop: handled by UpdateNotification). */
   applyUpdate?: () => void;
@@ -306,7 +315,7 @@ export interface PlatformConfig {
 
 export interface ContactSyncActions {
   syncNow: () => Promise<ContactSyncState>;
-  dismissMatch: (contactResourceName: string, friendIdOrAuthorId: string) => void;
+  dismissSuggestion: (suggestionId: string) => void;
   openReview: () => Promise<void>;
 }
 

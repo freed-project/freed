@@ -66,20 +66,43 @@ Options:
 `freed-ship-www` to publish current `www`, refresh the static changelog, or
 sync approved `main` changes into `www`.
 
-`VERCEL_TOKEN` is required for GitHub Actions preview deploys and the automated
+Branch promotion rules:
+
+- `dev` carries ongoing product work and dev releases.
+- `main` is only for reviewed production release promotion and rare production hotfixes.
+- Promote `dev` into `main` when shipping production. Do not treat `main` as a peer development branch.
+- After every production release, open a dedicated reverse-integration PR that merges `main` back into `dev`.
+- If `main` gets a production-only fix or release adjustment, include it in that reverse-integration PR immediately after the production release is stable.
+- `www` stays separate from product branches. Sync approved `main` changes into `www` when the public website or checked-in changelog needs them. Never sync `www` from `dev`.
+- If release tooling or website deploy helpers are duplicated across long-lived branches, update the matching copies in the same sweep or note the intentional divergence in the PR.
+
+`VERCEL_TOKEN` is required for the website preview workflow and the automated
 PWA production deploy after a production desktop release.
 
 Without it, desktop releases still complete and publish on GitHub, but the PWA
-deploy step and GitHub Actions owned preview deploys are skipped.
+production deploy step and website preview workflow are skipped.
 
 Marketing preview routing:
 
 - PRs targeting `www` build and deploy website previews
-- PRs targeting `dev` build and deploy PWA previews
+- merges to `dev` redeploy `dev-app.freed.wtf` through Vercel Git deploys
+- Vercel preview deployments handle PWA branch and PR previews
 - Desktop Playwright E2E runs for product PRs targeting `dev`
 - `website/vercel.json` only allows Git-triggered Vercel deploys from `www`
-- `packages/pwa/vercel.json` disables Git-triggered Vercel deploys entirely
-- GitHub Actions owns website and PWA previews through the deploy helpers
+- `packages/pwa/vercel.json` leaves Git deployments enabled so `dev-app.freed.wtf` can follow `dev`
+- GitHub Actions owns website previews, while Vercel handles PWA Git previews
+
+## Website GitHub release token
+
+The website's download and desktop update routes can authenticate to the
+GitHub Releases API with any of these environment variable names:
+
+- `GITHUB_RELEASES_TOKEN`
+- `GITHUB_TOKEN`
+- `GH_TOKEN`
+- `RELEASE_GITHUB_TOKEN`
+
+On Vercel, the current project configuration uses `GITHUB_RELEASES_TOKEN`.
 
 ## Drafting release notes
 
@@ -136,36 +159,58 @@ render release bullets inside the install toast.
 ## How to publish a reviewed release
 
 ```bash
+# if production main is behind dev, promote dev into main first
+./scripts/promote-dev-to-main.sh ../freed-prod-promotion
+# merge the promotion PR to main
+
 ./scripts/release.sh 26.4.107 --channel=production
 # review the generated release-notes files
 git add release-notes
 git commit -m "docs: review release notes for v26.4.107"
+# ensure the approved website and changelog state is merged to www
 ./scripts/release-publish.sh 26.4.107
 git push origin main --follow-tags
 ```
+
+Production release prep now validates that `HEAD` matches `origin/dev` on
+product-owned paths before it will prepare or publish a tag. If `dev` is ahead,
+`./scripts/release.sh` and `./scripts/release-publish.sh` both fail with the
+exact stale file list instead of silently shipping old code from `main`.
+
+PRs targeting `main` also now have a scope guard. Product changes to `main`
+must come from a promotion branch named `chore/promote-dev-to-main-*`, and
+that promotion branch must still match current `origin/dev`. Release-only
+metadata updates remain allowed on `main`, while website-owned files are still
+rejected there.
 
 The `v*` tag triggers the release workflow which builds all platforms and
 creates a **draft** GitHub Release using the approved checked-in release body.
 After all platform builds succeed, the workflow publishes that release
 automatically.
 
-If `VERCEL_TOKEN` is configured, production releases then:
-
-- redeploys `website/` from the `www` branch so `freed.wtf/changelog`
-  rebuilds its checked-in snapshot against the published GitHub release
-- deploys `packages/pwa/` so the PWA version stays aligned with the shipped
-  desktop release
-
-Production desktop tags still come from `main`, but the marketing site does
-not. Before the website deploy runs, merge the reviewed website and changelog
-state to `www`. The release workflow now checks out `www` for the production
-website deploy and fails if that branch does not contain the tagged release
-artifact.
+If `VERCEL_TOKEN` is configured, production releases deploy `packages/pwa/` to
+`app.freed.wtf` so the PWA version stays aligned with the shipped desktop
+release. After any GitHub release is published, the release workflow also
+redeploys the public website from current `www` so the static changelog
+snapshot is rebuilt against the latest release list. Production website deploys
+still require the reviewed website and changelog state to already be merged
+into `www`. The release workflow now also rechecks production promotion state
+at tag time, so a stale `main` tag cannot slip through after `dev` advances.
+After the production release is stable, open the dedicated `main` back into
+`dev` reverse-integration PR before more feature work piles onto `dev`.
 
 Dev releases are published as GitHub prereleases with a `-dev` suffix and do
-not trigger production PWA deploys. They should still be followed by
-`freed-ship-www` in changelog refresh mode so `freed.wtf/changelog/all` can
-include the dev release in the next static marketing build.
+not deploy the PWA. `dev-app.freed.wtf` instead follows merges to `dev`
+through Vercel Git deploys. Dev releases still trigger the public changelog
+refresh from current `www`, so `freed.wtf/changelog/all` can pick up the dev
+release without waiting for a later production ship. Use `freed-ship-www` as
+the manual fallback if the website refresh needs to be rerun independently.
+
+For dev releases, only the Git tag and release metadata use the `-dev` suffix.
+The app package versions written to Desktop and PWA package files stay numeric,
+for example tag `v26.4.1402-dev` writes app version `26.4.1402`. Windows MSI
+rejects prerelease labels in installer versions, so the release channel must
+come from the tag, not the bundled app version.
 
 The in-app updater will pick the new GitHub release up automatically.
 

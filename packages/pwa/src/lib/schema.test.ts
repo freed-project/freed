@@ -8,8 +8,14 @@
 import { describe, it, expect } from "vitest";
 import * as A from "@automerge/automerge";
 import {
+  addAccounts,
+  addPerson,
   createEmptyDoc,
+  createDocFromData,
   addFeedItem,
+  deduplicateDocFeedItems,
+  hasLegacyIdentityGraphData,
+  migrateLegacyIdentityGraph,
   removeFeedItem,
   markAsRead,
   toggleSaved,
@@ -20,7 +26,7 @@ import {
   updatePreferences,
 } from "@freed/shared/schema";
 import type { FreedDoc } from "@freed/shared/schema";
-import type { FeedItem, RssFeed } from "@freed/shared";
+import type { Account, FeedItem, RssFeed } from "@freed/shared";
 
 // =============================================================================
 // Test fixtures
@@ -44,6 +50,23 @@ function makeFeed(overrides: Partial<RssFeed> & { url: string; title: string }):
   return {
     enabled: true,
     trackUnread: false,
+    ...overrides,
+  };
+}
+
+function makeAccount(overrides: Partial<Account> & {
+  id: string;
+  kind: Account["kind"];
+  provider: Account["provider"];
+  externalId: string;
+}): Account {
+  return {
+    personId: "person-1",
+    firstSeenAt: 1,
+    lastSeenAt: 1,
+    discoveredFrom: "captured_item",
+    createdAt: 1,
+    updatedAt: 1,
     ...overrides,
   };
 }
@@ -138,6 +161,191 @@ describe("removeFeedItem", () => {
     expect(() => {
       doc = A.change(doc, (d) => removeFeedItem(d, "nonexistent"));
     }).not.toThrow();
+  });
+});
+
+describe("deduplicateDocFeedItems", () => {
+  it("deduplicates exact URL matches and preserves the richer user state", () => {
+    let doc = createEmptyDoc();
+
+    doc = A.change(doc, (d) => {
+      addFeedItem(d, makeItem({
+        globalId: "rss:item-1",
+        content: {
+          text: "Same article",
+          mediaUrls: [],
+          mediaTypes: [],
+          linkPreview: { url: "https://example.com/article", title: "Article" },
+        },
+      }));
+      addFeedItem(d, makeItem({
+        globalId: "rss:item-2",
+        content: {
+          text: "Same article mirrored",
+          mediaUrls: [],
+          mediaTypes: [],
+          linkPreview: { url: "https://example.com/article", title: "Article" },
+        },
+        userState: {
+          hidden: false,
+          saved: true,
+          savedAt: 100,
+          archived: false,
+          tags: ["keep-me"],
+        },
+      }));
+      deduplicateDocFeedItems(d);
+    });
+
+    expect(Object.keys(doc.feedItems)).toHaveLength(1);
+    const [survivor] = Object.values(doc.feedItems);
+    expect(survivor.userState.saved).toBe(true);
+    expect(survivor.userState.tags).toContain("keep-me");
+  });
+
+  it("deduplicates likely Facebook and Instagram cross-posts for the same linked person", () => {
+    let doc = createEmptyDoc();
+
+    doc = A.change(doc, (d) => {
+      addPerson(d, {
+        id: "person-1",
+        name: "Casey",
+        relationshipStatus: "friend",
+        careLevel: 4,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      addAccounts(d, [
+        makeAccount({
+          id: "person-1:facebook:casey-fb",
+          personId: "person-1",
+          kind: "social",
+          provider: "facebook",
+          externalId: "casey-fb",
+        }),
+        makeAccount({
+          id: "person-1:instagram:casey-ig",
+          personId: "person-1",
+          kind: "social",
+          provider: "instagram",
+          externalId: "casey-ig",
+        }),
+      ]);
+
+      addFeedItem(d, makeItem({
+        globalId: "facebook:1",
+        platform: "facebook",
+        contentType: "story",
+        publishedAt: 1_000,
+        author: { id: "casey-fb", handle: "casey", displayName: "Casey" },
+        content: {
+          text: "Brunch in Echo Park with too much sun and exactly enough coffee.",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        userState: {
+          hidden: false,
+          saved: true,
+          savedAt: 1_100,
+          archived: false,
+          tags: ["brunch"],
+        },
+      }));
+
+      addFeedItem(d, makeItem({
+        globalId: "instagram:1",
+        platform: "instagram",
+        contentType: "story",
+        publishedAt: 1_000 + 60_000,
+        author: { id: "casey-ig", handle: "casey", displayName: "Casey Nguyen" },
+        content: {
+          text: "Brunch in Echo Park with too much sun and exactly enough coffee!!!",
+          mediaUrls: ["https://img.example.com/story.jpg"],
+          mediaTypes: ["image"],
+        },
+        location: {
+          name: "Echo Park",
+          source: "sticker",
+          url: "https://maps.example.com/echo-park",
+        },
+      }));
+
+      deduplicateDocFeedItems(d);
+    });
+
+    expect(Object.keys(doc.feedItems)).toHaveLength(1);
+    const [survivor] = Object.values(doc.feedItems);
+    expect(survivor.userState.saved).toBe(true);
+    expect(survivor.userState.tags).toContain("brunch");
+    expect(survivor.location?.name).toBe("Echo Park");
+    expect(survivor.content.mediaUrls).toContain("https://img.example.com/story.jpg");
+  });
+
+  it("keeps same-text social posts when the linked person or time window does not match", () => {
+    let doc = createEmptyDoc();
+
+    doc = A.change(doc, (d) => {
+      addPerson(d, {
+        id: "person-1",
+        name: "Casey",
+        relationshipStatus: "friend",
+        careLevel: 4,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      addPerson(d, {
+        id: "person-2",
+        name: "Jordan",
+        relationshipStatus: "friend",
+        careLevel: 4,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      addAccounts(d, [
+        makeAccount({
+          id: "person-1:facebook:casey-fb",
+          personId: "person-1",
+          kind: "social",
+          provider: "facebook",
+          externalId: "casey-fb",
+        }),
+        makeAccount({
+          id: "person-2:instagram:jordan-ig",
+          personId: "person-2",
+          kind: "social",
+          provider: "instagram",
+          externalId: "jordan-ig",
+        }),
+      ]);
+
+      addFeedItem(d, makeItem({
+        globalId: "facebook:2",
+        platform: "facebook",
+        publishedAt: 1_000,
+        author: { id: "casey-fb", handle: "casey", displayName: "Casey" },
+        content: {
+          text: "Sunset walk by the reservoir and a terrible joke about pelicans.",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+      }));
+
+      addFeedItem(d, makeItem({
+        globalId: "instagram:2",
+        platform: "instagram",
+        publishedAt: 1_000 + 12 * 60_000,
+        author: { id: "jordan-ig", handle: "jordan", displayName: "Jordan" },
+        content: {
+          text: "Sunset walk by the reservoir and a terrible joke about pelicans.",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+      }));
+
+      deduplicateDocFeedItems(d);
+    });
+
+    expect(Object.keys(doc.feedItems)).toHaveLength(2);
   });
 });
 
@@ -277,6 +485,84 @@ describe("updatePreferences", () => {
     );
 
     expect(doc.preferences.display.compactMode).toBe(originalCompactMode);
+  });
+});
+
+describe("legacy identity graph migration", () => {
+  function makeLegacyFriend() {
+    const now = Date.now();
+    return {
+      id: "person-1",
+      name: "Ada Lovelace",
+      sources: [{
+        platform: "x" as const,
+        authorId: "ada-l",
+        handle: "ada",
+        displayName: "Ada",
+      }],
+      careLevel: 3 as const,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  it("migrates legacy friends into persons and accounts when creating docs from data", () => {
+    const base = A.toJS(createEmptyDoc()) as FreedDoc;
+    const legacyFriend = makeLegacyFriend();
+    const doc = createDocFromData({
+      feedItems: base.feedItems,
+      rssFeeds: base.rssFeeds,
+      preferences: base.preferences,
+      meta: base.meta,
+      friends: {
+        [legacyFriend.id]: legacyFriend,
+      },
+    } as unknown as Partial<FreedDoc>);
+
+    expect(doc.persons[legacyFriend.id]?.name).toBe(legacyFriend.name);
+    expect(doc.accounts[`${legacyFriend.id}:x:${legacyFriend.sources[0].authorId}`]).toBeDefined();
+  });
+
+  it("repairs loaded legacy docs before discovered account writes run", () => {
+    const base = A.toJS(createEmptyDoc()) as FreedDoc;
+    const legacyFriend = makeLegacyFriend();
+    let doc = A.from({
+      feedItems: base.feedItems,
+      rssFeeds: base.rssFeeds,
+      preferences: base.preferences,
+      meta: base.meta,
+      friends: {
+        [legacyFriend.id]: legacyFriend,
+      },
+    } as Record<string, unknown>) as unknown as FreedDoc;
+
+    expect(hasLegacyIdentityGraphData(doc)).toBe(true);
+
+    doc = A.change(doc, (draft) => {
+      migrateLegacyIdentityGraph(draft);
+    });
+
+    const discoveredAccount: Account = {
+      id: `${legacyFriend.id}:x:new-author`,
+      personId: legacyFriend.id,
+      kind: "social",
+      provider: "x",
+      externalId: "new-author",
+      handle: "newauthor",
+      displayName: "New Author",
+      firstSeenAt: legacyFriend.updatedAt,
+      lastSeenAt: legacyFriend.updatedAt,
+      discoveredFrom: "captured_item",
+      createdAt: legacyFriend.updatedAt,
+      updatedAt: legacyFriend.updatedAt,
+    };
+
+    doc = A.change(doc, (draft) => {
+      addAccounts(draft, [discoveredAccount]);
+    });
+
+    expect(doc.persons[legacyFriend.id]?.name).toBe(legacyFriend.name);
+    expect(doc.accounts[discoveredAccount.id]?.externalId).toBe("new-author");
   });
 });
 

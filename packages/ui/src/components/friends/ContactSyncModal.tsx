@@ -1,130 +1,77 @@
-/**
- * ContactSyncModal — shows Google Contacts match suggestions.
- *
- * Sections:
- *   1. Strong Matches (high confidence)
- *   2. Possible Matches (medium confidence)
- *   3. Unmatched Contacts (no social match — offer "Create Friend")
- *   4. Already Linked (collapsed) — contacts already imported from Google
- */
-
 import { useMemo, useState } from "react";
-import type { ContactSyncState, ContactMatch, GoogleContact } from "@freed/shared";
+import type { ContactSyncState, GoogleContact, IdentitySuggestion } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
-
-const UNMATCHED_PAGE_SIZE = 10;
 
 interface ContactSyncModalProps {
   onClose: () => void;
   syncState: ContactSyncState;
-  /** Link a matched contact to the associated Friend / unlinked author(s). */
-  onLink: (match: ContactMatch) => Promise<void>;
-  /** Dismiss a match without linking (user says "not the same person"). */
-  onSkip: (contactResourceName: string, friendIdOrAuthorId: string) => void;
-  /** Create a new Friend from an unmatched Google contact. */
+  onLinkSuggestion: (suggestion: IdentitySuggestion) => Promise<void>;
+  onSkipSuggestion: (suggestionId: string) => void;
   onCreateFriend: (contact: GoogleContact) => Promise<void>;
 }
 
-// ---------------------------------------------------------------------------
-// Avatar
-// ---------------------------------------------------------------------------
-
 function ContactAvatar({ contact }: { contact: GoogleContact }) {
-  const photo = contact.photos.find(p => p.default) ?? contact.photos[0];
-  const initials = (() => {
-    const first = contact.name.givenName?.[0] ?? "";
-    const last = contact.name.familyName?.[0] ?? "";
-    return (first + last).toUpperCase() || (contact.name.displayName?.[0] ?? "?").toUpperCase();
-  })();
+  const photo = contact.photos.find((entry) => entry.default) ?? contact.photos[0];
+  const initials = (
+    (contact.name.givenName?.[0] ?? "") +
+    (contact.name.familyName?.[0] ?? "")
+  ).toUpperCase() || (contact.name.displayName?.[0] ?? "?").toUpperCase();
 
   if (photo?.url) {
     return (
       <img
         src={photo.url}
         alt={contact.name.displayName ?? ""}
-        className="w-9 h-9 rounded-full object-cover shrink-0 ring-1 ring-white/10"
+        className="h-10 w-10 rounded-full object-cover ring-1 ring-white/10"
       />
     );
   }
 
   return (
-    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.18)] ring-1 ring-[color:var(--theme-border-strong)]">
+    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.18)] ring-1 ring-[color:var(--theme-border-strong)]">
       <span className="text-xs font-semibold text-[color:var(--theme-text-primary)]">{initials}</span>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Match row (high / medium confidence)
-// ---------------------------------------------------------------------------
-
-function MatchRow({
-  match,
-  matchedName,
+function SuggestionRow({
+  contact,
+  suggestion,
   onLink,
   onSkip,
 }: {
-  match: ContactMatch;
-  matchedName: string;
-  onLink: (match: ContactMatch) => Promise<void>;
-  onSkip: (contactResourceName: string, id: string) => void;
+  contact: GoogleContact;
+  suggestion: IdentitySuggestion;
+  onLink: () => Promise<void>;
+  onSkip: () => void;
 }) {
-  const [linking, setLinking] = useState(false);
-  const potentialIds = [
-    ...(match.friend ? [match.friend.id] : []),
-    ...match.authorIds,
-  ];
-
-  const handleLink = async () => {
-    setLinking(true);
-    try {
-      await onLink(match);
-    } finally {
-      setLinking(false);
-    }
-  };
-
-  const handleSkip = () => {
-    for (const id of potentialIds) {
-      onSkip(match.contact.resourceName, id);
-    }
-  };
+  const [busy, setBusy] = useState(false);
 
   return (
-    <div className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-white/[0.03] transition-colors">
-      <ContactAvatar contact={match.contact} />
-
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-text-primary truncate">
-          {match.contact.name.displayName ?? "Unknown"}
+    <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-white/[0.03]">
+      <ContactAvatar contact={contact} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
+          {contact.name.displayName ?? "Unknown"}
         </p>
-        {match.contact.emails[0] && (
-          <p className="text-xs text-text-secondary truncate">
-            {match.contact.emails[0].value}
-          </p>
-        )}
+        <p className="truncate text-xs text-[color:var(--theme-text-muted)]">
+          {suggestion.reason ?? "Possible identity match"}
+        </p>
       </div>
-
-      {/* Arrow + matched friend / author name */}
-      <div className="flex items-center gap-1.5 shrink-0">
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-[color:var(--theme-text-muted)]" aria-hidden>
-          <path d="M4 10h12M12 6l4 4-4 4" />
-        </svg>
-        <span className="max-w-[100px] truncate text-xs font-medium text-[color:var(--theme-text-secondary)]">{matchedName}</span>
-      </div>
-
-      {/* Actions */}
-      <div className="flex items-center gap-1.5 shrink-0">
+      <div className="flex items-center gap-2">
         <button
           className="theme-chip-active rounded-lg px-2.5 py-1 text-xs font-medium disabled:opacity-50"
-          onClick={handleLink}
-          disabled={linking}
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            void onLink().finally(() => setBusy(false));
+          }}
         >
-          {linking ? "Linking…" : "Link"}
+          {busy ? "Linking..." : "Confirm"}
         </button>
         <button
-          className="rounded-lg px-2.5 py-1 text-xs text-[color:var(--theme-text-muted)] transition-colors hover:bg-[color:var(--theme-bg-card)] hover:text-[color:var(--theme-text-secondary)]"
-          onClick={handleSkip}
+          className="rounded-lg px-2.5 py-1 text-xs text-[color:var(--theme-text-muted)] hover:bg-[color:var(--theme-bg-card)]"
+          onClick={onSkip}
         >
           Skip
         </button>
@@ -133,314 +80,140 @@ function MatchRow({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Unmatched contact row
-// ---------------------------------------------------------------------------
-
 function UnmatchedRow({
   contact,
   onCreateFriend,
 }: {
   contact: GoogleContact;
-  onCreateFriend: (contact: GoogleContact) => Promise<void>;
+  onCreateFriend: () => Promise<void>;
 }) {
-  const [creating, setCreating] = useState(false);
-
-  const handleCreate = async () => {
-    setCreating(true);
-    try {
-      await onCreateFriend(contact);
-    } finally {
-      setCreating(false);
-    }
-  };
+  const [busy, setBusy] = useState(false);
 
   return (
-    <div className="flex items-center gap-3 py-2.5 px-3 rounded-xl hover:bg-white/[0.03] transition-colors">
+    <div className="flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-white/[0.03]">
       <ContactAvatar contact={contact} />
-
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-text-primary truncate">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
           {contact.name.displayName ?? "Unknown"}
         </p>
-        {contact.emails[0] && (
-          <p className="text-xs text-text-secondary truncate">
+        {contact.emails[0] ? (
+          <p className="truncate text-xs text-[color:var(--theme-text-muted)]">
             {contact.emails[0].value}
           </p>
-        )}
-        {contact.organizations[0]?.name && (
-          <p className="truncate text-xs text-[color:var(--theme-text-muted)]">
-            {contact.organizations[0].name}
-          </p>
-        )}
+        ) : null}
       </div>
-
       <button
-        className="btn-secondary shrink-0 rounded-lg px-2.5 py-1 text-xs disabled:opacity-50"
-        onClick={handleCreate}
-        disabled={creating}
+        className="btn-secondary rounded-lg px-2.5 py-1 text-xs disabled:opacity-50"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          void onCreateFriend().finally(() => setBusy(false));
+        }}
       >
-        {creating ? "Adding…" : "Add Friend"}
+        {busy ? "Adding..." : "Add friend"}
       </button>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Section header
-// ---------------------------------------------------------------------------
+export function ContactSyncModal({
+  onClose,
+  syncState,
+  onLinkSuggestion,
+  onSkipSuggestion,
+  onCreateFriend,
+}: ContactSyncModalProps) {
+  const accounts = useAppStore((state) => state.accounts);
 
-function SectionHeader({ title, count, action }: { title: string; count: number; action?: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2 mb-1 px-1">
-      <span className="text-xs font-semibold uppercase tracking-wider text-[color:var(--theme-text-muted)]">{title}</span>
-      <span className="text-xs tabular-nums text-[color:var(--theme-text-soft)]">({count})</span>
-      {action && <div className="ml-auto">{action}</div>}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main modal
-// ---------------------------------------------------------------------------
-
-export function ContactSyncModal({ onClose, syncState, onLink, onSkip, onCreateFriend }: ContactSyncModalProps) {
-  const [alreadyLinkedOpen, setAlreadyLinkedOpen] = useState(false);
-  const [showAllUnmatched, setShowAllUnmatched] = useState(false);
-  const [linkingAll, setLinkingAll] = useState(false);
-  const friends = useAppStore((s) => s.friends);
-  const items = useAppStore((s) => s.items);
-
-  const highMatches = syncState.pendingMatches.filter(m => m.confidence === "high");
-  const mediumMatches = syncState.pendingMatches.filter(m => m.confidence === "medium");
-  const authorDisplayNames = useMemo(() => {
-    const names = new Map<string, string>();
-    for (const item of items) {
-      if (!names.has(item.author.id)) {
-        names.set(item.author.id, item.author.displayName || item.author.handle || item.author.id);
-      }
-    }
-    return names;
-  }, [items]);
-
-  // Use nativeId for reliable linked/unmatched detection — name matching is
-  // fragile (two contacts can share a display name).
-  const linkedResourceNames = new Set(
-    Object.values(friends)
-      .filter(f => f.contact?.importedFrom === "google" && f.contact.nativeId)
-      .map(f => f.contact!.nativeId!)
+  const contactAccounts = useMemo(
+    () => Object.values(accounts).filter((account) => account.kind === "contact" && account.provider === "google_contacts"),
+    [accounts]
   );
 
-  const pendingResourceNames = new Set(
-    syncState.pendingMatches.map(m => m.contact.resourceName)
+  const linkedContactIds = new Set(contactAccounts.map((account) => account.externalId));
+  const suggestedContactIds = new Set(
+    syncState.pendingSuggestions.map((suggestion) =>
+      suggestion.id.split(":").slice(1, 2)[0] ?? ""
+    )
   );
 
-  const unmatchedContacts = syncState.cachedContacts.filter(contact =>
-    !pendingResourceNames.has(contact.resourceName) &&
-    !linkedResourceNames.has(contact.resourceName)
+  const contactByResourceName = new Map(
+    syncState.cachedContacts.map((contact) => [contact.resourceName, contact])
   );
 
-  const linkedContacts = syncState.cachedContacts.filter(contact =>
-    linkedResourceNames.has(contact.resourceName)
+  const suggestions = syncState.pendingSuggestions.filter((suggestion) =>
+    contactByResourceName.has(suggestion.id.split(":").slice(1, 2)[0] ?? "")
   );
 
-  const visibleUnmatched = showAllUnmatched
-    ? unmatchedContacts
-    : unmatchedContacts.slice(0, UNMATCHED_PAGE_SIZE);
-
-  const totalPending = highMatches.length + mediumMatches.length;
-
-  const handleLinkAll = async () => {
-    setLinkingAll(true);
-    try {
-      for (const match of highMatches) {
-        await onLink(match);
-      }
-    } finally {
-      setLinkingAll(false);
-    }
-  };
+  const unmatchedContacts = syncState.cachedContacts.filter((contact) =>
+    !linkedContactIds.has(contact.resourceName) &&
+    !suggestedContactIds.has(contact.resourceName)
+  );
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 bg-black/70 sm:items-center"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div className="theme-dialog-shell my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col sm:max-h-[85vh]">
-
-        {/* Header */}
-        <div className="theme-dialog-divider flex shrink-0 items-center gap-3 border-b px-5 py-4">
-          <div className="flex-1 min-w-0">
-            <h2 className="text-base font-semibold text-text-primary">Google Contacts</h2>
-            <p className="text-xs text-text-secondary mt-0.5">
-              {totalPending > 0
-                ? `${totalPending} contact${totalPending !== 1 ? "s" : ""} to review`
-                : "All contacts up to date"}
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/55 px-4">
+      <div className="theme-dialog-shell w-full max-w-3xl overflow-hidden rounded-3xl border border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-surface)] shadow-[var(--theme-glow-lg)]">
+        <div className="theme-dialog-divider flex items-center justify-between border-b px-5 py-4">
+          <div>
+            <h2 className="text-base font-semibold text-[color:var(--theme-text-primary)]">Google Contacts</h2>
+            <p className="mt-1 text-sm text-[color:var(--theme-text-muted)]">
+              Review identity suggestions and add unmatched contacts as friends.
             </p>
           </div>
           <button
+            type="button"
+            className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
             onClick={onClose}
-            className="text-text-secondary hover:text-text-primary transition-colors shrink-0"
-            aria-label="Close"
           >
-            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="w-5 h-5" aria-hidden>
-              <path d="M15 5L5 15M5 5l10 10" />
-            </svg>
+            Close
           </button>
         </div>
 
-        {/* Scrollable body */}
-        <div className="overflow-y-auto flex-1 px-4 py-4 space-y-5 minimal-scroll">
-
-          {/* Empty state */}
-          {totalPending === 0 && unmatchedContacts.length === 0 && (
-            <div className="py-10 flex flex-col items-center gap-3 text-center">
-              <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center">
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-emerald-400" aria-hidden>
-                  <path d="M4 10l4 4 8-8" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-text-primary">All caught up</p>
-                <p className="text-xs text-text-secondary mt-1">No new contact matches to review.</p>
-              </div>
-            </div>
-          )}
-
-          {/* Strong Matches */}
-          {highMatches.length > 0 && (
-            <section>
-              <SectionHeader
-                title="Strong Matches"
-                count={highMatches.length}
-                action={
-                  <button
-                    onClick={handleLinkAll}
-                    disabled={linkingAll}
-                    className="theme-chip-active rounded-lg px-2.5 py-1 text-xs font-medium disabled:opacity-50"
-                  >
-                    {linkingAll ? "Linking…" : "Link All"}
-                  </button>
-                }
-              />
-              <div className="space-y-0.5">
-                {highMatches.map((match) => (
-                  <MatchRow
-                    key={match.contact.resourceName}
-                    match={match}
-                    matchedName={match.friend?.name ?? authorDisplayNames.get(match.authorIds[0] ?? "") ?? "Unknown"}
-                    onLink={onLink}
-                    onSkip={onSkip}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Possible Matches */}
-          {mediumMatches.length > 0 && (
-            <section>
-              <SectionHeader title="Possible Matches" count={mediumMatches.length} />
-              <div className="space-y-0.5">
-                {mediumMatches.map((match) => (
-                  <MatchRow
-                    key={match.contact.resourceName}
-                    match={match}
-                    matchedName={match.friend?.name ?? authorDisplayNames.get(match.authorIds[0] ?? "") ?? "Unknown"}
-                    onLink={onLink}
-                    onSkip={onSkip}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Unmatched Contacts — capped to avoid rendering hundreds of rows */}
-          {unmatchedContacts.length > 0 && (
-            <section>
-              <SectionHeader title="Unmatched Contacts" count={unmatchedContacts.length} />
-              <p className="mb-2 px-1 text-xs text-[color:var(--theme-text-muted)]">
-                These contacts don't match anyone in your feed. Add them as a Friend to track them.
-              </p>
-              <div className="space-y-0.5">
-                {visibleUnmatched.map((contact) => (
-                  <UnmatchedRow
-                    key={contact.resourceName}
+        <div className="grid gap-6 px-5 py-5 md:grid-cols-2">
+          <section>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
+              Suggestions ({suggestions.length.toLocaleString()})
+            </p>
+            <div className="space-y-2">
+              {suggestions.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-[color:var(--theme-border-subtle)] px-3 py-4 text-sm text-[color:var(--theme-text-muted)]">
+                  No pending identity suggestions.
+                </p>
+              ) : suggestions.map((suggestion) => {
+                const resourceName = suggestion.id.split(":").slice(1, 2)[0] ?? "";
+                const contact = contactByResourceName.get(resourceName);
+                if (!contact) return null;
+                return (
+                  <SuggestionRow
+                    key={suggestion.id}
                     contact={contact}
-                    onCreateFriend={onCreateFriend}
+                    suggestion={suggestion}
+                    onLink={() => onLinkSuggestion(suggestion)}
+                    onSkip={() => onSkipSuggestion(suggestion.id)}
                   />
-                ))}
-              </div>
-              {unmatchedContacts.length > UNMATCHED_PAGE_SIZE && (
-                <button
-                  onClick={() => setShowAllUnmatched(v => !v)}
-                  className="mt-2 w-full py-1.5 text-xs text-[color:var(--theme-text-muted)] transition-colors hover:text-[color:var(--theme-text-secondary)]"
-                >
-                  {showAllUnmatched
-                    ? "Show fewer"
-                    : `Show ${unmatchedContacts.length - UNMATCHED_PAGE_SIZE} more`}
-                </button>
-              )}
-            </section>
-          )}
+                );
+              })}
+            </div>
+          </section>
 
-          {/* Already Linked (collapsed by default) */}
-          {linkedContacts.length > 0 && (
-            <section>
-              <button
-                onClick={() => setAlreadyLinkedOpen(v => !v)}
-                className="w-full flex items-center gap-2 px-1 py-1 text-left group"
-              >
-                <span className="flex-1 text-xs font-semibold uppercase tracking-wider text-[color:var(--theme-text-muted)]">
-                  Already Linked
-                </span>
-                <span className="text-xs tabular-nums text-[color:var(--theme-text-soft)]">({linkedContacts.length})</span>
-                <svg
-                  className={`h-3 w-3 shrink-0 text-[color:var(--theme-text-soft)] transition-transform ${alreadyLinkedOpen ? "rotate-90" : ""}`}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-              {alreadyLinkedOpen && (
-                <div className="mt-1 space-y-0.5">
-                  {linkedContacts.map((contact) => (
-                    <div
-                      key={contact.resourceName}
-                      className="flex items-center gap-3 py-2 px-3 rounded-xl opacity-50"
-                    >
-                      <ContactAvatar contact={contact} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-text-secondary truncate">
-                          {contact.name.displayName ?? "Unknown"}
-                        </p>
-                      </div>
-                      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-emerald-500 shrink-0" aria-hidden>
-                        <path d="M4 10l4 4 8-8" />
-                      </svg>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="theme-dialog-divider flex shrink-0 items-center justify-between border-t px-5 py-3">
-          {syncState.lastSyncedAt && (
-            <span className="text-xs text-[color:var(--theme-text-muted)]">
-              Last synced {new Date(syncState.lastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-            </span>
-          )}
-          <button
-            onClick={onClose}
-            className="btn-secondary ml-auto rounded-lg px-4 py-1.5 text-sm"
-          >
-            Done
-          </button>
+          <section>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-muted)]">
+              Unmatched contacts ({unmatchedContacts.length.toLocaleString()})
+            </p>
+            <div className="space-y-2">
+              {unmatchedContacts.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-[color:var(--theme-border-subtle)] px-3 py-4 text-sm text-[color:var(--theme-text-muted)]">
+                  Everything imported is either linked already or waiting for review.
+                </p>
+              ) : unmatchedContacts.map((contact) => (
+                <UnmatchedRow
+                  key={contact.resourceName}
+                  contact={contact}
+                  onCreateFriend={() => onCreateFriend(contact)}
+                />
+              ))}
+            </div>
+          </section>
         </div>
       </div>
     </div>

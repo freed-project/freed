@@ -1,3 +1,4 @@
+import { isTauri } from "@tauri-apps/api/core";
 import { appDataDir } from "@tauri-apps/api/path";
 import {
   exists,
@@ -31,8 +32,20 @@ interface SnapshotIndex {
   snapshots: SnapshotSummary[];
 }
 
+interface BrowserSnapshotRecord {
+  summary: SnapshotSummary;
+  binaryBase64: string;
+  contactsRaw: string | null;
+}
+
+interface BrowserSnapshotState {
+  version: 1;
+  snapshots: BrowserSnapshotRecord[];
+}
+
 const SNAPSHOT_DIR_NAME = "snapshots";
 const SNAPSHOT_INDEX_FILE = "index.json";
+const SNAPSHOT_FALLBACK_STORAGE_KEY = "freed.snapshots";
 const MAX_SNAPSHOTS = 24;
 const AUTO_SNAPSHOT_DEBOUNCE_MS = 30_000;
 const AUTO_SNAPSHOT_MIN_INTERVAL_MS = 60 * 60 * 1000;
@@ -51,6 +64,52 @@ function joinPath(base: string, ...parts: string[]): string {
     return trimmed.replace(/^\/+|\/+$/g, "");
   });
   return clean.filter(Boolean).join("/");
+}
+
+function canUseNativeSnapshotStorage(): boolean {
+  return isTauri();
+}
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function readBrowserSnapshotState(): BrowserSnapshotState {
+  try {
+    const raw = window.localStorage.getItem(SNAPSHOT_FALLBACK_STORAGE_KEY);
+    if (!raw) {
+      return { version: 1, snapshots: [] };
+    }
+    const parsed = JSON.parse(raw) as Partial<BrowserSnapshotState>;
+    return {
+      version: 1,
+      snapshots: Array.isArray(parsed.snapshots) ? parsed.snapshots : [],
+    };
+  } catch {
+    return { version: 1, snapshots: [] };
+  }
+}
+
+function writeBrowserSnapshotState(state: BrowserSnapshotState): void {
+  try {
+    window.localStorage.setItem(SNAPSHOT_FALLBACK_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore preview fallback storage failures.
+  }
 }
 
 async function getSnapshotRootDir(): Promise<string> {
@@ -135,6 +194,12 @@ async function pruneSnapshots(
 }
 
 export async function listSnapshots(): Promise<SnapshotSummary[]> {
+  if (!canUseNativeSnapshotStorage()) {
+    return normalizeSnapshotList(
+      readBrowserSnapshotState().snapshots.map((entry) => entry.summary),
+    );
+  }
+
   const root = await ensureSnapshotDir();
   const indexed = await readSnapshotIndex();
   const filtered: SnapshotSummary[] = [];
@@ -165,7 +230,6 @@ export async function createSnapshot(
     snapshotTimer = null;
   }
 
-  const root = await ensureSnapshotDir();
   const createdAt = Date.now();
   const id = String(createdAt);
   const binary = await getDocBinary();
@@ -178,18 +242,37 @@ export async function createSnapshot(
     itemCount: state.docItemCount,
     friendCount: Object.keys(state.friends).length,
     contactCount: contactSyncState.cachedContacts.length,
-    pendingMatchCount: contactSyncState.pendingMatches.length,
+    pendingMatchCount: contactSyncState.pendingSuggestions.length,
     reason,
   };
 
-  await Promise.all([
-    writeFile(snapshotBinaryPath(root, id), binary),
-    writeTextFile(snapshotContactsPath(root, id), readContactSyncStateJson()),
-  ]);
+  if (!canUseNativeSnapshotStorage()) {
+    const existing = readBrowserSnapshotState().snapshots;
+    const nextState: BrowserSnapshotState = {
+      version: 1,
+      snapshots: [
+        {
+          summary,
+          binaryBase64: uint8ArrayToBase64(binary),
+          contactsRaw: readContactSyncStateJson(),
+        },
+        ...existing.filter((entry) => entry.summary.id !== id),
+      ]
+        .sort((a, b) => b.summary.createdAt - a.summary.createdAt)
+        .slice(0, MAX_SNAPSHOTS),
+    };
+    writeBrowserSnapshotState(nextState);
+  } else {
+    const root = await ensureSnapshotDir();
+    await Promise.all([
+      writeFile(snapshotBinaryPath(root, id), binary),
+      writeTextFile(snapshotContactsPath(root, id), readContactSyncStateJson()),
+    ]);
 
-  const existing = await readSnapshotIndex();
-  const nextSnapshots = await pruneSnapshots(root, [summary, ...existing]);
-  await writeSnapshotIndex(nextSnapshots);
+    const existing = await readSnapshotIndex();
+    const nextSnapshots = await pruneSnapshots(root, [summary, ...existing]);
+    await writeSnapshotIndex(nextSnapshots);
+  }
 
   lastSnapshotAt = createdAt;
   notifySnapshotListeners();
@@ -222,6 +305,19 @@ function scheduleAutoSnapshot(): void {
 }
 
 export async function restoreSnapshot(snapshotId: string): Promise<SnapshotSummary> {
+  if (!canUseNativeSnapshotStorage()) {
+    const snapshot = readBrowserSnapshotState().snapshots.find((entry) => entry.summary.id === snapshotId);
+    if (!snapshot) {
+      throw new Error(`Snapshot ...${snapshotId.slice(-8)} not found`);
+    }
+
+    await replaceLocalDoc(base64ToUint8Array(snapshot.binaryBase64));
+    writeContactSyncStateJson(snapshot.contactsRaw);
+    log.info(`[snapshots] restored snapshot ...${snapshotId.slice(-8)}`);
+    notifySnapshotListeners();
+    return snapshot.summary;
+  }
+
   const root = await ensureSnapshotDir();
   const snapshots = await listSnapshots();
   const snapshot = snapshots.find((entry) => entry.id === snapshotId);
@@ -244,6 +340,18 @@ export async function restoreSnapshot(snapshotId: string): Promise<SnapshotSumma
 }
 
 export async function clearSnapshots(): Promise<void> {
+  if (!canUseNativeSnapshotStorage()) {
+    try {
+      window.localStorage.removeItem(SNAPSHOT_FALLBACK_STORAGE_KEY);
+    } catch {
+      // Ignore preview fallback removal failures.
+    }
+
+    lastSnapshotAt = 0;
+    notifySnapshotListeners();
+    return;
+  }
+
   const root = await ensureSnapshotDir();
   const files = await readDir(root).catch(() => []);
 

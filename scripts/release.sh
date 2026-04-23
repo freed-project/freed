@@ -23,18 +23,13 @@ TAURI_CONF="${DESKTOP_DIR}/src-tauri/tauri.conf.json"
 CARGO_TOML="${DESKTOP_DIR}/src-tauri/Cargo.toml"
 DESKTOP_PKG="${DESKTOP_DIR}/package.json"
 PWA_PKG="packages/pwa/package.json"
-NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Keep release prep on the same Node toolchain as worktree/bootstrap/deploy.
+source "${SCRIPT_DIR}/lib/node-tooling.sh"
+NODE_BIN="$(resolve_node_bin)"
+use_resolved_node_path
 CHANNEL=""
 VERSION_INPUT=""
-
-if [[ -z "${NODE_BIN}" && -x "${HOME}/.nvm/versions/node/v22.12.0/bin/node" ]]; then
-  NODE_BIN="${HOME}/.nvm/versions/node/v22.12.0/bin/node"
-fi
-
-if [[ -z "${NODE_BIN}" ]]; then
-  echo "Error: could not find node. Set NODE_BIN or add node to PATH." >&2
-  exit 1
-fi
 
 # Ensure working tree is clean
 if ! git diff --quiet HEAD; then
@@ -80,6 +75,11 @@ fi
 if [[ "$CURRENT_BRANCH" != "$EXPECTED_BRANCH" ]]; then
   echo "Error: ${CHANNEL} releases must be prepared from the ${EXPECTED_BRANCH} branch." >&2
   exit 1
+fi
+
+if [[ "$CHANNEL" == "production" ]]; then
+  git fetch origin dev main
+  "${NODE_BIN}" scripts/validate-release-promotion.mjs --from-ref=origin/dev --to-ref=HEAD
 fi
 
 if [[ -n "$VERSION_INPUT" ]]; then
@@ -136,16 +136,25 @@ if [[ "$CHANNEL" == "production" && "$VERSION" == *-dev ]]; then
 fi
 
 BASE_VERSION="${VERSION%-dev}"
+APP_VERSION="${VERSION}"
+if [[ "$CHANNEL" == "dev" ]]; then
+  # Windows MSI rejects non-numeric prerelease identifiers in the app bundle
+  # version. Keep the dev channel on the tag and release metadata instead.
+  APP_VERSION="${BASE_VERSION}"
+fi
 
 TAG="v${VERSION}"
 DAY_KEY=$("${NODE_BIN}" -e "const v='${BASE_VERSION}'.split('.'); console.log(v.length===3 ? [v[0], v[1], String(Math.floor(Number(v[2]) / 100))].join('.') : '${BASE_VERSION}')")
 echo "==> Preparing ${CHANNEL} release ${VERSION} (tag: ${TAG})"
+if [[ "${APP_VERSION}" != "${VERSION}" ]]; then
+  echo "==> App bundle version: ${APP_VERSION}"
+fi
 
 # Update tauri.conf.json
 "${NODE_BIN}" -e "
   const fs = require('fs');
   const conf = JSON.parse(fs.readFileSync('${TAURI_CONF}', 'utf8'));
-  conf.version = '${VERSION}';
+  conf.version = '${APP_VERSION}';
   fs.writeFileSync('${TAURI_CONF}', JSON.stringify(conf, null, 2) + '\n');
 "
 
@@ -153,7 +162,7 @@ echo "==> Preparing ${CHANNEL} release ${VERSION} (tag: ${TAG})"
 # sed's ^version = "..." matches ALL top-level version keys (including
 # [dependencies.tracing] etc), so we use awk to scope the replacement to
 # the [package] block only.
-awk -v ver="${VERSION}" '
+awk -v ver="${APP_VERSION}" '
   /^\[package\]/ { in_pkg=1 }
   /^\[/ && !/^\[package\]/ { in_pkg=0 }
   in_pkg && /^version = / { $0 = "version = \"" ver "\"" }
@@ -164,7 +173,7 @@ awk -v ver="${VERSION}" '
 "${NODE_BIN}" -e "
   const fs = require('fs');
   const pkg = JSON.parse(fs.readFileSync('${DESKTOP_PKG}', 'utf8'));
-  pkg.version = '${VERSION}';
+  pkg.version = '${APP_VERSION}';
   fs.writeFileSync('${DESKTOP_PKG}', JSON.stringify(pkg, null, 2) + '\n');
 "
 
@@ -172,7 +181,7 @@ awk -v ver="${VERSION}" '
 "${NODE_BIN}" -e "
   const fs = require('fs');
   const pkg = JSON.parse(fs.readFileSync('${PWA_PKG}', 'utf8'));
-  pkg.version = '${VERSION}';
+  pkg.version = '${APP_VERSION}';
   fs.writeFileSync('${PWA_PKG}', JSON.stringify(pkg, null, 2) + '\n');
 "
 

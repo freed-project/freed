@@ -9,7 +9,7 @@
  *                    IMPORT_PROGRESS (chunk progress for large imports)
  */
 
-import type { FeedItem, Friend, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
+import type { Account, FeedItem, Friend, Person, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
 
 // ---------------------------------------------------------------------------
 // Hydrated state - identical to PWA's DocState (imported for type safety)
@@ -17,7 +17,10 @@ import type { FeedItem, Friend, ReachOutLog, RssFeed, UserPreferences } from "@f
 
 export interface DocState {
   items: FeedItem[];
+  searchCorpusVersion: number;
   feeds: Record<string, RssFeed>;
+  persons: Record<string, Person>;
+  accounts: Record<string, Account>;
   friends: Record<string, Friend>;
   preferences: UserPreferences;
   feedUnreadCounts: Record<string, number>;
@@ -65,11 +68,15 @@ export type WorkerRequest =
   | { reqId: number; type: "REMOVE_ALL_FEEDS"; includeItems: boolean }
   | { reqId: number; type: "UPDATE_PREFERENCES"; updates: Partial<UserPreferences> }
   | { reqId: number; type: "UPDATE_LAST_SYNC" }
-  | { reqId: number; type: "ADD_FRIEND"; friend: Friend }
-  | { reqId: number; type: "ADD_FRIENDS"; friends: Friend[] }
-  | { reqId: number; type: "UPDATE_FRIEND"; friendId: string; updates: Partial<Friend> }
-  | { reqId: number; type: "REMOVE_FRIEND"; friendId: string }
-  | { reqId: number; type: "LOG_REACH_OUT"; friendId: string; entry: ReachOutLog }
+  | { reqId: number; type: "ADD_PERSON"; person: Person }
+  | { reqId: number; type: "ADD_PERSONS"; persons: Person[] }
+  | { reqId: number; type: "UPDATE_PERSON"; personId: string; updates: Partial<Person> }
+  | { reqId: number; type: "REMOVE_PERSON"; personId: string }
+  | { reqId: number; type: "LOG_REACH_OUT"; personId: string; entry: ReachOutLog }
+  | { reqId: number; type: "ADD_ACCOUNT"; account: Account }
+  | { reqId: number; type: "ADD_ACCOUNTS"; accounts: Account[] }
+  | { reqId: number; type: "UPDATE_ACCOUNT"; accountId: string; updates: Partial<Account> }
+  | { reqId: number; type: "REMOVE_ACCOUNT"; accountId: string }
   | { reqId: number; type: "MERGE_DOC"; binary: Uint8Array }
   // Desktop-specific mutations
   | { reqId: number; type: "BATCH_REFRESH_FEEDS"; feeds: RssFeed[]; items: FeedItem[] }

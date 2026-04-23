@@ -8,8 +8,8 @@
  */
 
 import { create } from "zustand";
-import { createDefaultPreferences } from "@freed/shared";
-import type { BaseAppState, Friend, ReachOutLog, RemoveFeedOptions } from "@freed/shared";
+import { accountsFromLegacyFriend, createDefaultPreferences, personFromLegacyFriend } from "@freed/shared";
+import type { Account, BaseAppState, Friend, Person, ReachOutLog, RemoveFeedOptions } from "@freed/shared";
 import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
 import {
   initDoc,
@@ -32,10 +32,14 @@ import {
   docDeleteAllArchived,
   docPruneArchivedItems,
   docUpdatePreferences,
-  docAddFriend,
-  docAddFriends,
-  docUpdateFriend,
-  docRemoveFriend,
+  docAddAccount,
+  docAddAccounts,
+  docAddPerson,
+  docAddPersons,
+  docUpdateAccount,
+  docUpdatePerson,
+  docRemoveAccount,
+  docRemovePerson,
   docLogReachOut,
 } from "./automerge";
 import type { DocState } from "./automerge";
@@ -64,7 +68,10 @@ function shallowEqualRecord(
 export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   items: [],
+  searchCorpusVersion: 0,
   feeds: {},
+  persons: {},
+  accounts: {},
   friends: {},
   preferences: createDefaultPreferences(),
   feedUnreadCounts: {},
@@ -83,6 +90,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   error: null,
   activeFilter: {},
   selectedItemId: null,
+  selectedPersonId: null,
+  selectedAccountId: null,
   selectedFriendId: null,
   searchQuery: "",
   activeView: "feed",
@@ -102,7 +111,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       // re-rendering sidebar selectors on unrelated mutations.
       subscribe((next: DocState) => {
         const prev = get();
-        const merged = { ...next } as Partial<AppState>;
+        const merged = {
+          ...next,
+        } as Partial<AppState>;
         if (shallowEqualRecord(next.feedUnreadCounts, prev.feedUnreadCounts))
           merged.feedUnreadCounts = prev.feedUnreadCounts;
         if (shallowEqualRecord(next.feedTotalCounts, prev.feedTotalCounts))
@@ -200,25 +211,84 @@ export const useAppStore = create<AppState>((set, get) => ({
     await docUpdateRssFeed(url, { title });
   },
 
-  // Friend actions
-  addFriend: async (friend: Friend) => {
-    await docAddFriend(friend);
+  // Person actions
+  addPerson: async (person: Person) => {
+    await docAddPerson(person);
   },
 
-  addFriends: async (friends: Friend[]) => {
-    await docAddFriends(friends);
+  addPersons: async (persons: Person[]) => {
+    await docAddPersons(persons);
   },
 
-  updateFriend: async (id: string, updates: Partial<Friend>) => {
-    await docUpdateFriend(id, updates);
+  updatePerson: async (id: string, updates: Partial<Person>) => {
+    await docUpdatePerson(id, updates);
   },
 
-  removeFriend: async (id: string) => {
-    await docRemoveFriend(id);
+  removePerson: async (id: string) => {
+    await docRemovePerson(id);
   },
 
   logReachOut: async (id: string, entry: ReachOutLog) => {
     await docLogReachOut(id, entry);
+  },
+
+  // Deprecated friend aliases
+  addFriend: async (friend: Friend) => {
+    await docAddPerson(personFromLegacyFriend(friend));
+    const accounts = accountsFromLegacyFriend(friend);
+    if (accounts.length > 0) {
+      await docAddAccounts(accounts);
+    }
+  },
+
+  addFriends: async (friends: Friend[]) => {
+    const persons = friends.map((friend) => personFromLegacyFriend(friend as Friend));
+    await docAddPersons(persons);
+    const accounts = friends.flatMap((friend) => accountsFromLegacyFriend(friend as Friend));
+    if (accounts.length > 0) {
+      await docAddAccounts(accounts);
+    }
+  },
+
+  updateFriend: async (id: string, updates: Partial<Friend>) => {
+    const current = get().friends[id];
+    if (!current) {
+      await docUpdatePerson(id, updates);
+      return;
+    }
+    const nextFriend = {
+      ...current,
+      ...updates,
+      sources: "sources" in updates ? ((updates as Partial<Friend>).sources ?? []) : current.sources,
+      contact: "contact" in updates ? (updates as Partial<Friend>).contact : current.contact,
+    } as Friend;
+    await docUpdatePerson(id, personFromLegacyFriend(nextFriend));
+    const existingAccounts = Object.values(get().accounts).filter((account) => account.personId === id);
+    await Promise.all(existingAccounts.map((account) => docRemoveAccount(account.id)));
+    const nextAccounts = accountsFromLegacyFriend(nextFriend);
+    if (nextAccounts.length > 0) {
+      await docAddAccounts(nextAccounts);
+    }
+  },
+
+  removeFriend: async (id: string) => {
+    await docRemovePerson(id);
+  },
+
+  addAccount: async (account: Account) => {
+    await docAddAccount(account);
+  },
+
+  addAccounts: async (accounts: Account[]) => {
+    await docAddAccounts(accounts);
+  },
+
+  updateAccount: async (id: string, updates: Partial<Account>) => {
+    await docUpdateAccount(id, updates);
+  },
+
+  removeAccount: async (id: string) => {
+    await docRemoveAccount(id);
   },
 
   // Preference actions
@@ -232,7 +302,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   // UI actions
   setFilter: (filter) => set({ activeFilter: filter }),
   setSelectedItem: (id) => set({ selectedItemId: id }),
-  setSelectedFriend: (id) => set({ selectedFriendId: id }),
+  setSelectedPerson: (id) => set({ selectedPersonId: id, selectedAccountId: null, selectedFriendId: id }),
+  setSelectedAccount: (id) => set({ selectedPersonId: null, selectedAccountId: id, selectedFriendId: null }),
+  setSelectedFriend: (id) => set({ selectedPersonId: id, selectedAccountId: null, selectedFriendId: id }),
   setLoading: (isLoading) => set({ isLoading }),
   setSyncing: (isSyncing) => set({ isSyncing }),
   setError: (error) => set({ error }),

@@ -4,7 +4,6 @@ import type {
   BugReportDraft,
   BugReportEvent,
   BugReportIssueType,
-  BugReportScreenshot,
   BugReportStateSummary,
   BugReportArtifactDefinition,
   BugReportBundleManifest,
@@ -65,13 +64,6 @@ export const PRIVATE_ARTIFACTS: readonly BugReportArtifactDefinition[] = [
     id: "raw-stack",
     label: "Expanded stack traces",
     description: "Near-raw stack traces that may include extra environment detail.",
-    privacy: "private",
-    enabledByDefault: false,
-  },
-  {
-    id: "screenshot",
-    label: "Include screenshot of interface behind this bug report",
-    description: "Captures the current interface behind this report. Review it before sharing publicly.",
     privacy: "private",
     enabledByDefault: false,
   },
@@ -323,30 +315,25 @@ export function createDefaultBugReportDraft(
     expectedBehavior: "",
     actualBehavior: "",
     selectedArtifacts: [...DEFAULT_ARTIFACTS],
-    screenshot: null,
   };
 }
 
 export function getReportPrivacyTier(
   selectedArtifacts: BugReportArtifactId[],
-  screenshot?: BugReportScreenshot | null,
 ): ReportPrivacyTier {
   const hasPrivateArtifact = selectedArtifacts.some((artifact) =>
     PRIVATE_ARTIFACTS.some((candidate) => candidate.id === artifact),
   );
   if (hasPrivateArtifact) return "private";
-  if (selectedArtifacts.includes("screenshot") && screenshot && !screenshot.safeForPublic) return "private";
   return "public-safe";
 }
 
 export function resolveArtifactsForTier(
   selectedArtifacts: BugReportArtifactId[],
   tier: ReportPrivacyTier,
-  screenshot?: BugReportScreenshot | null,
 ): BugReportArtifactId[] {
   const filtered = selectedArtifacts.filter((artifact) => {
     if (tier === "private") return true;
-    if (artifact === "screenshot") return Boolean(screenshot?.safeForPublic);
     return !PRIVATE_IDS.has(artifact);
   });
   return Array.from(new Set(filtered));
@@ -451,57 +438,6 @@ export function summarizeStateForReport(input: {
     cloudProviders: input.cloudProviders,
     pendingMatchCount: input.state.pendingMatchCount,
   };
-}
-
-export async function captureReportScreenshot(): Promise<BugReportScreenshot | null> {
-  if (!navigator.mediaDevices?.getDisplayMedia) return null;
-
-  const stream = await navigator.mediaDevices.getDisplayMedia({
-    preferCurrentTab: true,
-    video: { frameRate: 1 },
-    audio: false,
-  } as MediaStreamConstraints);
-
-  try {
-    const track = stream.getVideoTracks()[0];
-    if (!track) return null;
-    const imageCapture =
-      "ImageCapture" in window
-        ? new ((window as Window & { ImageCapture?: new (track: MediaStreamTrack) => { grabFrame?: () => Promise<ImageBitmap> } }).ImageCapture!)(track)
-        : null;
-    let bitmap: ImageBitmap | null = null;
-    if (imageCapture) {
-      bitmap = imageCapture.grabFrame ? await imageCapture.grabFrame() : null;
-    } else {
-      return null;
-    }
-    if (!bitmap) return null;
-    const canvas = document.createElement("canvas");
-    canvas.width = bitmap.width;
-    canvas.height = bitmap.height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    ctx.drawImage(bitmap, 0, 0);
-    return {
-      name: `freed-screenshot-${Date.now()}.png`,
-      mimeType: "image/png",
-      dataUrl: canvas.toDataURL("image/png"),
-      safeForPublic: false,
-      capturedAt: Date.now(),
-    };
-  } finally {
-    stream.getTracks().forEach((track) => track.stop());
-  }
-}
-
-export function dataUrlToUint8Array(dataUrl: string): Uint8Array {
-  const base64 = dataUrl.split(",")[1] ?? "";
-  const raw = atob(base64);
-  const out = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i += 1) {
-    out[i] = raw.charCodeAt(i);
-  }
-  return out;
 }
 
 export function createGithubIssueUrl(input: {

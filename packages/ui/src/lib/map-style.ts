@@ -1,19 +1,13 @@
 import { getThemeDefinition, type ThemeId, type ThemeMapPalette } from "@freed/shared/themes";
+import type { StyleSpecification } from "maplibre-gl";
 
 const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/positron";
 
-type MapStyleLayer = {
-  id: string;
-  type?: string;
+type MapStyleLayer = StyleSpecification["layers"][number] & {
   paint?: Record<string, unknown>;
-  [key: string]: unknown;
 };
 
-type MapStyle = {
-  version: number;
-  layers: MapStyleLayer[];
-  [key: string]: unknown;
-};
+type MapStyle = StyleSpecification;
 
 let baseStyleLoader: Promise<MapStyle> | null = null;
 const themedStyleCache = new Map<ThemeId, Promise<MapStyle>>();
@@ -61,60 +55,80 @@ function isMinorRoadLayer(id: string): boolean {
 function rethemeLayer(layer: MapStyleLayer, palette: ThemeMapPalette) {
   const id = layer.id.toLowerCase();
 
-  if (id === "background") {
+  if (layer.type === "background" && id === "background") {
     setPaint(layer, "background-color", palette.background);
     return;
   }
 
-  if (id === "water") {
+  if (layer.type === "symbol") {
+    if (id.startsWith("water_name") || id === "waterway_line_label") {
+      applyLabelPaint(layer, palette.labelWater, palette.labelHalo);
+      return;
+    }
+
+    if (
+      id.startsWith("label_country")
+      || id.startsWith("label_city")
+      || id === "airport"
+    ) {
+      applyLabelPaint(layer, palette.labelStrong, palette.labelHalo);
+      return;
+    }
+
+    if (id.startsWith("label_") || id.startsWith("highway-name")) {
+      applyLabelPaint(layer, palette.labelSoft, palette.labelHalo);
+    }
+    return;
+  }
+
+  if (layer.type === "fill" && id === "water") {
     setPaint(layer, "fill-color", palette.water);
     return;
   }
 
-  if (id === "park") {
+  if (layer.type === "fill" && id === "park") {
     setPaint(layer, "fill-color", palette.park);
     return;
   }
 
-  if (id.includes("wood")) {
+  if (layer.type === "fill" && id.includes("wood")) {
     setPaint(layer, "fill-color", palette.wood);
     return;
   }
 
-  if (id.includes("residential")) {
+  if (layer.type === "fill" && id.includes("residential")) {
     setPaint(layer, "fill-color", palette.residential);
     return;
   }
 
-  if (id.includes("ice_shelf") || id.includes("glacier")) {
+  if (layer.type === "fill" && (id.includes("ice_shelf") || id.includes("glacier"))) {
     setPaint(layer, "fill-color", palette.residential);
     return;
   }
 
-  if (id.startsWith("building")) {
+  if (layer.type === "fill" && id.startsWith("building")) {
     setPaint(layer, "fill-color", palette.building);
     setPaint(layer, "fill-outline-color", palette.building);
     return;
   }
 
-  if (id.startsWith("boundary_")) {
+  if (layer.type === "line" && id.startsWith("boundary_")) {
     setPaint(layer, "line-color", palette.boundary);
     return;
   }
 
-  if (id.startsWith("waterway")) {
+  if (layer.type === "line" && id.startsWith("waterway")) {
     setPaint(layer, "line-color", palette.labelWater);
-    return;
-  }
-
-  if (id.startsWith("water_name")) {
-    applyLabelPaint(layer, palette.labelWater, palette.labelHalo);
     return;
   }
 
   if (isMajorRoadLayer(id)) {
     if (layer.type === "fill") {
       setPaint(layer, "fill-color", palette.roadsMajor);
+      return;
+    }
+
+    if (layer.type !== "line") {
       return;
     }
 
@@ -128,25 +142,12 @@ function rethemeLayer(layer: MapStyleLayer, palette: ThemeMapPalette) {
       return;
     }
 
+    if (layer.type !== "line") {
+      return;
+    }
+
     setPaint(layer, "line-color", palette.roadsMinor);
     return;
-  }
-
-  if (
-    id.startsWith("label_country")
-    || id.startsWith("label_city")
-    || id === "airport"
-  ) {
-    applyLabelPaint(layer, palette.labelStrong, palette.labelHalo);
-    return;
-  }
-
-  if (
-    id.startsWith("label_")
-    || id.startsWith("highway-name")
-    || id === "waterway_line_label"
-  ) {
-    applyLabelPaint(layer, palette.labelSoft, palette.labelHalo);
   }
 }
 

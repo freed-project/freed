@@ -129,11 +129,13 @@ async function seedFriendLocation(
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_AUTOMERGE__ as {
       docAddFriend: (friend: unknown) => Promise<void>;
+      docAddAccount: (account: unknown) => Promise<void>;
       docAddFeedItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
         friends: Record<string, unknown>;
+        accounts: Record<string, unknown>;
         items: unknown[];
         setActiveView: (view: string) => void;
         setSelectedFriend: (id: string | null) => void;
@@ -144,15 +146,22 @@ async function seedFriendLocation(
     await automerge.docAddFriend({
       id: "friend-ada",
       name: "Ada Lovelace",
-      sources: [
-        {
-          platform: "instagram",
-          authorId: "ada-ig",
-          handle: "ada",
-          displayName: "Ada Lovelace",
-        },
-      ],
+      relationshipStatus: "friend",
       careLevel: 4,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await automerge.docAddAccount({
+      id: "social:instagram:ada-ig",
+      personId: "friend-ada",
+      kind: "social",
+      provider: "instagram",
+      externalId: "ada-ig",
+      handle: "ada",
+      displayName: "Ada Lovelace",
+      firstSeenAt: now,
+      lastSeenAt: now,
+      discoveredFrom: "captured_item",
       createdAt: now,
       updatedAt: now,
     });
@@ -193,7 +202,11 @@ async function seedFriendLocation(
       const startedAt = Date.now();
       const interval = window.setInterval(() => {
         const state = store.getState();
-        if (state.friends["friend-ada"] && state.items.length > 0) {
+        if (
+          state.friends["friend-ada"]
+          && state.accounts["social:instagram:ada-ig"]
+          && state.items.length > 0
+        ) {
           clearInterval(interval);
           resolve();
           return;
@@ -208,6 +221,132 @@ async function seedFriendLocation(
     const state = store.getState();
     state.setActiveView("friends");
     state.setSelectedFriend("friend-ada");
+  });
+}
+
+async function seedFriendFeedLens(
+  page: import("@playwright/test").Page,
+): Promise<void> {
+  await waitForPwaDocumentReady(page);
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddFriend: (friend: unknown) => Promise<void>;
+      docAddAccount: (account: unknown) => Promise<void>;
+      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        friends: Record<string, unknown>;
+        accounts: Record<string, unknown>;
+        items: Array<{ globalId: string }>;
+        setActiveView: (view: string) => void;
+        setSelectedFriend: (id: string | null) => void;
+        setSelectedItem: (id: string | null) => void;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddFriend({
+      id: "friend-grace",
+      name: "Grace Hopper",
+      relationshipStatus: "friend",
+      careLevel: 4,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await automerge.docAddAccount({
+      id: "social:linkedin:grace-li",
+      personId: "friend-grace",
+      kind: "social",
+      provider: "linkedin",
+      externalId: "grace-li",
+      handle: "grace",
+      displayName: "Grace Hopper",
+      firstSeenAt: now,
+      lastSeenAt: now,
+      discoveredFrom: "captured_item",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await automerge.docAddFeedItems([
+      {
+        globalId: "li:grace:lens",
+        platform: "linkedin",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now - 30_000,
+        author: {
+          id: "grace-li",
+          handle: "grace",
+          displayName: "Grace Hopper",
+        },
+        content: {
+          text: "Grace friend toggle scenario",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: [],
+        },
+        topics: [],
+      },
+      {
+        globalId: "x:outsider:lens",
+        platform: "x",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now - 20_000,
+        author: {
+          id: "outsider-x",
+          handle: "outsider",
+          displayName: "Outsider Account",
+        },
+        content: {
+          text: "Outsider toggle scenario",
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: [],
+        },
+        topics: [],
+      },
+    ]);
+
+    await new Promise<void>((resolve, reject) => {
+      const startedAt = Date.now();
+      const interval = window.setInterval(() => {
+        const state = store.getState();
+        const itemIds = new Set(state.items.map((item) => item.globalId));
+        if (
+          state.friends["friend-grace"]
+          && state.accounts["social:linkedin:grace-li"]
+          && itemIds.has("li:grace:lens")
+          && itemIds.has("x:outsider:lens")
+        ) {
+          clearInterval(interval);
+          resolve();
+          return;
+        }
+        if (Date.now() - startedAt > 5_000) {
+          clearInterval(interval);
+          reject(new Error("friend feed lens seed timeout"));
+        }
+      }, 50);
+    });
+
+    const state = store.getState();
+    state.setActiveView("feed");
+    state.setSelectedFriend(null);
+    state.setSelectedItem(null);
   });
 }
 
@@ -708,6 +847,57 @@ test.describe("FREED PWA", () => {
     await expect(page.locator("main")).toBeVisible();
   });
 
+  test("browser install prompt surfaces an install notice and respects dismissal", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await expect(page.getByTestId("legal-gate-accept")).toBeVisible();
+    await page.waitForTimeout(150);
+
+    await page.evaluate(() => {
+      const promptEvent = new Event("beforeinstallprompt", {
+        cancelable: true,
+      }) as Event & {
+        prompt: () => Promise<void>;
+        promptCalled?: boolean;
+        userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+      };
+
+      promptEvent.promptCalled = false;
+      promptEvent.prompt = async () => {
+        promptEvent.promptCalled = true;
+      };
+      promptEvent.userChoice = Promise.resolve({
+        outcome: "dismissed",
+        platform: "web",
+      });
+
+      (window as Record<string, unknown>).__FREED_TEST_INSTALL_EVENT__ = promptEvent;
+      window.dispatchEvent(promptEvent);
+    });
+
+    await acceptLegalGate(page);
+    await waitForPwaReady(page);
+
+    const installNotice = page.getByTestId("pwa-install-notice");
+    await expect(installNotice).toBeVisible();
+    await page.getByTestId("pwa-install-notice-action").click();
+
+    await expect
+      .poll(async () => page.evaluate(() => {
+        const event = (window as Record<string, unknown>).__FREED_TEST_INSTALL_EVENT__ as {
+          promptCalled?: boolean;
+        };
+        return event.promptCalled === true;
+      }))
+      .toBe(true);
+
+    await expect(installNotice).toBeHidden();
+
+    await page.reload();
+    await expect(page.getByTestId("pwa-install-notice")).toBeHidden();
+  });
+
   test("oauth callback route bypasses the first-run gate until it returns home", async ({
     page,
   }) => {
@@ -1067,6 +1257,26 @@ test.describe("FREED PWA", () => {
     expect(Math.round(mapBox!.y)).toBe(Math.round(mainBox!.y));
   });
 
+  test("toolbar identity toggle narrows the feed to linked friends", async ({ page }) => {
+    await page.goto("/");
+    await acceptLegalGate(page);
+    await seedFriendFeedLens(page);
+
+    await expect(page.getByText("Grace friend toggle scenario")).toBeVisible();
+    await expect(page.getByText("Outsider toggle scenario")).toBeVisible();
+
+    const toolbar = page.getByTestId("workspace-toolbar");
+    await toolbar.getByRole("button", { name: "Friends", exact: true }).click();
+
+    await expect(page.getByText("Grace friend toggle scenario")).toBeVisible();
+    await expect(page.getByText("Outsider toggle scenario")).toHaveCount(0);
+
+    await toolbar.getByRole("button", { name: "All content", exact: true }).click();
+
+    await expect(page.getByText("Grace friend toggle scenario")).toBeVisible();
+    await expect(page.getByText("Outsider toggle scenario")).toBeVisible();
+  });
+
   test("friend detail shows the last seen location card when location data exists", async ({
     page,
   }) => {
@@ -1217,15 +1427,24 @@ test.describe("FREED PWA", () => {
   });
 
   test("map popovers show update time and keep only one open", async ({ page }) => {
+    const mapAssetResponses: Array<{ url: string; status: number }> = [];
+    page.on("response", (response) => {
+      const url = response.url();
+      if (url.includes("maplibre-gl")) {
+        mapAssetResponses.push({ url, status: response.status() });
+      }
+    });
+
     await page.goto("/");
     await acceptLegalGate(page);
     await seedMultipleFriendLocations(page);
 
     await page.getByRole("button", { name: "Map" }).click();
+    await expect(page.getByText("Map failed to load")).toHaveCount(0);
     await page.getByRole("button", { name: "Omar Hassan" }).click();
     await expect(page.getByText("Reykjavik, Capital Region, Iceland")).toBeVisible();
     await expect(page.getByText(/ago/).first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Open Friend" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Open Post" })).toHaveCount(1);
     const livePopup = page.locator(".maplibregl-popup-content");
     const fallbackPopup = page.getByTestId("map-fallback-popup");
     const useLivePopup = await livePopup.isVisible().catch(() => false);
@@ -1241,7 +1460,9 @@ test.describe("FREED PWA", () => {
     await page.getByRole("button", { name: "Samir Dutta" }).click();
     await expect(page.getByText("Paris")).toBeVisible();
     await expect(page.getByText("Reykjavik, Capital Region, Iceland")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Open Friend" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Open Post" })).toHaveCount(1);
+    expect(mapAssetResponses.length).toBeGreaterThan(0);
+    expect(mapAssetResponses.some(({ status }) => status === 403)).toBeFalsy();
   });
 
   test("can add an RSS feed", async ({ page }) => {
@@ -1304,7 +1525,7 @@ test.describe("FREED PWA", () => {
     await acceptLegalGate(page);
 
     // Sidebar should be hidden on mobile
-    const sidebar = page.locator("aside");
+    const sidebar = page.getByTestId("app-sidebar-mobile");
     await expect(sidebar).toHaveClass(/-translate-x-full/);
 
     // Click menu button to open sidebar
@@ -1312,6 +1533,40 @@ test.describe("FREED PWA", () => {
 
     // Sidebar should now be visible
     await expect(sidebar).toHaveClass(/translate-x-0/);
+
+    // Clicking the same menu button again should close the floating drawer.
+    await page.click('button[aria-label="Close menu"]');
+    await expect(sidebar).toHaveClass(/-translate-x-full/);
+  });
+
+  test("mobile settings opens without hitting recovery", async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.goto("/");
+    await acceptLegalGate(page);
+
+    await page.click('button[aria-label="Open menu"]');
+    await page.getByRole("button", { name: "Settings" }).evaluate((element) => {
+      (element as HTMLButtonElement).click();
+    });
+
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(page.getByText("Freed hit a fatal error")).toHaveCount(0);
+    await expect(page.getByText("Cannot access 'mobileView' before initialization")).toHaveCount(0);
+  });
+
+  test("mobile settings navigation keeps the selected heading in sync", async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.goto("/");
+    await acceptLegalGate(page);
+
+    await page.click('button[aria-label="Open menu"]');
+    await page.getByRole("button", { name: "Settings" }).evaluate((element) => {
+      (element as HTMLButtonElement).click();
+    });
+    await page.getByRole("button", { name: "Updates", exact: true }).click();
+
+    await expect(page.getByTestId("settings-mobile-section-title")).toHaveText("Updates");
+    await expect(page.getByText("Installed version:", { exact: false }).first()).toBeVisible();
   });
 
   test("app has correct colors and styling", async ({ page }) => {

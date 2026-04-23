@@ -57,9 +57,8 @@ export function GoogleContactsSection() {
   };
 
   const cachedCount = syncState.cachedContacts.length.toLocaleString();
-  const pendingCount = syncState.pendingMatches.length.toLocaleString();
-  const autoLinkedCount = syncState.autoLinkedCount.toLocaleString();
-  const autoCreatedCount = syncState.autoCreatedCount.toLocaleString();
+  const pendingCount = syncState.pendingSuggestions.length.toLocaleString();
+  const createdFriendCount = syncState.createdFriendCount.toLocaleString();
 
   return (
     <div className="space-y-4" data-testid="google-contacts-settings">
@@ -79,7 +78,7 @@ export function GoogleContactsSection() {
               )}
             </div>
             <p className="text-xs text-[color:var(--theme-text-muted)]">
-              Sync contact matches into Friends, auto-link obvious matches, and review the ambiguous ones.
+              Sync Google Contacts into the identity graph, review suggested merges, and add unmatched contacts as friends.
             </p>
           </div>
           {syncState.lastErrorMessage && (
@@ -97,12 +96,8 @@ export function GoogleContactsSection() {
             <p className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">{pendingCount}</p>
           </div>
           <div className="theme-card-soft rounded-xl px-3 py-2.5">
-            <p className="text-[11px] uppercase tracking-wider text-[color:var(--theme-text-soft)]">Auto-linked</p>
-            <p className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">{autoLinkedCount}</p>
-          </div>
-          <div className="theme-card-soft rounded-xl px-3 py-2.5">
-            <p className="text-[11px] uppercase tracking-wider text-[color:var(--theme-text-soft)]">Auto-created</p>
-            <p className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">{autoCreatedCount}</p>
+            <p className="text-[11px] uppercase tracking-wider text-[color:var(--theme-text-soft)]">Created friends</p>
+            <p className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">{createdFriendCount}</p>
           </div>
         </div>
 

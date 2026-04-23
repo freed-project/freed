@@ -16,6 +16,7 @@ import {
   FacebookIcon,
   InstagramIcon,
   RssIcon,
+  XIcon,
   YoutubeIcon,
   RedditIcon,
   GithubIcon,
@@ -31,7 +32,7 @@ import { SearchField } from "../SearchField.js";
 
 const cls = "w-3.5 h-3.5";
 const platformIcons: Record<string, ReactNode> = {
-  x: <span className="text-xs font-bold leading-none">𝕏</span>,
+  x: <XIcon className={cls} />,
   rss: <RssIcon className={cls} />,
   youtube: <YoutubeIcon className={cls} />,
   reddit: <RedditIcon className={cls} />,
@@ -63,6 +64,8 @@ type EditorFriend = Omit<Friend, "id" | "createdAt" | "updatedAt">;
 interface FriendEditorProps {
   /** When editing, pass the existing friend. When creating, pass null. */
   existing?: Friend | null;
+  /** Optional seed values for a new friend flow. */
+  draft?: Partial<Friend> | null;
   onSave: (data: EditorFriend, id?: string) => void;
   onDelete?: (id: string) => void;
   onCancel: () => void;
@@ -126,35 +129,37 @@ function useAuthorCandidates(
 
 export function FriendEditor({
   existing,
+  draft,
   onSave,
   onDelete,
   onCancel,
 }: FriendEditorProps) {
   const platform = usePlatform();
   const allFriends = useAppStore((s) => s.friends);
+  const seed = existing ?? draft ?? null;
 
   // Form state
-  const [name, setName] = useState(existing?.name ?? "");
-  const [avatarUrl, setAvatarUrl] = useState(existing?.avatarUrl ?? "");
-  const [bio, setBio] = useState(existing?.bio ?? "");
+  const [name, setName] = useState(seed?.name ?? "");
+  const [avatarUrl, setAvatarUrl] = useState(seed?.avatarUrl ?? "");
+  const [bio, setBio] = useState(seed?.bio ?? "");
   const [careLevel, setCareLevel] = useState<1 | 2 | 3 | 4 | 5>(
-    existing?.careLevel ?? 3
+    seed?.careLevel ?? 3
   );
   const [reachOutDays, setReachOutDays] = useState(
-    existing?.reachOutIntervalDays?.toString() ?? ""
+    seed?.reachOutIntervalDays?.toString() ?? ""
   );
   const [sources, setSources] = useState<FriendSource[]>(
-    existing?.sources ?? []
+    seed?.sources ?? []
   );
   const [contact, setContact] = useState<DeviceContact | undefined>(
-    existing?.contact
+    seed?.contact
   );
   const [showContactForm, setShowContactForm] = useState(false);
   const [contactPhone, setContactPhone] = useState(contact?.phone ?? "");
   const [contactEmail, setContactEmail] = useState(contact?.email ?? "");
   const [contactAddress, setContactAddress] = useState(contact?.address ?? "");
-  const [tags, setTags] = useState(existing?.tags?.join(", ") ?? "");
-  const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [tags, setTags] = useState(seed?.tags?.join(", ") ?? "");
+  const [notes, setNotes] = useState(seed?.notes ?? "");
   const [sourceSearch, setSourceSearch] = useState("");
   const [contactImporting, setContactImporting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -251,6 +256,7 @@ export function FriendEditor({
       name: name.trim(),
       avatarUrl: avatarUrl.trim() || undefined,
       bio: bio.trim() || undefined,
+      relationshipStatus: existing?.relationshipStatus ?? "friend",
       sources,
       contact,
       careLevel,

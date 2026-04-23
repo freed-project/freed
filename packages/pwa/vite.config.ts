@@ -3,20 +3,43 @@ import react from '@vitejs/plugin-react'
 import wasm from 'vite-plugin-wasm'
 import topLevelAwait from 'vite-plugin-top-level-await'
 import { VitePWA } from 'vite-plugin-pwa'
+import { realpathSync } from 'fs'
 import { fileURLToPath } from 'url'
 import pkg from './package.json' with { type: 'json' }
+import { getBuildMetadata } from '../../scripts/lib/build-metadata.mjs'
 
 // Resolve workspace packages directly from their TypeScript source so that
 // worktrees don't need to build dist/ artifacts before running the dev server.
 const src = (name: string) =>
   fileURLToPath(new URL(`../${name}/src`, import.meta.url))
 
+const workspaceRoot = fileURLToPath(new URL('../..', import.meta.url))
+const workspaceNodeModules = fileURLToPath(new URL('../../node_modules', import.meta.url))
+const fsAllow = [
+  workspaceRoot,
+  workspaceNodeModules,
+  (() => {
+    try {
+      return realpathSync(workspaceNodeModules)
+    } catch {
+      return workspaceNodeModules
+    }
+  })(),
+]
+
+const buildMetadata = getBuildMetadata(pkg.version)
+
 export default defineConfig({
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_VERSION__: JSON.stringify(buildMetadata.appVersion),
+    __BUILD_KIND__: JSON.stringify(buildMetadata.buildKind),
+    __BUILD_COMMIT_SHA__: JSON.stringify(buildMetadata.commitSha),
+    __BUILD_COMMIT_REF__: JSON.stringify(buildMetadata.commitRef),
+    __BUILD_DEPLOYED_AT__: JSON.stringify(buildMetadata.deployedAt),
   },
   resolve: {
     alias: {
+      '@freed/capture-save': src('capture-save'),
       '@freed/ui': src('ui'),
       '@freed/shared': src('shared'),
       '@freed/sync': src('sync'),
@@ -25,6 +48,14 @@ export default defineConfig({
   worker: {
     format: 'es',
     plugins: () => [wasm(), topLevelAwait()],
+  },
+  server: {
+    fs: {
+      allow: fsAllow,
+    },
+  },
+  build: {
+    target: 'esnext',
   },
 
   plugins: [
@@ -40,6 +71,7 @@ export default defineConfig({
       includeAssets: ['favicon.svg', 'icons/*.png'],
       manifest: false,
       workbox: {
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         runtimeCaching: [
           {
             // API routes must bypass the service worker entirely — Workbox's

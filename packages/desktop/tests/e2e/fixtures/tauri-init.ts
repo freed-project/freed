@@ -38,6 +38,7 @@ export function tauriInitScript(): string {
         relayClientCount: 0,
       }),
       get_updater_target: () => 'darwin-aarch64',
+      retry_startup_after_crash: () => null,
       reset_pairing_token: () => null,
       get_recent_logs: () => [],
       start_relay: () => null,
@@ -68,8 +69,10 @@ export function tauriInitScript(): string {
     };
     window.__TAURI_MOCK_INVOCATIONS__ = [];
     window.__TAURI_MOCK_OPENED_URLS__ = [];
+    window.__TAURI_MOCK_WINDOW_DRAG_CALLS__ = [];
     window.__TAURI_MOCK_CALLBACKS__ = {};
     window.__TAURI_MOCK_PLUGIN_EVENT_LISTENERS__ = {};
+    window.__TAURI_MOCK_UPDATE_CHECK_CALLS__ = [];
 
     var nextCallbackId = 1;
     var nextPluginEventId = 1;

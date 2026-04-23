@@ -5,7 +5,6 @@ export type BugReportArtifactId =
   | "diagnostic-events"
   | "state-summary"
   | "crash-context"
-  | "screenshot"
   | "expanded-logs"
   | "snapshot-metadata"
   | "raw-stack";
@@ -27,14 +26,6 @@ export interface BugReportArtifactDefinition {
   enabledByDefault: boolean;
 }
 
-export interface BugReportScreenshot {
-  name: string;
-  mimeType: string;
-  dataUrl: string;
-  safeForPublic: boolean;
-  capturedAt: number;
-}
-
 export interface BugReportDraft {
   issueType: BugReportIssueType;
   title: string;
@@ -43,7 +34,6 @@ export interface BugReportDraft {
   expectedBehavior: string;
   actualBehavior: string;
   selectedArtifacts: BugReportArtifactId[];
-  screenshot?: BugReportScreenshot | null;
 }
 
 export interface RuntimeErrorSnapshot {
@@ -103,7 +93,6 @@ export interface BugReportBundleData {
   summaryMarkdown: string;
   diagnostics: Record<string, unknown>;
   logs?: string[];
-  screenshot?: BugReportScreenshot | null;
 }
 
 export interface GeneratedBugReportBundle extends BugReportBundleData {

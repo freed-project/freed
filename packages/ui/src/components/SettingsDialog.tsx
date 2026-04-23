@@ -11,6 +11,7 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  formatReleaseVersion,
   RELEASE_CHANNEL_LABELS,
   RELEASE_CHANNELS,
   type ReleaseChannel,
@@ -18,10 +19,15 @@ import {
 import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
 import { createPortal } from "react-dom";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
+import { describeInstalledBuild, readBuildMetadata } from "../lib/build-info.js";
 import { useDebugStore } from "../lib/debug-store.js";
 import { useSettingsStore } from "../lib/settings-store.js";
 import { refreshSampleLibraryData } from "../lib/sample-library-seed.js";
-import { applyThemeToDocument, persistTheme } from "../lib/theme.js";
+import {
+  applyThemeToDocument,
+  persistTheme,
+  useThemePreviewController,
+} from "../lib/theme.js";
 import {
   getProviderStatusLabel,
   getProviderStatusTone,
@@ -34,6 +40,7 @@ import {
   UPDATES_SECTION_META,
   DANGER_SECTION_META,
   GOOGLE_CONTACTS_SECTION_META,
+  AI_SECTION_META,
   X_SECTION_META,
   FB_SECTION_META,
   IG_SECTION_META,
@@ -43,12 +50,14 @@ import {
 } from "../lib/settings-sections.js";
 import { FeedsSection } from "./settings/FeedsSection.js";
 import { SavedSection } from "./settings/SavedSection.js";
+import { AISection } from "./settings/AISection.js";
 import { SettingsToggle } from "./SettingsToggle.js";
 import { ReportComposer } from "./report/ReportComposer.js";
 import { SearchField } from "./SearchField.js";
 import { ThemePreviewButton } from "./ThemePreviewButton.js";
 import { Tooltip } from "./Tooltip.js";
 import { GoogleContactsIcon } from "./icons.js";
+import { useIsMobile } from "../hooks/useIsMobile.js";
 
 const SAMPLE_SEED_FEED_COUNT = 10;
 const SAMPLE_SEED_ITEM_COUNT = 155;
@@ -86,6 +95,7 @@ type ProviderAuthSlices = {
   liAuth?: ProviderAuthState;
 };
 const EMPTY_PROVIDER_SECTION_SYNC_COUNTS: Partial<Record<ProviderSectionId, number>> = {};
+const INSTALLED_BUILD_PRESENTATION = describeInstalledBuild(readBuildMetadata());
 
 function isProviderSection(sectionId: SectionId): sectionId is ProviderSectionId {
   return (
@@ -238,12 +248,13 @@ type UpdateCheckState =
   | { status: "idle" }
   | { status: "checking" }
   | { status: "up-to-date" }
-  | { status: "available"; version: string }
+  | { status: "available"; version: string; channel: ReleaseChannel }
   | { status: "error" };
 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
+  const isMobile = useIsMobile();
   const {
     SettingsExtraSections,
     LegalSettingsContent,
@@ -277,7 +288,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // Flat section list — drives scrollspy and right-pane rendering.
   // Keywords live in settings-sections.ts so Header's command palette can share them.
-  // ── AI section is coming soon -- preserve ICONS.ai, do not delete ──
   const allSections: Section[] = [
     { ...baseSectionById.appearance, icon: ICONS.appearance },
     { ...baseSectionById.sync, icon: ICONS.sync },
@@ -288,6 +298,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     ...(InstagramSettingsContent ? [{ ...IG_SECTION_META, icon: ICONS.instagram }] : []),
     ...(LinkedInSettingsContent ? [{ ...LI_SECTION_META, icon: ICONS.linkedin }] : []),
     { ...baseSectionById.feeds, icon: ICONS.feeds },
+    { ...AI_SECTION_META, icon: ICONS.ai },
     ...(checkForUpdates ? [{ ...UPDATES_SECTION_META, icon: ICONS.updates }] : []),
     { ...baseSectionById.legal, icon: ICONS.legal },
     { ...baseSectionById.support, icon: ICONS.support },
@@ -314,7 +325,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         sectionById.feeds,
       ],
     },
-    // sectionById.ai, // AI coming soon -- do not delete
+    sectionById.ai,
     ...(checkForUpdates ? [sectionById.updates] : []),
     sectionById.legal,
     sectionById.support,
@@ -362,15 +373,18 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const media = window.matchMedia("(pointer: coarse)");
+    const coarsePointerMedia = window.matchMedia("(pointer: coarse)");
+    const hoverCapableMedia = window.matchMedia("(any-hover: hover)");
     const updatePointerMode = () => {
-      setHasCoarsePointer(media.matches || navigator.maxTouchPoints > 0);
+      setHasCoarsePointer(coarsePointerMedia.matches && !hoverCapableMedia.matches);
     };
 
     updatePointerMode();
-    media.addEventListener?.("change", updatePointerMode);
+    coarsePointerMedia.addEventListener?.("change", updatePointerMode);
+    hoverCapableMedia.addEventListener?.("change", updatePointerMode);
     return () => {
-      media.removeEventListener?.("change", updatePointerMode);
+      coarsePointerMedia.removeEventListener?.("change", updatePointerMode);
+      hoverCapableMedia.removeEventListener?.("change", updatePointerMode);
     };
   }, []);
 
@@ -432,38 +446,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }, 5000);
   }, [hasCoarsePointer]);
 
-  const handleThemeCardMouseEnter = useCallback(() => {
-    if (hasCoarsePointer) return;
-    setThemePreviewHovering(true);
-  }, [hasCoarsePointer]);
-
-  const handleThemeCardMouseLeave = useCallback(() => {
-    if (hasCoarsePointer) return;
-    setThemePreviewHovering(false);
-  }, [hasCoarsePointer]);
-
-  const handleThemeCardFocusCapture = useCallback(() => {
-    if (hasCoarsePointer) return;
-    setThemePreviewHovering(true);
-  }, [hasCoarsePointer]);
-
-  const handleThemeCardBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
-    if (hasCoarsePointer) return;
-    const nextFocused = event.relatedTarget;
-    if (nextFocused && event.currentTarget.contains(nextFocused)) {
-      return;
-    }
-    setThemePreviewHovering(false);
-  }, [hasCoarsePointer]);
-
-  const handleThemeSelect = useCallback((themeId: ThemeId) => {
+  const handleThemeCommit = useCallback((themeId: ThemeId) => {
     activateTouchThemePreview();
     setDisplay((prev) => (
       prev.themeId === themeId
         ? prev
         : { ...prev, themeId }
     ));
-    applyThemeToDocument(themeId);
     persistTheme(themeId);
 
     pendingThemeSaveSeqRef.current += 1;
@@ -483,21 +472,81 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }, 500);
   }, [activateTouchThemePreview, flushPendingThemeSelection]);
 
+  const {
+    revertPreview: revertThemePreview,
+    previewTheme,
+    commitTheme,
+  } = useThemePreviewController({
+    committedThemeId: display.themeId,
+    onCommitTheme: handleThemeCommit,
+  });
+
+  const handleThemeCardMouseEnter = useCallback(() => {
+    if (hasCoarsePointer) return;
+    setThemePreviewHovering(true);
+  }, [hasCoarsePointer]);
+
+  const handleThemeCardMouseLeave = useCallback(() => {
+    if (hasCoarsePointer) return;
+    setThemePreviewHovering(false);
+    revertThemePreview();
+  }, [hasCoarsePointer, revertThemePreview]);
+
+  const handleThemeCardFocusCapture = useCallback(() => {
+    setThemePreviewHovering(true);
+  }, []);
+
+  const handleThemeCardBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
+    const nextFocused = event.relatedTarget;
+    if (nextFocused && event.currentTarget.contains(nextFocused)) {
+      return;
+    }
+    setThemePreviewHovering(false);
+    revertThemePreview();
+  }, [revertThemePreview]);
+
+  const handleThemeButtonMouseEnter = useCallback((themeId: ThemeId) => {
+    if (hasCoarsePointer) {
+      return;
+    }
+
+    previewTheme(themeId);
+  }, [hasCoarsePointer, previewTheme]);
+
+  const handleThemeButtonFocus = useCallback((themeId: ThemeId) => {
+    previewTheme(themeId);
+  }, [previewTheme]);
+
+  useEffect(() => {
+    if (open) {
+      return;
+    }
+
+    revertThemePreview();
+  }, [open, revertThemePreview]);
+
+  useEffect(() => {
+    return () => {
+      revertThemePreview();
+    };
+  }, [revertThemePreview]);
+
   const themeBackdropSuppressed = themePreviewHovering || themePreviewTouchActive;
 
   // ── Update check ─────────────────────────────────────────────────────────
   const [updateState, setUpdateState] = useState<UpdateCheckState>({ status: "idle" });
   const fadeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const shouldRecheckAfterChannelChangeRef = useRef(false);
+  const displayVersion = formatReleaseVersion(__APP_VERSION__);
 
   const runUpdateCheck = useCallback(async () => {
     if (!checkForUpdates) return;
 
     setUpdateState({ status: "checking" });
     try {
-      const version = await checkForUpdates();
-      const next: UpdateCheckState = version
-        ? { status: "available", version }
+      const update = await checkForUpdates();
+      const next: UpdateCheckState = update
+        ? { status: "available", version: update.version, channel: update.channel }
         : { status: "up-to-date" };
       setUpdateState(next);
       if (next.status === "up-to-date") {
@@ -615,6 +664,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // ── Scrollspy ────────────────────────────────────────────────────────────
   const [activeSection, setActiveSection] = useState<SectionId>("legal");
+  const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Keep a ref in sync with updateState.status so scroll/visibility callbacks
@@ -624,6 +674,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   // Ref for the "Check for updates" button element.
   const checkButtonRef = useRef<HTMLDivElement>(null);
+  const MOBILE_CONTENT_TOP_INSET = 20;
+  const DESKTOP_SECTION_TOP_INSET = 20;
+  const scrollContainerBottomPadding = isMobile
+    ? "calc(2rem + env(safe-area-inset-bottom, 0px))"
+    : "calc(8rem + env(safe-area-inset-bottom, 0px))";
 
   // Auto-check when the button enters the scroll container's visible area.
   // Re-checks each time the button transitions from hidden → visible, so scrolling
@@ -674,9 +729,51 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     }
   }, [searchLower, visibleSections]);
 
+  const scrollSectionIntoView = useCallback((id: SectionId, behavior: ScrollBehavior = "smooth") => {
+    const container = scrollRef.current;
+    if (!container) {
+      return;
+    }
+
+    const el = container.querySelector<HTMLElement>(`[data-section="${id}"]`);
+    if (!el) {
+      return;
+    }
+
+    const contentAnchor = el.querySelector<HTMLElement>(":scope > :nth-child(2)");
+    const targetNode = isMobile ? (contentAnchor ?? el) : el;
+    const topInset = isMobile ? MOBILE_CONTENT_TOP_INSET : DESKTOP_SECTION_TOP_INSET;
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = targetNode.getBoundingClientRect();
+    const targetTop = Math.max(
+      0,
+      container.scrollTop + (targetRect.top - containerRect.top) - topInset,
+    );
+
+    isScrollingProgrammatically.current = true;
+    clearTimeout(scrollEndTimerRef.current);
+
+    if (behavior === "auto") {
+      container.scrollTop = targetTop;
+      requestAnimationFrame(() => {
+        isScrollingProgrammatically.current = false;
+      });
+      return;
+    }
+
+    const clearScrolling = () => {
+      isScrollingProgrammatically.current = false;
+    };
+
+    container.addEventListener("scrollend", clearScrolling, { once: true });
+    scrollEndTimerRef.current = setTimeout(clearScrolling, 800);
+
+    container.scrollTo({ top: targetTop, behavior });
+  }, [isMobile]);
+
   useEffect(() => {
     const root = scrollRef.current;
-    if (!root || searchLower) return;
+    if (!root || searchLower || (isMobile && mobileView === "nav")) return;
 
     const updateActiveSectionFromScroll = () => {
       if (isScrollingProgrammatically.current) return;
@@ -710,37 +807,26 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       root.removeEventListener("scroll", updateActiveSectionFromScroll);
       window.removeEventListener("resize", updateActiveSectionFromScroll);
     };
-  }, [open, searchLower]);
+  }, [isMobile, mobileView, open, searchLower]);
 
   const scrollToSection = useCallback((id: SectionId) => {
     setActiveSection(id);
-    if (scrollRef.current) {
-      const el = scrollRef.current.querySelector<HTMLElement>(`[data-section="${id}"]`);
-      if (el) {
-        const container = scrollRef.current;
-        const elTop = el.getBoundingClientRect().top - container.getBoundingClientRect().top;
-
-        // Lock out the observer so intermediate sections don't flicker
-        isScrollingProgrammatically.current = true;
-        clearTimeout(scrollEndTimerRef.current);
-
-        const clearScrolling = () => {
-          isScrollingProgrammatically.current = false;
-        };
-        // scrollend fires when the animation settles (Chrome/FF/Safari 17.4+)
-        container.addEventListener("scrollend", clearScrolling, { once: true });
-        // Timeout fallback for older Safari
-        scrollEndTimerRef.current = setTimeout(clearScrolling, 800);
-
-        container.scrollBy({ top: elTop - 16, behavior: "smooth" });
-      }
+    if (isMobile && mobileView === "nav") {
+      isScrollingProgrammatically.current = true;
+      clearTimeout(scrollEndTimerRef.current);
+      setMobileView("section");
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollSectionIntoView(id, "auto");
+          setActiveSection(id);
+        });
+      });
+      return;
     }
-    // On mobile, switch to section view
-    setMobileView("section");
-  }, []);
 
-  // ── Mobile nav state ──────────────────────────────────────────────────────
-  const [mobileView, setMobileView] = useState<"nav" | "section">("nav");
+    scrollSectionIntoView(id, "smooth");
+    setMobileView("section");
+  }, [isMobile, mobileView, scrollSectionIntoView]);
 
   // Reset state on close
   useEffect(() => {
@@ -754,18 +840,19 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const { targetSection, clearTarget } = useSettingsStore();
   useEffect(() => {
     if (!open || !targetSection) return;
-    // Wait one frame for the DOM to be fully painted before scrolling
     const rafId = requestAnimationFrame(() => {
-      const el = scrollRef.current?.querySelector<HTMLElement>(`[data-section="${targetSection}"]`);
-      if (el && scrollRef.current) {
-        scrollRef.current.scrollTop = el.offsetTop - 16;
+      setActiveSection(targetSection as SectionId);
+      isScrollingProgrammatically.current = true;
+      clearTimeout(scrollEndTimerRef.current);
+      setMobileView("section");
+      requestAnimationFrame(() => {
+        scrollSectionIntoView(targetSection as SectionId, "auto");
         setActiveSection(targetSection as SectionId);
-        setMobileView("section");
-      }
+      });
       clearTarget();
     });
     return () => cancelAnimationFrame(rafId);
-  }, [open, targetSection, clearTarget]);
+  }, [clearTarget, open, scrollSectionIntoView, targetSection]);
 
   // Body scroll lock
   useEffect(() => {
@@ -784,7 +871,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     testId,
   }: {
     className?: string;
-    testId: string;
+    testId?: string;
   }) {
     return (
       <button
@@ -792,9 +879,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         onClick={onClose}
         aria-label="Close settings"
         data-testid={testId}
-        className={`inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)] ${className}`}
+        className={`inline-flex h-10 w-10 items-center justify-center rounded-[28px] text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)] ${className}`}
       >
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>
@@ -806,6 +893,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   function renderSectionBlock(id: SectionId) {
     const isVisible = visibleSections.some((s) => s.id === id);
     if (!isVisible) return null;
+    const mobileSectionMinHeightClass = isMobile && mobileView === "section"
+      ? "min-h-[calc(100%+6rem)]"
+      : "min-h-full";
 
     // SectionContent and this wrapper both stay plain function calls because
     // they are defined inside SettingsDialog. Rendering either as JSX would
@@ -813,7 +903,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     // active subtree, which is visible as periodic flicker in provider sections
     // when sync health updates land.
     return (
-      <section data-section={id} className="pb-8 min-h-full flex flex-col">
+      <section data-section={id} className={`pb-8 flex flex-col ${mobileSectionMinHeightClass}`}>
         {SectionContent({ id })}
       </section>
     );
@@ -850,7 +940,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                             theme={theme}
                             active={isActive}
                             variant="compact"
-                            onClick={() => handleThemeSelect(theme.id as ThemeId)}
+                            onMouseEnter={() => handleThemeButtonMouseEnter(theme.id as ThemeId)}
+                            onFocus={() => handleThemeButtonFocus(theme.id as ThemeId)}
+                            onClick={() => commitTheme(theme.id as ThemeId)}
                           />
                         </Tooltip>
                       );
@@ -980,8 +1072,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         ) : null;
 
       case "ai":
-        // AI section is coming soon -- AISection component is preserved, do not delete.
-        return null;
+        return (
+          <>
+            <SectionHeading label="AI" />
+            <AISection />
+          </>
+        );
 
       case "feeds":
         return (
@@ -1014,14 +1110,22 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             <div className="space-y-3">
               <p className="text-xs text-text-muted">
                 Installed version:{" "}
-                <span className="text-sm font-bold font-mono">v{__APP_VERSION__}</span>
+                <span className="text-sm font-bold font-mono">v{displayVersion}</span>
               </p>
+              {INSTALLED_BUILD_PRESENTATION && (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="rounded-full bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_88%,transparent)] px-2 py-0.5 font-semibold text-text-primary">
+                    {INSTALLED_BUILD_PRESENTATION.badgeLabel}
+                  </span>
+                  <span className="text-text-muted">{INSTALLED_BUILD_PRESENTATION.detail}</span>
+                </div>
+              )}
               {releaseChannel && setReleaseChannel && (
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0">
                     <p className="text-sm text-text-primary">Release channel</p>
                     <p className="mt-0.5 text-xs text-text-muted">
-                      Changing this affects future update checks. It does not change the installed version until an update is installed.
+                      Changing this affects future update checks. It does not change the installed version until an update is installed. Dev auto-deploys every merge to the dev branch, and snapshot builds keep the last release version with a build label.
                     </p>
                   </div>
                   <select
@@ -1065,7 +1169,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   {updateState.status === "available" && (
                     <span className="flex items-center gap-2">
                       <span className="text-xs text-[var(--theme-accent-secondary)]">
-                        Update available on {RELEASE_CHANNEL_LABELS[releaseChannel ?? "production"]}
+                        Update available on {RELEASE_CHANNEL_LABELS[updateState.channel]}
                       </span>
                       {applyUpdate && (
                         <button
@@ -1258,14 +1362,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       <div
         className={`theme-settings-overlay absolute inset-0 ${themeBackdropSuppressed ? "theme-settings-overlay-preview-off" : ""}`}
         onClick={onClose}
-        style={{ top: "calc(env(safe-area-inset-top, 0px) + 58px)" }}
       />
 
       {/* Panel */}
       <div
         className={`
           theme-dialog-shell theme-settings-shell relative z-10 flex w-full flex-col
-          h-[92dvh] rounded-t-2xl
+          h-[100dvh] rounded-none
           sm:rounded-[28px]
           sm:flex-row sm:max-w-3xl sm:h-[80vh] sm:max-h-[700px]
         `}
@@ -1279,16 +1382,27 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           `}
         >
           {/* Header */}
-          <div className="flex items-center justify-between gap-3 pl-5 pr-2 pt-4 pb-2 shrink-0">
-            <h2 className="text-base font-semibold text-text-primary">Settings</h2>
+          <div className="relative hidden shrink-0 items-center justify-center px-2 pt-4 pb-2 sm:flex">
             <CloseButton
-              testId="settings-close-button-sidebar"
-              className="sm:mr-0"
+              testId={isMobile ? undefined : "settings-close-button-sidebar"}
+              className="absolute left-2"
+            />
+            <h2 className="text-base font-semibold text-center text-text-primary">Settings</h2>
+          </div>
+
+          <div
+            className="flex shrink-0 items-center justify-between px-4 pb-1.5 pt-2 sm:hidden"
+            style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)" }}
+          >
+            <h2 className="text-sm font-semibold text-text-primary">Settings</h2>
+            <CloseButton
+              testId={isMobile ? "settings-close-button-sidebar" : undefined}
+              className="-mr-1"
             />
           </div>
 
           {/* Search */}
-          <div className="px-3 pb-2 pt-2 shrink-0">
+          <div className="px-3 pb-2 pt-1 shrink-0 sm:pt-2">
             <SearchField
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -1311,11 +1425,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 }}
                 className="text-xs font-mono text-text-muted transition-colors tabular-nums hover:text-text-secondary"
               >
-                v{__APP_VERSION__}
+                v{displayVersion}
               </button>
             ) : (
               <span className="text-xs font-mono text-text-muted tabular-nums">
-                v{__APP_VERSION__}
+                v{displayVersion}
               </span>
             )}
             <a
@@ -1337,22 +1451,28 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           `}
         >
           {/* Mobile back button + section title */}
-          <div className="theme-dialog-divider sm:hidden flex shrink-0 items-center gap-2 border-b px-4 pb-3 pt-5">
+          <div
+            className="theme-dialog-divider sm:hidden flex shrink-0 items-center justify-between gap-3 border-b px-4 pb-2 pt-2"
+            style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.5rem)" }}
+          >
             <button
               onClick={() => setMobileView("nav")}
-              className="-ml-1 rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] hover:text-text-primary"
+              className="-ml-1 flex min-w-0 items-center gap-1.5 rounded-lg px-1.5 py-1.5 text-text-secondary transition-colors hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] hover:text-text-primary"
               aria-label="Back to settings"
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
+              <span
+                className="truncate text-sm font-medium text-text-primary"
+                data-testid="settings-mobile-section-title"
+              >
+                {allSections.find((s) => s.id === activeSection)?.label}
+              </span>
             </button>
-            <span className="text-sm font-medium text-text-primary">
-              {allSections.find((s) => s.id === activeSection)?.label}
-            </span>
             <CloseButton
               testId="settings-close-button-mobile"
-              className="ml-auto -mr-1"
+              className="-mr-1 shrink-0"
             />
           </div>
 
@@ -1361,7 +1481,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
             ref={scrollRef}
             data-testid="settings-scroll-container"
             className="flex-1 overflow-y-auto px-6 pt-6 [&>section+section]:mt-14"
-            style={{ paddingBottom: "calc(2rem + env(safe-area-inset-bottom, 0px))" }}
+            style={{ paddingBottom: scrollContainerBottomPadding }}
           >
             {searchLower && visibleSections.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center gap-2 pb-16 text-center">

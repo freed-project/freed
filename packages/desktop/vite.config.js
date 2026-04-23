@@ -15,10 +15,14 @@ import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
 import { fileURLToPath } from "url";
 import pkg from "./package.json" with { type: "json" };
+import { getBuildMetadata } from "../../scripts/lib/build-metadata.mjs";
 // Resolve workspace packages directly from their TypeScript source so that
 // worktrees don't need to build dist/ artifacts before running the dev server.
 var src = function (name) {
     return fileURLToPath(new URL("../".concat(name, "/src"), import.meta.url));
+};
+var rootFile = function (name) {
+    return fileURLToPath(new URL(name, import.meta.url));
 };
 // When VITE_TEST_TAURI=1, swap every @tauri-apps/* import for a thin mock
 // module so the UI runs in plain Chromium without a Tauri binary.
@@ -30,6 +34,7 @@ var tauriMockAliases = process.env.VITE_TEST_TAURI
         "@tauri-apps/api/core": mock("api/core.ts"),
         "@tauri-apps/api/event": mock("api/event.ts"),
         "@tauri-apps/api/path": mock("api/path.ts"),
+        "@tauri-apps/api/window": mock("api/window.ts"),
         "@tauri-apps/plugin-process": mock("plugin-process/index.ts"),
         "@tauri-apps/plugin-updater": mock("plugin-updater/index.ts"),
         "@tauri-apps/plugin-shell": mock("plugin-shell/index.ts"),
@@ -40,9 +45,14 @@ var tauriMockAliases = process.env.VITE_TEST_TAURI
 var tauriMockExclude = process.env.VITE_TEST_TAURI
     ? Object.keys(tauriMockAliases)
     : [];
+var buildMetadata = getBuildMetadata(pkg.version);
 export default defineConfig({
     define: {
-        __APP_VERSION__: JSON.stringify(pkg.version),
+        __APP_VERSION__: JSON.stringify(buildMetadata.appVersion),
+        __BUILD_KIND__: JSON.stringify(buildMetadata.buildKind),
+        __BUILD_COMMIT_SHA__: JSON.stringify(buildMetadata.commitSha),
+        __BUILD_COMMIT_REF__: JSON.stringify(buildMetadata.commitRef),
+        __BUILD_DEPLOYED_AT__: JSON.stringify(buildMetadata.deployedAt),
     },
     resolve: {
         alias: __assign({ '@freed/ui': src('ui'), '@freed/shared': src('shared'), '@freed/sync': src('sync'), '@freed/capture-rss': src('capture-rss'), '@freed/capture-x': src('capture-x'), '@freed/capture-save': src('capture-save'), '@freed/capture-facebook': src('capture-facebook'), '@freed/capture-instagram': src('capture-instagram'), '@freed/capture-linkedin': src('capture-linkedin') }, tauriMockAliases),
@@ -76,6 +86,12 @@ export default defineConfig({
         target: "esnext",
         minify: !process.env.TAURI_DEBUG ? "esbuild" : false,
         sourcemap: !!process.env.TAURI_DEBUG,
+        rollupOptions: {
+            input: {
+                main: rootFile("index.html"),
+                startupRecovery: rootFile("startup-recovery.html"),
+            },
+        },
     },
     // Unit test configuration
     test: {

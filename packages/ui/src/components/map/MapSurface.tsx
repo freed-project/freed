@@ -1,41 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { LocationMarkerSummary } from "@freed/shared";
 import { DEFAULT_THEME_ID, getThemeDefinition, type ThemeId } from "@freed/shared/themes";
+import type { Map as MapLibreMap, Marker as MapLibreMarker, Popup as MapLibrePopup } from "maplibre-gl";
 import { createMarkerElement } from "./MarkerElement.js";
 import { createFriendAvatarPalette } from "../../lib/friend-avatar-style.js";
 import { buildThemedMapStyle } from "../../lib/map-style.js";
 
-type PopupInstance = {
-  remove: () => void;
-  setDOMContent: (node: HTMLElement) => PopupInstance;
-  setLngLat: (coordinates: [number, number]) => PopupInstance;
-  addTo: (map: MapInstance) => PopupInstance;
-};
+type PopupInstance = MapLibrePopup;
+type MarkerInstance = MapLibreMarker;
+type MapInstance = MapLibreMap;
 
-type MarkerInstance = {
-  setLngLat: (coordinates: [number, number]) => MarkerInstance;
-  setPopup: (popup: PopupInstance) => MarkerInstance;
-  addTo: (map: MapInstance) => MarkerInstance;
-  remove: () => void;
-  getElement: () => HTMLElement;
-  togglePopup: () => void;
-};
-
-type MapInstance = {
-  remove: () => void;
-  resize: () => void;
-  fitBounds: (bounds: [[number, number], [number, number]], options?: unknown) => void;
-  flyTo: (options: { center: [number, number]; zoom?: number; duration?: number }) => void;
-  on: (event: string, handler: () => void) => void;
-  off: (event: string, handler: () => void) => void;
-};
-
-type MapLibreModule = {
-  Map: new (options: unknown) => MapInstance;
-  Marker: new (options: { element: HTMLElement }) => MarkerInstance;
-  Popup: new (options?: unknown) => PopupInstance;
-};
+type MapLibreModule = typeof import("maplibre-gl");
 
 interface MapSurfaceProps {
   markers: LocationMarkerSummary[];
@@ -43,24 +19,14 @@ interface MapSurfaceProps {
   interactive?: boolean;
   themeId?: ThemeId;
   onOpenFriend?: (marker: LocationMarkerSummary) => void;
+  onPromoteAccount?: (marker: LocationMarkerSummary) => void;
+  onLinkAccount?: (marker: LocationMarkerSummary) => void;
   onOpenPost?: (marker: LocationMarkerSummary) => void;
   emptyTitle?: string;
   emptyBody?: string;
 }
 
-const MAPLIBRE_MODULE_PATH =
-  new URL(
-    "../../../../../node_modules/maplibre-gl/dist/maplibre-gl.js",
-    import.meta.url
-  ).href;
-const MAPLIBRE_CSS_PATH =
-  new URL(
-    "../../../../../node_modules/maplibre-gl/dist/maplibre-gl.css",
-    import.meta.url
-  ).href;
-
 let mapLibreLoader: Promise<MapLibreModule> | null = null;
-let mapLibreCssLoaded = false;
 const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
   month: "short",
   day: "numeric",
@@ -69,6 +35,24 @@ const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
 });
 const MAP_POPUP_MAX_WIDTH = 560;
 const MAP_POPUP_VIEWPORT_MARGIN = 40;
+const MAP_VIEWPORT_MASK_STYLE = {
+  "--theme-soft-viewport-base-comp-left": "0px",
+  "--theme-soft-viewport-base-comp-right": "0px",
+  "--theme-soft-viewport-base-comp-top": "6px",
+  "--theme-soft-viewport-base-comp-bottom": "0px",
+  "--theme-soft-viewport-mask-size": "28px",
+} as CSSProperties;
+
+function shouldForceMapFallback() {
+  if (typeof window === "undefined") return false;
+  return (
+    (
+      window as Window & {
+        __FREED_E2E_FORCE_MAP_FALLBACK__?: boolean;
+      }
+    ).__FREED_E2E_FORCE_MAP_FALLBACK__ === true
+  );
+}
 
 function popupRelativeTime(seenAt: number): string {
   return formatDistanceToNow(seenAt, { addSuffix: true });
@@ -96,52 +80,21 @@ function popupMeta(marker: LocationMarkerSummary): string {
   return `${popupRelativeTime(marker.seenAt)} · ${popupAbsoluteTime(marker.seenAt)}`;
 }
 
-function ensureMapLibreCss() {
-  if (typeof document === "undefined" || mapLibreCssLoaded) return;
-  const existing = document.querySelector(`link[data-freed-maplibre="true"]`);
-  if (existing) {
-    mapLibreCssLoaded = true;
-    return;
-  }
-
-  const link = document.createElement("link");
-  link.rel = "stylesheet";
-  link.href = MAPLIBRE_CSS_PATH;
-  link.dataset.freedMaplibre = "true";
-  document.head.appendChild(link);
-  mapLibreCssLoaded = true;
-}
-
 function loadMapLibre(): Promise<MapLibreModule> {
   if (typeof window === "undefined") {
     return Promise.reject(new Error("window is unavailable"));
   }
 
-  const globalModule = (
-    window as Window & { maplibregl?: MapLibreModule }
-  ).maplibregl;
-  if (globalModule) {
-    return Promise.resolve(globalModule);
-  }
-
   if (mapLibreLoader) return mapLibreLoader;
 
-  mapLibreLoader = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = MAPLIBRE_MODULE_PATH;
-    script.async = true;
-    script.onload = () => {
-      const loadedModule = (
-        window as Window & { maplibregl?: MapLibreModule }
-      ).maplibregl;
-      if (loadedModule) {
-        resolve(loadedModule);
-        return;
-      }
-      reject(new Error("maplibregl global was not initialized"));
-    };
-    script.onerror = () => reject(new Error("Failed to load maplibre-gl"));
-    document.head.appendChild(script);
+  // Let Vite own the asset URLs so parallel worktrees do not depend on raw
+  // @fs paths into whichever checkout currently holds node_modules.
+  mapLibreLoader = Promise.all([
+    import("maplibre-gl"),
+    import("maplibre-gl/dist/maplibre-gl.css"),
+  ]).then(([module]) => module).catch((error) => {
+    mapLibreLoader = null;
+    throw error;
   });
 
   return mapLibreLoader;
@@ -150,6 +103,8 @@ function loadMapLibre(): Promise<MapLibreModule> {
 function buildPopupContent(
   marker: LocationMarkerSummary,
   onOpenFriend?: (marker: LocationMarkerSummary) => void,
+  onPromoteAccount?: (marker: LocationMarkerSummary) => void,
+  onLinkAccount?: (marker: LocationMarkerSummary) => void,
   onOpenPost?: (marker: LocationMarkerSummary) => void
 ): HTMLElement {
   const root = document.createElement("div");
@@ -270,6 +225,49 @@ function buildPopupContent(
     ].join(";");
     friendButton.addEventListener("click", () => onOpenFriend(marker));
     actions.appendChild(friendButton);
+  }
+
+  if (!marker.friend && onPromoteAccount) {
+    const promoteButton = document.createElement("button");
+    promoteButton.type = "button";
+    promoteButton.textContent = "Promote to friend";
+    promoteButton.style.cssText = [
+      "padding:10px 14px",
+      "border-radius:12px",
+      "border:1px solid var(--theme-border-strong)",
+      "background:var(--theme-button-primary-background)",
+      "color:var(--theme-button-primary-text)",
+      "font-size:12px",
+      "font-weight:600",
+      "cursor:pointer",
+      "outline:none",
+      "width:100%",
+      "white-space:nowrap",
+      "box-shadow:var(--theme-button-primary-shadow)",
+    ].join(";");
+    promoteButton.addEventListener("click", () => onPromoteAccount(marker));
+    actions.appendChild(promoteButton);
+  }
+
+  if (!marker.friend && onLinkAccount) {
+    const linkButton = document.createElement("button");
+    linkButton.type = "button";
+    linkButton.textContent = "Link to existing friend";
+    linkButton.style.cssText = [
+      "padding:10px 14px",
+      "border-radius:12px",
+      "border:1px solid var(--theme-border-subtle)",
+      "background:var(--theme-button-secondary-background)",
+      "color:var(--theme-text-primary)",
+      "font-size:12px",
+      "font-weight:600",
+      "cursor:pointer",
+      "outline:none",
+      "width:100%",
+      "white-space:nowrap",
+    ].join(";");
+    linkButton.addEventListener("click", () => onLinkAccount(marker));
+    actions.appendChild(linkButton);
   }
 
   if (onOpenPost) {
@@ -410,6 +408,51 @@ function fallbackScanBackground(background: string, water: string) {
   `;
 }
 
+function mapEdgeVignetteBackground() {
+  return `
+    radial-gradient(
+      120px 88px at 0% 0%,
+      rgb(var(--theme-shell-rgb) / 0.18) 0%,
+      transparent 74%
+    ),
+    radial-gradient(
+      124px 82px at 100% 0%,
+      rgb(var(--theme-shell-rgb) / 0.14) 0%,
+      transparent 76%
+    ),
+    radial-gradient(
+      132px 96px at 0% 100%,
+      rgb(var(--theme-shell-rgb) / 0.18) 0%,
+      transparent 76%
+    ),
+    radial-gradient(
+      148px 112px at 100% 100%,
+      rgb(var(--theme-shell-rgb) / 0.24) 0%,
+      transparent 78%
+    ),
+    linear-gradient(
+      to bottom,
+      rgb(var(--theme-shell-rgb) / 0.22) 0%,
+      transparent 56px
+    ),
+    linear-gradient(
+      to top,
+      rgb(var(--theme-shell-rgb) / 0.18) 0%,
+      transparent 64px
+    ),
+    linear-gradient(
+      to right,
+      rgb(var(--theme-shell-rgb) / 0.14) 0%,
+      transparent 44px
+    ),
+    linear-gradient(
+      to left,
+      rgb(var(--theme-shell-rgb) / 0.16) 0%,
+      transparent 44px
+    )
+  `;
+}
+
 function fitMarkers(map: MapInstance, markers: LocationMarkerSummary[], focusedMarkerKey?: string | null) {
   if (markers.length === 0) return;
 
@@ -453,6 +496,8 @@ export function MapSurface({
   interactive = true,
   themeId,
   onOpenFriend,
+  onPromoteAccount,
+  onLinkAccount,
   onOpenPost,
   emptyTitle = "No geo-tagged posts yet.",
   emptyBody = "Posts with location data will show up here.",
@@ -496,7 +541,18 @@ export function MapSurface({
     let cancelled = false;
     setMapReady(false);
     setLoadFailed(false);
-    ensureMapLibreCss();
+
+    if (shouldForceMapFallback()) {
+      setLoadFailed(true);
+      return () => {
+        cancelled = true;
+        closeActivePopup();
+        for (const marker of markersRef.current) marker.remove();
+        markersRef.current = [];
+        mapRef.current?.remove();
+        mapRef.current = null;
+      };
+    }
 
     void Promise.all([
       loadMapLibre(),
@@ -567,7 +623,7 @@ export function MapSurface({
           className: "freed-map-popup",
         })
           .setLngLat([markerData.lng, markerData.lat])
-          .setDOMContent(buildPopupContent(markerData, onOpenFriend, onOpenPost));
+          .setDOMContent(buildPopupContent(markerData, onOpenFriend, onPromoteAccount, onLinkAccount, onOpenPost));
         element.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -592,13 +648,14 @@ export function MapSurface({
       map.off("click", handleMapClick);
       closeActivePopup();
     };
-  }, [avatarPalette, closeActivePopup, focusedMarkerKey, interactive, mapReady, onOpenFriend, onOpenPost, stableMarkers]);
+  }, [avatarPalette, closeActivePopup, focusedMarkerKey, interactive, mapReady, onLinkAccount, onOpenFriend, onOpenPost, onPromoteAccount, stableMarkers]);
 
   return (
     <div
       data-testid="map-surface"
       data-map-theme={resolvedThemeId}
       className="freed-map-shell theme-soft-viewport relative h-full w-full"
+      style={MAP_VIEWPORT_MASK_STYLE}
     >
       <style>{mapStyles(interactive)}</style>
       <div className="theme-soft-viewport-content">
@@ -611,6 +668,12 @@ export function MapSurface({
           style={{
             backgroundImage: mapGridBackground(mapPalette.boundary),
             opacity: mapPalette.gridOpacity,
+          }}
+        />
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background: mapEdgeVignetteBackground(),
           }}
         />
 
@@ -735,6 +798,24 @@ export function MapSurface({
                     onClick={() => onOpenFriend(selectedFallbackMarker)}
                   >
                     Open Friend
+                  </button>
+                )}
+                {!selectedFallbackMarker.friend && onPromoteAccount && (
+                  <button
+                    type="button"
+                    className="btn-primary w-full rounded-xl px-3.5 py-2 text-xs"
+                    onClick={() => onPromoteAccount(selectedFallbackMarker)}
+                  >
+                    Promote to friend
+                  </button>
+                )}
+                {!selectedFallbackMarker.friend && onLinkAccount && (
+                  <button
+                    type="button"
+                    className="btn-secondary w-full rounded-xl px-3.5 py-2 text-xs"
+                    onClick={() => onLinkAccount(selectedFallbackMarker)}
+                  >
+                    Link to existing friend
                   </button>
                 )}
                 {onOpenPost && (
