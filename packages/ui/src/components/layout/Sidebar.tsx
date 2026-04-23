@@ -599,12 +599,12 @@ export function Sidebar({
   const desktopShellTransition = dragWidth !== null && !snapPreviewActive
     ? "none"
     : snapPreviewActive
-      ? "width 220ms ease, opacity 180ms ease"
+      ? "width 180ms ease, opacity 160ms ease"
       : "width 220ms ease, opacity 180ms ease";
   const desktopAsideTransition = dragWidth !== null && !snapPreviewActive
     ? "none"
     : snapPreviewActive
-      ? "width 220ms ease, transform 220ms ease, opacity 180ms ease"
+      ? "width 180ms ease, transform 180ms ease, opacity 160ms ease"
       : "width 220ms ease, transform 220ms ease, opacity 180ms ease";
   const desktopAsideTransform = renderMode === "closed"
     ? `translateX(calc(-100% - ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)}))`
@@ -1211,8 +1211,11 @@ export function Sidebar({
               )}
             </li>
             {providerSourceItems.map((source) => {
-                const isRssSource = source.id === "rss" && feedList.length > 0 && !compactRail;
                 const sourceStatus = getSourceStatus?.(source.id) ?? null;
+                const isRssSource =
+                  source.id === "rss" &&
+                  !compactRail &&
+                  (feedList.length > 0 || sourceStatus !== null);
 
                 if (compactRail) {
                   const compactBadge = getSourceBadge(source, sourceStatus);

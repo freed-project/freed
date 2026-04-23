@@ -701,7 +701,7 @@ const phases: Phase[] = [
     number: 1,
     title: "Foundation",
     description:
-      "Marketing site, QR gallery, monorepo, Automerge schema, CI/CD, public legal docs with download clickwrap, a protected newsletter signup flow, ready-to-run local worktree bootstrap with tracked preview tooling, deferred swarm worktrees, tiered validation commands, rerunnable draft PR publish automation, and a reverse-integration release policy.",
+      "Marketing site, QR gallery, monorepo, Automerge schema, CI/CD, public legal docs with download clickwrap, and a protected newsletter signup flow.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-1-FOUNDATION.md",
@@ -719,8 +719,8 @@ const phases: Phase[] = [
     number: 3,
     title: "Save for Later",
     description:
-      "Desktop save is full. PWA save now attempts full article capture, then falls back to desktop healing when a site blocks extraction. Layered reader fallback, AI controls, and tag navigation are shipped.",
-    status: "current",
+      "Save any URL from desktop or mobile. Full offline reading with layered content cache. AI summarization and tag navigation.",
+    status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-3-SAVE-FOR-LATER.md",
   },
@@ -737,7 +737,7 @@ const phases: Phase[] = [
     number: 5,
     title: "Desktop & Mobile App",
     description:
-      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, a Freed-owned updater endpoint, launch-time and background update checks, local production or dev release-channel switching that keeps dev installs on the newest eligible build, first-run legal gating, provider risk interstitials, browser-style back and forward shortcuts, draggable shared top-toolbar chrome, a tri-state resizable source sidebar with compact icon rail and floating compact search, local snapshot rollback for disaster recovery, a native startup recovery window outside the React tree with in-place update install plus channel-aware browser fallback, a provider health dashboard, failing-feed unsubscribe tools, renderer heartbeat diagnostics in the local log, runtime memory telemetry for long-session leak hunting, renderer heap and DOM diagnostics, reduced worker payload churn during large-library updates, duplicate-fetch suppression, fetcher rescans gated to real library growth, incremental Automerge persistence compaction, leaner outbox retry bookkeeping, dead-feed health cleanup, capped preserved-text previews with on-demand reader fetches, labeled native local previews, reviewed cumulative release headings, paginated changelog history, a dev-to-main production promotion guard that blocks stale releases, and public-safe bug reporting.",
+      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, a Freed-owned updater endpoint, local production or dev release-channel switching, first-run legal gating, provider risk interstitials, browser-style back and forward shortcuts, local snapshot rollback for disaster recovery, a provider health dashboard, failing-feed unsubscribe tools, renderer heartbeat diagnostics in the local log, runtime memory telemetry for long-session leak hunting, renderer heap and DOM diagnostics, reduced worker payload churn during large-library updates, duplicate-fetch suppression, fetcher rescans gated to real library growth, incremental Automerge persistence compaction, leaner outbox retry bookkeeping, dead-feed health cleanup, capped preserved-text previews with on-demand reader fetches, reviewed cumulative release headings, paginated changelog history, and public-safe bug reporting.",
     status: "current",
     priority: true,
     planLink:
@@ -747,7 +747,7 @@ const phases: Phase[] = [
     number: 6,
     title: "PWA Reader",
     description:
-      "Primary mobile surface with first-run legal gating, URL-backed view state, warmed offline article plus image caching, homescreen install prompts for browser and iOS Safari flows, public-safe bug reporting, and switchable production or dev update channels across `app.freed.wtf` and the `dev` branch lane at `dev-app.freed.wtf`.",
+      "Primary mobile surface with first-run legal gating, URL-backed view state, public-safe bug reporting, and switchable production or dev update channels across `app.freed.wtf` and `dev-app.freed.wtf`.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-6-PWA.md",
@@ -756,7 +756,7 @@ const phases: Phase[] = [
     number: 7,
     title: "Facebook + Instagram",
     description:
-      "Facebook and Instagram integrated via Tauri WebView scraping, with suggested-post filtering, hardened story capture, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, silent background media guarding, serialized background scraper sessions, Facebook group controls, provider health summaries, and smart backoff when sync looks rate-limited.",
+      "Facebook and Instagram integrated via Tauri WebView scraping, with suggested-post filtering, hardened story capture, silent background media guarding, serialized background scraper sessions, Facebook group controls, provider health summaries, and smart backoff when sync looks rate-limited.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-7-SOCIAL-CAPTURE.md",
@@ -765,7 +765,7 @@ const phases: Phase[] = [
     number: 8,
     title: "Friends + Social Graph",
     description:
-      "A people CRM with a canonical Person plus Account identity graph, a stable pan-and-zoom Friends workspace that defaults to All content with confirmed friend hubs, linked channel satellites, and peripheral captured accounts, drag-and-drop plus sidebar linking and promotion flows, Google Contacts imports that create friend people by default, suggestion-only same-person review across platforms, and a map that resolves identity through linked accounts with unified header controls plus current, future, and past filters while a quieter lower-left timeline scrubber replays history and upcoming plans.",
+      "A friend CRM with a stable pan-and-zoom graph workspace, a permanent resizable reconnect sidebar, Google Contacts sync and review, theme-authored avatar styling across Friends and Map, and a map with theme-native cartography that shows each friend's latest known location with time-aware popovers. Unify profiles across platforms into one identity per person, track relationship health, restore Google contact matches from desktop snapshots, and keep growing the map into a richer view of where friends were, are, and plan to be.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-8-FRIENDS.md",
@@ -783,7 +783,7 @@ const phases: Phase[] = [
     number: 10,
     title: "Polish",
     description:
-      "Onboarding, statistics, AI features, plugin API, community infrastructure, the global command palette now shipped across desktop and mobile layouts, and deeper recovery hardening beyond the bundled startup recovery updater flow already shipped.",
+      "Onboarding, statistics, AI features, plugin API, community infrastructure, and deeper crash recovery hardening.",
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-10-POLISH.md",
