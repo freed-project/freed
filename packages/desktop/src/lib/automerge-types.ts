@@ -36,6 +36,15 @@ export interface DocState {
   docItemCount: number;
 }
 
+export interface FeedItemPatch {
+  item: FeedItem;
+}
+
+export interface DocStats {
+  binaryBytes: number;
+  itemCount: number;
+}
+
 // ---------------------------------------------------------------------------
 // Main thread → worker
 // ---------------------------------------------------------------------------
@@ -98,6 +107,8 @@ export type WorkerResponse =
   | { reqId: number; type: "ACK"; error?: string }
   /** Broadcast on every doc mutation - main thread uses this to update UI */
   | { type: "STATE_UPDATE"; state: DocState }
+  /** Small mutation update that avoids cloning and hydrating the full document. */
+  | { type: "ITEM_PATCH"; patches: FeedItemPatch[] }
   /** Debug panel event forwarding */
   | { type: "DEBUG_EVENT"; kind: string; detail?: string; bytes?: number }
   /** Doc size snapshot for the debug panel */
