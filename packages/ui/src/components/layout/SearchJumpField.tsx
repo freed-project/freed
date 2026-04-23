@@ -29,7 +29,7 @@ export function SearchJumpField({
   const triggerButtonRef = useRef<HTMLButtonElement | null>(null);
   const triggerPaletteRef = useRef<HTMLDivElement | null>(null);
   const hasActiveSearch = searchQuery.trim().length > 0;
-  const inlinePlaceholder = narrowSidebar ? "Search" : "Search feed";
+  const inlinePlaceholder = narrowSidebar ? "Search" : "Search or run a command";
   const usesFloatingTrigger = variant === "trigger";
   const showFloatingField = usesFloatingTrigger && isTriggerOpen;
 
@@ -149,7 +149,7 @@ export function SearchJumpField({
     return (
       <div className={compactSidebar ? "relative z-20 w-full" : "relative z-20 mb-3 flex justify-center"}>
         <Tooltip
-          label="Search feed"
+          label="Search or run a command"
           side={compactSidebar ? "right" : undefined}
           className={compactSidebar ? "flex w-full" : undefined}
         >
@@ -167,7 +167,7 @@ export function SearchJumpField({
               : `relative flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--theme-border-subtle)] bg-transparent text-[var(--theme-text-secondary)] transition-colors hover:border-[var(--theme-border-quiet)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)] ${
                   showFloatingField ? "border-[var(--theme-border-strong)] bg-[var(--theme-bg-muted)] text-[var(--theme-text-primary)]" : ""
                 }`}
-            aria-label="Search feed"
+            aria-label="Search or run a command"
             aria-expanded={showFloatingField}
             aria-pressed={triggerActive}
             aria-haspopup="dialog"
@@ -203,8 +203,8 @@ export function SearchJumpField({
                   onChange={(event) => setInputValue(event.target.value)}
                   onKeyDown={handleInputKeyDown}
                   onClear={clearSearch}
-                  placeholder="Search feed"
-                  aria-label="Search feed"
+                  placeholder="Search or run a command"
+                  aria-label="Search or run a command"
                 />
               </div>,
               document.body,
@@ -226,7 +226,7 @@ export function SearchJumpField({
         onKeyDown={handleInputKeyDown}
         onClear={clearSearch}
         placeholder={inlinePlaceholder}
-        aria-label="Search feed"
+        aria-label="Search or run a command"
         inputClassName={
           compactSidebar
             ? "pl-7 pr-6"

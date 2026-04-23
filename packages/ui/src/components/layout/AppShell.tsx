@@ -136,7 +136,7 @@ export function AppShell({ children }: AppShellProps) {
 
   const handleDesktopSidebarToggle = useCallback(() => {
     const nextMode = desktopSidebarMode === "closed"
-      ? lastNonClosedDesktopSidebarModeRef.current
+      ? "expanded"
       : "closed";
     persistDesktopSidebarMode(nextMode);
   }, [desktopSidebarMode, persistDesktopSidebarMode]);
