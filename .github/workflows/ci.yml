@@ -36,9 +36,6 @@ jobs:
       - name: Run tooling smoke tests
         run: npm run test:scripts
 
-  feature:
-    if: github.event_name == 'pull_request'
-
   main-pr-guard:
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
     runs-on: ubuntu-latest
