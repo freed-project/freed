@@ -712,6 +712,74 @@ test.describe("Memory profiling (CDP heap snapshots)", () => {
     expect(growthMb).toBeLessThan(10);
   });
 
+  test("runtime telemetry stays below the desktop memory budget after common mutations", async ({ app, page }) => {
+    test.setTimeout(60_000);
+
+    await app.goto();
+    await app.waitForReady();
+    await injectPreservedRssItems(page, ITEM_COUNT_XLARGE);
+
+    await page.evaluate(async () => {
+      const w = window as Record<string, unknown>;
+      const store = w.__FREED_STORE__ as {
+        getState: () => {
+          markAsRead: (id: string) => Promise<void>;
+          toggleArchived: (id: string) => Promise<void>;
+          toggleLiked: (id: string) => Promise<void>;
+          items: Array<{ globalId: string }>;
+        };
+      };
+      const { markAsRead, toggleArchived, toggleLiked, items } = store.getState();
+      for (const item of items.slice(0, 25)) await markAsRead(item.globalId);
+      for (const item of items.slice(25, 35)) await toggleArchived(item.globalId);
+      for (const item of items.slice(35, 45)) await toggleLiked(item.globalId);
+    });
+
+    await page.waitForFunction(() => {
+      const freed = (window as Window & { __freed?: { debug?: () => { runtimeMemory?: { automergeItemCount?: number } } } }).__freed;
+      const debug = freed?.debug?.();
+      return Boolean(debug?.runtimeMemory?.automergeItemCount);
+    });
+
+    const telemetry = await page.evaluate(() => {
+      const freed = (window as Window & {
+        __freed?: {
+          debug?: () => {
+            runtimeMemory?: {
+              pressureLevel?: string;
+              webkitResidentBytes?: number;
+              automergeBinaryBytes?: number;
+              automergeItemCount?: number;
+              indexedDbBytes?: number;
+              webkitCacheBytes?: number;
+            };
+          };
+        };
+      }).__freed;
+      const memory = freed?.debug?.().runtimeMemory;
+      return {
+        pressureLevel: memory?.pressureLevel,
+        webkitResidentBytes: memory?.webkitResidentBytes ?? 0,
+        automergeBinaryBytes: memory?.automergeBinaryBytes ?? 0,
+        automergeItemCount: memory?.automergeItemCount ?? 0,
+        indexedDbBytes: memory?.indexedDbBytes ?? 0,
+        webkitCacheBytes: memory?.webkitCacheBytes ?? 0,
+      };
+    });
+
+    console.log(`[PERF] Runtime memory pressure: ${telemetry.pressureLevel}`);
+    console.log(`[PERF] Runtime WebKit RSS: ${(telemetry.webkitResidentBytes / (1024 * 1024)).toFixed(1)} MB`);
+    console.log(`[PERF] Runtime Automerge binary: ${(telemetry.automergeBinaryBytes / (1024 * 1024)).toFixed(1)} MB`);
+    console.log(`[PERF] Runtime Automerge item count: ${telemetry.automergeItemCount.toLocaleString()}`);
+    console.log(`[PERF] Runtime IndexedDB bytes: ${telemetry.indexedDbBytes.toLocaleString()}`);
+    console.log(`[PERF] Runtime WebKit cache bytes: ${telemetry.webkitCacheBytes.toLocaleString()}`);
+
+    expect(telemetry.pressureLevel).not.toBe("critical");
+    expect(telemetry.webkitResidentBytes).toBeLessThan(3_000 * 1024 * 1024);
+    expect(telemetry.automergeBinaryBytes).toBeGreaterThan(0);
+    expect(telemetry.automergeItemCount).toBeGreaterThanOrEqual(ITEM_COUNT_XLARGE);
+  });
+
   test("search index releases heap after clearing a heavy query", async ({ app, page }) => {
     await app.goto();
     await app.waitForReady();

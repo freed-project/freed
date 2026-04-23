@@ -296,6 +296,7 @@ export async function captureDomFeed(
 - [x] Settings > Saved now shows an overview dashboard with saved-volume charts and source mix, instead of listing every saved item inline
 - [x] Desktop debug tooling now samples runtime memory, relay document size, relay client count, and content-fetcher queue depth so long-run RAM growth can be correlated without attaching Instruments first
 - [x] Desktop diagnostics now also sample renderer JS heap and DOM node counts so overnight RAM growth can be split between native process pressure and WebView pressure
+- [x] Desktop diagnostics now include best-effort WebKit renderer RSS, Automerge binary size, IndexedDB size, WebKit cache size, and critical memory guardrails that pause background fetch and social capture before WebKit eats the machine
 - [x] Native relay broadcasts now reuse shared document buffers and stop writing a full snapshot on every live document push, reducing clone pressure during heavy sync churn
 - [x] Desktop worker state no longer ships the full `allItemIds` list or full Automerge binary back to the main thread on every mutation, and the content fetcher now bounds its failed-item cooldown cache instead of keeping an immortal set of every fetch miss
 - [x] Background fetch now tracks in-flight items so unrelated document updates cannot enqueue duplicate fetch work while a URL is already being processed
@@ -334,7 +335,11 @@ export async function captureDomFeed(
 > hot for an hour or more. The worker now fetches full item-id lists and
 > full Automerge binaries only on demand for import dedupe, relay, cloud
 > backup, and snapshots, rather than shipping those payloads back to the
-> main thread on every state update. The background content fetcher now
+> main thread on every state update. Desktop memory telemetry now also samples
+> the best-effort WebKit renderer process, Automerge binary size, IndexedDB
+> storage, and WebKit cache size. Critical memory pressure pauses background
+> content fetching and social capture, then offers a restart action instead of
+> letting WebKit keep conducting the RAM orchestra with a shovel. The background content fetcher now
 > bounds and ages out its failed-item cooldown cache, and it keeps an
 > in-flight set so unrelated state updates cannot queue the same fetch work
 > over and over while a URL is already being processed. It also stopped

@@ -25,6 +25,7 @@ import { getFbScraperWindowMode } from "./scraper-prefs";
 import { storeFbAuthState } from "./fb-auth";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
+import { isMemoryPressureCritical } from "./memory-monitor";
 
 // =============================================================================
 // Rate Limiting
@@ -107,6 +108,12 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
     errorStage: null,
     errorMessage: null,
   };
+
+  if (isMemoryPressureCritical()) {
+    diag.errorStage = "memory_pressure";
+    diag.errorMessage = "Facebook sync paused because Freed Desktop memory is critically high.";
+    return { items: [], diag };
+  }
 
   return new Promise<FbSyncResult>((resolve) => {
     let unlisten: UnlistenFn | null = null;
