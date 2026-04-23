@@ -1,15 +1,21 @@
 import { useEffect, useState, useRef, useCallback, type CSSProperties, type ReactNode } from "react";
 import { Sidebar } from "./Sidebar.js";
 import { Header } from "./Header.js";
+import { CommandPalette } from "./CommandPalette.js";
 import { DebugPanel } from "../DebugPanel.js";
+import { AddFeedDialog } from "../AddFeedDialog.js";
+import { SavedContentDialog } from "../SavedContentDialog.js";
+import { LibraryDialog } from "../LibraryDialog.js";
 import { useDebugStore } from "../../lib/debug-store.js";
 import { useAppStore } from "../../context/PlatformContext.js";
+import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { FriendsView } from "../friends/FriendsView.js";
 import { ContactSyncModal } from "../friends/ContactSyncModal.js";
 import { useContactSync } from "../../hooks/useContactSync.js";
 import { ContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
+import { useSettingsStore } from "../../lib/settings-store.js";
 import {
   buildDiscoveredAccountsFromItems,
   type GoogleContact,
@@ -25,7 +31,6 @@ import { MapView } from "../map/MapView.js";
 import { BackgroundAtmosphere } from "./BackgroundAtmosphere.js";
 import {
   AUXILIARY_DRAWER_GAP_WIDTH_PX,
-  DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX,
   PRIMARY_SIDEBAR_GAP_WIDTH_PX,
   px,
 } from "./layoutConstants.js";
@@ -52,6 +57,17 @@ export function AppShell({ children }: AppShellProps) {
   const isInitialized = useAppStore((s) => s.isInitialized);
   const themeId = useAppStore((s) => s.preferences.display.themeId);
   const showAtmosphere = activeView !== "friends" && activeView !== "map";
+  const settingsOpen = useSettingsStore((s) => s.open);
+  const paletteOpen = useCommandSurfaceStore((s) => s.paletteOpen);
+  const openPalette = useCommandSurfaceStore((s) => s.openPalette);
+  const closePalette = useCommandSurfaceStore((s) => s.closePalette);
+  const addFeedOpen = useCommandSurfaceStore((s) => s.addFeedOpen);
+  const closeAddFeedDialog = useCommandSurfaceStore((s) => s.closeAddFeedDialog);
+  const savedContentOpen = useCommandSurfaceStore((s) => s.savedContentOpen);
+  const closeSavedContentDialog = useCommandSurfaceStore((s) => s.closeSavedContentDialog);
+  const libraryDialogOpen = useCommandSurfaceStore((s) => s.libraryDialogOpen);
+  const libraryDialogTab = useCommandSurfaceStore((s) => s.libraryDialogTab);
+  const closeLibraryDialog = useCommandSurfaceStore((s) => s.closeLibraryDialog);
 
   // Mount the contact sync hook here (not in FriendsView) so the 15-minute
   // interval and focus listener run regardless of which view is active.
@@ -69,7 +85,16 @@ export function AppShell({ children }: AppShellProps) {
   const dragging = useRef(false);
   const pendingPersistedDebugWidth = useRef<number | null>(null);
   const pendingPersistedDesktopSidebarMode = useRef<SidebarMode | null>(null);
+  const lastNonClosedDesktopSidebarModeRef = useRef<SidebarMode>(
+    persistedDesktopSidebarMode === "closed" ? "expanded" : persistedDesktopSidebarMode,
+  );
   const discoveredAccountScanRef = useRef({ itemCount: 0, accountCount: 0 });
+  const blockingModalOpen =
+    settingsOpen ||
+    addFeedOpen ||
+    savedContentOpen ||
+    libraryDialogOpen ||
+    showContactReview;
 
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
@@ -89,12 +114,18 @@ export function AppShell({ children }: AppShellProps) {
     }
     setDesktopSidebarMode(persistedDesktopSidebarMode);
     setDesktopSidebarDisplayMode(persistedDesktopSidebarMode);
+    if (persistedDesktopSidebarMode !== "closed") {
+      lastNonClosedDesktopSidebarModeRef.current = persistedDesktopSidebarMode;
+    }
   }, [persistedDesktopSidebarMode]);
 
   const debugWidth = dragWidth ?? committedDebugWidth;
 
   const persistDesktopSidebarMode = useCallback((nextMode: SidebarMode) => {
     setDesktopSidebarMode(nextMode);
+    if (nextMode !== "closed") {
+      lastNonClosedDesktopSidebarModeRef.current = nextMode;
+    }
     pendingPersistedDesktopSidebarMode.current = nextMode;
     void updatePreferences({ display: { sidebarMode: nextMode } } as Parameters<typeof updatePreferences>[0]).catch(() => {
       if (pendingPersistedDesktopSidebarMode.current === nextMode) {
@@ -104,24 +135,11 @@ export function AppShell({ children }: AppShellProps) {
   }, [updatePreferences]);
 
   const handleDesktopSidebarToggle = useCallback(() => {
-    if (desktopSidebarMode === "closed") {
-      pendingPersistedDesktopSidebarMode.current = "expanded";
-      setDesktopSidebarMode("expanded");
-      void updatePreferences({
-        display: {
-          sidebarMode: "expanded",
-          sidebarWidth: DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX,
-        },
-      } as Parameters<typeof updatePreferences>[0]).catch(() => {
-        if (pendingPersistedDesktopSidebarMode.current === "expanded") {
-          pendingPersistedDesktopSidebarMode.current = null;
-        }
-      });
-      return;
-    }
-
-    persistDesktopSidebarMode("closed");
-  }, [desktopSidebarMode, persistDesktopSidebarMode, updatePreferences]);
+    const nextMode = desktopSidebarMode === "closed"
+      ? lastNonClosedDesktopSidebarModeRef.current
+      : "closed";
+    persistDesktopSidebarMode(nextMode);
+  }, [desktopSidebarMode, persistDesktopSidebarMode]);
 
   const handleDebugDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -181,7 +199,15 @@ export function AppShell({ children }: AppShellProps) {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "D" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        if (blockingModalOpen) return;
+        if (paletteOpen) {
+          closePalette();
+          return;
+        }
+        openPalette();
+      } else if (e.key === "D" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         toggleDebug();
       } else if (e.key === "Escape" && debugVisible) {
@@ -190,7 +216,7 @@ export function AppShell({ children }: AppShellProps) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [toggleDebug, debugVisible]);
+  }, [blockingModalOpen, closePalette, debugVisible, openPalette, paletteOpen, toggleDebug]);
 
   useEffect(() => {
     if (!isMobileDevice && mobileSidebarOpen) {
@@ -281,6 +307,10 @@ export function AppShell({ children }: AppShellProps) {
           desktopSidebarMode={desktopSidebarMode}
           desktopSidebarDisplayMode={desktopSidebarDisplayMode}
           onDesktopSidebarToggle={handleDesktopSidebarToggle}
+          onOpenCommandPalette={() => {
+            if (blockingModalOpen) return;
+            openPalette();
+          }}
         />
 
         <div
@@ -334,6 +364,16 @@ export function AppShell({ children }: AppShellProps) {
             <DebugPanel variant="overlay" />
           </div>
         )}
+
+        <CommandPalette />
+        <AddFeedDialog open={addFeedOpen} onClose={closeAddFeedDialog} />
+        <SavedContentDialog open={savedContentOpen} onClose={closeSavedContentDialog} />
+        {libraryDialogOpen ? (
+          <LibraryDialog
+            onClose={closeLibraryDialog}
+            initialTab={libraryDialogTab}
+          />
+        ) : null}
 
         {showContactReview && (
           <ContactSyncModal

@@ -19,8 +19,6 @@ import {
   type MapTimeMode,
   type SidebarMode,
 } from "@freed/shared";
-import { AddFeedDialog } from "../AddFeedDialog.js";
-import { SavedContentDialog } from "../SavedContentDialog.js";
 import { SearchField } from "../SearchField.js";
 import { Tooltip } from "../Tooltip.js";
 import {
@@ -33,6 +31,7 @@ import {
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
+import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
   MACOS_TRAFFIC_LIGHT_INSET,
@@ -53,6 +52,7 @@ interface HeaderProps {
   desktopSidebarMode: SidebarMode;
   desktopSidebarDisplayMode?: SidebarMode;
   onDesktopSidebarToggle: () => void;
+  onOpenCommandPalette: () => void;
 }
 
 const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
@@ -147,6 +147,7 @@ export function Header({
   desktopSidebarMode,
   desktopSidebarDisplayMode,
   onDesktopSidebarToggle,
+  onOpenCommandPalette,
 }: HeaderProps) {
   const {
     HeaderSyncIndicator,
@@ -165,6 +166,10 @@ export function Header({
   const canAddRss = !!addRssFeed;
   const canSaveContent = !!(saveUrl || importMarkdown || exportMarkdown);
   const showNewButton = canAddRss || canSaveContent;
+  const addFeedOpen = useCommandSurfaceStore((s) => s.addFeedOpen);
+  const savedContentOpen = useCommandSurfaceStore((s) => s.savedContentOpen);
+  const openAddFeedDialog = useCommandSurfaceStore((s) => s.openAddFeedDialog);
+  const openSavedContentDialog = useCommandSurfaceStore((s) => s.openSavedContentDialog);
 
   const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
@@ -411,6 +416,10 @@ export function Header({
   const activeSearchQuery = searchQuery.trim();
   const showToolbarSearch = !selectedItem && activeSearchQuery.length > 0;
   const canManuallyDragToolbarControls = !!(headerDragRegion && startWindowDrag);
+  const commandShortcutHint =
+    typeof navigator !== "undefined" && /(Mac|iPhone|iPad)/i.test(navigator.platform)
+      ? "Cmd K"
+      : "Ctrl K";
   const macosTrafficLightInsetStyle = headerDragRegion
     ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
     : undefined;
@@ -456,8 +465,6 @@ export function Header({
   } as CSSProperties;
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [addFeedOpen, setAddFeedOpen] = useState(false);
-  const [savedContentOpen, setSavedContentOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const leftToolbarSlotRef = useRef<HTMLDivElement | null>(null);
   const wordmarkRef = useRef<HTMLSpanElement | null>(null);
@@ -834,6 +841,30 @@ export function Header({
           >
             {selectedItem ? (
               <>
+                <Tooltip label={`Command palette (${commandShortcutHint})`}>
+                  <button
+                    type="button"
+                    onClick={onOpenCommandPalette}
+                    {...getToolbarControlProps()}
+                    data-testid="command-palette-trigger"
+                    className="theme-toolbar-button-neutral inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm"
+                    aria-label="Open command palette"
+                  >
+                    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                    <span className="hidden md:inline">Commands</span>
+                    <span className="hidden lg:inline text-xs text-[var(--theme-text-soft)]">
+                      {commandShortcutHint}
+                    </span>
+                  </button>
+                </Tooltip>
+
                 <ToolbarAnimatedSlot visible={!isMobile} width="5.25rem" className="hidden lg:flex">
                   <Tooltip label={display.reading.focusMode ? "Disable focus mode" : "Enable focus mode"}>
                     <button
@@ -914,6 +945,30 @@ export function Header({
               </>
             ) : (
               <>
+                <Tooltip label={`Command palette (${commandShortcutHint})`}>
+                  <button
+                    type="button"
+                    onClick={onOpenCommandPalette}
+                    {...getToolbarControlProps()}
+                    data-testid="command-palette-trigger"
+                    className="theme-toolbar-button-neutral inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm"
+                    aria-label="Open command palette"
+                  >
+                    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                    <span className="hidden md:inline">Commands</span>
+                    <span className="hidden lg:inline text-xs text-[var(--theme-text-soft)]">
+                      {commandShortcutHint}
+                    </span>
+                  </button>
+                </Tooltip>
+
                 <ToolbarAnimatedSlot visible={!!HeaderSyncIndicator} width="4.5rem" className="hidden md:flex">
                   {HeaderSyncIndicator ? (
                     <div className="hidden md:flex">
@@ -1048,7 +1103,7 @@ export function Header({
                 <button
                   onClick={() => {
                     setDropdownOpen(false);
-                    setAddFeedOpen(true);
+                    openAddFeedDialog();
                   }}
                   className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                 >
@@ -1062,7 +1117,7 @@ export function Header({
                 <button
                   onClick={() => {
                     setDropdownOpen(false);
-                    setSavedContentOpen(true);
+                    openSavedContentDialog();
                   }}
                   className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                 >
@@ -1090,12 +1145,6 @@ export function Header({
           </Tooltip>
         </div>
       )}
-
-      <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
-      <SavedContentDialog
-        open={savedContentOpen}
-        onClose={() => setSavedContentOpen(false)}
-      />
     </>
   );
 }

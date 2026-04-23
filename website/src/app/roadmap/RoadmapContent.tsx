@@ -783,7 +783,7 @@ const phases: Phase[] = [
     number: 10,
     title: "Polish",
     description:
-      "Onboarding, statistics, AI features, plugin API, community infrastructure, and deeper recovery hardening beyond the bundled startup recovery updater flow already shipped.",
+      "Onboarding, statistics, AI features, plugin API, community infrastructure, the global command palette now shipped across desktop and mobile layouts, and deeper recovery hardening beyond the bundled startup recovery updater flow already shipped.",
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-10-POLISH.md",
