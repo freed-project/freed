@@ -1,5 +1,30 @@
 [
   {
+    "version": "26.4.2300",
+    "tagName": "v26.4.2300",
+    "channel": "production",
+    "date": "2026-04-23T11:26:24Z",
+    "deck": "Promote dev into main for production release and stop release workflow deploying website",
+    "features": [],
+    "fixes": [],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2300",
+    "prNumbers": [
+      279,
+      285
+    ],
+    "builds": [
+      "26.4.2300"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.2300",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2300",
+        "channel": "production"
+      }
+    ]
+  },
+  {
     "version": "26.4.2100",
     "tagName": "v26.4.2100",
     "channel": "production",
