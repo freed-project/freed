@@ -3,7 +3,7 @@ import { useState, useCallback, useEffect, useRef, useMemo, cloneElement, isVali
 import {
   countAuthorsWithRecentLocationUpdates,
   countFriendsWithRecentLocationUpdates,
-  getDefaultMapMode,
+  resolveMapMode,
   type FilterOptions,
   type RssFeed,
   type SidebarMode,
@@ -468,8 +468,11 @@ export function Sidebar({
     () => countAuthorsWithRecentLocationUpdates(items),
     [items],
   );
-  const effectiveMapMode = display.mapMode
-    ?? getDefaultMapMode(mapFriendCount, mapAllContentCount);
+  const effectiveMapMode = resolveMapMode(
+    display.mapMode,
+    mapFriendCount,
+    mapAllContentCount,
+  );
   const mapCount = effectiveMapMode === "all_content"
     ? mapAllContentCount
     : mapFriendCount;

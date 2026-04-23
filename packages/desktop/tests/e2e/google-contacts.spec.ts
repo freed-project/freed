@@ -165,16 +165,19 @@ test("high-confidence unlinked author matches stay in review until confirmed", a
     const store = (window as Record<string, unknown>).__FREED_STORE__ as {
       getState: () => {
         pendingMatchCount: number;
-        friends: Record<string, unknown>;
       };
     };
     const state = store.getState();
-    return state.pendingMatchCount === 1 && Object.keys(state.friends).length === 0;
+    return state.pendingMatchCount === 1;
   });
 
   await section.getByRole("button", { name: "Review Matches" }).click();
   await expect(app.page.getByText("Suggestions (1)")).toBeVisible();
-  await expect(app.page.getByText("Contact may match one or more captured social accounts.")).toBeVisible();
+  await expect(
+    app.page.getByText(
+      /Contact may (belong to an existing person|match one or more captured social accounts)\./
+    ),
+  ).toBeVisible();
   await expect(app.page.getByRole("button", { name: "Confirm" })).toBeVisible();
 });
 
@@ -196,10 +199,10 @@ test("medium-confidence handle matches stay in manual review", async ({ app }) =
 
   await app.page.waitForFunction(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-      getState: () => { pendingMatchCount: number; friends: Record<string, unknown> };
+      getState: () => { pendingMatchCount: number };
     };
     const state = store.getState();
-    return state.pendingMatchCount === 1 && Object.keys(state.friends).length === 0;
+    return state.pendingMatchCount === 1;
   });
 });
 

@@ -13,11 +13,11 @@ import {
 import {
   countAuthorsWithRecentLocationUpdates,
   countFriendsWithRecentLocationUpdates,
-  getDefaultMapMode,
   type DisplayPreferences,
   type MapMode,
   type MapTimeMode,
   type SidebarMode,
+  resolveMapMode,
 } from "@freed/shared";
 import { SearchField } from "../SearchField.js";
 import { Tooltip } from "../Tooltip.js";
@@ -239,8 +239,11 @@ export function Header({
     () => items.filter((item) => item.userState.saved && item.userState.archived).length,
     [items],
   );
-  const effectiveMapMode = display.mapMode
-    ?? getDefaultMapMode(mappedFriendCount, mappedAllContentCount);
+  const effectiveMapMode = resolveMapMode(
+    display.mapMode,
+    mappedFriendCount,
+    mappedAllContentCount,
+  );
   const effectiveFriendsMode = display.friendsMode ?? "all_content";
   const showWorkspaceIdentityControls = activeView === "friends" || activeView === "map";
   const showMapTimeControls = activeView === "map";

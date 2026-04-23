@@ -1,5 +1,54 @@
 [
   {
+    "version": "26.4.2301",
+    "tagName": "v26.4.2301",
+    "channel": "production",
+    "date": "2026-04-23T17:54:30Z",
+    "deck": "This build ships the new Friends graph workspace and hardens desktop preview, diagnostics, and graph performance.",
+    "features": [
+      {
+        "text": "Pixi WebGL Friends graph with linked people, channels, and feeds"
+      },
+      {
+        "text": "Desktop details rail controls and a mobile Details mode for the Friends workspace"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Smoother pan and pinch behavior with cleaner four-edge vignette feathering in the Friends graph"
+      },
+      {
+        "text": "Browser preview no longer crashes on native-only snapshot, LinkedIn, and capture paths"
+      },
+      {
+        "text": "Crash report exports now label and gate public-safe versus private bundles correctly"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Promote dev into main before production release and stop the desktop release workflow from deploying the website"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2301",
+    "prNumbers": [],
+    "builds": [
+      "26.4.2300",
+      "26.4.2301"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.2300",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2300",
+        "channel": "production"
+      },
+      {
+        "version": "26.4.2301",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2301",
+        "channel": "production"
+      }
+    ]
+  },
+  {
     "version": "26.4.2100",
     "tagName": "v26.4.2100",
     "channel": "production",
@@ -139,7 +188,24 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2002-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      253,
+      254,
+      255,
+      256,
+      258,
+      260,
+      261,
+      262,
+      263,
+      265,
+      266,
+      267,
+      268,
+      269,
+      270,
+      271
+    ],
     "builds": [
       "26.4.2001-dev",
       "26.4.2002-dev"
@@ -197,7 +263,7 @@
         "text": "Lets dev installs take a newer production update when no newer dev build exists, without switching release channels"
       },
       {
-        "text": "Shows the -dev suffix consistently in desktop update surfaces and settings"
+        "text": "Shows the `-dev` suffix consistently in desktop update surfaces and settings"
       }
     ],
     "followUps": [
@@ -206,7 +272,18 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1901-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      239,
+      240,
+      241,
+      242,
+      243,
+      244,
+      245,
+      246,
+      247,
+      248
+    ],
     "builds": [
       "26.4.1900-dev",
       "26.4.1901-dev"
@@ -242,7 +319,11 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1802-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      233,
+      235,
+      238
+    ],
     "builds": [
       "26.4.1800-dev",
       "26.4.1802-dev"
@@ -270,7 +351,13 @@
     "fixes": [],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1700-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      225,
+      226,
+      228,
+      229,
+      230
+    ],
     "builds": [
       "26.4.1700-dev"
     ],
@@ -353,7 +440,10 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1601-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      223,
+      224
+    ],
     "builds": [
       "26.4.1601-dev"
     ],
@@ -389,7 +479,11 @@
     ],
     "followUps": [],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1501-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      214,
+      217,
+      218
+    ],
     "builds": [
       "26.4.1500-dev",
       "26.4.1501-dev"
@@ -459,7 +553,179 @@
       }
     ],
     "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.1403-dev",
-    "prNumbers": [],
+    "prNumbers": [
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      16,
+      27,
+      31,
+      32,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      55,
+      56,
+      57,
+      58,
+      59,
+      71,
+      72,
+      73,
+      74,
+      75,
+      76,
+      77,
+      78,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84,
+      85,
+      86,
+      87,
+      89,
+      90,
+      91,
+      92,
+      93,
+      94,
+      95,
+      96,
+      97,
+      98,
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+      110,
+      111,
+      112,
+      113,
+      114,
+      115,
+      116,
+      117,
+      118,
+      119,
+      120,
+      121,
+      122,
+      123,
+      124,
+      125,
+      126,
+      127,
+      128,
+      129,
+      130,
+      131,
+      132,
+      133,
+      134,
+      135,
+      136,
+      137,
+      138,
+      139,
+      140,
+      141,
+      142,
+      143,
+      144,
+      145,
+      146,
+      147,
+      148,
+      150,
+      151,
+      152,
+      153,
+      154,
+      155,
+      156,
+      157,
+      158,
+      159,
+      161,
+      162,
+      163,
+      164,
+      165,
+      166,
+      167,
+      168,
+      169,
+      170,
+      171,
+      172,
+      173,
+      174,
+      175,
+      176,
+      177,
+      178,
+      179,
+      180,
+      181,
+      182,
+      184,
+      185,
+      186,
+      187,
+      188,
+      190,
+      191,
+      192,
+      193,
+      194,
+      195,
+      196,
+      197,
+      198,
+      199,
+      200,
+      201,
+      202,
+      203,
+      204,
+      205,
+      208,
+      209,
+      210,
+      212
+    ],
     "builds": [
       "26.4.1403-dev"
     ],
