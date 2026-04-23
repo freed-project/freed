@@ -66,12 +66,17 @@ function popupSnippet(text?: string | null): string | null {
 }
 
 function popupKicker(marker: LocationMarkerSummary): string {
-  if (marker.friend) return "Linked Friend";
+  if (marker.friend?.relationshipStatus === "friend") return "Linked Friend";
+  if (marker.friend) return "Linked Person";
   return marker.item.contentType === "story" ? "Story Update" : "Location Update";
 }
 
 function popupTitle(marker: LocationMarkerSummary): string {
   return marker.friend?.name ?? marker.item.author.displayName;
+}
+
+function hasConfirmedFriend(marker: LocationMarkerSummary): boolean {
+  return marker.friend?.relationshipStatus === "friend";
 }
 
 function popupMeta(marker: LocationMarkerSummary): string {
@@ -105,6 +110,7 @@ function buildPopupContent(
   onLinkAccount?: (marker: LocationMarkerSummary) => void,
   onOpenPost?: (marker: LocationMarkerSummary) => void
 ): HTMLElement {
+  const confirmedFriend = hasConfirmedFriend(marker);
   const root = document.createElement("div");
   root.style.cssText = [
     "display:flex",
@@ -203,7 +209,7 @@ function buildPopupContent(
   const actions = document.createElement("div");
   actions.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;";
 
-  if (marker.friend && onOpenFriend) {
+  if (confirmedFriend && onOpenFriend) {
     const friendButton = document.createElement("button");
     friendButton.type = "button";
     friendButton.textContent = "Open Friend";
@@ -225,7 +231,7 @@ function buildPopupContent(
     actions.appendChild(friendButton);
   }
 
-  if (!marker.friend && onPromoteAccount) {
+  if (!confirmedFriend && onPromoteAccount) {
     const promoteButton = document.createElement("button");
     promoteButton.type = "button";
     promoteButton.textContent = "Promote to friend";
@@ -247,7 +253,7 @@ function buildPopupContent(
     actions.appendChild(promoteButton);
   }
 
-  if (!marker.friend && onLinkAccount) {
+  if (!confirmedFriend && onLinkAccount) {
     const linkButton = document.createElement("button");
     linkButton.type = "button";
     linkButton.textContent = "Link to existing friend";
@@ -789,7 +795,7 @@ export function MapSurface({
               )}
 
               <div className="mt-3 grid grid-cols-2 gap-2">
-                {selectedFallbackMarker.friend && onOpenFriend && (
+                {hasConfirmedFriend(selectedFallbackMarker) && onOpenFriend && (
                   <button
                     type="button"
                     className="btn-primary w-full rounded-xl px-3.5 py-2 text-xs"
@@ -798,7 +804,7 @@ export function MapSurface({
                     Open Friend
                   </button>
                 )}
-                {!selectedFallbackMarker.friend && onPromoteAccount && (
+                {!hasConfirmedFriend(selectedFallbackMarker) && onPromoteAccount && (
                   <button
                     type="button"
                     className="btn-primary w-full rounded-xl px-3.5 py-2 text-xs"
@@ -807,7 +813,7 @@ export function MapSurface({
                     Promote to friend
                   </button>
                 )}
-                {!selectedFallbackMarker.friend && onLinkAccount && (
+                {!hasConfirmedFriend(selectedFallbackMarker) && onLinkAccount && (
                   <button
                     type="button"
                     className="btn-secondary w-full rounded-xl px-3.5 py-2 text-xs"
