@@ -201,6 +201,18 @@ function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean 
   );
 }
 
+function cloneFeedItemForPatch(item: FeedItem): FeedItem {
+  const cloned = JSON.parse(JSON.stringify(item)) as FeedItem;
+  const preservedText = cloned.preservedContent?.text;
+  if (cloned.preservedContent && preservedText && preservedText.length > DESKTOP_UI_PRESERVED_TEXT_LIMIT) {
+    cloned.preservedContent = {
+      ...cloned.preservedContent,
+      text: preservedText.slice(0, DESKTOP_UI_PRESERVED_TEXT_LIMIT),
+    };
+  }
+  return cloned;
+}
+
 /**
  * Convert the Automerge proxy document to a plain-JS DocState for postMessage.
  * Identical to the PWA worker — runs entirely off the main thread.
@@ -386,6 +398,44 @@ async function saveAndBroadcast(trace?: RequestTrace): Promise<void> {
   }
 }
 
+async function persistAndBroadcastWithoutHydration(trace?: RequestTrace): Promise<void> {
+  const doc = currentDoc;
+  if (!doc) return;
+
+  const startedAt = performance.now();
+  const persisted = persistDoc(doc, persistenceState);
+  const binary = persisted.binary;
+  persistenceState = persisted.persistence;
+  currentBinary = binary;
+  const afterSerializeAt = performance.now();
+  await storage.save(binary);
+  const afterPersistAt = performance.now();
+
+  send({
+    type: "DEBUG_SNAPSHOT",
+    deviceId: (doc.meta?.deviceId as string | undefined) ?? "unknown",
+    itemCount: Object.keys(doc.feedItems ?? {}).length,
+    feedCount: Object.keys(doc.rssFeeds ?? {}).length,
+    binarySize: binary.byteLength,
+  });
+
+  if (relayClientCount > 0) {
+    send({ type: "BROADCAST_REQUEST", data: Array.from(binary) });
+  }
+
+  const totalMs = performance.now() - startedAt;
+  if (trace && totalMs >= SLOW_SAVE_AND_BROADCAST_MS) {
+    emitWorkerTrace(
+      `[automerge-worker] patch-save op=${trace.opType} reqId=${trace.reqId}` +
+        ` serialize_ms=${formatMs(afterSerializeAt - startedAt)}` +
+        ` persist_ms=${formatMs(afterPersistAt - afterSerializeAt)}` +
+        ` total_ms=${formatMs(totalMs)}` +
+        ` persist_mode=${persisted.usedIncremental ? "incremental" : "snapshot"}` +
+        ` bytes=${binary.byteLength.toLocaleString()}`,
+    );
+  }
+}
+
 async function applyChange(
   changeFn: (doc: FreedDoc) => void,
   message: string,
@@ -397,6 +447,28 @@ async function applyChange(
   if (searchCorpusChanged) bumpSearchCorpusVersion();
   send({ type: "DEBUG_EVENT", kind: "change", detail: message });
   await saveAndBroadcast(trace);
+}
+
+async function applyItemPatchChange(
+  changeFn: (doc: FreedDoc) => string[],
+  message: string,
+  trace?: RequestTrace,
+): Promise<void> {
+  if (!currentDoc) throw new Error("Document not initialized");
+  let changedIds: string[] = [];
+  currentDoc = A.change(currentDoc, message, (doc) => {
+    changedIds = changeFn(doc);
+  });
+  send({ type: "DEBUG_EVENT", kind: "change", detail: message });
+  await persistAndBroadcastWithoutHydration(trace);
+
+  const patches = changedIds
+    .map((globalId) => currentDoc?.feedItems[globalId] as FeedItem | undefined)
+    .filter((item): item is FeedItem => Boolean(item))
+    .map((item) => ({ item: cloneFeedItemForPatch(item) }));
+  if (patches.length > 0) {
+    send({ type: "ITEM_PATCH", patches });
+  }
 }
 
 async function handleRequest(
@@ -507,14 +579,21 @@ async function handleRequest(
       }
 
       case "MARK_AS_READ":
-        await applyRequestChange((doc) => markAsRead(doc, req.globalId), "Mark as read");
+        await applyItemPatchChange((doc) => {
+          markAsRead(doc, req.globalId);
+          return [req.globalId];
+        }, "Mark as read", trace);
         ack(req.reqId);
         break;
 
       case "MARK_ITEMS_AS_READ":
-        await applyRequestChange(
-          (doc) => markItemsAsRead(doc, req.globalIds),
+        await applyItemPatchChange(
+          (doc) => {
+            markItemsAsRead(doc, req.globalIds);
+            return req.globalIds;
+          },
           `Mark ${req.globalIds.length.toLocaleString()} items as read`,
+          trace,
         );
         ack(req.reqId);
         break;
@@ -538,27 +617,41 @@ async function handleRequest(
         break;
 
       case "TOGGLE_ARCHIVED":
-        await applyRequestChange((doc) => toggleArchived(doc, req.globalId), "Toggle archived");
+        await applyItemPatchChange((doc) => {
+          toggleArchived(doc, req.globalId);
+          return [req.globalId];
+        }, "Toggle archived", trace);
         ack(req.reqId);
         break;
 
       case "TOGGLE_LIKED":
-        await applyRequestChange((doc) => toggleLiked(doc, req.globalId), "Toggle liked");
+        await applyItemPatchChange((doc) => {
+          toggleLiked(doc, req.globalId);
+          return [req.globalId];
+        }, "Toggle liked", trace);
         ack(req.reqId);
         break;
 
       case "CONFIRM_LIKED_SYNCED":
-        await applyRequestChange(
-          (doc) => confirmLikedSynced(doc, req.globalId, req.syncedAt),
+        await applyItemPatchChange(
+          (doc) => {
+            confirmLikedSynced(doc, req.globalId, req.syncedAt);
+            return [req.globalId];
+          },
           "Confirm liked synced",
+          trace,
         );
         ack(req.reqId);
         break;
 
       case "CONFIRM_SEEN_SYNCED":
-        await applyRequestChange(
-          (doc) => confirmSeenSynced(doc, req.globalId, req.syncedAt),
+        await applyItemPatchChange(
+          (doc) => {
+            confirmSeenSynced(doc, req.globalId, req.syncedAt);
+            return [req.globalId];
+          },
           "Confirm seen synced",
+          trace,
         );
         ack(req.reqId);
         break;

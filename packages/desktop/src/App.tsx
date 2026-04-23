@@ -11,7 +11,7 @@ import { FatalErrorScreen } from "@freed/ui/components/FatalErrorScreen";
 import { LocalPreviewBadge } from "@freed/ui/components/LocalPreviewBadge";
 import { LegalGate } from "@freed/ui/components/legal/LegalGate";
 import { GoogleContactsSection } from "@freed/ui/components/settings/GoogleContactsSection";
-import { ToastContainer } from "@freed/ui/components/Toast";
+import { ToastContainer, toast } from "@freed/ui/components/Toast";
 import {
   PlatformProvider,
   type AvailableUpdateInfo,
@@ -40,7 +40,7 @@ import {
   storeCloudToken,
   type CloudProvider,
 } from "./lib/sync";
-import { clearLocalDoc, getItemPreservedText } from "./lib/automerge";
+import { clearLocalDoc, getCachedDocStats, getItemPreservedText } from "./lib/automerge";
 import { isTauri } from "@tauri-apps/api/core";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -164,7 +164,18 @@ function App() {
     }
     // Start background content fetcher -- processes article HTML fetch queue.
     startContentFetcher();
-    startMemoryMonitor();
+    startMemoryMonitor({
+      getAutomergeStats: getCachedDocStats,
+      onCriticalPressure: () => {
+        stopContentFetcher();
+        toast.error("Freed paused background fetch because memory is critically high", {
+          actionLabel: "Restart",
+          onAction: () => {
+            void relaunch();
+          },
+        });
+      },
+    });
     return () => {
       stopRssPoller();
       stopSync();
