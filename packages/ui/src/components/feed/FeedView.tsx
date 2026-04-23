@@ -263,6 +263,7 @@ export function FeedView() {
   }, [openUrl]);
 
   const [addFeedOpen, setAddFeedOpen] = useState(false);
+  const [readerOrderIds, setReaderOrderIds] = useState<string[] | null>(null);
 
   // useSearchResults handles both the search and the normal ranked+filtered path.
   // When searchQuery is empty it behaves identically to the previous useMemo.
@@ -292,6 +293,15 @@ export function FeedView() {
     () => (selectedItemId ? filteredItems.find((i) => i.globalId === selectedItemId) ?? null : null),
     [filteredItems, selectedItemId],
   );
+  const readerItems = useMemo(() => {
+    if (!readerOrderIds) return filteredItems;
+
+    const itemById = new Map(filteredItems.map((item) => [item.globalId, item]));
+    const stableItems = readerOrderIds
+      .map((id) => itemById.get(id))
+      .filter((item): item is FeedItem => Boolean(item));
+    return stableItems.length > 0 ? stableItems : filteredItems;
+  }, [filteredItems, readerOrderIds]);
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const [keyboardFocusDirection, setKeyboardFocusDirection] = useState<-1 | 0 | 1>(0);
   const [compactSelectionDirection, setCompactSelectionDirection] = useState<-1 | 0 | 1>(0);
@@ -304,13 +314,14 @@ export function FeedView() {
       };
 
       if (showDualColumn && !selectedItemId) {
+        setReaderOrderIds(filteredItems.map((candidate) => candidate.globalId));
         runFeedLayoutTransition(selectItem);
         return;
       }
 
       selectItem();
     },
-    [markAsRead, runFeedLayoutTransition, selectedItemId, setSelectedItem, showDualColumn],
+    [filteredItems, markAsRead, runFeedLayoutTransition, selectedItemId, setSelectedItem, showDualColumn],
   );
 
   const openItemDirect = useCallback((item: FeedItem) => {
@@ -320,6 +331,7 @@ export function FeedView() {
 
   const closeItem = useCallback(() => {
     setCompactSelectionDirection(0);
+    setReaderOrderIds(null);
     if (showDualColumn && selectedItemId) {
       runFeedLayoutTransition(() => {
         setSelectedItem(null);
@@ -342,16 +354,16 @@ export function FeedView() {
       if (selectedItem) {
         if (showDualColumn && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
           e.preventDefault();
-          const currentIndex = filteredItems.findIndex((item) => item.globalId === selectedItem.globalId);
+          const currentIndex = readerItems.findIndex((item) => item.globalId === selectedItem.globalId);
           if (currentIndex < 0) return;
 
           const direction = e.key === "ArrowDown" ? 1 : -1;
-          const nextIndex = Math.max(0, Math.min(currentIndex + direction, filteredItems.length - 1));
+          const nextIndex = Math.max(0, Math.min(currentIndex + direction, readerItems.length - 1));
           if (nextIndex === currentIndex) return;
 
           setCompactSelectionDirection(direction);
           setFocusedIndex(nextIndex);
-          openItem(filteredItems[nextIndex]);
+          openItem(readerItems[nextIndex]);
           return;
         }
 
@@ -375,13 +387,14 @@ export function FeedView() {
 
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [selectedItem, showDualColumn, filteredItems, focusedIndex, openItem, openItemDirect, closeItem]);
+  }, [selectedItem, showDualColumn, filteredItems, readerItems, focusedIndex, openItem, openItemDirect, closeItem]);
 
   // Reset keyboard focus when the active filter or search query changes.
   useEffect(() => {
     setCompactSelectionDirection(0);
     setKeyboardFocusDirection(0);
     setFocusedIndex(-1);
+    setReaderOrderIds(null);
   }, [activeFilter, searchQuery]);
 
   const handleFocusChange = useCallback((index: number) => {
@@ -440,7 +453,7 @@ export function FeedView() {
           {showDualColumn ? (
             <>
               <CompactFeedPanel
-                items={filteredItems}
+                items={readerItems}
                 selectedId={selectedItem.globalId}
                 selectionMoveDirection={compactSelectionDirection}
                 onItemClick={openItemDirect}
