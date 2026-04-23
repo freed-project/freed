@@ -43,32 +43,37 @@ export async function saveUrlInPwa(
   url: string,
   options: SaveUrlOptions = {},
 ): Promise<void> {
-  let stableUrl: string;
+  let parsed: URL;
   try {
-    const parsed = new URL(url);
-    if (!["http:", "https:"].includes(parsed.protocol)) {
-      throw new Error("Only http and https URLs are supported");
-    }
-    stableUrl = parsed.toString();
+    parsed = new URL(url);
   } catch {
     throw new Error("Invalid URL");
   }
+
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    throw new Error("Only http and https URLs are supported");
+  }
+
+  const stableUrl = parsed.toString();
+  let articleHtml: string;
+  let item: ReturnType<typeof buildSavedFeedItem>;
 
   try {
     const rawHtml = await fetchArticleHtml(stableUrl);
     const metadata = extractMetadataBrowser(rawHtml, stableUrl);
     const content = extractContentBrowser(rawHtml, stableUrl);
-    const item = buildSavedFeedItem(metadata, content, {
+    item = buildSavedFeedItem(metadata, content, {
       tags: options.tags,
       includeSourceUrl: true,
       includePriorityFields: true,
     });
-
-    await cacheArticleHtml(stableUrl, item.globalId, content.html);
-    await docAddFeedItem(item);
-    return;
+    articleHtml = content.html;
   } catch {
     await docAddStubItem(stableUrl, options.tags);
     toast.info("Saved a stub. Full article content will arrive after your next desktop sync.");
+    return;
   }
+
+  await cacheArticleHtml(stableUrl, item.globalId, articleHtml);
+  await docAddFeedItem(item);
 }
