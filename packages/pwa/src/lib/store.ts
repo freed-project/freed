@@ -8,7 +8,13 @@
  */
 
 import { create } from "zustand";
-import { accountsFromLegacyFriend, createDefaultPreferences, personFromLegacyFriend } from "@freed/shared";
+import {
+  accountsFromLegacyFriend,
+  buildConnectionPersonDraftFromAccounts,
+  createDefaultPreferences,
+  isPrunableConnectionPerson,
+  personFromLegacyFriend,
+} from "@freed/shared";
 import type { Account, BaseAppState, Friend, Person, ReachOutLog, RemoveFeedOptions } from "@freed/shared";
 import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
 import {
@@ -63,6 +69,18 @@ function shallowEqualRecord(
   return (
     aKeys.length === Object.keys(b).length && aKeys.every((k) => a[k] === b[k])
   );
+}
+
+async function pruneConnectionPersonIfNeeded(
+  getState: () => AppState,
+  personId: string | null | undefined,
+  ignoredAccountIds: string[] = [],
+): Promise<void> {
+  const state = getState();
+  if (!isPrunableConnectionPerson(state.persons, state.accounts, personId, ignoredAccountIds)) {
+    return;
+  }
+  await docRemovePerson(personId!);
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -232,6 +250,34 @@ export const useAppStore = create<AppState>((set, get) => ({
     await docLogReachOut(id, entry);
   },
 
+  linkAccountToPerson: async (accountId: string, personId: string | null) => {
+    const account = get().accounts[accountId];
+    if (!account) return;
+    const previousPersonId = account.personId ?? null;
+    if (previousPersonId === personId) return;
+    await docUpdateAccount(accountId, {
+      personId: personId ?? undefined,
+      updatedAt: Date.now(),
+    });
+    await pruneConnectionPersonIfNeeded(get, previousPersonId, [accountId]);
+  },
+
+  createConnectionPersonFromAccounts: async (accountIds: string[], personOverride?: Person) => {
+    const person = buildConnectionPersonDraftFromAccounts(get().accounts, accountIds, Date.now(), personOverride);
+    if (!person) {
+      throw new Error("Connection person requires at least one social account with a likely human name.");
+    }
+    if (get().persons[person.id]) {
+      await docUpdatePerson(person.id, person);
+    } else {
+      await docAddPerson(person);
+    }
+    for (const accountId of accountIds) {
+      await get().linkAccountToPerson(accountId, person.id);
+    }
+    return person.id;
+  },
+
   // Deprecated friend aliases
   addFriend: async (friend: Friend) => {
     await docAddPerson(personFromLegacyFriend(friend));
@@ -288,7 +334,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   removeAccount: async (id: string) => {
+    const previousPersonId = get().accounts[id]?.personId ?? null;
     await docRemoveAccount(id);
+    await pruneConnectionPersonIfNeeded(get, previousPersonId);
   },
 
   // Preference actions

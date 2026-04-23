@@ -548,6 +548,9 @@ export interface DisplayPreferences {
   /** Friends workspace sidebar width in pixels (default: 360, min: 280, max: 520) */
   friendsSidebarWidth?: number;
 
+  /** Friends workspace detail rail visibility (default: true) */
+  friendsSidebarOpen?: boolean;
+
   /** Saved Friends workspace display mode. Unset defaults to all content. */
   friendsMode?: MapMode;
 
@@ -759,6 +762,7 @@ export function createDefaultPreferences(): UserPreferences {
         showReadInGrayscale: true,
         dualColumnMode: true,
       },
+      friendsSidebarOpen: true,
       friendsMode: "all_content",
       mapTimeMode: "current",
       archivePruneDays: 30,

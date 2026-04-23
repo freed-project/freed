@@ -22,6 +22,7 @@ export * from "./navigation-state";
 
 // Re-export friends identity resolution and CRM utilities (browser-safe, no deps)
 export * from "./friends";
+export * from "./identity-graph";
 export * from "./contact-sync-state";
 
 // Re-export location extraction utilities (browser-safe, no deps)

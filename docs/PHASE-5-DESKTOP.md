@@ -237,6 +237,8 @@ export async function captureDomFeed(
 - [x] Desktop navigation history supports browser-style back and forward shortcuts for views and reader state
 - [x] Settings and crash recovery surfaces can export public-safe bug report bundles
 - [x] Private diagnostic bundles are opt-in, redacted, and steered toward email instead of public GitHub attachment
+- [x] Bug report actions now label whether they download a public-safe or private bundle, bulk-toggle private diagnostics, and block public GitHub issue drafts while private diagnostics remain selected
+- [x] Browser desktop preview now guards native-only LinkedIn auth listeners, background social refresh paths, and local snapshot controls, so opening Settings and switching themes no longer crashes the preview
 - [x] Freed Desktop emits native renderer heartbeats and warns in the local log when the main window goes silent long enough to suggest a renderer hang or crash
 - [x] If the renderer dies before the app finishes booting, the next launch opens a native recovery window with retry, immediate in-place update install, and channel-aware browser download fallback actions outside the React tree
 - [x] Performance benchmarks: MiniSearch lazy-build fix reduces markAsRead from ~300ms to ~30ms (10x)
