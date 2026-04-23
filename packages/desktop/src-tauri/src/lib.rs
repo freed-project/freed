@@ -162,6 +162,7 @@ fn stored_or_default_user_agent(agent: &std::sync::Mutex<String>) -> String {
 
 fn recycle_webview_window(app: &tauri::AppHandle, label: &str, reason: &str) {
     if let Some(window) = app.get_webview_window(label) {
+        scrub_webview_before_destroy(&window);
         match window.destroy() {
             Ok(()) => info!("[window] recycled {} ({})", label, reason),
             Err(error) => error!(
@@ -206,6 +207,31 @@ fn schedule_webview_recycle(
         tokio::time::sleep(delay).await;
         recycle_webview_window(&app, label, reason);
     });
+}
+
+fn scrub_webview_before_destroy(window: &tauri::WebviewWindow) {
+    let _ = window.eval(
+        r#"
+        (function() {
+            try {
+                for (var i = 1; i < 100000; i += 1) {
+                    clearTimeout(i);
+                    clearInterval(i);
+                }
+                document.querySelectorAll('video,audio').forEach(function(node) {
+                    try {
+                        node.pause();
+                        node.removeAttribute('src');
+                        node.load();
+                    } catch (_) {}
+                });
+                if (document.body) document.body.textContent = '';
+                if (window.stop) window.stop();
+            } catch (_) {}
+        })();
+    "#,
+    );
+    let _ = window.navigate("about:blank".parse().unwrap());
 }
 
 fn build_cloaked_scraper_window(
@@ -688,6 +714,12 @@ type RelayState = Arc<SyncRelayState>;
 struct RuntimeMemoryStats {
     process_resident_bytes: u64,
     process_virtual_bytes: u64,
+    webkit_resident_bytes: Option<u64>,
+    webkit_virtual_bytes: Option<u64>,
+    webkit_process_id: Option<u32>,
+    webkit_telemetry_available: bool,
+    indexed_db_bytes: Option<u64>,
+    webkit_cache_bytes: Option<u64>,
     relay_doc_bytes: u64,
     relay_client_count: u64,
 }
@@ -1033,8 +1065,54 @@ async fn get_sync_client_count(state: tauri::State<'_, RelayState>) -> Result<us
     Ok(*state.client_count.read().await)
 }
 
+fn dir_size_bytes(path: &Path) -> Option<u64> {
+    let metadata = std::fs::metadata(path).ok()?;
+    if metadata.is_file() {
+        return Some(metadata.len());
+    }
+    if !metadata.is_dir() {
+        return Some(0);
+    }
+
+    let mut total = 0u64;
+    let entries = std::fs::read_dir(path).ok()?;
+    for entry in entries.flatten() {
+        if let Some(size) = dir_size_bytes(&entry.path()) {
+            total = total.saturating_add(size);
+        }
+    }
+    Some(total)
+}
+
+fn best_effort_webkit_memory_stats(system: &System) -> (Option<u32>, Option<u64>, Option<u64>) {
+    #[cfg(target_os = "macos")]
+    {
+        let mut best: Option<(u32, u64, u64)> = None;
+        for (pid, process) in system.processes() {
+            let name = process.name().to_string_lossy();
+            if !name.contains("WebKit.WebContent") {
+                continue;
+            }
+            let resident = process.memory();
+            let virtual_bytes = process.virtual_memory();
+            if best
+                .map(|(_, best_resident, _)| resident > best_resident)
+                .unwrap_or(true)
+            {
+                best = Some((pid.as_u32(), resident, virtual_bytes));
+            }
+        }
+        if let Some((pid, resident, virtual_bytes)) = best {
+            return (Some(pid), Some(resident), Some(virtual_bytes));
+        }
+    }
+
+    (None, None, None)
+}
+
 #[tauri::command]
 async fn get_runtime_memory_stats(
+    app: tauri::AppHandle,
     state: tauri::State<'_, RelayState>,
 ) -> Result<RuntimeMemoryStats, String> {
     let pid = Pid::from_u32(std::process::id());
@@ -1049,6 +1127,24 @@ async fn get_runtime_memory_stats(
         .process(pid)
         .map(|process| (process.memory(), process.virtual_memory()))
         .unwrap_or((0, 0));
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_memory(),
+    );
+    let (webkit_process_id, webkit_resident_bytes, webkit_virtual_bytes) =
+        best_effort_webkit_memory_stats(&system);
+
+    let indexed_db_bytes = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .and_then(|path| dir_size_bytes(&path.join("IndexedDB")));
+    let webkit_cache_bytes = app
+        .path()
+        .app_cache_dir()
+        .ok()
+        .and_then(|path| dir_size_bytes(&path.join("WebKit")));
 
     let relay_doc_bytes = state
         .current_doc
@@ -1062,6 +1158,12 @@ async fn get_runtime_memory_stats(
     Ok(RuntimeMemoryStats {
         process_resident_bytes,
         process_virtual_bytes,
+        webkit_resident_bytes,
+        webkit_virtual_bytes,
+        webkit_process_id,
+        webkit_telemetry_available: webkit_resident_bytes.is_some(),
+        indexed_db_bytes,
+        webkit_cache_bytes,
         relay_doc_bytes,
         relay_client_count,
     })

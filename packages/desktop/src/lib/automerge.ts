@@ -22,7 +22,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { hashSavedUrl } from "@freed/capture-save/normalize";
 import { addDebugEvent, setDocSnapshot, registerDocAccessors } from "@freed/ui/lib/debug-store";
 import type { Account, FeedItem, Person, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
-import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
+import type { DocState, DocStats, FeedItemPatch, WorkerRequest, WorkerResponse } from "./automerge-types";
 import { log } from "./logger.js";
 export type { DocState } from "./automerge-types";
 
@@ -86,7 +86,6 @@ const pendingPreservedText = new Map<
     timer: ReturnType<typeof setTimeout>;
   }
 >();
-
 async function request(msg: WorkerRequest): Promise<void> {
   await workerReady;
   return new Promise((resolve, reject) => {
@@ -108,10 +107,9 @@ async function request(msg: WorkerRequest): Promise<void> {
   });
 }
 
-let lastBinary: Uint8Array | null = null;
-
 // Latest hydrated state - updated on every STATE_UPDATE, exposed as getDocState()
 let lastDocState: DocState | null = null;
+let lastDocStats: DocStats | null = null;
 
 // ---------------------------------------------------------------------------
 // Subscriber model
@@ -123,6 +121,84 @@ const subscribers = new Set<Subscriber>();
 export function subscribe(callback: Subscriber): () => void {
   subscribers.add(callback);
   return () => subscribers.delete(callback);
+}
+
+function recomputeCounts(state: DocState): DocState {
+  const feedUnreadCounts: Record<string, number> = {};
+  const feedTotalCounts: Record<string, number> = {};
+  const unreadCountByPlatform: Record<string, number> = {};
+  const itemCountByPlatform: Record<string, number> = {};
+  const archivableCountByPlatform: Record<string, number> = {};
+  const archivableFeedCounts: Record<string, number> = {};
+  let totalUnreadCount = 0;
+  let totalItemCount = 0;
+  let totalArchivableCount = 0;
+
+  for (const item of state.items) {
+    if (item.userState.hidden || item.userState.archived) continue;
+    totalItemCount += 1;
+    itemCountByPlatform[item.platform] = (itemCountByPlatform[item.platform] ?? 0) + 1;
+    if (item.rssSource) {
+      const url = item.rssSource.feedUrl;
+      feedTotalCounts[url] = (feedTotalCounts[url] ?? 0) + 1;
+    }
+    if (!item.userState.readAt) {
+      totalUnreadCount += 1;
+      unreadCountByPlatform[item.platform] = (unreadCountByPlatform[item.platform] ?? 0) + 1;
+      if (item.rssSource) {
+        const url = item.rssSource.feedUrl;
+        feedUnreadCounts[url] = (feedUnreadCounts[url] ?? 0) + 1;
+      }
+    } else if (!item.userState.saved) {
+      totalArchivableCount += 1;
+      archivableCountByPlatform[item.platform] = (archivableCountByPlatform[item.platform] ?? 0) + 1;
+      if (item.rssSource) {
+        const url = item.rssSource.feedUrl;
+        archivableFeedCounts[url] = (archivableFeedCounts[url] ?? 0) + 1;
+      }
+    }
+  }
+
+  return {
+    ...state,
+    feedUnreadCounts,
+    feedTotalCounts,
+    totalUnreadCount,
+    unreadCountByPlatform,
+    totalItemCount,
+    itemCountByPlatform,
+    totalArchivableCount,
+    archivableCountByPlatform,
+    archivableFeedCounts,
+  };
+}
+
+function applyItemPatches(state: DocState, patches: FeedItemPatch[]): DocState {
+  if (patches.length === 0) return state;
+  const patchById = new Map(patches.map((patch) => [patch.item.globalId, patch.item]));
+  let changed = false;
+  const nextItems = state.items.map((item) => {
+    const patch = patchById.get(item.globalId);
+    if (!patch) return item;
+    changed = true;
+    patchById.delete(item.globalId);
+    return patch;
+  });
+
+  for (const item of patchById.values()) {
+    if (!item.userState.hidden) {
+      changed = true;
+      nextItems.push(item);
+    }
+  }
+
+  if (!changed) return state;
+  return recomputeCounts({ ...state, items: nextItems });
+}
+
+function publishState(state: DocState): void {
+  lastDocState = state;
+  for (const sub of subscribers) sub(state);
 }
 
 // ---------------------------------------------------------------------------
@@ -148,9 +224,13 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   if (msg.type === "READY") return;
 
   if (msg.type === "STATE_UPDATE") {
-    lastBinary = null;
-    lastDocState = msg.state;
-    for (const sub of subscribers) sub(msg.state);
+    publishState(msg.state);
+    return;
+  }
+
+  if (msg.type === "ITEM_PATCH") {
+    if (!lastDocState) return;
+    publishState(applyItemPatches(lastDocState, msg.patches));
     return;
   }
 
@@ -176,6 +256,7 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   }
 
   if (msg.type === "DEBUG_SNAPSHOT") {
+    lastDocStats = { binaryBytes: msg.binarySize, itemCount: msg.itemCount };
     setDocSnapshot({
       deviceId: msg.deviceId,
       itemCount: msg.itemCount,
@@ -200,7 +281,6 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     if (!pendingBinary) return;
     clearTimeout(pendingBinary.timer);
     pendingDocBinary.delete(msg.reqId);
-    lastBinary = msg.binary;
     pendingBinary.resolve(msg.binary);
     return;
   }
@@ -263,7 +343,6 @@ function sendInit(): Promise<DocState> {
     const stateHandler = (event: MessageEvent<WorkerResponse>) => {
       const msg = event.data;
       if (msg.type === "STATE_UPDATE" && !initialState) {
-        lastBinary = null;
         lastDocState = msg.state;
         initialState = msg.state;
         tryResolve();
@@ -271,7 +350,7 @@ function sendInit(): Promise<DocState> {
         registerDocAccessors(
           () => null,
           () => "(doc lives in worker - not directly accessible)",
-          () => lastBinary ?? new Uint8Array(0),
+          () => new Uint8Array(0),
         );
         worker.removeEventListener("message", stateHandler);
         if (msg.error) {
@@ -304,7 +383,6 @@ export function getDocState(): DocState | null {
 }
 
 export async function getDocBinary(): Promise<Uint8Array> {
-  if (lastBinary) return lastBinary;
   await workerReady;
   return new Promise((resolve, reject) => {
     const reqId = nextReqId++;
@@ -321,6 +399,10 @@ export async function getDocBinary(): Promise<Uint8Array> {
     pendingDocBinary.set(reqId, { resolve, reject, timer });
     worker.postMessage({ reqId, type: "GET_DOC_BINARY" } satisfies WorkerRequest);
   });
+}
+
+export function getCachedDocStats(): DocStats | null {
+  return lastDocStats;
 }
 
 export async function getAllItemIds(): Promise<string[]> {

@@ -139,4 +139,26 @@ describe("saveUrlInPwa", () => {
     expect(mockDocAddFeedItem).not.toHaveBeenCalled();
     expect(mockDocAddStubItem).not.toHaveBeenCalled();
   });
+
+  it("rejects unsupported protocols with a specific error", async () => {
+    const { saveUrlInPwa } = await import("./save-url");
+
+    await expect(saveUrlInPwa("ftp://example.com/article")).rejects.toThrow(
+      "Only http and https URLs are supported",
+    );
+    expect(mockDocAddFeedItem).not.toHaveBeenCalled();
+    expect(mockDocAddStubItem).not.toHaveBeenCalled();
+  });
+
+  it("does not fall back to a stub when Automerge persistence fails", async () => {
+    mockDocAddFeedItem.mockRejectedValueOnce(new Error("Automerge unavailable"));
+
+    const { saveUrlInPwa } = await import("./save-url");
+
+    await expect(saveUrlInPwa("https://example.com/article")).rejects.toThrow(
+      "Automerge unavailable",
+    );
+    expect(mockDocAddStubItem).not.toHaveBeenCalled();
+    expect(mockToastInfo).not.toHaveBeenCalled();
+  });
 });

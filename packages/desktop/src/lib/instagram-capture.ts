@@ -24,6 +24,7 @@ import { getIgScraperWindowMode } from "./scraper-prefs";
 import { storeIgAuthState } from "./instagram-auth";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
+import { isMemoryPressureCritical } from "./memory-monitor";
 
 // =============================================================================
 // Rate Limiting
@@ -84,6 +85,12 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
     errorStage: null,
     errorMessage: null,
   };
+
+  if (isMemoryPressureCritical()) {
+    diag.errorStage = "memory_pressure";
+    diag.errorMessage = "Instagram sync paused because Freed Desktop memory is critically high.";
+    return { items: [], diag };
+  }
 
   // Accumulate raw posts across all scroll-pass events.
   // The Rust scraper emits one 'ig-feed-data' event per scroll pass (~11 total).

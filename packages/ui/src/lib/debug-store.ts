@@ -52,6 +52,15 @@ export interface DocSnapshot {
 export interface RuntimeMemorySnapshot {
   processResidentBytes: number;
   processVirtualBytes: number;
+  webkitResidentBytes?: number;
+  webkitVirtualBytes?: number;
+  webkitProcessId?: number;
+  webkitTelemetryAvailable?: boolean;
+  automergeBinaryBytes?: number;
+  automergeItemCount?: number;
+  indexedDbBytes?: number;
+  webkitCacheBytes?: number;
+  pressureLevel?: "normal" | "high" | "critical";
   relayDocBytes: number;
   relayClientCount: number;
   contentQueuePending: number;

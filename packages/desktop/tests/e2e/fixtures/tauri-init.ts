@@ -34,6 +34,12 @@ export function tauriInitScript(): string {
       get_runtime_memory_stats: () => ({
         processResidentBytes: 64 * 1024 * 1024,
         processVirtualBytes: 256 * 1024 * 1024,
+        webkitResidentBytes: 96 * 1024 * 1024,
+        webkitVirtualBytes: 512 * 1024 * 1024,
+        webkitProcessId: 12345,
+        webkitTelemetryAvailable: true,
+        indexedDbBytes: 8 * 1024 * 1024,
+        webkitCacheBytes: 16 * 1024 * 1024,
         relayDocBytes: 0,
         relayClientCount: 0,
       }),
