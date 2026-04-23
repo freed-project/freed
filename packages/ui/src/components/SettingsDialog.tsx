@@ -36,15 +36,7 @@ import { ProviderStatusIndicator } from "./ProviderStatusIndicator.js";
 import { toast } from "./Toast.js";
 import { UpdateProgressBar } from "./UpdateProgressBar.js";
 import {
-  BASE_SECTION_METAS,
-  UPDATES_SECTION_META,
-  DANGER_SECTION_META,
-  GOOGLE_CONTACTS_SECTION_META,
-  AI_SECTION_META,
-  X_SECTION_META,
-  FB_SECTION_META,
-  IG_SECTION_META,
-  LI_SECTION_META,
+  buildSettingsSectionMetas,
   type SectionId,
   type SectionMeta,
 } from "../lib/settings-sections.js";
@@ -281,29 +273,20 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const pendingThemeIdRef = useRef<ThemeId | null>(null);
   const pendingThemeSaveSeqRef = useRef(0);
   const committedThemeIdRef = useRef(preferences.display.themeId);
-  const baseSectionById = Object.fromEntries(BASE_SECTION_METAS.map((section) => [section.id, section])) as Record<
-    Exclude<SectionId, "ai" | "updates" | "danger" | "googleContacts" | "x" | "facebook" | "instagram" | "linkedin">,
-    SectionMeta
-  >;
-
   // Flat section list — drives scrollspy and right-pane rendering.
   // Keywords live in settings-sections.ts so Header's command palette can share them.
-  const allSections: Section[] = [
-    { ...baseSectionById.appearance, icon: ICONS.appearance },
-    { ...baseSectionById.sync, icon: ICONS.sync },
-    ...(GoogleContactsSettingsContent ? [{ ...GOOGLE_CONTACTS_SECTION_META, icon: ICONS.googleContacts }] : []),
-    { ...baseSectionById.saved, icon: ICONS.saved },
-    ...(XSettingsContent ? [{ ...X_SECTION_META, icon: ICONS.x }] : []),
-    ...(FacebookSettingsContent ? [{ ...FB_SECTION_META, icon: ICONS.facebook }] : []),
-    ...(InstagramSettingsContent ? [{ ...IG_SECTION_META, icon: ICONS.instagram }] : []),
-    ...(LinkedInSettingsContent ? [{ ...LI_SECTION_META, icon: ICONS.linkedin }] : []),
-    { ...baseSectionById.feeds, icon: ICONS.feeds },
-    { ...AI_SECTION_META, icon: ICONS.ai },
-    ...(checkForUpdates ? [{ ...UPDATES_SECTION_META, icon: ICONS.updates }] : []),
-    { ...baseSectionById.legal, icon: ICONS.legal },
-    { ...baseSectionById.support, icon: ICONS.support },
-    ...(factoryReset ? [{ ...DANGER_SECTION_META, icon: ICONS.danger }] : []),
-  ];
+  const allSections: Section[] = buildSettingsSectionMetas({
+    hasGoogleContacts: !!GoogleContactsSettingsContent,
+    hasX: !!XSettingsContent,
+    hasFacebook: !!FacebookSettingsContent,
+    hasInstagram: !!InstagramSettingsContent,
+    hasLinkedIn: !!LinkedInSettingsContent,
+    hasUpdateChecks: !!checkForUpdates,
+    hasFactoryReset: !!factoryReset,
+  }).map((section) => ({
+    ...section,
+    icon: ICONS[section.id],
+  }));
 
   // Hierarchical nav structure — drives left sidebar rendering only.
   // Re-use the Section objects already defined in allSections so keywords stay in sync.

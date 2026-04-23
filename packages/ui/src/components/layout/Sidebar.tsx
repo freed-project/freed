@@ -20,6 +20,8 @@ import { getTopSourceItems, type SourceNavigationItem } from "../../lib/source-n
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { SearchJumpField } from "./SearchJumpField.js";
+import { buildTopLevelTagFilters, childTagsOf, collectAllTags } from "../../lib/tag-navigation.js";
+import { navigateToFeedView } from "../../lib/workspace-navigation.js";
 import {
   CLOSED_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX,
   COMPACT_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX,
@@ -504,34 +506,15 @@ export function Sidebar({
   // ─── Tag tree ────────────────────────────────────────────────────────────────
 
   /** All unique tags collected from the library, sorted alphabetically */
-  const allTags = useMemo(() => {
-    const tagSet = new Set<string>();
-    for (const item of items) {
-      for (const tag of item.userState.tags ?? []) {
-        tagSet.add(tag);
-      }
-    }
-    return Array.from(tagSet).sort();
-  }, [items]);
-
-  /**
-   * Top-level tag segments (before the first "/").
-   * E.g. ["Technology/AI", "Technology/React", "Science"] → ["Science", "Technology"]
-   */
-  const topLevelTags = useMemo(() => {
-    const tops = new Set<string>();
-    for (const tag of allTags) {
-      tops.add(tag.split("/")[0]);
-    }
-    return Array.from(tops).sort();
-  }, [allTags]);
-
-  /** All descendant tag paths under a given top-level segment */
-  const childTagsOf = (top: string) =>
-    allTags.filter((t) => t === top || t.startsWith(`${top}/`));
+  const allTags = useMemo(() => collectAllTags(items), [items]);
+  const topLevelTagFilters = useMemo(() => buildTopLevelTagFilters(allTags), [allTags]);
+  const topLevelTags = useMemo(
+    () => topLevelTagFilters.map((tagFilter) => tagFilter.label),
+    [topLevelTagFilters],
+  );
 
   const handleTagClick = (tag: string) => {
-    const children = childTagsOf(tag);
+    const children = childTagsOf(allTags, tag);
     showFeed({ tags: children });
   };
 
@@ -541,7 +524,7 @@ export function Sidebar({
     if (!isFeedView) return false;
     const active = activeFilter.tags;
     if (!active || active.length === 0) return false;
-    return childTagsOf(tag).some((t) => active.includes(t));
+    return childTagsOf(allTags, tag).some((t) => active.includes(t));
   };
 
   useEffect(() => {
@@ -728,10 +711,15 @@ export function Sidebar({
   );
 
   const showFeed = useCallback((filter: FilterOptions) => {
-    setActiveView("feed");
-    setSelectedFriend(null);
-    setSelectedItem(null);
-    setFilter(filter);
+    navigateToFeedView(
+      {
+        setActiveView,
+        setSelectedPerson: setSelectedFriend,
+        setSelectedItem,
+        setFilter,
+      },
+      filter,
+    );
     onMobileClose();
   }, [onMobileClose, setActiveView, setFilter, setSelectedFriend, setSelectedItem]);
 
@@ -1591,9 +1579,7 @@ export function Sidebar({
             <SidebarSection title="Tags" defaultOpen={true} count={allTags.length}>
               <ul className="space-y-0.5">
                 {topLevelTags.map((top) => {
-                  const children = allTags.filter(
-                    (t) => t.startsWith(`${top}/`) && t !== top,
-                  );
+                  const children = childTagsOf(allTags, top).filter((tag) => tag !== top);
                   const hasChildren = children.length > 0;
                   const active = isTagActive(top);
                   return (
