@@ -35,9 +35,13 @@ export async function check(options?: CheckOptions): Promise<Update | null> {
       if (!override) {
         return null;
       }
+      const downloadAndInstall =
+        typeof (override as Partial<Update>).downloadAndInstall === "function"
+          ? (override as Partial<Update>).downloadAndInstall
+          : async () => {};
       return {
         ...(override as Partial<Update>),
-        downloadAndInstall: async () => {},
+        downloadAndInstall,
       } as Update;
     }
   }
@@ -45,9 +49,13 @@ export async function check(options?: CheckOptions): Promise<Update | null> {
   // Honour __TAURI_MOCK_UPDATE__ so specific tests can simulate an update.
   const override = mockWindow.__TAURI_MOCK_UPDATE__;
   if (override) {
+    const downloadAndInstall =
+      typeof (override as Partial<Update>).downloadAndInstall === "function"
+        ? (override as Partial<Update>).downloadAndInstall
+        : async () => {};
     return {
       ...(override as Partial<Update>),
-      downloadAndInstall: async () => {},
+      downloadAndInstall,
     } as Update;
   }
   return null;

@@ -23,7 +23,7 @@ export function openFriendFromMap(
     "setActiveView" | "setSelectedPerson" | "setSelectedAccount" | "setSelectedItem"
   >
 ): void {
-  if (!marker.friend) return;
+  if (!marker.friend || marker.friend.relationshipStatus !== "friend") return;
   actions.setSelectedPerson(marker.friend.id);
   actions.setSelectedItem(null);
   actions.setActiveView("friends");

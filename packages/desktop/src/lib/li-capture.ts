@@ -7,7 +7,7 @@
  * via Tauri event IPC ('li-feed-data').
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { RawLiPost } from "@freed/capture-linkedin/browser";
 import {
@@ -59,6 +59,20 @@ export interface LiSyncResult {
   diag: LiSyncDiag;
 }
 
+function createEmptyLiSyncResult(): LiSyncResult {
+  return {
+    items: [],
+    diag: {
+      postsExtracted: 0,
+      itemsNormalized: 0,
+      itemsDeduplicated: 0,
+      itemsAdded: 0,
+      errorStage: null,
+      errorMessage: null,
+    },
+  };
+}
+
 // =============================================================================
 // Core scrape trigger
 // =============================================================================
@@ -77,14 +91,12 @@ export interface LiSyncResult {
  * We accumulate them until the final pass, identified by a 'done' flag.
  */
 export async function fetchLiFeed(): Promise<LiSyncResult> {
-  const diag: LiSyncDiag = {
-    postsExtracted: 0,
-    itemsNormalized: 0,
-    itemsDeduplicated: 0,
-    itemsAdded: 0,
-    errorStage: null,
-    errorMessage: null,
-  };
+  const emptyResult = createEmptyLiSyncResult();
+  const diag = emptyResult.diag;
+
+  if (!isTauri()) {
+    return emptyResult;
+  }
 
   return new Promise<LiSyncResult>((resolve) => {
     let unlisten: UnlistenFn | null = null;
@@ -198,6 +210,11 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
  * Respects rate limiting to avoid triggering LinkedIn's anti-bot measures.
  */
 export async function captureLiFeed(): Promise<LiSyncResult> {
+  if (!isTauri()) {
+    addDebugEvent("change", "[LI] browser preview skips native LinkedIn capture");
+    return createEmptyLiSyncResult();
+  }
+
   const startedAt = Date.now();
   const providerPause = getProviderPause("linkedin");
   if (providerPause) {

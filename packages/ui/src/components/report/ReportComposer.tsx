@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   BugReportArtifactDefinition,
   BugReportArtifactId,
@@ -15,6 +15,7 @@ import {
 } from "../../lib/bug-report.js";
 import { usePlatform } from "../../context/PlatformContext.js";
 import { toast } from "../Toast.js";
+import { Tooltip } from "../Tooltip.js";
 
 interface ReportComposerProps {
   initialIssueType?: BugReportIssueType;
@@ -65,6 +66,39 @@ function ArtifactToggle({
   );
 }
 
+function ArtifactGroupCheckbox({
+  checked,
+  indeterminate,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  indeterminate: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+}) {
+  const checkboxRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!checkboxRef.current) return;
+    checkboxRef.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+
+  return (
+    <label className="inline-flex cursor-pointer items-center gap-3">
+      <input
+        ref={checkboxRef}
+        type="checkbox"
+        checked={checked}
+        aria-label={label}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-4 w-4 rounded border-[color:var(--theme-border-subtle)] bg-[color:var(--theme-bg-input)] text-[var(--theme-accent-secondary)] focus:ring-[color:var(--theme-focus-ring)] focus:ring-offset-0"
+      />
+      <span className="text-sm font-medium text-[color:var(--theme-text-primary)]">{label}</span>
+    </label>
+  );
+}
+
 export function ReportComposer({
   initialIssueType = "other",
   title = "Report a problem",
@@ -80,6 +114,21 @@ export function ReportComposer({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const privacyTier = getReportPrivacyTier(draft.selectedArtifacts);
+  const selectedArtifactSet = useMemo(
+    () => new Set(draft.selectedArtifacts),
+    [draft.selectedArtifacts],
+  );
+  const allPrivateArtifactsSelected = PRIVATE_ARTIFACTS.every((artifact) =>
+    selectedArtifactSet.has(artifact.id),
+  );
+  const somePrivateArtifactsSelected = PRIVATE_ARTIFACTS.some((artifact) =>
+    selectedArtifactSet.has(artifact.id),
+  );
+  const exportButtonLabel =
+    privacyTier === "public-safe"
+      ? "Download Public Safe Bundle"
+      : "Download Private Bundle";
+  const githubIssueDisabledByPrivacy = privacyTier === "private";
 
   const toggleArtifact = (artifactId: BugReportArtifactId, nextChecked: boolean) => {
     setDraft((current) => {
@@ -88,6 +137,23 @@ export function ReportComposer({
         selected.add(artifactId);
       } else {
         selected.delete(artifactId);
+      }
+      return { ...current, selectedArtifacts: Array.from(selected) };
+    });
+  };
+
+  const toggleArtifactGroup = (
+    artifactIds: BugReportArtifactId[],
+    nextChecked: boolean,
+  ) => {
+    setDraft((current) => {
+      const selected = new Set(current.selectedArtifacts);
+      for (const artifactId of artifactIds) {
+        if (nextChecked) {
+          selected.add(artifactId);
+        } else {
+          selected.delete(artifactId);
+        }
       }
       return { ...current, selectedArtifacts: Array.from(selected) };
     });
@@ -107,6 +173,7 @@ export function ReportComposer({
       });
     };
   }, [bugReporting, draft]);
+  const githubIssueDisabled = working !== null || privacyTier === "private" || !githubUrl;
 
   if (!bugReporting) return null;
 
@@ -164,12 +231,12 @@ export function ReportComposer({
     setWorking("private-share");
     setStatusMessage(null);
     try {
-      await exportBundleForTier("private");
+      await exportBundleForTier(privacyTier);
       if (bugReporting.privateShareEmail) {
         const params = new URLSearchParams({
-          subject: `Freed private bug report: ${draft.title || draft.issueType}`,
+          subject: `Freed bug report: ${draft.title || draft.issueType}`,
           body: [
-            "I generated a private diagnostics bundle from Freed.",
+            `I generated a ${privacyTier === "private" ? "private" : "public-safe"} diagnostics bundle from Freed.`,
             "",
             "Summary:",
             draft.description || "(none provided)",
@@ -180,8 +247,16 @@ export function ReportComposer({
         const mailto = `mailto:${bugReporting.privateShareEmail}?${params.toString()}`;
         (bugReporting.openUrl ?? openUrl ?? ((href) => window.open(href, "_blank", "noopener,noreferrer")))(mailto);
       }
-      setStatusMessage("Downloaded a private bundle and opened an email draft.");
-      toast.info("Downloaded private bundle and opened an email draft.");
+      setStatusMessage(
+        privacyTier === "private"
+          ? "Downloaded a private bundle and opened an email draft."
+          : "Downloaded a public-safe bundle and opened an email draft.",
+      );
+      toast.info(
+        privacyTier === "private"
+          ? "Downloaded private bundle and opened an email draft."
+          : "Downloaded public-safe bundle and opened an email draft.",
+      );
     } finally {
       setWorking(null);
     }
@@ -278,7 +353,17 @@ export function ReportComposer({
 
       <div className="space-y-3">
         <div>
-          <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">Private diagnostics</p>
+          <ArtifactGroupCheckbox
+            checked={allPrivateArtifactsSelected}
+            indeterminate={somePrivateArtifactsSelected && !allPrivateArtifactsSelected}
+            onChange={(checked) =>
+              toggleArtifactGroup(
+                PRIVATE_ARTIFACTS.map((artifact) => artifact.id),
+                checked,
+              )
+            }
+            label="Private diagnostics"
+          />
           <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
             Turning these on may expose more of your local environment. Email these bundles instead of posting them publicly.
           </p>
@@ -331,11 +416,11 @@ export function ReportComposer({
 
       <div className="flex flex-wrap gap-3">
         <button
-          onClick={() => handleExport("public-safe")}
+          onClick={() => handleExport(privacyTier)}
           disabled={working !== null}
           className="btn-primary rounded-xl px-4 py-2.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Download bundle
+          {exportButtonLabel}
         </button>
         <button
           onClick={handlePrivateShare}
@@ -344,13 +429,32 @@ export function ReportComposer({
         >
           Download and email
         </button>
-        <button
-          onClick={handleOpenGitHub}
-          disabled={working !== null}
-          className="btn-secondary rounded-xl px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Download and open GitHub issue
-        </button>
+        {githubIssueDisabledByPrivacy ? (
+          <Tooltip
+            label="Turn off private diagnostics first"
+            description="GitHub issues are public. Private bundles may expose local details, so email them instead."
+            side="top"
+          >
+            <span className="inline-flex">
+              <button
+                onClick={handleOpenGitHub}
+                disabled={githubIssueDisabled}
+                aria-disabled="true"
+                className="btn-secondary rounded-xl px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Download and open GitHub issue
+              </button>
+            </span>
+          </Tooltip>
+        ) : (
+          <button
+            onClick={handleOpenGitHub}
+            disabled={githubIssueDisabled}
+            className="btn-secondary rounded-xl px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Download and open GitHub issue
+          </button>
+        )}
       </div>
     </div>
   );

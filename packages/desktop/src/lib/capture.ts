@@ -6,7 +6,7 @@
  * layer lives here because it must go through Tauri's fetch_url IPC.
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { FeedItem, RssFeed, OPMLFeedEntry } from "@freed/shared";
 import { generateOPML, downloadFile } from "@freed/shared";
 import { parseFeedXml, feedToFeedItems, feedToRssFeed } from "@freed/capture-rss/browser";
@@ -23,6 +23,13 @@ import { isProviderPaused, recordProviderHealthEvent } from "./provider-health";
  * Fetch URL via Tauri backend (bypasses CORS)
  */
 async function fetchUrl(url: string): Promise<string> {
+  if (!isTauri()) {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Fetch failed with ${response.status.toLocaleString()}`);
+    }
+    return response.text();
+  }
   return invoke<string>("fetch_url", { url });
 }
 
@@ -102,11 +109,22 @@ const FETCH_CONCURRENCY = 5;
  * silently unless every single feed failed (in which case the user is told).
  */
 export async function refreshAllFeeds(): Promise<void> {
+  if (!isTauri()) {
+    addDebugEvent("change", "[Capture] Browser preview skips native background refresh");
+    return;
+  }
   const store = useAppStore.getState();
   const feeds = Object.values(store.feeds).filter((f) => f.enabled);
+  const tauriAvailable = isTauri();
+  const hasNativeSocialRefresh =
+    tauriAvailable &&
+    (store.xAuth.isAuthenticated ||
+      store.fbAuth.isAuthenticated ||
+      store.igAuth.isAuthenticated ||
+      store.liAuth.isAuthenticated);
 
   // Skip only when there is truly nothing to do.
-  if (feeds.length === 0 && !store.xAuth.isAuthenticated && !store.fbAuth.isAuthenticated && !store.igAuth.isAuthenticated && !store.liAuth.isAuthenticated) return;
+  if (feeds.length === 0 && !hasNativeSocialRefresh) return;
 
   store.setSyncing(true);
   store.setError(null);
@@ -272,7 +290,7 @@ export async function refreshAllFeeds(): Promise<void> {
     // Always runs, fully independent of RSS outcome.
     const { xAuth } = useAppStore.getState();
     const xCookies = xAuth.cookies;
-    if (xAuth.isAuthenticated && xCookies && !isProviderPaused("x")) {
+    if (tauriAvailable && xAuth.isAuthenticated && xCookies && !isProviderPaused("x")) {
       try {
         await withProviderSyncing("x", () => captureXTimeline(xCookies));
       } catch (xError) {
@@ -288,7 +306,7 @@ export async function refreshAllFeeds(): Promise<void> {
     // ── Facebook feed ─────────────────────────────────────────────────────────
     // Independent of both RSS and X outcomes.
     const { fbAuth } = useAppStore.getState();
-    if (fbAuth.isAuthenticated && !isProviderPaused("facebook")) {
+    if (tauriAvailable && fbAuth.isAuthenticated && !isProviderPaused("facebook")) {
       try {
         await withProviderSyncing("facebook", () => captureFbFeed());
       } catch (fbError) {
@@ -304,7 +322,7 @@ export async function refreshAllFeeds(): Promise<void> {
     // ── Instagram feed ───────────────────────────────────────────────────────
     // Independent of RSS, X, and Facebook outcomes.
     const { igAuth } = useAppStore.getState();
-    if (igAuth.isAuthenticated && !isProviderPaused("instagram")) {
+    if (tauriAvailable && igAuth.isAuthenticated && !isProviderPaused("instagram")) {
       try {
         await withProviderSyncing("instagram", () => captureIgFeed());
       } catch (igError) {
@@ -320,7 +338,7 @@ export async function refreshAllFeeds(): Promise<void> {
     // ── LinkedIn feed ─────────────────────────────────────────────────────────
     // Independent of RSS, X, Facebook, and Instagram outcomes.
     const { liAuth } = useAppStore.getState();
-    if (liAuth.isAuthenticated && !isProviderPaused("linkedin")) {
+    if (tauriAvailable && liAuth.isAuthenticated && !isProviderPaused("linkedin")) {
       try {
         await withProviderSyncing("linkedin", () => captureLiFeed());
       } catch (liError) {

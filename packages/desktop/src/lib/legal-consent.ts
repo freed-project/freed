@@ -8,6 +8,7 @@ import {
   type LegalAcceptanceRecord,
   type ProviderRiskId,
 } from "@freed/shared";
+import { isTauri } from "@tauri-apps/api/core";
 import { Store, load } from "@tauri-apps/plugin-store";
 import { log } from "./logger";
 
@@ -18,6 +19,9 @@ const FALLBACK_STORAGE_PREFIX = "freed.legal.";
 let legalStore: Store | null = null;
 
 async function getStore(): Promise<Store> {
+  if (!isTauri()) {
+    throw new Error("Native consent store is unavailable outside Freed Desktop");
+  }
   if (!legalStore) {
     legalStore = await load("legal.json", { defaults: {}, autoSave: true });
   }
@@ -50,6 +54,9 @@ function writeFallbackRecord(key: string, record: LegalAcceptanceRecord): void {
 }
 
 async function readRecord(key: string): Promise<LegalAcceptanceRecord | null> {
+  if (!isTauri()) {
+    return readFallbackRecord(key);
+  }
   try {
     const store = await getStore();
     return coerceLegalAcceptanceRecord(await store.get<unknown>(key));
@@ -69,6 +76,10 @@ async function writeRecord(
   surface: Parameters<typeof createAcceptanceRecord>[1],
 ): Promise<LegalAcceptanceRecord> {
   const record = createAcceptanceRecord(version, surface);
+  if (!isTauri()) {
+    writeFallbackRecord(key, record);
+    return record;
+  }
   try {
     const store = await getStore();
     await store.set(key, record);

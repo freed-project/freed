@@ -1,15 +1,23 @@
 import { useEffect, useState, useRef, useCallback, type CSSProperties, type ReactNode } from "react";
 import { Sidebar } from "./Sidebar.js";
 import { Header } from "./Header.js";
+import { CommandPalette } from "./CommandPalette.js";
 import { DebugPanel } from "../DebugPanel.js";
+import { AddFeedDialog } from "../AddFeedDialog.js";
+import { SavedContentDialog } from "../SavedContentDialog.js";
+import { LibraryDialog } from "../LibraryDialog.js";
 import { useDebugStore } from "../../lib/debug-store.js";
 import { useAppStore } from "../../context/PlatformContext.js";
+import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { FriendsView } from "../friends/FriendsView.js";
 import { ContactSyncModal } from "../friends/ContactSyncModal.js";
 import { useContactSync } from "../../hooks/useContactSync.js";
 import { ContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
+import { useSettingsStore } from "../../lib/settings-store.js";
 import {
+  buildProvisionalPersonCandidates,
   buildDiscoveredAccountsFromItems,
   type GoogleContact,
   type IdentitySuggestion,
@@ -24,6 +32,7 @@ import { MapView } from "../map/MapView.js";
 import { BackgroundAtmosphere } from "./BackgroundAtmosphere.js";
 import {
   AUXILIARY_DRAWER_GAP_WIDTH_PX,
+  FRIENDS_SIDEBAR_GAP_WIDTH_PX,
   PRIMARY_SIDEBAR_GAP_WIDTH_PX,
   px,
 } from "./layoutConstants.js";
@@ -36,19 +45,41 @@ interface AppShellProps {
   children: ReactNode;
 }
 
+type FriendsMobileSurface = "graph" | "details";
+
 export function AppShell({ children }: AppShellProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const isMobile = useIsMobile();
+  const [friendsMobileSurface, setFriendsMobileSurface] =
+    useState<FriendsMobileSurface>("graph");
+  const isMobileViewport = useIsMobile();
+  const isMobileDevice = useIsMobileDevice();
   const debugVisible = useDebugStore((s) => s.visible);
   const toggleDebug = useDebugStore((s) => s.toggle);
   const activeView = useAppStore((s) => s.activeView);
   const items = useAppStore((s) => s.items);
   const accounts = useAppStore((s) => s.accounts);
+  const persons = useAppStore((s) => s.persons);
   const addPerson = useAppStore((s) => s.addPerson);
   const addAccounts = useAppStore((s) => s.addAccounts);
+  const createConnectionPersonFromAccounts = useAppStore((s) => s.createConnectionPersonFromAccounts);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const themeId = useAppStore((s) => s.preferences.display.themeId);
   const showAtmosphere = activeView !== "friends" && activeView !== "map";
+  const effectivePrimarySidebarGapWidthPx =
+    activeView === "friends"
+      ? FRIENDS_SIDEBAR_GAP_WIDTH_PX
+      : PRIMARY_SIDEBAR_GAP_WIDTH_PX;
+  const settingsOpen = useSettingsStore((s) => s.open);
+  const paletteOpen = useCommandSurfaceStore((s) => s.paletteOpen);
+  const openPalette = useCommandSurfaceStore((s) => s.openPalette);
+  const closePalette = useCommandSurfaceStore((s) => s.closePalette);
+  const addFeedOpen = useCommandSurfaceStore((s) => s.addFeedOpen);
+  const closeAddFeedDialog = useCommandSurfaceStore((s) => s.closeAddFeedDialog);
+  const savedContentOpen = useCommandSurfaceStore((s) => s.savedContentOpen);
+  const closeSavedContentDialog = useCommandSurfaceStore((s) => s.closeSavedContentDialog);
+  const libraryDialogOpen = useCommandSurfaceStore((s) => s.libraryDialogOpen);
+  const libraryDialogTab = useCommandSurfaceStore((s) => s.libraryDialogTab);
+  const closeLibraryDialog = useCommandSurfaceStore((s) => s.closeLibraryDialog);
 
   // Mount the contact sync hook here (not in FriendsView) so the 15-minute
   // interval and focus listener run regardless of which view is active.
@@ -58,10 +89,13 @@ export function AppShell({ children }: AppShellProps) {
     useAppStore((s) => s.preferences.display.debugPanelWidth) ?? DEFAULT_DEBUG_WIDTH;
   const persistedDesktopSidebarMode =
     useAppStore((s) => s.preferences.display.sidebarMode) ?? "expanded";
+  const friendsSidebarOpen =
+    useAppStore((s) => s.preferences.display.friendsSidebarOpen) ?? true;
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const [committedDebugWidth, setCommittedDebugWidth] = useState(persistedDebugWidth);
   const [desktopSidebarMode, setDesktopSidebarMode] = useState<SidebarMode>(persistedDesktopSidebarMode);
+  const [desktopSidebarDisplayMode, setDesktopSidebarDisplayMode] = useState<SidebarMode>(persistedDesktopSidebarMode);
   const dragging = useRef(false);
   const pendingPersistedDebugWidth = useRef<number | null>(null);
   const pendingPersistedDesktopSidebarMode = useRef<SidebarMode | null>(null);
@@ -69,6 +103,13 @@ export function AppShell({ children }: AppShellProps) {
     persistedDesktopSidebarMode === "closed" ? "expanded" : persistedDesktopSidebarMode,
   );
   const discoveredAccountScanRef = useRef({ itemCount: 0, accountCount: 0 });
+  const provisionalPersonScanRef = useRef({ personCount: 0, accountCount: 0 });
+  const blockingModalOpen =
+    settingsOpen ||
+    addFeedOpen ||
+    savedContentOpen ||
+    libraryDialogOpen ||
+    showContactReview;
 
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
@@ -87,6 +128,7 @@ export function AppShell({ children }: AppShellProps) {
       pendingPersistedDesktopSidebarMode.current = null;
     }
     setDesktopSidebarMode(persistedDesktopSidebarMode);
+    setDesktopSidebarDisplayMode(persistedDesktopSidebarMode);
     if (persistedDesktopSidebarMode !== "closed") {
       lastNonClosedDesktopSidebarModeRef.current = persistedDesktopSidebarMode;
     }
@@ -109,10 +151,18 @@ export function AppShell({ children }: AppShellProps) {
 
   const handleDesktopSidebarToggle = useCallback(() => {
     const nextMode = desktopSidebarMode === "closed"
-      ? lastNonClosedDesktopSidebarModeRef.current
+      ? "expanded"
       : "closed";
     persistDesktopSidebarMode(nextMode);
   }, [desktopSidebarMode, persistDesktopSidebarMode]);
+
+  const handleFriendsSidebarOpenChange = useCallback((open: boolean) => {
+    void updatePreferences({
+      display: {
+        friendsSidebarOpen: open,
+      },
+    } as Parameters<typeof updatePreferences>[0]);
+  }, [updatePreferences]);
 
   const handleDebugDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -161,18 +211,26 @@ export function AppShell({ children }: AppShellProps) {
     persistTheme(themeId);
   }, [isInitialized, themeId]);
 
-  const workspaceMaskStyle = isMobile
+  const workspaceMaskStyle = isMobileDevice
     ? undefined
     : ({
         "--theme-soft-viewport-base-comp-left":
-          desktopSidebarMode === "closed" ? "0px" : px(PRIMARY_SIDEBAR_GAP_WIDTH_PX),
+          desktopSidebarDisplayMode === "closed" ? "0px" : px(effectivePrimarySidebarGapWidthPx),
         "--theme-soft-viewport-base-comp-right":
           debugVisible ? px(AUXILIARY_DRAWER_GAP_WIDTH_PX) : "0px",
       } as CSSProperties);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "D" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        if (blockingModalOpen) return;
+        if (paletteOpen) {
+          closePalette();
+          return;
+        }
+        openPalette();
+      } else if (e.key === "D" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         toggleDebug();
       } else if (e.key === "Escape" && debugVisible) {
@@ -181,7 +239,18 @@ export function AppShell({ children }: AppShellProps) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [toggleDebug, debugVisible]);
+  }, [blockingModalOpen, closePalette, debugVisible, openPalette, paletteOpen, toggleDebug]);
+
+  useEffect(() => {
+    if (!isMobileDevice && mobileSidebarOpen) {
+      setMobileSidebarOpen(false);
+    }
+  }, [isMobileDevice, mobileSidebarOpen]);
+
+  useEffect(() => {
+    if (activeView === "friends" && isMobileViewport) return;
+    setFriendsMobileSurface("graph");
+  }, [activeView, isMobileViewport]);
 
   useEffect(() => {
     const itemCount = items.length;
@@ -195,6 +264,24 @@ export function AppShell({ children }: AppShellProps) {
     if (missingAccounts.length === 0) return;
     void addAccounts(missingAccounts);
   }, [accounts, addAccounts, items]);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+    const personCount = Object.keys(persons).length;
+    const accountCount = Object.keys(accounts).length;
+    const previous = provisionalPersonScanRef.current;
+    if (personCount === previous.personCount && accountCount === previous.accountCount) {
+      return;
+    }
+    provisionalPersonScanRef.current = { personCount, accountCount };
+    const candidates = buildProvisionalPersonCandidates(persons, accounts);
+    if (candidates.length === 0) return;
+    void (async () => {
+      for (const candidate of candidates) {
+        await createConnectionPersonFromAccounts(candidate.accountIds, candidate.person);
+      }
+    })();
+  }, [accounts, createConnectionPersonFromAccounts, isInitialized, persons]);
 
   const handleLinkSuggestion = useCallback(async (suggestion: IdentitySuggestion) => {
     const match = contactSync.getMatchForSuggestion(suggestion.id);
@@ -255,32 +342,54 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <ContactSyncContext.Provider value={{ ...contactSync, openReview }}>
-      {/* On mobile (<md), the layout flows naturally in the document so Safari can
-          collapse its address bar when the feed scrolls. min-h-0 and overflow-hidden
-          are desktop-only; they lock the layout to 100dvh for in-element scrolling. */}
-      <div className="app-theme-shell relative flex flex-1 flex-col md:min-h-0">
+      {/* On actual mobile devices, the layout flows naturally in the document so
+          Safari can collapse its address bar when the feed scrolls. Desktop devices
+          keep the fixed-height shell even when the viewport is narrow. */}
+      <div className={`app-theme-shell relative flex flex-1 flex-col ${isMobileDevice ? "" : "min-h-0"}`}>
         {showAtmosphere ? <BackgroundAtmosphere /> : null}
         <Header
           mobileSidebarOpen={mobileSidebarOpen}
           onMobileMenuToggle={() => setMobileSidebarOpen((value) => !value)}
           desktopSidebarMode={desktopSidebarMode}
+          desktopSidebarDisplayMode={desktopSidebarDisplayMode}
           onDesktopSidebarToggle={handleDesktopSidebarToggle}
+          friendsSidebarOpen={friendsSidebarOpen}
+          onFriendsSidebarToggle={() =>
+            handleFriendsSidebarOpenChange(!friendsSidebarOpen)
+          }
+          friendsMobileSurface={friendsMobileSurface}
+          onFriendsMobileSurfaceChange={setFriendsMobileSurface}
+          onOpenCommandPalette={() => {
+            if (blockingModalOpen) return;
+            openPalette();
+          }}
         />
 
-        <div className="relative z-10 flex flex-1 px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)] md:min-h-0 md:overflow-hidden">
+        <div
+          className={`relative z-10 flex flex-1 px-[var(--feed-card-gap,8px)] pb-[var(--feed-card-gap,8px)] ${
+            isMobileDevice ? "" : "min-h-0 overflow-hidden"
+          }`}
+        >
           <Sidebar
             mobileOpen={mobileSidebarOpen}
             onMobileClose={() => setMobileSidebarOpen(false)}
             onMobileToggle={() => setMobileSidebarOpen((value) => !value)}
             desktopMode={desktopSidebarMode}
             onDesktopModeChange={persistDesktopSidebarMode}
+            onDesktopDisplayModeChange={setDesktopSidebarDisplayMode}
           />
           <main
-            className="min-w-0 flex-1 md:min-h-0 md:overflow-hidden"
+            className={`min-w-0 flex-1 ${isMobileDevice ? "" : "min-h-0 overflow-hidden"}`}
             style={workspaceMaskStyle}
           >
             {activeView === "friends"
-              ? <FriendsView />
+              ? (
+                <FriendsView
+                  friendsSidebarOpen={friendsSidebarOpen}
+                  onFriendsSidebarOpenChange={handleFriendsSidebarOpenChange}
+                  mobileSurface={friendsMobileSurface}
+                />
+              )
               : activeView === "map"
                 ? <MapView />
                 : children}
@@ -308,11 +417,21 @@ export function AppShell({ children }: AppShellProps) {
             </div>
           </div>
         </div>
-        {debugVisible && (
+        {debugVisible && isMobileViewport && (
           <div className="sm:hidden">
             <DebugPanel variant="overlay" />
           </div>
         )}
+
+        <CommandPalette />
+        <AddFeedDialog open={addFeedOpen} onClose={closeAddFeedDialog} />
+        <SavedContentDialog open={savedContentOpen} onClose={closeSavedContentDialog} />
+        {libraryDialogOpen ? (
+          <LibraryDialog
+            onClose={closeLibraryDialog}
+            initialTab={libraryDialogTab}
+          />
+        ) : null}
 
         {showContactReview && (
           <ContactSyncModal

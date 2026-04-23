@@ -13,14 +13,13 @@ import {
 import {
   countAuthorsWithRecentLocationUpdates,
   countFriendsWithRecentLocationUpdates,
-  getDefaultMapMode,
   type DisplayPreferences,
   type MapMode,
   type MapTimeMode,
   type SidebarMode,
+  resolveMapMode,
 } from "@freed/shared";
-import { AddFeedDialog } from "../AddFeedDialog.js";
-import { SavedContentDialog } from "../SavedContentDialog.js";
+import { SearchField } from "../SearchField.js";
 import { Tooltip } from "../Tooltip.js";
 import {
   ArchiveIcon,
@@ -31,6 +30,8 @@ import {
 } from "../icons.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
+import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 import {
   MACOS_TRAFFIC_LIGHT_INSET,
@@ -48,13 +49,23 @@ interface HeaderProps {
   mobileSidebarOpen: boolean;
   onMobileMenuToggle: () => void;
   desktopSidebarMode: SidebarMode;
+  desktopSidebarDisplayMode?: SidebarMode;
   onDesktopSidebarToggle: () => void;
+  friendsSidebarOpen: boolean;
+  onFriendsSidebarToggle: () => void;
+  friendsMobileSurface: "graph" | "details";
+  onFriendsMobileSurfaceChange: (surface: "graph" | "details") => void;
+  onOpenCommandPalette: () => void;
 }
+
+type FriendsToolbarMode = MapMode | "details";
 
 const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
 const dragStyle = { WebkitAppRegion: "drag" } as CSSProperties;
 const toolbarControlStyle = { ...noDrag, userSelect: "none" } as CSSProperties;
 const TOOLBAR_DRAG_THRESHOLD_PX = 6;
+const TOOLBAR_ICON_BUTTON_CLASS =
+  "theme-toolbar-icon-button rounded-lg";
 
 function formatItemCount(count: number): string {
   return `${count.toLocaleString()} item${count === 1 ? "" : "s"}`;
@@ -138,7 +149,13 @@ export function Header({
   mobileSidebarOpen,
   onMobileMenuToggle,
   desktopSidebarMode,
+  desktopSidebarDisplayMode,
   onDesktopSidebarToggle,
+  friendsSidebarOpen,
+  onFriendsSidebarToggle,
+  friendsMobileSurface,
+  onFriendsMobileSurfaceChange,
+  onOpenCommandPalette,
 }: HeaderProps) {
   const {
     HeaderSyncIndicator,
@@ -151,10 +168,16 @@ export function Header({
     openUrl,
   } = usePlatform();
   const isMobile = useIsMobile();
+  const isMobileDevice = useIsMobileDevice();
+  const visibleDesktopSidebarMode = desktopSidebarDisplayMode ?? desktopSidebarMode;
 
   const canAddRss = !!addRssFeed;
   const canSaveContent = !!(saveUrl || importMarkdown || exportMarkdown);
   const showNewButton = canAddRss || canSaveContent;
+  const addFeedOpen = useCommandSurfaceStore((s) => s.addFeedOpen);
+  const savedContentOpen = useCommandSurfaceStore((s) => s.savedContentOpen);
+  const openAddFeedDialog = useCommandSurfaceStore((s) => s.openAddFeedDialog);
+  const openSavedContentDialog = useCommandSurfaceStore((s) => s.openSavedContentDialog);
 
   const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
@@ -180,6 +203,7 @@ export function Header({
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
+  const setSearchQuery = useAppStore((s) => s.setSearchQuery);
   const display = useAppStore((s) => s.preferences.display);
 
   const { filteredItems, isSearching, resultCount } = useSearchResults(
@@ -215,8 +239,11 @@ export function Header({
     () => items.filter((item) => item.userState.saved && item.userState.archived).length,
     [items],
   );
-  const effectiveMapMode = display.mapMode
-    ?? getDefaultMapMode(mappedFriendCount, mappedAllContentCount);
+  const effectiveMapMode = resolveMapMode(
+    display.mapMode,
+    mappedFriendCount,
+    mappedAllContentCount,
+  );
   const effectiveFriendsMode = display.friendsMode ?? "all_content";
   const showWorkspaceIdentityControls = activeView === "friends" || activeView === "map";
   const showMapTimeControls = activeView === "map";
@@ -306,6 +333,15 @@ export function Header({
     updateDisplayPreference({ [key]: mode });
   }, [updateDisplayPreference]);
 
+  const handleFriendsToolbarModeChange = useCallback((mode: FriendsToolbarMode) => {
+    if (mode === "details") {
+      onFriendsMobileSurfaceChange("details");
+      return;
+    }
+    handleIdentityModeChange("friendsMode", mode);
+    onFriendsMobileSurfaceChange("graph");
+  }, [handleIdentityModeChange, onFriendsMobileSurfaceChange]);
+
   const handleMapTimeModeChange = useCallback((mode: MapTimeMode) => {
     updateDisplayPreference({ mapTimeMode: mode });
   }, [updateDisplayPreference]);
@@ -347,14 +383,16 @@ export function Header({
   }, [display, updatePreferences]);
 
   const handleToggleDualColumn = useCallback(() => {
-    void updatePreferences({
-      display: {
-        ...display,
-        reading: {
-          ...display.reading,
-          dualColumnMode: !display.reading.dualColumnMode,
+    runFeedLayoutTransition(() => {
+      void updatePreferences({
+        display: {
+          ...display,
+          reading: {
+            ...display.reading,
+            dualColumnMode: !display.reading.dualColumnMode,
+          },
         },
-      },
+      });
     });
   }, [display, updatePreferences]);
 
@@ -397,42 +435,62 @@ export function Header({
   const showReaderLayoutToggle =
     !isMobile &&
     !!selectedItem;
+  const activeSearchQuery = searchQuery.trim();
+  const showToolbarSearch = !selectedItem && activeSearchQuery.length > 0;
+  const showFriendsSidebarToggle = activeView === "friends" && !isMobile;
+  const friendsToolbarValue: FriendsToolbarMode =
+    isMobile && activeView === "friends" && friendsMobileSurface === "details"
+      ? "details"
+      : effectiveFriendsMode;
   const canManuallyDragToolbarControls = !!(headerDragRegion && startWindowDrag);
-  const showReaderRailToolbar =
-    showReaderLayoutToggle &&
-    display.reading.dualColumnMode;
+  const commandShortcutHint =
+    typeof navigator !== "undefined" && /(Mac|iPhone|iPad)/i.test(navigator.platform)
+      ? "Cmd K"
+      : "Ctrl K";
   const macosTrafficLightInsetStyle = headerDragRegion
     ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
     : undefined;
-  const sidebarSlotStyle =
-    !isMobile && desktopSidebarMode !== "closed"
-      ? ({
-          width: `calc(var(--freed-sidebar-card-width, 240px) + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX)})`,
-          paddingRight: px(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX),
-        } as CSSProperties)
-      : undefined;
-  const leftToolbarStyle = sidebarSlotStyle
-    ? {
-        ...sidebarSlotStyle,
-        ...macosTrafficLightInsetStyle,
+  const sidebarHandleCenterline = "var(--freed-sidebar-handle-centerline, 264px)";
+  const leftToolbarWidth =
+    showReaderLayoutToggle
+      ? `calc(${sidebarHandleCenterline} + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)} + var(--freed-reader-rail-width, 0px))`
+      : `calc(${sidebarHandleCenterline} + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)})`;
+  const leftToolbarStyle = !isMobileDevice
+    ? ({
+        position: "relative",
+        width: leftToolbarWidth,
+        minWidth: leftToolbarWidth,
         ...(headerDragRegion ? noDrag : {}),
-      }
+      } as CSSProperties)
     : headerDragRegion
       ? {
           ...macosTrafficLightInsetStyle,
           ...noDrag,
         }
       : macosTrafficLightInsetStyle;
-  const readerRailSlotStyle = showReaderLayoutToggle
-    ? ({
-        width: showReaderRailToolbar ? "var(--freed-reader-rail-width, 0px)" : "auto",
-      } as CSSProperties)
-    : undefined;
+  const toolbarLogoRowStyle = {
+    paddingLeft: headerDragRegion ? `${MACOS_TRAFFIC_LIGHT_INSET}px` : undefined,
+    paddingRight: px(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX),
+  } as CSSProperties;
+  const boundaryButtonCommonStyle = {
+    position: "absolute",
+    top: "50%",
+    transform: "translateY(-50%)",
+  } as CSSProperties;
+  const collapseButtonStyle = {
+    ...boundaryButtonCommonStyle,
+    left: visibleDesktopSidebarMode === "closed"
+      ? "12px"
+      : `calc(${sidebarHandleCenterline} - 52px)`,
+  } as CSSProperties;
+  const readerRailButtonStyle = {
+    ...boundaryButtonCommonStyle,
+    left: `calc(${sidebarHandleCenterline} + 28px)`,
+  } as CSSProperties;
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [addFeedOpen, setAddFeedOpen] = useState(false);
-  const [savedContentOpen, setSavedContentOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const toolbarSearchInputRef = useRef<HTMLInputElement | null>(null);
   const toolbarDragGestureRef = useRef<{
     pointerId: number;
     startX: number;
@@ -555,6 +613,12 @@ export function Header({
   }, [dropdownOpen]);
 
   useEffect(() => {
+    if (!showToolbarSearch) return;
+    toolbarSearchInputRef.current?.focus();
+    toolbarSearchInputRef.current?.setSelectionRange(searchQuery.length, searchQuery.length);
+  }, [showToolbarSearch]);
+
+  useEffect(() => {
     if (addFeedOpen || savedContentOpen) {
       setDropdownOpen(false);
     }
@@ -616,17 +680,18 @@ export function Header({
             : {})}
         >
           <div
-            className={`theme-toolbar-cluster flex shrink-0 items-center ${showReaderLayoutToggle ? "gap-0" : "gap-2"}`}
+            className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex shrink-0 items-center ${showReaderLayoutToggle ? "gap-0" : "gap-2"}`}
           >
             <div
-              className={`flex shrink-0 items-center gap-2 pl-3 sm:pl-4 ${sidebarSlotStyle ? "justify-between" : ""}`}
+              className="relative flex h-full shrink-0 items-center"
               style={leftToolbarStyle}
             >
-              <Tooltip label="Menu" className="md:hidden">
+              {isMobileDevice ? (
+              <Tooltip label="Menu">
                 <button
                   onClick={onMobileMenuToggle}
                   {...getToolbarControlProps()}
-                  className={`rounded-lg p-1.5 ${
+                  className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
                     mobileSidebarOpen ? "theme-toolbar-button-active" : "theme-toolbar-button-neutral"
                   }`}
                   aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
@@ -637,43 +702,49 @@ export function Header({
                   </svg>
                 </button>
               </Tooltip>
+              ) : null}
 
-              <span
-                data-testid="workspace-toolbar-wordmark"
-                className="cursor-default select-none text-lg font-bold gradient-text font-logo"
+              <div className="flex h-full items-center pl-3 sm:pl-4" style={toolbarLogoRowStyle}>
+                <span
+                  data-testid="workspace-toolbar-wordmark"
+                  className="cursor-default select-none text-lg font-bold gradient-text font-logo"
+                >
+                  FREED
+                </span>
+              </div>
+
+              {!isMobileDevice ? (
+              <Tooltip
+                label={visibleDesktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
+                className="absolute"
+                triggerStyle={collapseButtonStyle}
               >
-                FREED
-              </span>
-
-              <Tooltip label={desktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"} className="hidden md:flex">
                 <button
                   onClick={onDesktopSidebarToggle}
                   {...getToolbarControlProps()}
                   data-testid="desktop-sidebar-toggle"
-                  className="theme-toolbar-button-neutral rounded-lg p-1.5"
-                  aria-label={desktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
+                  className={`${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-neutral`}
+                  aria-label={visibleDesktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
                 >
-                  {desktopSidebarMode === "closed" ? (
+                  {visibleDesktopSidebarMode === "closed" ? (
                     <SidebarExpandIcon className="h-5 w-5" />
                   ) : (
                     <SidebarCollapseIcon className="h-5 w-5" />
                   )}
                 </button>
               </Tooltip>
-            </div>
+              ) : null}
 
-            <ToolbarAnimatedSlot
-              visible={showReaderLayoutToggle}
-              width={showReaderRailToolbar ? "var(--freed-reader-rail-width, 0px)" : "3rem"}
-              className="theme-reader-rail-slot hidden shrink-0 md:flex items-center"
-              style={headerDragRegion ? noDrag : undefined}
-            >
-              <div className="flex items-center" style={readerRailSlotStyle}>
-                <Tooltip label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}>
+              {showReaderLayoutToggle ? (
+                <Tooltip
+                  label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
+                  className="absolute"
+                  triggerStyle={readerRailButtonStyle}
+                >
                   <button
                     onClick={handleToggleDualColumn}
                     {...getToolbarControlProps()}
-                    className={`rounded-lg p-2 ${
+                    className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
                       display.reading.dualColumnMode
                         ? "theme-toolbar-button-active"
                         : "theme-toolbar-button-neutral"
@@ -688,8 +759,8 @@ export function Header({
                     )}
                   </button>
                 </Tooltip>
-              </div>
-            </ToolbarAnimatedSlot>
+              ) : null}
+            </div>
           </div>
 
           <div
@@ -722,6 +793,19 @@ export function Header({
                   <p className="truncate text-xs text-[var(--theme-text-muted)]">{currentSubtitle}</p>
                 </div>
               </button>
+            ) : showToolbarSearch ? (
+              <div className="px-1" style={headerDragRegion ? noDrag : undefined}>
+                <SearchField
+                  ref={toolbarSearchInputRef}
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.currentTarget.value)}
+                  onClear={() => setSearchQuery("")}
+                  placeholder="Search"
+                  aria-label="Search all sources"
+                  containerClassName="w-full"
+                  inputClassName="h-10 rounded-xl bg-[var(--theme-bg-input)] text-sm"
+                />
+              </div>
             ) : (
               <div
                 data-testid="workspace-toolbar-title-block"
@@ -734,10 +818,34 @@ export function Header({
           </div>
 
           <div
-            className="theme-toolbar-cluster flex shrink-0 items-center pr-3 sm:pr-4"
+            className="theme-toolbar-cluster theme-toolbar-cluster-tight flex shrink-0 items-center pr-2 sm:pr-2.5"
           >
             {selectedItem ? (
               <>
+                <Tooltip label={`Command palette (${commandShortcutHint})`}>
+                  <button
+                    type="button"
+                    onClick={onOpenCommandPalette}
+                    {...getToolbarControlProps()}
+                    data-testid="command-palette-trigger"
+                    className="theme-toolbar-button-neutral inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm"
+                    aria-label="Open command palette"
+                  >
+                    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                    <span className="hidden md:inline">Commands</span>
+                    <span className="hidden lg:inline text-xs text-[var(--theme-text-soft)]">
+                      {commandShortcutHint}
+                    </span>
+                  </button>
+                </Tooltip>
+
                 <ToolbarAnimatedSlot visible={!isMobile} width="5.25rem" className="hidden lg:flex">
                   <Tooltip label={display.reading.focusMode ? "Disable focus mode" : "Enable focus mode"}>
                     <button
@@ -759,12 +867,12 @@ export function Header({
                   </Tooltip>
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={true} width="3rem">
+                <ToolbarAnimatedSlot visible={true} width="2.5rem">
                   <Tooltip label={selectedItem.userState.saved ? "Remove bookmark" : "Bookmark"}>
                     <button
                       onClick={handleToggleReaderSaved}
                       {...getToolbarControlProps()}
-                      className={`rounded-lg p-2 ${
+                      className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
                         selectedItem.userState.saved
                           ? "theme-toolbar-button-active"
                           : "theme-toolbar-button-neutral"
@@ -783,14 +891,14 @@ export function Header({
                   </Tooltip>
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={true} width="3rem">
+                <ToolbarAnimatedSlot visible={true} width="2.5rem">
                   <Tooltip label={selectedItem.userState.archived ? "Unarchive" : "Archive"}>
                     <button
                       onClick={handleToggleReaderArchived}
                       {...getToolbarControlProps()}
-                      className={`rounded-lg p-2 ${
+                      className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
                         selectedItem.userState.archived
-                          ? "theme-status-pill-success hover:bg-[rgb(var(--theme-feedback-success-rgb)/0.18)]"
+                          ? "theme-toolbar-button-success-active"
                           : "theme-toolbar-button-neutral"
                       }`}
                       aria-label={selectedItem.userState.archived ? "Unarchive" : "Archive"}
@@ -800,7 +908,7 @@ export function Header({
                   </Tooltip>
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={!!selectedItem.sourceUrl} width="5rem">
+                <ToolbarAnimatedSlot visible={!!selectedItem.sourceUrl} width="4.5rem">
                   {selectedItem.sourceUrl ? (
                     <button
                       onClick={handleOpenReaderUrl}
@@ -818,6 +926,30 @@ export function Header({
               </>
             ) : (
               <>
+                <Tooltip label={`Command palette (${commandShortcutHint})`}>
+                  <button
+                    type="button"
+                    onClick={onOpenCommandPalette}
+                    {...getToolbarControlProps()}
+                    data-testid="command-palette-trigger"
+                    className="theme-toolbar-button-neutral inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm"
+                    aria-label="Open command palette"
+                  >
+                    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                    <span className="hidden md:inline">Commands</span>
+                    <span className="hidden lg:inline text-xs text-[var(--theme-text-soft)]">
+                      {commandShortcutHint}
+                    </span>
+                  </button>
+                </Tooltip>
+
                 <ToolbarAnimatedSlot visible={!!HeaderSyncIndicator} width="4.5rem" className="hidden md:flex">
                   {HeaderSyncIndicator ? (
                     <div className="hidden md:flex">
@@ -826,18 +958,34 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showWorkspaceIdentityControls} width="12rem">
+                <ToolbarAnimatedSlot
+                  visible={showWorkspaceIdentityControls}
+                  width={activeView === "friends" && isMobile ? "13.75rem" : "12rem"}
+                >
                   {showWorkspaceIdentityControls ? (
                     <ToolbarToggleGroup
                       dataTestId={activeView === "map" ? "map-toolbar-scope" : "friends-toolbar-lens"}
-                      options={[
-                        { value: "friends", label: "Friends" },
-                        { value: "all_content", label: "All content" },
-                      ]}
-                      value={activeView === "map" ? effectiveMapMode : effectiveFriendsMode}
-                      onChange={(mode) =>
-                        handleIdentityModeChange(activeView === "friends" ? "friendsMode" : "mapMode", mode)
+                      options={
+                        activeView === "friends" && isMobile
+                          ? [
+                              { value: "friends", label: "Friends" },
+                              { value: "all_content", label: "All content" },
+                              { value: "details", label: "Details" },
+                            ]
+                          : [
+                              { value: "friends", label: "Friends" },
+                              { value: "all_content", label: "All content" },
+                            ]
                       }
+                      value={activeView === "map" ? effectiveMapMode : friendsToolbarValue}
+                      onChange={(mode) => {
+                        if (activeView === "map") {
+                          handleIdentityModeChange("mapMode", mode as MapMode);
+                          return;
+                        }
+                        handleFriendsToolbarModeChange(mode as FriendsToolbarMode);
+                      }}
+                      compact={activeView === "friends" && isMobile}
                       getButtonProps={getToolbarControlProps}
                     />
                   ) : null}
@@ -934,6 +1082,31 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
+                <ToolbarAnimatedSlot visible={showFriendsSidebarToggle} width="3rem" className="hidden md:flex">
+                  {showFriendsSidebarToggle ? (
+                    <Tooltip label={friendsSidebarOpen ? "Hide details" : "Show details"}>
+                      <button
+                        onClick={onFriendsSidebarToggle}
+                        {...getToolbarControlProps()}
+                        data-testid="friends-sidebar-toggle"
+                        className={`rounded-lg p-2 ${
+                          friendsSidebarOpen
+                            ? "theme-toolbar-button-active"
+                            : "theme-toolbar-button-neutral"
+                        }`}
+                        aria-pressed={friendsSidebarOpen}
+                        aria-label={friendsSidebarOpen ? "Hide details" : "Show details"}
+                      >
+                        {friendsSidebarOpen ? (
+                          <ReaderRailShowIcon className="h-5 w-5" />
+                        ) : (
+                          <ReaderRailHideIcon className="h-5 w-5" />
+                        )}
+                      </button>
+                    </Tooltip>
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
               </>
             )}
           </div>
@@ -952,7 +1125,7 @@ export function Header({
                 <button
                   onClick={() => {
                     setDropdownOpen(false);
-                    setAddFeedOpen(true);
+                    openAddFeedDialog();
                   }}
                   className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                 >
@@ -966,7 +1139,7 @@ export function Header({
                 <button
                   onClick={() => {
                     setDropdownOpen(false);
-                    setSavedContentOpen(true);
+                    openSavedContentDialog();
                   }}
                   className="flex w-full items-center gap-2.5 px-4 py-3 text-left text-sm text-[var(--theme-text-secondary)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                 >
@@ -994,12 +1167,6 @@ export function Header({
           </Tooltip>
         </div>
       )}
-
-      <AddFeedDialog open={addFeedOpen} onClose={() => setAddFeedOpen(false)} />
-      <SavedContentDialog
-        open={savedContentOpen}
-        onClose={() => setSavedContentOpen(false)}
-      />
     </>
   );
 }

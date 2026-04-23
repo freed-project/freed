@@ -18,6 +18,10 @@ vi.mock("@tauri-apps/api/path", async () => {
   return actual;
 });
 
+vi.mock("@tauri-apps/api/core", () => ({
+  isTauri: () => true,
+}));
+
 vi.mock("@tauri-apps/plugin-fs", async () => {
   const actual = await import("../__mocks__/@tauri-apps/plugin-fs/index");
   return actual;

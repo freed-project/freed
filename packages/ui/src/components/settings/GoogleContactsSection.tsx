@@ -36,23 +36,33 @@ export function GoogleContactsSection() {
   const { googleContacts } = usePlatform();
   const { syncState, syncNow, openReview } = useContactSyncContext();
   const [connecting, setConnecting] = useState(false);
+  const [connectErrorMessage, setConnectErrorMessage] = useState<string | null>(null);
 
   const isConnected = syncState.authStatus === "connected";
   const needsReconnect = syncState.authStatus === "reconnect_required";
   const isSyncing = syncState.syncStatus === "syncing";
+  const errorMessage = connectErrorMessage ?? syncState.lastErrorMessage ?? null;
 
   const handleConnect = async () => {
     if (!googleContacts) return;
     setConnecting(true);
     try {
       await googleContacts.connect();
+      setConnectErrorMessage(null);
       await syncNow();
+    } catch (error) {
+      setConnectErrorMessage(
+        error instanceof Error ? error.message : "Google Contacts connection failed.",
+      );
+      // The platform connect() path is responsible for surfacing recoverable
+      // auth errors in contact sync state. Keep the settings surface alive.
     } finally {
       setConnecting(false);
     }
   };
 
   const handleSync = async () => {
+    setConnectErrorMessage(null);
     await syncNow();
   };
 
@@ -81,7 +91,7 @@ export function GoogleContactsSection() {
               Sync Google Contacts into the identity graph, review suggested merges, and add unmatched contacts as friends.
             </p>
           </div>
-          {syncState.lastErrorMessage && (
+          {errorMessage && (
             <StatusPill label="Needs attention" tone="error" />
           )}
         </div>
@@ -103,9 +113,9 @@ export function GoogleContactsSection() {
 
         <div className="space-y-1 text-xs text-[color:var(--theme-text-muted)]">
           <p>Last successful sync: <span className="text-[color:var(--theme-text-secondary)]">{formatSyncTime(syncState.lastSyncedAt)}</span></p>
-          {syncState.lastErrorMessage && (
+          {errorMessage && (
             <p className="theme-feedback-text-danger">
-              {syncState.lastErrorMessage}
+              {errorMessage}
             </p>
           )}
         </div>

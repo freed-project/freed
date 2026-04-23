@@ -1,3 +1,4 @@
+import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 
@@ -12,6 +13,8 @@ export function attachScraperMediaDiagListener(
   providerToken: string,
   timeoutMs: number = 35_000,
 ): void {
+  if (!isTauri()) return;
+
   listen<ScraperMediaDiagPayload>("freed-scraper-media-diag", (event) => {
     const provider = (event.payload.provider ?? "unknown").toLowerCase();
     if (!provider.includes(providerToken)) return;

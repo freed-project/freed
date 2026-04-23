@@ -6,6 +6,8 @@ const mockToastInfo = vi.fn();
 const mockBuildSavedFeedItem = vi.fn();
 const mockExtractMetadataBrowser = vi.fn();
 const mockExtractContentBrowser = vi.fn();
+const mockCacheArticleHtml = vi.fn(async () => undefined);
+const mockWarmArticleImageCache = vi.fn(async () => undefined);
 
 vi.mock("./automerge", () => ({
   docAddFeedItem: mockDocAddFeedItem,
@@ -27,16 +29,14 @@ vi.mock("@freed/capture-save/normalize", () => ({
   buildSavedFeedItem: mockBuildSavedFeedItem,
 }));
 
-describe("saveUrlInPwa", () => {
-  const cachePut = vi.fn(async () => undefined);
-  const cacheOpen = vi.fn(async () => ({ put: cachePut }));
+vi.mock("@freed/ui/lib/article-cache", () => ({
+  cacheArticleHtml: mockCacheArticleHtml,
+  warmArticleImageCache: mockWarmArticleImageCache,
+}));
 
+describe("saveUrlInPwa", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    Object.defineProperty(globalThis, "caches", {
-      value: { open: cacheOpen },
-      configurable: true,
-    });
 
     mockExtractMetadataBrowser.mockReturnValue({
       url: "https://example.com/article",
@@ -105,17 +105,14 @@ describe("saveUrlInPwa", () => {
       }),
     );
     expect(mockDocAddStubItem).not.toHaveBeenCalled();
-    expect(cacheOpen).toHaveBeenCalledWith("freed-articles-v1");
-    expect(cachePut).toHaveBeenCalledTimes(2);
-    expect(cachePut).toHaveBeenNthCalledWith(
-      1,
+    expect(mockCacheArticleHtml).toHaveBeenCalledWith(
       "https://example.com/article",
-      expect.any(Response),
+      "saved:abc123",
+      "<article><p>Readable body</p></article>",
     );
-    expect(cachePut).toHaveBeenNthCalledWith(
-      2,
-      "/content/saved:abc123",
-      expect.any(Response),
+    expect(mockWarmArticleImageCache).toHaveBeenCalledWith(
+      "<article><p>Readable body</p></article>",
+      "https://example.com/article",
     );
   });
 

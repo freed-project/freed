@@ -214,9 +214,10 @@ describe("importMarkdownFiles", () => {
 
   it("emits per-chunk writing progress for large batches", async () => {
     const { importMarkdownFiles } = await import("./import-export.js");
-    // 1200 distinct files
+    // 1001 items still force three batch writes while keeping the test fast
+    // enough for the full release lane.
     const files = makeFileList(
-      Array.from({ length: 1200 }, (_, i) => makeMdFile(1000 + i)),
+      Array.from({ length: 1001 }, (_, i) => makeMdFile(1000 + i)),
     );
 
     const writingPhases: ImportProgress[] = [];
@@ -224,11 +225,11 @@ describe("importMarkdownFiles", () => {
       if (p.phase === "writing") writingPhases.push({ ...p });
     });
 
-    // 1200 items → 3 chunks (500 + 500 + 200)
+    // 1001 items → 3 chunks (500 + 500 + 1)
     const lastWrite = writingPhases[writingPhases.length - 1];
     expect(lastWrite?.total).toBe(3);
     expect(lastWrite?.current).toBe(3);
-  });
+  }, 10_000);
 
   it("caches HTML via contentCache for items with body text", async () => {
     const { importMarkdownFiles } = await import("./import-export.js");

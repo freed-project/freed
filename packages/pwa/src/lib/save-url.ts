@@ -3,6 +3,7 @@ import {
   extractMetadataBrowser,
 } from "@freed/capture-save/browser";
 import { buildSavedFeedItem } from "@freed/capture-save/normalize";
+import { cacheArticleHtml, warmArticleImageCache } from "@freed/ui/lib/article-cache";
 import { toast } from "@freed/ui/components/Toast";
 import { docAddFeedItem, docAddStubItem } from "./automerge";
 
@@ -10,18 +11,6 @@ const FETCH_ENDPOINT = "/api/fetch-url";
 
 export interface SaveUrlOptions {
   tags?: string[];
-}
-
-async function cacheArticleHtml(url: string, globalId: string, html: string): Promise<void> {
-  if (!("caches" in window)) return;
-
-  const cache = await caches.open("freed-articles-v1");
-  await cache.put(url, new Response(html, {
-    headers: { "Content-Type": "text/html; charset=utf-8" },
-  }));
-  await cache.put(`/content/${globalId}`, new Response(html, {
-    headers: { "Content-Type": "text/html; charset=utf-8" },
-  }));
 }
 
 async function fetchArticleHtml(url: string): Promise<string> {
@@ -75,5 +64,6 @@ export async function saveUrlInPwa(
   }
 
   await cacheArticleHtml(stableUrl, item.globalId, articleHtml);
+  void warmArticleImageCache(articleHtml, stableUrl);
   await docAddFeedItem(item);
 }

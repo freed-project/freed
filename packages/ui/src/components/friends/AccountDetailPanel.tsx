@@ -4,6 +4,7 @@ import type { Account, FeedItem, Person } from "@freed/shared";
 import { FriendAvatar } from "./FriendAvatar.js";
 import { SearchField } from "../SearchField.js";
 import type { AccountLinkSuggestion } from "../../lib/account-link-suggestions.js";
+import { accountSubtitle, accountTitle, providerLabel } from "../../lib/account-labels.js";
 
 interface AccountDetailPanelProps {
   account: Account;
@@ -15,26 +16,6 @@ interface AccountDetailPanelProps {
   onPromoteToFriend: () => void;
   onLinkToPerson: (personId: string) => void;
   onOpenPerson: (personId: string) => void;
-}
-
-function providerLabel(provider: Account["provider"]): string {
-  if (provider === "x") return "X";
-  if (provider === "google_contacts") return "Google Contacts";
-  if (provider === "macos_contacts") return "Contacts";
-  if (provider === "ios_contacts") return "Contacts";
-  if (provider === "android_contacts") return "Contacts";
-  if (provider === "web_contact") return "Manual contact";
-  return provider.charAt(0).toUpperCase() + provider.slice(1);
-}
-
-function accountTitle(account: Account): string {
-  return account.displayName ?? account.handle ?? account.externalId;
-}
-
-function accountSubtitle(account: Account): string {
-  if (account.handle?.trim()) return account.handle;
-  if (account.displayName?.trim()) return account.externalId;
-  return providerLabel(account.provider);
 }
 
 function itemSnippet(item: FeedItem): string {
@@ -56,6 +37,10 @@ export function AccountDetailPanel({
   onOpenPerson,
 }: AccountDetailPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const confirmedLinkedPerson = linkedPerson?.relationshipStatus === "friend" ? linkedPerson : null;
+  const provisionalLinkedPerson = linkedPerson && linkedPerson.relationshipStatus !== "friend"
+    ? linkedPerson
+    : null;
 
   const suggestionIds = useMemo(
     () => new Set(suggestions.map((suggestion) => suggestion.personId)),
@@ -97,7 +82,7 @@ export function AccountDetailPanel({
             </p>
           </div>
         </div>
-        {!linkedPerson ? (
+        {!confirmedLinkedPerson ? (
           <button
             type="button"
             onClick={onPromoteToFriend}
@@ -108,10 +93,10 @@ export function AccountDetailPanel({
         ) : (
           <button
             type="button"
-            onClick={() => onOpenPerson(linkedPerson.id)}
+            onClick={() => onOpenPerson(confirmedLinkedPerson.id)}
             className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
           >
-            Open friend
+            Open identity
           </button>
         )}
       </div>
@@ -135,9 +120,13 @@ export function AccountDetailPanel({
             <p className="mt-1 text-sm text-[color:var(--theme-text-muted)]">
               {accountSubtitle(account)}
             </p>
-            {linkedPerson ? (
+            {confirmedLinkedPerson ? (
               <p className="mt-2 text-xs text-[color:var(--theme-accent-secondary)]">
-                Linked to {linkedPerson.name}
+                Linked to {confirmedLinkedPerson.name}
+              </p>
+            ) : provisionalLinkedPerson ? (
+              <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
+                Linked to provisional identity {provisionalLinkedPerson.name}
               </p>
             ) : (
               <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
@@ -158,7 +147,7 @@ export function AccountDetailPanel({
         </div>
       </div>
 
-      {!linkedPerson ? (
+      {!confirmedLinkedPerson ? (
         <>
           {suggestions.length > 0 ? (
             <div className="theme-dialog-divider border-b px-4 py-4">

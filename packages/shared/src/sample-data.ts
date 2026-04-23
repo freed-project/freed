@@ -1,7 +1,7 @@
 /**
  * Sample data generator for regression testing.
  *
- * Produces 10 RSS feeds and 100 feed items (80 RSS articles + 20 saved
+ * Produces 15 RSS feeds and 140 feed items (120 RSS articles + 20 saved
  * bookmarks) with deterministic IDs so repeated calls are idempotent
  * against the existing duplicate guard in Automerge mutations.
  *
@@ -33,6 +33,11 @@ const FEED_DEFS: FeedDef[] = [
   { slug: "the-marginalian", title: "The Marginalian", siteUrl: "https://themarginalian.org" },
   { slug: "lwn", title: "LWN.net", siteUrl: "https://lwn.net" },
   { slug: "xkcd", title: "xkcd", siteUrl: "https://xkcd.com" },
+  { slug: "stratechery", title: "Stratechery", siteUrl: "https://stratechery.com" },
+  { slug: "ben-evans", title: "Ben Evans", siteUrl: "https://www.ben-evans.com" },
+  { slug: "404-media", title: "404 Media", siteUrl: "https://www.404media.co" },
+  { slug: "platformer", title: "Platformer", siteUrl: "https://www.platformer.news" },
+  { slug: "rest-of-world", title: "Rest of World", siteUrl: "https://restofworld.org" },
 ];
 
 // ── Topic + headline pools ──────────────────────────────────────────────────
@@ -498,7 +503,7 @@ export function generateSampleLibraryData(options?: SampleDataOptions): {
 }
 
 /**
- * Generate 155 sample feed items: 80 RSS articles (8 per feed) +
+ * Generate 195 sample feed items: 120 RSS articles (8 per feed) +
  * 20 saved bookmarks + 10 X posts + 10 Facebook posts + 10 Instagram posts +
  * 10 LinkedIn posts + 8 Instagram stories + 7 Facebook stories.
  *
@@ -574,7 +579,7 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
   const igStoryCaptions = rotateArray(IG_STORY_CAPTIONS, seed % IG_STORY_CAPTIONS.length);
   const fbStoryCaptions = rotateArray(FB_STORY_CAPTIONS, seed % FB_STORY_CAPTIONS.length);
 
-  // 80 RSS articles: 8 per feed
+  // 120 RSS articles: 8 per feed
   for (let fi = 0; fi < feedDefs.length; fi++) {
     const feed = feedDefs[fi];
     const feedUrl = `${SAMPLE_FEED_URL_PREFIX}${batchId}/${feed.slug}`;

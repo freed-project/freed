@@ -1,8 +1,24 @@
 import { test, expect } from "./fixtures/app";
 
+test("launch-time auto-check runs once after legal acceptance", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      return (
+        (window as Record<string, unknown>).__TAURI_MOCK_UPDATE_CHECK_CALLS__ as Array<
+          { target?: string } | null
+        >
+      )?.map((call) => call?.target ?? null) ?? [];
+    });
+  }).toEqual(["production-darwin-aarch64"]);
+});
+
 test("switching release channels clears stale update state and rechecks the new channel", async ({
   app,
   page,
+  ipc,
 }) => {
   await app.goto();
   await app.waitForReady();
@@ -60,4 +76,20 @@ test("switching release channels clears stale update state and rechecks the new 
         .map((call) => call?.target ?? null);
     });
   }).toEqual(["dev-darwin-aarch64", "production-darwin-aarch64"]);
+
+  await page.evaluate(() => {
+    const store = (window as unknown as Record<string, unknown>).__FREED_STORE__ as
+      | { setState: (next: { error: string; isInitialized: boolean }) => void }
+      | undefined;
+    store?.setState({
+      error: "Synthetic fatal crash",
+      isInitialized: false,
+    });
+  });
+
+  await expect(page.getByText("Freed Desktop hit a fatal error")).toBeVisible();
+  await page.getByRole("button", { name: "Download latest Freed Desktop" }).click();
+  await expect.poll(async () => (await ipc.openedUrls()).at(-1)).toBe(
+    "https://dev.freed.wtf/api/downloads/mac-arm",
+  );
 });

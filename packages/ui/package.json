@@ -20,7 +20,6 @@
     "./components/settings/GoogleContactsSection": "./src/components/settings/GoogleContactsSection.tsx",
     "./components/BugReportBoundary": "./src/components/BugReportBoundary.tsx",
     "./components/FatalErrorScreen": "./src/components/FatalErrorScreen.tsx",
-    "./components/LocalPreviewBadge": "./src/components/LocalPreviewBadge.tsx",
     "./components/legal/LegalGate": "./src/components/legal/LegalGate.tsx",
     "./components/legal/ProviderRiskDialog": "./src/components/legal/ProviderRiskDialog.tsx",
     "./components/DebugPanel": "./src/components/DebugPanel.tsx",
@@ -32,6 +31,7 @@
     "./lib/debug-store": "./src/lib/debug-store.ts",
     "./lib/bug-report": "./src/lib/bug-report.ts",
     "./lib/build-info": "./src/lib/build-info.ts",
+    "./lib/article-cache": "./src/lib/article-cache.ts",
     "./lib/map-navigation": "./src/lib/map-navigation.ts",
     "./lib/provider-status": "./src/lib/provider-status.ts",
     "./lib/release-channel": "./src/lib/release-channel.ts",
@@ -53,6 +53,7 @@
     "date-fns": "^4.1.0",
     "maplibre-gl": "^5.11.0",
     "minisearch": "^7.2.0",
+    "pixi.js": "^8.18.1",
     "zustand": "^5.0.3"
   },
   "devDependencies": {

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef, type CSSProperties } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import type {
   Account,
   DeviceContact,
@@ -34,6 +34,7 @@ import {
   buildSuggestionsByPerson,
   type AccountLinkSuggestion,
 } from "../../lib/account-link-suggestions.js";
+import { accountSubtitle, accountTitle, providerLabel } from "../../lib/account-labels.js";
 import {
   FRIENDS_SIDEBAR_GAP_WIDTH_PX,
   px,
@@ -65,6 +66,12 @@ type EditorState =
   | { kind: "new"; draft?: Partial<Friend> | null }
   | { kind: "edit"; personId: string }
   | null;
+
+interface FriendsViewProps {
+  friendsSidebarOpen: boolean;
+  onFriendsSidebarOpenChange: (open: boolean) => void;
+  mobileSurface: "graph" | "details";
+}
 
 function CareDots({ level }: { level: 1 | 2 | 3 | 4 | 5 }) {
   return (
@@ -147,6 +154,23 @@ function FriendListRow({
         </div>
       </div>
     </button>
+  );
+}
+
+function CompactDetailCard({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-end px-4">
+      <div
+        data-testid="friends-collapsed-selection-card"
+        className="pointer-events-auto theme-floating-panel w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl px-4 py-3 shadow-2xl shadow-black/30"
+      >
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -239,9 +263,14 @@ function friendDraftFromAccount(account: Account): Partial<Friend> {
   };
 }
 
-export function FriendsView() {
+export function FriendsView({
+  friendsSidebarOpen,
+  onFriendsSidebarOpenChange,
+  mobileSurface,
+}: FriendsViewProps) {
   const persons = useAppStore((s) => s.persons);
   const accounts = useAppStore((s) => s.accounts);
+  const feeds = useAppStore((s) => s.feeds);
   const items = useAppStore((s) => s.items);
   const addPerson = useAppStore((s) => s.addPerson);
   const updatePerson = useAppStore((s) => s.updatePerson);
@@ -249,6 +278,7 @@ export function FriendsView() {
   const addAccount = useAppStore((s) => s.addAccount);
   const updateAccount = useAppStore((s) => s.updateAccount);
   const removeAccount = useAppStore((s) => s.removeAccount);
+  const linkAccountToPerson = useAppStore((s) => s.linkAccountToPerson);
   const logReachOut = useAppStore((s) => s.logReachOut);
   const selectedPersonId = useAppStore((s) => s.selectedPersonId);
   const selectedAccountId = useAppStore((s) => s.selectedAccountId);
@@ -301,6 +331,10 @@ export function FriendsView() {
         .sort((left, right) => left.name.localeCompare(right.name)),
     [persons],
   );
+  const allPersons = useMemo(
+    () => Object.values(persons).sort((left, right) => left.name.localeCompare(right.name)),
+    [persons],
+  );
   const friendsById = useMemo<Record<string, Friend>>(
     () => Object.fromEntries(friendPersons.map((person) => [person.id, friendFromPerson(person, accounts)])),
     [accounts, friendPersons],
@@ -311,10 +345,7 @@ export function FriendsView() {
     [accounts],
   );
 
-  const selectedPerson =
-    selectedPersonId && persons[selectedPersonId]?.relationshipStatus === "friend"
-      ? persons[selectedPersonId]
-      : null;
+  const selectedPerson = selectedPersonId ? persons[selectedPersonId] ?? null : null;
   const selectedFriend = selectedPerson ? friendFromPerson(selectedPerson, accounts) : null;
   const selectedAccount = selectedAccountId ? accounts[selectedAccountId] ?? null : null;
 
@@ -358,6 +389,13 @@ export function FriendsView() {
     () => (selectedPerson ? suggestionsByPerson.get(selectedPerson.id) ?? [] : []),
     [selectedPerson, suggestionsByPerson],
   );
+  const selectedOverviewEntry = useMemo(
+    () =>
+      selectedPerson
+        ? overviewEntries.find((entry) => entry.friend.id === selectedPerson.id) ?? null
+        : null,
+    [overviewEntries, selectedPerson],
+  );
 
   useEffect(() => {
     if (selectedPersonId && !persons[selectedPersonId]) {
@@ -383,9 +421,11 @@ export function FriendsView() {
   const sidebarWidth = dragWidth ?? committedSidebarWidth;
   const graphViewportStyle = isMobile
     ? undefined
-    : ({
+    : friendsSidebarOpen
+      ? ({
         "--theme-soft-viewport-extra-comp-right": px(FRIENDS_SIDEBAR_GAP_WIDTH_PX),
-      } as CSSProperties);
+        } as CSSProperties)
+      : undefined;
 
   const focusGraphNode = useCallback((id: string) => {
     graphRef.current?.focusNode(id);
@@ -545,10 +585,10 @@ export function FriendsView() {
 
   const handleLinkAccountToPerson = useCallback(
     async (accountId: string, personId: string) => {
-      await updateAccount(accountId, { personId });
+      await linkAccountToPerson(accountId, personId);
       setSelectedPerson(personId);
     },
-    [setSelectedPerson, updateAccount],
+    [linkAccountToPerson, setSelectedPerson],
   );
 
   const handlePromoteSelectedAccount = useCallback(() => {
@@ -762,14 +802,16 @@ export function FriendsView() {
           </button>
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">{selectedPerson?.name}</h2>
-            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">Back to all friends</p>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+              {selectedPerson?.relationshipStatus === "friend" ? "Friend detail" : "Provisional identity"}
+            </p>
           </div>
         </div>
 
-        {selectedFriend && (
+        {selectedPerson && (
           <button
             type="button"
-            onClick={() => setEditorState({ kind: "edit", personId: selectedFriend.id })}
+            onClick={() => setEditorState({ kind: "edit", personId: selectedPerson.id })}
             className={BUTTON_CHROME}
           >
             Edit
@@ -846,7 +888,7 @@ export function FriendsView() {
         account={selectedAccount}
         linkedPerson={linkedPerson}
         suggestions={selectedAccountSuggestions}
-        persons={friendPersons}
+        persons={allPersons}
         feedItems={selectedAccountFeedItems}
         onBack={handleClearSelection}
         onPromoteToFriend={handlePromoteSelectedAccount}
@@ -903,40 +945,213 @@ export function FriendsView() {
     );
   };
 
+  const renderCollapsedSelectionCard = () => {
+    if (selectedAccount) {
+      const linkedPerson = selectedAccount.personId ? persons[selectedAccount.personId] ?? null : null;
+      return (
+        <CompactDetailCard>
+          <div className="flex items-start gap-3">
+            <FriendAvatar
+              name={accountTitle(selectedAccount)}
+              avatarUrl={selectedAccount.avatarUrl}
+              size={48}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                    {accountTitle(selectedAccount)}
+                  </p>
+                  <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                    {providerLabel(selectedAccount.provider)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearSelection}
+                  className="btn-secondary rounded-lg p-1.5"
+                  aria-label="Clear selection"
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4 w-4" aria-hidden>
+                    <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
+              <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
+                {accountSubtitle(selectedAccount)}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-[color:var(--theme-text-muted)]">
+                <span>{selectedAccountFeedItems.length.toLocaleString()} captured post{selectedAccountFeedItems.length === 1 ? "" : "s"}</span>
+                <span>•</span>
+                <span>
+                  {linkedPerson ? `Linked to ${linkedPerson.name}` : "Not linked yet"}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 flex items-center justify-end gap-2">
+            {linkedPerson ? (
+              <button
+                type="button"
+                onClick={() => handleSelectPerson(linkedPerson)}
+                className={BUTTON_CHROME}
+              >
+                Open identity
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handlePromoteSelectedAccount}
+                className={BUTTON_CHROME}
+              >
+                Promote to friend
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => onFriendsSidebarOpenChange(true)}
+              className="btn-primary rounded-lg px-3 py-1.5 text-xs"
+            >
+              Open details
+            </button>
+          </div>
+        </CompactDetailCard>
+      );
+    }
+
+    if (selectedPerson && selectedFriend) {
+      const avatarUrl = resolveFriendAvatarUrl(
+        selectedFriend,
+        selectedOverviewEntry?.items.map((item) => item.author.avatarUrl) ?? [],
+      );
+      const lastPostLabel = selectedOverviewEntry?.lastPostAt
+        ? formatDistanceToNow(selectedOverviewEntry.lastPostAt, { addSuffix: true })
+        : "No posts yet";
+      const lastContactLabel = selectedOverviewEntry?.lastContactAt
+        ? formatDistanceToNow(selectedOverviewEntry.lastContactAt, { addSuffix: true })
+        : "Never contacted";
+
+      return (
+        <CompactDetailCard>
+          <div className="flex items-start gap-3">
+            <FriendAvatar
+              name={selectedFriend.name}
+              avatarUrl={avatarUrl}
+              size={48}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                    {selectedFriend.name}
+                  </p>
+                  <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                    {selectedPerson.relationshipStatus === "friend" ? "Friend" : "Provisional identity"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearSelection}
+                  className="btn-secondary rounded-lg p-1.5"
+                  aria-label="Clear selection"
+                >
+                  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4 w-4" aria-hidden>
+                    <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
+              <div className="mt-2">
+                <CareDots level={selectedFriend.careLevel} />
+              </div>
+              {selectedFriend.bio ? (
+                <p className="mt-2 line-clamp-2 text-sm text-[color:var(--theme-text-secondary)]">
+                  {selectedFriend.bio}
+                </p>
+              ) : null}
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-[color:var(--theme-text-muted)]">
+                <span>{lastPostLabel}</span>
+                <span>•</span>
+                <span>{lastContactLabel}</span>
+                <span>•</span>
+                <span>{selectedFriend.sources.length.toLocaleString()} channel{selectedFriend.sources.length === 1 ? "" : "s"}</span>
+                {selectedOverviewEntry?.hasLocation ? (
+                  <>
+                    <span>•</span>
+                    <span className="inline-flex items-center gap-1 text-[color:var(--theme-accent-secondary)]">
+                      <MapPinIcon className="h-3 w-3" />
+                      Has location
+                    </span>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEditorState({ kind: "edit", personId: selectedPerson.id })}
+              className={BUTTON_CHROME}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => onFriendsSidebarOpenChange(true)}
+              className="btn-primary rounded-lg px-3 py-1.5 text-xs"
+            >
+              Open details
+            </button>
+          </div>
+        </CompactDetailCard>
+      );
+    }
+
+    return null;
+  };
+
   const activeSidebar = selectedAccount
     ? renderSelectedAccountSidebar()
-    : selectedFriend
+    : selectedPerson
       ? renderSelectedPersonSidebar()
       : renderOverviewSidebar();
+  const showGraphSurface = !isMobile || mobileSurface === "graph";
+  const showDesktopSidebar = !isMobile && friendsSidebarOpen;
+  const showMobileSidebar = isMobile && mobileSurface === "details";
+  const showCollapsedSelectionCard =
+    !isMobile && !friendsSidebarOpen && (!!selectedPerson || !!selectedAccount);
 
   return (
     <div className="app-theme-shell flex h-full flex-col overflow-hidden">
-      <div className={`flex min-h-0 flex-1 ${isMobile ? "flex-col" : "flex-row"}`}>
-        <div className="relative min-h-0 min-w-0 flex-1" style={graphViewportStyle}>
-          {(effectiveMode === "friends" && friendList.length === 0) || (effectiveMode === "all_content" && socialAccountCount === 0 && friendList.length === 0) ? (
-            renderGraphEmptyState()
-          ) : (
-            <FriendGraph
-              ref={graphRef}
-              persons={friendPersons}
-              accounts={accounts}
-              feedItems={feedItems}
-              mode={effectiveMode}
-              selectedPersonId={selectedPerson?.id ?? null}
-              selectedAccountId={selectedAccount?.id ?? null}
-              suggestionsByAccount={suggestionsByAccount}
-              onSelectPerson={(person) => handleSelectPerson(person, false)}
-              onSelectAccount={(account) => handleSelectAccount(account, false)}
-              onLinkAccountToPerson={handleLinkAccountToPerson}
-              themeId={themeId}
-            />
-          )}
-        </div>
+      <div
+        className={`relative flex min-h-0 flex-1 pt-[var(--feed-card-gap,8px)] ${isMobile ? "flex-col" : "flex-row"}`}
+      >
+        {showGraphSurface ? (
+          <div className="relative min-h-0 min-w-0 flex-1" style={graphViewportStyle}>
+            {(effectiveMode === "friends" && friendList.length === 0) || (effectiveMode === "all_content" && socialAccountCount === 0 && friendList.length === 0) ? (
+              renderGraphEmptyState()
+            ) : (
+              <FriendGraph
+                ref={graphRef}
+                persons={allPersons}
+                accounts={accounts}
+                feeds={feeds}
+                feedItems={feedItems}
+                mode={effectiveMode}
+                selectedPersonId={selectedPerson?.id ?? null}
+                selectedAccountId={selectedAccount?.id ?? null}
+                onSelectPerson={(person) => handleSelectPerson(person, false)}
+                onSelectAccount={(account) => handleSelectAccount(account, false)}
+                onClearSelection={showCollapsedSelectionCard ? handleClearSelection : undefined}
+                onLinkAccountToPerson={handleLinkAccountToPerson}
+                themeId={themeId}
+              />
+            )}
+          </div>
+        ) : null}
 
-        {!isMobile && (
+        {showDesktopSidebar && (
           <div
             className="theme-resize-gap-handle w-3 shrink-0 self-end"
-            style={{ height: "calc(100% - var(--feed-card-gap, 8px))" }}
             onMouseDown={handleSidebarDragStart}
             role="separator"
             aria-orientation="vertical"
@@ -944,21 +1159,23 @@ export function FriendsView() {
           />
         )}
 
-        {isMobile ? (
-          <aside
-            data-testid="friends-sidebar"
-            className="theme-dialog-divider h-[46dvh] w-full overflow-hidden border-t bg-[color:color-mix(in_oklab,var(--theme-bg-deep)_88%,transparent)] backdrop-blur-xl"
+        {showMobileSidebar ? (
+          <div
+            data-testid="friends-sidebar-shell"
+            className="flex min-h-0 flex-1 overflow-hidden"
           >
-            {activeSidebar}
-          </aside>
-        ) : (
+            <aside
+              data-testid="friends-sidebar"
+              className="theme-floating-panel flex h-full min-h-0 w-full flex-col overflow-hidden"
+            >
+              {activeSidebar}
+            </aside>
+          </div>
+        ) : showDesktopSidebar ? (
           <div
             data-testid="friends-sidebar-shell"
             className="flex shrink-0 overflow-hidden"
-            style={{
-              width: `${sidebarWidth}px`,
-              paddingTop: "var(--feed-card-gap, 8px)",
-            }}
+            style={{ width: `${sidebarWidth}px` }}
           >
             <aside
               data-testid="friends-sidebar"
@@ -968,7 +1185,9 @@ export function FriendsView() {
               {activeSidebar}
             </aside>
           </div>
-        )}
+        ) : null}
+
+        {showCollapsedSelectionCard ? renderCollapsedSelectionCard() : null}
       </div>
 
       {editorState ? (

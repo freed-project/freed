@@ -12,11 +12,7 @@ import {
 const OUTPUT_PATH = join(process.cwd(), "src/content/changelog.generated.json");
 const RELEASE_NOTES_ROOT = join(process.cwd(), "..", "release-notes");
 const RELEASE_NOTES_RELEASES_DIR = join(RELEASE_NOTES_ROOT, "releases");
-const authToken =
-  process.env.GITHUB_RELEASES_TOKEN ??
-  process.env.GITHUB_TOKEN ??
-  process.env.GH_TOKEN ??
-  process.env.RELEASE_GITHUB_TOKEN;
+const authToken = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
 const API_HEADERS: Record<string, string> = {
   Accept: "application/vnd.github+json",
   "X-GitHub-Api-Version": "2022-11-28",
@@ -117,13 +113,13 @@ function buildLinksFromArtifact(
   releaseMap: Map<string, GitHubRelease>,
 ): ReleaseBuild[] {
   const relatedBuildTags = artifact.source?.relatedBuildTags ?? [];
-  const buildLinks: ReleaseBuild[] = relatedBuildTags
+  const buildLinks = relatedBuildTags
     .map((tag) => releaseMap.get(tag))
     .filter((candidate): candidate is GitHubRelease => Boolean(candidate))
     .map((candidate) => ({
       version: candidate.tag_name.replace(/^v/, ""),
       htmlUrl: candidate.html_url,
-      channel: candidate.tag_name.endsWith("-dev") ? "dev" : "production",
+      channel: (candidate.tag_name.endsWith("-dev") ? "dev" : "production") as ReleaseChannel,
     }));
 
   if (buildLinks.length > 0) {
@@ -134,7 +130,7 @@ function buildLinksFromArtifact(
     {
       version: artifact.version || release.tag_name.replace(/^v/, ""),
       htmlUrl: release.html_url,
-      channel: release.tag_name.endsWith("-dev") ? "dev" : "production",
+      channel: (release.tag_name.endsWith("-dev") ? "dev" : "production") as ReleaseChannel,
     },
   ];
 }

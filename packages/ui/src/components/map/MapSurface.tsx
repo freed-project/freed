@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { LocationMarkerSummary } from "@freed/shared";
 import { DEFAULT_THEME_ID, getThemeDefinition, type ThemeId } from "@freed/shared/themes";
@@ -35,6 +35,11 @@ const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
 });
 const MAP_POPUP_MAX_WIDTH = 560;
 const MAP_POPUP_VIEWPORT_MARGIN = 40;
+const MAP_VIEWPORT_MASK_STYLE = {
+  "--theme-soft-viewport-base-comp-top": "6px",
+  "--theme-soft-viewport-base-comp-bottom": "0px",
+  "--theme-soft-viewport-mask-size": "28px",
+} as CSSProperties;
 
 function shouldForceMapFallback() {
   if (typeof window === "undefined") return false;
@@ -61,12 +66,17 @@ function popupSnippet(text?: string | null): string | null {
 }
 
 function popupKicker(marker: LocationMarkerSummary): string {
-  if (marker.friend) return "Linked Friend";
+  if (marker.friend?.relationshipStatus === "friend") return "Linked Friend";
+  if (marker.friend) return "Linked Person";
   return marker.item.contentType === "story" ? "Story Update" : "Location Update";
 }
 
 function popupTitle(marker: LocationMarkerSummary): string {
   return marker.friend?.name ?? marker.item.author.displayName;
+}
+
+function hasConfirmedFriend(marker: LocationMarkerSummary): boolean {
+  return marker.friend?.relationshipStatus === "friend";
 }
 
 function popupMeta(marker: LocationMarkerSummary): string {
@@ -100,6 +110,7 @@ function buildPopupContent(
   onLinkAccount?: (marker: LocationMarkerSummary) => void,
   onOpenPost?: (marker: LocationMarkerSummary) => void
 ): HTMLElement {
+  const confirmedFriend = hasConfirmedFriend(marker);
   const root = document.createElement("div");
   root.style.cssText = [
     "display:flex",
@@ -198,7 +209,7 @@ function buildPopupContent(
   const actions = document.createElement("div");
   actions.style.cssText = "display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;";
 
-  if (marker.friend && onOpenFriend) {
+  if (confirmedFriend && onOpenFriend) {
     const friendButton = document.createElement("button");
     friendButton.type = "button";
     friendButton.textContent = "Open Friend";
@@ -220,7 +231,7 @@ function buildPopupContent(
     actions.appendChild(friendButton);
   }
 
-  if (!marker.friend && onPromoteAccount) {
+  if (!confirmedFriend && onPromoteAccount) {
     const promoteButton = document.createElement("button");
     promoteButton.type = "button";
     promoteButton.textContent = "Promote to friend";
@@ -242,7 +253,7 @@ function buildPopupContent(
     actions.appendChild(promoteButton);
   }
 
-  if (!marker.friend && onLinkAccount) {
+  if (!confirmedFriend && onLinkAccount) {
     const linkButton = document.createElement("button");
     linkButton.type = "button";
     linkButton.textContent = "Link to existing friend";
@@ -397,6 +408,51 @@ function fallbackScanBackground(background: string, water: string) {
       180deg,
       color-mix(in oklab, ${background} 92%, black 8%) 0%,
       ${background} 100%
+    )
+  `;
+}
+
+function mapEdgeVignetteBackground() {
+  return `
+    radial-gradient(
+      120px 88px at 0% 0%,
+      rgb(var(--theme-shell-rgb) / 0.18) 0%,
+      transparent 74%
+    ),
+    radial-gradient(
+      124px 82px at 100% 0%,
+      rgb(var(--theme-shell-rgb) / 0.14) 0%,
+      transparent 76%
+    ),
+    radial-gradient(
+      132px 96px at 0% 100%,
+      rgb(var(--theme-shell-rgb) / 0.18) 0%,
+      transparent 76%
+    ),
+    radial-gradient(
+      148px 112px at 100% 100%,
+      rgb(var(--theme-shell-rgb) / 0.24) 0%,
+      transparent 78%
+    ),
+    linear-gradient(
+      to bottom,
+      rgb(var(--theme-shell-rgb) / 0.22) 0%,
+      transparent 56px
+    ),
+    linear-gradient(
+      to top,
+      rgb(var(--theme-shell-rgb) / 0.18) 0%,
+      transparent 64px
+    ),
+    linear-gradient(
+      to right,
+      rgb(var(--theme-shell-rgb) / 0.14) 0%,
+      transparent 44px
+    ),
+    linear-gradient(
+      to left,
+      rgb(var(--theme-shell-rgb) / 0.16) 0%,
+      transparent 44px
     )
   `;
 }
@@ -603,6 +659,7 @@ export function MapSurface({
       data-testid="map-surface"
       data-map-theme={resolvedThemeId}
       className="freed-map-shell theme-soft-viewport relative h-full w-full"
+      style={MAP_VIEWPORT_MASK_STYLE}
     >
       <style>{mapStyles(interactive)}</style>
       <div className="theme-soft-viewport-content">
@@ -615,6 +672,12 @@ export function MapSurface({
           style={{
             backgroundImage: mapGridBackground(mapPalette.boundary),
             opacity: mapPalette.gridOpacity,
+          }}
+        />
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background: mapEdgeVignetteBackground(),
           }}
         />
 
@@ -732,7 +795,7 @@ export function MapSurface({
               )}
 
               <div className="mt-3 grid grid-cols-2 gap-2">
-                {selectedFallbackMarker.friend && onOpenFriend && (
+                {hasConfirmedFriend(selectedFallbackMarker) && onOpenFriend && (
                   <button
                     type="button"
                     className="btn-primary w-full rounded-xl px-3.5 py-2 text-xs"
@@ -741,7 +804,7 @@ export function MapSurface({
                     Open Friend
                   </button>
                 )}
-                {!selectedFallbackMarker.friend && onPromoteAccount && (
+                {!hasConfirmedFriend(selectedFallbackMarker) && onPromoteAccount && (
                   <button
                     type="button"
                     className="btn-primary w-full rounded-xl px-3.5 py-2 text-xs"
@@ -750,7 +813,7 @@ export function MapSurface({
                     Promote to friend
                   </button>
                 )}
-                {!selectedFallbackMarker.friend && onLinkAccount && (
+                {!hasConfirmedFriend(selectedFallbackMarker) && onLinkAccount && (
                   <button
                     type="button"
                     className="btn-secondary w-full rounded-xl px-3.5 py-2 text-xs"
