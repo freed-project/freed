@@ -795,7 +795,7 @@ function HealthTab() {
                         ...current,
                         [provider]: "reconnect",
                       }));
-                      void reconnectCloudProvider(provider).finally(() => {
+                      void reconnectCloudProvider(provider).catch(() => {}).finally(() => {
                         setPendingProviderAction((current) => {
                           const next = { ...current };
                           delete next[provider];

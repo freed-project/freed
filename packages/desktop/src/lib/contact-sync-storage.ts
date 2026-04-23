@@ -17,14 +17,33 @@ export function readContactSyncStateJson(): string {
   return JSON.stringify(readContactSyncState());
 }
 
-export function writeContactSyncStateJson(raw: string | null | undefined): ContactSyncState {
-  const normalized = parseContactSyncState(raw);
-
+export function writeContactSyncState(state: ContactSyncState): ContactSyncState {
   if (typeof window !== "undefined") {
-    window.localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, JSON.stringify(normalized));
+    window.localStorage.setItem(CONTACT_SYNC_STORAGE_KEY, JSON.stringify(state));
   }
 
-  return normalized;
+  return state;
+}
+
+export function writeContactSyncStateJson(raw: string | null | undefined): ContactSyncState {
+  const normalized = parseContactSyncState(raw);
+  return writeContactSyncState(normalized);
+}
+
+export function setContactSyncError(
+  message: string,
+  code: ContactSyncState["lastErrorCode"] = "auth",
+): ContactSyncState {
+  const current = readContactSyncState();
+  return writeContactSyncState({
+    ...current,
+    authStatus: code === "missing_token" || code === "auth"
+      ? "reconnect_required"
+      : current.authStatus,
+    syncStatus: "error",
+    lastErrorCode: code,
+    lastErrorMessage: message,
+  });
 }
 
 export function clearContactSyncState(): void {
