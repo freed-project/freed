@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import { toast } from "@freed/ui/components/Toast";
 import {
   createSnapshot,
@@ -20,12 +21,18 @@ function formatByteSize(bytes: number): string {
 }
 
 export function DesktopSnapshotsSection() {
+  const tauriAvailable = isTauri();
   const [snapshots, setSnapshots] = useState<SnapshotSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [restoringId, setRestoringId] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!tauriAvailable) {
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
     const load = async () => {
@@ -50,7 +57,23 @@ export function DesktopSnapshotsSection() {
       cancelled = true;
       unsubscribe();
     };
-  }, []);
+  }, [tauriAvailable]);
+
+  if (!tauriAvailable) {
+    return (
+      <div className="mt-8">
+        <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-[#71717a]">
+          Local Snapshots
+        </h3>
+        <div className="rounded-2xl border border-[rgba(255,255,255,0.08)] bg-white/5 p-4">
+          <p className="text-sm text-white">Snapshots are unavailable in browser preview</p>
+          <p className="mt-1 max-w-xl text-xs text-[#71717a]">
+            Local snapshot creation and restore use native Freed Desktop storage APIs, so this section only works in the real app.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const handleCreateSnapshot = async () => {
     setCreating(true);

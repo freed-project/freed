@@ -1,6 +1,6 @@
 # Phase 8: Friends + Social Graph
 
-> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, the Friends workspace now defaults to `All content` with confirmed friend hubs plus linked satellites and peripheral account nodes, and the map plus Friends surfaces now share the same unified top toolbar, including header-level identity controls plus current, future, and past map windows with a quieter in-map timeline scrubber docked at the lower left for historical and future playback
+> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, the Friends workspace now defaults to `All content`, and the graph surface has moved to a WebGL-backed Pixi renderer with worker-computed radial layout, confirmed friend hubs near the center, provisional human identities in a middle ring, linked channel satellites around people, followed RSS feeds on the outer edge, drag-to-link reassignment, semantic zoom labels, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map plus Friends surfaces continue to share the unified top toolbar with current, future, and past map windows plus the quieter lower-left timeline scrubber
 > **Dependencies:** Phase 7 (Facebook + Instagram capture provide most social content)
 
 ---
@@ -38,9 +38,10 @@ This phase also becomes the home for future-aware social planning. Historical po
            │                         │
            ▼                         ▼
 ┌──────────────────┐      ┌───────────────────────────┐
-│  8B: Force Graph │      │  8C: Detail + Reach-out   │
-│  d3-force canvas │      │  Cross-platform timeline  │
-│  Reconnect ring  │      │  Reach-out log + nudges   │
+│  8B: Identity Graph │    │  8C: Detail + Reach-out   │
+│  Pixi WebGL scene  │    │  Cross-platform timeline  │
+│  Worker radial     │    │  Reach-out log + nudges   │
+│  layout + zoom     │    │                           │
 └──────────────────┘      └───────────────────────────┘
            │
            ▼
@@ -127,27 +128,39 @@ Default nudge intervals by care level:
 
 ## 8B: Friends Graph View
 
-### Force layout
+### Renderer and layout
 
-- Engine: `d3-force` (canvas renderer, no SVG, no wrapper lib)
-- Node radius: `baseRadius(careLevel) * log2(recentPostCount + 2)`, capped at 48px
-- Node opacity: 1.0 → 0.5 as post recency decays (posted today vs. silent for 30+ days)
-- Reconnect ring: a gravity zone at the top of the canvas that attracts `isDue && careLevel >= 4` friends
+- Renderer: `pixi.js` WebGL scene with screen-space semantic labels
+- Layout: off-main-thread worker that computes a stable radial graph
+- Tiering:
+  - confirmed friends are the largest identity nodes near the center
+  - provisional human identities sit in a middle ring
+  - linked social channels orbit their linked identity
+  - unlinked channels and RSS feeds live on the outer edge
+- Interaction:
+  - pan and zoom with semantic label reveal
+  - click to focus identity or channel clusters
+  - drag social channel nodes onto human identities to re-link immediately
+  - non-selected clusters dim when a person or channel is focused
 
 ### Visual encoding
 
 | Signal | Visual |
 |---|---|
-| Posted < 24h | Pulse ring (purple) |
-| `isDue && careLevel >= 4` | Amber glow + pulled toward Reconnect zone |
-| `careLevel` 1-2 | Smaller base radius |
-| Silent 30+ days | 50% opacity |
+| Confirmed friend | Largest central circle |
+| Provisional human identity | Medium circle in middle ring |
+| Linked social channel | Small satellite circle with quiet connector line |
+| RSS or unlinked outer channel | Small outer circle |
+| Focused selection | Connected cluster stays bright, unrelated nodes dim |
+| Higher zoom | More labels appear without shrinking the viewport |
 
 ### Files
 
 - `packages/ui/src/components/friends/FriendsView.tsx` — top-level view shell
-- `packages/ui/src/components/friends/FriendGraph.tsx` — d3-force canvas renderer
-- `packages/ui/src/components/friends/ReconnectRing.tsx` — HTML overlay label
+- `packages/ui/src/components/friends/FriendGraph.tsx` — Pixi WebGL renderer with semantic zoom labels
+- `packages/ui/src/lib/identity-graph-model.ts` — derived person, channel, and feed graph model
+- `packages/ui/src/lib/identity-graph-layout.ts` — stable radial layout plus spatial index helpers
+- `packages/ui/src/lib/identity-graph-layout.worker.ts` — worker entrypoint for graph layout
 - `packages/ui/src/components/friends/index.ts` — barrel export
 
 ---
@@ -208,7 +221,14 @@ Friends and Map now use the same shared content header pattern as the rest of th
 Map popovers now include the time of each location update and behave like a sane interface, with only one popup open at a time.
 Friends now behaves like a proper workspace: the graph settles once and freezes, supports pan and zoom, and uses a permanent resizable right sidebar for reconnect, search, filters, overview, and selected-friend detail.
 That Friends detail rail now uses the same floating shell-card treatment and gap-based resize grip as the main app sidebars, so it finally looks like it belongs in the same product.
-Trackpad pinch zoom is now captured by the Friends graph itself, so zooming the workspace no longer zooms the whole browser window.
+That same Friends rail can now be collapsed from a far-right toolbar toggle on larger screens, and narrow screens fold the detail surface into a third `Details` lens instead of stacking the graph and sidebar on top of each other like a punishment.
+When that rail is collapsed on desktop, selecting a friend or channel now opens a compact floating detail card instead of springing the full rail back open without consent.
+Clicking empty graph space now dismisses that collapsed floating detail card, so the graph behaves like a workspace again instead of trapping the last selection until the operator finds the tiny close button.
+Trackpad and multitouch pinch zoom are now captured by the Friends graph itself, with faster graph-native scaling and Safari gesture suppression so zooming the workspace no longer zooms the whole browser window.
+Panning the Friends graph no longer rebuilds every node, edge, and label object on each frame, so the Pixi renderer finally behaves like a real retained scene instead of a very expensive Etch A Sketch.
+Scriptorium also now gives the graph a darker node palette, stronger edges, and real label contrast, so the Friends view reads like an interface instead of a ghost story printed on oatmeal.
+The Friends graph viewport now owns its own soft-mask compensation instead of inheriting the primary sidebar offset, which restores the left-edge vignette so all four edges feather consistently like the map view.
+The identity graph now builds activity counts in one pass, uses cheaper bucketed overlap resolution in the worker, drops into an interaction-quality mode while you pan or pinch, and exposes internal timing counters so performance regressions can fail in desktop tests instead of sneaking into a merge.
 Friend captions in the graph now use pill backgrounds and label-aware spacing, so names stay readable instead of collapsing into an overlapping word soup.
 Friend avatars now inherit a theme-authored tint across the Friends graph and map markers, so each theme stays coherent without a stray custom accent fighting the palette.
 The Friends graph now defaults to `All content`, keeps confirmed friends as larger center hubs, renders their linked channels as smaller radial satellites with straight connectors, and shows every other captured social account on the periphery inside provider-shaped metaball island regions.
@@ -221,6 +241,8 @@ The shared map now also persists a `Current` / `Future` / `Past` time filter. Fu
 Map history playback now stays inside the map surface as a lower-left scrubber panel, while the toolbar keeps only the high-level mode switches instead of growing a second floating control row.
 Friends and Map now use the shared top toolbar for their identity and time controls, and feed-only bulk actions no longer appear in those workspaces.
 Past and future views now expose a timeline scrubber, so the operator can replay historical location posts or step through upcoming travel windows instead of staring at one collapsed "latest" pin and pretending that counts as time.
+The Friends graph now auto-discovers likely human identities as provisional `connection` people from unlinked social accounts, persists those middle-ring nodes across sessions, and removes empty provisional identities when all linked channels move away.
+The Friends graph also now renders followed RSS feeds in the same graph, so the operator can see confirmed people, provisional people, linked channels, stray channels, and feed subscriptions in one zoomable workspace instead of splitting the world across separate mental models.
 
 ---
 
@@ -261,6 +283,12 @@ Past and future views now expose a timeline scrubber, so the operator can replay
 | 8.27 | Friends workspace defaults to `All content` and renders friend hubs, linked satellites, and peripheral captured accounts | High | Done |
 | 8.28 | Move Friends and Map identity controls into the shared header and hide feed bulk actions in those views | Medium | Done |
 | 8.29 | Promote or link unconfirmed accounts from Friends and Map, including drag-to-friend linking from the graph | High | Done |
+| 8.30 | Persist provisional human identities from unlinked social accounts and prune empty connection shells after relinks | Medium | Done |
+| 8.31 | Replace the Friends canvas renderer with a WebGL Pixi graph plus worker-computed radial layout and spatial indexing | High | Done |
+| 8.32 | Add semantic zoom label culling plus seeded desktop graph regressions for drag, zoom, and dense graph visuals | Medium | Done |
+| 8.33 | Cache retained Pixi node and label objects so pan and zoom update transforms instead of rebuilding the whole graph every frame | Medium | Done |
+| 8.34 | Strengthen Friends graph contrast in Scriptorium so node tiers, labels, and edges stay legible against the parchment stage | Medium | Done |
+| 8.35 | Harden graph performance with single-pass activity indexing, bucketed worker overlap resolution, and interactive label degradation plus perf counters | High | Done |
 
 ---
 
@@ -299,6 +327,18 @@ Past and future views now expose a timeline scrubber, so the operator can replay
 - [x] Confirmed friend hubs render linked channel satellites with provider-shaped island backgrounds
 - [x] Friends and Map share header-level identity controls, and feed bulk actions stay feed-only
 - [x] Unlinked accounts can be promoted or linked from both the Friends workspace and Map popups
+- [x] Likely human social accounts can persist as provisional `connection` identities before they are confirmed as friends
+- [x] Empty provisional identities are removed automatically when their last linked channel moves away
+- [x] The Friends graph uses a WebGL Pixi renderer with worker-computed radial layout instead of the old main-thread canvas stack
+- [x] Semantic zoom reveals more labels as the operator zooms in, without crushing the viewport
+- [x] Pan and zoom reuse retained Pixi node and label objects instead of rebuilding the full scene every frame
+- [x] Scriptorium graph colors stay legible instead of washing node fills and labels into the stage
+- [x] Graph model construction uses single-pass activity indexing instead of rescanning every captured item per node
+- [x] Worker layout uses local bucketed overlap resolution instead of naïve all-pairs nudging
+- [x] Active pan and zoom can temporarily lower graph label work, then restore full quality on settle
+- [x] Desktop tests assert graph timing and stress-fixture behavior through internal debug counters
+- [x] Followed RSS feeds render as outer graph channels in `All content`
+- [x] Desktop browser tests cover mixed-tier graph load, drag-to-link persistence, semantic zoom label growth, and a seeded dense-graph screenshot
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map
 - [ ] macOS native contact picker (CNContactStore)
 - [x] Map promoted to live sidebar navigation

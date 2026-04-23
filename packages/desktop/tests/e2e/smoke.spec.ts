@@ -150,6 +150,190 @@ async function readDesktopSidebarPadding(page: Page) {
   });
 }
 
+async function graphNodeScreenPoint(
+  page: Page,
+  matcher: { personId?: string; accountId?: string; kind?: string },
+) {
+  return page.evaluate((expected) => {
+    const viewport = document.querySelector('[data-testid="friend-graph-viewport"]') as HTMLElement | null;
+    const debug = (window as typeof window & {
+      __FREED_GRAPH_DEBUG__?: {
+        nodes: Array<{
+          id: string;
+          kind: string;
+          personId?: string;
+          accountId?: string;
+          x: number;
+          y: number;
+        }>;
+        transform: { x: number; y: number; scale: number };
+      };
+    }).__FREED_GRAPH_DEBUG__;
+
+    if (!viewport || !debug) {
+      return null;
+    }
+
+    const node = debug.nodes.find((candidate) =>
+      (!expected.kind || candidate.kind === expected.kind) &&
+      (!expected.personId || candidate.personId === expected.personId) &&
+      (!expected.accountId || candidate.accountId === expected.accountId),
+    );
+    if (!node) {
+      return null;
+    }
+
+    const rect = viewport.getBoundingClientRect();
+    return {
+      x: rect.left + node.x * debug.transform.scale + debug.transform.x,
+      y: rect.top + node.y * debug.transform.scale + debug.transform.y,
+    };
+  }, matcher);
+}
+
+async function readGraphDebug(page: Page) {
+  return page.evaluate(() => {
+    return (window as typeof window & {
+      __FREED_GRAPH_DEBUG__?: {
+        nodes: Array<{
+          id: string;
+          kind: string;
+          personId?: string;
+          accountId?: string;
+          feedUrl?: string;
+          linkedPersonId?: string | null;
+          x: number;
+          y: number;
+          radius: number;
+        }>;
+        transform: { x: number; y: number; scale: number };
+        qualityMode: "interactive" | "settled";
+        metrics: {
+          modelBuildMs: number;
+          layoutMs: number;
+          sceneSyncMs: number;
+          labelPassMs: number;
+          sceneSyncCount: number;
+          contentSyncCount: number;
+          transformOnlySyncCount: number;
+          edgeRebuildCount: number;
+          nodeRestyleCount: number;
+          labelLayoutCount: number;
+          visibleLabelCount: number;
+          qualityMode: "interactive" | "settled";
+        };
+      };
+    }).__FREED_GRAPH_DEBUG__ ?? null;
+  });
+}
+
+async function waitForGraphPerfToSettle(page: Page, timeout = 15_000) {
+  const deadline = Date.now() + timeout;
+  let previous = await readGraphDebug(page);
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(250);
+    const next = await readGraphDebug(page);
+    if (
+      previous &&
+      next &&
+      next.qualityMode === "settled" &&
+      next.metrics.edgeRebuildCount === previous.metrics.edgeRebuildCount &&
+      next.metrics.sceneSyncCount === previous.metrics.sceneSyncCount
+    ) {
+      return next;
+    }
+    previous = next;
+  }
+
+  throw new Error("Friends graph perf metrics did not settle in time");
+}
+
+async function seedStressIdentityGraph(page: Page) {
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddPersons: (persons: unknown[]) => Promise<void>;
+      docAddAccounts: (accounts: unknown[]) => Promise<void>;
+      docAddRssFeed: (feed: unknown) => Promise<void>;
+      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (patch: { display: { friendsMode: "all_content"; themeId?: string } }) => Promise<void>;
+        setActiveView: (view: string) => void;
+      };
+    };
+
+    const now = Date.now();
+    const persons = Array.from({ length: 100 }, (_, index) => ({
+      id: `stress-person-${index}`,
+      name: `Stress Person ${index}`,
+      relationshipStatus: index < 60 ? "friend" : "connection",
+      careLevel: index < 60 ? 3 + (index % 3) : 2,
+      createdAt: now,
+      updatedAt: now,
+    }));
+    const accounts = Array.from({ length: 900 }, (_, index) => ({
+      id: `stress-account-${index}`,
+      personId: index < 580 ? `stress-person-${index % 100}` : undefined,
+      kind: "social",
+      provider: index % 3 === 0 ? "instagram" : index % 3 === 1 ? "linkedin" : "x",
+      externalId: `stress-external-${index}`,
+      handle: `stress-${index}`,
+      displayName: `Stress Channel ${index}`,
+      firstSeenAt: now,
+      lastSeenAt: now,
+      discoveredFrom: "captured_item",
+      createdAt: now,
+      updatedAt: now,
+    }));
+    const feeds = Array.from({ length: 120 }, (_, index) => ({
+      url: `https://stress.example/feed-${index}.xml`,
+      title: `Stress Feed ${index}`,
+      enabled: true,
+      trackUnread: true,
+    }));
+    const feedItems = Array.from({ length: 1_600 }, (_, index) => ({
+      globalId: `stress-item-${index}`,
+      platform: index % 5 === 0 ? "rss" : index % 2 === 0 ? "instagram" : "x",
+      contentType: index % 5 === 0 ? "article" : "post",
+      capturedAt: now - index * 60_000,
+      publishedAt: now - index * 60_000,
+      author: {
+        id: index % 5 === 0 ? `stress-feed-author-${index % 120}` : `stress-external-${index % 900}`,
+        handle: `stress-author-${index}`,
+        displayName: `Stress Author ${index}`,
+      },
+      content: {
+        text: `Stress item ${index}`,
+        mediaUrls: [],
+        mediaTypes: [],
+      },
+      rssSource:
+        index % 5 === 0
+          ? {
+              feedUrl: `https://stress.example/feed-${index % 120}.xml`,
+              feedTitle: `Stress Feed ${index % 120}`,
+            }
+          : undefined,
+      userState: { hidden: false, saved: false, archived: false, tags: [] },
+      topics: [],
+    }));
+
+    await automerge.docAddPersons(persons);
+    await automerge.docAddAccounts(accounts);
+    await Promise.all(feeds.map((feed) => automerge.docAddRssFeed(feed)));
+    await automerge.docAddFeedItems(feedItems);
+    await store.getState().updatePreferences({
+      display: {
+        friendsMode: "all_content",
+        themeId: "scriptorium",
+      },
+    });
+    store.getState().setActiveView("friends");
+  });
+}
+
 const SETTINGS_STORE_PATH = resolveViteFsModulePath(
   "../../../ui/src/lib/settings-store.ts",
   import.meta.url,
@@ -2676,6 +2860,846 @@ test("Friends view uses the floating detail drawer shell", async ({ app, page })
   expect(shellState.handleUsesGapGrip).toBe(true);
   expect(shellState.shellWidth).toBeGreaterThanOrEqual(shellState.sidebarWidth);
   expect(shellState.extraRightComp).toBe(AUXILIARY_DRAWER_GAP_WIDTH);
+});
+
+test("Friends detail rail toggle hides and restores the desktop sidebar without losing width", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (patch: { display: { friendsSidebarWidth: number; friendsSidebarOpen: boolean } }) => Promise<void>;
+            setActiveView: (view: string) => void;
+          };
+        }
+      | undefined;
+    await store?.getState().updatePreferences({
+      display: {
+        friendsSidebarWidth: 388,
+        friendsSidebarOpen: true,
+      },
+    });
+    store?.getState().setActiveView("friends");
+  });
+
+  const toggle = page.getByTestId("friends-sidebar-toggle");
+  await expect(toggle).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
+
+  const before = await page.evaluate(() => {
+    const shell = document.querySelector('[data-testid="friends-sidebar-shell"]') as HTMLElement | null;
+    return {
+      shellWidth: shell?.getBoundingClientRect().width ?? 0,
+    };
+  });
+
+  expect(before.shellWidth).toBeGreaterThanOrEqual(388);
+
+  await toggle.click();
+  await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
+  await expect(page.getByTestId("friends-sidebar-shell")).toHaveCount(0);
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { preferences: { display: { friendsSidebarOpen?: boolean } } } }
+      | undefined;
+    return store?.getState().preferences.display.friendsSidebarOpen === false;
+  }, { timeout: 5_000 });
+
+  await toggle.click();
+  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            preferences: { display: { friendsSidebarOpen?: boolean; friendsSidebarWidth?: number } };
+          };
+        }
+      | undefined;
+    const display = store?.getState().preferences.display;
+    return display?.friendsSidebarOpen === true && display?.friendsSidebarWidth === 388;
+  }, { timeout: 5_000 });
+
+  const after = await page.evaluate(() => {
+    const shell = document.querySelector('[data-testid="friends-sidebar-shell"]') as HTMLElement | null;
+    return {
+      shellWidth: shell?.getBoundingClientRect().width ?? 0,
+    };
+  });
+
+  expect(after.shellWidth).toBeGreaterThanOrEqual(388);
+  expect(Math.abs(after.shellWidth - before.shellWidth)).toBeLessThanOrEqual(8);
+});
+
+test("selecting a graph node shows a compact detail card when the Friends detail rail is closed", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (patch: { display: { friendsSidebarOpen: boolean } }) => Promise<void>;
+            setActiveView: (view: string) => void;
+          };
+        }
+      | undefined;
+    await store?.getState().updatePreferences({
+      display: {
+        friendsSidebarOpen: false,
+      },
+    });
+    store?.getState().setActiveView("friends");
+  });
+
+  await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
+  const viewport = page.getByTestId("friend-graph-viewport");
+  await expect(viewport).toBeVisible({ timeout: 10_000 });
+
+  let friendPoint: { x: number; y: number } | null = null;
+  await expect
+    .poll(async () => {
+      friendPoint = await graphNodeScreenPoint(page, { personId: "friend-ada" });
+      return friendPoint !== null;
+    }, { timeout: 10_000 })
+    .toBe(true);
+
+  await page.mouse.click(friendPoint!.x, friendPoint!.y);
+
+  await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
+  const compactCard = page.getByTestId("friends-collapsed-selection-card");
+  await expect(compactCard).toBeVisible({ timeout: 5_000 });
+  await expect(compactCard).toContainText("Ada Lovelace");
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { preferences: { display: { friendsSidebarOpen?: boolean } } } }
+      | undefined;
+    return store?.getState().preferences.display.friendsSidebarOpen === false;
+  }, { timeout: 5_000 });
+
+  await compactCard.getByRole("button", { name: "Open details" }).click();
+  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByRole("button", { name: "Back to all friends" })).toBeVisible({
+    timeout: 5_000,
+  });
+});
+
+test("clicking empty graph space closes the collapsed Friends detail card", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (patch: { display: { friendsSidebarOpen: boolean } }) => Promise<void>;
+            setActiveView: (view: string) => void;
+          };
+        }
+      | undefined;
+    await store?.getState().updatePreferences({
+      display: {
+        friendsSidebarOpen: false,
+      },
+    });
+    store?.getState().setActiveView("friends");
+  });
+
+  const viewport = page.getByTestId("friend-graph-viewport");
+  await expect(viewport).toBeVisible({ timeout: 10_000 });
+
+  let friendPoint: { x: number; y: number } | null = null;
+  await expect
+    .poll(async () => {
+      friendPoint = await graphNodeScreenPoint(page, { personId: "friend-ada" });
+      return friendPoint !== null;
+    }, { timeout: 10_000 })
+    .toBe(true);
+
+  await page.mouse.click(friendPoint!.x, friendPoint!.y);
+
+  const compactCard = page.getByTestId("friends-collapsed-selection-card");
+  await expect(compactCard).toBeVisible({ timeout: 5_000 });
+
+  const viewportBox = await viewport.boundingBox();
+  if (!viewportBox) {
+    throw new Error("Friends graph viewport is not visible");
+  }
+
+  await page.mouse.click(viewportBox.x + 24, viewportBox.y + 24);
+
+  await expect(compactCard).toHaveCount(0);
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { selectedPersonId: string | null; selectedAccountId: string | null } }
+      | undefined;
+    const state = store?.getState();
+    return state?.selectedPersonId === null && state?.selectedAccountId === null;
+  }, { timeout: 5_000 });
+});
+
+test("mobile Friends toolbar switches between graph lenses and Details mode", async ({ app, page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (patch: { display: { friendsMode: "friends" | "all_content"; friendsSidebarOpen: boolean } }) => Promise<void>;
+            setActiveView: (view: string) => void;
+          };
+        }
+      | undefined;
+    await store?.getState().updatePreferences({
+      display: {
+        friendsMode: "all_content",
+        friendsSidebarOpen: true,
+      },
+    });
+    store?.getState().setActiveView("friends");
+  });
+
+  const lens = page.getByTestId("friends-toolbar-lens");
+  await expect(lens.getByRole("button", { name: "Friends" })).toBeVisible({ timeout: 5_000 });
+  await expect(lens.getByRole("button", { name: "All content" })).toBeVisible({ timeout: 5_000 });
+  await expect(lens.getByRole("button", { name: "Details" })).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
+
+  await lens.getByRole("button", { name: "Details" }).click();
+  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("friend-graph-viewport")).toHaveCount(0);
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { preferences: { display: { friendsMode?: "friends" | "all_content" } } } }
+      | undefined;
+    return store?.getState().preferences.display.friendsMode === "all_content";
+  }, { timeout: 5_000 });
+
+  await lens.getByRole("button", { name: "Friends" }).click();
+  await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { preferences: { display: { friendsMode?: "friends" | "all_content" } } } }
+      | undefined;
+    return store?.getState().preferences.display.friendsMode === "friends";
+  }, { timeout: 5_000 });
+
+  await lens.getByRole("button", { name: "All content" }).click();
+  await expect(page.getByTestId("friend-graph-viewport")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
+  await page.waitForFunction(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { preferences: { display: { friendsMode?: "friends" | "all_content" } } } }
+      | undefined;
+    return store?.getState().preferences.display.friendsMode === "all_content";
+  }, { timeout: 5_000 });
+});
+
+test("Friends graph renders confirmed friends, provisional people, and channels together", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddPersons: (persons: unknown[]) => Promise<void>;
+      docAddAccounts: (accounts: unknown[]) => Promise<void>;
+      docAddRssFeed: (feed: unknown) => Promise<void>;
+      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (patch: { display: { friendsMode: "all_content"; themeId: string } }) => Promise<void>;
+        setActiveView: (view: string) => void;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddPersons([
+      {
+        id: "friend-ada",
+        name: "Ada Lovelace",
+        relationshipStatus: "friend",
+        careLevel: 5,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "friend-grace",
+        name: "Grace Hopper",
+        relationshipStatus: "friend",
+        careLevel: 4,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "connection-maya",
+        name: "Maya Angelou",
+        relationshipStatus: "connection",
+        careLevel: 2,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+    await automerge.docAddAccounts([
+      {
+        id: "social:instagram:ada-ig",
+        personId: "friend-ada",
+        kind: "social",
+        provider: "instagram",
+        externalId: "ada-ig",
+        handle: "ada",
+        displayName: "Ada Lovelace",
+        firstSeenAt: now,
+        lastSeenAt: now,
+        discoveredFrom: "captured_item",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "social:linkedin:grace-li",
+        personId: "friend-grace",
+        kind: "social",
+        provider: "linkedin",
+        externalId: "grace-li",
+        handle: "grace",
+        displayName: "Grace Hopper",
+        firstSeenAt: now,
+        lastSeenAt: now,
+        discoveredFrom: "captured_item",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "social:x:maya-x",
+        personId: "connection-maya",
+        kind: "social",
+        provider: "x",
+        externalId: "maya-x",
+        handle: "maya",
+        displayName: "Maya Angelou",
+        firstSeenAt: now,
+        lastSeenAt: now,
+        discoveredFrom: "captured_item",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "social:x:systems-paper",
+        kind: "social",
+        provider: "x",
+        externalId: "systems-paper",
+        handle: "systems-paper",
+        displayName: "Systems Journal Network",
+        firstSeenAt: now,
+        lastSeenAt: now,
+        discoveredFrom: "captured_item",
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+    await automerge.docAddRssFeed({
+      url: "https://example.com/feed.xml",
+      title: "Example Feed",
+      enabled: true,
+      trackUnread: true,
+    });
+    await automerge.docAddFeedItems([
+      {
+        globalId: "rss:example-feed:item-1",
+        platform: "rss",
+        contentType: "article",
+        capturedAt: now,
+        publishedAt: now - 60_000,
+        author: { id: "feed-author", handle: "feed-author", displayName: "Feed Author" },
+        content: { text: "Example article", mediaUrls: [], mediaTypes: [] },
+        rssSource: {
+          feedUrl: "https://example.com/feed.xml",
+          feedTitle: "Example Feed",
+        },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+      },
+    ]);
+
+    await store.getState().updatePreferences({
+      display: {
+        friendsMode: "all_content",
+        themeId: "scriptorium",
+      },
+    });
+    store.getState().setActiveView("friends");
+  });
+
+  const viewport = page.getByTestId("friend-graph-viewport");
+  await expect(viewport).toBeVisible({ timeout: 10_000 });
+  await expect.poll(async () => {
+    return viewport.evaluate((element) => ({
+      nodes: Number((element as HTMLElement).dataset.graphNodeCount ?? "0"),
+      people: Number((element as HTMLElement).dataset.graphPersonCount ?? "0"),
+      channels: Number((element as HTMLElement).dataset.graphChannelCount ?? "0"),
+      links: Number((element as HTMLElement).dataset.graphLinkCount ?? "0"),
+    }));
+  }).toEqual({
+    nodes: 8,
+    people: 3,
+    channels: 5,
+    links: 3,
+  });
+});
+
+test("dragging a channel onto a person re-links it and the graph state survives reload", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddPersons: (persons: unknown[]) => Promise<void>;
+      docAddAccounts: (accounts: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
+        setActiveView: (view: string) => void;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddPersons([
+      {
+        id: "friend-ada",
+        name: "Ada Lovelace",
+        relationshipStatus: "friend",
+        careLevel: 5,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "friend-grace",
+        name: "Grace Hopper",
+        relationshipStatus: "friend",
+        careLevel: 4,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+    await automerge.docAddAccounts([
+      {
+        id: "social:instagram:nora-ig",
+        kind: "social",
+        provider: "instagram",
+        externalId: "nora-ig",
+        handle: "nora",
+        displayName: "Nora Quinn",
+        firstSeenAt: now,
+        lastSeenAt: now,
+        discoveredFrom: "captured_item",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "social:linkedin:grace-li",
+        personId: "friend-grace",
+        kind: "social",
+        provider: "linkedin",
+        externalId: "grace-li",
+        handle: "grace",
+        displayName: "Grace Hopper",
+        firstSeenAt: now,
+        lastSeenAt: now,
+        discoveredFrom: "captured_item",
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+
+    await store.getState().updatePreferences({
+      display: {
+        friendsMode: "all_content",
+      },
+    });
+    store.getState().setActiveView("friends");
+  });
+
+  const viewport = page.getByTestId("friend-graph-viewport");
+  await expect(viewport).toBeVisible({ timeout: 10_000 });
+  await expect.poll(async () => {
+    return viewport.evaluate((element) => Number((element as HTMLElement).dataset.graphNodeCount ?? "0"));
+  }).toBeGreaterThanOrEqual(3);
+
+  const accountPoint = await graphNodeScreenPoint(page, { accountId: "social:instagram:nora-ig" });
+  const personPoint = await graphNodeScreenPoint(page, { personId: "friend-ada" });
+  expect(accountPoint).not.toBeNull();
+  expect(personPoint).not.toBeNull();
+
+  await page.mouse.move(accountPoint!.x, accountPoint!.y);
+  await page.mouse.down();
+  await page.mouse.move(personPoint!.x, personPoint!.y, { steps: 12 });
+  await page.mouse.up();
+
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            accounts: Record<string, { personId?: string }>;
+          };
+        }
+      | undefined;
+    return store?.getState().accounts["social:instagram:nora-ig"]?.personId === "friend-ada";
+  }, { timeout: 10_000 });
+
+  await page.reload();
+  await app.waitForReady();
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            accounts: Record<string, { personId?: string }>;
+          };
+        }
+      | undefined;
+    return store?.getState().accounts["social:instagram:nora-ig"]?.personId === "friend-ada";
+  }, { timeout: 10_000 });
+});
+
+test("zooming the Friends graph reveals more labels without collapsing the viewport", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddPersons: (persons: unknown[]) => Promise<void>;
+      docAddAccounts: (accounts: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
+        setActiveView: (view: string) => void;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddPersons([
+      {
+        id: "friend-ada",
+        name: "Ada Lovelace",
+        relationshipStatus: "friend",
+        careLevel: 5,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "connection-maya",
+        name: "Maya Angelou",
+        relationshipStatus: "connection",
+        careLevel: 2,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+    await automerge.docAddAccounts(
+      Array.from({ length: 10 }, (_, index) => ({
+        id: `social:instagram:dense-${index}`,
+        personId: index < 4 ? "friend-ada" : index < 7 ? "connection-maya" : undefined,
+        kind: "social",
+        provider: index % 2 === 0 ? "instagram" : "x",
+        externalId: `dense-${index}`,
+        handle: `dense-${index}`,
+        displayName: `Dense Node ${index}`,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        discoveredFrom: "captured_item",
+        createdAt: now,
+        updatedAt: now,
+      })),
+    );
+    await store.getState().updatePreferences({
+      display: {
+        friendsMode: "all_content",
+      },
+    });
+    store.getState().setActiveView("friends");
+  });
+
+  const viewport = page.getByTestId("friend-graph-viewport");
+  await expect(viewport).toBeVisible({ timeout: 10_000 });
+
+  const initial = await viewport.evaluate((element) => ({
+    labels: Number((element as HTMLElement).dataset.visibleLabelCount ?? "0"),
+    width: (element as HTMLElement).getBoundingClientRect().width,
+    height: (element as HTMLElement).getBoundingClientRect().height,
+    scale: (
+      (window as typeof window & {
+        __FREED_GRAPH_DEBUG__?: { transform: { scale: number } };
+      }).__FREED_GRAPH_DEBUG__?.transform.scale ?? 0
+    ),
+  }));
+
+  await viewport.evaluate((element) => {
+    element.dispatchEvent(new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      clientX: element.getBoundingClientRect().left + element.getBoundingClientRect().width / 2,
+      clientY: element.getBoundingClientRect().top + element.getBoundingClientRect().height / 2,
+      deltaY: -220,
+    }));
+    element.dispatchEvent(new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      clientX: element.getBoundingClientRect().left + element.getBoundingClientRect().width / 2,
+      clientY: element.getBoundingClientRect().top + element.getBoundingClientRect().height / 2,
+      deltaY: -220,
+    }));
+  });
+
+  await expect.poll(async () => {
+    return viewport.evaluate((element) => Number((element as HTMLElement).dataset.visibleLabelCount ?? "0"));
+  }).toBeGreaterThan(initial.labels);
+
+  const after = await viewport.evaluate((element) => ({
+    width: (element as HTMLElement).getBoundingClientRect().width,
+    height: (element as HTMLElement).getBoundingClientRect().height,
+    scale: (
+      (window as typeof window & {
+        __FREED_GRAPH_DEBUG__?: { transform: { scale: number } };
+      }).__FREED_GRAPH_DEBUG__?.transform.scale ?? 0
+    ),
+  }));
+  expect(after.width).toBeCloseTo(initial.width, 1);
+  expect(after.height).toBeCloseTo(initial.height, 1);
+  expect(after.scale).toBeGreaterThan(initial.scale);
+});
+
+test("stress Friends graph degrades labels during motion and avoids expensive redraws on pan", async ({ app, page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await seedStressIdentityGraph(page);
+
+  const viewport = page.getByTestId("friend-graph-viewport");
+  await expect(viewport).toBeVisible({ timeout: 15_000 });
+  await expect
+    .poll(async () => {
+      const debug = await readGraphDebug(page);
+      return {
+        nodes: debug?.nodes.length ?? 0,
+        qualityMode: debug?.qualityMode ?? "interactive",
+        visibleLabels: debug?.metrics.visibleLabelCount ?? 0,
+      };
+    }, { timeout: 30_000 })
+    .toMatchObject({
+      qualityMode: "settled",
+    });
+
+  const seededGraph = await readGraphDebug(page);
+  expect(seededGraph).not.toBeNull();
+  expect(seededGraph!.nodes.length).toBeGreaterThan(1_000);
+  expect(seededGraph!.metrics.visibleLabelCount).toBeGreaterThan(0);
+
+  const initial = await waitForGraphPerfToSettle(page);
+  expect(initial).not.toBeNull();
+  expect(initial!.metrics.modelBuildMs).toBeLessThan(500);
+  expect(initial!.metrics.layoutMs).toBeLessThan(500);
+  expect(initial!.metrics.sceneSyncMs).toBeLessThan(40);
+
+  const box = await viewport.boundingBox();
+  if (!box) {
+    throw new Error("Friends graph viewport is not visible");
+  }
+  const startX = box.x + box.width * 0.55;
+  const startY = box.y + box.height * 0.45;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + 260, startY + 70, { steps: 18 });
+
+  await expect
+    .poll(async () => (await readGraphDebug(page))?.qualityMode, { timeout: 5_000 })
+    .toBe("interactive");
+
+  const duringPan = await readGraphDebug(page);
+  expect(duringPan).not.toBeNull();
+  expect(duringPan!.metrics.visibleLabelCount).toBeLessThanOrEqual(
+    initial!.metrics.visibleLabelCount,
+  );
+  expect(duringPan!.metrics.sceneSyncMs).toBeLessThan(20);
+
+  await page.mouse.up();
+  await expect
+    .poll(async () => (await readGraphDebug(page))?.qualityMode, { timeout: 5_000 })
+    .toBe("settled");
+
+  const settled = await readGraphDebug(page);
+  expect(settled).not.toBeNull();
+  expect(settled!.metrics.visibleLabelCount).toBeGreaterThanOrEqual(
+    duringPan!.metrics.visibleLabelCount,
+  );
+
+  const zoomStart = Date.now();
+  await viewport.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    element.dispatchEvent(new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+      deltaY: -260,
+    }));
+    element.dispatchEvent(new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+      deltaY: -260,
+    }));
+  });
+  const afterZoom = await waitForGraphPerfToSettle(page, 8_000);
+  const zoomElapsedMs = Date.now() - zoomStart;
+  expect(zoomElapsedMs).toBeLessThan(1_000);
+  expect(afterZoom).not.toBeNull();
+  expect(afterZoom!.metrics.sceneSyncMs).toBeLessThan(30);
+});
+
+test("dense Friends graph stays visually structured in Scriptorium", async ({ app, page }) => {
+  test.skip(process.platform !== "darwin", "Snapshot is currently maintained for macOS Chromium.");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddPersons: (persons: unknown[]) => Promise<void>;
+      docAddAccounts: (accounts: unknown[]) => Promise<void>;
+      docAddRssFeed: (feed: unknown) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (patch: { display: { friendsMode: "all_content"; themeId: string } }) => Promise<void>;
+        setActiveView: (view: string) => void;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddPersons([
+      { id: "friend-ada", name: "Ada Lovelace", relationshipStatus: "friend", careLevel: 5, createdAt: now, updatedAt: now },
+      { id: "friend-grace", name: "Grace Hopper", relationshipStatus: "friend", careLevel: 4, createdAt: now, updatedAt: now },
+      { id: "friend-katherine", name: "Katherine Johnson", relationshipStatus: "friend", careLevel: 4, createdAt: now, updatedAt: now },
+      { id: "connection-maya", name: "Maya Angelou", relationshipStatus: "connection", careLevel: 2, createdAt: now, updatedAt: now },
+      { id: "connection-james", name: "James Baldwin", relationshipStatus: "connection", careLevel: 2, createdAt: now, updatedAt: now },
+    ]);
+    await automerge.docAddAccounts([
+      ...Array.from({ length: 6 }, (_, index) => ({
+        id: `social:instagram:ada-${index}`,
+        personId: "friend-ada",
+        kind: "social",
+        provider: index % 2 === 0 ? "instagram" : "x",
+        externalId: `ada-${index}`,
+        handle: `ada-${index}`,
+        displayName: `Ada Channel ${index}`,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        discoveredFrom: "captured_item",
+        createdAt: now,
+        updatedAt: now,
+      })),
+      ...Array.from({ length: 5 }, (_, index) => ({
+        id: `social:linkedin:grace-${index}`,
+        personId: "friend-grace",
+        kind: "social",
+        provider: index % 2 === 0 ? "linkedin" : "x",
+        externalId: `grace-${index}`,
+        handle: `grace-${index}`,
+        displayName: `Grace Channel ${index}`,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        discoveredFrom: "captured_item",
+        createdAt: now,
+        updatedAt: now,
+      })),
+      ...Array.from({ length: 4 }, (_, index) => ({
+        id: `social:instagram:maya-${index}`,
+        personId: "connection-maya",
+        kind: "social",
+        provider: index % 2 === 0 ? "instagram" : "x",
+        externalId: `maya-${index}`,
+        handle: `maya-${index}`,
+        displayName: `Maya Channel ${index}`,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        discoveredFrom: "captured_item",
+        createdAt: now,
+        updatedAt: now,
+      })),
+      ...Array.from({ length: 10 }, (_, index) => ({
+        id: `social:x:outer-${index}`,
+        kind: "social",
+        provider: index % 2 === 0 ? "x" : "instagram",
+        externalId: `outer-${index}`,
+        handle: `outer-${index}`,
+        displayName: `Outer Channel ${index}`,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        discoveredFrom: "captured_item",
+        createdAt: now,
+        updatedAt: now,
+      })),
+    ]);
+    await Promise.all(
+      Array.from({ length: 6 }, (_, index) =>
+        automerge.docAddRssFeed({
+          url: `https://example.com/feed-${index}.xml`,
+          title: `Feed ${index}`,
+          enabled: true,
+          trackUnread: true,
+        }),
+      ),
+    );
+
+    await store.getState().updatePreferences({
+      display: {
+        friendsMode: "all_content",
+        themeId: "scriptorium",
+      },
+    });
+    store.getState().setActiveView("friends");
+  });
+
+  const viewport = page.getByTestId("friend-graph-viewport");
+  await expect(viewport).toBeVisible({ timeout: 10_000 });
+  await expect.poll(async () => {
+    return viewport.evaluate((element) => Number((element as HTMLElement).dataset.graphNodeCount ?? "0"));
+  }).toBeGreaterThan(20);
+
+  await expect(viewport).toHaveScreenshot("friends-graph-dense.png");
 });
 
 // ---------------------------------------------------------------------------

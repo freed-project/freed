@@ -1,0 +1,73 @@
+{
+  "tag": "v26.4.1901-dev",
+  "version": "26.4.1901-dev",
+  "channel": "dev",
+  "dayKey": "26.4.19",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-20T03:27:10.390Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.1900-dev",
+    "previousPublishedDayTag": "v26.4.1802-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.1900-dev",
+      "v26.4.1901-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.4.1900-dev",
+      "v26.4.1901-dev"
+    ],
+    "prNumbers": [
+      239,
+      240,
+      241,
+      242,
+      243,
+      244,
+      245,
+      246,
+      247,
+      248
+    ],
+    "commitSubjects": [
+      "feat: expand friends and map identity workflows (#246)",
+      "fix: redeploy dev pwa on dev merges (#240)",
+      "feat: add tri-state source sidebar (#247)",
+      "feat: add friends lens to feed toolbar (#248)",
+      "fix: dismiss sticky tooltips after pointer activation (#245)",
+      "release: approve v26.4.1900-dev",
+      "release: v26.4.1900-dev",
+      "fix: show -dev suffix for dev build versions (#243)",
+      "fix: restore desktop toolbar dragging and back target (#244)",
+      "fix: fall back to newer production updates on dev (#241)",
+      "feat: add map timeline scrubber (#242)",
+      "fix: add native startup recovery window (#239)"
+    ]
+  },
+  "release": {
+    "deck": "Expand friends and map identity workflows, tri-state source sidebar, and Friends lens to feed toolbar",
+    "features": [
+      "Expand friends and map identity workflows",
+      "Tri-state source sidebar",
+      "Friends lens to feed toolbar"
+    ],
+    "fixes": [
+      "Redeploy dev pwa on dev merges",
+      "Dismiss sticky tooltips after pointer activation",
+      "Show -dev suffix for dev build versions",
+      "Desktop toolbar dragging and back target restored",
+      "Fall back to newer production updates on dev",
+      "Add native startup recovery window",
+      "Lets dev installs take a newer production update when no newer dev build exists, without switching release channels",
+      "Shows the `-dev` suffix consistently in desktop update surfaces and settings"
+    ],
+    "followUps": [
+      "Map timeline scrubber"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1901-dev\n\nExpand friends and map identity workflows, tri-state source sidebar, and Friends lens to feed toolbar\n\n### Features\n\n- Expand friends and map identity workflows\n- Tri-state source sidebar\n- Friends lens to feed toolbar\n\n### Fixes\n\n- Redeploy dev pwa on dev merges\n- Dismiss sticky tooltips after pointer activation\n- Show -dev suffix for dev build versions\n- Desktop toolbar dragging and back target restored\n- Fall back to newer production updates on dev\n- Add native startup recovery window\n- Lets dev installs take a newer production update when no newer dev build exists, without switching release channels\n- Shows the `-dev` suffix consistently in desktop update surfaces and settings\n\n### Follow-ups\n\n- Map timeline scrubber\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

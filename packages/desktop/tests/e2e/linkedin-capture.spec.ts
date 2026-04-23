@@ -1,4 +1,9 @@
-import { test, expect } from "./fixtures/app";
+import { test, expect, resolveViteFsModulePath } from "./fixtures/app";
+
+const CAPTURE_MODULE_PATH = resolveViteFsModulePath(
+  "../../src/lib/capture.ts",
+  import.meta.url,
+);
 
 function getDesktopSidebar(page: import("@playwright/test").Page) {
   return page.getByTestId("app-sidebar");
@@ -183,4 +188,25 @@ test("LinkedIn appears in the source sidebar when authenticated", async ({
   await expect(sidebar.getByTestId("source-indicator-linkedin")).toBeVisible({
     timeout: 3_000,
   });
+});
+
+test("browser preview skips native LinkedIn refresh instead of crashing", async ({
+  app,
+  page,
+}) => {
+  await app.goto();
+  await app.waitForReady();
+  await setLiAuthState(page, true);
+
+  await page.evaluate(() => {
+    delete (window as Record<string, unknown>).__TAURI_INTERNALS__;
+  });
+
+  await page.evaluate(async (captureModulePath) => {
+    const mod = await import(captureModulePath);
+    await mod.refreshAllFeeds();
+  }, CAPTURE_MODULE_PATH);
+
+  await expect(page.locator("main")).toBeVisible();
+  await expect(page.getByText("Freed Desktop hit a fatal error")).toHaveCount(0);
 });

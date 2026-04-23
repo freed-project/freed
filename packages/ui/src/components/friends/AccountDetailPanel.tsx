@@ -4,6 +4,7 @@ import type { Account, FeedItem, Person } from "@freed/shared";
 import { FriendAvatar } from "./FriendAvatar.js";
 import { SearchField } from "../SearchField.js";
 import type { AccountLinkSuggestion } from "../../lib/account-link-suggestions.js";
+import { accountSubtitle, accountTitle, providerLabel } from "../../lib/account-labels.js";
 
 interface AccountDetailPanelProps {
   account: Account;
@@ -15,26 +16,6 @@ interface AccountDetailPanelProps {
   onPromoteToFriend: () => void;
   onLinkToPerson: (personId: string) => void;
   onOpenPerson: (personId: string) => void;
-}
-
-function providerLabel(provider: Account["provider"]): string {
-  if (provider === "x") return "X";
-  if (provider === "google_contacts") return "Google Contacts";
-  if (provider === "macos_contacts") return "Contacts";
-  if (provider === "ios_contacts") return "Contacts";
-  if (provider === "android_contacts") return "Contacts";
-  if (provider === "web_contact") return "Manual contact";
-  return provider.charAt(0).toUpperCase() + provider.slice(1);
-}
-
-function accountTitle(account: Account): string {
-  return account.displayName ?? account.handle ?? account.externalId;
-}
-
-function accountSubtitle(account: Account): string {
-  if (account.handle?.trim()) return account.handle;
-  if (account.displayName?.trim()) return account.externalId;
-  return providerLabel(account.provider);
 }
 
 function itemSnippet(item: FeedItem): string {
@@ -63,7 +44,7 @@ export function AccountDetailPanel({
   );
   const filteredPersons = useMemo(() => {
     const normalized = searchQuery.trim().toLowerCase();
-    const next = persons.filter((person) => person.relationshipStatus === "friend");
+    const next = persons;
     if (!normalized) return next;
     return next.filter((person) => {
       return (
@@ -111,7 +92,7 @@ export function AccountDetailPanel({
             onClick={() => onOpenPerson(linkedPerson.id)}
             className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
           >
-            Open friend
+            Open identity
           </button>
         )}
       </div>

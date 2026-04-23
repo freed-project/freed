@@ -54,6 +54,7 @@
     "date-fns": "^4.1.0",
     "maplibre-gl": "^5.11.0",
     "minisearch": "^7.2.0",
+    "pixi.js": "^8.18.1",
     "zustand": "^5.0.3"
   },
   "devDependencies": {
