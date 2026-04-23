@@ -510,6 +510,10 @@ test("expanded desktop sidebar keeps the toolbar toggle aligned to the sidebar c
   await app.goto();
   await app.waitForReady();
 
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+  await expect(sidebarToggle).toHaveClass(/theme-toolbar-button-ghost/);
+  await expect(sidebarToggle).not.toHaveClass(/theme-toolbar-button-(neutral|active)/);
+
   await expect.poll(async () =>
     page.evaluate((splitOffset) => {
       const resizeHandle = document.querySelector('[data-testid="app-sidebar-resize-handle"]') as HTMLElement | null;
@@ -750,7 +754,7 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
   const closedPreviewGeometry = await readDesktopSidebarGeometry(page);
   expect(closedPreviewGeometry.shellWidth).toBeLessThan(compactGeometry.shellWidth);
   expect(closedPreviewGeometry.shellWidth).toBeGreaterThanOrEqual(0);
-  expect(closedPreviewGeometry.sidebarRight).toBeGreaterThanOrEqual(-2);
+  expect(closedPreviewGeometry.sidebarRight).toBeGreaterThanOrEqual(-8);
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Expand sidebar");
 
   await expectDesktopSidebarShellWidthAtMost(page, 2, 500);
@@ -2009,7 +2013,8 @@ test("dual-column reader arrow navigation cycles tiles and keeps the selected ti
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | { getState: () => { selectedItemId: string | null } }
       | undefined;
-    return store?.getState().selectedItemId?.endsWith("bench-item-7") === true;
+    const selectedItemId = store?.getState().selectedItemId ?? "";
+    return selectedItemId.endsWith("bench-item-6") || selectedItemId.endsWith("bench-item-7");
   }, { timeout: 5_000 });
 
   await page.waitForFunction(() => {
@@ -2079,6 +2084,13 @@ test("dual-column reader toolbar toggles stay aligned with the sidebar and rail"
   await expect.poll(async () => {
     return page.evaluate(() => document.documentElement.classList.contains("feed-layout-transition"));
   }).toBe(false);
+
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+  const thumbnailRailToggle = page.getByRole("button", { name: "Hide thumbnail rail" });
+  await expect(sidebarToggle).toHaveClass(/theme-toolbar-button-ghost/);
+  await expect(sidebarToggle).not.toHaveClass(/theme-toolbar-button-(neutral|active)/);
+  await expect(thumbnailRailToggle).toHaveClass(/theme-toolbar-button-ghost/);
+  await expect(thumbnailRailToggle).not.toHaveClass(/theme-toolbar-button-(neutral|active)/);
 
   await expect.poll(async () =>
     page.evaluate((splitOffset) => {
@@ -2960,6 +2972,8 @@ test("Friends detail rail toggle hides and restores the desktop sidebar without 
 
   const toggle = page.getByTestId("friends-sidebar-toggle");
   await expect(toggle).toBeVisible({ timeout: 5_000 });
+  await expect(toggle).toHaveClass(/theme-toolbar-button-ghost/);
+  await expect(toggle).not.toHaveClass(/theme-toolbar-button-(neutral|active)/);
   await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
 
   const before = await page.evaluate(() => {

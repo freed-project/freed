@@ -526,11 +526,7 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
             <Tooltip label={dualColumn ? "Single column" : "Dual column"}>
               <button
                 onClick={toggleDualColumn}
-                className={`hidden md:flex p-2 rounded-lg transition-colors ${
-                  dualColumn
-                    ? "theme-accent-button"
-                    : "theme-subtle-button hover:bg-[var(--theme-bg-muted)]"
-                }`}
+                className="theme-toolbar-button-ghost hidden rounded-lg p-2 md:flex"
                 style={headerDragRegion ? noDrag : undefined}
                 aria-pressed={dualColumn}
                 aria-label="Toggle dual column layout"

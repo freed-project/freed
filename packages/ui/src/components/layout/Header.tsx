@@ -67,6 +67,8 @@ const toolbarControlStyle = { ...noDrag, userSelect: "none" } as CSSProperties;
 const TOOLBAR_DRAG_THRESHOLD_PX = 6;
 const TOOLBAR_ICON_BUTTON_CLASS =
   "theme-toolbar-icon-button rounded-lg";
+const TOOLBAR_LAYOUT_TOGGLE_BUTTON_CLASS =
+  `${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-ghost`;
 const LAYOUT_CONTROL_BUTTON_SIZE_PX = 40;
 const LAYOUT_CONTROL_BUTTON_GAP_PX = 8;
 const LAYOUT_CONTROL_PAIR_WIDTH_PX =
@@ -846,7 +848,7 @@ export function Header({
                       onClick={onDesktopSidebarToggle}
                       {...getToolbarControlProps()}
                       data-testid="desktop-sidebar-toggle"
-                      className={`${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-neutral`}
+                      className={TOOLBAR_LAYOUT_TOGGLE_BUTTON_CLASS}
                       aria-label={visibleDesktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
                     >
                       {visibleDesktopSidebarMode === "closed" ? (
@@ -864,11 +866,7 @@ export function Header({
                       <button
                         onClick={handleToggleDualColumn}
                         {...getToolbarControlProps()}
-                        className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                          display.reading.dualColumnMode
-                            ? "theme-toolbar-button-active"
-                            : "theme-toolbar-button-neutral"
-                        }`}
+                        className={TOOLBAR_LAYOUT_TOGGLE_BUTTON_CLASS}
                         aria-pressed={display.reading.dualColumnMode}
                         aria-label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
                       >
@@ -1211,11 +1209,7 @@ export function Header({
                         onClick={onFriendsSidebarToggle}
                         {...getToolbarControlProps()}
                         data-testid="friends-sidebar-toggle"
-                        className={`rounded-lg p-2 ${
-                          friendsSidebarOpen
-                            ? "theme-toolbar-button-active"
-                            : "theme-toolbar-button-neutral"
-                        }`}
+                        className="theme-toolbar-button-ghost rounded-lg p-2"
                         aria-pressed={friendsSidebarOpen}
                         aria-label={friendsSidebarOpen ? "Hide details" : "Show details"}
                       >
