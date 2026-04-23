@@ -1,0 +1,51 @@
+{
+  "tag": "v26.4.1501-dev",
+  "version": "26.4.1501-dev",
+  "channel": "dev",
+  "dayKey": "26.4.15",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-15T20:14:03.580Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.1500-dev",
+    "previousPublishedDayTag": "v26.4.1403-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.1500-dev",
+      "v26.4.1501-dev"
+    ],
+    "prNumbers": [
+      214,
+      217,
+      218
+    ],
+    "commitSubjects": [
+      "fix: tighten Vercel git deployment routing",
+      "feat: add explicit www release flow",
+      "fix: relax reader toolbar alignment check (#218)",
+      "fix: stabilize map popup action test (#217)",
+      "release: approve v26.4.1500-dev",
+      "release: v26.4.1500-dev",
+      "fix: stabilize crash reporting and WebKit recovery (#214)",
+      "fix: stabilize map popup smoke test",
+      "fix: harden desktop smoke alignment checks",
+      "fix: align reader rail toolbar slot"
+    ]
+  },
+  "release": {
+    "deck": "Explicit website release flow and stability fixes for recovery and UI checks",
+    "features": [
+      "Explicit website release flow"
+    ],
+    "fixes": [
+      "Crash reports now keep cleaner diagnostic state",
+      "Map popup smoke tests and reader rail alignment checks are steadier",
+      "Crash reporting and WebKit recovery are now more stable"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1501-dev\n\nExplicit website release flow and stability fixes for recovery and UI checks\n\n### Features\n\n- Explicit website release flow\n\n### Fixes\n\n- Crash reports now keep cleaner diagnostic state\n- Map popup smoke tests and reader rail alignment checks are steadier\n- Crash reporting and WebKit recovery are now more stable\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

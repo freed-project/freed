@@ -1,0 +1,86 @@
+{
+  "tag": "v26.4.2002-dev",
+  "version": "26.4.2002-dev",
+  "channel": "dev",
+  "dayKey": "26.4.20",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-21T03:45:13.271Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.2001-dev",
+    "previousPublishedDayTag": "v26.4.1901-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.2001-dev",
+      "v26.4.2002-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.4.2001-dev",
+      "v26.4.2002-dev"
+    ],
+    "prNumbers": [
+      253,
+      254,
+      255,
+      256,
+      258,
+      260,
+      261,
+      262,
+      263,
+      265,
+      266,
+      267,
+      268,
+      269,
+      270,
+      271
+    ],
+    "commitSubjects": [
+      "fix: dedupe facebook and instagram cross-posts (#271)",
+      "feat: add pwa install prompt flow (#270)",
+      "fix: stop desktop dev launch crash and clean recovery dialog (#269)",
+      "release: approve v26.4.2001-dev",
+      "release: v26.4.2001-dev",
+      "fix: serialize release asset uploads (#268)",
+      "release: approve v26.4.2000-dev",
+      "release: v26.4.2000-dev",
+      "fix: restore dev release CI (#267)",
+      "fix: refine settings section jump alignment (#266)",
+      "fix: reset preview banners to bottom center on load (#265)",
+      "fix: harden build fanout and swarm worktree setup (#263)",
+      "fix: harden worktree helper flow (#261)",
+      "fix: polish unified toolbar and restore map timeline (#255)",
+      "fix: harden helper session workflow (#260)",
+      "fix: keep installed version stable across release channels (#262)",
+      "fix: polish mobile settings navigation",
+      "fix: harden worktree build and publish flow (#253)",
+      "fix: load PWA map assets through Vite (#258)",
+      "fix: align pwa map navigation tests (#256)",
+      "fix: align masked workspace edges (#254)",
+      "fix: refine live theme preview interactions"
+    ]
+  },
+  "release": {
+    "deck": "This dev build improves install flow and tightens startup, capture, and release stability.",
+    "features": [
+      "PWA install prompt flow"
+    ],
+    "fixes": [
+      "Stop the desktop dev launch crash and clean up the recovery dialog",
+      "Dedupe Facebook and Instagram cross-posts",
+      "Reset preview banners to bottom center on load",
+      "Harden build fanout and swarm worktree setup",
+      "Keep installed version stable across release channels",
+      "Polish mobile settings navigation",
+      "Refine live theme preview interactions"
+    ],
+    "followUps": [
+      "Refine settings section jump alignment, harden worktree helper flow, and harden helper session workflow"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2002-dev\n\nThis dev build improves install flow and tightens startup, capture, and release stability.\n\n### Features\n\n- PWA install prompt flow\n\n### Fixes\n\n- Stop the desktop dev launch crash and clean up the recovery dialog\n- Dedupe Facebook and Instagram cross-posts\n- Reset preview banners to bottom center on load\n- Harden build fanout and swarm worktree setup\n- Keep installed version stable across release channels\n- Polish mobile settings navigation\n- Refine live theme preview interactions\n\n### Follow-ups\n\n- Refine settings section jump alignment, harden worktree helper flow, and harden helper session workflow\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

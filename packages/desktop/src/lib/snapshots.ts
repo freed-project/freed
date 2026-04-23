@@ -372,6 +372,9 @@ export function subscribeToSnapshots(listener: () => void): () => void {
 }
 
 export async function startSnapshotManager(): Promise<void> {
+  if (!isTauri()) {
+    return;
+  }
   if (snapshotManagerStarted) {
     return;
   }

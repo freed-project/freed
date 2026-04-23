@@ -31,6 +31,7 @@ import {
   EXPANDED_SIDEBAR_CONDENSED_PADDING_PX,
   EXPANDED_SIDEBAR_PADDING_CROSSOVER_WIDTH_PX,
   EXPANDED_SIDEBAR_ROOMY_PADDING_PX,
+  FRIENDS_SIDEBAR_GAP_WIDTH_PX,
   MAX_PRIMARY_SIDEBAR_WIDTH_PX,
   NARROW_LABELED_SIDEBAR_THRESHOLD_PX,
   PRIMARY_SIDEBAR_GAP_WIDTH_PX,
@@ -538,6 +539,10 @@ export function Sidebar({
 
   const rawDesktopWidth = dragWidth
     ?? (desktopMode === "compact" ? COMPACT_WIDTH : desktopMode === "closed" ? 0 : committedWidth);
+  const effectiveGapWidthPx =
+    activeView === "friends"
+      ? FRIENDS_SIDEBAR_GAP_WIDTH_PX
+      : PRIMARY_SIDEBAR_GAP_WIDTH_PX;
   const renderMode: SidebarMode = isMobileDevice
     ? "expanded"
     : forceCompactDesktopRail
@@ -581,14 +586,14 @@ export function Sidebar({
   };
   const desktopShellWidth = renderMode === "closed"
     ? 0
-    : desktopWidth + PRIMARY_SIDEBAR_GAP_WIDTH_PX;
+    : desktopWidth + effectiveGapWidthPx;
   const desktopShellTopPadding = renderMode !== "closed" || closedPreviewActive
     ? "var(--feed-card-gap, 8px)"
     : 0;
   const sidebarHandleCenterlinePx =
     renderMode === "closed" && !closedPreviewActive
-      ? PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2
-      : rawDesktopWidth + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
+      ? effectiveGapWidthPx / 2
+      : rawDesktopWidth + effectiveGapWidthPx / 2;
   const desktopAsideWidth = desktopWidth;
   const desktopAsideRenderedWidth = closedPreviewActive ? COMPACT_WIDTH : desktopAsideWidth;
   const compactSidebar = compactRail;
@@ -607,7 +612,7 @@ export function Sidebar({
       ? "width 180ms ease, transform 180ms ease, opacity 160ms ease"
       : "width 220ms ease, transform 220ms ease, opacity 180ms ease";
   const desktopAsideTransform = renderMode === "closed"
-    ? `translateX(calc(-100% - ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)}))`
+    ? `translateX(calc(-100% - ${px(effectiveGapWidthPx)}))`
     : "translateX(0)";
   const resizeHandleVisible = !forceCompactDesktopRail && (dragWidth !== null || renderMode !== "closed");
 

@@ -17,6 +17,11 @@ Freed release notes now use a hybrid flow:
 - Dev tags use `YY.M.DDBUILD-dev`, for example `26.4.1204-dev`
 - Release artifacts now include a top-level `channel` field so workflows can publish dev builds as prereleases
 
+Dev app package versions stay numeric even when the tag has `-dev`. For
+example, `v26.4.1204-dev` writes `26.4.1204` into Desktop and PWA package
+files. Windows MSI requires numeric installer versions, so channel detection
+must use the tag and checked-in release artifact.
+
 The release workflow only publishes notes from an approved checked-in release
 artifact. GitHub Actions does not write final release prose on its own.
 
@@ -83,9 +88,19 @@ Freed Desktop update prompts use the deck line only. They do not render bullet l
 
 - `OPENAI_API_KEY`: optional, used to generate stronger draft notes
 - `OPENAI_RELEASE_NOTES_MODEL`: optional, defaults to `gpt-5.4`
+- `OPENAI_RELEASE_NOTES_TIMEOUT_MS`: optional, defaults to `20000`
+- `RELEASE_NOTES_GITHUB_TIMEOUT_MS`: optional, defaults to `15000`
+- `RELEASE_NOTES_MAX_PR_DETAILS`: optional, defaults to `60`
 
 If no OpenAI key is present, the generator falls back to deterministic
 heuristics so the workflow still works.
+
+If the OpenAI draft call times out, the generator logs the timeout and falls
+back to deterministic heuristics instead of wedging the release prep step.
+
+When a release spans more PRs than `RELEASE_NOTES_MAX_PR_DETAILS`, the
+generator uses commit subjects instead of fetching every PR body. This keeps
+first-release and first-dev-channel prep from crawling through old history.
 
 ## Historical regeneration
 

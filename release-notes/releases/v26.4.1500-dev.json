@@ -1,0 +1,39 @@
+{
+  "tag": "v26.4.1500-dev",
+  "version": "26.4.1500-dev",
+  "channel": "dev",
+  "dayKey": "26.4.15",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-15T16:16:50.600Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.1403-dev",
+    "previousPublishedDayTag": "v26.4.1403-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.1500-dev"
+    ],
+    "prNumbers": [
+      214
+    ],
+    "commitSubjects": [
+      "fix: stabilize crash reporting and WebKit recovery (#214)",
+      "fix: stabilize map popup smoke test",
+      "fix: harden desktop smoke alignment checks",
+      "fix: align reader rail toolbar slot"
+    ]
+  },
+  "release": {
+    "deck": "Stability fixes for recovery and UI checks",
+    "features": [],
+    "fixes": [
+      "Crash reports now keep cleaner diagnostic state",
+      "Map popup smoke tests and reader rail alignment checks are steadier"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.1500-dev\n\nStability fixes for recovery and UI checks\n\n### Fixes\n\n- Crash reports now keep cleaner diagnostic state\n- Map popup smoke tests and reader rail alignment checks are steadier\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
