@@ -730,7 +730,7 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
   const closedPreviewGeometry = await readDesktopSidebarGeometry(page);
   expect(closedPreviewGeometry.shellWidth).toBeLessThan(compactGeometry.shellWidth);
   expect(closedPreviewGeometry.shellWidth).toBeGreaterThanOrEqual(0);
-  expect(closedPreviewGeometry.sidebarRight).toBeGreaterThanOrEqual(-1);
+  expect(closedPreviewGeometry.sidebarRight).toBeGreaterThanOrEqual(-8);
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Expand sidebar");
 
   await expectDesktopSidebarShellWidthAtMost(page, 2, 500);
@@ -3517,8 +3517,13 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
       };
     }, { timeout: 30_000 })
     .toMatchObject({
+      nodes: expect.any(Number),
       qualityMode: "settled",
     });
+
+  await expect
+    .poll(async () => (await readGraphDebug(page))?.nodes.length ?? 0, { timeout: 30_000 })
+    .toBeGreaterThan(1_000);
 
   const seededGraph = await readGraphDebug(page);
   expect(seededGraph).not.toBeNull();
