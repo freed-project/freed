@@ -1897,10 +1897,27 @@ test("source rows swap counts for an actions menu on hover", async ({ app, page 
   await page.evaluate(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
+      getState: () => {
+        preferences: {
+          display: {
+            sidebarMode?: string;
+            sidebarWidth?: number;
+          };
+        };
+      };
       setState: (partial: Record<string, unknown>) => void;
     };
+    const current = store.getState();
 
     store.setState({
+      preferences: {
+        ...current.preferences,
+        display: {
+          ...current.preferences.display,
+          sidebarMode: "expanded",
+          sidebarWidth: 256,
+        },
+      },
       xAuth: {
         isAuthenticated: true,
         cookies: { ct0: "ct0", authToken: "token" },
