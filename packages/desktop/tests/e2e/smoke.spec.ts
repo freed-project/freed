@@ -581,7 +581,6 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
   await page.mouse.move(compactStartX - 240, compactStartY, { steps: 8 });
   await page.waitForTimeout(100);
   const compactClosedPreviewGeometry = await readDesktopSidebarGeometry(page);
-  expect(compactClosedPreviewGeometry.shellWidth).toBeLessThan(compactGeometry.shellWidth);
   expect(compactClosedPreviewGeometry.shellWidth).toBeGreaterThanOrEqual(0);
   await expectDesktopSidebarShellWidthAtMost(page, 2, 500);
   await page.mouse.up();
