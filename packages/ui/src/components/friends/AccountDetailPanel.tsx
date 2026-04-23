@@ -37,6 +37,10 @@ export function AccountDetailPanel({
   onOpenPerson,
 }: AccountDetailPanelProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const confirmedLinkedPerson = linkedPerson?.relationshipStatus === "friend" ? linkedPerson : null;
+  const provisionalLinkedPerson = linkedPerson && linkedPerson.relationshipStatus !== "friend"
+    ? linkedPerson
+    : null;
 
   const suggestionIds = useMemo(
     () => new Set(suggestions.map((suggestion) => suggestion.personId)),
@@ -44,7 +48,7 @@ export function AccountDetailPanel({
   );
   const filteredPersons = useMemo(() => {
     const normalized = searchQuery.trim().toLowerCase();
-    const next = persons;
+    const next = persons.filter((person) => person.relationshipStatus === "friend");
     if (!normalized) return next;
     return next.filter((person) => {
       return (
@@ -78,7 +82,7 @@ export function AccountDetailPanel({
             </p>
           </div>
         </div>
-        {!linkedPerson ? (
+        {!confirmedLinkedPerson ? (
           <button
             type="button"
             onClick={onPromoteToFriend}
@@ -89,7 +93,7 @@ export function AccountDetailPanel({
         ) : (
           <button
             type="button"
-            onClick={() => onOpenPerson(linkedPerson.id)}
+            onClick={() => onOpenPerson(confirmedLinkedPerson.id)}
             className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
           >
             Open identity
@@ -116,9 +120,13 @@ export function AccountDetailPanel({
             <p className="mt-1 text-sm text-[color:var(--theme-text-muted)]">
               {accountSubtitle(account)}
             </p>
-            {linkedPerson ? (
+            {confirmedLinkedPerson ? (
               <p className="mt-2 text-xs text-[color:var(--theme-accent-secondary)]">
-                Linked to {linkedPerson.name}
+                Linked to {confirmedLinkedPerson.name}
+              </p>
+            ) : provisionalLinkedPerson ? (
+              <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
+                Linked to provisional identity {provisionalLinkedPerson.name}
               </p>
             ) : (
               <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
@@ -139,7 +147,7 @@ export function AccountDetailPanel({
         </div>
       </div>
 
-      {!linkedPerson ? (
+      {!confirmedLinkedPerson ? (
         <>
           {suggestions.length > 0 ? (
             <div className="theme-dialog-divider border-b px-4 py-4">

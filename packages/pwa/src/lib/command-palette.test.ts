@@ -215,6 +215,10 @@ function createTestStore(overrides: Partial<BaseAppState> = {}) {
     addAccounts: overrides.addAccounts ?? noopAsync,
     updateAccount: overrides.updateAccount ?? noopAsync,
     removeAccount: overrides.removeAccount ?? noopAsync,
+    linkAccountToPerson: overrides.linkAccountToPerson ?? noopAsync,
+    createConnectionPersonFromAccounts:
+      overrides.createConnectionPersonFromAccounts
+      ?? (async () => "connection-person-id"),
     updatePreferences: overrides.updatePreferences ?? noopAsync,
     setFilter: overrides.setFilter ?? ((filter: FilterOptions) => set({ activeFilter: filter })),
     setSelectedItem: overrides.setSelectedItem ?? ((id: string | null) => set({ selectedItemId: id })),
