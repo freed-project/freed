@@ -3,7 +3,7 @@
   "version": "26.4.2301",
   "channel": "production",
   "dayKey": "26.4.23",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-23T16:57:19.312Z",
   "model": "heuristic",
@@ -37,10 +37,19 @@
     ]
   },
   "release": {
-    "deck": "Promote dev into main for production release and stop release workflow deploying website",
-    "features": [],
-    "fixes": [],
-    "followUps": []
+    "deck": "This build ships the new Friends graph workspace and hardens desktop preview, diagnostics, and graph performance.",
+    "features": [
+      "Pixi WebGL Friends graph with linked people, channels, and feeds",
+      "Desktop details rail controls and a mobile Details mode for the Friends workspace"
+    ],
+    "fixes": [
+      "Smoother pan and pinch behavior with cleaner four-edge vignette feathering in the Friends graph",
+      "Browser preview no longer crashes on native-only snapshot, LinkedIn, and capture paths",
+      "Crash report exports now label and gate public-safe versus private bundles correctly"
+    ],
+    "followUps": [
+      "Promote dev into main before production release and stop the desktop release workflow from deploying the website"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2301\n\nPromote dev into main for production release and stop release workflow deploying website\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2301\n\nThis build ships the new Friends graph workspace and hardens desktop preview, diagnostics, and graph performance.\n\n### Features\n\n- Pixi WebGL Friends graph with linked people, channels, and feeds\n- Desktop details rail controls and a mobile Details mode for the Friends workspace\n\n### Fixes\n\n- Smoother pan and pinch behavior with cleaner four-edge vignette feathering in the Friends graph\n- Browser preview no longer crashes on native-only snapshot, LinkedIn, and capture paths\n- Crash report exports now label and gate public-safe versus private bundles correctly\n\n### Follow-ups\n\n- Promote dev into main before production release and stop the desktop release workflow from deploying the website\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
