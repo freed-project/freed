@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./browser": "./src/browser.ts",
+    "./normalize": "./src/normalize.ts",
     "./import-markdown": "./src/import-markdown.ts",
     "./export-markdown": "./src/export-markdown.ts"
   },

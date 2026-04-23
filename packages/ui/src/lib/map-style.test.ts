@@ -15,7 +15,10 @@ const STYLE_FIXTURE = {
     { id: "highway_major_inner", type: "line", paint: { "line-color": "#fff" } },
     { id: "boundary_2", type: "line", paint: { "line-color": "#fff" } },
     { id: "waterway", type: "line", paint: { "line-color": "#fff" } },
+    { id: "waterway_line_label", type: "symbol", paint: { "text-color": "#fff", "text-halo-color": "#000" } },
     { id: "water_name_line_label", type: "symbol", paint: { "text-color": "#fff", "text-halo-color": "#000" } },
+    { id: "highway-name-major", type: "symbol", paint: { "text-color": "#fff", "text-halo-color": "#000" } },
+    { id: "road_shield_us", type: "symbol", paint: { "text-color": "#fff", "text-halo-color": "#000" } },
     { id: "label_city", type: "symbol", paint: { "text-color": "#fff", "text-halo-color": "#000" } },
     { id: "label_state", type: "symbol", paint: { "text-color": "#fff", "text-halo-color": "#000" } },
     { id: "airport", type: "symbol", paint: { "text-color": "#fff", "text-halo-color": "#000" } },
@@ -66,7 +69,10 @@ describe("buildThemedMapStyle", () => {
       expect(layerPaint(style, "highway_major_inner")["line-color"]).toBe(palette.roadsMajor);
       expect(layerPaint(style, "boundary_2")["line-color"]).toBe(palette.boundary);
       expect(layerPaint(style, "waterway")["line-color"]).toBe(palette.labelWater);
+      expect(layerPaint(style, "waterway_line_label")["text-color"]).toBe(palette.labelWater);
       expect(layerPaint(style, "water_name_line_label")["text-color"]).toBe(palette.labelWater);
+      expect(layerPaint(style, "highway-name-major")["text-color"]).toBe(palette.labelSoft);
+      expect(layerPaint(style, "road_shield_us")["line-color"]).toBeUndefined();
       expect(layerPaint(style, "label_city")["text-color"]).toBe(palette.labelStrong);
       expect(layerPaint(style, "label_state")["text-color"]).toBe(palette.labelSoft);
       expect(layerPaint(style, "airport")["text-color"]).toBe(palette.labelStrong);
@@ -74,5 +80,17 @@ describe("buildThemedMapStyle", () => {
     }
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not attach line paint to symbol layers that only share road-like ids", async () => {
+    const fetchMock = vi.fn(async () => responseWithStyle());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { buildThemedMapStyle } = await loadBuilder();
+    const style = await buildThemedMapStyle("neon");
+
+    expect(layerPaint(style, "waterway_line_label")["line-color"]).toBeUndefined();
+    expect(layerPaint(style, "highway-name-major")["line-color"]).toBeUndefined();
+    expect(layerPaint(style, "road_shield_us")["line-color"]).toBeUndefined();
   });
 });

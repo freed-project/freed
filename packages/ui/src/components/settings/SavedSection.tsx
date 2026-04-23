@@ -161,22 +161,8 @@ function OverviewPane() {
     [items],
   );
 
-  if (savedItems.length === 0) {
-    return (
-      <div className="text-center py-8">
-        <p className="text-sm text-[var(--theme-text-muted)]">No saved items yet.</p>
-        <p className="mt-1 text-xs text-[var(--theme-text-soft)]">Save a URL to get started.</p>
-      </div>
-    );
-  }
-
   const dailyBuckets = useMemo(() => buildDailyBuckets(savedItems), [savedItems]);
   const hourlyBuckets = useMemo(() => buildHourlyBuckets(savedItems), [savedItems]);
-  const activeBuckets = selectedRange === "hourly" ? hourlyBuckets : dailyBuckets;
-  const rangeLabel = selectedRange === "hourly" ? "24h" : "7d";
-  const savedInRange = activeBuckets.reduce((sum, bucket) => sum + bucket.itemsSeen, 0);
-  const latestSavedAt = getSavedTimestamp(savedItems[0]);
-
   const topSources = useMemo(() => {
     const sourceCounts = new Map<string, number>();
     for (const item of savedItems) {
@@ -197,6 +183,19 @@ function OverviewPane() {
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }, [savedItems]);
 
+  if (savedItems.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-sm text-[var(--theme-text-muted)]">No saved items yet.</p>
+        <p className="mt-1 text-xs text-[var(--theme-text-soft)]">Save a URL to get started.</p>
+      </div>
+    );
+  }
+
+  const activeBuckets = selectedRange === "hourly" ? hourlyBuckets : dailyBuckets;
+  const rangeLabel = selectedRange === "hourly" ? "24h" : "7d";
+  const savedInRange = activeBuckets.reduce((sum, bucket) => sum + bucket.itemsSeen, 0);
+  const latestSavedAt = getSavedTimestamp(savedItems[0]);
   const sourceCount = topSources.length;
   const maxSourceCount = Math.max(...topSources.map(([, count]) => count), 1);
 

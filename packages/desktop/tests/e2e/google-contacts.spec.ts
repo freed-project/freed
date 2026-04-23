@@ -80,13 +80,13 @@ async function injectFriend(page: import("@playwright/test").Page, friendName: s
   await page.evaluate(async (friendName) => {
     const w = window as Record<string, unknown>;
     const automerge = w.__FREED_AUTOMERGE__ as {
-      docAddFriend: (friend: unknown) => Promise<void>;
+      docAddPerson: (person: unknown) => Promise<void>;
     };
     const now = Date.now();
-    await automerge.docAddFriend({
+    await automerge.docAddPerson({
       id: `friend:${friendName}`,
       name: friendName,
-      sources: [],
+      relationshipStatus: "friend",
       careLevel: 3,
       createdAt: now,
       updatedAt: now,
@@ -107,7 +107,7 @@ test("Google Contacts appears in Settings > Sources", async ({ app }) => {
   await expect(section.getByRole("button", { name: "Review Matches" })).toBeVisible();
 });
 
-test("high-confidence existing friend matches auto-link on sync", async ({ app }) => {
+test("high-confidence existing friend matches stay in review until confirmed", async ({ app }) => {
   await seedGoogleToken(app.page);
   await mockGoogleContacts(app.page, [
     {
@@ -126,16 +126,26 @@ test("high-confidence existing friend matches auto-link on sync", async ({ app }
 
   await app.page.waitForFunction(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-      getState: () => { friends: Record<string, { contact?: { importedFrom?: string } }> };
+      getState: () => {
+        pendingMatchCount: number;
+        friends: Record<string, unknown>;
+        accounts: Record<string, { kind: string; provider: string }>;
+      };
     };
-    const friend = Object.values(store.getState().friends)[0];
-    return friend?.contact?.importedFrom === "google";
+    const state = store.getState();
+    const googleContactAccounts = Object.values(state.accounts).filter(
+      (account) => account.kind === "contact" && account.provider === "google_contacts"
+    );
+    return state.pendingMatchCount === 1 && Object.keys(state.friends).length === 1 && googleContactAccounts.length === 0;
   });
 
-  await expect(section.getByText("Auto-linked")).toBeVisible();
+  await section.getByRole("button", { name: "Review Matches" }).click();
+  await expect(app.page.getByText("Suggestions (1)")).toBeVisible();
+  await expect(app.page.getByText("Jane Doe")).toBeVisible();
+  await expect(app.page.getByRole("button", { name: "Confirm" })).toBeVisible();
 });
 
-test("high-confidence unlinked author matches auto-create a friend on sync", async ({ app }) => {
+test("high-confidence unlinked author matches stay in review until confirmed", async ({ app }) => {
   await seedGoogleToken(app.page);
   await mockGoogleContacts(app.page, [
     {
@@ -153,12 +163,19 @@ test("high-confidence unlinked author matches auto-create a friend on sync", asy
 
   await app.page.waitForFunction(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as {
-      getState: () => { friends: Record<string, { name: string; sources: Array<{ authorId: string }> }> };
+      getState: () => {
+        pendingMatchCount: number;
+        friends: Record<string, unknown>;
+      };
     };
-    return Object.values(store.getState().friends).some(
-      (friend) => friend.name === "Robin Quinn" && friend.sources.some((source) => source.authorId === "author:Robin Quinn"),
-    );
+    const state = store.getState();
+    return state.pendingMatchCount === 1 && Object.keys(state.friends).length === 0;
   });
+
+  await section.getByRole("button", { name: "Review Matches" }).click();
+  await expect(app.page.getByText("Suggestions (1)")).toBeVisible();
+  await expect(app.page.getByText("Contact may match one or more captured social accounts.")).toBeVisible();
+  await expect(app.page.getByRole("button", { name: "Confirm" })).toBeVisible();
 });
 
 test("medium-confidence handle matches stay in manual review", async ({ app }) => {

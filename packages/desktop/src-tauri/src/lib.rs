@@ -8,9 +8,11 @@ use log::{error, info, warn};
 use rand::RngCore;
 use std::collections::HashSet;
 use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock as StdRwLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{Menu, MenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Listener, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -28,6 +30,8 @@ use tokio_tungstenite::{
 #[cfg(target_os = "macos")]
 use objc2::rc::Retained;
 #[cfg(target_os = "macos")]
+use objc2::{msg_send, runtime::AnyObject};
+#[cfg(target_os = "macos")]
 use objc2_foundation::{ns_string, MainThreadMarker, NSObjectNSKeyValueCoding, NSString};
 #[cfg(target_os = "macos")]
 use objc2_web_kit::WKWebViewConfiguration;
@@ -35,6 +39,8 @@ use objc2_web_kit::WKWebViewConfiguration;
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
 const DEFAULT_SYNC_RELAY_PORT: u16 = 8765;
+const PRIMARY_MENU_ITEM_SHOW: &str = "show";
+const PRIMARY_MENU_ITEM_QUIT: &str = "quit";
 
 fn sync_relay_port() -> u16 {
     std::env::var("FREED_SYNC_PORT")
@@ -46,6 +52,10 @@ fn sync_relay_port() -> u16 {
 
 const DEFAULT_WEBKIT_SAFARI_UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
+const SOCIAL_SCRAPER_WINDOW_LABELS: [&str; 3] = ["fb-scraper", "ig-scraper", "li-scraper"];
+const STARTUP_RECOVERY_STATE_FILE: &str = "startup-recovery.json";
+const RECOVERY_WINDOW_LABEL: &str = "startup-recovery";
+const RECOVERY_WINDOW_ROUTE: &str = "startup-recovery.html";
 const ENABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
     (function() {
         var token = "__freed_background_scraper__";
@@ -159,6 +169,12 @@ fn recycle_webview_window(app: &tauri::AppHandle, label: &str, reason: &str) {
                 label, reason, error
             ),
         }
+    }
+}
+
+fn recycle_social_scraper_windows(app: &tauri::AppHandle, reason: &str) {
+    for label in SOCIAL_SCRAPER_WINDOW_LABELS {
+        recycle_webview_window(app, label, reason);
     }
 }
 
@@ -339,6 +355,164 @@ fn load_or_create_token(data_dir: &std::path::Path) -> String {
     let token = generate_token();
     let _ = std::fs::write(&path, &token);
     token
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+struct StartupRecoveryState {
+    consecutive_failed_boots: u32,
+    pending_boot_started_at_ms: Option<u64>,
+    last_failed_boot_at_ms: Option<u64>,
+    last_successful_boot_at_ms: Option<u64>,
+}
+
+fn now_unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+fn startup_recovery_state_path(data_dir: &Path) -> PathBuf {
+    data_dir.join(STARTUP_RECOVERY_STATE_FILE)
+}
+
+#[cfg(target_os = "macos")]
+fn clear_saved_window_state(app: &tauri::AppHandle) {
+    let Some(home_dir) = std::env::var_os("HOME") else {
+        return;
+    };
+
+    let bundle_id = &app.config().identifier;
+    let saved_state_path = PathBuf::from(home_dir)
+        .join("Library")
+        .join("Saved Application State")
+        .join(format!("{bundle_id}.savedState"));
+
+    if !saved_state_path.exists() {
+        return;
+    }
+
+    match std::fs::remove_dir_all(&saved_state_path) {
+        Ok(()) => info!(
+            "[main-window] cleared saved macOS window state at {}",
+            saved_state_path.display()
+        ),
+        Err(error) => warn!(
+            "[main-window] failed to clear saved macOS window state at {}: {}",
+            saved_state_path.display(),
+            error
+        ),
+    }
+}
+
+fn load_startup_recovery_state(data_dir: &Path) -> StartupRecoveryState {
+    let path = startup_recovery_state_path(data_dir);
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return StartupRecoveryState::default();
+    };
+
+    match serde_json::from_str::<StartupRecoveryState>(&raw) {
+        Ok(state) => state,
+        Err(error) => {
+            warn!(
+                "[recovery] failed to parse startup recovery state at {}: {}",
+                path.display(),
+                error
+            );
+            StartupRecoveryState::default()
+        }
+    }
+}
+
+fn save_startup_recovery_state(data_dir: &Path, state: &StartupRecoveryState) {
+    let path = startup_recovery_state_path(data_dir);
+    let serialized = match serde_json::to_vec_pretty(state) {
+        Ok(serialized) => serialized,
+        Err(error) => {
+            warn!(
+                "[recovery] failed to serialize startup recovery state: {}",
+                error
+            );
+            return;
+        }
+    };
+
+    if let Err(error) = std::fs::write(&path, serialized) {
+        warn!(
+            "[recovery] failed to persist startup recovery state at {}: {}",
+            path.display(),
+            error
+        );
+    }
+}
+
+fn reconcile_startup_recovery_state(data_dir: &Path) -> StartupRecoveryState {
+    let mut state = load_startup_recovery_state(data_dir);
+
+    if state.pending_boot_started_at_ms.take().is_some() {
+        state.consecutive_failed_boots = state.consecutive_failed_boots.saturating_add(1);
+        state.last_failed_boot_at_ms = Some(now_unix_ms());
+        save_startup_recovery_state(data_dir, &state);
+        warn!(
+            "[recovery] detected unfinished startup, consecutive_failed_boots={}",
+            state.consecutive_failed_boots
+        );
+    }
+
+    state
+}
+
+fn mark_startup_pending(data_dir: &Path) {
+    let mut state = load_startup_recovery_state(data_dir);
+    state.pending_boot_started_at_ms = Some(now_unix_ms());
+    save_startup_recovery_state(data_dir, &state);
+}
+
+fn mark_startup_success(data_dir: &Path) {
+    let mut state = load_startup_recovery_state(data_dir);
+    if state.pending_boot_started_at_ms.is_none() && state.consecutive_failed_boots == 0 {
+        return;
+    }
+
+    state.pending_boot_started_at_ms = None;
+    state.consecutive_failed_boots = 0;
+    state.last_successful_boot_at_ms = Some(now_unix_ms());
+    save_startup_recovery_state(data_dir, &state);
+    info!("[recovery] renderer reached healthy startup state");
+}
+
+fn startup_requires_recovery(state: &StartupRecoveryState) -> bool {
+    state.consecutive_failed_boots > 0
+}
+
+fn open_or_focus_recovery_window(
+    app: &tauri::AppHandle,
+) -> Result<tauri::WebviewWindow, tauri::Error> {
+    if let Some(window) = app.get_webview_window(RECOVERY_WINDOW_LABEL) {
+        let _ = window.show();
+        let _ = window.set_focus();
+        return Ok(window);
+    }
+
+    let window = tauri::WebviewWindowBuilder::new(
+        app,
+        RECOVERY_WINDOW_LABEL,
+        tauri::WebviewUrl::App(RECOVERY_WINDOW_ROUTE.into()),
+    )
+    .title("Freed")
+    .inner_size(560.0, 520.0)
+    .min_inner_size(480.0, 420.0)
+    .center()
+    .resizable(true)
+    .focused(true)
+    .build()?;
+
+    #[cfg(target_os = "macos")]
+    disable_window_restoration(&window);
+
+    let _ = window.show();
+    let _ = window.set_focus();
+    Ok(window)
 }
 
 // ---------------------------------------------------------------------------
@@ -1115,6 +1289,12 @@ fn show_window(app: tauri::AppHandle) {
         let _ = window.show();
         let _ = window.set_focus();
     }
+}
+
+#[tauri::command]
+fn retry_startup_after_crash(app: tauri::AppHandle) -> Result<(), String> {
+    let _ = start_main_window(&app).map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -3109,9 +3289,9 @@ fn main_window_webview_configuration() -> Retained<WKWebViewConfiguration> {
     let mtm = MainThreadMarker::new()
         .expect("WKWebView configuration must be created on the main thread");
     let config = unsafe { WKWebViewConfiguration::new(mtm) };
-    let display_name = NSString::from_str("Freed");
+    let display_name = NSString::from_str("Freed Engine");
 
-    // Label the WebKit content process as "Freed" in Activity Monitor instead
+    // Label the WebKit content process as "Freed Engine" in Activity Monitor instead
     // of leaving the default custom protocol URL visible.
     unsafe {
         config.setValue_forKey(
@@ -3123,7 +3303,25 @@ fn main_window_webview_configuration() -> Retained<WKWebViewConfiguration> {
     config
 }
 
-fn create_main_window(app: &tauri::App) -> Result<tauri::WebviewWindow, tauri::Error> {
+#[cfg(target_os = "macos")]
+fn disable_window_restoration(window: &tauri::WebviewWindow) {
+    let Ok(ns_window) = window.ns_window() else {
+        return;
+    };
+
+    let ns_window = ns_window.cast::<AnyObject>();
+    unsafe {
+        let _: () = msg_send![ns_window, setRestorable: false];
+        let _: () = msg_send![ns_window, disableSnapshotRestoration];
+    }
+}
+
+fn show_webview_window(window: &tauri::WebviewWindow) {
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
+fn create_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tauri::Error> {
     if let Some(window) = app.get_webview_window("main") {
         return Ok(window);
     }
@@ -3138,11 +3336,116 @@ fn create_main_window(app: &tauri::App) -> Result<tauri::WebviewWindow, tauri::E
         .clone();
 
     let builder = tauri::WebviewWindowBuilder::from_config(app, &window_config)?;
+    let builder = match std::env::var("FREED_TAURI_WINDOW_TITLE") {
+        Ok(title) if !title.trim().is_empty() => builder.title(title),
+        _ => builder,
+    };
 
     #[cfg(target_os = "macos")]
     let builder = builder.with_webview_configuration(main_window_webview_configuration());
 
-    builder.build()
+    let window = builder.build()?;
+
+    #[cfg(target_os = "macos")]
+    disable_window_restoration(&window);
+
+    Ok(window)
+}
+
+fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tauri::Error> {
+    if let Some(window) = app.get_webview_window("main") {
+        show_webview_window(&window);
+        return Ok(window);
+    }
+
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        std::fs::create_dir_all(&data_dir).ok();
+        mark_startup_pending(&data_dir);
+    }
+
+    let window = create_main_window(app)?;
+
+    #[cfg(target_os = "macos")]
+    apply_vibrancy(
+        &window,
+        NSVisualEffectMaterial::UnderWindowBackground,
+        None,
+        None,
+    )
+    .expect("Failed to apply vibrancy");
+
+    show_webview_window(&window);
+    Ok(window)
+}
+
+fn show_primary_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        show_webview_window(&window);
+        return;
+    }
+
+    if let Some(window) = app.get_webview_window(RECOVERY_WINDOW_LABEL) {
+        show_webview_window(&window);
+        return;
+    }
+
+    let Ok(data_dir) = app.path().app_data_dir() else {
+        return;
+    };
+
+    if startup_requires_recovery(&load_startup_recovery_state(&data_dir)) {
+        if let Ok(window) = open_or_focus_recovery_window(app) {
+            show_webview_window(&window);
+        }
+    }
+}
+
+fn handle_primary_menu_action(app: &tauri::AppHandle, id: &str) -> bool {
+    match id {
+        PRIMARY_MENU_ITEM_SHOW => {
+            show_primary_window(app);
+            true
+        }
+        PRIMARY_MENU_ITEM_QUIT => {
+            app.exit(0);
+            true
+        }
+        _ => false,
+    }
+}
+
+fn build_primary_action_items<R: tauri::Runtime, M: Manager<R>>(
+    manager: &M,
+) -> tauri::Result<(MenuItem<R>, MenuItem<R>)> {
+    Ok((
+        MenuItem::with_id(
+            manager,
+            PRIMARY_MENU_ITEM_SHOW,
+            "Show Freed",
+            true,
+            None::<&str>,
+        )?,
+        MenuItem::with_id(
+            manager,
+            PRIMARY_MENU_ITEM_QUIT,
+            "Quit Freed",
+            true,
+            None::<&str>,
+        )?,
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn build_macos_app_menu<R: tauri::Runtime, M: Manager<R>>(manager: &M) -> tauri::Result<Menu<R>> {
+    let (show_item, quit_item) = build_primary_action_items(manager)?;
+    let app_menu = Submenu::with_items(
+        manager,
+        manager.app_handle().package_info().name.clone(),
+        true,
+        &[&show_item, &quit_item],
+    )?;
+
+    Menu::with_items(manager, &[&app_menu])
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -3188,7 +3491,7 @@ pub fn run() {
         builder.build()
     };
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         // Debug builds log to stdout and the webview so local startup is not
         // blocked by host filesystem permissions. Release builds keep
         // structured rotating file logs in the OS log directory.
@@ -3199,32 +3502,47 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .manage(relay_state)
-        .manage(CaptureState::new())
-        .setup(move |app| {
-            let window = create_main_window(app)?;
+        .manage(CaptureState::new());
 
-            #[cfg(target_os = "macos")]
-            apply_vibrancy(
-                &window,
-                NSVisualEffectMaterial::UnderWindowBackground,
-                None,
-                None,
-            )
-            .expect("Failed to apply vibrancy");
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .enable_macos_default_menu(false)
+        .menu(build_macos_app_menu);
 
-            // Load (or generate) the persistent pairing token before the relay
-            // starts accepting connections.
+    let builder = builder.on_menu_event(|app, event| {
+        let _ = handle_primary_menu_action(app, event.id().as_ref());
+    });
+
+    builder.setup(move |app| {
+            let app_handle = app.handle().clone();
+
             let data_dir = app
                 .path()
                 .app_data_dir()
                 .expect("Failed to resolve app data directory");
             std::fs::create_dir_all(&data_dir).ok();
+
+            #[cfg(target_os = "macos")]
+            clear_saved_window_state(&app_handle);
+
+            let startup_recovery_state = reconcile_startup_recovery_state(&data_dir);
+            if startup_requires_recovery(&startup_recovery_state) {
+                warn!(
+                    "[recovery] opening native recovery window after {} failed early startup attempt(s)",
+                    startup_recovery_state.consecutive_failed_boots
+                );
+                let _ = open_or_focus_recovery_window(&app_handle)?;
+            } else {
+                let _ = start_main_window(&app_handle)?;
+            }
+
+            // Load (or generate) the persistent pairing token before the relay
+            // starts accepting connections.
             let token = load_or_create_token(&data_dir);
             *relay_state_clone.pairing_token.write().unwrap() = token;
 
             // Build system tray
-            let show_item = MenuItem::with_id(app, "show", "Show Freed", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "Quit Freed", true, None::<&str>)?;
+            let (show_item, quit_item) = build_primary_action_items(app)?;
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
             let _tray = TrayIconBuilder::new()
@@ -3232,16 +3550,9 @@ pub fn run() {
                 .menu(&menu)
                 .tooltip("Freed — Sync running")
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
+                    id => {
+                        let _ = handle_primary_menu_action(&app.app_handle(), id);
                     }
-                    "quit" => {
-                        app.exit(0);
-                    }
-                    _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
@@ -3251,10 +3562,7 @@ pub fn run() {
                     } = event
                     {
                         let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
+                        show_primary_window(&app);
                     }
                 })
                 .build(app)?;
@@ -3406,6 +3714,7 @@ pub fn run() {
             let renderer_health = Arc::new(StdRwLock::new(RendererHeartbeatStatus::new()));
             let renderer_health_for_listener = renderer_health.clone();
             let app_for_renderer = app.handle().clone();
+            let app_for_renderer_listener = app_for_renderer.clone();
             app_for_renderer.listen("renderer-heartbeat", move |event| {
                 let payload = match serde_json::from_str::<RendererHeartbeatPayload>(event.payload()) {
                     Ok(payload) => payload,
@@ -3421,6 +3730,7 @@ pub fn run() {
 
                 let now = std::time::Instant::now();
                 let mut health = renderer_health_for_listener.write().unwrap();
+                let first_heartbeat = health.last_seen_at.is_none();
                 let gap_ms = health
                     .last_seen_at
                     .map(|last| now.duration_since(last).as_millis())
@@ -3455,32 +3765,54 @@ pub fn run() {
                         payload.ts
                     );
                 }
+
+                if first_heartbeat {
+                    if let Ok(data_dir) = app_for_renderer_listener.path().app_data_dir() {
+                        mark_startup_success(&data_dir);
+                    }
+                    if let Some(window) =
+                        app_for_renderer_listener.get_webview_window(RECOVERY_WINDOW_LABEL)
+                    {
+                        let _ = window.close();
+                    }
+                }
             });
 
             let renderer_health_for_watchdog = renderer_health.clone();
+            let app_for_renderer_watchdog = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
                     tokio::time::sleep(Duration::from_secs(30)).await;
 
-                    let mut health = renderer_health_for_watchdog.write().unwrap();
-                    let age = health
-                        .last_seen_at
-                        .map(|last| last.elapsed())
-                        .unwrap_or_else(|| health.started_at.elapsed());
+                    let should_recycle_scrapers = {
+                        let mut health = renderer_health_for_watchdog.write().unwrap();
+                        let age = health
+                            .last_seen_at
+                            .map(|last| last.elapsed())
+                            .unwrap_or_else(|| health.started_at.elapsed());
 
-                    if age <= Duration::from_secs(150) || health.stale_logged {
-                        continue;
+                        if age <= Duration::from_secs(150) || health.stale_logged {
+                            false
+                        } else {
+                            warn!(
+                                "[main-window] renderer heartbeat stale age_ms={} last_seq={} last_reason={} visibility={} href={}",
+                                age.as_millis(),
+                                health.last_seq,
+                                health.last_reason,
+                                health.last_visibility,
+                                truncate_for_log(&health.last_href, 120)
+                            );
+                            health.stale_logged = true;
+                            true
+                        }
+                    };
+
+                    if should_recycle_scrapers {
+                        recycle_social_scraper_windows(
+                            &app_for_renderer_watchdog,
+                            "main renderer heartbeat stale",
+                        );
                     }
-
-                    warn!(
-                        "[main-window] renderer heartbeat stale age_ms={} last_seq={} last_reason={} visibility={} href={}",
-                        age.as_millis(),
-                        health.last_seq,
-                        health.last_reason,
-                        health.last_visibility,
-                        truncate_for_log(&health.last_href, 120)
-                    );
-                    health.stale_logged = true;
                 }
             });
 
@@ -3539,6 +3871,10 @@ pub fn run() {
                 if window.label() == "main" {
                     window.hide().unwrap();
                     api.prevent_close();
+                } else if window.label() == RECOVERY_WINDOW_LABEL
+                    && window.app_handle().get_webview_window("main").is_none()
+                {
+                    window.app_handle().exit(0);
                 }
             }
         })
@@ -3546,6 +3882,7 @@ pub fn run() {
             get_version,
             get_platform,
             get_updater_target,
+            retry_startup_after_crash,
             fetch_url,
             x_api_request,
             get_local_ip,
@@ -3587,4 +3924,52 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Freed");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reconcile_marks_unfinished_boot_as_failed() {
+        let temp = tempfile::tempdir().unwrap();
+
+        save_startup_recovery_state(
+            temp.path(),
+            &StartupRecoveryState {
+                consecutive_failed_boots: 0,
+                pending_boot_started_at_ms: Some(123),
+                last_failed_boot_at_ms: None,
+                last_successful_boot_at_ms: None,
+            },
+        );
+
+        let state = reconcile_startup_recovery_state(temp.path());
+
+        assert_eq!(state.consecutive_failed_boots, 1);
+        assert!(state.pending_boot_started_at_ms.is_none());
+        assert!(state.last_failed_boot_at_ms.is_some());
+    }
+
+    #[test]
+    fn mark_startup_success_clears_recovery_state() {
+        let temp = tempfile::tempdir().unwrap();
+
+        save_startup_recovery_state(
+            temp.path(),
+            &StartupRecoveryState {
+                consecutive_failed_boots: 2,
+                pending_boot_started_at_ms: Some(456),
+                last_failed_boot_at_ms: Some(789),
+                last_successful_boot_at_ms: None,
+            },
+        );
+
+        mark_startup_success(temp.path());
+
+        let state = load_startup_recovery_state(temp.path());
+        assert_eq!(state.consecutive_failed_boots, 0);
+        assert!(state.pending_boot_started_at_ms.is_none());
+        assert!(state.last_successful_boot_at_ms.is_some());
+    }
 }

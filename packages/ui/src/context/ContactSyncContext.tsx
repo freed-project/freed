@@ -7,13 +7,14 @@
  */
 
 import { createContext, useContext } from "react";
-import type { ContactSyncState } from "@freed/shared";
+import type { ContactMatch, ContactSyncState } from "@freed/shared";
 
 export interface ContactSyncContextValue {
   syncState: ContactSyncState;
   getSyncState: () => ContactSyncState;
   syncNow: () => Promise<ContactSyncState>;
-  dismissMatch: (contactResourceName: string, friendIdOrAuthorId: string) => void;
+  dismissSuggestion: (suggestionId: string) => void;
+  getMatchForSuggestion: (suggestionId: string) => ContactMatch | null;
   openReview: () => Promise<void>;
 }
 

@@ -7,13 +7,28 @@ interface IconProps {
 
 // ─── Layout / navigation ────────────────────────────────────────────────────
 
-/** Three horizontal lines – "All sources" list icon. */
+/** Crystal core mark for the unified feed and all-sources navigation. */
 export function AllIcon({ className = "w-4 h-4", style }: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={className} style={style} aria-hidden="true">
-      <line x1="3" y1="6" x2="21" y2="6" />
-      <line x1="3" y1="12" x2="21" y2="12" />
-      <line x1="3" y1="18" x2="21" y2="18" />
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      style={style}
+      aria-hidden="true"
+    >
+      <path d="M12 3.8v16.4" />
+      <path d="M4.9 7.9l14.2 8.2" />
+      <path d="M19.1 7.9L4.9 16.1" />
+      <polygon points="12,8.5 15.5,10.5 15.5,13.5 12,15.5 8.5,13.5 8.5,10.5" />
+      <path d="M12 3.8l-1.4 1.5" />
+      <path d="M12 3.8l1.4 1.5" />
+      <path d="M12 20.2l-1.4-1.5" />
+      <path d="M12 20.2l1.4-1.5" />
     </svg>
   );
 }
@@ -141,6 +156,15 @@ export function RssIcon({ className = "w-4 h-4", style }: IconProps) {
       <path d="M4 11a9 9 0 0 1 9 9" />
       <path d="M4 4a16 16 0 0 1 16 16" />
       <circle cx="5" cy="19" r="1.5" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+/** X brand mark with consistent visual weight next to the platform SVG set. */
+export function XIcon({ className = "w-4 h-4", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style} aria-hidden="true">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.747l7.73-8.835L1.254 2.25H8.08l4.259 5.63 5.905-5.63zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z" />
     </svg>
   );
 }

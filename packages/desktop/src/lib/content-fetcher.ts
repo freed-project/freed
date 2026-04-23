@@ -28,6 +28,7 @@ import { summarize } from "./ai-summarizer.js";
 import { secureStorage } from "./secure-storage.js";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { log } from "./logger.js";
+import { toSyncedPreservedText } from "./preserved-text.js";
 
 const FETCH_TIMEOUT_MS = 30_000;
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -165,7 +166,9 @@ async function processNext(): Promise<void> {
     // Get current AI preferences from the store (worker keeps preferences in sync)
     const prefs = (useAppStore.getState().preferences as { ai?: AIPreferences })?.ai;
 
-    let summaryText = content.text;
+    // Keep the synced document small. Full article HTML already lives in the
+    // device-local cache, so Automerge only needs a compact fallback excerpt.
+    let summaryText = toSyncedPreservedText(content.text);
     let extraTopics: string[] = [];
 
     // Optionally run AI summarization (replaces raw text in Automerge with a concise summary)
@@ -175,8 +178,8 @@ async function processNext(): Promise<void> {
         : null;
       const aiResult = await summarize(content.text, prefs, apiKey);
       if (aiResult) {
-        summaryText = aiResult.summary;
-        extraTopics = aiResult.topics;
+        summaryText = toSyncedPreservedText(aiResult.summary);
+        extraTopics = prefs.extractTopics ? aiResult.topics : [];
       }
     }
 
@@ -186,7 +189,7 @@ async function processNext(): Promise<void> {
     const resolvedAuthor = content.author ?? metadata.author;
     await docUpdateFeedItem(entry.globalId, {
       preservedContent: {
-        text: summaryText.slice(0, 10_000),
+        text: summaryText,
         ...(resolvedAuthor !== undefined ? { author: resolvedAuthor } : {}),
         publishedAt: metadata.publishedAt,
         wordCount: content.wordCount,

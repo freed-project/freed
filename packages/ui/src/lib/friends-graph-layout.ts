@@ -127,7 +127,7 @@ export function buildFrozenFriendGraphLayout(
     return {
       friend,
       radius: nodeRadius(friend, feedItems),
-      opacity: nodeOpacity(friend, feedItems, now),
+      opacity: nodeOpacity(friend, feedItems, undefined, now),
       inReconnectZone: reconnect,
       anchorX: anchor.x,
       anchorY: anchor.y,

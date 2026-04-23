@@ -11,11 +11,14 @@ Native macOS/Windows/Linux desktop application built with Tauri.
 ## Development
 
 ```bash
-# Install dependencies
-npm install
+# Install dependencies in the current worktree
+../../scripts/worktree-bootstrap.sh ../.. --target desktop
 
-# Run in development mode (hot reload)
-npm run tauri:dev
+# Start the default mocked desktop preview
+../../scripts/worktree-preview.sh desktop
+
+# Start native Tauri only when native behavior matters
+../../scripts/worktree-preview.sh desktop --native
 
 # Build for production
 npm run tauri:build

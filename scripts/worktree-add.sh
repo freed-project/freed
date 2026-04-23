@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # worktree-add.sh
 #
-# Wrapper around `git worktree add` that immediately runs a compatible `npm ci`
-# so the new worktree has its own isolated node_modules and is ready to use.
+# Wrapper around `git worktree add` that can bootstrap dependencies now or
+# later, while recording worktree intent for other local helpers.
 #
-# Usage (identical args to git worktree add):
-#   ./scripts/worktree-add.sh ../freed-<slug> -b feat/my-feature
+# Usage:
+#   ./scripts/worktree-add.sh ../freed-<slug> -b feat/my-feature origin/dev
+#   ./scripts/worktree-add.sh ../freed-<slug> -b feat/my-feature origin/dev --install full --target desktop
+#   ./scripts/worktree-add.sh ../freed-<slug> -b feat/my-feature origin/dev --swarm --target shared
 #
 # Why not symlink node_modules from the primary worktree?
 #   npm writes *through* symlinks. Running `npm install foo` in a symlinked
@@ -13,55 +15,160 @@
 #   silently corrupts every other worktree sharing that link. Isolated
 #   installs are the only safe option.
 #
-# Why is this fast?
-#   `npm ci --prefer-offline` skips dependency resolution (reads the lockfile
-#   directly) and pulls all packages from the local npm cache (~/.npm).
-#   With a warm cache this takes ~74s vs ~170s for a cold `npm install`.
+# Why keep deferred installs around?
+#   Some speculative or low-touch worktrees do not need a full dependency tree
+#   yet. `--install auto` and `--install none` still exist for those cases, but
+#   the default is now "ready to run" so active feature work does not trip over
+#   missing dependencies on the next command.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# shellcheck source=./lib/node-tooling.sh
+source "${SCRIPT_DIR}/lib/node-tooling.sh"
+# shellcheck source=./lib/worktree-runtime.sh
+source "${SCRIPT_DIR}/lib/worktree-runtime.sh"
 
-if [[ $# -eq 0 ]]; then
-  echo "Usage: ./scripts/worktree-add.sh <path> [-b <branch>] [<commit-ish>]"
+usage() {
+  cat <<'EOF'
+Usage:
+  ./scripts/worktree-add.sh <path> [-b <branch>] [<commit-ish>] [--install none|auto|full] [--target desktop|pwa|website|shared] [--swarm]
+
+Options:
+  --install  Dependency bootstrap mode. Default: full
+  --target   Hint for later bootstrap or preview commands
+  --swarm    Alias for --install auto, tuned for speculative multi-thread worktrees
+EOF
+}
+
+validate_install_mode() {
+  case "$1" in
+    none|auto|full) ;;
+    *)
+      echo "Error: unsupported install mode '$1'. Use none, auto, or full." >&2
+      exit 1
+      ;;
+  esac
+}
+
+validate_target_hint() {
+  if [[ -z "$1" ]]; then
+    return 0
+  fi
+
+  case "$1" in
+    desktop|pwa|website|shared) ;;
+    *)
+      echo "Error: unsupported target '$1'. Use desktop, pwa, website, or shared." >&2
+      exit 1
+      ;;
+  esac
+}
+
+INSTALL_MODE="full"
+TARGET_HINT=""
+SWARM_MODE=false
+PASSTHROUGH_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --swarm)
+      SWARM_MODE=true
+      INSTALL_MODE="auto"
+      shift
+      ;;
+    --install)
+      [[ $# -ge 2 ]] || { echo "Error: --install requires a value." >&2; exit 1; }
+      INSTALL_MODE="$2"
+      shift 2
+      ;;
+    --install=*)
+      INSTALL_MODE="${1#*=}"
+      shift
+      ;;
+    --target)
+      [[ $# -ge 2 ]] || { echo "Error: --target requires a value." >&2; exit 1; }
+      TARGET_HINT="$2"
+      shift 2
+      ;;
+    --target=*)
+      TARGET_HINT="${1#*=}"
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      PASSTHROUGH_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
+
+validate_install_mode "${INSTALL_MODE}"
+validate_target_hint "${TARGET_HINT}"
+
+if [[ ${#PASSTHROUGH_ARGS[@]} -eq 0 ]]; then
+  usage
   exit 1
 fi
 
-BEFORE_WORKTREES=()
-while IFS= read -r worktree_path; do
-  BEFORE_WORKTREES+=("$worktree_path")
-done < <(git worktree list --porcelain | awk '/^worktree / { print $2 }')
-git worktree add "$@"
+print_node_tooling_preflight
 
-AFTER_WORKTREES=()
-while IFS= read -r worktree_path; do
-  AFTER_WORKTREES+=("$worktree_path")
+EXISTING_WORKTREES=()
+while IFS= read -r line; do
+  EXISTING_WORKTREES+=("$line")
 done < <(git worktree list --porcelain | awk '/^worktree / { print $2 }')
+
+git worktree add "${PASSTHROUGH_ARGS[@]}"
+
+CURRENT_WORKTREES=()
+while IFS= read -r line; do
+  CURRENT_WORKTREES+=("$line")
+done < <(git worktree list --porcelain | awk '/^worktree / { print $2 }')
+
 NEW_WT=""
-
-for candidate in "${AFTER_WORKTREES[@]}"; do
-  found="false"
-  for existing in "${BEFORE_WORKTREES[@]}"; do
-    if [[ "$candidate" == "$existing" ]]; then
-      found="true"
-      break
-    fi
-  done
-
-  if [[ "$found" == "false" ]]; then
-    NEW_WT="$candidate"
+for candidate in "${CURRENT_WORKTREES[@]}"; do
+  if ! printf '%s\n' "${EXISTING_WORKTREES[@]}" | grep -Fxq "${candidate}"; then
+    NEW_WT="${candidate}"
     break
   fi
 done
 
-if [[ -z "$NEW_WT" ]]; then
-  echo "Failed to resolve the new worktree path after git worktree add." >&2
+if [[ -z "${NEW_WT}" ]]; then
+  echo "Error: failed to detect the newly created worktree path." >&2
   exit 1
 fi
 
+record_worktree_metadata "${NEW_WT}" "${INSTALL_MODE}" "${TARGET_HINT}"
+
 echo ""
-echo "Installing node_modules in $NEW_WT (~74s with warm cache) ..."
-node "${ROOT_DIR}/scripts/npmw.mjs" ci --prefer-offline --prefix "$NEW_WT"
+case "${INSTALL_MODE}" in
+  none)
+    echo "Created ${NEW_WT} with dependency bootstrap disabled."
+    ;;
+  auto)
+    echo "Created ${NEW_WT} with deferred bootstrap."
+    if ${SWARM_MODE}; then
+      echo "Swarm mode is on, so bootstrap is deferred until this thread actually needs it."
+    fi
+    if [[ -n "${TARGET_HINT}" ]]; then
+      echo "When this worktree needs dependencies, run:"
+      echo "  ./scripts/worktree-bootstrap.sh \"${NEW_WT}\" --target ${TARGET_HINT}"
+    else
+      echo "When this worktree needs dependencies, run:"
+      echo "  ./scripts/worktree-bootstrap.sh \"${NEW_WT}\""
+    fi
+    ;;
+  full)
+    if [[ -n "${TARGET_HINT}" ]]; then
+      "${SCRIPT_DIR}/worktree-bootstrap.sh" "${NEW_WT}" --target "${TARGET_HINT}"
+    else
+      "${SCRIPT_DIR}/worktree-bootstrap.sh" "${NEW_WT}"
+    fi
+    ;;
+esac
+
 echo ""
 echo "Done. Worktree is ready."

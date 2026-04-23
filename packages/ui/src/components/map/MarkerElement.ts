@@ -1,4 +1,4 @@
-import type { FeedItem, Friend, LocationMarkerSummary } from "@freed/shared";
+import type { FeedItem, Person, LocationMarkerSummary } from "@freed/shared";
 import { initialsForName, resolveFriendAvatarUrl } from "../../lib/friend-avatar.js";
 import type { FriendAvatarPalette } from "../../lib/friend-avatar-style.js";
 
@@ -17,7 +17,7 @@ function markerSize(publishedAt: number): MarkerSize {
   return "small";
 }
 
-function displayName(item: FeedItem, friend: Friend | null): string {
+function displayName(item: FeedItem, friend: Person | null): string {
   return friend?.name ?? item.author.displayName;
 }
 

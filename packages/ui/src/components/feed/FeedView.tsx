@@ -7,8 +7,8 @@ import { AddFeedDialog } from "../AddFeedDialog.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import type { FeedItem } from "@freed/shared";
-import { getFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
 
 // ─── Compact sidebar panel for dual-column mode ────────────────────────────
@@ -225,17 +225,19 @@ export function FeedView() {
   const canAddFeeds = !!addRssFeed;
   const items = useAppStore((s) => s.items);
   const feeds = useAppStore((s) => s.feeds);
+  const persons = useAppStore((s) => s.persons);
+  const accounts = useAppStore((s) => s.accounts);
+  const friends = useAppStore((s) => s.friends);
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
+  const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const markAsRead = useAppStore((s) => s.markAsRead);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const toggleLiked = useAppStore((s) => s.toggleLiked);
-  const unarchiveSavedItems = useAppStore((s) => s.unarchiveSavedItems);
-  const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
-  const archivePruneDays = useAppStore((s) => s.preferences.display.archivePruneDays);
+  const friendsMode = useAppStore((s) => s.preferences.display.friendsMode ?? "all_content");
 
   const handleItemSave = useCallback(
     (item: FeedItem) => toggleSaved(item.globalId),
@@ -260,49 +262,28 @@ export function FeedView() {
     }
   }, [openUrl]);
 
-  // Archive toolbar confirm-to-delete state.
-  // First click arms the button; second click executes. Auto-resets after 3s.
-  const [deleteConfirmArmed, setDeleteConfirmArmed] = useState(false);
-  const deleteConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const savedArchivedCount = useMemo(
-    () => items.filter((item) => item.userState.saved && item.userState.archived).length,
-    [items],
-  );
-
-  const handleDeleteArchivedClick = useCallback(() => {
-    if (!deleteConfirmArmed) {
-      setDeleteConfirmArmed(true);
-      deleteConfirmTimerRef.current = setTimeout(() => setDeleteConfirmArmed(false), 3000);
-      return;
-    }
-    if (deleteConfirmTimerRef.current) clearTimeout(deleteConfirmTimerRef.current);
-    setDeleteConfirmArmed(false);
-    void deleteAllArchived();
-  }, [deleteConfirmArmed, deleteAllArchived]);
-
-  const handleUnarchiveSavedClick = useCallback(() => {
-    void unarchiveSavedItems();
-  }, [unarchiveSavedItems]);
-
-  // Reset confirm state whenever the archived view is left.
-  useEffect(() => {
-    if (!activeFilter.archivedOnly) {
-      if (deleteConfirmTimerRef.current) clearTimeout(deleteConfirmTimerRef.current);
-      setDeleteConfirmArmed(false);
-    }
-  }, [activeFilter.archivedOnly]);
-
   const [addFeedOpen, setAddFeedOpen] = useState(false);
 
   // useSearchResults handles both the search and the normal ranked+filtered path.
   // When searchQuery is empty it behaves identically to the previous useMemo.
-  const { filteredItems, isSearching, resultCount } = useSearchResults(items, searchQuery, activeFilter);
+  const { filteredItems, isSearching } = useSearchResults(
+    items,
+    searchQuery,
+    activeFilter,
+    searchCorpusVersion,
+    friendsMode,
+    persons,
+    accounts,
+    friends,
+  );
 
-  const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds), [activeFilter, feeds]);
   const dualColumnMode = useAppStore((s) => s.preferences.display.reading.dualColumnMode);
-  const isMobile = useIsMobile();
-  const showInlineReader = !!selectedItemId && !isMobile;
-  const showDualColumn = dualColumnMode && showInlineReader;
+  const isMobileViewport = useIsMobile();
+  const isMobileDevice = useIsMobileDevice();
+  const autoCollapseReaderRail = !isMobileDevice && isMobileViewport;
+  const canShowInlineReader = !isMobileDevice;
+  const showInlineReader = !!selectedItemId && canShowInlineReader;
+  const showDualColumn = dualColumnMode && canShowInlineReader && !autoCollapseReaderRail;
 
   // Store only the ID so the rendered item stays in sync with the store.
   // Holding the full FeedItem in state would freeze userState (saved, archived,
@@ -322,14 +303,14 @@ export function FeedView() {
         markAsRead(item.globalId);
       };
 
-      if (dualColumnMode && !isMobile && !selectedItemId) {
+      if (showDualColumn && !selectedItemId) {
         runFeedLayoutTransition(selectItem);
         return;
       }
 
       selectItem();
     },
-    [dualColumnMode, isMobile, markAsRead, runFeedLayoutTransition, selectedItemId, setSelectedItem],
+    [markAsRead, runFeedLayoutTransition, selectedItemId, setSelectedItem, showDualColumn],
   );
 
   const openItemDirect = useCallback((item: FeedItem) => {
@@ -339,14 +320,14 @@ export function FeedView() {
 
   const closeItem = useCallback(() => {
     setCompactSelectionDirection(0);
-    if (dualColumnMode && !isMobile && selectedItemId) {
+    if (showDualColumn && selectedItemId) {
       runFeedLayoutTransition(() => {
         setSelectedItem(null);
       });
       return;
     }
     setSelectedItem(null);
-  }, [dualColumnMode, isMobile, runFeedLayoutTransition, selectedItemId, setSelectedItem]);
+  }, [runFeedLayoutTransition, selectedItemId, setSelectedItem, showDualColumn]);
 
   // Keyboard navigation: j/k to move, Enter/o to open, Escape to close.
   // The HTMLInputElement guard means j/k won't fire while the search bar is focused.
@@ -415,7 +396,7 @@ export function FeedView() {
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(0);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof document === "undefined") return;
     document.documentElement.style.setProperty(
       "--freed-reader-rail-width",
@@ -455,34 +436,6 @@ export function FeedView() {
   if (showInlineReader && selectedItem) {
     return (
       <div className="h-full flex flex-col overflow-hidden">
-        {/* Archive retention toolbar — only shown in the archived view */}
-        {activeFilter.archivedOnly && (
-          <div className="flex-shrink-0 px-4 py-2 border-b border-[var(--theme-header-border)] flex items-center justify-between gap-4">
-            <p className="text-xs text-[var(--theme-text-soft)]">{getRetentionLabel(archivePruneDays ?? 30)}</p>
-            <div className="flex items-center gap-2">
-              {savedArchivedCount > 0 && (
-                <button
-                  onClick={handleUnarchiveSavedClick}
-                  className="text-xs px-3 py-1 rounded-lg transition-colors border whitespace-nowrap bg-[var(--theme-bg-muted)] text-[var(--theme-text-muted)] border-transparent hover:bg-[var(--theme-bg-card-hover)] hover:text-[var(--theme-text-primary)]"
-                >
-                  Unarchive Saved Content
-                </button>
-              )}
-              {(archivePruneDays ?? 30) > 0 && (
-                <button
-                  onClick={handleDeleteArchivedClick}
-                  className={`text-xs px-3 py-1 rounded-lg transition-colors border whitespace-nowrap ${
-                    deleteConfirmArmed
-                      ? "bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30"
-                      : "bg-[var(--theme-bg-muted)] text-[var(--theme-text-muted)] border-transparent hover:bg-[var(--theme-bg-card-hover)] hover:text-[var(--theme-text-primary)]"
-                  }`}
-                >
-                  {deleteConfirmArmed ? "Confirm delete?" : "Delete archived content now"}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
         <div className="flex-1 flex overflow-hidden">
           {showDualColumn ? (
             <>
@@ -523,54 +476,6 @@ export function FeedView() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Archive retention toolbar — only shown in the archived view */}
-      {activeFilter.archivedOnly && (
-        <div className="flex-shrink-0 px-4 py-2 border-b border-[var(--theme-header-border)] flex items-center justify-between gap-4">
-          <p className="text-xs text-[var(--theme-text-soft)]">{getRetentionLabel(archivePruneDays ?? 30)}</p>
-          <div className="flex items-center gap-2">
-            {savedArchivedCount > 0 && (
-              <button
-                onClick={handleUnarchiveSavedClick}
-                className="text-xs px-3 py-1 rounded-lg transition-colors border whitespace-nowrap bg-[var(--theme-bg-muted)] text-[var(--theme-text-muted)] border-transparent hover:bg-[var(--theme-bg-card-hover)] hover:text-[var(--theme-text-primary)]"
-              >
-                Unarchive Saved Content
-              </button>
-            )}
-            {(archivePruneDays ?? 30) > 0 && (
-              <button
-                onClick={handleDeleteArchivedClick}
-                className={`text-xs px-3 py-1 rounded-lg transition-colors border whitespace-nowrap ${
-                  deleteConfirmArmed
-                    ? "bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30"
-                    : "bg-[var(--theme-bg-muted)] text-[var(--theme-text-muted)] border-transparent hover:bg-[var(--theme-bg-card-hover)] hover:text-[var(--theme-text-primary)]"
-                }`}
-              >
-                {deleteConfirmArmed ? "Confirm delete?" : "Delete archived content now"}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Search results banner — only shown when actively searching */}
-      {isSearching && (
-        <div className="flex-shrink-0 px-4 py-2 border-b border-[var(--theme-header-border)] flex items-center justify-between">
-          <p className="text-xs text-[var(--theme-text-muted)]">
-            {resultCount > 0 ? (
-              <>
-                <span className="font-medium text-[var(--theme-text-secondary)]">{resultCount.toLocaleString()}</span>
-                {" "}result{resultCount !== 1 ? "s" : ""} in{" "}
-                <span className="font-medium text-[var(--theme-text-secondary)]">{scopeLabel}</span>
-              </>
-            ) : (
-              <>
-                No results in <span className="font-medium text-[var(--theme-text-secondary)]">{scopeLabel}</span>
-              </>
-            )}
-          </p>
-        </div>
-      )}
-
       <FeedList
         items={filteredItems}
         onItemClick={openItemDirect}

@@ -1288,7 +1288,7 @@ dependencies = [
 
 [[package]]
 name = "freed-desktop"
-version = "26.4.1300"
+version = "26.4.2002"
 dependencies = [
  "base64 0.22.1",
  "criterion",

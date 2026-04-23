@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { FeedItem } from "@freed/shared";
+import { MAX_SYNCED_PRESERVED_TEXT_CHARS } from "./preserved-text.js";
 
 // ── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -103,6 +104,21 @@ describe("saveUrlInDesktop", () => {
     const { saveUrlInDesktop } = await import("./save-url.js");
     const item = await saveUrlInDesktop(SAMPLE_URL);
     expect("html" in (item.preservedContent ?? {})).toBe(false);
+  });
+
+  it("stores only a compact synced excerpt in preservedContent.text", async () => {
+    mockExtractContent.mockReturnValue(
+      makeContent({
+        text: `${"Paragraph with   noisy spacing. ".repeat(120)}Tail text that should never survive the trim.`,
+      }),
+    );
+
+    const { saveUrlInDesktop } = await import("./save-url.js");
+    const item = await saveUrlInDesktop(SAMPLE_URL);
+
+    expect(item.preservedContent?.text.length).toBeLessThanOrEqual(MAX_SYNCED_PRESERVED_TEXT_CHARS);
+    expect(item.preservedContent?.text).not.toContain("  ");
+    expect(item.preservedContent?.text).not.toContain("Tail text that should never survive the trim.");
   });
 
   it("assigns user-supplied tags to the item", async () => {

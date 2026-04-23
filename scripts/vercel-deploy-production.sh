@@ -2,11 +2,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-
-run_npm() {
-  node "${ROOT_DIR}/scripts/npmw.mjs" "$@"
-}
+# shellcheck source=./lib/node-tooling.sh
+source "${SCRIPT_DIR}/lib/node-tooling.sh"
+use_resolved_node_path
+NPM_BIN="$(resolve_npm_bin)"
+NPX_BIN="$(resolve_npx_bin)"
 
 if [[ $# -lt 1 || $# -gt 2 ]]; then
   echo "Usage: $0 website|pwa [vercel-token]" >&2
@@ -15,7 +15,9 @@ fi
 
 TARGET="$1"
 VERCEL_TOKEN="${2:-${VERCEL_TOKEN:-}}"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/freed-vercel-production.XXXXXX")"
+ROOT_BIN_DIR="${TEMP_DIR}/node_modules/.bin"
 
 cleanup() {
   rm -rf "$TEMP_DIR"
@@ -72,7 +74,7 @@ else
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "buildCommand": "npm run build -w @freed/pwa",
+  "buildCommand": "cd packages/pwa && PATH=../../node_modules/.bin:$PATH npm run build",
   "outputDirectory": "packages/pwa/dist",
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }]
 }
@@ -93,11 +95,17 @@ fi
 echo "Verifying production bundle for $TARGET from $TEMP_DIR"
 (
   cd "$TEMP_DIR"
-  run_npm install
+  "$NPM_BIN" ci
   if [[ "$TARGET" == "website" ]]; then
-    run_npm run build --workspace=website
+    (
+      cd website
+      PATH="${ROOT_BIN_DIR}:${PATH}" "$NPM_BIN" run build
+    )
   else
-    run_npm run build -w @freed/pwa
+    (
+      cd packages/pwa
+      PATH="${ROOT_BIN_DIR}:${PATH}" "$NPM_BIN" run build
+    )
   fi
 )
 
@@ -107,18 +115,18 @@ if [[ -n "$VERCEL_TOKEN" ]]; then
 fi
 
 echo "Pulling Vercel settings for $TARGET"
-run_npm exec --yes vercel@latest -- pull --yes --environment production --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}"
+"$NPX_BIN" vercel pull --yes --environment production --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}"
 
 if [[ "$TARGET" == "website" ]]; then
   echo "Building $TARGET production bundle with Vercel"
-  run_npm exec --yes vercel@latest -- build --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" --prod
+  "$NPX_BIN" vercel build --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" --prod
 
   echo "Deploying $TARGET production build to Vercel"
-  run_npm exec --yes vercel@latest -- deploy --prebuilt --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" -y --prod
+  "$NPX_BIN" vercel deploy --prebuilt --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" -y --prod
 else
   echo "Building $TARGET production bundle with Vercel"
-  run_npm exec --yes vercel@latest -- build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" --prod
+  "$NPX_BIN" vercel build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" --prod
 
   echo "Deploying $TARGET production build to Vercel"
-  run_npm exec --yes vercel@latest -- deploy --prebuilt --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" -y --prod
+  "$NPX_BIN" vercel deploy --prebuilt --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" -y --prod
 fi

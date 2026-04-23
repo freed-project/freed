@@ -1,37 +1,37 @@
-import type { GoogleContact, ContactMatch, Friend, FeedItem } from "./types.js";
+import { primaryContactAccountForPerson, socialAccountsForPerson } from "./friends.js";
+import type { Account, ContactMatch, FeedItem, GoogleContact, Person } from "./types.js";
 
-function normalize(s: string | undefined): string {
-  return (s ?? "").toLowerCase().trim().replace(/\s+/g, " ");
+function normalize(value: string | undefined): string {
+  return (value ?? "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
 function splitHandle(handle: string): string[] {
-  // Split on . _ - and return title-cased parts
   return handle
     .split(/[._\-]/)
     .filter(Boolean)
-    .map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase());
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase());
 }
 
-function getContactNames(c: GoogleContact): Set<string> {
+function getContactNames(contact: GoogleContact): Set<string> {
   const names = new Set<string>();
-  if (c.name.displayName) names.add(normalize(c.name.displayName));
-  if (c.name.givenName && c.name.familyName) {
-    names.add(normalize(`${c.name.givenName} ${c.name.familyName}`));
-    names.add(normalize(`${c.name.familyName} ${c.name.givenName}`));
+  if (contact.name.displayName) names.add(normalize(contact.name.displayName));
+  if (contact.name.givenName && contact.name.familyName) {
+    names.add(normalize(`${contact.name.givenName} ${contact.name.familyName}`));
+    names.add(normalize(`${contact.name.familyName} ${contact.name.givenName}`));
   }
-  if (c.name.givenName) names.add(normalize(c.name.givenName));
+  if (contact.name.givenName) names.add(normalize(contact.name.givenName));
   return names;
 }
 
 export function matchContacts(
   contacts: GoogleContact[],
-  friends: Record<string, Friend>,
+  persons: Record<string, Person>,
+  accounts: Record<string, Account>,
   feedItems: FeedItem[]
 ): ContactMatch[] {
-  const friendList = Object.values(friends);
-
-  // Build author map: authorId -> { displayName, handle }
+  const personList = Object.values(persons);
   const authorMap = new Map<string, { displayName: string; handle?: string }>();
+
   for (const item of feedItems) {
     if (item.author?.id && item.author?.displayName && !authorMap.has(item.author.id)) {
       authorMap.set(item.author.id, {
@@ -45,48 +45,42 @@ export function matchContacts(
 
   for (const contact of contacts) {
     const contactNames = getContactNames(contact);
-    const contactEmails = new Set(contact.emails.map(e => e.value.toLowerCase()));
+    const contactEmails = new Set(contact.emails.map((entry) => entry.value.toLowerCase()));
 
-    let matchedFriend: Friend | null = null;
+    let matchedPerson: Person | null = null;
     let confidence: "high" | "medium" = "medium";
     const matchedAuthorIds: string[] = [];
 
-    // Match against existing friends
-    for (const friend of friendList) {
-      const friendName = normalize(friend.name);
+    for (const person of personList) {
+      const personName = normalize(person.name);
+      const primaryContact = primaryContactAccountForPerson(accounts, person.id);
 
-      // Email match (high confidence)
-      if (friend.contact?.email && contactEmails.has(friend.contact.email.toLowerCase())) {
-        matchedFriend = friend;
+      if (primaryContact?.email && contactEmails.has(primaryContact.email.toLowerCase())) {
+        matchedPerson = person;
         confidence = "high";
         break;
       }
 
-      // Exact name match (high confidence)
-      if (contactNames.has(friendName)) {
-        matchedFriend = friend;
+      if (contactNames.has(personName)) {
+        matchedPerson = person;
         confidence = "high";
         break;
       }
 
-      // Handle-to-name match (medium confidence)
-      for (const source of friend.sources ?? []) {
-        if (source.handle) {
-          const parts = splitHandle(source.handle);
-          const reconstructed = normalize(parts.join(" "));
+      for (const account of socialAccountsForPerson(accounts, person.id)) {
+        if (account.handle) {
+          const reconstructed = normalize(splitHandle(account.handle).join(" "));
           if (contactNames.has(reconstructed)) {
-            matchedFriend = friend;
+            matchedPerson = person;
             confidence = "medium";
           }
         }
       }
     }
 
-    // Match against unlinked feed authors
     for (const [authorId, author] of authorMap) {
-      // Skip if already linked to a friend
-      const alreadyLinked = friendList.some(f =>
-        f.sources?.some(s => s.authorId === authorId)
+      const alreadyLinked = Object.values(accounts).some((account) =>
+        account.kind === "social" && account.externalId === authorId && Boolean(account.personId)
       );
       if (alreadyLinked) continue;
 
@@ -95,8 +89,8 @@ export function matchContacts(
         matchedAuthorIds.push(authorId);
         if (confidence !== "high") confidence = "high";
       } else if (author.handle) {
-        const parts = splitHandle(author.handle);
-        if (contactNames.has(normalize(parts.join(" ")))) {
+        const reconstructed = normalize(splitHandle(author.handle).join(" "));
+        if (contactNames.has(reconstructed)) {
           matchedAuthorIds.push(authorId);
           if (confidence !== "high") confidence = "medium";
         }
@@ -105,13 +99,12 @@ export function matchContacts(
 
     results.push({
       contact,
-      friend: matchedFriend,
+      person: matchedPerson,
       authorIds: matchedAuthorIds,
       confidence,
     });
   }
 
-  // Sort: high confidence first, then alphabetically by contact display name
   return results.sort((a, b) => {
     if (a.confidence !== b.confidence) {
       return a.confidence === "high" ? -1 : 1;
