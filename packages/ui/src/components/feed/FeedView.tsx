@@ -281,8 +281,9 @@ export function FeedView() {
   const isMobileViewport = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
   const autoCollapseReaderRail = !isMobileDevice && isMobileViewport;
-  const showInlineReader = !!selectedItemId && !isMobileDevice;
-  const showDualColumn = dualColumnMode && showInlineReader && !autoCollapseReaderRail;
+  const canShowInlineReader = !isMobileDevice;
+  const showInlineReader = !!selectedItemId && canShowInlineReader;
+  const showDualColumn = dualColumnMode && canShowInlineReader && !autoCollapseReaderRail;
 
   // Store only the ID so the rendered item stays in sync with the store.
   // Holding the full FeedItem in state would freeze userState (saved, archived,

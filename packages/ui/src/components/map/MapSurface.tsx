@@ -36,8 +36,6 @@ const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
 const MAP_POPUP_MAX_WIDTH = 560;
 const MAP_POPUP_VIEWPORT_MARGIN = 40;
 const MAP_VIEWPORT_MASK_STYLE = {
-  "--theme-soft-viewport-base-comp-left": "0px",
-  "--theme-soft-viewport-base-comp-right": "0px",
   "--theme-soft-viewport-base-comp-top": "6px",
   "--theme-soft-viewport-base-comp-bottom": "0px",
   "--theme-soft-viewport-mask-size": "28px",
