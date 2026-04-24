@@ -406,6 +406,9 @@ function SourceContextMenu({
 const MAX_WIDTH = MAX_PRIMARY_SIDEBAR_WIDTH_PX;
 const DEFAULT_WIDTH = DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX;
 const COMPACT_WIDTH = COMPACT_PRIMARY_SIDEBAR_WIDTH_PX;
+const SIDEBAR_SEARCH_GAP_MIN_PX = 8;
+const SIDEBAR_SEARCH_GAP_MAX_PX = 16;
+const SIDEBAR_SEARCH_GAP_CROSSOVER_WIDTH_PX = 224;
 
 function getDesktopModeForWidth(width: number): SidebarMode {
   if (width <= CLOSED_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX) return "closed";
@@ -621,6 +624,16 @@ export function Sidebar({
   const rowLeadingPaddingClass = compactRail ? "pl-1.5" : narrowLabeledSidebar ? "pl-2" : "pl-2.5";
   const rowTrailingPaddingClass = compactRail ? "pr-1" : narrowLabeledSidebar ? "pr-0" : "pr-1.5";
   const rowGapClass = narrowLabeledSidebar ? "gap-2" : "gap-3";
+  const inlineSearchGapPx = Math.max(
+    SIDEBAR_SEARCH_GAP_MIN_PX,
+    Math.min(
+      SIDEBAR_SEARCH_GAP_MAX_PX,
+      SIDEBAR_SEARCH_GAP_MIN_PX
+        + ((desktopWidth - COMPACT_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX)
+          / (SIDEBAR_SEARCH_GAP_CROSSOVER_WIDTH_PX - COMPACT_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX))
+        * (SIDEBAR_SEARCH_GAP_MAX_PX - SIDEBAR_SEARCH_GAP_MIN_PX),
+    ),
+  );
   const desktopShellTransition = dragWidth !== null && !snapPreviewActive
     ? "none"
     : snapPreviewActive
@@ -1001,7 +1014,12 @@ export function Sidebar({
       className="minimal-scroll flex min-h-0 flex-1 flex-col overflow-y-auto"
       style={sidebarBodyStyle}
     >
-          <SearchJumpField compactSidebar={compactSidebar} narrowSidebar={narrowLabeledSidebar} variant={searchVariant} />
+          <SearchJumpField
+            compactSidebar={compactSidebar}
+            narrowSidebar={narrowLabeledSidebar}
+            variant={searchVariant}
+            inlineMarginBottomPx={inlineSearchGapPx}
+          />
 
           <ul className={`flex flex-col ${compactRail ? "gap-0" : "gap-1"}`}>
             {[allSource].map((source) => (

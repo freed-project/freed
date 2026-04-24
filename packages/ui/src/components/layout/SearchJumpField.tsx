@@ -43,10 +43,12 @@ export function SearchJumpField({
   compactSidebar = false,
   narrowSidebar = false,
   variant = "inline",
+  inlineMarginBottomPx,
 }: {
   compactSidebar?: boolean;
   narrowSidebar?: boolean;
   variant?: "inline" | "trigger";
+  inlineMarginBottomPx?: number;
 }) {
   const platform = usePlatform();
   const {
@@ -777,7 +779,15 @@ export function SearchJumpField({
   }
 
   return (
-    <div ref={inlineAnchorRef} className={`relative z-20 ${narrowSidebar ? "mb-2" : "mb-4"}`}>
+    <div
+      ref={inlineAnchorRef}
+      data-testid="sidebar-search-field-wrapper"
+      className="relative z-20"
+      style={{
+        marginBottom: `${inlineMarginBottomPx ?? (narrowSidebar ? 8 : 16)}px`,
+        transition: "margin-bottom 180ms ease",
+      }}
+    >
       <SearchField
         ref={inlineInputRef}
         value={inputValue}

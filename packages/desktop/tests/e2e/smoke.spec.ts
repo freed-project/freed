@@ -676,6 +676,54 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
   await expectDesktopSidebarShellWidthAtMost(page, 2, 1_000);
 });
 
+test("desktop sidebar search gap scales smoothly through narrow widths", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const setExpandedSidebarWidth = async (sidebarWidth: number) => {
+    await page.evaluate((width) => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as
+        | {
+            getState: () => {
+              preferences: {
+                display: Record<string, unknown>;
+              };
+            };
+            setState: (partial: Record<string, unknown>) => void;
+          }
+        | undefined;
+      const state = store?.getState();
+      if (!store || !state) return;
+      store.setState({
+        preferences: {
+          ...state.preferences,
+          display: {
+            ...state.preferences.display,
+            sidebarMode: "expanded",
+            sidebarWidth: width,
+          },
+        },
+      });
+    }, sidebarWidth);
+  };
+
+  const readSearchGap = async () => (
+    page.getByTestId("sidebar-search-field-wrapper").evaluate((element) =>
+      Number.parseFloat(window.getComputedStyle(element).marginBottom)
+    )
+  );
+
+  await setExpandedSidebarWidth(184);
+  await expect.poll(readSearchGap, { timeout: 1_000 }).toBeCloseTo(8, 0);
+
+  await setExpandedSidebarWidth(204);
+  await expect.poll(readSearchGap, { timeout: 1_000 }).toBeCloseTo(12, 0);
+
+  await setExpandedSidebarWidth(224);
+  await expect.poll(readSearchGap, { timeout: 1_000 }).toBeCloseTo(16, 0);
+});
+
 test("narrow desktop viewports keep the desktop compact rail instead of switching to the mobile drawer", async ({ app, page }) => {
   await page.setViewportSize({ width: 700, height: 900 });
   await app.goto();
