@@ -104,11 +104,33 @@ function findSignatureForAsset(assetName, signatureDir) {
   return readFileSync(signaturePath, "utf8").trim();
 }
 
-function assetUrl(asset) {
+function assetUrl(release, asset) {
   const url = asset.browser_download_url ?? asset.browserDownloadUrl ?? asset.url;
   if (!url) {
     throw new Error(`Release asset ${asset.name} is missing a download URL.`);
   }
+
+  try {
+    const parsed = new URL(url);
+    const parts = parsed.pathname.split("/");
+    const downloadIndex = parts.findIndex(
+      (part, index) => part === "download" && parts[index - 1] === "releases",
+    );
+
+    if (
+      parsed.hostname === "github.com" &&
+      downloadIndex !== -1 &&
+      parts[downloadIndex + 1] &&
+      release.tag_name
+    ) {
+      parts[downloadIndex + 1] = release.tag_name;
+      parsed.pathname = parts.join("/");
+      return parsed.toString();
+    }
+  } catch {
+    return url;
+  }
+
   return url;
 }
 
@@ -144,7 +166,7 @@ export function generateLatestManifest({
 
     platforms[rule.platform] = {
       signature: findSignatureForAsset(asset.name, signatureDir),
-      url: assetUrl(asset),
+      url: assetUrl(release, asset),
     };
     withAliases(platforms, rule.platform, rule.aliases);
   }
