@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createDefaultPreferences } from "@freed/shared";
 
 const {
   mockDocUpdatePreferences,
@@ -59,6 +60,36 @@ describe("store.updatePreferences", () => {
     mockDocUpdatePreferences.mockReset();
     mockRecordRuntimeError.mockReset();
     mockRecordBugReportEvent.mockReset();
+    useAppStore.setState({ preferences: createDefaultPreferences() });
+  });
+
+  it("applies display preference updates locally before persistence resolves", async () => {
+    let resolvePersistence: (() => void) | undefined;
+    mockDocUpdatePreferences.mockImplementationOnce(
+      () => new Promise<void>((resolve) => {
+        resolvePersistence = resolve;
+      }),
+    );
+
+    const updatePromise = useAppStore.getState().updatePreferences({
+      display: {
+        reading: {
+          dualColumnMode: false,
+        },
+      },
+    } as never);
+
+    expect(useAppStore.getState().preferences.display.reading.dualColumnMode).toBe(false);
+    expect(mockDocUpdatePreferences).toHaveBeenCalledWith({
+      display: {
+        reading: {
+          dualColumnMode: false,
+        },
+      },
+    });
+
+    resolvePersistence?.();
+    await expect(updatePromise).resolves.toBeUndefined();
   });
 
   it("records non-fatal diagnostics when persistence rejects", async () => {
@@ -82,6 +113,7 @@ describe("store.updatePreferences", () => {
       "Preference update failed",
       error.message,
     );
+    expect(useAppStore.getState().preferences.display.sidebarWidth).toBe(320);
   });
 
   it("passes map mode preference updates through to persistence", async () => {

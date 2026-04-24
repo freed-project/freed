@@ -828,7 +828,7 @@ export function Header({
                 <span
                   ref={wordmarkRef}
                   data-testid="workspace-toolbar-wordmark"
-                  className="cursor-default select-none text-lg font-bold gradient-text font-logo"
+                  className="relative top-[2px] cursor-default select-none text-lg font-bold gradient-text font-logo"
                 >
                   FREED
                 </span>
@@ -908,7 +908,7 @@ export function Header({
                   data-testid="workspace-toolbar-reader-title-block"
                   className="pointer-events-none min-w-0 flex-1 cursor-default select-none"
                 >
-                  <p className="truncate text-sm font-medium text-[var(--theme-text-primary)]">{currentTitle}</p>
+                  <p className="truncate text-sm font-medium text-[var(--theme-text-secondary)]">{currentTitle}</p>
                   <p className="truncate text-xs text-[var(--theme-text-muted)]">{currentSubtitle}</p>
                 </div>
               </button>
@@ -930,7 +930,7 @@ export function Header({
                 data-testid="workspace-toolbar-title-block"
                 className="min-w-0 cursor-default select-none px-1"
               >
-                <p className="truncate text-sm font-semibold text-[var(--theme-text-primary)]">{currentTitle}</p>
+                <p className="truncate text-sm font-semibold text-[var(--theme-text-secondary)]">{currentTitle}</p>
                 <p className="truncate text-xs text-[var(--theme-text-muted)]">{currentSubtitle}</p>
               </div>
             )}

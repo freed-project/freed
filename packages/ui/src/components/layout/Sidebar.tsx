@@ -905,17 +905,17 @@ export function Sidebar({
         }`}
         aria-label={args.label}
       >
-          <span className={`flex items-center justify-center ${args.iconSizeClass ?? "h-[18px] w-[18px]"}`}>
+          <span className={`relative flex items-center justify-center ${args.iconSizeClass ?? "h-[18px] w-[18px]"}`}>
             {compactIcon}
-          </span>
           {args.badge ? (
-          <span
-            className="pointer-events-none absolute"
-            style={{ right: "-4px", top: "-4px" }}
-          >
-            {args.badge}
-          </span>
+            <span
+              className="pointer-events-none absolute"
+              style={{ right: "-7px", top: "-4px" }}
+            >
+              {args.badge}
+            </span>
           ) : null}
+          </span>
         </button>
       </Tooltip>
     );

@@ -213,6 +213,28 @@ function shallowEqualRecord(
   );
 }
 
+function isMergeablePreferenceObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function mergePreferenceUpdate<T extends Record<string, unknown>>(
+  current: T,
+  update: Partial<T>,
+): T {
+  const next = { ...current } as Record<string, unknown>;
+
+  for (const key of Object.keys(update) as Array<keyof T>) {
+    const currentValue = current[key];
+    const updateValue = update[key];
+    next[key as string] =
+      isMergeablePreferenceObject(currentValue) && isMergeablePreferenceObject(updateValue)
+        ? mergePreferenceUpdate(currentValue, updateValue)
+        : updateValue;
+  }
+
+  return next as T;
+}
+
 async function pruneConnectionPersonIfNeeded(
   getState: () => AppState,
   personId: string | null | undefined,
@@ -607,6 +629,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Preference actions
   updatePreferences: async (update) => {
+    set({ preferences: mergePreferenceUpdate(get().preferences, update) });
+
     try {
       await docUpdatePreferences(update);
     } catch (error) {

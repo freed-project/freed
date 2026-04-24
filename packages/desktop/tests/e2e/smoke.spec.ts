@@ -713,6 +713,24 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
   await app.goto();
   await app.waitForReady();
 
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          setState: (partial: Record<string, unknown>) => void;
+        }
+      | undefined;
+
+    store?.setState({
+      xAuth: {
+        isAuthenticated: true,
+        cookies: { ct0: "ct0", authToken: "token" },
+      },
+      itemCountByPlatform: {
+        x: 1,
+      },
+    });
+  });
+
   const resizeHandle = page.getByTestId("app-sidebar-resize-handle");
   const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
   const desktopSidebar = page.getByTestId("app-sidebar");
@@ -728,7 +746,7 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
 
   await page.mouse.move(startX, startY);
   await page.mouse.down();
-  await page.mouse.move(startX - 156, startY, { steps: 8 });
+  await page.mouse.move(startX - 104, startY, { steps: 8 });
   await page.waitForTimeout(100);
 
   const compactAnimatedGeometry = await readDesktopSidebarGeometry(page);
@@ -796,6 +814,31 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
   expect(compactSquares.xIconWidth).toBeLessThanOrEqual(21);
   expect(compactSquares.xIconHeight).toBeGreaterThanOrEqual(18);
   expect(compactSquares.xIconHeight).toBeLessThanOrEqual(21);
+
+  const compactStatusBadgeLayout = await page.evaluate(() => {
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    const xRow = sidebar?.querySelector('[data-testid="source-row-x"]') as HTMLElement | null;
+    const xIcon = xRow?.querySelector("svg") as SVGElement | null;
+    const xIndicator = xRow?.querySelector('[data-testid="source-indicator-x"]') as HTMLElement | null;
+    const rowRect = xRow?.getBoundingClientRect();
+    const iconRect = xIcon?.getBoundingClientRect();
+    const indicatorRect = xIndicator?.getBoundingClientRect();
+    if (!rowRect || !iconRect || !indicatorRect) return null;
+    return {
+      indicatorCenterX: indicatorRect.left + indicatorRect.width / 2,
+      indicatorCenterY: indicatorRect.top + indicatorRect.height / 2,
+      iconRight: iconRect.right,
+      iconTop: iconRect.top,
+      rowRight: rowRect.right,
+      rowTop: rowRect.top,
+    };
+  });
+
+  expect(compactStatusBadgeLayout).not.toBeNull();
+  expect(Math.abs(compactStatusBadgeLayout!.indicatorCenterX - compactStatusBadgeLayout!.iconRight)).toBeLessThanOrEqual(2);
+  expect(compactStatusBadgeLayout!.indicatorCenterX).toBeLessThan(compactStatusBadgeLayout!.rowRight - 6);
+  expect(compactStatusBadgeLayout!.indicatorCenterY).toBeGreaterThanOrEqual(compactStatusBadgeLayout!.iconTop);
+  expect(compactStatusBadgeLayout!.indicatorCenterY).toBeGreaterThan(compactStatusBadgeLayout!.rowTop + 6);
 
   await page.mouse.move(startX - 240, startY, { steps: 6 });
   await page.waitForTimeout(100);
@@ -2479,6 +2522,41 @@ test("dual-column reader toolbar toggles stay aligned with the sidebar and rail"
   );
 });
 
+test("desktop toolbar uses softened foreground colors", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const toolbarColors = await page.evaluate(() => {
+    const title = document.querySelector('[data-testid="workspace-toolbar-title-block"] p') as HTMLElement | null;
+    const sidebarToggle = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
+    if (!title || !sidebarToggle) return null;
+
+    const resolveColor = (color: string) => {
+      const swatch = document.createElement("span");
+      swatch.style.color = color;
+      document.body.appendChild(swatch);
+      const resolved = window.getComputedStyle(swatch).color;
+      swatch.remove();
+      return resolved;
+    };
+
+    return {
+      titleColor: window.getComputedStyle(title).color,
+      toggleColor: window.getComputedStyle(sidebarToggle).color,
+      secondaryColor: resolveColor("var(--theme-text-secondary)"),
+      mutedColor: resolveColor("var(--theme-text-muted)"),
+      primaryColor: resolveColor("var(--theme-text-primary)"),
+    };
+  });
+
+  expect(toolbarColors).not.toBeNull();
+  expect(toolbarColors!.titleColor).toBe(toolbarColors!.secondaryColor);
+  expect(toolbarColors!.toggleColor).toBe(toolbarColors!.mutedColor);
+  expect(toolbarColors!.titleColor).not.toBe(toolbarColors!.primaryColor);
+  expect(toolbarColors!.toggleColor).not.toBe(toolbarColors!.primaryColor);
+});
+
 test("desktop hide thumbnail rail button collapses the compact reader rail", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
@@ -2509,6 +2587,8 @@ test("desktop hide thumbnail rail button collapses the compact reader rail", asy
 
   await page.getByLabel("Hide thumbnail rail").click();
 
+  await expect(page.getByLabel("Show thumbnail rail")).toBeVisible({ timeout: 1_000 });
+
   await expect.poll(async () => {
     return page.evaluate(() => {
       const store = (window as Record<string, unknown>).__FREED_STORE__ as
@@ -2529,7 +2609,6 @@ test("desktop hide thumbnail rail button collapses the compact reader rail", asy
   }).toBe(false);
 
   await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeHidden({ timeout: 5_000 });
-  await expect(page.getByLabel("Show thumbnail rail")).toBeVisible({ timeout: 5_000 });
 });
 
 test("dual-column reader toggles use shared view transitions when supported", async ({ app, page }) => {
