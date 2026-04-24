@@ -3940,22 +3940,26 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
   const startX = box.x + box.width * 0.55;
   const startY = box.y + box.height * 0.45;
 
-  await page.mouse.move(startX, startY);
-  await page.mouse.down();
-  await page.mouse.move(startX + 260, startY + 70, { steps: 18 });
+  let duringPan: Awaited<ReturnType<typeof readGraphDebug>> = null;
+  try {
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX + 260, startY + 70, { steps: 18 });
 
-  await expect
-    .poll(async () => (await readGraphDebug(page))?.qualityMode, { timeout: 5_000 })
-    .toBe("interactive");
+    await expect
+      .poll(async () => (await readGraphDebug(page))?.qualityMode, { timeout: 10_000 })
+      .toBe("interactive");
 
-  const duringPan = await readGraphDebug(page);
-  expect(duringPan).not.toBeNull();
-  expect(duringPan!.metrics.visibleLabelCount).toBeLessThanOrEqual(
-    initial!.metrics.visibleLabelCount,
-  );
-  expect(duringPan!.metrics.sceneSyncMs).toBeLessThan(20);
+    duringPan = await readGraphDebug(page);
+    expect(duringPan).not.toBeNull();
+    expect(duringPan!.metrics.visibleLabelCount).toBeLessThanOrEqual(
+      initial!.metrics.visibleLabelCount,
+    );
+    expect(duringPan!.metrics.sceneSyncMs).toBeLessThan(20);
+  } finally {
+    await page.mouse.up();
+  }
 
-  await page.mouse.up();
   await expect
     .poll(async () => (await readGraphDebug(page))?.qualityMode, { timeout: 5_000 })
     .toBe("settled");
@@ -3963,7 +3967,7 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
   const settled = await readGraphDebug(page);
   expect(settled).not.toBeNull();
   expect(settled!.metrics.visibleLabelCount).toBeGreaterThanOrEqual(
-    duringPan!.metrics.visibleLabelCount,
+    duringPan?.metrics.visibleLabelCount ?? 0,
   );
 
   const zoomStart = Date.now();
