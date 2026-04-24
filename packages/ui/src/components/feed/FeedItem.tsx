@@ -1,4 +1,4 @@
-import { memo, useRef, useState, type ReactNode } from "react";
+import { memo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { PLATFORM_LABELS, type FeedItem as FeedItemType } from "@freed/shared";
 import { usePlatform } from "../../context/PlatformContext.js";
@@ -192,6 +192,15 @@ export const FeedItem = memo(function FeedItem({
   const swipeProgress = Math.min(Math.abs(swipeX) / SWIPE_THRESHOLD, 1);
   const pastThreshold = swipeX < -SWIPE_THRESHOLD;
   const enableSwipe = !compact && !!onArchive && !item.userState.saved;
+  const handleActivateClick = (event: MouseEvent<HTMLElement>) => {
+    event.currentTarget.focus();
+    onClick?.();
+  };
+  const handleActivateKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onClick?.();
+  };
 
   if (item.contentType === "story") {
     const bg = item.content.mediaUrls[0];
@@ -206,11 +215,11 @@ export const FeedItem = memo(function FeedItem({
         data-focused={focused ? "true" : "false"}
         className={`relative overflow-hidden rounded-[var(--feed-card-radius)] cursor-pointer group select-none w-full transition-opacity ${readVisualClass}`}
         style={{ height: storyHeight }}
-        onClick={onClick}
+        onClick={handleActivateClick}
         onMouseEnter={onMouseEnter}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => e.key === "Enter" && onClick?.()}
+        onKeyDown={handleActivateKeyDown}
       >
         {showInlineMedia && bg ? (
           <img
@@ -317,11 +326,11 @@ export const FeedItem = memo(function FeedItem({
               ? "border-l-2 border-l-[var(--theme-accent-secondary)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)]"
               : "hover:bg-[var(--theme-bg-muted)]"
           } ${readVisualClass}`}
-          onClick={onClick}
+          onClick={handleActivateClick}
           onMouseEnter={onMouseEnter}
           role="button"
           tabIndex={0}
-          onKeyDown={(e) => e.key === "Enter" && onClick?.()}
+          onKeyDown={handleActivateKeyDown}
         >
           {!narrow && (
             <div className="flex items-center gap-2 mb-2">
@@ -409,14 +418,14 @@ export const FeedItem = memo(function FeedItem({
           transition: swipeX === 0 ? "transform 0.25s ease" : undefined,
           willChange: swipeX !== 0 ? "transform" : undefined,
         }}
-        onClick={onClick}
+        onClick={handleActivateClick}
         onMouseEnter={onMouseEnter}
         onTouchStart={enableSwipe ? handleTouchStart : undefined}
         onTouchMove={enableSwipe ? handleTouchMove : undefined}
         onTouchEnd={enableSwipe ? handleTouchEnd : undefined}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => e.key === "Enter" && onClick?.()}
+        onKeyDown={handleActivateKeyDown}
       >
         <div className="flex items-center gap-3 mb-3">
           {item.author.avatarUrl ? (

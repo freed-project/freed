@@ -615,7 +615,9 @@ export function Sidebar({
       ? "width 180ms ease, transform 180ms ease, opacity 160ms ease"
       : "width 220ms ease, transform 220ms ease, opacity 180ms ease";
   const desktopAsideTransform = renderMode === "closed"
-    ? `translateX(calc(-100% - ${px(effectiveGapWidthPx)}))`
+    ? closedPreviewActive
+      ? "translateX(calc(-100% - var(--feed-card-gap, 8px)))"
+      : `translateX(calc(-100% - ${px(effectiveGapWidthPx)}))`
     : "translateX(0)";
   const resizeHandleVisible = !forceCompactDesktopRail && (dragWidth !== null || renderMode !== "closed");
 

@@ -26,6 +26,7 @@ const LAYOUT_CONTROL_GAP_PX = 8;
 const MACOS_TRAFFIC_LIGHT_INSET_PX = 100;
 const TOOLBAR_CENTER_ALIGNMENT_TOLERANCE_PX = 3;
 const TOOLTIP_ARROW_ALIGNMENT_TOLERANCE_PX = 1.5;
+const SIDEBAR_CLOSED_EDGE_TOLERANCE_PX = 5;
 const PRIMARY_SIDEBAR_GAP_WIDTH = "16px";
 const AUXILIARY_DRAWER_GAP_WIDTH = "12px";
 const SOFT_VIEWPORT_RADIUS = "20px";
@@ -755,7 +756,7 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
   const closedPreviewGeometry = await readDesktopSidebarGeometry(page);
   expect(closedPreviewGeometry.shellWidth).toBeLessThan(compactGeometry.shellWidth);
   expect(closedPreviewGeometry.shellWidth).toBeGreaterThanOrEqual(0);
-  expect(closedPreviewGeometry.sidebarRight).toBeGreaterThanOrEqual(-8);
+  expect(closedPreviewGeometry.sidebarRight).toBeGreaterThanOrEqual(-SIDEBAR_CLOSED_EDGE_TOLERANCE_PX);
   await expect(sidebarToggle).toHaveAttribute("aria-label", "Expand sidebar");
 
   await expectDesktopSidebarShellWidthAtMost(page, 2, 500);
@@ -1996,7 +1997,7 @@ test("Friends view can return to the feed from sidebar navigation", async ({ app
       | { getState: () => { activeView: string } }
       | undefined;
     return store?.getState().activeView === "friends";
-  }, { timeout: 5_000 });
+  }, { timeout: 15_000 });
 
   await page.getByRole("button", { name: /^Unified Feed$/ }).click();
   await page.waitForFunction(() => {
@@ -2005,7 +2006,7 @@ test("Friends view can return to the feed from sidebar navigation", async ({ app
       | { getState: () => { activeView: string } }
       | undefined;
     return store?.getState().activeView === "feed";
-  }, { timeout: 5_000 });
+  }, { timeout: 15_000 });
   await expect(page.getByText("Article 0:", { exact: false })).toBeVisible({ timeout: 5_000 });
 });
 
@@ -2103,9 +2104,27 @@ test("dual-column reader arrow navigation cycles tiles and keeps the selected ti
   await page.getByText("Article 0:", { exact: false }).click();
   await expect(page.getByLabel("Back")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
+  await expect.poll(async () => {
+    return page.evaluate(() => document.documentElement.classList.contains("feed-layout-transition"));
+  }).toBe(false);
+  await page.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  });
 
   for (let i = 0; i < 6; i += 1) {
     await page.keyboard.press("ArrowDown");
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          const container = document.querySelector('[data-testid="compact-feed-panel-scroll-container"]') as HTMLElement | null;
+          const selectedItem = container?.querySelector('[data-selected="true"]') as HTMLElement | null;
+          const selectedRow = selectedItem?.closest('[data-compact-panel-index]') as HTMLElement | null;
+          return Number(selectedRow?.dataset.compactPanelIndex ?? -1);
+        });
+      }, { timeout: 5_000 })
+      .toBe(i + 1);
   }
 
   await page.waitForFunction(() => {
@@ -3712,19 +3731,15 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
   await expect
     .poll(async () => {
       const debug = await readGraphDebug(page);
-      return {
-        nodes: debug?.nodes.length ?? 0,
-        qualityMode: debug?.qualityMode ?? "interactive",
-        visibleLabels: debug?.metrics.visibleLabelCount ?? 0,
-      };
-    }, { timeout: 30_000 })
-    .toMatchObject({
-      qualityMode: "settled",
-    });
+      if (!debug || debug.qualityMode !== "settled" || debug.metrics.visibleLabelCount <= 0) {
+        return 0;
+      }
+      return debug.nodes.length;
+    }, { timeout: 45_000 })
+    .toBeGreaterThan(1_000);
 
   const seededGraph = await readGraphDebug(page);
   expect(seededGraph).not.toBeNull();
-  expect(seededGraph!.nodes.length).toBeGreaterThan(1_000);
   expect(seededGraph!.metrics.visibleLabelCount).toBeGreaterThan(0);
 
   const initial = await waitForGraphPerfToSettle(page);

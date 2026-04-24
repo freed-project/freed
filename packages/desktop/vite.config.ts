@@ -2,6 +2,7 @@ import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
+import { realpathSync } from "fs";
 import { fileURLToPath } from "url";
 import pkg from "./package.json" with { type: "json" };
 import { getBuildMetadata } from "../../scripts/lib/build-metadata.mjs";
@@ -12,6 +13,19 @@ const src = (name: string) =>
   fileURLToPath(new URL(`../${name}/src`, import.meta.url));
 const rootFile = (name: string) =>
   fileURLToPath(new URL(name, import.meta.url));
+const workspaceRoot = fileURLToPath(new URL("../..", import.meta.url));
+const workspaceNodeModules = fileURLToPath(new URL("../../node_modules", import.meta.url));
+const fsAllow = [
+  workspaceRoot,
+  workspaceNodeModules,
+  (() => {
+    try {
+      return realpathSync(workspaceNodeModules);
+    } catch {
+      return workspaceNodeModules;
+    }
+  })(),
+];
 
 // When VITE_TEST_TAURI=1, swap every @tauri-apps/* import for a thin mock
 // module so the UI runs in plain Chromium without a Tauri binary.
@@ -83,6 +97,9 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: !process.env.VITE_TEST_TAURI,
+    fs: {
+      allow: fsAllow,
+    },
     watch: {
       ignored: ["**/src-tauri/**"],
     },
