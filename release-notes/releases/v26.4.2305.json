@@ -3,8 +3,10 @@
   "version": "26.4.2305",
   "channel": "production",
   "dayKey": "26.4.23",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed for production release. Kept same-day carried-forward bullets so release validation can confirm this is the latest complete production note for the day."
+  ],
   "generatedAt": "2026-04-24T03:52:31.440Z",
   "model": "heuristic",
   "source": {
