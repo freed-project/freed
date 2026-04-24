@@ -1,25 +1,70 @@
 [
   {
-    "version": "26.4.2300",
-    "tagName": "v26.4.2300",
+    "version": "26.4.2305",
+    "tagName": "v26.4.2305",
     "channel": "production",
-    "date": "2026-04-23T11:26:24Z",
-    "deck": "Promote dev into main for production release and stop release workflow deploying website",
-    "features": [],
-    "fixes": [],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2300",
+    "date": "2026-04-24T04:22:57Z",
+    "deck": "Pixi WebGL Friends graph with linked people, channels, and feeds, desktop details rail controls and a mobile Details mode for the Friends workspace, and sync UI package exports before production release",
+    "features": [
+      {
+        "text": "Pixi WebGL Friends graph with linked people, channels, and feeds"
+      },
+      {
+        "text": "Desktop details rail controls and a mobile Details mode for the Friends workspace"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Smoother pan and pinch behavior with cleaner four-edge vignette feathering in the Friends graph"
+      },
+      {
+        "text": "Browser preview no longer crashes on native-only snapshot, LinkedIn, and capture paths"
+      },
+      {
+        "text": "Crash report exports now label and gate public-safe versus private bundles correctly"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Promote dev into main for production release and stop release workflow deploying website"
+      },
+      {
+        "text": "This build ships the new Friends graph workspace and hardens desktop preview, diagnostics, and graph performance"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2305",
     "prNumbers": [
       279,
-      285
+      285,
+      290,
+      294,
+      306
     ],
     "builds": [
-      "26.4.2300"
+      "26.4.2300",
+      "26.4.2301",
+      "26.4.2303",
+      "26.4.2305"
     ],
     "buildLinks": [
       {
         "version": "26.4.2300",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2300",
+        "channel": "production"
+      },
+      {
+        "version": "26.4.2301",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2301",
+        "channel": "production"
+      },
+      {
+        "version": "26.4.2303",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2303",
+        "channel": "production"
+      },
+      {
+        "version": "26.4.2305",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2305",
         "channel": "production"
       }
     ]
