@@ -483,6 +483,28 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
         ack(req.reqId);
         break;
 
+      case "UPSERT_CONNECTION_PERSONS":
+        await applyChange((doc) => {
+          const now = Date.now();
+          for (const candidate of req.candidates) {
+            if (doc.persons[candidate.person.id]) {
+              updatePerson(doc, candidate.person.id, candidate.person);
+            } else {
+              addPerson(doc, candidate.person);
+            }
+            for (const accountId of candidate.accountIds) {
+              const account = doc.accounts[accountId];
+              if (!account || account.personId === candidate.person.id) continue;
+              updateAccount(doc, accountId, {
+                personId: candidate.person.id,
+                updatedAt: now,
+              });
+            }
+          }
+        }, `Upsert ${req.candidates.length.toLocaleString()} connection people`);
+        ack(req.reqId);
+        break;
+
       case "REMOVE_PERSON":
         await applyChange((doc) => removePerson(doc, req.personId), "Remove person");
         ack(req.reqId);

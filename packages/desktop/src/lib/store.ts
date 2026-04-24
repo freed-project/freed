@@ -45,6 +45,7 @@ import {
   docAddPersons,
   docUpdateAccount,
   docUpdatePerson,
+  docUpsertConnectionPersons,
   docRemoveAccount,
   docRemovePerson,
   docLogReachOut,
@@ -165,6 +166,9 @@ interface AppState {
   removeAccount: (id: string) => Promise<void>;
   linkAccountToPerson: (accountId: string, personId: string | null) => Promise<void>;
   createConnectionPersonFromAccounts: (accountIds: string[], person?: Person) => Promise<string>;
+  createConnectionPersonsFromCandidates: (
+    candidates: Array<{ person: Person; accountIds: string[] }>,
+  ) => Promise<number>;
 
   // Preference actions (persisted to Automerge)
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;
@@ -542,6 +546,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       await get().linkAccountToPerson(accountId, person.id);
     }
     return person.id;
+  },
+
+  createConnectionPersonsFromCandidates: async (candidates) => {
+    if (candidates.length === 0) return 0;
+    await docUpsertConnectionPersons(candidates);
+    return candidates.length;
   },
 
   // Deprecated friend aliases

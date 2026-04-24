@@ -37,6 +37,7 @@ vi.mock("./automerge", () => ({
   docAddFriends: vi.fn(),
   docUpdateFriend: vi.fn(),
   docRemoveFriend: vi.fn(),
+  docUpsertConnectionPersons: vi.fn(),
   docLogReachOut: vi.fn(),
   docToggleLiked: vi.fn(),
   docConfirmLikedSynced: vi.fn(),

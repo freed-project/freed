@@ -603,6 +603,14 @@ export async function docUpdatePerson(
   return request({ reqId, type: "UPDATE_PERSON", personId, updates });
 }
 
+export async function docUpsertConnectionPersons(
+  candidates: Array<{ person: Person; accountIds: string[] }>,
+): Promise<void> {
+  if (candidates.length === 0) return;
+  const reqId = nextReqId++;
+  return request({ reqId, type: "UPSERT_CONNECTION_PERSONS", candidates });
+}
+
 export async function docRemovePerson(personId: string): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "REMOVE_PERSON", personId });
