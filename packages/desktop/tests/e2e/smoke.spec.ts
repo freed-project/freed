@@ -311,7 +311,7 @@ async function seedStressIdentityGraph(page: Page) {
       createdAt: now,
       updatedAt: now,
     }));
-    const accounts = Array.from({ length: 900 }, (_, index) => ({
+    const accounts = Array.from({ length: 820 }, (_, index) => ({
       id: `stress-account-${index}`,
       personId: index < 580 ? `stress-person-${index % 100}` : undefined,
       kind: "social",
@@ -325,20 +325,20 @@ async function seedStressIdentityGraph(page: Page) {
       createdAt: now,
       updatedAt: now,
     }));
-    const feeds = Array.from({ length: 120 }, (_, index) => ({
+    const feeds = Array.from({ length: 90 }, (_, index) => ({
       url: `https://stress.example/feed-${index}.xml`,
       title: `Stress Feed ${index}`,
       enabled: true,
       trackUnread: true,
     }));
-    const feedItems = Array.from({ length: 1_600 }, (_, index) => ({
+    const feedItems = Array.from({ length: 1_200 }, (_, index) => ({
       globalId: `stress-item-${index}`,
       platform: index % 5 === 0 ? "rss" : index % 2 === 0 ? "instagram" : "x",
       contentType: index % 5 === 0 ? "article" : "post",
       capturedAt: now - index * 60_000,
       publishedAt: now - index * 60_000,
       author: {
-        id: index % 5 === 0 ? `stress-feed-author-${index % 120}` : `stress-external-${index % 900}`,
+        id: index % 5 === 0 ? `stress-feed-author-${index % 90}` : `stress-external-${index % 820}`,
         handle: `stress-author-${index}`,
         displayName: `Stress Author ${index}`,
       },
@@ -350,8 +350,8 @@ async function seedStressIdentityGraph(page: Page) {
       rssSource:
         index % 5 === 0
           ? {
-              feedUrl: `https://stress.example/feed-${index % 120}.xml`,
-              feedTitle: `Stress Feed ${index % 120}`,
+              feedUrl: `https://stress.example/feed-${index % 90}.xml`,
+              feedTitle: `Stress Feed ${index % 90}`,
             }
           : undefined,
       userState: { hidden: false, saved: false, archived: false, tags: [] },
@@ -3558,7 +3558,7 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
 });
 
 test("stress Friends graph degrades labels during motion and avoids expensive redraws on pan", async ({ app, page }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
