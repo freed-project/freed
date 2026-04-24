@@ -5,7 +5,7 @@ import { DebugPanel } from "../DebugPanel.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
 import { LibraryDialog } from "../LibraryDialog.js";
-import { useDebugStore } from "../../lib/debug-store.js";
+import { addDebugEvent, useDebugStore } from "../../lib/debug-store.js";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { FriendsView } from "../friends/FriendsView.js";
@@ -60,7 +60,7 @@ export function AppShell({ children }: AppShellProps) {
   const persons = useAppStore((s) => s.persons);
   const addPerson = useAppStore((s) => s.addPerson);
   const addAccounts = useAppStore((s) => s.addAccounts);
-  const createConnectionPersonFromAccounts = useAppStore((s) => s.createConnectionPersonFromAccounts);
+  const createConnectionPersonsFromCandidates = useAppStore((s) => s.createConnectionPersonsFromCandidates);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const themeId = useAppStore((s) => s.preferences.display.themeId);
   const showAtmosphere = activeView !== "friends" && activeView !== "map";
@@ -271,12 +271,11 @@ export function AppShell({ children }: AppShellProps) {
     provisionalPersonScanRef.current = { personCount, accountCount };
     const candidates = buildProvisionalPersonCandidates(persons, accounts);
     if (candidates.length === 0) return;
-    void (async () => {
-      for (const candidate of candidates) {
-        await createConnectionPersonFromAccounts(candidate.accountIds, candidate.person);
-      }
-    })();
-  }, [accounts, createConnectionPersonFromAccounts, isInitialized, persons]);
+    void createConnectionPersonsFromCandidates(candidates).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      addDebugEvent("error", `[Identity] provisional person repair failed: ${message}`);
+    });
+  }, [accounts, createConnectionPersonsFromCandidates, isInitialized, persons]);
 
   const handleLinkSuggestion = useCallback(async (suggestion: IdentitySuggestion) => {
     const match = contactSync.getMatchForSuggestion(suggestion.id);

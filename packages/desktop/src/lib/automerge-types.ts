@@ -80,6 +80,7 @@ export type WorkerRequest =
   | { reqId: number; type: "ADD_PERSON"; person: Person }
   | { reqId: number; type: "ADD_PERSONS"; persons: Person[] }
   | { reqId: number; type: "UPDATE_PERSON"; personId: string; updates: Partial<Person> }
+  | { reqId: number; type: "UPSERT_CONNECTION_PERSONS"; candidates: Array<{ person: Person; accountIds: string[] }> }
   | { reqId: number; type: "REMOVE_PERSON"; personId: string }
   | { reqId: number; type: "LOG_REACH_OUT"; personId: string; entry: ReachOutLog }
   | { reqId: number; type: "ADD_ACCOUNT"; account: Account }

@@ -40,4 +40,13 @@ describe("automerge worker memory routing", () => {
     expect(body).not.toContain("hydrateFromDoc");
     expect(body).not.toContain("STATE_UPDATE");
   });
+
+  it("batches provisional connection repair into one document mutation", () => {
+    const body = caseBody("UPSERT_CONNECTION_PERSONS");
+
+    expect(body).toContain("applyRequestChange");
+    expect(body).toContain("updatePerson");
+    expect(body).toContain("updateAccount");
+    expect(body).toContain("ack(req.reqId)");
+  });
 });

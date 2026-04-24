@@ -44,6 +44,7 @@ import {
   docAddPersons,
   docUpdateAccount,
   docUpdatePerson,
+  docUpsertConnectionPersons,
   docRemoveAccount,
   docRemovePerson,
   docLogReachOut,
@@ -276,6 +277,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       await get().linkAccountToPerson(accountId, person.id);
     }
     return person.id;
+  },
+
+  createConnectionPersonsFromCandidates: async (candidates) => {
+    if (candidates.length === 0) return 0;
+    await docUpsertConnectionPersons(candidates);
+    return candidates.length;
   },
 
   // Deprecated friend aliases
