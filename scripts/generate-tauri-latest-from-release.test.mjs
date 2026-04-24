@@ -73,3 +73,26 @@ test("throws when an updater artifact has no signature", () => {
     /Missing updater signature/,
   );
 });
+
+test("normalizes draft asset URLs to the published release tag", () => {
+  const manifest = generateLatestManifest({
+    release: {
+      tag_name: "v26.4.2305",
+      assets: [
+        {
+          name: "Freed_aarch64.app.tar.gz",
+          browser_download_url:
+            "https://github.com/freed-project/freed/releases/download/untagged-1cf3faa3e92222d94ef1/Freed_aarch64.app.tar.gz",
+        },
+      ],
+    },
+    signatureDir: signatureDir({
+      "Freed_aarch64.app.tar.gz.sig": "mac-signature\n",
+    }),
+  });
+
+  assert.equal(
+    manifest.platforms["darwin-aarch64"].url,
+    "https://github.com/freed-project/freed/releases/download/v26.4.2305/Freed_aarch64.app.tar.gz",
+  );
+});
