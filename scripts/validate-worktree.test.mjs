@@ -47,8 +47,34 @@ test("feature plan for shared changes covers both desktop and pwa surfaces", () 
     "pwa typecheck",
     "pwa unit tests",
     "desktop unit tests",
-    "desktop e2e",
+    "desktop e2e smoke",
   ]);
+});
+
+test("dev plan uses the fast desktop smoke lane", () => {
+  const labels = describePlan(buildValidationPlan("dev", []));
+
+  assert.ok(labels.includes("desktop e2e smoke"));
+  assert.ok(!labels.includes("desktop e2e full"));
+  assert.ok(!labels.includes("desktop e2e perf"));
+  assert.ok(!labels.includes("desktop e2e visual"));
+});
+
+test("production plan includes full, perf, visual, and production builds", () => {
+  const labels = describePlan(buildValidationPlan("production", []));
+
+  assert.ok(labels.includes("desktop e2e smoke"));
+  assert.ok(labels.includes("desktop e2e full"));
+  assert.ok(labels.includes("desktop e2e perf"));
+  assert.ok(labels.includes("desktop e2e visual"));
+  assert.ok(labels.includes("desktop production build"));
+});
+
+test("release mode remains a compatibility alias for production", () => {
+  assert.deepEqual(
+    describePlan(buildValidationPlan("release", [])),
+    describePlan(buildValidationPlan("production", [])),
+  );
 });
 
 test("feature plan for capture-only changes runs the touched workspace check", () => {
