@@ -1528,7 +1528,7 @@ html[data-theme="scriptorium"] .theme-floating-panel {
   cursor: pointer;
   border: 1px solid var(--theme-border-subtle);
   background: var(--theme-button-secondary-background);
-  color: var(--theme-text-secondary);
+  color: var(--theme-text-muted);
   transition:
     color 0.18s ease,
     background-color 0.18s ease,
@@ -1536,7 +1536,7 @@ html[data-theme="scriptorium"] .theme-floating-panel {
 }
 
 .theme-toolbar-button-neutral:hover {
-  color: var(--theme-text-primary);
+  color: var(--theme-text-secondary);
   background: var(--theme-bg-muted);
   border-color: var(--theme-border-subtle);
 }
@@ -1545,7 +1545,7 @@ html[data-theme="scriptorium"] .theme-floating-panel {
   cursor: pointer;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--theme-text-secondary);
+  color: var(--theme-text-muted);
   transition:
     color 0.18s ease,
     background-color 0.18s ease,
@@ -1553,7 +1553,7 @@ html[data-theme="scriptorium"] .theme-floating-panel {
 }
 
 .theme-toolbar-button-ghost:hover {
-  color: var(--theme-text-primary);
+  color: var(--theme-text-secondary);
   background: var(--theme-bg-muted);
   border-color: var(--theme-border-subtle);
 }
