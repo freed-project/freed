@@ -618,16 +618,25 @@ test("desktop sidebar toggle still clicks normally from the shared toolbar", asy
     return sidebarShell?.getBoundingClientRect().width ?? 0;
   });
 
-  await page.getByTestId("desktop-sidebar-toggle").click();
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Minimal sidebar");
+
+  await sidebarToggle.click();
   await page.waitForTimeout(250);
 
-  const collapsedWidth = await page.evaluate(() => {
+  const compactWidth = await page.evaluate(() => {
     const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
     return sidebarShell?.getBoundingClientRect().width ?? 0;
   });
 
   expect(initialWidth).toBeGreaterThan(200);
-  expect(collapsedWidth).toBeLessThanOrEqual(2);
+  expect(compactWidth).toBeGreaterThanOrEqual(46);
+  expect(compactWidth).toBeLessThanOrEqual(70);
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
+
+  await sidebarToggle.click();
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
+  await expectDesktopSidebarShellWidthAtMost(page, 2, 1_000);
 });
 
 test("narrow desktop viewports keep the desktop compact rail instead of switching to the mobile drawer", async ({ app, page }) => {
@@ -757,7 +766,7 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
   expect(closedPreviewGeometry.shellWidth).toBeLessThan(compactGeometry.shellWidth);
   expect(closedPreviewGeometry.shellWidth).toBeGreaterThanOrEqual(0);
   expect(closedPreviewGeometry.sidebarRight).toBeGreaterThanOrEqual(-SIDEBAR_CLOSED_EDGE_TOLERANCE_PX);
-  await expect(sidebarToggle).toHaveAttribute("aria-label", "Expand sidebar");
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
 
   await expectDesktopSidebarShellWidthAtMost(page, 2, 500);
   const settledClosedPreviewGeometry = await readDesktopSidebarGeometry(page);
@@ -803,14 +812,13 @@ test("desktop sidebar snaps to compact and closed, then reopens at the default e
   expect(restoredExpandedGeometry.sidebarWidth).toBeGreaterThanOrEqual(252);
   expect(restoredExpandedGeometry.sidebarWidth).toBeLessThanOrEqual(260);
 
-  const savedMode = await page.evaluate(() => {
+  await page.waitForFunction(() => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as
       | { getState: () => { preferences: { display: { sidebarMode?: string } } } }
       | undefined;
-    return store?.getState().preferences.display.sidebarMode ?? null;
+    return store?.getState().preferences.display.sidebarMode === "expanded";
   });
-  expect(savedMode).toBe("expanded");
 });
 
 test("compact sidebar search opens as a floating palette and closes cleanly", async ({ app, page }) => {
@@ -1036,10 +1044,14 @@ test("narrow labeled sidebar keeps source names visible and drops counts first",
   const narrowLabelMetrics = await page.evaluate(() => {
     const xRow = document.querySelector('[data-testid="source-row-x"]') as HTMLElement | null;
     const xLabel = xRow?.querySelector("span.min-w-0") as HTMLElement | null;
+    const friendsRow = document.querySelector('[data-testid="source-row-friends"]') as HTMLElement | null;
+    const friendsLabel = friendsRow?.querySelector("span.min-w-0") as HTMLElement | null;
     const searchInput = document.querySelector('[data-testid="app-sidebar"] input[placeholder="Search"]') as HTMLInputElement | null;
     return {
       xTextOverflow: xLabel ? window.getComputedStyle(xLabel).textOverflow : null,
       xRightPadding: xLabel ? window.getComputedStyle(xLabel).paddingRight : null,
+      friendsRightPadding: friendsLabel ? window.getComputedStyle(friendsLabel).paddingRight : null,
+      searchRightPadding: searchInput ? window.getComputedStyle(searchInput).paddingRight : null,
       searchPlaceholder: searchInput?.placeholder ?? null,
       searchToFirstRowGap: (() => {
         const firstRow = document
@@ -1051,7 +1063,9 @@ test("narrow labeled sidebar keeps source names visible and drops counts first",
     };
   });
   expect(narrowLabelMetrics?.xTextOverflow).toBe("clip");
-  expect(narrowLabelMetrics?.xRightPadding).toBe("2px");
+  expect(narrowLabelMetrics?.xRightPadding).toBe("0px");
+  expect(narrowLabelMetrics?.friendsRightPadding).toBe("0px");
+  expect(narrowLabelMetrics?.searchRightPadding).toBe("0px");
   expect(narrowLabelMetrics?.searchPlaceholder).toBe("Search");
   expect(narrowLabelMetrics?.searchToFirstRowGap).toBeGreaterThanOrEqual(7);
   expect(narrowLabelMetrics?.searchToFirstRowGap).toBeLessThanOrEqual(9);
@@ -1121,8 +1135,9 @@ test("narrow labeled sidebar keeps source names visible and drops counts first",
   expect(narrowLabelStyles?.settings.textOverflow).toBe("clip");
   expect(narrowLabelStyles?.facebook.overflowX).toBe("hidden");
   expect(narrowLabelStyles?.settings.overflowX).toBe("hidden");
-  expect(narrowLabelStyles?.facebook.paddingRight ?? 0).toBeGreaterThanOrEqual(2);
-  expect(narrowLabelStyles?.settings.paddingRight ?? 0).toBeGreaterThanOrEqual(2);
+  expect(narrowLabelStyles?.facebook.paddingRight ?? 0).toBe(0);
+  expect(narrowLabelStyles?.archived.paddingRight ?? 0).toBe(0);
+  expect(narrowLabelStyles?.settings.paddingRight ?? 0).toBe(0);
 });
 
 test("expanded sidebar padding settles to roomy or condensed values instead of resting mid-way", async ({ app, page }) => {
@@ -1279,16 +1294,26 @@ test("desktop sidebar and debug drawer use floating shell cards", async ({ app, 
   expect(initialShellState.sidebarHasFloatingShell).toBe(true);
   expect(initialShellState.sidebarWidth).toBeGreaterThan(200);
 
-  await page.getByTestId("desktop-sidebar-toggle").click();
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+  await sidebarToggle.click();
   await page.waitForTimeout(250);
 
+  const compactWidth = await page.evaluate(() => {
+    const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
+    return sidebarShell?.getBoundingClientRect().width ?? 0;
+  });
+  expect(compactWidth).toBeGreaterThanOrEqual(46);
+  expect(compactWidth).toBeLessThanOrEqual(70);
+
+  await sidebarToggle.click();
+  await page.waitForTimeout(250);
   const collapsedWidth = await page.evaluate(() => {
     const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
     return sidebarShell?.getBoundingClientRect().width ?? 0;
   });
   expect(collapsedWidth).toBeLessThanOrEqual(2);
 
-  await page.getByTestId("desktop-sidebar-toggle").click();
+  await sidebarToggle.click();
   await page.waitForTimeout(250);
   const reopenedWidth = await page.evaluate(() => {
     const sidebarShell = document.querySelector('[data-testid="app-sidebar-shell"]') as HTMLElement | null;
@@ -1313,7 +1338,7 @@ test("desktop toolbar tooltips dismiss after clicking a moving control", async (
 
   const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
   await sidebarToggle.hover();
-  await expect(page.getByRole("tooltip")).toHaveText("Collapse sidebar");
+  await expect(page.getByRole("tooltip")).toHaveText("Minimal sidebar");
 
   await sidebarToggle.click();
 
@@ -1321,7 +1346,7 @@ test("desktop toolbar tooltips dismiss after clicking a moving control", async (
     return page.locator('[role="tooltip"]').count();
   }).toBe(0);
 
-  await expect(sidebarToggle).toHaveAttribute("aria-label", "Expand sidebar");
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
 });
 
 test("desktop toolbar tooltips still open on keyboard focus", async ({ app, page }) => {
@@ -1338,7 +1363,7 @@ test("desktop toolbar tooltips still open on keyboard focus", async ({ app, page
   }
 
   await expect(sidebarToggle).toBeFocused();
-  await expect(page.getByRole("tooltip")).toHaveText("Collapse sidebar");
+  await expect(page.getByRole("tooltip")).toHaveText("Minimal sidebar");
 });
 
 test("tooltip arrows stay attached to bottom and right-facing panels", async ({ app, page }) => {
@@ -1348,7 +1373,7 @@ test("tooltip arrows stay attached to bottom and right-facing panels", async ({ 
 
   const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
   await sidebarToggle.hover();
-  await expect(page.getByRole("tooltip")).toHaveText("Collapse sidebar");
+  await expect(page.getByRole("tooltip")).toHaveText("Minimal sidebar");
 
   const bottomGeometry = await page.evaluate(() => {
     const trigger = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
@@ -1455,7 +1480,9 @@ test("desktop masked workspaces compensate for adjacent shell gaps", async ({ ap
     });
   }).toBe(AUXILIARY_DRAWER_GAP_WIDTH);
 
-  await page.getByTestId("desktop-sidebar-toggle").click();
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+  await sidebarToggle.click();
+  await sidebarToggle.click();
   await expect.poll(async () => {
     return page.evaluate(() => {
       const mapSurface = document.querySelector('[data-testid="map-surface"]') as HTMLElement | null;
@@ -1644,6 +1671,101 @@ test("sidebar resize holds the dragged width after mouseup", async ({ app, page 
     const savedWidth = store?.getState().preferences.display.sidebarWidth ?? 0;
     return savedWidth >= minimumWidth;
   }, Math.round(initialWidth + 40));
+});
+
+test("primary sidebar resize caps at 400 pixels", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const resizeHandle = page.getByTestId("app-sidebar-resize-handle");
+  await expect(resizeHandle).toBeVisible();
+
+  await dragElementBy(page, resizeHandle, 300);
+  await page.waitForTimeout(250);
+
+  const sidebarWidth = await page.getByTestId("app-sidebar").evaluate((element) =>
+    Math.round(element.getBoundingClientRect().width),
+  );
+  expect(sidebarWidth).toBeLessThanOrEqual(400);
+  expect(sidebarWidth).toBeGreaterThanOrEqual(396);
+
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            preferences: { display: { sidebarWidth?: number } };
+          };
+        }
+      | undefined;
+    return store?.getState().preferences.display.sidebarWidth === 400;
+  }, { timeout: 5_000 });
+});
+
+test("desktop sidebar reopens at the default width after being dragged narrow and collapsed", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const sidebar = page.getByTestId("app-sidebar");
+  const resizeHandle = page.getByTestId("app-sidebar-resize-handle");
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+
+  await expect(sidebar).toBeVisible();
+  await dragElementBy(page, resizeHandle, -72);
+  await page.waitForTimeout(250);
+
+  const narrowWidth = await sidebar.evaluate((element) => element.getBoundingClientRect().width);
+  expect(narrowWidth).toBeGreaterThanOrEqual(176);
+  expect(narrowWidth).toBeLessThanOrEqual(190);
+
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            preferences: { display: { sidebarWidth?: number } };
+          };
+        }
+      | undefined;
+
+    const savedWidth = store?.getState().preferences.display.sidebarWidth ?? 0;
+    return savedWidth >= 176 && savedWidth <= 190;
+  });
+
+  await sidebarToggle.click();
+  await page.waitForTimeout(250);
+  const compactWidth = await sidebar.evaluate((element) => element.getBoundingClientRect().width);
+  expect(compactWidth).toBeGreaterThanOrEqual(46);
+  expect(compactWidth).toBeLessThanOrEqual(50);
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Hide sidebar");
+
+  await sidebarToggle.click();
+  await expectDesktopSidebarShellWidthAtMost(page, 2, 1_000);
+  await expect(sidebarToggle).toHaveAttribute("aria-label", "Show sidebar");
+
+  await sidebarToggle.click();
+  await expect
+    .poll(async () => (await readDesktopSidebarGeometry(page)).sidebarWidth, { timeout: 1_000 })
+    .toBeGreaterThanOrEqual(252);
+
+  const reopenedWidth = await sidebar.evaluate((element) => element.getBoundingClientRect().width);
+  expect(reopenedWidth).toBeGreaterThanOrEqual(252);
+  expect(reopenedWidth).toBeLessThanOrEqual(260);
+
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            preferences: { display: { sidebarWidth?: number } };
+          };
+        }
+      | undefined;
+
+    return store?.getState().preferences.display.sidebarWidth === 256;
+  });
 });
 
 test("debug panel resize holds the dragged width after mouseup", async ({ app, page }) => {
@@ -3155,6 +3277,69 @@ test("Friends detail rail toggle hides and restores the desktop sidebar without 
 
   expect(after.shellWidth).toBeGreaterThanOrEqual(388);
   expect(Math.abs(after.shellWidth - before.shellWidth)).toBeLessThanOrEqual(8);
+});
+
+test("Friends detail rail resize caps at 400 pixels", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.seedFriendLocation();
+
+  await page.getByRole("button", { name: /^Friends\b/ }).click();
+  await expect(page.getByTestId("friends-sidebar")).toBeVisible({ timeout: 5_000 });
+
+  await page.evaluate(async () => {
+    const handle = document.querySelector('[aria-label="Resize friends sidebar"]') as HTMLElement | null;
+    if (!handle) {
+      throw new Error("Friends sidebar resize handle was not found");
+    }
+    const rect = handle.getBoundingClientRect();
+    const startX = rect.left + rect.width / 2;
+    const pointerY = rect.top + Math.max(1, rect.height / 2);
+    const endX = startX - 300;
+
+    handle.dispatchEvent(
+      new MouseEvent("mousedown", {
+        bubbles: true,
+        clientX: startX,
+        clientY: pointerY,
+      }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("mousemove", {
+        bubbles: true,
+        clientX: endX,
+        clientY: pointerY,
+      }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("mouseup", {
+        bubbles: true,
+        clientX: endX,
+        clientY: pointerY,
+      }),
+    );
+
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  });
+
+  const sidebarWidth = await page.getByTestId("friends-sidebar").evaluate((element) =>
+    Math.round(element.getBoundingClientRect().width),
+  );
+  expect(sidebarWidth).toBeLessThanOrEqual(400);
+  expect(sidebarWidth).toBeGreaterThanOrEqual(396);
+
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            preferences: { display: { friendsSidebarWidth?: number } };
+          };
+        }
+      | undefined;
+    return store?.getState().preferences.display.friendsSidebarWidth === 400;
+  }, { timeout: 5_000 });
 });
 
 test("selecting a graph node shows a compact detail card when the Friends detail rail is closed", async ({ app, page }) => {

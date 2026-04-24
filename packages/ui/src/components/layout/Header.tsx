@@ -184,6 +184,11 @@ export function Header({
   const isMobile = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
   const visibleDesktopSidebarMode = desktopSidebarDisplayMode ?? desktopSidebarMode;
+  const desktopSidebarToggleLabel = visibleDesktopSidebarMode === "closed"
+    ? "Show sidebar"
+    : visibleDesktopSidebarMode === "compact"
+      ? "Hide sidebar"
+      : "Minimal sidebar";
 
   const canAddRss = !!addRssFeed;
   const canSaveContent = !!(saveUrl || importMarkdown || exportMarkdown);
@@ -836,14 +841,14 @@ export function Header({
                   style={layoutControlClusterStyle}
                 >
                   <Tooltip
-                    label={visibleDesktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
+                    label={desktopSidebarToggleLabel}
                   >
                     <button
                       onClick={onDesktopSidebarToggle}
                       {...getToolbarControlProps()}
                       data-testid="desktop-sidebar-toggle"
                       className={TOOLBAR_LAYOUT_TOGGLE_BUTTON_CLASS}
-                      aria-label={visibleDesktopSidebarMode === "closed" ? "Expand sidebar" : "Collapse sidebar"}
+                      aria-label={desktopSidebarToggleLabel}
                     >
                       {visibleDesktopSidebarMode === "closed" ? (
                         <SidebarExpandIcon className="h-5 w-5" />

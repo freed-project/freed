@@ -794,11 +794,14 @@ export function SearchJumpField({
         onClear={clearSearch}
         placeholder={inlinePlaceholder}
         aria-label="Search or run a command"
+        style={narrowSidebar && !inputValue ? { paddingRight: 0 } : undefined}
         inputClassName={
           compactSidebar
             ? "pl-7 pr-6"
             : narrowSidebar
-              ? "pl-7 pr-4"
+              ? inputValue
+                ? "pl-7 pr-6"
+                : "pl-7 pr-0"
               : "pl-8 pr-5"
         }
         data-expanded={isFocused ? "true" : "false"}
