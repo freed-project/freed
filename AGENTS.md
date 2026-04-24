@@ -76,6 +76,15 @@ Prefer the lightest useful local preview before opening a draft PR:
 - after browser tooling work, run `./scripts/dev-session-clean.sh`
 - `./scripts/worktree-publish.sh` now refuses stray untracked files unless you stage them yourself first or pass `--include-untracked`
 
+### Queued UI Polish
+
+When a user queues several small UI fixes for the same product surface, keep the work in the active feature worktree and PR until the queue is done.
+
+- For each small UI fix, implement the narrow change, run the focused test or browser check that proves that behavior, then continue to the next queued task.
+- Do not run `npm run validate:feature` after every small visual adjustment. Run it at the publish checkpoint, or earlier only when the user asks for a full validation checkpoint.
+- If browser automation is needed for a visual fix, use it for that fix and keep the local preview current. Clean stale automation helpers before closeout, then restart the preview if the user still needs it.
+- Update the draft PR once after the queued batch is ready, unless the user asks for an interim publish.
+
 **Branch naming:** `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `perf/` prefix followed by a short kebab-case description.
 
 **Commit messages** follow Conventional Commits:

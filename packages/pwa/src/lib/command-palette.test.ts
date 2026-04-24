@@ -7,7 +7,7 @@ import type { BaseAppState, FeedItem, FilterOptions } from "@freed/shared";
 import type { PlatformConfig } from "../../../ui/src/context/PlatformContext.tsx";
 import { PlatformProvider } from "../../../ui/src/context/PlatformContext.tsx";
 import { AppShell } from "../../../ui/src/components/layout/AppShell.tsx";
-import { CommandPalette } from "../../../ui/src/components/layout/CommandPalette.tsx";
+import { SearchJumpField } from "../../../ui/src/components/layout/SearchJumpField.tsx";
 import {
   dedupeCommandPaletteActions,
   filterCommandPaletteActions,
@@ -25,7 +25,7 @@ const noopAsync = async () => {};
 
 function resetSurfaceStores() {
   useCommandSurfaceStore.setState({
-    paletteOpen: false,
+    searchPaletteRequestId: 0,
     addFeedOpen: false,
     savedContentOpen: false,
     libraryDialogOpen: false,
@@ -418,7 +418,7 @@ describe("command palette", () => {
     expect(actions.at(-1)?.id).toBe("search-feed");
   });
 
-  it("opens from AppShell with Cmd/Ctrl+K, closes on Escape, and blocks underlying shortcuts while open", async () => {
+  it("focuses the sidebar search from AppShell with Cmd/Ctrl+K", async () => {
     const shortcutSpy = vi.fn();
     const store = createTestStore();
     const platform = createPlatform(store);
@@ -440,44 +440,16 @@ describe("command palette", () => {
     keydown(window, "k", { metaKey: true });
     await flush();
 
-    const paletteInput = document.querySelector<HTMLInputElement>('input[aria-label="Command palette"]');
-    expect(paletteInput).not.toBeNull();
-    expect(document.querySelector("[data-testid='command-palette-modal']")).not.toBeNull();
+    const searchInput = document.querySelector<HTMLInputElement>('input[aria-label="Search or run a command"]');
+    expect(searchInput).not.toBeNull();
+    expect(document.activeElement).toBe(searchInput);
+    expect(document.querySelector("[data-testid='command-palette-modal']")).toBeNull();
 
-    keydown(paletteInput!, "j");
+    keydown(searchInput!, "j");
     expect(shortcutSpy).not.toHaveBeenCalled();
-
-    keydown(paletteInput!, "Escape");
-    await flush();
-    expect(document.querySelector("[data-testid='command-palette-modal']")).toBeNull();
   });
 
-  it("renders as a bottom sheet on mobile", async () => {
-    setViewportWidth(390);
-    act(() => {
-      useCommandSurfaceStore.setState({ paletteOpen: true });
-    });
-
-    const store = createTestStore();
-    const platform = createPlatform(store);
-    const render = renderNode(
-      createElement(
-        PlatformProvider,
-        { value: platform, children: createElement(CommandPalette) },
-      ),
-    );
-    cleanups.push(render.cleanup);
-    await flush();
-
-    expect(document.querySelector("[data-testid='command-palette-modal']")).toBeNull();
-    expect(document.body.textContent).toContain("Command Palette");
-  });
-
-  it("does not mutate feed search until the explicit fallback action is selected", async () => {
-    act(() => {
-      useCommandSurfaceStore.setState({ paletteOpen: true });
-    });
-
+  it("shows command actions inside the search palette and can run explicit feed search", async () => {
     const store = createTestStore({
       activeView: "friends",
       activeFilter: { platform: "rss", feedUrl: "https://alpha.example/feed.xml" },
@@ -493,18 +465,18 @@ describe("command palette", () => {
     const render = renderNode(
       createElement(
         PlatformProvider,
-        { value: platform, children: createElement(CommandPalette) },
+        { value: platform, children: createElement(SearchJumpField) },
       ),
     );
     cleanups.push(render.cleanup);
     await flush();
 
-    const input = document.querySelector<HTMLInputElement>('input[aria-label="Command palette"]');
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run a command"]');
     expect(input).not.toBeNull();
+    act(() => input!.focus());
+    await flush();
     changeInput(input!, "privacy");
     await flush();
-
-    expect(store.getState().searchQuery).toBe("");
 
     const searchAction = Array.from(document.querySelectorAll("button")).find((button) =>
       button.textContent?.includes('Search feed for "privacy"'),
@@ -522,10 +494,6 @@ describe("command palette", () => {
   });
 
   it("shows destructive confirmation and refuses to run before the token matches", async () => {
-    act(() => {
-      useCommandSurfaceStore.setState({ paletteOpen: true });
-    });
-
     const archivedItem = createItem({
       globalId: "archived-1",
       userState: {
@@ -547,10 +515,15 @@ describe("command palette", () => {
     const render = renderNode(
       createElement(
         PlatformProvider,
-        { value: platform, children: createElement(CommandPalette) },
+        { value: platform, children: createElement(SearchJumpField) },
       ),
     );
     cleanups.push(render.cleanup);
+    await flush();
+
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run a command"]');
+    expect(input).not.toBeNull();
+    act(() => input!.focus());
     await flush();
 
     const deleteAction = Array.from(document.querySelectorAll("button")).find((button) =>
@@ -561,7 +534,7 @@ describe("command palette", () => {
     await flush();
 
     expect(deleteArchived).not.toHaveBeenCalled();
-    const confirmInput = document.querySelector<HTMLInputElement>("#command-palette-confirm");
+    const confirmInput = document.querySelector<HTMLInputElement>("#search-command-confirm");
     expect(confirmInput).not.toBeNull();
 
     changeInput(confirmInput!, "nope");
@@ -581,10 +554,6 @@ describe("command palette", () => {
   });
 
   it("navigates to a feed destination and then applies explicit search without losing the feed scope", async () => {
-    act(() => {
-      useCommandSurfaceStore.setState({ paletteOpen: true });
-    });
-
     const store = createTestStore({
       activeView: "friends",
       feeds: {
@@ -599,10 +568,15 @@ describe("command palette", () => {
     const render = renderNode(
       createElement(
         PlatformProvider,
-        { value: platform, children: createElement(CommandPalette) },
+        { value: platform, children: createElement(SearchJumpField) },
       ),
     );
     cleanups.push(render.cleanup);
+    await flush();
+
+    let input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run a command"]');
+    expect(input).not.toBeNull();
+    act(() => input!.focus());
     await flush();
 
     const feedAction = Array.from(document.querySelectorAll("button")).find((button) =>
@@ -618,13 +592,11 @@ describe("command palette", () => {
       feedUrl: "https://alpha.example/feed.xml",
     });
 
-    act(() => {
-      useCommandSurfaceStore.setState({ paletteOpen: true });
-    });
+    input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run a command"]');
+    expect(input).not.toBeNull();
+    act(() => input!.focus());
     await flush();
 
-    const input = document.querySelector<HTMLInputElement>('input[aria-label="Command palette"]');
-    expect(input).not.toBeNull();
     changeInput(input!, "alpha");
     await flush();
 

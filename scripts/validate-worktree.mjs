@@ -15,10 +15,14 @@ const RESOLVED_NPM = path.join(
   process.platform === "win32" ? "npm.cmd" : "npm",
 );
 const NPM_BIN = existsSync(RESOLVED_NPM) ? RESOLVED_NPM : process.platform === "win32" ? "npm.cmd" : "npm";
-const VALID_MODES = new Set(["feature", "dev", "release"]);
+const VALID_MODES = new Set(["feature", "dev", "production", "release"]);
 
 const RELEASE_TOOLING_PATHS = new Set([
+  ".github/workflows/ci.yml",
+  ".github/workflows/main-release-validation.yml",
   ".github/workflows/release.yml",
+  "scripts/generate-tauri-latest-from-release.mjs",
+  "scripts/generate-tauri-latest-from-release.test.mjs",
   "scripts/prepare-release-notes.mjs",
   "scripts/release-publish.sh",
   "scripts/release-notes-shared.mjs",
@@ -37,12 +41,13 @@ function unique(values) {
 
 function usage() {
   return `Usage:
-  node scripts/validate-worktree.mjs --mode <feature|dev|release> [--changed-files <file>...]
+  node scripts/validate-worktree.mjs --mode <feature|dev|production|release> [--changed-files <file>...]
 
 Modes:
   feature  Run root typecheck plus changed-surface checks derived from git diff or --changed-files.
-  dev      Run the full integration validation suite used for dev branch pushes.
-  release  Run the dev suite, release-tooling tests, and release-build checks for release prep.
+  dev      Run the integration suite used for dev branch pushes and dev builds.
+  production  Run the full production validation suite for public release prep.
+  release  Compatibility alias for production.
 `;
 }
 
@@ -71,7 +76,7 @@ export function parseArgs(argv) {
   }
 
   if (!VALID_MODES.has(mode)) {
-    throw new Error(`Error: --mode must be one of feature, dev, or release.\n\n${usage()}`);
+    throw new Error(`Error: --mode must be one of feature, dev, production, or release.\n\n${usage()}`);
   }
 
   return { help: false, mode, changedFiles: changedFiles.map(normalizeRepoPath) };
@@ -93,7 +98,7 @@ function ensureBaseRefExists(baseRef) {
 }
 
 function defaultBaseRefForMode(mode) {
-  return mode === "release" ? "origin/main" : "origin/dev";
+  return mode === "production" || mode === "release" ? "origin/main" : "origin/dev";
 }
 
 export function collectChangedFiles({ mode, changedFiles }) {
@@ -270,7 +275,9 @@ function releaseValidationItem(label, files) {
 }
 
 export function buildValidationPlan(mode, changedFiles) {
-  if (mode === "dev") {
+  const normalizedMode = mode === "release" ? "production" : mode;
+
+  if (normalizedMode === "dev") {
     return [
       npmCommand("root build", ["run", "build"]),
       npmCommand("root typecheck", ["run", "typecheck"]),
@@ -278,17 +285,20 @@ export function buildValidationPlan(mode, changedFiles) {
       npmCommand("website tests", ["run", "test", "--workspace=website"]),
       npmCommand("pwa unit tests", ["run", "test:unit", "--workspace=packages/pwa"]),
       npmCommand("desktop unit tests", ["run", "test:unit", "--workspace=packages/desktop"]),
-      npmCommand("desktop e2e", ["run", "test:e2e", "--workspace=packages/desktop"]),
+      npmCommand("desktop e2e smoke", ["run", "test:e2e:smoke", "--workspace=packages/desktop"]),
     ];
   }
 
-  if (mode === "release") {
+  if (normalizedMode === "production") {
     const plan = [
       ...buildValidationPlan("dev", changedFiles),
       nodeCommand("release notes shared tests", [
         "--test",
         path.join("scripts", "release-notes-shared.test.mjs"),
       ]),
+      npmCommand("desktop e2e full", ["run", "test:e2e:full", "--workspace=packages/desktop"]),
+      npmCommand("desktop e2e perf", ["run", "test:e2e:perf", "--workspace=packages/desktop"]),
+      npmCommand("desktop e2e visual", ["run", "test:e2e:visual", "--workspace=packages/desktop"]),
       npmCommand("website production build", ["run", "build", "--workspace=website"]),
       npmCommand("pwa production build", ["run", "build", "--workspace=packages/pwa"]),
       npmCommand("desktop production build", ["run", "build", "--workspace=packages/desktop"]),
@@ -330,7 +340,7 @@ export function buildValidationPlan(mode, changedFiles) {
 
   if (desktopSurfaceChanged) {
     addCommand(plan, npmCommand("desktop unit tests", ["run", "test:unit", "--workspace=packages/desktop"]));
-    addCommand(plan, npmCommand("desktop e2e", ["run", "test:e2e", "--workspace=packages/desktop"]));
+    addCommand(plan, npmCommand("desktop e2e smoke", ["run", "test:e2e:smoke", "--workspace=packages/desktop"]));
   }
 
   if (!sharedSurfaceChanged) {

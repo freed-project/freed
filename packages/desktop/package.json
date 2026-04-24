@@ -1,7 +1,7 @@
 {
   "name": "@freed/desktop",
   "private": true,
-  "version": "26.4.2303",
+  "version": "26.4.2304",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,6 +13,10 @@
     "test:unit": "node ../../node_modules/vitest/vitest.mjs run",
     "test:unit:watch": "node ../../node_modules/vitest/vitest.mjs",
     "test:e2e": "node ../../node_modules/playwright/cli.js test",
+    "test:e2e:smoke": "node ../../node_modules/playwright/cli.js test smoke.spec.ts legal-gate.spec.ts update-channel.spec.ts provider-health.spec.ts x-capture.spec.ts --grep \"app loads and renders without crashing|page title is set|no console errors on startup|header is visible|first launch blocks|launch-time auto-check|health tab surfaces provider charts|X connect form accepts cookies\"",
+    "test:e2e:full": "node ../../node_modules/playwright/cli.js test bug-report.spec.ts facebook-capture.spec.ts feed-card-ui.spec.ts google-contacts.spec.ts instagram-capture.spec.ts legal-gate.spec.ts linkedin-capture.spec.ts provider-health.spec.ts settings-saved.spec.ts smoke.spec.ts startup-recovery.spec.ts theme-switching.spec.ts update-channel.spec.ts x-capture.spec.ts --grep-invert \"dense Friends graph stays visually structured|map view repaints across all themes\"",
+    "test:e2e:perf": "node ../../node_modules/playwright/cli.js test perf-feed.spec.ts",
+    "test:e2e:visual": "node ../../node_modules/playwright/cli.js test smoke.spec.ts theme-switching.spec.ts --grep \"dense Friends graph stays visually structured|map view repaints across all themes\"",
     "test:e2e:ui": "node ../../node_modules/playwright/cli.js test --ui",
     "test:e2e:debug": "node ../../node_modules/playwright/cli.js test --debug"
   },

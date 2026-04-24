@@ -1310,22 +1310,21 @@ html[data-theme="scriptorium"] .theme-tooltip-arrow {
 
 .theme-tooltip-arrow-top {
   top: 100%;
-  margin-top: -4px;
+  transform: translate(-50%, -50%) rotate(45deg);
   border-left: 0;
   border-top: 0;
 }
 
 .theme-tooltip-arrow-bottom {
-  bottom: 100%;
-  margin-bottom: -4px;
+  top: 0;
+  transform: translate(-50%, -50%) rotate(45deg);
   border-right: 0;
   border-bottom: 0;
 }
 
 .theme-tooltip-arrow-right {
   left: 0;
-  margin-left: -4px;
-  transform: translateY(-50%) rotate(45deg);
+  transform: translate(-50%, -50%) rotate(45deg);
   border-right: 0;
   border-top: 0;
 }
@@ -1336,8 +1335,7 @@ html[data-theme="scriptorium"] .theme-tooltip-arrow {
 
 .theme-tooltip-arrow-left {
   left: 100%;
-  margin-left: -6px;
-  transform: translateY(-50%) rotate(45deg);
+  transform: translate(-50%, -50%) rotate(45deg);
   border-left: 0;
   border-bottom: 0;
 }
@@ -2236,7 +2234,7 @@ html[data-theme="scriptorium"] .btn-primary:hover {
 .theme-toolbar-segment-active {
   background: rgb(var(--theme-accent-secondary-rgb) / 0.16);
   color: var(--theme-text-primary);
-  box-shadow: inset 0 0 0 1px rgb(var(--theme-accent-secondary-rgb) / 0.72);
+  box-shadow: 0 0 0 1px rgb(var(--theme-accent-secondary-rgb) / 0.72);
   z-index: 1;
 }
 
