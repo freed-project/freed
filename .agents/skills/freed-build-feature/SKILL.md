@@ -25,8 +25,12 @@ Create a product worktree branch from the latest remote `dev`, implement enough 
    - Use `./scripts/worktree-preview.sh desktop` only when you need the Desktop shell running in the mocked browser preview.
    - Use `./scripts/worktree-preview.sh desktop --native` only when the change depends on real Tauri behavior such as native windowing, tray behavior, updater wiring, filesystem or process plugins, native OAuth windows, or Rust-side integrations.
    - When native Desktop preview is running, report the preview label so parallel native windows can be matched to the worktree and thread that launched them.
-9. Iterate against the preview. Use focused checks during iteration only when they answer an immediate implementation question, such as a targeted unit test, Desktop e2e test, or preview compile failure.
-10. Run `npm run validate:feature` from the worktree before publishing the draft PR.
+9. Iterate against the preview. Use focused checks during iteration only when they answer an immediate implementation question, such as a targeted unit test, Desktop e2e test, browser check, or preview compile failure.
+   - For queued UI polish, keep stacking the user's small visual fixes in the same worktree and PR.
+   - For each small UI fix, run only the focused test or browser check that proves that behavior.
+   - Do not run `npm run validate:feature` after every small visual adjustment.
+   - If more queued tasks arrive while you are working, finish the current focused loop, then continue to the next queued task before publishing.
+10. Run `npm run validate:feature` from the worktree before publishing the draft PR, or earlier only when the user asks for a full validation checkpoint.
    - Let the validator derive changed files from git by default.
    - Use `npm run validate:feature -- --changed-files <file>...` only when you need to pin an explicit file list for debugging or tests.
    - This is a pre publish gate, not an after-every-command inner loop.
