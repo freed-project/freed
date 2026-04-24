@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef, useCallback, type CSSProperties, type ReactNode } from "react";
 import { Sidebar } from "./Sidebar.js";
 import { Header } from "./Header.js";
-import { CommandPalette } from "./CommandPalette.js";
 import { DebugPanel } from "../DebugPanel.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
@@ -70,9 +69,7 @@ export function AppShell({ children }: AppShellProps) {
       ? FRIENDS_SIDEBAR_GAP_WIDTH_PX
       : PRIMARY_SIDEBAR_GAP_WIDTH_PX;
   const settingsOpen = useSettingsStore((s) => s.open);
-  const paletteOpen = useCommandSurfaceStore((s) => s.paletteOpen);
-  const openPalette = useCommandSurfaceStore((s) => s.openPalette);
-  const closePalette = useCommandSurfaceStore((s) => s.closePalette);
+  const requestSearchPalette = useCommandSurfaceStore((s) => s.requestSearchPalette);
   const addFeedOpen = useCommandSurfaceStore((s) => s.addFeedOpen);
   const closeAddFeedDialog = useCommandSurfaceStore((s) => s.closeAddFeedDialog);
   const savedContentOpen = useCommandSurfaceStore((s) => s.savedContentOpen);
@@ -152,7 +149,9 @@ export function AppShell({ children }: AppShellProps) {
   const handleDesktopSidebarToggle = useCallback(() => {
     const nextMode = desktopSidebarMode === "closed"
       ? "expanded"
-      : "closed";
+      : desktopSidebarMode === "compact"
+        ? "closed"
+        : "compact";
     persistDesktopSidebarMode(nextMode);
   }, [desktopSidebarMode, persistDesktopSidebarMode]);
 
@@ -225,11 +224,7 @@ export function AppShell({ children }: AppShellProps) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         if (blockingModalOpen) return;
-        if (paletteOpen) {
-          closePalette();
-          return;
-        }
-        openPalette();
+        requestSearchPalette();
       } else if (e.key === "D" && e.shiftKey && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         toggleDebug();
@@ -239,7 +234,7 @@ export function AppShell({ children }: AppShellProps) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [blockingModalOpen, closePalette, debugVisible, openPalette, paletteOpen, toggleDebug]);
+  }, [blockingModalOpen, debugVisible, requestSearchPalette, toggleDebug]);
 
   useEffect(() => {
     if (!isMobileDevice && mobileSidebarOpen) {
@@ -359,10 +354,6 @@ export function AppShell({ children }: AppShellProps) {
           }
           friendsMobileSurface={friendsMobileSurface}
           onFriendsMobileSurfaceChange={setFriendsMobileSurface}
-          onOpenCommandPalette={() => {
-            if (blockingModalOpen) return;
-            openPalette();
-          }}
         />
 
         <div
@@ -422,8 +413,6 @@ export function AppShell({ children }: AppShellProps) {
             <DebugPanel variant="overlay" />
           </div>
         )}
-
-        <CommandPalette />
         <AddFeedDialog open={addFeedOpen} onClose={closeAddFeedDialog} />
         <SavedContentDialog open={savedContentOpen} onClose={closeSavedContentDialog} />
         {libraryDialogOpen ? (

@@ -447,8 +447,10 @@ export function Sidebar({
       ((s as unknown as { providerSyncCounts?: Partial<Record<string, number>> })
         .providerSyncCounts ?? EMPTY_PROVIDER_SYNC_COUNTS) as Partial<Record<string, number>>,
   );
-  const persistedSidebarWidth =
-    useAppStore((s) => s.preferences.display.sidebarWidth) ?? DEFAULT_WIDTH;
+  const persistedSidebarWidth = Math.min(
+    MAX_WIDTH,
+    useAppStore((s) => s.preferences.display.sidebarWidth) ?? DEFAULT_WIDTH,
+  );
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const items = useAppStore((s) => s.items);
   const activeView = useAppStore((s) => s.activeView);
@@ -505,6 +507,7 @@ export function Sidebar({
   const [sourceMenuAnchorElement, setSourceMenuAnchorElement] = useState<HTMLElement | null>(null);
   const dragging = useRef(false);
   const pendingPersistedWidth = useRef<number | null>(null);
+  const previousDesktopMode = useRef(desktopMode);
 
 
   // ─── Tag tree ────────────────────────────────────────────────────────────────
@@ -539,6 +542,20 @@ export function Sidebar({
     }
     setCommittedWidth(persistedSidebarWidth);
   }, [dragWidth, persistedSidebarWidth]);
+
+  useEffect(() => {
+    const wasClosed = previousDesktopMode.current === "closed";
+    previousDesktopMode.current = desktopMode;
+    if (!wasClosed || desktopMode !== "expanded") return;
+
+    pendingPersistedWidth.current = DEFAULT_WIDTH;
+    setCommittedWidth(DEFAULT_WIDTH);
+    void updatePreferences({ display: { sidebarWidth: DEFAULT_WIDTH } } as Parameters<typeof updatePreferences>[0]).catch(() => {
+      if (pendingPersistedWidth.current === DEFAULT_WIDTH) {
+        pendingPersistedWidth.current = null;
+      }
+    });
+  }, [desktopMode, updatePreferences]);
 
   const rawDesktopWidth = dragWidth
     ?? (desktopMode === "compact" ? COMPACT_WIDTH : desktopMode === "closed" ? 0 : committedWidth);
@@ -600,9 +617,9 @@ export function Sidebar({
   const desktopAsideWidth = desktopWidth;
   const desktopAsideRenderedWidth = closedPreviewActive ? COMPACT_WIDTH : desktopAsideWidth;
   const compactSidebar = compactRail;
-  const rowPaddingClass = compactRail ? "px-1.5" : narrowLabeledSidebar ? "px-2" : "px-2.5";
+  const rowPaddingClass = compactRail ? "px-1.5" : narrowLabeledSidebar ? "pl-2 pr-0" : "px-2.5";
   const rowLeadingPaddingClass = compactRail ? "pl-1.5" : narrowLabeledSidebar ? "pl-2" : "pl-2.5";
-  const rowTrailingPaddingClass = compactRail ? "pr-1" : narrowLabeledSidebar ? "pr-1" : "pr-1.5";
+  const rowTrailingPaddingClass = compactRail ? "pr-1" : narrowLabeledSidebar ? "pr-0" : "pr-1.5";
   const rowGapClass = narrowLabeledSidebar ? "gap-2" : "gap-3";
   const desktopShellTransition = dragWidth !== null && !snapPreviewActive
     ? "none"
@@ -615,7 +632,9 @@ export function Sidebar({
       ? "width 180ms ease, transform 180ms ease, opacity 160ms ease"
       : "width 220ms ease, transform 220ms ease, opacity 180ms ease";
   const desktopAsideTransform = renderMode === "closed"
-    ? `translateX(calc(-100% - ${px(effectiveGapWidthPx)}))`
+    ? closedPreviewActive
+      ? "translateX(calc(-100% - var(--feed-card-gap, 8px)))"
+      : `translateX(calc(-100% - ${px(effectiveGapWidthPx)}))`
     : "translateX(0)";
   const resizeHandleVisible = !forceCompactDesktopRail && (dragWidth !== null || renderMode !== "closed");
 
@@ -973,7 +992,7 @@ export function Sidebar({
   const pendingFriendsBadge = pendingMatchCount > 0
     ? renderSidebarIconBadge(<span className="flex h-2.5 w-2.5 rounded-full bg-[var(--theme-accent-secondary)]" />)
     : undefined;
-  const sidebarLabelClass = `min-w-0 flex-1 truncate whitespace-nowrap ${narrowLabeledSidebar ? "pr-[2px]" : "pr-1"} [text-overflow:clip]`;
+  const sidebarLabelClass = `min-w-0 flex-1 truncate whitespace-nowrap ${narrowLabeledSidebar ? "pr-0" : "pr-1"} [text-overflow:clip]`;
   const sidebarFeedLabelClass = `${sidebarLabelClass} text-xs`;
 
   const sidebarBody = (
@@ -1195,7 +1214,7 @@ export function Sidebar({
                   }}
                   data-testid="source-row-map"
                   className={`
-                    w-full cursor-pointer flex items-center gap-3 ${rowPaddingClass} py-1.5 rounded-lg
+                    w-full cursor-pointer flex items-center ${rowGapClass} ${rowPaddingClass} py-1.5 rounded-lg
                     text-left text-sm transition-all border
                     ${
                       activeView === "map"

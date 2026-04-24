@@ -223,6 +223,7 @@ export async function captureDomFeed(
 - [x] App runs in background after window close
 - [x] Auto-updater checks GitHub Releases on launch and in the background, then installs updates in-app
 - [x] CI/CD release pipeline builds for macOS (ARM + Intel), Windows, Linux on tag push
+- [x] Dev release tags run the faster dev validation lane and build only the internal macOS Apple Silicon target, while production tags keep full validation and all supported platform builds
 - [x] App icons generated for all platforms
 - [x] macOS DMG builds
 - [x] Windows NSIS + MSI installers build
@@ -392,6 +393,12 @@ export async function captureDomFeed(
 > and Freed Desktop can switch locally between production releases from `main`
 > and dev prereleases from `dev` without syncing that preference through the
 > shared document.
+> Dev release tags now run the dev validation tier and package only the
+> internal macOS Apple Silicon build. Production tags run the production
+> validation tier, build every supported platform in parallel, upload platform
+> assets to a pre-created draft release, then generate `latest.json` once after
+> all signed artifacts are present so updater metadata does not race between
+> matrix jobs.
 > The public marketing site is controlled by the `www` branch. After any
 > GitHub release is published, the workflow now redeploys `freed.wtf` from the
 > current `www` branch so the changelog snapshot rebuilds against the newly

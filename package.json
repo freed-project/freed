@@ -19,6 +19,7 @@
     "typecheck:graph": "tsc --build --dry",
     "validate:feature": "node scripts/validate-worktree.mjs --mode feature",
     "validate:dev": "node scripts/validate-worktree.mjs --mode dev",
+    "validate:production": "node scripts/validate-worktree.mjs --mode production",
     "validate:release": "node scripts/validate-worktree.mjs --mode release"
   },
   "devDependencies": {

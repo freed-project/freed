@@ -53,6 +53,7 @@ jobs:
       release_body: ${{ steps.gen.outputs.release_body }}
       release_channel: ${{ steps.gen.outputs.release_channel }}
       is_prerelease: ${{ steps.gen.outputs.is_prerelease }}
+      release_matrix: ${{ steps.gen.outputs.release_matrix }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -142,32 +143,105 @@ jobs:
             else
               echo "is_prerelease=false"
             fi
+            if [[ "$CHANNEL" == "dev" ]]; then
+              echo 'release_matrix={"include":[{"platform":"macos-latest","args":"--target aarch64-apple-darwin","rust_target":"aarch64-apple-darwin"}]}'
+            else
+              echo 'release_matrix={"include":[{"platform":"macos-latest","args":"--target aarch64-apple-darwin","rust_target":"aarch64-apple-darwin"},{"platform":"macos-latest","args":"--target x86_64-apple-darwin","rust_target":"x86_64-apple-darwin"},{"platform":"windows-latest","args":"--target x86_64-pc-windows-msvc","rust_target":"x86_64-pc-windows-msvc"},{"platform":"ubuntu-22.04","args":"","rust_target":"x86_64-unknown-linux-gnu"}]}'
+            fi
           } >> "$GITHUB_OUTPUT"
 
-  release:
+  validation:
     needs: notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: packages/desktop
+
+      - name: Run channel validation
+        shell: bash
+        run: |
+          if [[ "${{ needs.notes.outputs.release_channel }}" == "dev" ]]; then
+            npm run validate:dev
+          else
+            npm run validate:production
+          fi
+        env:
+          CI: "true"
+
+  create-release:
+    needs: [notes, validation]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.release.outputs.release_id }}
+    steps:
+      - name: Create or refresh draft release
+        id: release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BODY: ${{ needs.notes.outputs.release_body }}
+          IS_PRERELEASE: ${{ needs.notes.outputs.is_prerelease }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          printf '%s' "$RELEASE_BODY" > release-body.md
+
+          RELEASE_ID=$(gh api --paginate "repos/${{ github.repository }}/releases" \
+            --jq ".[] | select(.tag_name == \"${TAG}\") | .id" \
+            | head -n 1)
+
+          if [[ -n "$RELEASE_ID" ]]; then
+            jq -n \
+              --arg name "Freed ${TAG}" \
+              --rawfile body release-body.md \
+              --argjson draft true \
+              --argjson prerelease "$IS_PRERELEASE" \
+              '{name: $name, body: $body, draft: $draft, prerelease: $prerelease}' \
+              > release-patch.json
+            gh api -X PATCH "repos/${{ github.repository }}/releases/${RELEASE_ID}" --input release-patch.json >/dev/null
+          else
+            jq -n \
+              --arg tag_name "$TAG" \
+              --arg target_commitish "$GITHUB_SHA" \
+              --arg name "Freed ${TAG}" \
+              --rawfile body release-body.md \
+              --argjson draft true \
+              --argjson prerelease "$IS_PRERELEASE" \
+              '{tag_name: $tag_name, target_commitish: $target_commitish, name: $name, body: $body, draft: $draft, prerelease: $prerelease}' \
+              > release-create.json
+            gh api -X POST "repos/${{ github.repository }}/releases" --input release-create.json > created-release.json
+            RELEASE_ID=$(jq -r '.id' created-release.json)
+          fi
+
+          echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: [notes, create-release]
     permissions:
       contents: write
 
     strategy:
-      # Tauri updates shared GitHub release assets like latest.json. Serializing
-      # the matrix avoids cross-target upload races on the same draft release.
-      max-parallel: 1
       fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-            args: "--target aarch64-apple-darwin"
-            rust_target: aarch64-apple-darwin
-          - platform: macos-latest
-            args: "--target x86_64-apple-darwin"
-            rust_target: x86_64-apple-darwin
-          - platform: windows-latest
-            args: "--target x86_64-pc-windows-msvc"
-            rust_target: x86_64-pc-windows-msvc
-          - platform: ubuntu-22.04
-            args: ""
-            rust_target: x86_64-unknown-linux-gnu
+      matrix: ${{ fromJson(needs.notes.outputs.release_matrix) }}
 
     runs-on: ${{ matrix.platform }}
 
@@ -296,11 +370,11 @@ jobs:
         with:
           projectPath: packages/desktop
           tauriScript: npx tauri
+          releaseId: ${{ needs.create-release.outputs.release_id }}
           tagName: ${{ github.ref_name }}
-          releaseName: "Freed ${{ github.ref_name }}"
-          releaseBody: ${{ needs.notes.outputs.release_body }}
           releaseDraft: true
           prerelease: ${{ needs.notes.outputs.is_prerelease == 'true' }}
+          includeUpdaterJson: false
           args: ${{ matrix.args }}
 
       # Upload a stable-named copy for /releases/latest/download/ links
@@ -341,9 +415,43 @@ jobs:
             echo "Artifact $SRC not found — skipping alias"
           fi
 
+  updater-manifest:
+    needs: [release, notes, create-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Generate latest.json
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BODY: ${{ needs.notes.outputs.release_body }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          printf '%s' "$RELEASE_BODY" > release-body.md
+          gh api "repos/${{ github.repository }}/releases/${{ needs.create-release.outputs.release_id }}" > release.json
+          rm -rf updater-signatures
+          mkdir -p updater-signatures
+          gh release download "$TAG" --repo "${{ github.repository }}" --pattern "*.sig" --dir updater-signatures
+          node scripts/generate-tauri-latest-from-release.mjs \
+            --release-json release.json \
+            --signature-dir updater-signatures \
+            --notes-file release-body.md \
+            --output latest.json \
+            --pub-date "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh release upload "$TAG" latest.json --clobber --repo "${{ github.repository }}"
+
   # After all platform builds succeed, promote the draft to a published release
   publish:
-    needs: release
+    needs: updater-manifest
     runs-on: ubuntu-latest
     permissions:
       contents: write

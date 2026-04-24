@@ -883,11 +883,26 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (settleTimerRef.current !== null) {
       window.clearTimeout(settleTimerRef.current);
     }
-    settleTimerRef.current = window.setTimeout(() => {
+    const settleWhenIdle = () => {
+      if (
+        dragStateRef.current ||
+        pinchStateRef.current ||
+        activeTouchPointsRef.current.size > 0
+      ) {
+        settleTimerRef.current = window.setTimeout(
+          settleWhenIdle,
+          GRAPH_INTERACTION_SETTLE_DELAY_MS,
+        );
+        return;
+      }
       graphQualityModeRef.current = "settled";
       settleTimerRef.current = null;
       scheduleSyncScene();
-    }, GRAPH_INTERACTION_SETTLE_DELAY_MS);
+    };
+    settleTimerRef.current = window.setTimeout(
+      settleWhenIdle,
+      GRAPH_INTERACTION_SETTLE_DELAY_MS,
+    );
   }, [scheduleSyncScene]);
 
   const fitAll = useCallback(() => {

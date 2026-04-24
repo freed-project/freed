@@ -42,7 +42,7 @@ import {
 
 const DEFAULT_SIDEBAR_WIDTH = 360;
 const MIN_SIDEBAR_WIDTH = 280;
-const MAX_SIDEBAR_WIDTH = 520;
+const MAX_SIDEBAR_WIDTH = 400;
 
 const FILTER_OPTIONS: Array<{ id: FriendOverviewFilter; label: string }> = [
   { id: "need_outreach", label: "Need outreach" },
@@ -287,7 +287,10 @@ export function FriendsView({
   const setActiveView = useAppStore((s) => s.setActiveView);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const display = useAppStore((s) => s.preferences.display);
-  const savedSidebarWidth = display.friendsSidebarWidth ?? DEFAULT_SIDEBAR_WIDTH;
+  const savedSidebarWidth = Math.min(
+    MAX_SIDEBAR_WIDTH,
+    display.friendsSidebarWidth ?? DEFAULT_SIDEBAR_WIDTH,
+  );
   const themeId = display.themeId;
   const effectiveMode = display.friendsMode ?? "all_content";
   const updatePreferences = useAppStore((s) => s.updatePreferences);

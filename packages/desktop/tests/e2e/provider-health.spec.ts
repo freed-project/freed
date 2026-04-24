@@ -735,40 +735,62 @@ test("facebook groups settings separate last-active text and show active counts"
   await app.goto();
   await app.waitForReady();
 
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
     const store = w.__FREED_STORE__ as {
       setState: (partial: Record<string, unknown>) => void;
       getState: () => {
         preferences: Record<string, unknown>;
+        updatePreferences: (update: Record<string, unknown>) => Promise<void>;
       };
     };
+    const state = store.getState();
 
     store.setState({
       fbAuth: {
         isAuthenticated: true,
       },
-      preferences: {
-        ...store.getState().preferences,
-        fbCapture: {
-          knownGroups: {
-            one: {
-              id: "one",
-              name: "CDA Buy Trade Or SellLast active about a minute ago",
-              url: "https://facebook.com/groups/one",
-            },
-            two: {
-              id: "two",
-              name: "North Idaho Lifelast active 2 hours ago",
-              url: "https://facebook.com/groups/two",
-            },
+    });
+    await state.updatePreferences({
+      fbCapture: {
+        knownGroups: {
+          one: {
+            id: "one",
+            name: "CDA Buy Trade Or SellLast active about a minute ago",
+            url: "https://facebook.com/groups/one",
           },
-          excludedGroupIds: {
-            two: true,
+          two: {
+            id: "two",
+            name: "North Idaho Lifelast active 2 hours ago",
+            url: "https://facebook.com/groups/two",
           },
+        },
+        excludedGroupIds: {
+          two: true,
         },
       },
     });
+  });
+
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            preferences: {
+              fbCapture?: {
+                knownGroups?: Record<string, unknown>;
+                excludedGroupIds?: Record<string, unknown>;
+              };
+            };
+          };
+        }
+      | undefined;
+    const fbCapture = store?.getState().preferences.fbCapture;
+    return (
+      Object.keys(fbCapture?.knownGroups ?? {}).length === 2 &&
+      fbCapture?.excludedGroupIds?.two === true
+    );
   });
 
   await openSettingsSection(page, "Facebook");
