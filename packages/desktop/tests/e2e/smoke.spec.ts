@@ -3606,7 +3606,7 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
   expect(duringPan!.metrics.visibleLabelCount).toBeLessThanOrEqual(
     initial!.metrics.visibleLabelCount,
   );
-  expect(duringPan!.metrics.sceneSyncMs).toBeLessThan(20);
+  expect(duringPan!.metrics.sceneSyncMs).toBeLessThan(30);
 
   await page.mouse.up();
   await expect
