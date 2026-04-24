@@ -221,22 +221,23 @@ function isMergeablePreferenceObject(value: unknown): value is Record<string, un
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function mergePreferenceUpdate<T extends Record<string, unknown>>(
+function mergePreferenceUpdate<T extends object>(
   current: T,
   update: Partial<T>,
 ): T {
-  const next = { ...current } as Record<string, unknown>;
+  const next = { ...current };
 
   for (const key of Object.keys(update) as Array<keyof T>) {
     const currentValue = current[key];
     const updateValue = update[key];
-    next[key as string] =
+    next[key] = (
       isMergeablePreferenceObject(currentValue) && isMergeablePreferenceObject(updateValue)
-        ? mergePreferenceUpdate(currentValue, updateValue)
-        : updateValue;
+        ? mergePreferenceUpdate<Record<string, unknown>>(currentValue, updateValue)
+        : updateValue
+    ) as T[typeof key];
   }
 
-  return next as T;
+  return next;
 }
 
 async function pruneConnectionPersonIfNeeded(
