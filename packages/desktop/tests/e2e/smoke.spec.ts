@@ -25,6 +25,7 @@ const LAYOUT_CONTROL_SPLIT_OFFSET_PX = 24;
 const LAYOUT_CONTROL_GAP_PX = 8;
 const MACOS_TRAFFIC_LIGHT_INSET_PX = 100;
 const TOOLBAR_CENTER_ALIGNMENT_TOLERANCE_PX = 3;
+const TOOLTIP_ARROW_ALIGNMENT_TOLERANCE_PX = 1.5;
 const PRIMARY_SIDEBAR_GAP_WIDTH = "16px";
 const AUXILIARY_DRAWER_GAP_WIDTH = "12px";
 const SOFT_VIEWPORT_RADIUS = "20px";
@@ -848,7 +849,11 @@ test("compact sidebar search opens as a floating palette and closes cleanly", as
   await trigger.click();
   await expect(trigger).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("compact-sidebar-search-palette")).toBeVisible();
-  await page.getByTestId("compact-sidebar-search-palette").getByLabel("Search or run a command").fill("face");
+  const floatingSearch = page.getByTestId("compact-sidebar-search-palette").getByLabel("Search or run a command");
+  await expect(floatingSearch).toBeFocused();
+  await expect(page.getByTestId("search-command-action-go-unified-feed")).toBeVisible();
+  await floatingSearch.fill("face");
+  await expect(page.getByTestId("compact-sidebar-search-palette").getByRole("option", { name: /Search current feed for "face"/ })).toBeVisible();
 
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("compact-sidebar-search-palette")).toHaveCount(0);
@@ -992,6 +997,17 @@ test("narrow labeled sidebar keeps source names visible and drops counts first",
     });
   });
 
+  const roomySearchToFirstRowGap = await page.evaluate(() => {
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]') as HTMLElement | null;
+    const searchInput = sidebar?.querySelector('input[aria-label="Search or run a command"]') as HTMLInputElement | null;
+    const firstRow = sidebar?.querySelector('[data-testid="source-row-all"]')?.closest("li") as HTMLElement | null;
+    if (!searchInput || !firstRow) {
+      throw new Error("Roomy sidebar search spacing elements were not found");
+    }
+
+    return firstRow.getBoundingClientRect().top - searchInput.getBoundingClientRect().bottom;
+  });
+
   await dragElementBy(page, page.getByTestId("app-sidebar-resize-handle"), -72);
   await page.waitForTimeout(250);
 
@@ -1024,11 +1040,21 @@ test("narrow labeled sidebar keeps source names visible and drops counts first",
       xTextOverflow: xLabel ? window.getComputedStyle(xLabel).textOverflow : null,
       xRightPadding: xLabel ? window.getComputedStyle(xLabel).paddingRight : null,
       searchPlaceholder: searchInput?.placeholder ?? null,
+      searchToFirstRowGap: (() => {
+        const firstRow = document
+          .querySelector('[data-testid="source-row-all"]')
+          ?.closest("li") as HTMLElement | null;
+        if (!searchInput || !firstRow) return null;
+        return firstRow.getBoundingClientRect().top - searchInput.getBoundingClientRect().bottom;
+      })(),
     };
   });
   expect(narrowLabelMetrics?.xTextOverflow).toBe("clip");
   expect(narrowLabelMetrics?.xRightPadding).toBe("2px");
   expect(narrowLabelMetrics?.searchPlaceholder).toBe("Search");
+  expect(narrowLabelMetrics?.searchToFirstRowGap).toBeGreaterThanOrEqual(7);
+  expect(narrowLabelMetrics?.searchToFirstRowGap).toBeLessThanOrEqual(9);
+  expect(Math.abs(roomySearchToFirstRowGap - (narrowLabelMetrics?.searchToFirstRowGap ?? 0) - 8)).toBeLessThanOrEqual(1);
 
   const rssStatusBadgeChrome = await page.evaluate(() => {
     const status = document.querySelector('[data-testid="source-status-rss"]') as HTMLElement | null;
@@ -1312,6 +1338,79 @@ test("desktop toolbar tooltips still open on keyboard focus", async ({ app, page
 
   await expect(sidebarToggle).toBeFocused();
   await expect(page.getByRole("tooltip")).toHaveText("Collapse sidebar");
+});
+
+test("tooltip arrows stay attached to bottom and right-facing panels", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  const sidebarToggle = page.getByTestId("desktop-sidebar-toggle");
+  await sidebarToggle.hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Collapse sidebar");
+
+  const bottomGeometry = await page.evaluate(() => {
+    const trigger = document.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
+    const tooltip = document.querySelector('[role="tooltip"]') as HTMLElement | null;
+    const arrow = tooltip?.querySelector(".theme-tooltip-arrow-bottom") as HTMLElement | null;
+    if (!trigger || !tooltip || !arrow) {
+      throw new Error("Bottom tooltip geometry elements were not found");
+    }
+
+    const triggerRect = trigger.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const arrowRect = arrow.getBoundingClientRect();
+
+    return {
+      arrowCenterX: arrowRect.left + arrowRect.width / 2,
+      arrowCenterY: arrowRect.top + arrowRect.height / 2,
+      tooltipTop: tooltipRect.top,
+      triggerCenterX: triggerRect.left + triggerRect.width / 2,
+    };
+  });
+
+  expect(Math.abs(bottomGeometry.arrowCenterY - bottomGeometry.tooltipTop)).toBeLessThanOrEqual(
+    TOOLTIP_ARROW_ALIGNMENT_TOLERANCE_PX,
+  );
+  expect(Math.abs(bottomGeometry.arrowCenterX - bottomGeometry.triggerCenterX)).toBeLessThanOrEqual(
+    TOOLTIP_ARROW_ALIGNMENT_TOLERANCE_PX,
+  );
+
+  await page.mouse.move(800, 200);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  await dragElementBy(page, page.getByTestId("app-sidebar-resize-handle"), -208);
+  await page.waitForTimeout(250);
+
+  const archivedButton = page.getByTestId("app-sidebar").getByRole("button", { name: "Archived" });
+  await archivedButton.hover();
+  await expect(page.getByRole("tooltip")).toHaveText("Archived");
+
+  const rightGeometry = await page.evaluate(() => {
+    const trigger = document.querySelector('[data-testid="app-sidebar"] button[aria-label="Archived"]') as HTMLElement | null;
+    const tooltip = document.querySelector('[role="tooltip"]') as HTMLElement | null;
+    const arrow = tooltip?.querySelector(".theme-tooltip-arrow-right") as HTMLElement | null;
+    if (!trigger || !tooltip || !arrow) {
+      throw new Error("Right tooltip geometry elements were not found");
+    }
+
+    const triggerRect = trigger.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const arrowRect = arrow.getBoundingClientRect();
+
+    return {
+      arrowCenterX: arrowRect.left + arrowRect.width / 2,
+      arrowCenterY: arrowRect.top + arrowRect.height / 2,
+      tooltipLeft: tooltipRect.left,
+      triggerCenterY: triggerRect.top + triggerRect.height / 2,
+    };
+  });
+
+  expect(Math.abs(rightGeometry.arrowCenterX - rightGeometry.tooltipLeft)).toBeLessThanOrEqual(
+    TOOLTIP_ARROW_ALIGNMENT_TOLERANCE_PX,
+  );
+  expect(Math.abs(rightGeometry.arrowCenterY - rightGeometry.triggerCenterY)).toBeLessThanOrEqual(
+    TOOLTIP_ARROW_ALIGNMENT_TOLERANCE_PX,
+  );
 });
 
 test("desktop masked workspaces compensate for adjacent shell gaps", async ({ app, page }) => {
@@ -2116,9 +2215,10 @@ test("dual-column reader toolbar toggles stay aligned with the sidebar and rail"
       '[aria-label="Hide thumbnail rail"], [aria-label="Show thumbnail rail"]',
     ) as HTMLElement | null;
     const backButton = document.querySelector('[aria-label="Back to list"]') as HTMLElement | null;
+    const firstReaderAction = document.querySelector('[aria-label="Toggle focus reading mode"]') as HTMLElement | null;
     const compactRail = document.querySelector('[data-testid="compact-feed-panel-scroll-container"]') as HTMLElement | null;
 
-    if (!resizeHandle || !sidebarToggle || !dualColumnToggle || !backButton || !compactRail) {
+    if (!resizeHandle || !sidebarToggle || !dualColumnToggle || !backButton || !firstReaderAction || !compactRail) {
       throw new Error("Dual-column toolbar alignment elements were not found");
     }
 
@@ -2127,6 +2227,7 @@ test("dual-column reader toolbar toggles stay aligned with the sidebar and rail"
     const sidebarToggleIconRect = sidebarToggleIcon?.getBoundingClientRect() ?? null;
     const dualColumnToggleRect = dualColumnToggle.getBoundingClientRect();
     const backButtonRect = backButton.getBoundingClientRect();
+    const firstReaderActionRect = firstReaderAction.getBoundingClientRect();
     const compactRailRect = compactRail.getBoundingClientRect();
 
     return {
@@ -2138,6 +2239,7 @@ test("dual-column reader toolbar toggles stay aligned with the sidebar and rail"
       dualColumnToggleCenter: dualColumnToggleRect.left + dualColumnToggleRect.width / 2,
       dualColumnToggleLeft: dualColumnToggleRect.left,
       backButtonLeft: backButtonRect.left,
+      readerTitleRightGap: firstReaderActionRect.left - backButtonRect.right,
     };
   });
 
@@ -2156,6 +2258,8 @@ test("dual-column reader toolbar toggles stay aligned with the sidebar and rail"
   expect(Math.abs(alignment.backButtonLeft - alignment.compactRailRight)).toBeLessThanOrEqual(
     READER_RAIL_ALIGNMENT_TOLERANCE_PX,
   );
+  expect(alignment.readerTitleRightGap).toBeGreaterThanOrEqual(15);
+  expect(alignment.readerTitleRightGap).toBeLessThanOrEqual(17);
 
   await dragElementBy(page, page.getByTestId("app-sidebar-resize-handle"), -156);
   await page.waitForTimeout(250);
@@ -2529,6 +2633,20 @@ test("friends and map move identity controls into the header and hide feed bulk 
   await page.getByRole("button", { name: /^Friends\b/ }).click();
   await expect(toolbar.getByRole("button", { name: "Friends", exact: true })).toBeVisible();
   await expect(toolbar.getByRole("button", { name: "All content", exact: true })).toBeVisible();
+  const friendsScopeChrome = await page.evaluate(() => {
+    const scope = document.querySelector('[data-testid="friends-toolbar-lens"]') as HTMLElement | null;
+    const activeSegment = scope?.querySelector('[aria-pressed="true"]') as HTMLElement | null;
+    if (!scope || !activeSegment) {
+      throw new Error("Friends toolbar active segment was not found");
+    }
+
+    return {
+      activeLabel: activeSegment.textContent?.trim() ?? "",
+      activeBoxShadow: window.getComputedStyle(activeSegment).boxShadow,
+    };
+  });
+  expect(friendsScopeChrome.activeLabel).toBe("All content");
+  expect(friendsScopeChrome.activeBoxShadow).not.toContain("inset");
   await expect(toolbar.getByRole("button", { name: "Current", exact: true })).toHaveCount(0);
   await expect(unreadButton).toHaveCount(0);
   await expect(archiveButton).toHaveCount(0);

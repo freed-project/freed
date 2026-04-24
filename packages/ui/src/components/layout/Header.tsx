@@ -56,7 +56,6 @@ interface HeaderProps {
   onFriendsSidebarToggle: () => void;
   friendsMobileSurface: "graph" | "details";
   onFriendsMobileSurfaceChange: (surface: "graph" | "details") => void;
-  onOpenCommandPalette: () => void;
 }
 
 type FriendsToolbarMode = MapMode | "details";
@@ -171,7 +170,6 @@ export function Header({
   onFriendsSidebarToggle,
   friendsMobileSurface,
   onFriendsMobileSurfaceChange,
-  onOpenCommandPalette,
 }: HeaderProps) {
   const {
     HeaderSyncIndicator,
@@ -465,10 +463,6 @@ export function Header({
       ? "details"
       : effectiveFriendsMode;
   const canManuallyDragToolbarControls = !!(headerDragRegion && startWindowDrag);
-  const commandShortcutHint =
-    typeof navigator !== "undefined" && /(Mac|iPhone|iPad)/i.test(navigator.platform)
-      ? "Cmd K"
-      : "Ctrl K";
   const macosTrafficLightInsetStyle = headerDragRegion
     ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
     : undefined;
@@ -884,7 +878,7 @@ export function Header({
           </div>
 
           <div
-            className="min-w-0 flex-1"
+            className={`min-w-0 flex-1 ${selectedItem ? "pr-3 sm:pr-4" : ""}`}
             {...(headerDragRegion ? { "data-tauri-drag-region": true, style: dragStyle } : {})}
           >
             {selectedItem ? (
@@ -942,30 +936,6 @@ export function Header({
           >
             {selectedItem ? (
               <>
-                <Tooltip label={`Command palette (${commandShortcutHint})`}>
-                  <button
-                    type="button"
-                    onClick={onOpenCommandPalette}
-                    {...getToolbarControlProps()}
-                    data-testid="command-palette-trigger"
-                    className="theme-toolbar-button-neutral inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm"
-                    aria-label="Open command palette"
-                  >
-                    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                      />
-                    </svg>
-                    <span className="hidden md:inline">Commands</span>
-                    <span className="hidden lg:inline text-xs text-[var(--theme-text-soft)]">
-                      {commandShortcutHint}
-                    </span>
-                  </button>
-                </Tooltip>
-
                 <ToolbarAnimatedSlot visible={!isMobile} width="5.25rem" className="hidden lg:flex">
                   <Tooltip label={display.reading.focusMode ? "Disable focus mode" : "Enable focus mode"}>
                     <button
@@ -1046,30 +1016,6 @@ export function Header({
               </>
             ) : (
               <>
-                <Tooltip label={`Command palette (${commandShortcutHint})`}>
-                  <button
-                    type="button"
-                    onClick={onOpenCommandPalette}
-                    {...getToolbarControlProps()}
-                    data-testid="command-palette-trigger"
-                    className="theme-toolbar-button-neutral inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm"
-                    aria-label="Open command palette"
-                  >
-                    <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                      />
-                    </svg>
-                    <span className="hidden md:inline">Commands</span>
-                    <span className="hidden lg:inline text-xs text-[var(--theme-text-soft)]">
-                      {commandShortcutHint}
-                    </span>
-                  </button>
-                </Tooltip>
-
                 <ToolbarAnimatedSlot visible={!!HeaderSyncIndicator} width="4.5rem" className="hidden md:flex">
                   {HeaderSyncIndicator ? (
                     <div className="hidden md:flex">

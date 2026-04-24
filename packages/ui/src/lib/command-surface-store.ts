@@ -3,13 +3,12 @@ import { create } from "zustand";
 export type LibraryDialogTab = "import" | "export";
 
 interface CommandSurfaceStore {
-  paletteOpen: boolean;
+  searchPaletteRequestId: number;
   addFeedOpen: boolean;
   savedContentOpen: boolean;
   libraryDialogOpen: boolean;
   libraryDialogTab: LibraryDialogTab;
-  openPalette: () => void;
-  closePalette: () => void;
+  requestSearchPalette: () => void;
   openAddFeedDialog: () => void;
   closeAddFeedDialog: () => void;
   openSavedContentDialog: () => void;
@@ -19,13 +18,13 @@ interface CommandSurfaceStore {
 }
 
 export const useCommandSurfaceStore = create<CommandSurfaceStore>((set) => ({
-  paletteOpen: false,
+  searchPaletteRequestId: 0,
   addFeedOpen: false,
   savedContentOpen: false,
   libraryDialogOpen: false,
   libraryDialogTab: "import",
-  openPalette: () => set({ paletteOpen: true }),
-  closePalette: () => set({ paletteOpen: false }),
+  requestSearchPalette: () =>
+    set((state) => ({ searchPaletteRequestId: state.searchPaletteRequestId + 1 })),
   openAddFeedDialog: () => set({ addFeedOpen: true }),
   closeAddFeedDialog: () => set({ addFeedOpen: false }),
   openSavedContentDialog: () => set({ savedContentOpen: true }),
