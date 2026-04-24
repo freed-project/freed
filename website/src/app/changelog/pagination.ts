@@ -96,13 +96,15 @@ export function buildChangelogMetadata(
   mode: ChangelogMode = "production",
 ): Metadata {
   const pageSuffix = page > 1 ? `, page ${page.toLocaleString()}` : "";
-  const title = `Log | Freed`;
+  const title = "Changelog | Freed";
   const modeSuffix = mode === "all" ? " including dev builds" : "";
   const description = `Every release, every fix, every new feature${modeSuffix}${pageSuffix}. The full build history of Freed Desktop.`;
   const path = getChangelogPageHref(page, mode);
 
   return {
-    title,
+    title: {
+      absolute: title,
+    },
     description,
     alternates: {
       canonical: path,
