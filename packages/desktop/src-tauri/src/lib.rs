@@ -1666,6 +1666,7 @@ fn gaussian_ms(mean: f64, std_dev: f64) -> u64 {
 const FB_EXTRACT_SCRIPT: &str = include_str!("fb-extract.js");
 const FB_GROUPS_EXTRACT_SCRIPT: &str = include_str!("fb-groups-extract.js");
 const FB_STORIES_EXTRACT_SCRIPT: &str = include_str!("fb-stories-extract.js");
+const FB_COMMENTS_EXTRACT_SCRIPT: &str = include_str!("fb-comments-extract.js");
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct FbGroupInfoPayload {
@@ -2396,6 +2397,50 @@ async fn fb_scrape_groups(
     Ok(groups)
 }
 
+#[tauri::command]
+async fn fb_scrape_comments(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    url: String,
+    window_mode: ScraperWindowMode,
+) -> Result<(), String> {
+    let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
+    let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_comments").await;
+    let _recycle_guard =
+        WebviewRecycleGuard::new(app.clone(), "fb-scraper", "comments scrape complete");
+    let wv = match app.get_webview_window("fb-scraper") {
+        Some(window) => window,
+        None => build_cloaked_scraper_window(
+            &app,
+            "fb-scraper",
+            "Freed Facebook",
+            &url,
+            &scraper_user_agent,
+        )?,
+    };
+
+    prepare_background_scraper_window(&wv, window_mode)?;
+    wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    tokio::time::sleep(Duration::from_millis(gaussian_ms(6500.0, 900.0))).await;
+
+    for index in 0..3 {
+        wv.eval(FB_COMMENTS_EXTRACT_SCRIPT).map_err(|e| {
+            format!(
+                "Failed to inject Facebook comments extraction script: {}",
+                e
+            )
+        })?;
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        if index < 2 {
+            let _ = wv.eval(r#"window.scrollBy({ top: 520, behavior: 'smooth' });"#);
+            tokio::time::sleep(Duration::from_millis(gaussian_ms(1200.0, 250.0))).await;
+        }
+    }
+
+    Ok(())
+}
+
 /// Disconnect Facebook by clearing all browsing data in the scraper WebView.
 #[tauri::command]
 async fn fb_disconnect(app: tauri::AppHandle) -> Result<(), String> {
@@ -2414,6 +2459,7 @@ async fn fb_disconnect(app: tauri::AppHandle) -> Result<(), String> {
 /// Reads posts from the rendered DOM and emits them via Tauri event IPC.
 const IG_EXTRACT_SCRIPT: &str = include_str!("ig-extract.js");
 const IG_STORIES_EXTRACT_SCRIPT: &str = include_str!("ig-stories-extract.js");
+const IG_COMMENTS_EXTRACT_SCRIPT: &str = include_str!("ig-comments-extract.js");
 
 /// Show a visible WebView window navigated to instagram.com/accounts/login
 /// so the user can authenticate through the real Instagram login flow.
@@ -2825,6 +2871,50 @@ async fn ig_scrape_feed(
         "[IG] scrape complete, {} extraction passes emitted",
         num_passes + 1
     );
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn ig_scrape_comments(
+    app: tauri::AppHandle,
+    capture: tauri::State<'_, CaptureState>,
+    url: String,
+    window_mode: ScraperWindowMode,
+) -> Result<(), String> {
+    let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
+    let _scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_comments").await;
+    let _recycle_guard =
+        WebviewRecycleGuard::new(app.clone(), "ig-scraper", "comments scrape complete");
+    let wv = match app.get_webview_window("ig-scraper") {
+        Some(window) => window,
+        None => build_cloaked_scraper_window(
+            &app,
+            "ig-scraper",
+            "Freed Instagram",
+            &url,
+            &scraper_user_agent,
+        )?,
+    };
+
+    prepare_background_scraper_window(&wv, window_mode)?;
+    wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    tokio::time::sleep(Duration::from_millis(gaussian_ms(6500.0, 900.0))).await;
+
+    for index in 0..3 {
+        wv.eval(IG_COMMENTS_EXTRACT_SCRIPT).map_err(|e| {
+            format!(
+                "Failed to inject Instagram comments extraction script: {}",
+                e
+            )
+        })?;
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        if index < 2 {
+            let _ = wv.eval(r#"window.scrollBy({ top: 520, behavior: 'smooth' });"#);
+            tokio::time::sleep(Duration::from_millis(gaussian_ms(1200.0, 250.0))).await;
+        }
+    }
 
     Ok(())
 }
@@ -4252,11 +4342,13 @@ pub fn run() {
             fb_check_auth,
             fb_scrape_feed,
             fb_scrape_groups,
+            fb_scrape_comments,
             fb_disconnect,
             ig_show_login,
             ig_hide_login,
             ig_check_auth,
             ig_scrape_feed,
+            ig_scrape_comments,
             ig_disconnect,
             fb_visit_url,
             ig_visit_url,

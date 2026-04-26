@@ -6,6 +6,7 @@ import { contentCache } from "./content-cache";
 import { toSyncedPreservedText } from "./preserved-text";
 import { docUpdateFeedItem } from "./automerge";
 import { useAppStore } from "./store";
+import { fetchFacebookComments, fetchInstagramComments } from "./social-comment-hydration";
 import { fetchXThreadReplies } from "./x-capture";
 
 function xTweetId(item: FeedItem): string | null {
@@ -65,20 +66,36 @@ async function hydrateXReplies(item: FeedItem): Promise<ReaderThreadReply[]> {
   return result.replies.map(replyFromItem);
 }
 
+async function hydrateSocialReplies(item: FeedItem): Promise<ReaderThreadReply[]> {
+  if (item.contentType === "story") return [];
+  if (item.platform === "x") return hydrateXReplies(item);
+  if (item.platform === "facebook") return fetchFacebookComments(item.sourceUrl);
+  if (item.platform === "instagram") return fetchInstagramComments(item.sourceUrl);
+  return [];
+}
+
+function socialStoryMessage(item: FeedItem): string | null {
+  if (item.contentType !== "story") return null;
+  if (item.platform !== "facebook" && item.platform !== "instagram") return null;
+  return "Story replies are private on this platform. Open the story to reply there.";
+}
+
 export async function hydrateReaderItem(
   item: FeedItem,
   options: { pin: boolean },
 ): Promise<ReaderHydrationResult> {
   const [article, replies] = await Promise.all([
     hydrateArticle(item, options.pin).catch(() => null),
-    hydrateXReplies(item).catch(() => []),
+    hydrateSocialReplies(item).catch(() => []),
   ]);
+  const storyMessage = socialStoryMessage(item);
 
-  if (article || replies.length > 0) {
+  if (article || replies.length > 0 || (storyMessage && item.content.mediaUrls.length > 0)) {
     return {
       ...(article ?? {}),
       replies,
       status: article?.status ?? "partial",
+      ...(storyMessage ? { message: storyMessage } : {}),
     };
   }
 
@@ -89,7 +106,7 @@ export async function hydrateReaderItem(
       status: item.content.mediaUrls.length > 0 ? "partial" : "expired",
       message:
         item.content.mediaUrls.length > 0
-          ? "Showing the media captured with this story."
+          ? socialStoryMessage(item) ?? "Showing the media captured with this story."
           : "This story media was not captured before the source expired it.",
     };
   }
