@@ -177,6 +177,9 @@ export interface PlatformConfig {
   /** Current locally-selected update channel for this install or browser. */
   releaseChannel?: ReleaseChannel;
 
+  /** Release channel that produced the currently installed build. */
+  installedReleaseChannel?: ReleaseChannel;
+
   /** Persist a new update channel for this install or browser. */
   setReleaseChannel?: (channel: ReleaseChannel) => Promise<void> | void;
 
