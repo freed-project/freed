@@ -704,7 +704,7 @@ const phases: Phase[] = [
     number: 1,
     title: "Foundation",
     description:
-      "Marketing site, QR gallery, monorepo, Automerge schema, CI/CD, public legal docs with download clickwrap, and a protected newsletter signup flow.",
+      "The public home base: marketing site, QR gallery, legal docs, monorepo plumbing, CI/CD, and a protected newsletter flow.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-1-FOUNDATION.md",
@@ -713,7 +713,7 @@ const phases: Phase[] = [
     number: 2,
     title: "Capture Skills",
     description:
-      "RSS and X capture complete. Freed Markdown import/export, batch library management.",
+      "RSS and X capture are live, with Freed Markdown import/export and batch library tools.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-2-CAPTURE-SKILLS.md",
@@ -722,7 +722,7 @@ const phases: Phase[] = [
     number: 3,
     title: "Save for Later",
     description:
-      "Save any URL from desktop or mobile. Full offline reading with layered content cache. AI summarization and tag navigation.",
+      "Save any link, read offline, and keep summaries and tags close at hand.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-3-SAVE-FOR-LATER.md",
@@ -731,7 +731,7 @@ const phases: Phase[] = [
     number: 4,
     title: "Sync Layer",
     description:
-      "Local relay and GDrive/Dropbox sync are working, with cloud health diagnostics, retry and reconnect actions, debug charts, and desktop snapshot restore. iCloud remains the open item.",
+      "Local relay, Google Drive, and Dropbox sync are working, with health checks, retries, debug charts, and desktop snapshots. iCloud is still open.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-4-SYNC.md",
@@ -740,7 +740,7 @@ const phases: Phase[] = [
     number: 5,
     title: "Desktop & Mobile App",
     description:
-      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, a Freed-owned updater endpoint, local production or dev release-channel switching, first-run legal gating, provider risk interstitials, browser-style back and forward shortcuts, local snapshot rollback for disaster recovery, a provider health dashboard, failing-feed unsubscribe tools, renderer heartbeat diagnostics in the local log, runtime memory telemetry for long-session leak hunting, renderer heap and DOM diagnostics, reduced worker payload churn during large-library updates, duplicate-fetch suppression, fetcher rescans gated to real library growth, incremental Automerge persistence compaction, leaner outbox retry bookkeeping, dead-feed health cleanup, capped preserved-text previews with on-demand reader fetches, reviewed cumulative release headings, paginated changelog history, and public-safe bug reporting.",
+      "Freed Desktop is the command center: signed builds, local snapshots, provider health, smarter fetches, crash diagnostics, memory telemetry, and public-safe bug reports. The mobile app stays light, synced, and ready to read.",
     status: "current",
     priority: true,
     planLink:
@@ -750,7 +750,7 @@ const phases: Phase[] = [
     number: 6,
     title: "PWA Reader",
     description:
-      "Primary mobile surface with first-run legal gating, URL-backed view state, public-safe bug reporting, and switchable production or dev update channels across `app.freed.wtf` and `dev-app.freed.wtf`.",
+      "The mobile reader is live at app.freed.wtf, with legal gating, URL-backed navigation, bug reporting, and production or dev update channels.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-6-PWA.md",
@@ -759,7 +759,7 @@ const phases: Phase[] = [
     number: 7,
     title: "Facebook + Instagram",
     description:
-      "Facebook and Instagram integrated via Tauri WebView scraping, with suggested-post filtering, hardened story capture, silent background media guarding, serialized background scraper sessions, Facebook group controls, provider health summaries, and smart backoff when sync looks rate-limited.",
+      "Facebook and Instagram capture run through guarded Freed Desktop sessions, with feed pollution filtering, story capture, group controls, provider health, and sync backoff.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-7-SOCIAL-CAPTURE.md",
@@ -768,7 +768,7 @@ const phases: Phase[] = [
     number: 8,
     title: "Friends + Social Graph",
     description:
-      "A friend CRM with a stable pan-and-zoom graph workspace, a permanent resizable reconnect sidebar, Google Contacts sync and review, theme-authored avatar styling across Friends and Map, and a map with theme-native cartography that shows each friend's latest known location with time-aware popovers. Unify profiles across platforms into one identity per person, track relationship health, restore Google contact matches from desktop snapshots, and keep growing the map into a richer view of where friends were, are, and plan to be.",
+      "Friends turns scattered people into one local map: contact sync, identity matching, relationship context, reconnect nudges, and last-seen location views.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-8-FRIENDS.md",
@@ -777,7 +777,7 @@ const phases: Phase[] = [
     number: 9,
     title: "Browser Extension",
     description:
-      "Chrome, Firefox, and Safari extensions. Quick saves and Ulysses mode.",
+      "Browser extensions for quick saves and Ulysses mode across Chrome, Firefox, and Safari.",
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-9-BROWSER-EXTENSION.md",
@@ -786,7 +786,7 @@ const phases: Phase[] = [
     number: 10,
     title: "Polish",
     description:
-      "Onboarding, statistics, AI features, plugin API, community infrastructure, and deeper crash recovery hardening.",
+      "Polish the edges: onboarding, stats, AI surfaces, plugins, community systems, and the final shell-level recovery fallback.",
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-10-POLISH.md",
@@ -795,7 +795,7 @@ const phases: Phase[] = [
     number: 11,
     title: "OpenClaw + Omi 🦞",
     description:
-      'Headless capture for power users via OpenClaw CLI. Plus bidirectional Omi wearable integration: say "Hey Freed" to save a voice note, and your reading activity enriches Omi\'s memory.',
+      'Run Freed headless with OpenClaw, or save voice notes from Omi with an intentional "Hey Freed" capture.',
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-11-OPENCLAW.md",
@@ -804,7 +804,7 @@ const phases: Phase[] = [
     number: 12,
     title: "Additional Platforms",
     description:
-      "LinkedIn is in, including matching desktop scraper window controls, silent background media guarding, and the shared provider health and pause-state surfaces. Next up: Mozi for social planning, then TikTok, Threads, Bluesky, Reddit, and YouTube.",
+      "LinkedIn is live. Next up: Mozi, TikTok, Threads, Bluesky, Reddit, and YouTube, all with the same guarded capture and health model.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-12-ADDITIONAL-PLATFORMS.md",
@@ -813,7 +813,7 @@ const phases: Phase[] = [
     number: 13,
     title: "POSSE Party 🎉 🦝",
     description:
-      "Compose and publish through your own site. Complete the sovereignty loop.",
+      "Publish from your own site too. Read, save, and write on your own terms.",
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-13-POSSE.md",
