@@ -137,10 +137,11 @@ test("selected release channel survives when browser storage is missing after re
   const reopenedSettingsDialog = page.locator(".fixed.inset-0.z-50").last();
   await reopenedSettingsDialog.getByRole("button", { name: /^Updates$/ }).click();
 
+  const installedDevVersionPattern = /Installed version:\s*v\d+\.\d+\.\d+-dev/;
   await expect(page.getByTestId("settings-release-channel-select")).toHaveValue("dev");
-  await expect(reopenedSettingsDialog.getByText(/Installed version:\s*v26\.4\.2500-dev/)).toBeVisible();
+  await expect(reopenedSettingsDialog.getByText(installedDevVersionPattern)).toBeVisible();
 
   await page.getByTestId("settings-release-channel-select").selectOption("production");
   await expect(page.getByTestId("settings-release-channel-select")).toHaveValue("production");
-  await expect(reopenedSettingsDialog.getByText(/Installed version:\s*v26\.4\.2500-dev/)).toBeVisible();
+  await expect(reopenedSettingsDialog.getByText(installedDevVersionPattern)).toBeVisible();
 });
