@@ -54,7 +54,7 @@
       "Content signal filters"
     ],
     "fixes": [
-      "Saved and archived signal filters are preserved",
+      "Archived items no longer clear saved feed choices",
       "Sidebar rail behavior is more polished",
       "Graph selection and release validation checks are more stable",
       "Provider health fallback tests are more stable",
@@ -62,5 +62,5 @@
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2604-dev\n\nFriends graph scaling, content filters, and saved signal filters\n\n### Features\n\n- Rebuild friends graph for scale\n- Content signal filters\n\n### Fixes\n\n- Saved and archived signal filters are preserved\n- Sidebar rail behavior is more polished\n- Graph selection and release validation checks are more stable\n- Provider health fallback tests are more stable\n- Freed Desktop remembers the selected release channel\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2604-dev\n\nFriends graph scaling, content filters, and saved signal filters\n\n### Features\n\n- Rebuild friends graph for scale\n- Content signal filters\n\n### Fixes\n\n- Archived items no longer clear saved feed choices\n- Sidebar rail behavior is more polished\n- Graph selection and release validation checks are more stable\n- Provider health fallback tests are more stable\n- Freed Desktop remembers the selected release channel\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
