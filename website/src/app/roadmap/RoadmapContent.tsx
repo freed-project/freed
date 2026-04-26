@@ -860,9 +860,9 @@ function PhaseCard({ phase, index }: { phase: Phase; index: number }) {
         </div>
       )}
 
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
+      <div className="block sm:flex sm:items-start sm:justify-between sm:gap-4">
+        <div className="w-full sm:flex-1">
+          <div className="flex items-center gap-3 mb-2 pr-28 sm:pr-0">
             <span className="text-2xl font-bold text-text-muted">
               {String(phase.number).padStart(2, "0")}
             </span>
@@ -873,7 +873,7 @@ function PhaseCard({ phase, index }: { phase: Phase; index: number }) {
           <p className="text-text-secondary">{phase.description}</p>
         </div>
 
-        <div className="flex flex-col items-end gap-2">
+        <div className="absolute top-6 right-6 flex flex-col items-end gap-2 sm:static sm:shrink-0">
           <span
             className={`px-3 py-1 rounded-full text-xs font-medium ${style.badge}`}
           >

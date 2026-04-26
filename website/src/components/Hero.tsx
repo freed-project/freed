@@ -3,7 +3,13 @@
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useState, useEffect, type FormEvent } from "react";
-import { FaXTwitter, FaInstagram, FaFacebook, FaRss } from "react-icons/fa6";
+import {
+  FaArrowRight,
+  FaXTwitter,
+  FaInstagram,
+  FaFacebook,
+  FaRss,
+} from "react-icons/fa6";
 import HeroAnimation from "./HeroAnimation";
 import { useNewsletter } from "@/context/NewsletterContext";
 import { slowHeroMotion, slowHeroDelay, slowHeroInterval } from "@/lib/motion";
@@ -206,12 +212,13 @@ export default function Hero() {
                 />
                 <button
                   type="submit"
-                  className="shrink-0 rounded-r-xl px-4 text-sm font-semibold text-[var(--theme-button-primary-text)]"
+                  className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-r-xl px-4 text-sm font-semibold text-[var(--theme-button-primary-text)]"
                   style={{
-                    background: "var(--theme-button-primary-bg)",
+                    background: "var(--theme-button-primary-background)",
                   }}
                 >
-                  Join Us
+                  <span>Join Us</span>
+                  <FaArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
                 </button>
               </div>
               {mobileEmailError && (
