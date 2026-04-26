@@ -1637,14 +1637,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (drag.kind === "account-drag") {
       if (drag.moved && drag.dropTargetPersonId && onLinkAccountToPerson) {
         await onLinkAccountToPerson(drag.accountId, drag.dropTargetPersonId);
-        focusNode(drag.dropTargetPersonId);
       } else if (drag.moved) {
         await onPinAccountPosition?.(drag.accountId, drag.currentWorldX, drag.currentWorldY);
       } else if (!drag.moved) {
         const account = accounts[drag.accountId];
         if (account) {
           onSelectAccount(account);
-          focusNode(drag.accountId);
         }
       }
       scheduleSyncScene();
@@ -1658,7 +1656,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         const person = personsById[drag.personId];
         if (person) {
           onSelectPerson(person);
-          focusNode(drag.personId);
         }
       }
       scheduleSyncScene();
@@ -1680,17 +1677,15 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       const person = personsById[hit.personId];
       if (person) {
         onSelectPerson(person);
-        focusNode(hit.personId);
       }
     } else if (hit.accountId) {
       const account = accounts[hit.accountId];
       if (account) {
         onSelectAccount(account);
-        focusNode(hit.accountId);
       }
     }
     scheduleSyncScene();
-  }, [accounts, focusNode, hitNodeAt, onClearSelection, onLinkAccountToPerson, onPinAccountPosition, onPinPersonPosition, onSelectAccount, onSelectPerson, personsById, scheduleSyncScene]);
+  }, [accounts, hitNodeAt, onClearSelection, onLinkAccountToPerson, onPinAccountPosition, onPinPersonPosition, onSelectAccount, onSelectPerson, personsById, scheduleSyncScene]);
 
   const handlePointerLeave = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (hoveredNodeIdRef.current) {

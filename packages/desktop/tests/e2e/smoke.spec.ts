@@ -3540,12 +3540,19 @@ test("selecting a graph node shows a compact detail card when the Friends detail
     }, { timeout: 10_000 })
     .toBe(true);
 
+  const beforeClick = await readGraphSummary(page);
+  expect(beforeClick).not.toBeNull();
   await page.mouse.click(friendPoint!.x, friendPoint!.y);
 
   await expect(page.getByTestId("friends-sidebar")).toHaveCount(0);
   const compactCard = page.getByTestId("friends-collapsed-selection-card");
   await expect(compactCard).toBeVisible({ timeout: 5_000 });
   await expect(compactCard).toContainText("Ada Lovelace");
+  const afterClick = await readGraphSummary(page);
+  expect(afterClick).not.toBeNull();
+  expect(afterClick!.transform.x).toBeCloseTo(beforeClick!.transform.x, 1);
+  expect(afterClick!.transform.y).toBeCloseTo(beforeClick!.transform.y, 1);
+  expect(afterClick!.transform.scale).toBeCloseTo(beforeClick!.transform.scale, 3);
   await page.waitForFunction(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | { getState: () => { preferences: { display: { friendsSidebarOpen?: boolean } } } }

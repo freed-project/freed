@@ -148,7 +148,7 @@ Default nudge intervals by care level:
   - RSS is a provider island like Instagram, LinkedIn, X, and Facebook, not a separate content band
 - Interaction:
   - pan and zoom with semantic label reveal
-  - click to focus identity or channel clusters
+  - click to focus identity or channel clusters in place without moving the camera
   - drag social channel nodes onto human identities to re-link immediately
   - drag people or channels without a link drop to pin their graph position
   - non-selected clusters dim when a person or channel is focused
