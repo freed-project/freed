@@ -5,14 +5,16 @@ import {
   parseNavigationState,
   serializeNavigationState,
 } from "@freed/shared";
+import type { FilterOptions } from "@freed/shared";
+import type { NavigationState } from "../../../shared/src/navigation-state";
 
 describe("navigation state", () => {
   it("preserves signal filters on saved views", () => {
-    const state = {
+    const state: NavigationState = {
       activeView: "feed" as const,
       activeFilter: {
         savedOnly: true,
-        signals: ["news", "essay"] as const,
+        signals: ["news", "essay"],
       },
       selectedItemId: null,
     };
@@ -31,11 +33,11 @@ describe("navigation state", () => {
   });
 
   it("preserves signal filters on archived views", () => {
-    const state = {
+    const state: NavigationState = {
       activeView: "feed" as const,
       activeFilter: {
         archivedOnly: true,
-        signals: ["discussion"] as const,
+        signals: ["discussion"],
       },
       selectedItemId: null,
     };
@@ -54,9 +56,9 @@ describe("navigation state", () => {
   });
 
   it("treats saved signal filters as canonical instead of stripping them", () => {
-    const raw = {
+    const raw: FilterOptions = {
       savedOnly: true,
-      signals: ["news", "essay", "news"] as const,
+      signals: ["news", "essay", "news"],
     };
 
     expect(canonicalizeFilterOptions(raw)).toEqual({
