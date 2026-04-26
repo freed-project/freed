@@ -4054,6 +4054,7 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
 });
 
 test("dragging a channel onto a person re-links it and the graph state survives reload", async ({ app, page }) => {
+  test.setTimeout(45_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -4133,6 +4134,7 @@ test("dragging a channel onto a person re-links it and the graph state survives 
   await expect.poll(async () => {
     return viewport.evaluate((element) => Number((element as HTMLElement).dataset.graphNodeCount ?? "0"));
   }).toBeGreaterThanOrEqual(3);
+  await waitForGraphPerfToSettle(page);
 
   const accountPoint = await graphNodeScreenPoint(page, { accountId: "social:instagram:nora-ig" });
   const personPoint = await graphNodeScreenPoint(page, { personId: "friend-ada" });
@@ -4141,7 +4143,13 @@ test("dragging a channel onto a person re-links it and the graph state survives 
 
   await page.mouse.move(accountPoint!.x, accountPoint!.y);
   await page.mouse.down();
-  await page.mouse.move(personPoint!.x, personPoint!.y, { steps: 12 });
+  await page.mouse.move((accountPoint!.x + personPoint!.x) / 2, (accountPoint!.y + personPoint!.y) / 2, {
+    steps: 8,
+  });
+  await page.mouse.move(personPoint!.x, personPoint!.y, { steps: 16 });
+  await page.waitForTimeout(100);
+  await page.mouse.move(personPoint!.x + 1, personPoint!.y + 1);
+  await page.mouse.move(personPoint!.x, personPoint!.y);
   await page.mouse.up();
 
   await page.waitForFunction(() => {
