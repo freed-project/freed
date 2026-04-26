@@ -41,6 +41,7 @@ import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
 import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { withProviderSyncing } from "../lib/store";
 import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
+import { MediaVaultSettingsCard } from "./MediaVaultSettingsCard";
 
 // =============================================================================
 // Diagnostic Panel
@@ -196,6 +197,7 @@ export function FacebookSettingsSection({
   const isLoading = useAppStore((s) => s.isLoading);
   const storeError = useAppStore((s) => s.error);
   const setError = useAppStore((s) => s.setError);
+  const items = useAppStore((s) => s.items);
   const syncing = useAppStore((s) => (s.providerSyncCounts.facebook ?? 0) > 0);
   const healthSnapshot = useDebugStore((s) => s.health?.providers.facebook ?? null);
 
@@ -435,6 +437,13 @@ export function FacebookSettingsSection({
           {statusLine}
 
           {lastDiag && <FbDiagPanel diag={lastDiag} />}
+
+          <MediaVaultSettingsCard
+            provider="facebook"
+            providerLabel="Facebook"
+            items={items}
+            authenticated={fbAuth.isAuthenticated}
+          />
 
           {groups.length > 0 && (
             <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">

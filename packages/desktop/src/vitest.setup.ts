@@ -21,6 +21,21 @@ if (!("text" in Blob.prototype)) {
   });
 }
 
+if (!("arrayBuffer" in Blob.prototype)) {
+  Object.defineProperty(Blob.prototype, "arrayBuffer", {
+    value(): Promise<ArrayBuffer> {
+      return new Promise<ArrayBuffer>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as ArrayBuffer);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsArrayBuffer(this as Blob);
+      });
+    },
+    writable: true,
+    configurable: true,
+  });
+}
+
 if (!("Worker" in globalThis)) {
   class MockWorker {
     onmessage: ((event: MessageEvent) => void) | null = null;

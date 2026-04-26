@@ -9,6 +9,14 @@
 const memfs = new Map<string, Uint8Array>();
 type DirEntry = { name?: string };
 
+export function __resetMemfs(): void {
+  memfs.clear();
+}
+
+export function __readMemfs(path: string): Uint8Array | undefined {
+  return memfs.get(path);
+}
+
 export async function exists(path: string): Promise<boolean> {
   return memfs.has(path);
 }
