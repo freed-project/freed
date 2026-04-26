@@ -15,7 +15,9 @@ Create a product worktree branch from the latest remote `dev`, implement enough 
 3. Fetch the latest remote refs first with `git fetch --all --prune`.
 4. Check both `origin/dev` and `origin/main` before branching.
    - Confirm whether local `dev` or `main` are behind their remote counterparts.
-   - If `origin/main` contains commits that are not in `origin/dev`, call that out before continuing so the user can decide whether `dev` needs to be refreshed first.
+   - Run `node scripts/validate-main-backflow.mjs --dev-ref=origin/dev --main-ref=origin/main`.
+   - If the backflow guard fails, call that out before continuing so the user can decide whether `dev` needs to be refreshed first.
+   - Do not block on raw commit graph differences alone. Squash-merged promotion and reverse-integration PRs can leave `main` commits absent from `dev` even when the content is already represented on `dev`.
 5. Create a new worktree branch from `origin/dev` using `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --install full --target <desktop|pwa|shared>`.
    - When you are spinning up multiple speculative threads at once, prefer `./scripts/worktree-add.sh ../freed-<slug> -b <branch> origin/dev --swarm --target <desktop|pwa|shared>` so bootstrap stays deferred until that thread actually needs verification or a preview.
 6. If the worktree was created with deferred bootstrap on purpose, recover with `./scripts/worktree-bootstrap.sh <worktree> --target <desktop|pwa|shared>`.

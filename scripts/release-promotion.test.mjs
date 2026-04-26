@@ -12,6 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const VALIDATE_RELEASE_PROMOTION = path.join(__dirname, "validate-release-promotion.mjs");
 const VALIDATE_MAIN_PR = path.join(__dirname, "validate-main-pr.mjs");
+const VALIDATE_MAIN_BACKFLOW = path.join(__dirname, "validate-main-backflow.mjs");
 
 function git(cwd, args) {
   return execFileSync("git", args, {
@@ -100,6 +101,75 @@ test("validate-release-promotion fails when main is stale on product files", (t)
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Production release blocked/);
   assert.match(result.stderr, /packages\/pwa\/src\/app\.ts/);
+});
+
+test("validate-main-backflow ignores squashed promotion content already in dev history", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(cwd, "packages/pwa/src/app.ts", "export const value = 'promoted';\n");
+  commitAll(cwd, "dev feature");
+  updateOriginRef(cwd, "dev");
+
+  git(cwd, ["checkout", "main"]);
+  git(cwd, ["merge", "--squash", "--no-commit", "dev"]);
+  git(cwd, ["commit", "-m", "chore: promote dev into main"]);
+  updateOriginRef(cwd, "main");
+
+  git(cwd, ["checkout", "dev"]);
+  writeRepoFile(cwd, "packages/pwa/src/app.ts", "export const value = 'next dev change';\n");
+  commitAll(cwd, "next dev change");
+  updateOriginRef(cwd, "dev");
+
+  const result = runNode(VALIDATE_MAIN_BACKFLOW, [
+    `--cwd=${cwd}`,
+    "--dev-ref=origin/dev",
+    "--main-ref=origin/main",
+  ]);
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Main backflow is in sync/);
+});
+
+test("validate-main-backflow fails when main has product content absent from dev", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "main"]);
+  writeRepoFile(cwd, "packages/pwa/src/app.ts", "export const value = 'main hotfix';\n");
+  commitAll(cwd, "main hotfix");
+  updateOriginRef(cwd, "main");
+
+  const result = runNode(VALIDATE_MAIN_BACKFLOW, [
+    `--cwd=${cwd}`,
+    "--dev-ref=origin/dev",
+    "--main-ref=origin/main",
+  ]);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Dev refresh needed/);
+  assert.match(result.stderr, /packages\/pwa\/src\/app\.ts/);
+});
+
+test("validate-main-backflow ignores release-only main metadata", (t) => {
+  const cwd = makeTempRepo();
+  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+
+  git(cwd, ["checkout", "main"]);
+  writeRepoFile(cwd, "release-notes/releases/v26.4.2100.json", "{\n  \"approved\": true\n}\n");
+  writeRepoFile(cwd, "packages/pwa/package.json", "{\n  \"name\": \"@freed/pwa\",\n  \"version\": \"26.4.2100\"\n}\n");
+  commitAll(cwd, "release metadata");
+  updateOriginRef(cwd, "main");
+
+  const result = runNode(VALIDATE_MAIN_BACKFLOW, [
+    `--cwd=${cwd}`,
+    "--dev-ref=origin/dev",
+    "--main-ref=origin/main",
+  ]);
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /Main backflow is in sync/);
 });
 
 test("validate-main-pr passes for a fresh promotion branch", (t) => {
