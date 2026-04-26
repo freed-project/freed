@@ -155,7 +155,7 @@ const TRACKPAD_PINCH_ZOOM_SPEED = 0.005;
 const GRAPH_INTERACTION_SETTLE_DELAY_MS = 140;
 const INTERACTIVE_LABEL_LIMIT = 16;
 const SETTLED_LABEL_LIMIT = 32;
-const CONTROL_BASE = "btn-secondary rounded-xl px-3 py-1.5 text-xs";
+const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
 
 interface RgbColor {
   r: number;
@@ -1770,7 +1770,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     <div
       ref={containerRef}
       data-testid="friend-graph-viewport"
-      className="relative h-full w-full overflow-hidden touch-none overscroll-contain"
+      className="theme-soft-viewport relative h-full w-full touch-none overscroll-contain"
       onWheel={handleWheel}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -1780,7 +1780,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       onDoubleClick={handleDoubleClick}
       aria-label="Friends identity graph"
     >
-      <div className="absolute inset-0">
+      <div className="theme-soft-viewport-content">
         <div ref={canvasHostRef} className="absolute inset-0" />
         {!layoutReady ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center">
@@ -1802,9 +1802,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         >
           Fit all
         </button>
-      </div>
-      <div className="pointer-events-none absolute bottom-4 left-4 z-10 rounded-full border border-[color:rgb(var(--theme-border-rgb)/0.24)] bg-[color:rgb(var(--theme-surface-rgb)/0.72)] px-3 py-1 text-[11px] text-[color:var(--theme-text-muted)] shadow-[0_10px_24px_rgba(0,0,0,0.08)] backdrop-blur-sm">
-        {model.nodes.length.toLocaleString()} nodes, {model.edges.length.toLocaleString()} links
       </div>
     </div>
   );

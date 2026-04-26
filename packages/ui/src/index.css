@@ -836,6 +836,31 @@ html[data-theme="scriptorium"] .theme-panel-muted {
     0 4px 12px rgb(84 58 35 / 0.025);
 }
 
+.theme-graph-control {
+  background: color-mix(in oklab, var(--theme-bg-surface) 96%, var(--theme-bg-primary) 4%);
+  border: 1px solid color-mix(in oklab, var(--theme-border-subtle) 88%, var(--theme-text-primary) 12%);
+  color: var(--theme-text-primary);
+  cursor: pointer;
+  font-weight: 700;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.045),
+    0 10px 24px rgb(0 0 0 / 0.12);
+  transition:
+    border-color 0.18s ease,
+    background-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.theme-graph-control:hover {
+  background: color-mix(in oklab, var(--theme-bg-surface) 90%, var(--theme-control-accent) 10%);
+  border-color: color-mix(in oklab, var(--theme-border-strong) 82%, var(--theme-control-accent) 18%);
+}
+
+.theme-graph-control:active {
+  background: color-mix(in oklab, var(--theme-bg-surface) 84%, var(--theme-control-accent) 16%);
+}
+
 .theme-soft-viewport {
   --theme-soft-viewport-mask-size: 20px;
   --theme-soft-viewport-radius: 20px;
