@@ -14,6 +14,10 @@ import {
   formatReleaseVersion,
   RELEASE_CHANNEL_LABELS,
   RELEASE_CHANNELS,
+  SAMPLE_SHOWCASE_FEED_COUNT,
+  SAMPLE_SHOWCASE_FRIEND_COUNT,
+  SAMPLE_SHOWCASE_ITEM_COUNT,
+  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
   type ReleaseChannel,
 } from "@freed/shared";
 import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
@@ -51,9 +55,6 @@ import { Tooltip } from "./Tooltip.js";
 import { GoogleContactsIcon } from "./icons.js";
 import { useIsMobile } from "../hooks/useIsMobile.js";
 
-const SAMPLE_SEED_FEED_COUNT = 10;
-const SAMPLE_SEED_ITEM_COUNT = 155;
-const SAMPLE_SEED_FRIEND_COUNT = 25;
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Section extends SectionMeta {
@@ -615,7 +616,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       });
       setSeedDone(true);
       toast.success(
-        `Sample data added: ${SAMPLE_SEED_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SEED_ITEM_COUNT.toLocaleString()} items, and ${SAMPLE_SEED_FRIEND_COUNT.toLocaleString()} friends.`
+        `Sample data added: ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, and ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities.`
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to populate sample data");
@@ -1214,12 +1215,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               >
                 <div>
                   <p className="theme-feedback-text-warning text-sm">
-                    {seedDone ? "Add more sample data" : seeding ? "Populating\u2026" : "Populate sample data"}
+                    {seedDone ? "Add more sample data" : seeding ? "Populating..." : "Populate sample data"}
                   </p>
                   <p className="theme-feedback-text-warning-muted mt-0.5 text-xs">
                     {seedDone
-                      ? `Adds another ${SAMPLE_SEED_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SEED_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SEED_FRIEND_COUNT.toLocaleString()} friends, and map-ready social activity`
-                      : `Adds ${SAMPLE_SEED_FEED_COUNT.toLocaleString()} RSS feeds, ${SAMPLE_SEED_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SEED_FRIEND_COUNT.toLocaleString()} friends, and location-linked social data`}
+                      ? `Adds another ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities, and map-ready activity`
+                      : `Adds ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} RSS feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities, and location-linked data`}
                   </p>
                 </div>
                 {seedDone ? (

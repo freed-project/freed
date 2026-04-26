@@ -6,7 +6,6 @@ import {
   TextStyle,
 } from "pixi.js";
 import {
-  type CSSProperties,
   forwardRef,
   useCallback,
   useEffect,
@@ -58,6 +57,8 @@ interface FriendGraphProps {
   onSelectAccount: (account: Account) => void;
   onClearSelection?: () => void;
   onLinkAccountToPerson?: (accountId: string, personId: string) => Promise<void> | void;
+  onPinPersonPosition?: (personId: string, x: number, y: number) => Promise<void> | void;
+  onPinAccountPosition?: (accountId: string, x: number, y: number) => Promise<void> | void;
   themeId?: ThemeId;
 }
 
@@ -84,7 +85,19 @@ type AccountDragState = {
   currentWorldY: number;
 };
 
-type DragState = PanState | AccountDragState;
+type PersonDragState = {
+  kind: "person-drag";
+  pointerId: number;
+  nodeId: string;
+  personId: string;
+  startX: number;
+  startY: number;
+  moved: boolean;
+  currentWorldX: number;
+  currentWorldY: number;
+};
+
+type DragState = PanState | AccountDragState | PersonDragState;
 
 type TouchPoint = {
   x: number;
@@ -101,10 +114,15 @@ type PinchState = {
 interface PixiScene {
   app: Application;
   world: Container;
+  regionLayer: Graphics;
+  regionLabelLayer: Container;
   edgeLayer: Graphics;
+  edgeHighlightLayer: Graphics;
   nodeLayer: Container;
+  hoverLayer: Graphics;
   labelLayer: Container;
   nodeDisplays: Map<string, NodeDisplay>;
+  regionDisplays: Map<string, RegionDisplay>;
   labelDisplays: Map<string, LabelDisplay>;
 }
 
@@ -123,6 +141,12 @@ interface LabelDisplay {
   text: Text;
 }
 
+interface RegionDisplay {
+  container: Container;
+  background: Graphics;
+  text: Text;
+}
+
 const DEFAULT_HEIGHT = 560;
 const FIT_PADDING = 84;
 const MIN_SCALE = 0.2;
@@ -130,38 +154,33 @@ const MAX_SCALE = 2.8;
 const TRACKPAD_PINCH_ZOOM_SPEED = 0.005;
 const GRAPH_INTERACTION_SETTLE_DELAY_MS = 140;
 const INTERACTIVE_LABEL_LIMIT = 16;
-const CONTROL_BASE = "btn-secondary rounded-xl px-3 py-1.5 text-xs";
-const FRIEND_GRAPH_VIEWPORT_MASK_STYLE = {
-  "--theme-soft-viewport-base-comp-left": "0px",
-  "--theme-soft-viewport-base-comp-right": "0px",
-  "--theme-soft-viewport-base-comp-top": "0px",
-  "--theme-soft-viewport-base-comp-bottom": "0px",
-} as CSSProperties;
+const SETTLED_LABEL_LIMIT = 32;
+const CONTROL_BASE = "theme-graph-control rounded-xl px-3 py-1.5 text-xs";
 
-const PROVIDER_COLORS: Record<string, number> = {
-  instagram: 0xd87093,
-  facebook: 0x4b79d8,
-  x: 0x64748b,
-  linkedin: 0x3b82c4,
-  rss: 0xb07a44,
-};
+interface RgbColor {
+  r: number;
+  g: number;
+  b: number;
+}
 
-const SCRIPTORIUM_PALETTE = {
-  friendFill: 0xb98047,
-  friendStroke: 0x2f1f12,
-  friendText: 0x20140b,
-  connectionFill: 0xd1ab77,
-  connectionStroke: 0x5d432d,
-  connectionText: 0x24160d,
-  feedFill: 0x8e6f4d,
-  feedStroke: 0x463221,
-  labelFill: 0xf0e0c7,
-  labelStroke: 0x715335,
-  labelText: 0x24170d,
-  edge: 0x5a4430,
-  selection: 0x1c1712,
-  highlight: 0x224f3d,
-};
+interface GraphThemePalette {
+  friendFill: number;
+  friendStroke: number;
+  friendText: number;
+  connectionFill: number;
+  connectionStroke: number;
+  connectionText: number;
+  channelStroke: number;
+  labelFill: number;
+  labelStroke: number;
+  labelText: number;
+  labelSelectedText: number;
+  edge: number;
+  selection: number;
+  highlight: number;
+  reconnect: number;
+  providerColors: Record<string, number>;
+}
 
 interface GraphPerfSnapshot {
   modelBuildMs: number;
@@ -175,6 +194,8 @@ interface GraphPerfSnapshot {
   nodeRestyleCount: number;
   labelLayoutCount: number;
   visibleLabelCount: number;
+  visibleNodeLabelCount: number;
+  visibleProviderLabelCount: number;
   qualityMode: GraphQualityMode;
 }
 
@@ -191,6 +212,28 @@ function nowMs(): number {
 
 function estimateLabelWidth(label: string, fontSize: number): number {
   return Math.max(44, Math.round(label.length * fontSize * 0.57 + 20));
+}
+
+function graphNodeLabelFontSize(node: IdentityGraphLayoutNode, scale: number): number {
+  if (node.kind === "friend_person") return scale >= 1.12 ? 13 : 12;
+  if (node.kind === "connection_person") return scale >= 1.16 ? 12 : 11;
+  return 10.5;
+}
+
+function providerLabelMetrics(scale: number): {
+  fontSize: number;
+  height: number;
+  paddingX: number;
+  alpha: number;
+  gap: number;
+} {
+  if (scale < 0.55) {
+    return { fontSize: 16, height: 30, paddingX: 14, alpha: 0.96, gap: 18 };
+  }
+  if (scale < 0.9) {
+    return { fontSize: 14, height: 26, paddingX: 12, alpha: 0.9, gap: 16 };
+  }
+  return { fontSize: 12, height: 22, paddingX: 10, alpha: 0.76, gap: 14 };
 }
 
 function buildHighlightedNodeIds(
@@ -260,8 +303,86 @@ function midpointBetween(first: TouchPoint, second: TouchPoint): TouchPoint {
   };
 }
 
-function kindColor(node: IdentityGraphLayoutNode, themeId?: ThemeId) {
-  const palette = SCRIPTORIUM_PALETTE;
+function rgbToNumber(color: RgbColor): number {
+  return (color.r << 16) + (color.g << 8) + color.b;
+}
+
+function mixColor(left: RgbColor, right: RgbColor, rightWeight: number): RgbColor {
+  const leftWeight = 1 - rightWeight;
+  return {
+    r: Math.round(left.r * leftWeight + right.r * rightWeight),
+    g: Math.round(left.g * leftWeight + right.g * rightWeight),
+    b: Math.round(left.b * leftWeight + right.b * rightWeight),
+  };
+}
+
+function parseRgbVariable(style: CSSStyleDeclaration, name: string, fallback: RgbColor): RgbColor {
+  const value = style.getPropertyValue(name).trim();
+  const parts = value.split(/\s+/).map((part) => Number(part));
+  if (parts.length >= 3 && parts.every((part) => Number.isFinite(part))) {
+    return {
+      r: Math.max(0, Math.min(255, Math.round(parts[0]!))),
+      g: Math.max(0, Math.min(255, Math.round(parts[1]!))),
+      b: Math.max(0, Math.min(255, Math.round(parts[2]!))),
+    };
+  }
+  return fallback;
+}
+
+function readGraphThemePalette(element: HTMLElement | null): GraphThemePalette {
+  const style = element ? getComputedStyle(element) : null;
+  const primary = style
+    ? parseRgbVariable(style, "--theme-accent-primary-rgb", { r: 59, g: 130, b: 246 })
+    : { r: 59, g: 130, b: 246 };
+  const secondary = style
+    ? parseRgbVariable(style, "--theme-accent-secondary-rgb", { r: 139, g: 92, b: 246 })
+    : { r: 139, g: 92, b: 246 };
+  const tertiary = style
+    ? parseRgbVariable(style, "--theme-accent-tertiary-rgb", { r: 6, g: 182, b: 212 })
+    : { r: 6, g: 182, b: 212 };
+  const shell = style
+    ? parseRgbVariable(style, "--theme-shell-rgb", { r: 10, g: 12, b: 20 })
+    : { r: 10, g: 12, b: 20 };
+  const warning = style
+    ? parseRgbVariable(style, "--theme-feedback-warning-rgb", { r: 245, g: 158, b: 11 })
+    : { r: 245, g: 158, b: 11 };
+  const surface = mixColor(shell, { r: 255, g: 255, b: 255 }, shell.r + shell.g + shell.b > 382 ? 0.08 : 0.82);
+  const isLight = shell.r + shell.g + shell.b > 382;
+  const text = isLight ? { r: 36, g: 24, b: 14 } : { r: 248, g: 250, b: 252 };
+  const mutedText = mixColor(text, shell, isLight ? 0.32 : 0.18);
+
+  return {
+    friendFill: rgbToNumber(mixColor(primary, secondary, 0.28)),
+    friendStroke: rgbToNumber(mixColor(text, primary, 0.18)),
+    friendText: rgbToNumber(text),
+    connectionFill: rgbToNumber(mixColor(secondary, surface, 0.34)),
+    connectionStroke: rgbToNumber(mixColor(mutedText, secondary, 0.28)),
+    connectionText: rgbToNumber(text),
+    channelStroke: rgbToNumber(mixColor(text, shell, 0.28)),
+    labelFill: rgbToNumber(mixColor(surface, text, isLight ? 0.04 : 0.1)),
+    labelStroke: rgbToNumber(mixColor(secondary, text, 0.16)),
+    labelText: rgbToNumber(text),
+    labelSelectedText: rgbToNumber(isLight ? { r: 255, g: 252, b: 245 } : { r: 8, g: 12, b: 18 }),
+    edge: rgbToNumber(mixColor(mutedText, secondary, 0.2)),
+    selection: rgbToNumber(mixColor(text, primary, 0.2)),
+    highlight: rgbToNumber(mixColor(primary, tertiary, 0.42)),
+    reconnect: rgbToNumber(warning),
+    providerColors: {
+      instagram: rgbToNumber(mixColor(secondary, warning, 0.22)),
+      facebook: rgbToNumber(mixColor(primary, tertiary, 0.18)),
+      x: rgbToNumber(mixColor(mutedText, primary, 0.16)),
+      linkedin: rgbToNumber(mixColor(primary, secondary, 0.16)),
+      rss: rgbToNumber(mixColor(warning, secondary, 0.2)),
+      other: rgbToNumber(mixColor(tertiary, mutedText, 0.28)),
+    },
+  };
+}
+
+function providerColor(provider: string | undefined, palette: GraphThemePalette): number {
+  return palette.providerColors[provider ?? "other"] ?? palette.providerColors.other;
+}
+
+function kindColor(node: IdentityGraphLayoutNode, palette: GraphThemePalette) {
   if (node.kind === "friend_person") {
     return {
       fill: palette.friendFill,
@@ -278,22 +399,14 @@ function kindColor(node: IdentityGraphLayoutNode, themeId?: ThemeId) {
   }
   if (node.kind === "feed") {
     return {
-      fill: palette.feedFill,
-      stroke: palette.feedStroke,
-      text: palette.labelText,
-    };
-  }
-  const providerColor = PROVIDER_COLORS[node.provider ?? "x"] ?? PROVIDER_COLORS.x;
-  if (themeId === "scriptorium") {
-    return {
-      fill: providerColor,
-      stroke: palette.selection,
+      fill: providerColor("rss", palette),
+      stroke: palette.channelStroke,
       text: palette.labelText,
     };
   }
   return {
-    fill: providerColor,
-    stroke: palette.selection,
+    fill: providerColor(node.provider, palette),
+    stroke: palette.channelStroke,
     text: palette.labelText,
   };
 }
@@ -309,14 +422,22 @@ function nodePosition(
   ) {
     return { x: drag.currentWorldX, y: drag.currentWorldY };
   }
+  if (
+    drag?.kind === "person-drag" &&
+    node.personId &&
+    drag.personId === node.personId
+  ) {
+    return { x: drag.currentWorldX, y: drag.currentWorldY };
+  }
   return { x: node.x, y: node.y };
 }
 
 function createNodeDisplay(
   node: IdentityGraphLayoutNode,
+  palette: GraphThemePalette,
   themeId?: ThemeId,
 ): NodeDisplay {
-  const palette = kindColor(node, themeId);
+  const nodePalette = kindColor(node, palette);
   const container = new Container();
   const outer = new Graphics();
   container.addChild(outer);
@@ -329,7 +450,7 @@ function createNodeDisplay(
     initials = new Text(
       node.initials ?? "",
       new TextStyle({
-        fill: palette.text,
+        fill: nodePalette.text,
         fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
         fontSize: Math.max(12, node.radius * 0.48),
         fontWeight: "700",
@@ -365,7 +486,7 @@ function createLabelDisplay(themeId?: ThemeId): LabelDisplay {
   const text = new Text(
     "",
     new TextStyle({
-      fill: SCRIPTORIUM_PALETTE.labelText,
+      fill: 0xffffff,
       fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
       fontSize: 12,
       fontWeight: "600",
@@ -381,6 +502,55 @@ function createLabelDisplay(themeId?: ThemeId): LabelDisplay {
     background,
     text,
   };
+}
+
+function createRegionDisplay(themeId?: ThemeId): RegionDisplay {
+  const container = new Container();
+  const background = new Graphics();
+  const text = new Text(
+    "",
+    new TextStyle({
+      fill: 0xffffff,
+      fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
+      fontSize: 11,
+      fontWeight: "700",
+      letterSpacing: 1,
+    }),
+  );
+  text.anchor.set(0.5);
+  container.addChild(background);
+  container.addChild(text);
+
+  return {
+    container,
+    background,
+    text,
+  };
+}
+
+function edgeFadeAlpha(left: number, top: number, width: number, height: number, viewportWidth: number, viewportHeight: number): number {
+  const fadeDistance = 28;
+  const right = left + width;
+  const bottom = top + height;
+  const distances = [
+    right,
+    viewportWidth - left,
+    bottom,
+    viewportHeight - top,
+  ];
+  const nearest = Math.min(...distances);
+  return Math.max(0, Math.min(1, nearest / fadeDistance));
+}
+
+function graphFitItems(layout: IdentityGraphLayout): Array<{ x: number; y: number; radius: number }> {
+  return [
+    ...layout.nodes,
+    ...layout.regions.map((region) => ({
+      x: region.x,
+      y: region.y,
+      radius: Math.max(region.radiusX, region.radiusY),
+    })),
+  ];
 }
 
 function countLinkedAccountChanges(
@@ -428,6 +598,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     onSelectAccount,
     onClearSelection,
     onLinkAccountToPerson,
+    onPinPersonPosition,
+    onPinAccountPosition,
     themeId,
   },
   ref,
@@ -436,11 +608,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const canvasHostRef = useRef<HTMLDivElement>(null);
   const pixiRef = useRef<PixiScene | null>(null);
   const workerRef = useRef<Worker | null>(null);
-  const layoutRef = useRef<IdentityGraphLayout>({ nodes: [], edges: [] });
+  const layoutRef = useRef<IdentityGraphLayout>({ nodes: [], edges: [], regions: [] });
   const spatialIndexRef = useRef<SpatialIndex>({ cellSize: 96, buckets: new Map() });
   const dragStateRef = useRef<DragState | null>(null);
   const pinchStateRef = useRef<PinchState | null>(null);
   const activeTouchPointsRef = useRef<Map<number, TouchPoint>>(new Map());
+  const hoveredNodeIdRef = useRef<string | null>(null);
   const transformRef = useRef<ViewTransform>({ ...FRIEND_GRAPH_DEFAULT_TRANSFORM });
   const hasFittedInitialLayoutRef = useRef(false);
   const latestLayoutRequestIdRef = useRef(0);
@@ -448,6 +621,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const drawRafRef = useRef(0);
   const settleTimerRef = useRef<number | null>(null);
   const lastStaticRenderKeyRef = useRef("");
+  const lastSelectionStyleKeyRef = useRef("");
   const lastLabelLayoutKeyRef = useRef("");
   const visibleLabelIdsRef = useRef<string[]>([]);
   const textStyleCacheRef = useRef<Map<string, TextStyle>>(new Map());
@@ -459,6 +633,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   } | null>(null);
   const lastLayoutMsRef = useRef(0);
   const graphQualityModeRef = useRef<GraphQualityMode>("settled");
+  const layoutReadyRef = useRef(false);
   const perfSnapshotRef = useRef<GraphPerfSnapshot>({
     modelBuildMs: 0,
     layoutMs: 0,
@@ -471,6 +646,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     nodeRestyleCount: 0,
     labelLayoutCount: 0,
     visibleLabelCount: 0,
+    visibleNodeLabelCount: 0,
+    visibleProviderLabelCount: 0,
     qualityMode: "settled",
   });
   const [canvasSize, setCanvasSize] = useState({ width: 900, height: DEFAULT_HEIGHT });
@@ -517,6 +694,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const drag = dragStateRef.current;
     const transform = transformRef.current;
     const qualityMode = graphQualityModeRef.current;
+    const graphPalette = readGraphThemePalette(containerRef.current);
+    const hoveredNodeId = hoveredNodeIdRef.current;
     const highlighted = buildHighlightedNodeIds(
       layoutRef.current,
       selectedPersonId,
@@ -526,8 +705,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const nodeById = new Map(layoutRef.current.nodes.map((node) => [node.id, node]));
     const staticRenderKey = [
       layoutVersion,
-      selectedPersonId ?? "",
-      selectedAccountId ?? "",
       themeId ?? "",
       accountDrag?.accountId ?? "",
       accountDrag?.dropTargetPersonId ?? "",
@@ -540,6 +717,32 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
     if (lastStaticRenderKeyRef.current !== staticRenderKey || !!accountDrag) {
       didStaticRender = true;
+      scene.regionLayer.clear();
+      const staleRegionIds = new Set(scene.regionDisplays.keys());
+      for (const region of layoutRef.current.regions) {
+        staleRegionIds.delete(region.id);
+        const fill = providerColor(region.provider, graphPalette);
+        const alpha = region.unlinkedCount > 0 ? 0.12 : 0.075;
+        scene.regionLayer.lineStyle(1.4, fill, highlighted.size > 0 ? 0.14 : 0.34);
+        scene.regionLayer.beginFill(fill, highlighted.size > 0 ? alpha * 0.5 : alpha);
+        scene.regionLayer.drawEllipse(region.x, region.y, region.radiusX, region.radiusY);
+        scene.regionLayer.endFill();
+
+        let display = scene.regionDisplays.get(region.id);
+        if (!display) {
+          display = createRegionDisplay(themeId);
+          scene.regionDisplays.set(region.id, display);
+          scene.regionLabelLayer.addChild(display.container);
+        }
+      }
+      for (const staleRegionId of staleRegionIds) {
+        const staleDisplay = scene.regionDisplays.get(staleRegionId);
+        if (!staleDisplay) continue;
+        scene.regionLabelLayer.removeChild(staleDisplay.container);
+        staleDisplay.container.destroy({ children: true });
+        scene.regionDisplays.delete(staleRegionId);
+      }
+
       scene.edgeLayer.clear();
       scene.edgeLayer.alpha = 1;
       for (const edge of layoutRef.current.edges) {
@@ -548,11 +751,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         if (!source || !target) continue;
         const sourcePoint = nodePosition(source, drag);
         const targetPoint = nodePosition(target, drag);
-        const emphasized = highlighted.has(source.id) && highlighted.has(target.id);
         scene.edgeLayer.lineStyle(
-          emphasized ? 2.1 : 1,
-          emphasized ? SCRIPTORIUM_PALETTE.highlight : SCRIPTORIUM_PALETTE.edge,
-          emphasized ? 0.56 : highlighted.size > 0 ? 0.12 : 0.24,
+          1.45,
+          graphPalette.edge,
+          0.52,
         );
         scene.edgeLayer.moveTo(sourcePoint.x, sourcePoint.y);
         scene.edgeLayer.lineTo(targetPoint.x, targetPoint.y);
@@ -564,13 +766,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         staleNodeIds.delete(node.id);
         let display = scene.nodeDisplays.get(node.id);
         if (!display) {
-          display = createNodeDisplay(node, themeId);
+          display = createNodeDisplay(node, graphPalette, themeId);
           scene.nodeDisplays.set(node.id, display);
           scene.nodeLayer.addChild(display.container);
         }
 
-        const palette = kindColor(node, themeId);
-        const selected = isSelectedGraphNode(node, selectedPersonId, selectedAccountId);
+        const palette = kindColor(node, graphPalette);
         const alpha = nodeAlpha(
           node,
           highlighted,
@@ -582,9 +783,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
         display.outer.clear();
         display.outer.lineStyle(
-          selected ? 3 : 1.4,
-          selected ? SCRIPTORIUM_PALETTE.selection : palette.stroke,
-          selected ? 0.95 : 0.72,
+          1.4,
+          palette.stroke,
+          0.72,
         );
         display.outer.beginFill(
           palette.fill,
@@ -628,7 +829,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
         if (display.providerDot) {
           display.providerDot.clear();
-          display.providerDot.beginFill(SCRIPTORIUM_PALETTE.selection, 0.72);
+          display.providerDot.beginFill(graphPalette.selection, 0.72);
           display.providerDot.drawCircle(
             node.radius * 0.52,
             -node.radius * 0.52,
@@ -638,11 +839,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         }
 
         display.highlightRing.clear();
-        if (
-          accountDrag?.dropTargetPersonId &&
-          node.personId === accountDrag.dropTargetPersonId
-        ) {
-          display.highlightRing.lineStyle(4, SCRIPTORIUM_PALETTE.highlight, 0.8);
+        if (accountDrag?.dropTargetPersonId && node.personId === accountDrag.dropTargetPersonId) {
+          display.highlightRing.lineStyle(4, graphPalette.highlight, 0.8);
           display.highlightRing.drawCircle(0, 0, node.radius + 6);
         }
       }
@@ -659,6 +857,128 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       if (!accountDrag) {
         lastStaticRenderKeyRef.current = staticRenderKey;
       }
+      if (!layoutReadyRef.current && scene.nodeDisplays.size > 0) {
+        layoutReadyRef.current = true;
+        setLayoutReady(true);
+      }
+    }
+
+    const selectionStyleKey = [
+      layoutVersion,
+      selectedPersonId ?? "",
+      selectedAccountId ?? "",
+      themeId ?? "",
+      accountDrag?.dropTargetPersonId ?? "",
+    ].join("|");
+
+    if (lastSelectionStyleKeyRef.current !== selectionStyleKey || didStaticRender || !!accountDrag) {
+      scene.edgeLayer.alpha = highlighted.size > 0 ? 0.42 : 1;
+      scene.edgeHighlightLayer.clear();
+      if (highlighted.size > 0) {
+        for (const edge of layoutRef.current.edges) {
+          const source = nodeById.get(edge.sourceId);
+          const target = nodeById.get(edge.targetId);
+          if (!source || !target) continue;
+          if (!highlighted.has(source.id) || !highlighted.has(target.id)) continue;
+          const sourcePoint = nodePosition(source, drag);
+          const targetPoint = nodePosition(target, drag);
+          scene.edgeHighlightLayer.lineStyle(2.4, graphPalette.highlight, 0.72);
+          scene.edgeHighlightLayer.moveTo(sourcePoint.x, sourcePoint.y);
+          scene.edgeHighlightLayer.lineTo(targetPoint.x, targetPoint.y);
+        }
+      }
+
+      for (const node of layoutRef.current.nodes) {
+        const display = scene.nodeDisplays.get(node.id);
+        if (!display) continue;
+        const palette = kindColor(node, graphPalette);
+        const selected = isSelectedGraphNode(node, selectedPersonId, selectedAccountId);
+        display.container.alpha = nodeAlpha(
+          node,
+          highlighted,
+          accountDrag?.dropTargetPersonId ?? null,
+        );
+        display.outer.clear();
+        display.outer.lineStyle(
+          selected ? 3 : 1.4,
+          selected ? graphPalette.selection : palette.stroke,
+          selected ? 0.95 : 0.72,
+        );
+        display.outer.beginFill(
+          palette.fill,
+          node.kind === "feed" ? 0.72 : node.kind === "account" ? 0.9 : 0.96,
+        );
+        display.outer.drawCircle(0, 0, node.radius);
+        display.outer.endFill();
+      }
+      lastSelectionStyleKeyRef.current = selectionStyleKey;
+    }
+
+    const providerMetrics = providerLabelMetrics(transform.scale);
+    const providerLabelScale = 1 / transform.scale;
+    let visibleProviderLabelCount = 0;
+    for (const region of layoutRef.current.regions) {
+      const display = scene.regionDisplays.get(region.id);
+      if (!display) continue;
+      const fill = providerColor(region.provider, graphPalette);
+      const point = screenPointForPosition({ x: region.x, y: region.y }, transform);
+      const onScreen =
+        point.x >= -160 &&
+        point.x <= canvasSize.width + 160 &&
+        point.y >= -160 &&
+        point.y <= canvasSize.height + 160;
+      display.container.visible = onScreen;
+      if (!onScreen) continue;
+
+      visibleProviderLabelCount += 1;
+      const label = `${region.label} ${region.count.toLocaleString()}`;
+      const labelWidth = estimateLabelWidth(label, providerMetrics.fontSize) +
+        providerMetrics.paddingX * 2;
+      display.container.position.set(
+        region.x,
+        region.y - region.radiusY - providerMetrics.gap / transform.scale,
+      );
+      display.container.scale.set(providerLabelScale);
+      display.container.alpha = highlighted.size > 0
+        ? providerMetrics.alpha * 0.52
+        : providerMetrics.alpha;
+      display.background.clear();
+      display.background.lineStyle(1.2, fill, 0.58);
+      display.background.beginFill(graphPalette.labelFill, 0.88);
+      display.background.drawRoundedRect(
+        -labelWidth / 2,
+        -providerMetrics.height / 2,
+        labelWidth,
+        providerMetrics.height,
+        providerMetrics.height / 2,
+      );
+      display.background.endFill();
+      display.text.text = label;
+      display.text.style = getCachedTextStyle(
+        [
+          "region",
+          themeId ?? "default",
+          region.provider,
+          providerMetrics.fontSize,
+        ].join(":"),
+        {
+          fill,
+          fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
+          fontSize: providerMetrics.fontSize,
+          fontWeight: "700",
+          letterSpacing: 1,
+        },
+      );
+    }
+
+    scene.hoverLayer.clear();
+    if (hoveredNodeId) {
+      const hoveredNode = nodeById.get(hoveredNodeId);
+      if (hoveredNode && !isSelectedGraphNode(hoveredNode, selectedPersonId, selectedAccountId)) {
+        const position = nodePosition(hoveredNode, drag);
+        scene.hoverLayer.lineStyle(2, graphPalette.highlight, 0.44);
+        scene.hoverLayer.drawCircle(position.x, position.y, hoveredNode.radius + 4);
+      }
     }
 
     const transformBucketSize = qualityMode === "interactive" ? 220 : 64;
@@ -670,9 +990,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       themeId ?? "",
       qualityMode,
       accountDrag?.dropTargetPersonId ?? "",
-      Math.round(transform.scale * scaleBucketFactor),
-      Math.round(transform.x / transformBucketSize),
-      Math.round(transform.y / transformBucketSize),
+      qualityMode === "interactive" ? "stable" : Math.round(transform.scale * scaleBucketFactor),
+      qualityMode === "interactive" ? "stable" : Math.round(transform.x / transformBucketSize),
+      qualityMode === "interactive" ? "stable" : Math.round(transform.y / transformBucketSize),
     ].join("|");
 
     if (lastLabelLayoutKeyRef.current !== labelLayoutKey) {
@@ -709,7 +1029,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           continue;
         }
 
-        const fontSize = node.kind === "friend_person" ? 14 : node.kind === "connection_person" ? 13 : 12;
+        const fontSize = graphNodeLabelFontSize(node, transform.scale);
         const width = estimateLabelWidth(node.label, fontSize);
         const height = fontSize + 10;
         visibleLabels.push({
@@ -731,7 +1051,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       const occupied: Array<{ left: number; right: number; top: number; bottom: number }> = [];
       const nextVisibleLabelIds: string[] = [];
       const labelLimit =
-        qualityMode === "interactive" ? INTERACTIVE_LABEL_LIMIT : Number.POSITIVE_INFINITY;
+        qualityMode === "interactive" ? INTERACTIVE_LABEL_LIMIT : SETTLED_LABEL_LIMIT;
       for (const label of visibleLabels) {
         if (nextVisibleLabelIds.length >= labelLimit) break;
         const bounds = {
@@ -756,9 +1076,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         display.container.visible = true;
         display.container.position.set(label.x, label.y);
         display.background.clear();
-        display.background.lineStyle(1.15, SCRIPTORIUM_PALETTE.labelStroke, selected ? 0.78 : 0.46);
+        display.background.lineStyle(1.15, graphPalette.labelStroke, selected ? 0.78 : 0.46);
         display.background.beginFill(
-          selected ? SCRIPTORIUM_PALETTE.highlight : SCRIPTORIUM_PALETTE.labelFill,
+          selected ? graphPalette.highlight : graphPalette.labelFill,
           selected ? 0.94 : 0.96,
         );
         display.background.drawRoundedRect(-label.width / 2, 0, label.width, label.height, 10);
@@ -773,7 +1093,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
             label.fontSize,
           ].join(":"),
           {
-            fill: selected ? 0xf7f4ed : SCRIPTORIUM_PALETTE.labelText,
+            fill: selected ? graphPalette.labelSelectedText : graphPalette.labelText,
             fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
             fontSize: label.fontSize,
             fontWeight: selected || label.node.kind === "friend_person" ? "700" : "600",
@@ -793,15 +1113,28 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       const display = scene.labelDisplays.get(labelId);
       if (!node || !display) continue;
       const point = screenPointForPosition(nodePosition(node, drag), transform);
-      display.container.visible = true;
-      display.container.position.set(
-        point.x,
-        point.y + node.radius * transform.scale + 14,
-      );
-      display.container.alpha = nodeAlpha(
+      const fontSize = graphNodeLabelFontSize(node, transform.scale);
+      const labelWidth = estimateLabelWidth(node.label, fontSize);
+      const labelHeight = fontSize + 10;
+      const labelX = point.x;
+      const labelY = point.y + node.radius * transform.scale + 14;
+      const baseAlpha = nodeAlpha(
         node,
         highlighted,
         drag?.kind === "account-drag" ? drag.dropTargetPersonId : null,
+      );
+      display.container.visible = true;
+      display.container.position.set(
+        labelX,
+        labelY,
+      );
+      display.container.alpha = baseAlpha * edgeFadeAlpha(
+        labelX - labelWidth / 2,
+        labelY,
+        labelWidth,
+        labelHeight,
+        canvasSize.width,
+        canvasSize.height,
       );
     }
 
@@ -813,7 +1146,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
     perfSnapshotRef.current.sceneSyncCount += 1;
     perfSnapshotRef.current.qualityMode = qualityMode;
-    perfSnapshotRef.current.visibleLabelCount = visibleLabelIdsRef.current.length;
+    const visibleLabelCount = visibleLabelIdsRef.current.length + visibleProviderLabelCount;
+    perfSnapshotRef.current.visibleLabelCount = visibleLabelCount;
+    perfSnapshotRef.current.visibleNodeLabelCount = visibleLabelIdsRef.current.length;
+    perfSnapshotRef.current.visibleProviderLabelCount = visibleProviderLabelCount;
     if (didStaticRender || didLabelLayout) {
       perfSnapshotRef.current.contentSyncCount += 1;
     } else {
@@ -830,13 +1166,14 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       containerRef.current.dataset.graphLinkCount = String(layoutRef.current.edges.length);
       containerRef.current.dataset.graphPersonCount = String(personCount);
       containerRef.current.dataset.graphChannelCount = String(channelCount);
-      containerRef.current.dataset.visibleLabelCount = String(visibleLabelIdsRef.current.length);
+      containerRef.current.dataset.visibleLabelCount = String(visibleLabelCount);
       containerRef.current.dataset.graphQualityMode = qualityMode;
     }
     if (typeof window !== "undefined") {
       (window as typeof window & {
         __FREED_GRAPH_DEBUG__?: {
           nodes: Array<Pick<IdentityGraphLayoutNode, "id" | "personId" | "accountId" | "feedUrl" | "linkedPersonId" | "kind" | "x" | "y" | "radius">>;
+          regions: IdentityGraphLayout["regions"];
           transform: ViewTransform;
           qualityMode: GraphQualityMode;
           metrics: GraphPerfSnapshot;
@@ -853,6 +1190,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           y: nodePosition(node, drag).y,
           radius: node.radius,
         })),
+        regions: layoutRef.current.regions,
         transform: transformRef.current,
         qualityMode,
         metrics: { ...perfSnapshotRef.current },
@@ -908,7 +1246,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const fitAll = useCallback(() => {
     if (layoutRef.current.nodes.length === 0) return;
     transformRef.current = fitTransformToNodes(
-      layoutRef.current.nodes,
+      graphFitItems(layoutRef.current),
       canvasSize.width,
       canvasSize.height,
       FIT_PADDING,
@@ -966,20 +1304,33 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       canvasHost.appendChild(app.canvas);
 
       const world = new Container();
+      const regionLayer = new Graphics();
+      const regionLabelLayer = new Container();
       const edgeLayer = new Graphics();
+      const edgeHighlightLayer = new Graphics();
       const nodeLayer = new Container();
+      const hoverLayer = new Graphics();
       const labelLayer = new Container();
+      world.addChild(regionLayer);
       world.addChild(edgeLayer);
+      world.addChild(edgeHighlightLayer);
       world.addChild(nodeLayer);
+      world.addChild(hoverLayer);
+      world.addChild(regionLabelLayer);
       app.stage.addChild(world);
       app.stage.addChild(labelLayer);
       pixiRef.current = {
         app,
         world,
+        regionLayer,
+        regionLabelLayer,
         edgeLayer,
+        edgeHighlightLayer,
         nodeLayer,
+        hoverLayer,
         labelLayer,
         nodeDisplays: new Map(),
+        regionDisplays: new Map(),
         labelDisplays: new Map(),
       };
       scheduleSyncScene();
@@ -1047,13 +1398,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       lastLayoutMsRef.current = event.data.durationMs;
       if (!hasFittedInitialLayoutRef.current) {
         transformRef.current = fitTransformToNodes(
-          event.data.layout.nodes,
+          graphFitItems(event.data.layout),
           canvasSize.width,
           canvasSize.height,
           FIT_PADDING,
         );
         hasFittedInitialLayoutRef.current = true;
-        setLayoutReady(true);
       }
       setLayoutVersion((value) => value + 1);
       scheduleSyncScene();
@@ -1201,6 +1551,19 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         currentWorldX: point.x,
         currentWorldY: point.y,
       };
+    } else if (hit?.personId) {
+      const point = viewportToWorld(event.clientX, event.clientY);
+      dragStateRef.current = {
+        kind: "person-drag",
+        pointerId: event.pointerId,
+        nodeId: hit.id,
+        personId: hit.personId,
+        startX: event.clientX,
+        startY: event.clientY,
+        moved: false,
+        currentWorldX: point.x,
+        currentWorldY: point.y,
+      };
     } else {
       dragStateRef.current = {
         kind: "pan",
@@ -1247,7 +1610,18 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     }
 
     const drag = dragStateRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag) {
+      if (event.pointerType === "mouse" || event.pointerType === "pen") {
+        const hit = hitNodeAt(event.clientX, event.clientY);
+        const nextHoveredNodeId = hit?.id ?? null;
+        if (hoveredNodeIdRef.current !== nextHoveredNodeId) {
+          hoveredNodeIdRef.current = nextHoveredNodeId;
+          scheduleSyncScene();
+        }
+      }
+      return;
+    }
+    if (drag.pointerId !== event.pointerId) return;
 
     if (drag.kind === "pan") {
       const deltaX = event.clientX - drag.startX;
@@ -1273,6 +1647,15 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     drag.currentWorldY = point.y;
     if (Math.abs(event.clientX - drag.startX) > 3 || Math.abs(event.clientY - drag.startY) > 3) {
       drag.moved = true;
+    }
+
+    if (drag.kind === "person-drag") {
+      if (event.pointerType === "touch") {
+        event.preventDefault();
+      }
+      markInteractive();
+      scheduleSyncScene();
+      return;
     }
 
     const hit = hitNodeAt(event.clientX, event.clientY);
@@ -1306,12 +1689,25 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (drag.kind === "account-drag") {
       if (drag.moved && drag.dropTargetPersonId && onLinkAccountToPerson) {
         await onLinkAccountToPerson(drag.accountId, drag.dropTargetPersonId);
-        focusNode(drag.dropTargetPersonId);
+      } else if (drag.moved) {
+        await onPinAccountPosition?.(drag.accountId, drag.currentWorldX, drag.currentWorldY);
       } else if (!drag.moved) {
         const account = accounts[drag.accountId];
         if (account) {
           onSelectAccount(account);
-          focusNode(drag.accountId);
+        }
+      }
+      scheduleSyncScene();
+      return;
+    }
+
+    if (drag.kind === "person-drag") {
+      if (drag.moved) {
+        await onPinPersonPosition?.(drag.personId, drag.currentWorldX, drag.currentWorldY);
+      } else {
+        const person = personsById[drag.personId];
+        if (person) {
+          onSelectPerson(person);
         }
       }
       scheduleSyncScene();
@@ -1333,19 +1729,21 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       const person = personsById[hit.personId];
       if (person) {
         onSelectPerson(person);
-        focusNode(hit.personId);
       }
     } else if (hit.accountId) {
       const account = accounts[hit.accountId];
       if (account) {
         onSelectAccount(account);
-        focusNode(hit.accountId);
       }
     }
     scheduleSyncScene();
-  }, [accounts, focusNode, hitNodeAt, onClearSelection, onLinkAccountToPerson, onSelectAccount, onSelectPerson, personsById, scheduleSyncScene]);
+  }, [accounts, hitNodeAt, onClearSelection, onLinkAccountToPerson, onPinAccountPosition, onPinPersonPosition, onSelectAccount, onSelectPerson, personsById, scheduleSyncScene]);
 
   const handlePointerLeave = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (hoveredNodeIdRef.current) {
+      hoveredNodeIdRef.current = null;
+      scheduleSyncScene();
+    }
     if (event.pointerType === "touch") {
       activeTouchPointsRef.current.delete(event.pointerId);
     }
@@ -1365,20 +1763,14 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   }, [scheduleSyncScene]);
 
   const handleDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    const hit = hitNodeAt(event.clientX, event.clientY);
-    if (hit) {
-      focusNode(hit.id);
-    } else {
-      fitAll();
-    }
-  }, [fitAll, focusNode, hitNodeAt]);
+    event.preventDefault();
+  }, []);
 
   return (
     <div
       ref={containerRef}
       data-testid="friend-graph-viewport"
-      className="theme-soft-viewport relative h-full w-full overflow-hidden touch-none overscroll-contain"
-      style={FRIEND_GRAPH_VIEWPORT_MASK_STYLE}
+      className="theme-soft-viewport relative h-full w-full touch-none overscroll-contain"
       onWheel={handleWheel}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -1389,13 +1781,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       aria-label="Friends identity graph"
     >
       <div className="theme-soft-viewport-content">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,247,232,0.34),transparent_36%),radial-gradient(circle_at_12%_84%,rgba(188,143,88,0.1),transparent_26%),linear-gradient(180deg,rgba(244,234,215,0.98),rgba(235,223,201,0.94))]" />
-        <div className="pointer-events-none absolute inset-0 rounded-[inherit] shadow-[inset_0_0_72px_rgba(84,58,35,0.12),inset_0_0_0_1px_rgba(92,71,52,0.12)]" />
         <div ref={canvasHostRef} className="absolute inset-0" />
         {!layoutReady ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center">
             <div className="rounded-full border border-[color:rgb(var(--theme-border-rgb)/0.25)] bg-[color:rgb(var(--theme-surface-rgb)/0.8)] px-4 py-2 text-xs text-[color:var(--theme-text-muted)] backdrop-blur-sm">
-              Building graph…
+              Building graph...
             </div>
           </div>
         ) : null}
@@ -1412,9 +1802,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         >
           Fit all
         </button>
-      </div>
-      <div className="pointer-events-none absolute bottom-4 left-4 z-10 rounded-full border border-[color:rgb(var(--theme-border-rgb)/0.24)] bg-[color:rgb(var(--theme-surface-rgb)/0.72)] px-3 py-1 text-[11px] text-[color:var(--theme-text-muted)] shadow-[0_10px_24px_rgba(0,0,0,0.08)] backdrop-blur-sm">
-        {model.nodes.length.toLocaleString()} nodes, {model.edges.length.toLocaleString()} links
       </div>
     </div>
   );

@@ -914,6 +914,10 @@ function normalizePerson(person: Person): Person {
     reachOutLog: person.reachOutLog,
     tags: person.tags,
     notes: person.notes,
+    graphX: person.graphX,
+    graphY: person.graphY,
+    graphPinned: person.graphPinned,
+    graphUpdatedAt: person.graphUpdatedAt,
     createdAt: person.createdAt,
     updatedAt: person.updatedAt,
   });

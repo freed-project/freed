@@ -712,6 +712,10 @@ export interface Person {
   reachOutLog?: ReachOutLog[];
   tags?: string[];
   notes?: string;
+  graphX?: number;
+  graphY?: number;
+  graphPinned?: boolean;
+  graphUpdatedAt?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -737,6 +741,10 @@ export interface Account {
   firstSeenAt: number;
   lastSeenAt: number;
   discoveredFrom: AccountDiscoveredFrom;
+  graphX?: number;
+  graphY?: number;
+  graphPinned?: boolean;
+  graphUpdatedAt?: number;
   createdAt: number;
   updatedAt: number;
 }

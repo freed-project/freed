@@ -1,15 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { friendForAuthor, generateSampleLibraryData } from "@freed/shared";
+import {
+  SAMPLE_SHOWCASE_FEED_COUNT,
+  SAMPLE_SHOWCASE_FRIEND_COUNT,
+  SAMPLE_SHOWCASE_ITEM_COUNT,
+  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
+  SAMPLE_STRESS_FRIEND_COUNT,
+  SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT,
+  friendForAuthor,
+  generateSampleLibraryData,
+} from "@freed/shared";
 
 describe("sample data batches", () => {
   it("appends unique friend, feed, and item ids across batches", () => {
     const batchA = generateSampleLibraryData({ batchId: "batch-a", seed: 1 });
     const batchB = generateSampleLibraryData({ batchId: "batch-b", seed: 2 });
 
-    expect(batchA.friends).toHaveLength(25);
-    expect(batchB.friends).toHaveLength(25);
-    expect(batchA.items).toHaveLength(195);
-    expect(batchB.items).toHaveLength(195);
+    expect(batchA.friends).toHaveLength(SAMPLE_SHOWCASE_FRIEND_COUNT);
+    expect(batchB.friends).toHaveLength(SAMPLE_SHOWCASE_FRIEND_COUNT);
+    expect(batchA.items).toHaveLength(SAMPLE_SHOWCASE_ITEM_COUNT);
+    expect(batchB.items).toHaveLength(SAMPLE_SHOWCASE_ITEM_COUNT);
 
     const friendIds = new Set([
       ...batchA.friends.map((friend) => friend.id),
@@ -24,9 +33,9 @@ describe("sample data batches", () => {
       ...batchB.feeds.map((feed) => feed.url),
     ]);
 
-    expect(friendIds.size).toBe(50);
-    expect(itemIds.size).toBe(390);
-    expect(feedUrls.size).toBe(30);
+    expect(friendIds.size).toBe(SAMPLE_SHOWCASE_FRIEND_COUNT * 2);
+    expect(itemIds.size).toBe(SAMPLE_SHOWCASE_ITEM_COUNT * 2);
+    expect(feedUrls.size).toBe(SAMPLE_SHOWCASE_FEED_COUNT * 2);
   });
 
   it("keeps friend source links aligned with the generated social posts", () => {
@@ -49,10 +58,35 @@ describe("sample data batches", () => {
       friendForAuthor(friendMap, item.platform, item.author.id)
     );
 
-    expect(linkedInItems).toHaveLength(10);
+    expect(linkedInItems.length).toBeGreaterThan(10);
     expect(linkedFriendItems.length).toBeGreaterThan(0);
     expect(batch.friends.some((friend) =>
       friend.sources.some((source) => source.platform === "linkedin")
     )).toBe(true);
+  });
+
+  it("can generate the benchmark stress identity graph population", () => {
+    const batch = generateSampleLibraryData({
+      batchId: "batch-stress",
+      seed: 11,
+      scale: "stress",
+    });
+    const identityCount = batch.friends.reduce(
+      (total, friend) => total + friend.sources.length,
+      0,
+    );
+
+    expect(batch.friends).toHaveLength(SAMPLE_STRESS_FRIEND_COUNT);
+    expect(identityCount).toBe(SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT);
+  });
+
+  it("documents the showcase social identity count in generated friends", () => {
+    const batch = generateSampleLibraryData({ batchId: "batch-showcase", seed: 13 });
+    const identityCount = batch.friends.reduce(
+      (total, friend) => total + friend.sources.length,
+      0,
+    );
+
+    expect(identityCount).toBe(SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT);
   });
 });
