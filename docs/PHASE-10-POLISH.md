@@ -7,7 +7,7 @@
 
 ## Overview
 
-Final polish, accessibility, UX refinements, AI-powered features, and community infrastructure.
+Final polish, accessibility, UX refinements, remaining AI product surfaces, plugin API, community infrastructure, and the last shell-level recovery fallback that must survive total renderer or stale-bundle failure. Shared crash reporting, renderer heartbeat diagnostics, memory telemetry, and public-safe diagnostic exports already ship through earlier phases.
 
 ---
 
@@ -112,11 +112,11 @@ The global search bar is the foundation of a keyboard-driven command launcher. I
 
 Planned action categories beyond the current settings navigation:
 
-- **Feeds** — subscribe to a new RSS feed, unsubscribe, open a specific source
-- **Navigation** — jump to Saved, Archived, a specific tag, or a feed
-- **Content** — save current item, mark all read, archive all read
-- **Preferences** — toggle Focus Mode, engagement counts, and other settings directly
-- **Custom actions** — user-defined shortcuts via the plugin API (see Plugin/Extension API below)
+- **Feeds**: subscribe to a new RSS feed, unsubscribe, open a specific source
+- **Navigation**: jump to Saved, Archived, a specific tag, or a feed
+- **Content**: save current item, mark all read, archive all read
+- **Preferences**: toggle Focus Mode, engagement counts, and other settings directly
+- **Custom actions**: user-defined shortcuts via the plugin API (see Plugin/Extension API below)
 
 The `CommandAction` interface in `packages/ui/src/components/layout/Header.tsx` and the `buildSettingsActions()` helper are the current extension point. New action categories are added by returning additional `CommandAction[]` arrays and merging them into `allCommandActions`.
 
@@ -296,7 +296,7 @@ export async function analyzeSentiment(text: string): Promise<Sentiment> {
 
 ### Smart Notifications
 
-AI-powered notification filtering—only alert for truly important items.
+AI-powered notification filtering that only alerts for truly important items.
 
 ```typescript
 // packages/pwa/src/lib/ai/notifications.ts
@@ -345,11 +345,11 @@ export function registerPlugin(plugin: FreedPlugin): void {
 
 Central hub for community discussion, support, and development coordination.
 
-- **#general** — Community chat
-- **#support** — Help and troubleshooting
-- **#development** — Contributor discussion
-- **#platform-updates** — Alerts when platforms change DOM/APIs
-- **#feature-requests** — Community-driven roadmap input
+- **#general**: Community chat
+- **#support**: Help and troubleshooting
+- **#development**: Contributor discussion
+- **#platform-updates**: Alerts when platforms change DOM/APIs
+- **#feature-requests**: Community-driven roadmap input
 
 ### Bug Bounty Program
 
@@ -357,16 +357,16 @@ Reward security researchers for responsible disclosure.
 
 | Severity                      | Reward      |
 | ----------------------------- | ----------- |
-| Critical (data exposure, RCE) | $500–$2000  |
-| High (auth bypass, XSS)       | $100–$500   |
-| Medium (info disclosure)      | $50–$100    |
+| Critical (data exposure, RCE) | $500 to $2,000 |
+| High (auth bypass, XSS)       | $100 to $500   |
+| Medium (info disclosure)      | $50 to $100    |
 | Low (minor issues)            | Recognition |
 
 ### Release Cadence
 
-- **Weekly** — Patch releases (bug fixes)
-- **Monthly** — Minor releases (new features)
-- **Quarterly** — Major releases (breaking changes, if any)
+- **Weekly**: Patch releases (bug fixes)
+- **Monthly**: Minor releases (new features)
+- **Quarterly**: Major releases (breaking changes, if any)
 
 ---
 
@@ -374,29 +374,29 @@ Reward security researchers for responsible disclosure.
 
 ### UX Polish
 
-| Task  | Description                        | Complexity |
-| ----- | ---------------------------------- | ---------- |
-| 10.1  | Onboarding wizard                  | Medium     |
-| 10.2  | Statistics dashboard               | Medium     |
-| 10.3  | Export to JSON                     | Low        |
-| 10.4  | Export to CSV                      | Low        |
-| 10.5  | Keyboard shortcuts                 | Medium     |
-| 10.6  | Screen reader support              | Medium     |
-| 10.7  | Reduced motion support             | Low        |
-| 10.8  | Color contrast audit               | Low        |
-| 10.9  | Native Liquid Glass buttons        | High       |
-| 10.24 | Command bar — full action launcher | High       |
+| Task  | Description                      | Complexity |
+| ----- | -------------------------------- | ---------- |
+| 10.1  | Onboarding wizard                | Medium     |
+| 10.2  | Statistics dashboard             | Medium     |
+| 10.3  | Export to JSON                   | Low        |
+| 10.4  | Export to CSV                    | Low        |
+| 10.5  | Keyboard shortcuts               | Medium     |
+| 10.6  | Screen reader support            | Medium     |
+| 10.7  | Reduced motion support           | Low        |
+| 10.8  | Color contrast audit             | Low        |
+| 10.9  | Native Liquid Glass buttons      | High       |
+| 10.24 | Command bar full action launcher | High       |
 
 ### AI Features
 
-| Task  | Description              | Complexity |
-| ----- | ------------------------ | ---------- |
-| 10.10 | Topic extraction (local) | High       | ✓ Complete (Ollama via ai-summarizer.ts)
-| 10.11 | Topic extraction (API)   | Medium     | ✓ Complete (OpenAI/Anthropic/Gemini adapters)
-| 10.12 | Content summarization    | High       | ✓ Complete (summarize() in content-fetcher.ts)
-| 10.13 | Sentiment analysis       | Medium     | ✓ Complete (AISummary.sentiment field)
-| 10.14 | Smart notifications      | High       |
-| 10.15 | AI settings UI           | Medium     | ✓ Complete (AISection.tsx in packages/ui)
+| Task  | Description              | Complexity | Status                                           |
+| ----- | ------------------------ | ---------- | ------------------------------------------------ |
+| 10.10 | Topic extraction (local) | High       | Complete (Ollama via ai-summarizer.ts)           |
+| 10.11 | Topic extraction (API)   | Medium     | Complete (OpenAI/Anthropic/Gemini adapters)      |
+| 10.12 | Content summarization    | High       | Complete (summarize() in content-fetcher.ts)     |
+| 10.13 | Sentiment analysis       | Medium     | Complete (AISummary.sentiment field)             |
+| 10.14 | Smart notifications      | High       | Open                                             |
+| 10.15 | AI settings UI           | Medium     | Complete (AISection.tsx in packages/ui)          |
 
 ### Extensibility
 
@@ -417,10 +417,12 @@ Reward security researchers for responsible disclosure.
 
 ### Resilience
 
-| Task  | Description                     | Complexity |
-| ----- | ------------------------------- | ---------- |
-| 10.23 | Crash / stale-bundle recovery dialog | Medium |
-| 10.24 | Public-safe and private bug reporting flow | Medium |
+| Task  | Description                                | Complexity | Status                                             |
+| ----- | ------------------------------------------ | ---------- | -------------------------------------------------- |
+| 10.23 | Crash / stale-bundle recovery dialog       | Medium     | Open                                               |
+| 10.24 | Public-safe and private bug reporting flow | Medium     | Complete (Desktop and PWA bug report bundles)      |
+
+Most crash recovery handling has moved out of Phase 10. Desktop and PWA now capture fatal runtime errors, show React-level fatal error screens, export public-safe crash bundles, and Desktop logs stale renderer heartbeats plus memory telemetry. Phase 10 keeps only the final non-React fallback for cases where the renderer or update bundle cannot load at all.
 
 ---
 
@@ -438,8 +440,8 @@ Reward security researchers for responsible disclosure.
 
 ### AI
 
-- [ ] Topic extraction works (at least one method)
-- [ ] Summarization available for long content
+- [x] Topic extraction works (at least one method)
+- [x] Summarization available for long content
 - [ ] Smart notifications reduce noise
 
 ### Community
@@ -451,7 +453,7 @@ Reward security researchers for responsible disclosure.
 
 ### Resilience
 
-- [ ] On hard crash or unreachable JSON update bundle, a friendly recovery dialog is shown directing the user to [freed.wtf](https://freed.wtf) to download the latest version — rendered outside the React tree (plain HTML fallback in the Tauri shell or PWA service worker) so it survives total renderer failure
+- [ ] On hard crash or unreachable JSON update bundle, a friendly recovery dialog is shown directing the user to [freed.wtf](https://freed.wtf) to download the latest version. It must render outside the React tree, either through a plain HTML fallback in the Tauri shell or PWA service worker, so it survives total renderer failure.
 - [x] Desktop and PWA expose a shared bug report flow with public-safe bundles by default and private diagnostics as an explicit opt-in path
 
 ---
