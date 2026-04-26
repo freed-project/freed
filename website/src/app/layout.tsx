@@ -104,12 +104,12 @@ export default function RootLayout({
         <Script id="freed-theme-bootstrap" strategy="beforeInteractive">{`
           (function() {
             try {
-              var theme = localStorage.getItem("freed-theme") || "neon";
+              var theme = localStorage.getItem("freed-theme") || "ember";
               var root = document.documentElement;
               var themeVars = ${JSON.stringify(THEME_BOOTSTRAP_VARS)};
               root.dataset.theme = theme;
               root.style.colorScheme = theme === "scriptorium" ? "light" : "dark";
-              var vars = themeVars[theme] || themeVars.neon;
+              var vars = themeVars[theme] || themeVars.ember;
               Object.keys(vars).forEach(function(name) {
                 root.style.setProperty(name, vars[name]);
               });

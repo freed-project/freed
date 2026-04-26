@@ -267,9 +267,30 @@ const SCRIPTORIUM_MAP: ThemeMapPalette = {
   gridOpacity: 0.028,
 };
 
-export const DEFAULT_THEME_ID: ThemeId = "neon";
+export const DEFAULT_THEME_ID: ThemeId = "ember";
 
 export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
+  {
+    id: "ember",
+    name: "Ember",
+    tagline: "Iron, soot, and a hand that means it.",
+    description:
+      "Volcanic charcoal with ember-orange heat. Heavier, sharper, and forged for impact.",
+    previewGradient: "linear-gradient(135deg, #7a2f1f, #c15a2e 55%, #5b1711)",
+    previewDisplayFont: '"Avenir Next Condensed", "Impact", "Arial Black", sans-serif',
+    previewBodyFont: '"Optima", "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif',
+    surface: "dark",
+    effects: "dramatic",
+    background: {
+      shellBackground: EMBER_SHELL_BACKGROUND,
+      overlayBackground: DEFAULT_OVERLAY_BACKGROUND,
+      baseOpacity: 0.078,
+      textures: [{ image: MIDAS_NOISE_TEXTURE, size: "320px 320px", repeat: "repeat" }],
+      heroOrbs: DEFAULT_HERO_ORBS,
+      rowOrbs: DEFAULT_ROW_ORBS,
+    },
+    map: EMBER_MAP,
+  },
   {
     id: "neon",
     name: "Neon",
@@ -292,27 +313,6 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
       overlayEnabled: false,
     },
     map: NEON_MAP,
-  },
-  {
-    id: "ember",
-    name: "Ember",
-    tagline: "Iron, soot, and a hand that means it.",
-    description:
-      "Volcanic charcoal with ember-orange heat. Heavier, sharper, and forged for impact.",
-    previewGradient: "linear-gradient(135deg, #7a2f1f, #c15a2e 55%, #5b1711)",
-    previewDisplayFont: '"Avenir Next Condensed", "Impact", "Arial Black", sans-serif',
-    previewBodyFont: '"Optima", "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif',
-    surface: "dark",
-    effects: "dramatic",
-    background: {
-      shellBackground: EMBER_SHELL_BACKGROUND,
-      overlayBackground: DEFAULT_OVERLAY_BACKGROUND,
-      baseOpacity: 0.078,
-      textures: [{ image: MIDAS_NOISE_TEXTURE, size: "320px 320px", repeat: "repeat" }],
-      heroOrbs: DEFAULT_HERO_ORBS,
-      rowOrbs: DEFAULT_ROW_ORBS,
-    },
-    map: EMBER_MAP,
   },
   {
     id: "midas",
