@@ -39,7 +39,7 @@ function CircledStepNumber({ children }: { children: string }) {
   return (
     <span
       aria-hidden="true"
-      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-text-primary text-sm font-semibold text-text-primary"
+      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-text-primary text-sm font-semibold text-text-primary"
     >
       {children}
     </span>
@@ -196,6 +196,7 @@ export default function NewsletterModal() {
   const [websiteChannel, setWebsiteChannel] =
     useState<ReleaseChannel>("production");
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [emailSkipped, setEmailSkipped] = useState(false);
   const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
   const [selectedTarget, setSelectedTarget] = useState<InstallTarget>("mac-arm");
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -226,6 +227,7 @@ export default function NewsletterModal() {
       setNameManuallyEdited(false);
     }
     setDetailsOpen(prefillDetailsOpen);
+    setEmailSkipped(false);
     setTurnstileToken("");
     setTurnstileResetKey((current) => current + 1);
   }, [isOpen, prefillDetailsOpen, prefillEmail]);
@@ -391,6 +393,7 @@ export default function NewsletterModal() {
           setPhoneNumber("");
           setCompany("");
           setDetailsOpen(false);
+          setEmailSkipped(false);
           setNameManuallyEdited(false);
           setState("idle");
           markSubscribed();
@@ -424,6 +427,15 @@ export default function NewsletterModal() {
     ],
   );
 
+  const handleSkipEmail = useCallback(() => {
+    if (state === "loading") return;
+
+    setState("idle");
+    setErrorMessage("");
+    setSuccessMessage("");
+    setEmailSkipped(true);
+  }, [state]);
+
   const handleClose = useCallback(() => {
     if (state !== "loading") {
       setState("idle");
@@ -431,6 +443,7 @@ export default function NewsletterModal() {
       setSuccessMessage("");
       setDropdownOpen(false);
       setDetailsOpen(false);
+      setEmailSkipped(false);
       setName("");
       setPhoneNumber("");
       setNameManuallyEdited(false);
@@ -468,6 +481,7 @@ export default function NewsletterModal() {
   const isEmailInputValid = isValidEmailAddress(normalizedEmailInput);
   const isPhoneInputValid = isValidPhoneNumber(phoneNumber);
   const isSubscribed = Boolean(successMessage);
+  const canDownload = isSubscribed || emailSkipped;
 
   const handleOpenFreedWeb = useCallback(() => {
     window.open(freedWebUrl, "_blank", "noopener,noreferrer");
@@ -549,8 +563,12 @@ export default function NewsletterModal() {
               handleClose();
             }}
           >
-            <div
+            <motion.div
               ref={modalPanelRef}
+              layout
+              transition={{
+                layout: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
+              }}
               className="newsletter-modal theme-panel relative w-full max-w-3xl overflow-hidden rounded-2xl"
             >
               <div
@@ -592,14 +610,16 @@ export default function NewsletterModal() {
               </button>
 
               <div
-                className="relative z-10 overflow-y-auto px-6 pt-6 pb-8 sm:px-10 sm:pt-10 sm:pb-12 md:px-12 md:pt-12 md:pb-14"
+                className={`relative z-10 overflow-y-auto px-6 pt-8 sm:px-10 sm:pt-12 md:px-12 ${
+                  canDownload ? "pb-8 sm:pb-12" : "pb-12 sm:pb-16"
+                }`}
                 style={{
                   maxHeight:
                     "calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2rem)",
                 }}
               >
                 <>
-                  <div className="text-center mb-10 sm:mb-8">
+                  <div className="mb-10 text-center sm:mb-12">
                     <h3
                       id="get-freed-title"
                       className="mb-2 text-4xl font-bold text-text-primary sm:text-5xl"
@@ -611,7 +631,7 @@ export default function NewsletterModal() {
                     </p>
                   </div>
 
-                  <div className="mx-auto max-w-xl space-y-8">
+                  <div className="mx-auto w-full max-w-xl space-y-8">
                     <section className="space-y-6">
                       <div className="mb-6 max-w-md">
                         <h4 className="flex items-center gap-4 text-2xl font-bold text-text-primary sm:text-3xl">
@@ -866,28 +886,72 @@ export default function NewsletterModal() {
                               {errorMessage}
                             </p>
                           )}
-                          <p className="text-xs leading-relaxed text-text-muted">
-                            No spam. Unsubscribe anytime. We respect your privacy.
-                          </p>
+                          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8.5rem]">
+                            <p className="text-xs leading-relaxed text-text-muted">
+                              No spam. Unsubscribe anytime. We respect your privacy.
+                            </p>
+                            {!emailSkipped && (
+                              <div className="flex justify-center sm:col-start-2">
+                                <button
+                                  type="button"
+                                  onClick={handleSkipEmail}
+                                  disabled={state === "loading"}
+                                  className="inline-flex items-center gap-1.5 text-center text-xs font-medium text-text-muted underline decoration-current/35 underline-offset-4 transition-colors hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-70"
+                                >
+                                  <svg
+                                    aria-hidden="true"
+                                    className="h-3.5 w-3.5 shrink-0"
+                                    fill="none"
+                                    viewBox="0 0 20 20"
+                                    stroke="currentColor"
+                                    strokeWidth={2}
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M3.5 5.5l4.5 4.5-4.5 4.5"
+                                    />
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      d="M10 5.5l4.5 4.5-4.5 4.5"
+                                    />
+                                  </svg>
+                                  <span>Skip email</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </form>
                       </div>
                       )}
                     </section>
 
-                    {isSubscribed && (
-                      <section className="space-y-5 border-t border-freed-border pt-6 pb-2">
-                      <div className="max-w-lg space-y-2">
-                        <h4 className="flex items-center gap-4 text-2xl font-bold text-text-primary sm:text-3xl">
-                          <CircledStepNumber>2</CircledStepNumber>
-                          <span>{isWebTarget ? "Launch Freed" : "Download Freed"}</span>
-                        </h4>
-                        {!isWebTarget && (
-                          <p className="text-sm leading-relaxed text-text-secondary">
-                            Install Freed Desktop first, then launch Freed Web on your
-                            mobile device.
-                          </p>
-                        )}
-                      </div>
+                    <AnimatePresence initial={false}>
+                      {canDownload && (
+                        <motion.section
+                          layout
+                          initial={{ height: 0, opacity: 0, y: -8 }}
+                          animate={{ height: "auto", opacity: 1, y: 0 }}
+                          exit={{ height: 0, opacity: 0, y: -8 }}
+                          transition={{
+                            duration: 0.28,
+                            ease: [0.22, 1, 0.36, 1],
+                          }}
+                          className="space-y-5 overflow-hidden pt-2 pb-2"
+                        >
+                        <div className="max-w-lg space-y-2">
+                          <h4 className="flex items-center gap-4 text-2xl font-bold text-text-primary sm:text-3xl">
+                            <CircledStepNumber>2</CircledStepNumber>
+                            <span>{isWebTarget ? "Launch Freed" : "Download Freed"}</span>
+                          </h4>
+                          {!isWebTarget && (
+                            <p className="text-sm leading-relaxed text-text-secondary">
+                              Install Freed Desktop first, then launch Freed Web on your
+                              mobile device.
+                            </p>
+                          )}
+                        </div>
 
                       <div className="relative" ref={dropdownRef}>
                         <div
@@ -1029,12 +1093,13 @@ export default function NewsletterModal() {
                             </button>
                           )}
                         </div>
-                      </section>
-                    )}
+                        </motion.section>
+                      )}
+                    </AnimatePresence>
                   </div>
                 </>
               </div>
-            </div>
+            </motion.div>
           </motion.div>
           {typeof document !== "undefined" &&
             dropdownOpen &&
