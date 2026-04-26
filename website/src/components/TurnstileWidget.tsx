@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Script from "next/script";
 
+const TURNSTILE_UNAVAILABLE_TOKEN = "turnstile-unavailable";
+
 declare global {
   interface Window {
     turnstile?: {
@@ -65,7 +67,7 @@ export default function TurnstileWidget({
 
   const markFailed = useCallback(() => {
     clearVerificationTimer();
-    emitTokenChange("");
+    emitTokenChange(TURNSTILE_UNAVAILABLE_TOKEN);
     setVerificationState("failed");
   }, [clearVerificationTimer, emitTokenChange]);
 
@@ -162,7 +164,7 @@ export default function TurnstileWidget({
       <div ref={containerRef} className="min-h-[68px]" />
       {verificationState === "failed" ? (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs leading-relaxed text-[rgb(var(--theme-feedback-danger-rgb))]">
-          <span>Human check is taking too long.</span>
+          <span>Human check is taking too long. Try again, or submit below.</span>
           <button
             type="button"
             onClick={rerenderWidget}
