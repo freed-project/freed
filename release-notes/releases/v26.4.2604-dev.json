@@ -5,7 +5,7 @@
   "dayKey": "26.4.26",
   "approved": true,
   "editorialNotes": [],
-  "generatedAt": "2026-04-26T15:10:50.749Z",
+  "generatedAt": "2026-04-26T15:14:06.711Z",
   "model": "heuristic",
   "source": {
     "channel": "dev",
@@ -29,9 +29,11 @@
       333,
       335,
       337,
-      339
+      339,
+      340
     ],
     "commitSubjects": [
+      "fix: harden release validation assertions (#340)",
       "fix: preserve saved and archived signal filters (#339)",
       "fix: stabilize graph selection perf assertion (#337)",
       "fix: stabilize provider health status fallback test (#335)",
@@ -46,18 +48,19 @@
     ]
   },
   "release": {
-    "deck": "Friends graph scaling, content filters, and release channel fixes",
+    "deck": "Friends graph scaling, content filters, and saved signal filters",
     "features": [
       "Rebuild friends graph for scale",
       "Content signal filters"
     ],
     "fixes": [
-      "Graph selection performance checks are more stable",
+      "Saved and archived signal filters are preserved",
+      "Sidebar rail behavior is more polished",
+      "Graph selection and release validation checks are more stable",
       "Provider health fallback tests are more stable",
-      "Release validation E2E checks are more stable",
       "Freed Desktop remembers the selected release channel"
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2604-dev\n\nFriends graph scaling, content filters, and release channel fixes\n\n### Features\n\n- Rebuild friends graph for scale\n- Content signal filters\n\n### Fixes\n\n- Graph selection performance checks are more stable\n- Provider health fallback tests are more stable\n- Release validation E2E checks are more stable\n- Freed Desktop remembers the selected release channel\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2604-dev\n\nFriends graph scaling, content filters, and saved signal filters\n\n### Features\n\n- Rebuild friends graph for scale\n- Content signal filters\n\n### Fixes\n\n- Saved and archived signal filters are preserved\n- Sidebar rail behavior is more polished\n- Graph selection and release validation checks are more stable\n- Provider health fallback tests are more stable\n- Freed Desktop remembers the selected release channel\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
