@@ -15,8 +15,13 @@ const MODAL_PATH = "/get";
 
 interface NewsletterContextType {
   isOpen: boolean;
-  openModal: () => void;
+  openModal: (options?: {
+    email?: string;
+    detailsOpen?: boolean;
+  }) => void;
   closeModal: () => void;
+  prefillEmail: string;
+  prefillDetailsOpen: boolean;
 }
 
 const NewsletterContext = createContext<NewsletterContextType | undefined>(
@@ -25,6 +30,8 @@ const NewsletterContext = createContext<NewsletterContextType | undefined>(
 
 export function NewsletterProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [prefillEmail, setPrefillEmail] = useState("");
+  const [prefillDetailsOpen, setPrefillDetailsOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const returnPathRef = useRef("/");
@@ -47,8 +54,13 @@ export function NewsletterProvider({ children }: { children: ReactNode }) {
     }
   }, [pathname, isOpen]);
 
-  const openModal = useCallback(() => {
+  const openModal = useCallback((options?: {
+    email?: string;
+    detailsOpen?: boolean;
+  }) => {
     suppressAutoOpenRef.current = false;
+    setPrefillEmail(options?.email?.trim().toLowerCase() ?? "");
+    setPrefillDetailsOpen(options?.detailsOpen ?? false);
     setIsOpen(true);
     if (pathname !== MODAL_PATH) {
       returnPathRef.current = pathname || "/";
@@ -59,6 +71,8 @@ export function NewsletterProvider({ children }: { children: ReactNode }) {
   const closeModal = useCallback(() => {
     suppressAutoOpenRef.current = true;
     setIsOpen(false);
+    setPrefillEmail("");
+    setPrefillDetailsOpen(false);
     if (window.location.pathname === MODAL_PATH) {
       const fallbackPath =
         returnPathRef.current && returnPathRef.current !== MODAL_PATH
@@ -79,7 +93,15 @@ export function NewsletterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <NewsletterContext.Provider value={{ isOpen, openModal, closeModal }}>
+    <NewsletterContext.Provider
+      value={{
+        isOpen,
+        openModal,
+        closeModal,
+        prefillEmail,
+        prefillDetailsOpen,
+      }}
+    >
       {children}
     </NewsletterContext.Provider>
   );

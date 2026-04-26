@@ -2,18 +2,21 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { FaXTwitter, FaInstagram, FaFacebook, FaRss } from "react-icons/fa6";
 import HeroAnimation from "./HeroAnimation";
 import { useNewsletter } from "@/context/NewsletterContext";
 import { slowHeroMotion, slowHeroDelay, slowHeroInterval } from "@/lib/motion";
 
 const ROTATING_WORDS = ["Feed", "Life", "Mind"];
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Hero() {
   const { openModal } = useNewsletter();
   const [wordIndex, setWordIndex] = useState(0);
   const [compactHeroAnimation, setCompactHeroAnimation] = useState(false);
+  const [mobileEmail, setMobileEmail] = useState("");
+  const [mobileEmailError, setMobileEmailError] = useState("");
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -29,6 +32,22 @@ export default function Hero() {
     mediaQuery.addEventListener("change", updateCompactHero);
     return () => mediaQuery.removeEventListener("change", updateCompactHero);
   }, []);
+
+  const handleMobileSignup = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedEmail = mobileEmail.trim().toLowerCase();
+
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+      setMobileEmailError("Enter a valid email.");
+      return;
+    }
+
+    setMobileEmailError("");
+    openModal({
+      email: normalizedEmail,
+      detailsOpen: true,
+    });
+  };
 
   return (
     <section className="relative min-h-viewport-safe flex items-start justify-center px-8 sm:px-6 pb-8 pt-24 sm:pb-16 lg:pt-[clamp(7rem,_25vh,_50rem)]">
@@ -118,11 +137,63 @@ export default function Hero() {
             people.
           </p>
 
-          <div className="flex flex-col flex-wrap justify-center gap-3 sm:flex-row sm:gap-4 lg:justify-start">
+          <form
+            onSubmit={handleMobileSignup}
+            className="mx-auto flex w-full max-w-md flex-col gap-2 lg:hidden"
+          >
+            <label htmlFor="mobile-newsletter-email" className="sr-only">
+              Email
+            </label>
+            <div className="flex w-full items-stretch rounded-xl border border-[color-mix(in_srgb,var(--theme-border-strong)_82%,transparent)] bg-[color-mix(in_srgb,var(--theme-bg-elevated)_96%,transparent)] shadow-[0_0_0_1px_rgb(255_255_255_/_0.04),inset_0_1px_0_rgb(255_255_255_/_0.05)]">
+              <input
+                id="mobile-newsletter-email"
+                type="email"
+                value={mobileEmail}
+                onChange={(event) => {
+                  setMobileEmail(event.target.value);
+                  if (mobileEmailError) setMobileEmailError("");
+                }}
+                placeholder="your@email.com"
+                className="min-w-0 flex-1 bg-transparent px-4 py-3 text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
+                autoComplete="email"
+                inputMode="email"
+                aria-invalid={!!mobileEmailError}
+                aria-describedby={
+                  mobileEmailError ? "mobile-newsletter-error" : undefined
+                }
+                maxLength={254}
+                required
+              />
+              <button
+                type="submit"
+                className="shrink-0 rounded-r-xl px-4 text-sm font-semibold text-[var(--theme-button-primary-text)]"
+                style={{
+                  background: "var(--theme-button-primary-bg)",
+                }}
+              >
+                Join Us
+              </button>
+            </div>
+            {mobileEmailError && (
+              <p
+                id="mobile-newsletter-error"
+                role="status"
+                className="text-left text-xs text-[rgb(var(--theme-feedback-danger-rgb))]"
+              >
+                {mobileEmailError}
+              </p>
+            )}
+            <p className="text-xs leading-relaxed text-text-muted">
+              We're in early beta. You'll receive a free download link when we
+              launch 🚀
+            </p>
+          </form>
+
+          <div className="hidden flex-col flex-wrap justify-center gap-3 lg:flex lg:flex-row lg:justify-start lg:gap-4">
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.98 }}
-              onClick={openModal}
+              onClick={() => openModal()}
               className="btn-primary text-base px-8 py-3 w-full sm:w-auto"
             >
               Get Freed

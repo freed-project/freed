@@ -35,6 +35,17 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 const PHONE_REGEX = /^\+?[0-9()\s.-]{7,20}$/;
 
+function CircledStepNumber({ children }: { children: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-text-primary text-sm font-semibold text-text-primary"
+    >
+      {children}
+    </span>
+  );
+}
+
 function isValidEmailAddress(email: string): boolean {
   return EMAIL_REGEX.test(email);
 }
@@ -166,7 +177,12 @@ function LaunchFreedWebIcon() {
 }
 
 export default function NewsletterModal() {
-  const { isOpen, closeModal } = useNewsletter();
+  const {
+    isOpen,
+    closeModal,
+    prefillEmail,
+    prefillDetailsOpen,
+  } = useNewsletter();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -204,10 +220,14 @@ export default function NewsletterModal() {
 
   useEffect(() => {
     if (!isOpen) return;
-    setDetailsOpen(false);
+    if (prefillEmail) {
+      setEmail(prefillEmail);
+      setNameManuallyEdited(false);
+    }
+    setDetailsOpen(prefillDetailsOpen);
     setTurnstileToken("");
     setTurnstileResetKey((current) => current + 1);
-  }, [isOpen]);
+  }, [isOpen, prefillDetailsOpen, prefillEmail]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -582,8 +602,8 @@ export default function NewsletterModal() {
                   <div className="grid gap-0 lg:grid-cols-2 lg:items-start">
                     <div className="pb-2 sm:py-4 lg:pr-8">
                       <div className="mb-6 max-w-md">
-                        <h4 className="flex items-center gap-3 text-2xl font-bold text-text-primary sm:text-3xl">
-                          <CircledStepNumber number={1} />
+                        <h4 className="flex items-center gap-4 text-2xl font-bold text-text-primary sm:text-3xl">
+                          <CircledStepNumber>1</CircledStepNumber>
                           <span>Email Updates</span>
                         </h4>
                       </div>
@@ -712,7 +732,7 @@ export default function NewsletterModal() {
                                       htmlFor="newsletter-phone"
                                       className="text-xs font-medium uppercase tracking-[0.12em] text-text-muted"
                                     >
-                                      Phone Number
+                                      Phone <span className="normal-case">(optional)</span>
                                     </label>
                                     <input
                                       id="newsletter-phone"
@@ -725,7 +745,7 @@ export default function NewsletterModal() {
                                           setErrorMessage("");
                                         }
                                       }}
-                                      placeholder="Phone number, optional"
+                                      placeholder="share for SMS updates!"
                                       className="min-w-0 w-full rounded-lg border px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted transition-colors focus:outline-none focus:border-[color:var(--theme-heading-accent)] focus:ring-2 focus:ring-[color:var(--theme-heading-accent)]/18 sm:px-4"
                                       style={{
                                         background:
@@ -808,23 +828,23 @@ export default function NewsletterModal() {
                     </div>
 
                     <div className="space-y-5 pt-10 pb-2 sm:py-4 lg:pt-4 lg:pl-8 lg:border-l lg:border-freed-border">
-                        <div className="max-w-lg space-y-2">
-                          <h4 className="flex items-center gap-3 text-2xl font-bold text-text-primary sm:text-3xl">
-                            <CircledStepNumber number={2} />
-                            <span>{isWebTarget ? "Launch Freed" : "Download Freed"}</span>
-                          </h4>
-                          {!isWebTarget && (
-                            <p className="text-sm leading-relaxed text-text-secondary">
-                              Install Freed Desktop first, then launch Freed Web on your
-                              mobile device.
-                            </p>
-                          )}
-                        </div>
+                      <div className="max-w-lg space-y-2">
+                        <h4 className="flex items-center gap-4 text-2xl font-bold text-text-primary sm:text-3xl">
+                          <CircledStepNumber>2</CircledStepNumber>
+                          <span>{isWebTarget ? "Launch Freed" : "Download Freed"}</span>
+                        </h4>
+                        {!isWebTarget && (
+                          <p className="text-sm leading-relaxed text-text-secondary">
+                            Install Freed Desktop first, then launch Freed Web on your
+                            mobile device.
+                          </p>
+                        )}
+                      </div>
 
-                        <div className="relative" ref={dropdownRef}>
-                          <div
-                            className="newsletter-modal-download-cta btn-primary get-freed-launch-cta flex items-center rounded-xl !p-0 hover:!scale-100 active:!scale-100"
-                          >
+                      <div className="relative" ref={dropdownRef}>
+                        <div
+                          className="newsletter-modal-download-cta btn-primary get-freed-launch-cta flex items-center rounded-xl !p-0 hover:!scale-100 active:!scale-100"
+                        >
                             <button
                               type="button"
                               onClick={handlePrimaryAction}
@@ -1055,37 +1075,5 @@ function Spinner() {
       aria-hidden="true"
       className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent"
     />
-  );
-}
-
-function CircledStepNumber({ number }: { number: 1 | 2 }) {
-  return (
-    <span className="inline-flex h-[1em] w-[1em] items-center justify-center text-[1em] leading-none">
-      <svg
-        aria-hidden="true"
-        viewBox="0 0 32 32"
-        className="h-[1em] w-[1em]"
-        fill="none"
-      >
-        <circle
-          cx="16"
-          cy="16"
-          r="14.5"
-          stroke="currentColor"
-          strokeWidth="1.5"
-        />
-        <text
-          x="16"
-          y="20"
-          textAnchor="middle"
-          fill="currentColor"
-          fontSize="13"
-          fontWeight="700"
-          fontFamily="var(--font-space-grotesk), sans-serif"
-        >
-          {number}
-        </text>
-      </svg>
-    </span>
   );
 }

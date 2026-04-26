@@ -1018,7 +1018,7 @@ export default function RoadmapContent() {
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              onClick={openModal}
+              onClick={() => openModal()}
               className="btn-primary"
             >
               Get Updates
