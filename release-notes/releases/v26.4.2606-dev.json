@@ -3,7 +3,7 @@
   "version": "26.4.2606-dev",
   "channel": "dev",
   "dayKey": "26.4.26",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-26T22:49:05.952Z",
   "model": "heuristic",
@@ -78,11 +78,11 @@
       "Default app themes to Scriptorium",
       "Harden release validation assertions",
       "Preserve saved and archived signal filters",
-      "Graph selection perf assertion are now more stable",
-      "Provider health status fallback test are now more stable",
-      "Release validation e2e are now more stable",
-      "Speed up production validation stress tests",
-      "Update rss source test fixture",
+      "Graph selection perf assertions are more stable",
+      "Provider health status fallback tests are more stable",
+      "Release validation E2E is more stable",
+      "Production validation stress tests are faster",
+      "RSS source test fixtures are more accurate",
       "Polish sidebar rail behavior",
       "Remember desktop release channel",
       "Archived items no longer clear saved feed choices"
@@ -91,5 +91,5 @@
       "Rebuild friends graph for scale"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2606-dev\n\nHydrate social comments in reader, improve reader offline hydration, and permanent social media archive\n\n### Features\n\n- Hydrate social comments in reader\n- Improve reader offline hydration\n- Permanent social media archive\n\n### Fixes\n\n- Default app themes to Scriptorium\n- Harden release validation assertions\n- Preserve saved and archived signal filters\n- Graph selection perf assertion are now more stable\n- Provider health status fallback test are now more stable\n- Release validation e2e are now more stable\n- Speed up production validation stress tests\n- Update rss source test fixture\n- Polish sidebar rail behavior\n- Remember desktop release channel\n- Archived items no longer clear saved feed choices\n\n### Follow-ups\n\n- Rebuild friends graph for scale\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2606-dev\n\nHydrate social comments in reader, improve reader offline hydration, and permanent social media archive\n\n### Features\n\n- Hydrate social comments in reader\n- Improve reader offline hydration\n- Permanent social media archive\n\n### Fixes\n\n- Default app themes to Scriptorium\n- Harden release validation assertions\n- Preserve saved and archived signal filters\n- Graph selection perf assertions are more stable\n- Provider health status fallback tests are more stable\n- Release validation E2E is more stable\n- Production validation stress tests are faster\n- RSS source test fixtures are more accurate\n- Polish sidebar rail behavior\n- Remember desktop release channel\n- Archived items no longer clear saved feed choices\n\n### Follow-ups\n\n- Rebuild friends graph for scale\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
