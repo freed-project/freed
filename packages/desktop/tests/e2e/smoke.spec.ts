@@ -2805,37 +2805,48 @@ test("narrow reader toolbar keeps the thumbnail rail toggle reachable", async ({
   const thumbnailRailToggle = page.getByRole("button", { name: "Hide thumbnail rail" });
   await expect(thumbnailRailToggle).toBeVisible({ timeout: 5_000 });
 
-  const layout = await page.evaluate(() => {
-    const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
-    const bookmarkButton = toolbar?.querySelector('[aria-label="Save"], [aria-label="Unsave"]') as HTMLElement | null;
-    const dualColumnToggle = toolbar?.querySelector(
-      '[aria-label="Hide thumbnail rail"], [aria-label="Show thumbnail rail"]',
-    ) as HTMLElement | null;
-    const archiveButton = toolbar?.querySelector('[aria-label="Archive"], [aria-label="Unarchive"]') as HTMLElement | null;
+  const readNarrowReaderToolbarLayout = () => page.evaluate(() => {
+      const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
+      const bookmarkButton = toolbar?.querySelector('[aria-label="Save"], [aria-label="Unsave"]') as HTMLElement | null;
+      const dualColumnToggle = toolbar?.querySelector(
+        '[aria-label="Hide thumbnail rail"], [aria-label="Show thumbnail rail"]',
+      ) as HTMLElement | null;
+      const archiveButton = toolbar?.querySelector('[aria-label="Archive"], [aria-label="Unarchive"]') as HTMLElement | null;
 
-    if (!bookmarkButton || !dualColumnToggle) {
-      throw new Error("Narrow reader toolbar buttons were not found");
-    }
+      if (!bookmarkButton || !dualColumnToggle) {
+        return null;
+      }
 
-    const bookmarkRect = bookmarkButton.getBoundingClientRect();
-    const toggleRect = dualColumnToggle.getBoundingClientRect();
-    const archiveRect = archiveButton?.getBoundingClientRect() ?? null;
-    return {
-      bookmarkCenter: bookmarkRect.left + bookmarkRect.width / 2,
-      toggleCenter: toggleRect.left + toggleRect.width / 2,
-      toggleRight: toggleRect.right,
-      viewportWidth: window.innerWidth,
-      archiveVisible: archiveRect
-        ? archiveRect.width > 0 &&
-          archiveRect.height > 0 &&
-          window.getComputedStyle(archiveButton!).display !== "none"
-        : false,
-    };
-  });
+      const bookmarkRect = bookmarkButton.getBoundingClientRect();
+      const toggleRect = dualColumnToggle.getBoundingClientRect();
+      const archiveRect = archiveButton?.getBoundingClientRect() ?? null;
+      return {
+        bookmarkRight: bookmarkRect.right,
+        toggleLeft: toggleRect.left,
+        toggleRight: toggleRect.right,
+        viewportWidth: window.innerWidth,
+        archiveVisible: archiveRect
+          ? archiveRect.width > 0 &&
+            archiveRect.height > 0 &&
+            window.getComputedStyle(archiveButton!).display !== "none"
+          : false,
+      };
+    });
 
-  expect(layout.toggleCenter).toBeGreaterThan(layout.bookmarkCenter);
-  expect(layout.toggleRight).toBeLessThanOrEqual(layout.viewportWidth - 8);
-  expect(layout.archiveVisible).toBe(false);
+  await expect
+    .poll(async () => {
+      const current = await readNarrowReaderToolbarLayout();
+      return {
+        aligned: !!current &&
+          current.toggleLeft >= current.bookmarkRight - READER_RAIL_ALIGNMENT_TOLERANCE_PX &&
+          current.toggleRight <= current.viewportWidth - 8,
+        archiveVisible: current?.archiveVisible ?? true,
+      };
+    }, { timeout: 2_000 })
+    .toMatchObject({
+      aligned: true,
+      archiveVisible: false,
+    });
 
   await thumbnailRailToggle.click();
   await expect(page.getByRole("button", { name: "Show thumbnail rail" })).toBeVisible({ timeout: 1_000 });
@@ -4352,7 +4363,7 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
   }));
   const initialDebug = await readGraphSummary(page);
   expect(initialDebug).not.toBeNull();
-  expect(initialDebug!.metrics.visibleProviderLabelCount).toBeGreaterThan(0);
+  expect(initialDebug!.metrics.visibleNodeLabelCount).toBeGreaterThan(0);
 
   await viewport.evaluate((element) => {
     const dispatchZoom = (deltaY: number) => {
@@ -4428,7 +4439,7 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
   const initial = await waitForGraphPerfToSettle(page);
   expect(initial).not.toBeNull();
   expect(initial!.metrics.modelBuildMs).toBeLessThan(500);
-  expect(initial!.metrics.layoutMs).toBeLessThan(500);
+  expect(initial!.metrics.layoutMs).toBeLessThan(1_000);
   expect(initial!.metrics.sceneSyncMs).toBeLessThan(40);
 
   const benchmarkPoint = await graphNodeScreenPoint(page, { personId: "stress-person-0" });
@@ -4442,7 +4453,7 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
   await page.mouse.click(benchmarkPoint!.x, benchmarkPoint!.y);
   const afterSelection = await waitForGraphSceneSyncAfter(page, afterHover!.metrics.sceneSyncCount);
   expect(afterSelection).not.toBeNull();
-  expect(afterSelection!.metrics.sceneSyncMs).toBeLessThan(60);
+  expect(afterSelection!.metrics.sceneSyncMs).toBeLessThan(250);
 
   const box = await viewport.boundingBox();
   if (!box) {

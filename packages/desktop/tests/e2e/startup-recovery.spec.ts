@@ -5,6 +5,9 @@ test("startup recovery checks immediately and opens the channel-aware fallback d
   page,
   ipc,
 }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("freed-release-channel", "dev");
+  });
   await app.page.goto("/startup-recovery.html?releaseChannel=dev");
 
   await expect(page.getByText("Freed did not finish loading last time.")).toBeVisible();
