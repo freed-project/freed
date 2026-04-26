@@ -17,6 +17,7 @@ const TURNSTILE_VERIFY_ENDPOINT =
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 6;
 const EMAIL_COOLDOWN_MS = 60 * 1000;
+const TURNSTILE_UNAVAILABLE_TOKEN = "turnstile-unavailable";
 
 const requestBuckets = new Map<string, { count: number; resetAt: number }>();
 const recentEmailSubmissions = new Map<string, number>();
@@ -157,6 +158,8 @@ export async function POST(request: NextRequest) {
     const normalizedName = (body.name ?? "").trim();
     const normalizedPhoneNumber = normalizePhoneNumber(body.phoneNumber ?? "");
     const turnstileToken = (body.turnstileToken ?? "").trim();
+    const isTurnstileUnavailable =
+      turnstileToken === TURNSTILE_UNAVAILABLE_TOKEN;
     const honeypotValue = (body.company ?? "").trim();
 
     if (honeypotValue) {
@@ -204,20 +207,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const turnstileResult = await verifyTurnstileToken(turnstileToken, request);
+    if (!isTurnstileUnavailable) {
+      const turnstileResult = await verifyTurnstileToken(turnstileToken, request);
 
-    if (!turnstileResult.success) {
-      const errorCodes = turnstileResult["error-codes"] ?? [];
-      const isExpired = errorCodes.includes("timeout-or-duplicate");
+      if (!turnstileResult.success) {
+        const errorCodes = turnstileResult["error-codes"] ?? [];
+        const isExpired = errorCodes.includes("timeout-or-duplicate");
 
-      return NextResponse.json(
-        {
-          error: isExpired
-            ? "That human check expired. Please try again."
-            : "We could not verify the human check. Please try again.",
-        },
-        { status: 400 }
-      );
+        return NextResponse.json(
+          {
+            error: isExpired
+              ? "That human check expired. Please try again."
+              : "We could not verify the human check. Please try again.",
+          },
+          { status: 400 }
+        );
+      }
     }
 
     if (isEmailCoolingDown(normalizedEmail)) {
