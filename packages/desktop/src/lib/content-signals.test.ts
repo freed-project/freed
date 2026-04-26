@@ -107,7 +107,7 @@ describe("content signals", () => {
         rssSource: {
           feedUrl: "https://www.reuters.com/rss",
           feedTitle: "Reuters",
-          itemGuid: "news-1",
+          siteUrl: "https://www.reuters.com",
         },
         content: {
           text: "Reuters reports that regulators announced a new policy after officials reviewed new data.",
