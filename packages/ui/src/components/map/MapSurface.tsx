@@ -36,9 +36,7 @@ const popupDateFormatter = new Intl.DateTimeFormat(undefined, {
 const MAP_POPUP_MAX_WIDTH = 560;
 const MAP_POPUP_VIEWPORT_MARGIN = 40;
 const MAP_VIEWPORT_MASK_STYLE = {
-  "--theme-soft-viewport-base-comp-top": "6px",
-  "--theme-soft-viewport-base-comp-bottom": "0px",
-  "--theme-soft-viewport-mask-size": "28px",
+  "--theme-soft-viewport-mask-size": "20px",
 } as CSSProperties;
 
 function shouldForceMapFallback() {
@@ -415,24 +413,24 @@ function fallbackScanBackground(background: string, water: string) {
 function mapEdgeVignetteBackground() {
   return `
     radial-gradient(
-      120px 88px at 0% 0%,
-      rgb(var(--theme-shell-rgb) / 0.18) 0%,
-      transparent 74%
-    ),
-    radial-gradient(
-      124px 82px at 100% 0%,
-      rgb(var(--theme-shell-rgb) / 0.14) 0%,
-      transparent 76%
-    ),
-    radial-gradient(
-      132px 96px at 0% 100%,
+      56px 56px at 0% 0%,
       rgb(var(--theme-shell-rgb) / 0.18) 0%,
       transparent 76%
     ),
     radial-gradient(
-      148px 112px at 100% 100%,
-      rgb(var(--theme-shell-rgb) / 0.24) 0%,
-      transparent 78%
+      56px 56px at 100% 0%,
+      rgb(var(--theme-shell-rgb) / 0.18) 0%,
+      transparent 76%
+    ),
+    radial-gradient(
+      56px 56px at 0% 100%,
+      rgb(var(--theme-shell-rgb) / 0.18) 0%,
+      transparent 76%
+    ),
+    radial-gradient(
+      56px 56px at 100% 100%,
+      rgb(var(--theme-shell-rgb) / 0.18) 0%,
+      transparent 76%
     ),
     linear-gradient(
       to bottom,
@@ -441,18 +439,18 @@ function mapEdgeVignetteBackground() {
     ),
     linear-gradient(
       to top,
-      rgb(var(--theme-shell-rgb) / 0.18) 0%,
-      transparent 64px
+      rgb(var(--theme-shell-rgb) / 0.22) 0%,
+      transparent 56px
     ),
     linear-gradient(
       to right,
-      rgb(var(--theme-shell-rgb) / 0.14) 0%,
-      transparent 44px
+      rgb(var(--theme-shell-rgb) / 0.22) 0%,
+      transparent 56px
     ),
     linear-gradient(
       to left,
-      rgb(var(--theme-shell-rgb) / 0.16) 0%,
-      transparent 44px
+      rgb(var(--theme-shell-rgb) / 0.22) 0%,
+      transparent 56px
     )
   `;
 }

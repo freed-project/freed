@@ -1,4 +1,6 @@
 import type { BaseAppState, FilterOptions } from "./store-types.js";
+import { CONTENT_SIGNAL_KEYS } from "./content-signals";
+import type { ContentSignal } from "./types.js";
 
 export type NavigationView = BaseAppState["activeView"];
 
@@ -29,18 +31,38 @@ function uniqueSortedTags(tags: readonly string[] | undefined): string[] {
   );
 }
 
+function uniqueSortedSignals(signals: readonly string[] | undefined): ContentSignal[] {
+  if (!signals?.length) return [];
+  const allowed = new Set<string>(CONTENT_SIGNAL_KEYS);
+  return Array.from(new Set(signals.map((signal) => signal.trim()).filter((signal) => allowed.has(signal))))
+    .sort((a, b) => a.localeCompare(b)) as ContentSignal[];
+}
+
+function normalizeSocialContentFilter(
+  value: FilterOptions["socialContentFilter"] | null | undefined,
+): FilterOptions["socialContentFilter"] | undefined {
+  return value === "posts" || value === "stories" ? value : undefined;
+}
+
 export function canonicalizeFilterOptions(filter: FilterOptions): FilterOptions {
   if (filter.savedOnly) return { savedOnly: true };
   if (filter.archivedOnly) return { archivedOnly: true };
 
   const tags = uniqueSortedTags(filter.tags);
+  const signals = uniqueSortedSignals(filter.signals);
   const feedUrl = normalizeText(filter.feedUrl);
   const platform = feedUrl ? "rss" : normalizeText(filter.platform) ?? undefined;
+  const socialContentFilter =
+    platform === "facebook" || platform === "instagram"
+      ? normalizeSocialContentFilter(filter.socialContentFilter)
+      : undefined;
   const next: FilterOptions = {};
 
   if (platform) next.platform = platform;
   if (feedUrl) next.feedUrl = feedUrl;
+  if (socialContentFilter) next.socialContentFilter = socialContentFilter;
   if (tags.length > 0) next.tags = tags;
+  if (signals.length > 0) next.signals = signals;
 
   return next;
 }
@@ -98,7 +120,9 @@ export function parseNavigationState(input: string | NavigationPathLike): Naviga
   const scope = normalizeText(params.get("scope"));
   const feedUrl = normalizeText(params.get("feed"));
   const platform = normalizeText(params.get("platform"));
+  const socialContentFilter = normalizeSocialContentFilter(params.get("content") as FilterOptions["socialContentFilter"] | null);
   const tags = uniqueSortedTags(params.getAll("tag"));
+  const signals = uniqueSortedSignals(params.getAll("signal"));
 
   let activeFilter: FilterOptions;
   if (scope === "saved") {
@@ -108,10 +132,13 @@ export function parseNavigationState(input: string | NavigationPathLike): Naviga
   } else if (feedUrl) {
     activeFilter = { platform: "rss", feedUrl };
     if (tags.length > 0) activeFilter.tags = tags;
+    if (signals.length > 0) activeFilter.signals = signals;
   } else {
     activeFilter = {};
     if (platform) activeFilter.platform = platform;
+    if (socialContentFilter) activeFilter.socialContentFilter = socialContentFilter;
     if (tags.length > 0) activeFilter.tags = tags;
+    if (signals.length > 0) activeFilter.signals = signals;
   }
 
   return canonicalizeNavigationState({
@@ -146,8 +173,15 @@ export function serializeNavigationState(state: NavigationState): string {
       params.set("platform", activeFilter.platform);
     }
 
+    if (activeFilter.socialContentFilter && activeFilter.socialContentFilter !== "all") {
+      params.set("content", activeFilter.socialContentFilter);
+    }
+
     for (const tag of uniqueSortedTags(activeFilter.tags)) {
       params.append("tag", tag);
+    }
+    for (const signal of uniqueSortedSignals(activeFilter.signals)) {
+      params.append("signal", signal);
     }
   }
 
@@ -164,15 +198,20 @@ export function navigationStatesEqual(a: NavigationState, b: NavigationState): b
   const right = canonicalizeNavigationState(b);
   const leftTags = uniqueSortedTags(left.activeFilter.tags);
   const rightTags = uniqueSortedTags(right.activeFilter.tags);
+  const leftSignals = uniqueSortedSignals(left.activeFilter.signals);
+  const rightSignals = uniqueSortedSignals(right.activeFilter.signals);
 
   return (
     left.activeView === right.activeView
     && left.selectedItemId === right.selectedItemId
     && left.activeFilter.platform === right.activeFilter.platform
     && left.activeFilter.feedUrl === right.activeFilter.feedUrl
+    && (left.activeFilter.socialContentFilter ?? "all") === (right.activeFilter.socialContentFilter ?? "all")
     && !!left.activeFilter.savedOnly === !!right.activeFilter.savedOnly
     && !!left.activeFilter.archivedOnly === !!right.activeFilter.archivedOnly
     && leftTags.length === rightTags.length
     && leftTags.every((tag, index) => tag === rightTags[index])
+    && leftSignals.length === rightSignals.length
+    && leftSignals.every((signal, index) => signal === rightSignals[index])
   );
 }

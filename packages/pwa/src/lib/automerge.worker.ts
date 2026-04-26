@@ -145,6 +145,7 @@ function migrateLoadedIdentityGraph(message: string): void {
 function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean {
   if (
     "author" in updates ||
+    "contentSignals" in updates ||
     "content" in updates ||
     "contentType" in updates ||
     "preservedContent" in updates ||
@@ -480,6 +481,28 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
       case "UPDATE_PERSON":
         await applyChange((doc) => updatePerson(doc, req.personId, req.updates as Partial<Person>), "Update person");
+        ack(req.reqId);
+        break;
+
+      case "UPSERT_CONNECTION_PERSONS":
+        await applyChange((doc) => {
+          const now = Date.now();
+          for (const candidate of req.candidates) {
+            if (doc.persons[candidate.person.id]) {
+              updatePerson(doc, candidate.person.id, candidate.person);
+            } else {
+              addPerson(doc, candidate.person);
+            }
+            for (const accountId of candidate.accountIds) {
+              const account = doc.accounts[accountId];
+              if (!account || account.personId === candidate.person.id) continue;
+              updateAccount(doc, accountId, {
+                personId: candidate.person.id,
+                updatedAt: now,
+              });
+            }
+          }
+        }, `Upsert ${req.candidates.length.toLocaleString()} connection people`);
         ack(req.reqId);
         break;
 

@@ -38,6 +38,18 @@ function runGit(args, { cwd } = {}) {
   }).trim();
 }
 
+function tryRunGit(args, { cwd } = {}) {
+  try {
+    return execFileSync("git", args, {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
 export function splitLines(value) {
   return value
     .split(/\r?\n/)
@@ -83,6 +95,46 @@ export function listComparisonFiles({ baseRef, headRef, cwd }) {
     "--name-only",
     `${baseRef}...${headRef}`,
   ], { cwd })));
+}
+
+function readBlobId(ref, filePath, { cwd } = {}) {
+  return tryRunGit(["rev-parse", "--verify", `${ref}:${filePath}`], { cwd });
+}
+
+function blobExistsInHistory(ref, filePath, blobId, { cwd } = {}) {
+  if (!blobId) return false;
+
+  const commits = splitLines(tryRunGit(["log", "--format=%H", ref, "--", filePath], { cwd }) ?? "");
+  return commits.some((commit) => readBlobId(commit, filePath, { cwd }) === blobId);
+}
+
+export function listMainBackflowDiffFiles({ devRef, mainRef, cwd }) {
+  const mergeBase = runGit(["merge-base", devRef, mainRef], { cwd });
+  const mainChangedFiles = uniqueSorted(splitLines(runGit([
+    "diff",
+    "--name-only",
+    mergeBase,
+    mainRef,
+    "--",
+    ...PROMOTION_SCOPE_PATHS,
+  ], { cwd })));
+
+  return mainChangedFiles
+    .filter((filePath) => !isReleaseOnlyFile(filePath))
+    .filter((filePath) => {
+      const mainBlobId = readBlobId(mainRef, filePath, { cwd });
+      const devBlobId = readBlobId(devRef, filePath, { cwd });
+
+      if (mainBlobId === devBlobId) {
+        return false;
+      }
+
+      if (mainBlobId && blobExistsInHistory(devRef, filePath, mainBlobId, { cwd })) {
+        return false;
+      }
+
+      return true;
+    });
 }
 
 export function listForbiddenMainPrFiles(files) {

@@ -23,6 +23,8 @@ import {
   hideItem,
   addRssFeed,
   removeRssFeed,
+  updateAccount,
+  updatePerson,
   updatePreferences,
 } from "@freed/shared/schema";
 import type { FreedDoc } from "@freed/shared/schema";
@@ -70,6 +72,59 @@ function makeAccount(overrides: Partial<Account> & {
     ...overrides,
   };
 }
+
+// =============================================================================
+// identity graph placement
+// =============================================================================
+
+describe("identity graph placement", () => {
+  it("preserves optional graph placement fields on people and accounts", () => {
+    let doc = createEmptyDoc();
+
+    doc = A.change(doc, (d) => {
+      addPerson(d, {
+        id: "person-graph",
+        name: "Graph Person",
+        relationshipStatus: "friend",
+        careLevel: 4,
+        graphX: 123,
+        graphY: 456,
+        graphPinned: true,
+        graphUpdatedAt: 789,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      addAccounts(d, [
+        makeAccount({
+          id: "account-graph",
+          personId: "person-graph",
+          kind: "social",
+          provider: "instagram",
+          externalId: "graph-person",
+          graphX: 234,
+          graphY: 567,
+          graphPinned: true,
+          graphUpdatedAt: 890,
+        }),
+      ]);
+      updatePerson(d, "person-graph", { graphX: 321, graphY: 654 });
+      updateAccount(d, "account-graph", { graphPinned: false });
+    });
+
+    expect(doc.persons["person-graph"]).toMatchObject({
+      graphX: 321,
+      graphY: 654,
+      graphPinned: true,
+      graphUpdatedAt: 789,
+    });
+    expect(doc.accounts["account-graph"]).toMatchObject({
+      graphX: 234,
+      graphY: 567,
+      graphPinned: false,
+      graphUpdatedAt: 890,
+    });
+  });
+});
 
 // =============================================================================
 // createEmptyDoc
@@ -346,6 +401,65 @@ describe("deduplicateDocFeedItems", () => {
     });
 
     expect(Object.keys(doc.feedItems)).toHaveLength(2);
+  });
+
+  it("deduplicates same-platform stories with unstable captured story IDs", () => {
+    let doc = createEmptyDoc();
+
+    doc = A.change(doc, (d) => {
+      addFeedItem(d, makeItem({
+        globalId: "ig:story_ada_1774389196662",
+        platform: "instagram",
+        contentType: "story",
+        publishedAt: 1_774_389_007_000,
+        author: { id: "ig:ada", handle: "ada", displayName: "Ada" },
+        content: {
+          text: "",
+          mediaUrls: ["https://cdn.example/story-video.mp4"],
+          mediaTypes: ["video"],
+        },
+        location: {
+          name: "Big Bear, California",
+          source: "sticker",
+          url: "https://www.instagram.com/explore/locations/123/big-bear-california/",
+        },
+        userState: {
+          hidden: false,
+          saved: true,
+          savedAt: 1_774_389_200_000,
+          archived: false,
+          tags: ["trip"],
+        },
+      }));
+
+      addFeedItem(d, makeItem({
+        globalId: "ig:story_ada_1774389204187",
+        platform: "instagram",
+        contentType: "story",
+        publishedAt: 1_774_389_007_000,
+        author: { id: "ig:ada", handle: "ada", displayName: "Ada" },
+        content: {
+          text: "",
+          mediaUrls: ["https://cdn.example/story-video.mp4"],
+          mediaTypes: ["video"],
+        },
+        location: {
+          name: "Big Bear, California",
+          source: "sticker",
+          url: "https://www.instagram.com/explore/locations/123/big-bear-california/",
+        },
+      }));
+
+      deduplicateDocFeedItems(d);
+    });
+
+    expect(Object.keys(doc.feedItems)).toHaveLength(1);
+    const [survivor] = Object.values(doc.feedItems);
+    expect(survivor.platform).toBe("instagram");
+    expect(survivor.contentType).toBe("story");
+    expect(survivor.userState.saved).toBe(true);
+    expect(survivor.userState.tags).toContain("trip");
+    expect(survivor.content.mediaUrls).toContain("https://cdn.example/story-video.mp4");
   });
 });
 

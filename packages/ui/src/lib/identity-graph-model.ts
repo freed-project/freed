@@ -23,6 +23,11 @@ export interface IdentityGraphNode {
   weight: number;
   initials?: string;
   interactive: boolean;
+  graphX?: number;
+  graphY?: number;
+  graphPinned?: boolean;
+  activityCount?: number;
+  lastActivityAt?: number;
 }
 
 export interface IdentityGraphEdge {
@@ -40,8 +45,12 @@ export interface IdentityGraphModel {
 
 export interface IdentityGraphActivityIndex {
   socialCounts: Map<string, number>;
+  socialLastActivity: Map<string, number>;
   rssCounts: Map<string, number>;
+  rssLastActivity: Map<string, number>;
   linkedAccountCounts: Map<string, number>;
+  personActivityCounts: Map<string, number>;
+  personLastActivity: Map<string, number>;
 }
 
 interface BuildIdentityGraphModelArgs {
@@ -94,8 +103,13 @@ export function buildIdentityGraphActivityIndex(
   feedItems: Record<string, FeedItem>,
 ): IdentityGraphActivityIndex {
   const socialCounts = new Map<string, number>();
+  const socialLastActivity = new Map<string, number>();
   const rssCounts = new Map<string, number>();
+  const rssLastActivity = new Map<string, number>();
   const linkedAccountCounts = new Map<string, number>();
+  const personBySocialKey = new Map<string, string>();
+  const personActivityCounts = new Map<string, number>();
+  const personLastActivity = new Map<string, number>();
 
   for (const account of Object.values(accounts)) {
     if (account.kind === "social" && account.personId) {
@@ -103,28 +117,70 @@ export function buildIdentityGraphActivityIndex(
         account.personId,
         (linkedAccountCounts.get(account.personId) ?? 0) + 1,
       );
+      personBySocialKey.set(
+        socialActivityKey(account.provider, account.externalId),
+        account.personId,
+      );
     }
   }
 
   for (const item of Object.values(feedItems)) {
+    const authorId = item.author?.id;
+    if (authorId) {
+      const socialKey = socialActivityKey(item.platform, authorId);
+      const personId = personBySocialKey.get(socialKey);
+      if (personId) {
+        socialCounts.set(socialKey, (socialCounts.get(socialKey) ?? 0) + 1);
+        socialLastActivity.set(
+          socialKey,
+          Math.max(socialLastActivity.get(socialKey) ?? 0, item.publishedAt),
+        );
+        personActivityCounts.set(personId, (personActivityCounts.get(personId) ?? 0) + 1);
+        personLastActivity.set(
+          personId,
+          Math.max(personLastActivity.get(personId) ?? 0, item.publishedAt),
+        );
+      }
+    }
+
     if (item.platform === "rss") {
       const feedUrl = item.rssSource?.feedUrl;
       if (feedUrl) {
         rssCounts.set(feedUrl, (rssCounts.get(feedUrl) ?? 0) + 1);
+        rssLastActivity.set(
+          feedUrl,
+          Math.max(rssLastActivity.get(feedUrl) ?? 0, item.publishedAt),
+        );
       }
       continue;
     }
 
-    const authorId = item.author?.id;
     if (!authorId) continue;
     const key = socialActivityKey(item.platform, authorId);
+    if (personBySocialKey.has(key)) continue;
     socialCounts.set(key, (socialCounts.get(key) ?? 0) + 1);
+    socialLastActivity.set(
+      key,
+      Math.max(socialLastActivity.get(key) ?? 0, item.publishedAt),
+    );
+    const personId = personBySocialKey.get(key);
+    if (personId) {
+      personActivityCounts.set(personId, (personActivityCounts.get(personId) ?? 0) + 1);
+      personLastActivity.set(
+        personId,
+        Math.max(personLastActivity.get(personId) ?? 0, item.publishedAt),
+      );
+    }
   }
 
   return {
     socialCounts,
+    socialLastActivity,
     rssCounts,
+    rssLastActivity,
     linkedAccountCounts,
+    personActivityCounts,
+    personLastActivity,
   };
 }
 
@@ -172,6 +228,8 @@ export function buildIdentityGraphModel({
 
   for (const person of visiblePersons) {
     const linkedCount = activityIndex.linkedAccountCounts.get(person.id) ?? 0;
+    const activityCount = activityIndex.personActivityCounts.get(person.id) ?? 0;
+    const lastActivityAt = activityIndex.personLastActivity.get(person.id) ?? 0;
     const isFriend = person.relationshipStatus === "friend";
     const node: IdentityGraphNode = {
       id: `person:${person.id}`,
@@ -184,6 +242,11 @@ export function buildIdentityGraphModel({
       weight: isFriend ? 100 + person.careLevel * 10 + linkedCount * 2 : 60 + linkedCount * 3,
       initials: initialsForLabel(person.name),
       interactive: true,
+      graphX: person.graphX,
+      graphY: person.graphY,
+      graphPinned: person.graphPinned,
+      activityCount,
+      lastActivityAt: lastActivityAt > 0 ? lastActivityAt : undefined,
     };
     nodes.push(node);
     signatureHash = mixHash(signatureHash, node.id);
@@ -191,6 +254,11 @@ export function buildIdentityGraphModel({
     signatureHash = mixHash(signatureHash, node.ring);
     signatureHash = mixHash(signatureHash, Math.round(node.radius * 10));
     signatureHash = mixHash(signatureHash, node.weight);
+    signatureHash = mixHash(signatureHash, person.graphPinned ? 1 : 0);
+    if (person.graphPinned && typeof person.graphX === "number" && typeof person.graphY === "number") {
+      signatureHash = mixHash(signatureHash, Math.round(person.graphX));
+      signatureHash = mixHash(signatureHash, Math.round(person.graphY));
+    }
   }
 
   const visibleAccounts = Object.values(accounts)
@@ -212,6 +280,10 @@ export function buildIdentityGraphModel({
       activityIndex.socialCounts.get(
         socialActivityKey(account.provider, account.externalId),
       ) ?? 0;
+    const lastActivityAt =
+      activityIndex.socialLastActivity.get(
+        socialActivityKey(account.provider, account.externalId),
+      ) ?? 0;
     const nodeId = `account:${account.id}`;
     const node: IdentityGraphNode = {
       id: nodeId,
@@ -225,6 +297,11 @@ export function buildIdentityGraphModel({
       ring: linkedPersonId ? 2 : 3,
       weight: (linkedPersonId ? 46 : 28) + itemCount,
       interactive: true,
+      graphX: account.graphX,
+      graphY: account.graphY,
+      graphPinned: account.graphPinned,
+      activityCount: itemCount,
+      lastActivityAt: lastActivityAt > 0 ? lastActivityAt : undefined,
     };
     nodes.push(node);
     signatureHash = mixHash(signatureHash, node.id);
@@ -232,6 +309,11 @@ export function buildIdentityGraphModel({
     signatureHash = mixHash(signatureHash, node.provider ?? "");
     signatureHash = mixHash(signatureHash, Math.round(node.radius * 10));
     signatureHash = mixHash(signatureHash, node.weight);
+    signatureHash = mixHash(signatureHash, account.graphPinned ? 1 : 0);
+    if (account.graphPinned && typeof account.graphX === "number" && typeof account.graphY === "number") {
+      signatureHash = mixHash(signatureHash, Math.round(account.graphX));
+      signatureHash = mixHash(signatureHash, Math.round(account.graphY));
+    }
 
     if (linkedPersonId) {
       const edge: IdentityGraphEdge = {
@@ -248,6 +330,7 @@ export function buildIdentityGraphModel({
   if (mode === "all_content") {
     for (const feed of Object.values(feeds).filter((entry) => entry.enabled !== false)) {
       const itemCount = activityIndex.rssCounts.get(feed.url) ?? 0;
+      const lastActivityAt = activityIndex.rssLastActivity.get(feed.url) ?? 0;
       const node: IdentityGraphNode = {
         id: `feed:${feed.url}`,
         kind: "feed",
@@ -259,6 +342,8 @@ export function buildIdentityGraphModel({
         ring: 3,
         weight: 16 + itemCount,
         interactive: false,
+        activityCount: itemCount,
+        lastActivityAt: lastActivityAt > 0 ? lastActivityAt : undefined,
       };
       nodes.push(node);
       signatureHash = mixHash(signatureHash, node.id);

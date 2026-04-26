@@ -71,6 +71,9 @@ export interface RawIgPost {
   /** Image/video URLs */
   mediaUrls: string[];
 
+  /** Media type for each URL when the extractor can distinguish it. */
+  mediaTypes?: Array<"image" | "video">;
+
   /** Whether this is a video/Reel */
   isVideo: boolean;
 

@@ -225,9 +225,17 @@ test("rapid theme browsing only persists the final selected theme", async ({ app
     });
   });
 
-  await page.getByRole("button", { name: /^Ember\./ }).click();
-  await page.getByRole("button", { name: /^Midas\./ }).click();
-  await page.getByRole("button", { name: /^Scriptorium\./ }).click();
+  await page.evaluate(() => {
+    const labels = [/^Ember\./, /^Midas\./, /^Scriptorium\./];
+    const buttons = Array.from(document.querySelectorAll("button"));
+    for (const label of labels) {
+      const button = buttons.find((candidate) => label.test(candidate.getAttribute("aria-label") ?? ""));
+      if (!button) {
+        throw new Error(`Theme button not found for ${label.source}`);
+      }
+      button.click();
+    }
+  });
 
   await expect.poll(async () => {
     return page.evaluate(() => document.documentElement.dataset.theme);

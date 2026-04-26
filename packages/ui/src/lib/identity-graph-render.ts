@@ -31,19 +31,20 @@ export function shouldShowGraphLabel({
 }: GraphLabelVisibilityArgs): boolean {
   if (isSelectedGraphNode(node, selectedPersonId, selectedAccountId)) return true;
   if (highlighted.has(node.id)) return true;
-  if (node.kind === "friend_person") return true;
 
   if (qualityMode === "interactive") {
-    if (node.kind === "connection_person") return scale >= 0.7;
+    if (node.kind === "friend_person") return scale >= 0.86 || node.labelPriority >= 92;
+    if (node.kind === "connection_person") return scale >= 1.04;
     if (node.kind === "account") {
-      return !!node.linkedPersonId && scale >= 1.08 && node.labelPriority >= 56;
+      return !!node.linkedPersonId && scale >= 1.12 && node.labelPriority >= 56;
     }
     return false;
   }
 
-  if (node.kind === "connection_person") return scale >= 0.55;
-  if (node.kind === "account") return scale >= 0.92;
-  return scale >= 1.22;
+  if (node.kind === "friend_person") return scale >= 0.72 || node.labelPriority >= 94;
+  if (node.kind === "connection_person") return scale >= 0.94;
+  if (node.kind === "account") return scale >= 1.18;
+  return scale >= 1.34;
 }
 
 export function graphLabelSortValue(

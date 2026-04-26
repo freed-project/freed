@@ -406,6 +406,10 @@ function SourceContextMenu({
 const MAX_WIDTH = MAX_PRIMARY_SIDEBAR_WIDTH_PX;
 const DEFAULT_WIDTH = DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX;
 const COMPACT_WIDTH = COMPACT_PRIMARY_SIDEBAR_WIDTH_PX;
+const SIDEBAR_SEARCH_GAP_MIN_PX = 8;
+const SIDEBAR_SEARCH_GAP_MAX_PX = 16;
+const SIDEBAR_SEARCH_GAP_CROSSOVER_START_WIDTH_PX = 184;
+const SIDEBAR_SEARCH_GAP_CROSSOVER_WIDTH_PX = 224;
 
 function getDesktopModeForWidth(width: number): SidebarMode {
   if (width <= CLOSED_PRIMARY_SIDEBAR_SNAP_THRESHOLD_PX) return "closed";
@@ -526,6 +530,8 @@ export function Sidebar({
   };
 
   const isFeedView = activeView === "feed";
+  const openingExpandedFromClosed =
+    previousDesktopMode.current === "closed" && desktopMode === "expanded";
 
   const isTagActive = (tag: string) => {
     if (!isFeedView) return false;
@@ -536,12 +542,13 @@ export function Sidebar({
 
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
+    if (openingExpandedFromClosed) return;
     if (pendingPersistedWidth.current !== null) {
       if (persistedSidebarWidth !== pendingPersistedWidth.current) return;
       pendingPersistedWidth.current = null;
     }
     setCommittedWidth(persistedSidebarWidth);
-  }, [dragWidth, persistedSidebarWidth]);
+  }, [dragWidth, openingExpandedFromClosed, persistedSidebarWidth]);
 
   useEffect(() => {
     const wasClosed = previousDesktopMode.current === "closed";
@@ -558,7 +565,13 @@ export function Sidebar({
   }, [desktopMode, updatePreferences]);
 
   const rawDesktopWidth = dragWidth
-    ?? (desktopMode === "compact" ? COMPACT_WIDTH : desktopMode === "closed" ? 0 : committedWidth);
+    ?? (desktopMode === "compact"
+      ? COMPACT_WIDTH
+      : desktopMode === "closed"
+        ? 0
+        : openingExpandedFromClosed
+          ? DEFAULT_WIDTH
+          : committedWidth);
   const effectiveGapWidthPx =
     activeView === "friends"
       ? FRIENDS_SIDEBAR_GAP_WIDTH_PX
@@ -581,7 +594,7 @@ export function Sidebar({
   const narrowLabeledSidebar =
     renderMode === "expanded" && desktopWidth < NARROW_LABELED_SIDEBAR_THRESHOLD_PX;
   const rowCountsVisible = renderMode === "expanded" && !narrowLabeledSidebar;
-  const sourceMenusVisible = renderMode === "expanded" && !narrowLabeledSidebar;
+  const sourceMenusVisible = renderMode === "expanded";
   const rssAccordionVisible = renderMode === "expanded" && !narrowLabeledSidebar;
   const searchVariant = compactRail ? "trigger" : "inline";
   const expandedSidebarUsesCondensedPadding =
@@ -621,6 +634,21 @@ export function Sidebar({
   const rowLeadingPaddingClass = compactRail ? "pl-1.5" : narrowLabeledSidebar ? "pl-2" : "pl-2.5";
   const rowTrailingPaddingClass = compactRail ? "pr-1" : narrowLabeledSidebar ? "pr-0" : "pr-1.5";
   const rowGapClass = narrowLabeledSidebar ? "gap-2" : "gap-3";
+  const sourceActionSlotClass = rowCountsVisible
+    ? "ml-1.5 w-[54px]"
+    : sourceMenusVisible
+      ? (narrowLabeledSidebar ? "ml-1 w-6" : "ml-1.5 w-6")
+      : "ml-0 w-0";
+  const inlineSearchGapPx = Math.max(
+    SIDEBAR_SEARCH_GAP_MIN_PX,
+    Math.min(
+      SIDEBAR_SEARCH_GAP_MAX_PX,
+      SIDEBAR_SEARCH_GAP_MIN_PX
+        + ((desktopWidth - SIDEBAR_SEARCH_GAP_CROSSOVER_START_WIDTH_PX)
+          / (SIDEBAR_SEARCH_GAP_CROSSOVER_WIDTH_PX - SIDEBAR_SEARCH_GAP_CROSSOVER_START_WIDTH_PX))
+        * (SIDEBAR_SEARCH_GAP_MAX_PX - SIDEBAR_SEARCH_GAP_MIN_PX),
+    ),
+  );
   const desktopShellTransition = dragWidth !== null && !snapPreviewActive
     ? "none"
     : snapPreviewActive
@@ -898,24 +926,24 @@ export function Sidebar({
           type="button"
           onClick={args.onClick}
           data-testid={args.testId}
-          className={`group/compact relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-[var(--card-radius)] border transition-all ${
+          className={`group/compact relative flex aspect-square w-full items-center justify-center overflow-visible rounded-[var(--card-radius)] border transition-all ${
             args.active
               ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
               : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
         }`}
         aria-label={args.label}
       >
-          <span className={`flex items-center justify-center ${args.iconSizeClass ?? "h-[18px] w-[18px]"}`}>
+          <span className={`relative flex items-center justify-center ${args.iconSizeClass ?? "h-[18px] w-[18px]"}`}>
             {compactIcon}
-          </span>
           {args.badge ? (
-          <span
-            className="pointer-events-none absolute"
-            style={{ right: "-4px", top: "-4px" }}
-          >
-            {args.badge}
-          </span>
+            <span
+              className="pointer-events-none absolute"
+              style={{ right: "-8px", top: "-7px" }}
+            >
+              {args.badge}
+            </span>
           ) : null}
+          </span>
         </button>
       </Tooltip>
     );
@@ -940,7 +968,7 @@ export function Sidebar({
         {badge ? (
           <span
             className="pointer-events-none absolute"
-            style={{ right: "-4px", top: "-4px" }}
+            style={{ right: "-5px", top: "-5px" }}
           >
             {badge}
           </span>
@@ -1001,9 +1029,14 @@ export function Sidebar({
       className="minimal-scroll flex min-h-0 flex-1 flex-col overflow-y-auto"
       style={sidebarBodyStyle}
     >
-          <SearchJumpField compactSidebar={compactSidebar} narrowSidebar={narrowLabeledSidebar} variant={searchVariant} />
+          <SearchJumpField
+            compactSidebar={compactSidebar}
+            narrowSidebar={narrowLabeledSidebar}
+            variant={searchVariant}
+            inlineMarginBottomPx={inlineSearchGapPx}
+          />
 
-          <ul className={`flex flex-col ${compactRail ? "gap-0" : "gap-1"}`}>
+          <ul className={`flex flex-col ${compactRail ? "gap-[2px]" : "gap-1"}`}>
             {[allSource].map((source) => (
               compactRail ? (
                 <li key={source.id ?? "all"} className="order-1">
@@ -1305,31 +1338,10 @@ export function Sidebar({
                                 }
                               `}
                             >
-                              {narrowLabeledSidebar && sourceStatus ? (
-                                <span className="relative shrink-0">
-                                  {renderSidebarRowIcon(
-                                    source.icon,
-                                    undefined,
-                                    labeledSourceIconSizeClass(source.id),
-                                  )}
-                                  <span className="pointer-events-none absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center">
-                                    <span className="flex h-4 w-4 items-center justify-center">
-                                      <ProviderStatusIndicator
-                                        tone={sourceStatus.tone}
-                                        syncing={sourceStatus.syncing}
-                                        label={sourceStatus.label}
-                                        size="xxs"
-                                        testId={`source-status-${sourceKey(source)}`}
-                                      />
-                                    </span>
-                                  </span>
-                                </span>
-                              ) : (
-                                renderSidebarRowIcon(
-                                  source.icon,
-                                  undefined,
-                                  labeledSourceIconSizeClass(source.id),
-                                )
+                              {renderSidebarRowIcon(
+                                source.icon,
+                                narrowLabeledSidebar ? getSourceBadge(source, sourceStatus) : undefined,
+                                labeledSourceIconSizeClass(source.id),
                               )}
                               <div className="flex min-w-0 flex-1 items-center gap-1">
                                 <span className="min-w-0 overflow-hidden whitespace-nowrap pr-[2px] [text-overflow:clip]">
@@ -1374,7 +1386,7 @@ export function Sidebar({
                                 />
                               </span>
                             ) : null}
-                            <div className={`relative h-6 shrink-0 ${rowCountsVisible || sourceMenusVisible ? "ml-1.5 w-[54px]" : "ml-0 w-0"}`}>
+                            <div className={`relative h-6 shrink-0 ${sourceActionSlotClass}`}>
                               {rowCountsVisible && sourceTotalCount(source) > 0 && (
                                 <span
                                   data-testid={`source-counts-${sourceKey(source)}`}
@@ -1578,7 +1590,7 @@ export function Sidebar({
                     >
                       {renderSidebarRowIcon(
                         source.icon,
-                        undefined,
+                        narrowLabeledSidebar ? getSourceBadge(source, sourceStatus) : undefined,
                         labeledSourceIconSizeClass(source.id),
                       )}
                       <span className={sidebarLabelClass}>{source.label}</span>
@@ -1587,7 +1599,7 @@ export function Sidebar({
                       onClick={() => handleSourceClick(source)}
                       className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
                     >
-                      {SourceIndicator ? (
+                      {!narrowLabeledSidebar && SourceIndicator ? (
                         <span
                           data-testid={`source-indicator-slot-${sourceKey(source)}`}
                           className="flex h-4 w-4 shrink-0 items-center justify-center"
@@ -1595,7 +1607,7 @@ export function Sidebar({
                           <SourceIndicator sourceId={source.id ?? "all"} />
                         </span>
                       ) : null}
-                      <div className={`relative h-6 shrink-0 ${rowCountsVisible || sourceMenusVisible ? "ml-1.5 w-[54px]" : "ml-0 w-0"}`}>
+                      <div className={`relative h-6 shrink-0 ${sourceActionSlotClass}`}>
                         {rowCountsVisible && sourceTotalCount(source) > 0 && (
                           <span
                             data-testid={`source-counts-${sourceKey(source)}`}

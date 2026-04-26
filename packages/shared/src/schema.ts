@@ -17,9 +17,18 @@ import type {
   UserPreferences,
   DocumentMeta,
   FacebookCapturePreferences,
+  ContentSignal,
+  ContentSignalBackfillSummary,
+  ContentSignals,
 } from "./types.js";
 import { createDefaultPreferences, createDefaultMeta } from "./types.js";
 import { friendForAuthor, personForAuthor } from "./friends.js";
+import {
+  CONTENT_SIGNAL_KEYS,
+  CONTENT_SIGNAL_VERSION,
+  hasCurrentContentSignals,
+  inferContentSignals,
+} from "./content-signals.js";
 
 // =============================================================================
 // Document Schema
@@ -377,6 +386,7 @@ const CROSS_POST_PLATFORMS = new Set<FeedItem["platform"]>([
   "facebook",
   "instagram",
 ]);
+const SAME_PLATFORM_STORY_DEDUP_WINDOW_MS = 10 * 60 * 1000;
 
 type LegacyFriendRoot = FreedDoc & {
   friends?: Record<string, Friend>;
@@ -433,6 +443,43 @@ function normalizedDedupText(item: FeedItem): string | null {
     .trim();
   if (normalized.length < CROSS_POST_MIN_TEXT_LENGTH) return null;
   return normalized.slice(0, CROSS_POST_TEXT_PREFIX_LENGTH).trim();
+}
+
+function normalizedStoryDedupText(item: FeedItem): string {
+  return (item.content.text ?? "")
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/www\.\S+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, CROSS_POST_TEXT_PREFIX_LENGTH);
+}
+
+function normalizedStoryMediaKey(item: FeedItem): string {
+  return item.content.mediaUrls[0] ?? item.sourceUrl ?? "";
+}
+
+function samePlatformStoryDedupKey(item: FeedItem): string | null {
+  if (!CROSS_POST_PLATFORMS.has(item.platform)) return null;
+  if (item.contentType !== "story") return null;
+
+  const mediaKey = normalizedStoryMediaKey(item);
+  const textKey = normalizedStoryDedupText(item);
+  if (!mediaKey && !textKey) return null;
+
+  const authorKey = item.author.id || item.author.handle || item.author.displayName;
+  const publishedBucket = Math.floor(item.publishedAt / SAME_PLATFORM_STORY_DEDUP_WINDOW_MS);
+  const locationKey = item.location?.url ?? item.location?.name ?? "";
+
+  return [
+    item.platform,
+    authorKey,
+    publishedBucket.toString(),
+    mediaKey,
+    locationKey,
+    textKey,
+  ].join("::");
 }
 
 function dedupIdentityKey(doc: FreedDoc, item: FeedItem): string | null {
@@ -580,6 +627,55 @@ function mergeUserState(target: FeedItem["userState"], source: FeedItem["userSta
   mergeHighlights(target, source);
 }
 
+function applyContentSignalsToItem(
+  item: FeedItem,
+  signals: ContentSignals = inferContentSignals(item),
+): void {
+  const clean = stripUndefined(signals);
+  if (!item.contentSignals) {
+    item.contentSignals = clean;
+    return;
+  }
+
+  const target = item.contentSignals;
+  target.version = clean.version;
+  target.method = clean.method;
+  target.inferredAt = clean.inferredAt;
+
+  if (!target.scores) {
+    target.scores = {};
+  }
+  for (const key of Object.keys(target.scores) as ContentSignal[]) {
+    delete target.scores[key];
+  }
+  for (const signal of CONTENT_SIGNAL_KEYS) {
+    const score = clean.scores[signal];
+    if (score !== undefined) {
+      target.scores[signal] = score;
+    }
+  }
+
+  if (!target.tags) {
+    target.tags = [];
+  }
+  target.tags.splice(0, target.tags.length, ...clean.tags);
+}
+
+function feedItemUpdatesAffectContentSignals(updates: Partial<FeedItem>): boolean {
+  return (
+    "author" in updates ||
+    "content" in updates ||
+    "contentType" in updates ||
+    "location" in updates ||
+    "timeRange" in updates ||
+    "preservedContent" in updates ||
+    "publishedAt" in updates ||
+    "rssSource" in updates ||
+    "sourceUrl" in updates ||
+    "topics" in updates
+  );
+}
+
 function mergeEngagement(target: FeedItem, source: FeedItem): void {
   if (!source.engagement) return;
   if (!target.engagement) {
@@ -699,6 +795,7 @@ function mergeFeedItemInto(target: FeedItem, source: FeedItem): void {
     ),
   );
   mergeUserState(target.userState, source.userState);
+  applyContentSignalsToItem(target);
 }
 
 function dedupKeeperId(doc: FreedDoc, ids: string[]): string {
@@ -726,6 +823,19 @@ export function deduplicateDocFeedItems(doc: FreedDoc): number {
   }
 
   for (const ids of exactUrlGroups.values()) {
+    addDedupGroup(unions, ids);
+  }
+
+  const samePlatformStoryGroups = new Map<string, string[]>();
+  for (const item of Object.values(doc.feedItems) as FeedItem[]) {
+    const groupKey = samePlatformStoryDedupKey(item);
+    if (!groupKey) continue;
+    const group = samePlatformStoryGroups.get(groupKey);
+    if (group) group.push(item.globalId);
+    else samePlatformStoryGroups.set(groupKey, [item.globalId]);
+  }
+
+  for (const ids of samePlatformStoryGroups.values()) {
     addDedupGroup(unions, ids);
   }
 
@@ -804,6 +914,10 @@ function normalizePerson(person: Person): Person {
     reachOutLog: person.reachOutLog,
     tags: person.tags,
     notes: person.notes,
+    graphX: person.graphX,
+    graphY: person.graphY,
+    graphPinned: person.graphPinned,
+    graphUpdatedAt: person.graphUpdatedAt,
     createdAt: person.createdAt,
     updatedAt: person.updatedAt,
   });
@@ -819,7 +933,11 @@ function normalizePerson(person: Person): Person {
  * @param item - The feed item to add
  */
 export function addFeedItem(doc: FreedDoc, item: FeedItem): void {
-  doc.feedItems[item.globalId] = stripUndefined(item);
+  const next = stripUndefined({ ...item }) as FeedItem;
+  if (!hasCurrentContentSignals(next)) {
+    applyContentSignalsToItem(next);
+  }
+  doc.feedItems[item.globalId] = stripUndefined(next);
 }
 
 /**
@@ -840,8 +958,107 @@ export function updateFeedItem(
 ): void {
   const existing = doc.feedItems[globalId];
   if (existing) {
-    Object.assign(existing, stripUndefined(updates));
+    const cleanUpdates = stripUndefined(updates);
+    const nextSignals = cleanUpdates.contentSignals;
+    delete cleanUpdates.contentSignals;
+    Object.assign(existing, cleanUpdates);
+    if (nextSignals) {
+      applyContentSignalsToItem(existing, nextSignals);
+    } else if (feedItemUpdatesAffectContentSignals(updates)) {
+      applyContentSignalsToItem(existing);
+    }
   }
+}
+
+function createEmptyContentSignalCounts(): Record<ContentSignal, number> {
+  return {
+    event: 0,
+    essay: 0,
+    moment: 0,
+    life_update: 0,
+    announcement: 0,
+    recommendation: 0,
+    request: 0,
+    discussion: 0,
+    promotion: 0,
+    news: 0,
+  };
+}
+
+function summarizeContentSignals(
+  doc: FreedDoc,
+  updated: number,
+  scanned: number,
+  remaining: number,
+): ContentSignalBackfillSummary {
+  const counts = createEmptyContentSignalCounts();
+  const samples: Partial<Record<ContentSignal, string[]>> = {};
+  let multiSignalCount = 0;
+  let untaggedCount = 0;
+  let total = 0;
+
+  for (const item of Object.values(doc.feedItems) as FeedItem[]) {
+    total += 1;
+    const tags = item.contentSignals?.tags ?? [];
+    if (tags.length === 0) {
+      untaggedCount += 1;
+      continue;
+    }
+    if (tags.length > 1) {
+      multiSignalCount += 1;
+    }
+    for (const tag of tags) {
+      counts[tag] += 1;
+      const signalSamples = samples[tag] ?? [];
+      if (signalSamples.length < 5) {
+        signalSamples.push(`...${item.globalId.slice(-8)}`);
+        samples[tag] = signalSamples;
+      }
+    }
+  }
+
+  return {
+    version: CONTENT_SIGNAL_VERSION,
+    total,
+    scanned,
+    updated,
+    remaining,
+    counts,
+    multiSignalCount,
+    untaggedCount,
+    samples,
+  };
+}
+
+export function summarizeDocContentSignals(doc: FreedDoc): ContentSignalBackfillSummary {
+  return summarizeContentSignals(doc, 0, 0, 0);
+}
+
+export function countContentSignalBackfillItems(doc: FreedDoc): number {
+  return (Object.values(doc.feedItems) as FeedItem[]).filter(
+    (item) => !hasCurrentContentSignals(item),
+  ).length;
+}
+
+export function backfillContentSignals(
+  doc: FreedDoc,
+  batchSize: number = 200,
+): ContentSignalBackfillSummary {
+  const staleItems = (Object.values(doc.feedItems) as FeedItem[]).filter(
+    (item) => !hasCurrentContentSignals(item),
+  );
+  const batch = staleItems.slice(0, Math.max(1, batchSize));
+
+  for (const item of batch) {
+    applyContentSignalsToItem(item);
+  }
+
+  return summarizeContentSignals(
+    doc,
+    batch.length,
+    batch.length,
+    Math.max(0, staleItems.length - batch.length),
+  );
 }
 
 /**

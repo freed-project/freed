@@ -14,16 +14,23 @@ import {
 import {
   countAuthorsWithRecentLocationUpdates,
   countFriendsWithRecentLocationUpdates,
+  applyFeedSignalModesToFilter,
+  FEED_SIGNAL_FILTER_PRESETS,
+  filterFeedItems,
+  resolveFeedSignalModesFromDisplay,
   type DisplayPreferences,
+  type FeedSignalMode,
   type MapMode,
   type MapTimeMode,
   type SidebarMode,
+  type SocialContentFilter,
   resolveMapMode,
 } from "@freed/shared";
 import { SearchField } from "../SearchField.js";
 import { Tooltip } from "../Tooltip.js";
 import {
   ArchiveIcon,
+  FilterIcon,
   ReaderRailHideIcon,
   ReaderRailShowIcon,
   SidebarCollapseIcon,
@@ -222,6 +229,7 @@ export function Header({
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
+  const setFilter = useAppStore((s) => s.setFilter);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
   const display = useAppStore((s) => s.preferences.display);
 
@@ -267,8 +275,19 @@ export function Header({
   const showWorkspaceIdentityControls = activeView === "friends" || activeView === "map";
   const showMapTimeControls = activeView === "map";
   const showFeedBulkActions = activeView === "feed";
+  const showFeedSignalFilter = activeView === "feed" && !selectedItem;
   const showArchivedToolbar = activeView === "feed" && activeFilter.archivedOnly === true;
   const showArchivedDeleteAction = showArchivedToolbar && (display.archivePruneDays ?? 30) > 0;
+  const showSocialContentControls =
+    activeView === "feed" &&
+    !selectedItem &&
+    !activeFilter.feedUrl &&
+    !activeFilter.savedOnly &&
+    !activeFilter.archivedOnly &&
+    (!activeFilter.platform ||
+      activeFilter.platform === "facebook" ||
+      activeFilter.platform === "instagram");
+  const socialContentFilter: SocialContentFilter = activeFilter.socialContentFilter ?? "all";
 
   const unreadCount =
     activeFilter.savedOnly || activeFilter.archivedOnly
@@ -285,6 +304,19 @@ export function Header({
         : activeFilter.platform
           ? (archivableCountByPlatform[activeFilter.platform] ?? 0)
           : totalArchivableCount;
+
+  const handleSocialContentFilterChange = useCallback(
+    (value: SocialContentFilter) => {
+      const nextFilter = { ...activeFilter };
+      if (value === "all") {
+        delete nextFilter.socialContentFilter;
+      } else {
+        nextFilter.socialContentFilter = value;
+      }
+      setFilter(nextFilter);
+    },
+    [activeFilter, setFilter],
+  );
 
   const currentTitle = useMemo(() => {
     if (selectedItem) {
@@ -342,11 +374,112 @@ export function Header({
     selectedItem,
   ]);
 
+  const [signalFilterMenuOpen, setSignalFilterMenuOpen] = useState(false);
+  const signalFilterMenuRef = useRef<HTMLDivElement>(null);
+  const signalFilterButtonRef = useRef<HTMLButtonElement>(null);
+  const [signalFilterMenuPosition, setSignalFilterMenuPosition] = useState<{
+    top: number;
+    right: number;
+  } | null>(null);
+  const [signalFilterFeedback, setSignalFilterFeedback] = useState<{
+    mode: FeedSignalMode;
+    tick: number;
+  } | null>(null);
+
   const updateDisplayPreference = useCallback((patch: Partial<DisplayPreferences>) => {
     void updatePreferences({
       display: patch,
     } as Parameters<typeof updatePreferences>[0]);
   }, [updatePreferences]);
+
+  const activeFeedSignalModes = useMemo(
+    () => resolveFeedSignalModesFromDisplay(display),
+    [display],
+  );
+  const activeFeedSignalModeSet = useMemo(
+    () => new Set(activeFeedSignalModes),
+    [activeFeedSignalModes],
+  );
+  const selectableFeedSignalPresets = useMemo(
+    () => FEED_SIGNAL_FILTER_PRESETS.filter((preset) => preset.mode !== "all"),
+    [],
+  );
+  const selectableFeedSignalModes = useMemo(
+    () => selectableFeedSignalPresets.map((preset) => preset.mode),
+    [selectableFeedSignalPresets],
+  );
+  const everythingSignalPreset = FEED_SIGNAL_FILTER_PRESETS[0];
+  const allFeedSignalsSelected =
+    activeFeedSignalModes.length === 0 ||
+    activeFeedSignalModes.length === selectableFeedSignalModes.length;
+  const feedSignalFilterLabel = activeFeedSignalModes.length === 0
+    ? "Everything"
+    : activeFeedSignalModes.length === 1
+      ? FEED_SIGNAL_FILTER_PRESETS.find((preset) => preset.mode === activeFeedSignalModes[0])?.label ?? "Custom"
+      : `${activeFeedSignalModes.length.toLocaleString()} filters`;
+  const feedSignalCountBaseFilter = useMemo(() => {
+    const nextFilter = { ...activeFilter };
+    delete nextFilter.signals;
+    return nextFilter;
+  }, [activeFilter]);
+  const feedSignalCounts = useMemo(() => {
+    const counts: Record<FeedSignalMode, number> = {
+      all: filterFeedItems(items, feedSignalCountBaseFilter).length,
+      inspiring: 0,
+      events: 0,
+      personal: 0,
+      conversation: 0,
+      news: 0,
+    };
+    for (const preset of selectableFeedSignalPresets) {
+      counts[preset.mode] = filterFeedItems(items, {
+        ...feedSignalCountBaseFilter,
+        signals: [...preset.signals],
+      }).length;
+    }
+    return counts;
+  }, [feedSignalCountBaseFilter, items, selectableFeedSignalPresets]);
+
+  const handleFeedSignalModeChange = useCallback((mode: FeedSignalMode) => {
+    setSignalFilterFeedback({ mode, tick: Date.now() });
+    const nextModes = (() => {
+      if (mode === "all") return [];
+      const currentModes = allFeedSignalsSelected
+        ? selectableFeedSignalModes
+        : activeFeedSignalModes;
+      const next = currentModes.includes(mode)
+        ? currentModes.filter((candidate) => candidate !== mode)
+        : [...currentModes, mode];
+      return next.length === selectableFeedSignalModes.length ? [] : next;
+    })();
+    setFilter(applyFeedSignalModesToFilter(activeFilter, nextModes));
+    updateDisplayPreference({
+      feedSignalMode: nextModes.length === 1 ? nextModes[0] : "all",
+      feedSignalModes: nextModes,
+    });
+  }, [
+    activeFeedSignalModes,
+    activeFilter,
+    allFeedSignalsSelected,
+    selectableFeedSignalModes,
+    setFilter,
+    updateDisplayPreference,
+  ]);
+
+  const updateSignalFilterMenuPosition = useCallback(() => {
+    const button = signalFilterButtonRef.current;
+    if (!button) return;
+    const rect = button.getBoundingClientRect();
+    setSignalFilterMenuPosition({
+      top: Math.round(rect.bottom + 8),
+      right: Math.max(8, Math.round(window.innerWidth - rect.right)),
+    });
+  }, []);
+
+  const toggleSignalFilterMenu = useCallback(() => {
+    updateSignalFilterMenuPosition();
+    setSignalFilterMenuOpen((value) => !value);
+  }, [updateSignalFilterMenuPosition]);
 
   const handleIdentityModeChange = useCallback((key: "friendsMode" | "mapMode", mode: MapMode) => {
     updateDisplayPreference({ [key]: mode });
@@ -472,13 +605,8 @@ export function Header({
     ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
     : undefined;
   const sidebarHandleCenterline = "var(--freed-sidebar-handle-centerline, 264px)";
-  const layoutControlClusterWidthPx = showDesktopReaderLayoutToggle
-    ? LAYOUT_CONTROL_PAIR_WIDTH_PX
-    : LAYOUT_CONTROL_BUTTON_SIZE_PX;
-  const toolbarBoundaryWidth =
-    showReaderLayoutToggle
-      ? `calc(${sidebarHandleCenterline} + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)} + var(--freed-reader-rail-width, 0px))`
-      : `calc(${sidebarHandleCenterline} + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)})`;
+  const layoutControlClusterWidthPx = LAYOUT_CONTROL_BUTTON_SIZE_PX;
+  const toolbarBoundaryWidth = `calc(${sidebarHandleCenterline} + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)})`;
   const leftToolbarWidth = !isMobileDevice
     ? px(layoutControlMetrics.reservedWidthPx)
     : toolbarBoundaryWidth;
@@ -503,6 +631,11 @@ export function Header({
     left: px(layoutControlMetrics.clusterLeftPx),
     gap: px(LAYOUT_CONTROL_BUTTON_GAP_PX),
     ...(headerDragRegion ? noDrag : {}),
+  } as CSSProperties;
+  const toolbarContainerStyle = {
+    ...(headerDragRegion ? dragStyle : {}),
+    width: "100vw",
+    maxWidth: "100vw",
   } as CSSProperties;
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -632,6 +765,33 @@ export function Header({
   }, [dropdownOpen]);
 
   useEffect(() => {
+    if (!signalFilterMenuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (
+        signalFilterMenuRef.current &&
+        !signalFilterMenuRef.current.contains(e.target as Node)
+        && signalFilterButtonRef.current &&
+        !signalFilterButtonRef.current.contains(e.target as Node)
+      ) {
+        setSignalFilterMenuOpen(false);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSignalFilterMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    window.addEventListener("resize", updateSignalFilterMenuPosition);
+    window.addEventListener("scroll", updateSignalFilterMenuPosition, true);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+      window.removeEventListener("resize", updateSignalFilterMenuPosition);
+      window.removeEventListener("scroll", updateSignalFilterMenuPosition, true);
+    };
+  }, [signalFilterMenuOpen, updateSignalFilterMenuPosition]);
+
+  useEffect(() => {
     if (!showToolbarSearch) return;
     toolbarSearchInputRef.current?.focus();
     toolbarSearchInputRef.current?.setSelectionRange(searchQuery.length, searchQuery.length);
@@ -656,10 +816,6 @@ export function Header({
         rootStyles.getPropertyValue("--freed-sidebar-handle-centerline"),
         264,
       );
-      const readerRailWidthPx = parsePixelValue(
-        rootStyles.getPropertyValue("--freed-reader-rail-width"),
-        0,
-      );
       const resizeHandle = document.querySelector(
         '[data-testid="app-sidebar-resize-handle"]',
       ) as HTMLElement | null;
@@ -671,9 +827,7 @@ export function Header({
         ? CLOSED_SIDEBAR_TOGGLE_LEFT_PX
         : handleCenterPx - LAYOUT_CONTROL_PAIR_WIDTH_PX / 2;
       const clusterLeftPx = Math.ceil(Math.max(idealClusterLeftPx, safeLeftPx));
-      const toolbarBoundaryWidthPx = showReaderLayoutToggle
-        ? handleCenterPx + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2 + readerRailWidthPx
-        : handleCenterPx + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
+      const toolbarBoundaryWidthPx = handleCenterPx + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
       const reservedWidthPx = Math.ceil(
         Math.max(
           clusterLeftPx + layoutControlClusterWidthPx + TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
@@ -732,8 +886,6 @@ export function Header({
     };
   }, [
     isMobileDevice,
-    layoutControlClusterWidthPx,
-    showReaderLayoutToggle,
     visibleDesktopSidebarMode,
   ]);
 
@@ -784,19 +936,19 @@ export function Header({
   return (
     <>
       <header
-        className={`sticky top-0 z-30 flex-shrink-0 ${
+        className={`sticky top-0 z-30 min-w-0 w-screen max-w-[100vw] flex-shrink-0 overflow-hidden ${
           headerDragRegion ? "" : "theme-attached-topbar-host pt-[env(safe-area-inset-top)]"
         }`}
       >
         <div
           data-testid="workspace-toolbar"
-          className={`theme-floating-panel theme-attached-topbar flex min-h-[58px] items-center px-0 ${showReaderLayoutToggle ? "gap-0" : "gap-3"}`}
+          className={`theme-floating-panel theme-attached-topbar flex min-h-[58px] w-full min-w-0 max-w-full items-center px-0 ${showReaderLayoutToggle ? "gap-0" : "gap-3"}`}
           {...(headerDragRegion
             ? {
                 "data-tauri-drag-region": true,
-                style: dragStyle,
               }
             : {})}
+          style={toolbarContainerStyle}
         >
           <div
             className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex shrink-0 items-center ${showReaderLayoutToggle ? "gap-0" : "gap-2"}`}
@@ -828,7 +980,7 @@ export function Header({
                 <span
                   ref={wordmarkRef}
                   data-testid="workspace-toolbar-wordmark"
-                  className="cursor-default select-none text-lg font-bold gradient-text font-logo"
+                  className="relative top-[2px] cursor-default select-none text-lg font-bold gradient-text font-logo"
                 >
                   FREED
                 </span>
@@ -858,32 +1010,13 @@ export function Header({
                     </button>
                   </Tooltip>
 
-                  {showDesktopReaderLayoutToggle ? (
-                    <Tooltip
-                      label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
-                    >
-                      <button
-                        onClick={handleToggleDualColumn}
-                        {...getToolbarControlProps()}
-                        className={TOOLBAR_LAYOUT_TOGGLE_BUTTON_CLASS}
-                        aria-pressed={display.reading.dualColumnMode}
-                        aria-label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
-                      >
-                        {display.reading.dualColumnMode ? (
-                          <ReaderRailHideIcon className="h-5 w-5" />
-                        ) : (
-                          <ReaderRailShowIcon className="h-5 w-5" />
-                        )}
-                      </button>
-                    </Tooltip>
-                  ) : null}
                 </div>
               ) : null}
             </div>
           </div>
 
           <div
-            className={`min-w-0 flex-1 ${selectedItem ? "pr-3 sm:pr-4" : ""}`}
+            className={`min-w-0 flex-1 ${selectedItem ? "pr-28 lg:pr-[17.5rem]" : ""}`}
             {...(headerDragRegion ? { "data-tauri-drag-region": true, style: dragStyle } : {})}
           >
             {selectedItem ? (
@@ -908,7 +1041,7 @@ export function Header({
                   data-testid="workspace-toolbar-reader-title-block"
                   className="pointer-events-none min-w-0 flex-1 cursor-default select-none"
                 >
-                  <p className="truncate text-sm font-medium text-[var(--theme-text-primary)]">{currentTitle}</p>
+                  <p className="truncate text-sm font-medium text-[var(--theme-text-secondary)]">{currentTitle}</p>
                   <p className="truncate text-xs text-[var(--theme-text-muted)]">{currentSubtitle}</p>
                 </div>
               </button>
@@ -930,14 +1063,16 @@ export function Header({
                 data-testid="workspace-toolbar-title-block"
                 className="min-w-0 cursor-default select-none px-1"
               >
-                <p className="truncate text-sm font-semibold text-[var(--theme-text-primary)]">{currentTitle}</p>
+                <p className="truncate text-sm font-semibold text-[var(--theme-text-secondary)]">{currentTitle}</p>
                 <p className="truncate text-xs text-[var(--theme-text-muted)]">{currentSubtitle}</p>
               </div>
             )}
           </div>
 
           <div
-            className="theme-toolbar-cluster theme-toolbar-cluster-tight flex shrink-0 items-center pr-2 sm:pr-2.5"
+            className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex min-w-max shrink-0 items-center pr-2 sm:pr-2.5 ${
+              selectedItem ? "absolute right-8 top-1/2 -translate-y-1/2" : ""
+            }`}
           >
             {selectedItem ? (
               <>
@@ -986,7 +1121,25 @@ export function Header({
                   </Tooltip>
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={true} width="2.5rem">
+                <ToolbarAnimatedSlot visible={showDesktopReaderLayoutToggle} width="2.5rem">
+                  <Tooltip label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}>
+                    <button
+                      onClick={handleToggleDualColumn}
+                      {...getToolbarControlProps()}
+                      className={`${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-neutral`}
+                      aria-pressed={display.reading.dualColumnMode}
+                      aria-label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
+                    >
+                      {display.reading.dualColumnMode ? (
+                        <ReaderRailHideIcon className="h-5 w-5" />
+                      ) : (
+                        <ReaderRailShowIcon className="h-5 w-5" />
+                      )}
+                    </button>
+                  </Tooltip>
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot visible={true} width="2.5rem" className="hidden lg:flex">
                   <Tooltip label={selectedItem.userState.archived ? "Unarchive" : "Archive"}>
                     <button
                       onClick={handleToggleReaderArchived}
@@ -1003,7 +1156,7 @@ export function Header({
                   </Tooltip>
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={!!selectedItem.sourceUrl} width="4.5rem">
+                <ToolbarAnimatedSlot visible={!!selectedItem.sourceUrl} width="4.5rem" className="hidden lg:flex">
                   {selectedItem.sourceUrl ? (
                     <button
                       onClick={handleOpenReaderUrl}
@@ -1153,6 +1306,46 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
+                <ToolbarAnimatedSlot visible={showSocialContentControls} width="11rem" className="hidden md:flex">
+                  {showSocialContentControls ? (
+                    <ToolbarToggleGroup
+                      dataTestId="social-content-toolbar-filter"
+                      options={[
+                        { value: "all", label: "All" },
+                        { value: "posts", label: "Posts" },
+                        { value: "stories", label: "Stories" },
+                      ]}
+                      value={socialContentFilter}
+                      onChange={handleSocialContentFilterChange}
+                      compact
+                      getButtonProps={getToolbarControlProps}
+                    />
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot visible={showFeedSignalFilter} width="10rem" className="hidden sm:flex">
+                  {showFeedSignalFilter ? (
+                    <div className="relative flex">
+                      <Tooltip label="Filter feed">
+                        <button
+                          ref={signalFilterButtonRef}
+                          type="button"
+                          onClick={toggleSignalFilterMenu}
+                          {...getToolbarControlProps()}
+                          data-testid="feed-signal-filter-button"
+                          className="theme-toolbar-button-neutral inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-semibold shadow-sm"
+                          aria-haspopup="menu"
+                          aria-expanded={signalFilterMenuOpen}
+                          aria-label="Filter feed"
+                        >
+                          <FilterIcon className="h-4 w-4" />
+                          <span className="hidden md:inline">{feedSignalFilterLabel}</span>
+                        </button>
+                      </Tooltip>
+                    </div>
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
                 <ToolbarAnimatedSlot visible={showFriendsSidebarToggle} width="3rem" className="hidden md:flex">
                   {showFriendsSidebarToggle ? (
                     <Tooltip label={friendsSidebarOpen ? "Hide details" : "Show details"}>
@@ -1179,6 +1372,64 @@ export function Header({
           </div>
         </div>
       </header>
+
+      {signalFilterMenuOpen && showFeedSignalFilter ? (
+        <div
+          ref={signalFilterMenuRef}
+          data-testid="feed-signal-filter-menu"
+          role="menu"
+          className="theme-dialog-shell fixed z-[300] w-[20rem] overflow-hidden py-2 shadow-2xl shadow-black/35"
+          style={{
+            top: signalFilterMenuPosition?.top ?? 60,
+            right: signalFilterMenuPosition?.right ?? 8,
+            ...(headerDragRegion ? noDrag : {}),
+          }}
+        >
+          {[everythingSignalPreset, ...selectableFeedSignalPresets].map((preset) => {
+            const selected = preset.mode === "all"
+              ? allFeedSignalsSelected
+              : allFeedSignalsSelected || activeFeedSignalModeSet.has(preset.mode);
+            const feedbackKey = signalFilterFeedback?.mode === preset.mode
+              ? signalFilterFeedback.tick
+              : 0;
+            return (
+              <button
+                key={preset.mode}
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={selected}
+                onClick={() => handleFeedSignalModeChange(preset.mode)}
+                className={`flex w-full items-start gap-4 py-3.5 pl-7 pr-6 text-left transition-colors hover:bg-[var(--theme-bg-muted)] ${
+                  selected ? "text-[var(--theme-text-primary)]" : "text-[var(--theme-text-secondary)]"
+                }`}
+              >
+                <span
+                  key={`${preset.mode}-${selected ? "checked" : "empty"}-${feedbackKey}`}
+                  className={`feed-signal-checkbox mt-0.5 ${selected ? "feed-signal-checkbox-checked" : ""} ${
+                    feedbackKey ? "feed-signal-checkbox-feedback" : ""
+                  }`}
+                  aria-hidden="true"
+                >
+                  {selected ? (
+                    <svg className="feed-signal-check-icon h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : null}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium">{preset.label}</span>
+                  <span className="block text-xs leading-5 text-[var(--theme-text-muted)]">
+                    {preset.description}
+                  </span>
+                </span>
+                <span className="mt-0.5 shrink-0 text-xs tabular-nums text-[var(--theme-text-muted)]">
+                  {feedSignalCounts[preset.mode].toLocaleString()}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
       {showNewButton && (
         <div

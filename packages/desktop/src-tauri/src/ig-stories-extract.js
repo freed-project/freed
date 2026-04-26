@@ -35,11 +35,15 @@
 
   // ── Extract story ID from current URL ────────────────────────────────────
 
+  function isLikelyEphemeralStoryId(storyId) {
+    return /^\d{13}$/.test(storyId || "");
+  }
+
   function extractStoryId() {
     var href = window.location.href;
     // /stories/username/<storyId>/
     var m = href.match(/\/stories\/([^/]+)\/([^/?]+)/);
-    if (m) return { username: m[1], storyId: m[2] };
+    if (m) return { username: m[1], storyId: isLikelyEphemeralStoryId(m[2]) ? null : m[2] };
     return { username: null, storyId: null };
   }
 
@@ -144,18 +148,29 @@
 
   function extractMedia(container) {
     var urls = [];
+    var types = [];
     var isVideo = false;
 
     // Video story
     var video = container.querySelector("video");
     if (video) {
       isVideo = true;
-      if (video.src) urls.push(video.src);
-      if (video.poster) urls.push(video.poster);
+      var videoUrl = video.currentSrc || video.src;
+      if (videoUrl && /^https?:\/\//i.test(videoUrl)) {
+        urls.push(videoUrl);
+        types.push("video");
+      }
+      if (video.poster) {
+        urls.push(video.poster);
+        types.push("image");
+      }
       // <source> tags
       var sources = video.querySelectorAll("source");
       for (var s = 0; s < sources.length; s++) {
-        if (sources[s].src) urls.push(sources[s].src);
+        if (sources[s].src && /^https?:\/\//i.test(sources[s].src)) {
+          urls.push(sources[s].src);
+          types.push("video");
+        }
       }
     }
 
@@ -178,10 +193,11 @@
       }
       if (bestImg && bestImg.src) {
         urls.push(bestImg.src);
+        types.push("image");
       }
     }
 
-    return { urls: urls, isVideo: isVideo };
+    return { urls: urls, types: types, isVideo: isVideo };
   }
 
   // ── Extract timestamp ─────────────────────────────────────────────────────
@@ -250,9 +266,15 @@
     var location = extractLocation(container);
 
     // Build a stable ID: story-<storyId> or a hash of author+timestamp
+    var stableSeed = [
+      media.urls[0] || "",
+      location.url || "",
+      location.name || "",
+      timestampIso || "",
+    ].join("||");
     var storyId = urlInfo.storyId
       ? "story_" + urlInfo.storyId
-      : "story_" + contentHash(author.handle || "unknown", media.urls[0] || window.location.href);
+      : "story_" + contentHash(author.handle || "unknown", stableSeed || window.location.pathname);
 
     var post = {
       shortcode: storyId,
@@ -264,6 +286,7 @@
       caption: null,
       timestampIso: timestampIso,
       mediaUrls: media.urls,
+      mediaTypes: media.types,
       isVideo: media.isVideo,
       isCarousel: false,
       likeCount: null,

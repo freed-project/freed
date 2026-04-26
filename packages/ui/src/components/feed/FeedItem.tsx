@@ -1,4 +1,4 @@
-import { memo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { PLATFORM_LABELS, type FeedItem as FeedItemType } from "@freed/shared";
 import { usePlatform } from "../../context/PlatformContext.js";
@@ -153,10 +153,15 @@ export const FeedItem = memo(function FeedItem({
   const commentCount = formatEngagementCount(item.engagement?.comments);
 
   const [swipeX, setSwipeX] = useState(0);
+  const [storyMediaFailed, setStoryMediaFailed] = useState(false);
   const showInlineMedia = feedMediaPreviews === "inline";
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const swipeLocked = useRef<"horizontal" | "vertical" | null>(null);
+
+  useEffect(() => {
+    setStoryMediaFailed(false);
+  }, [item.content.mediaUrls[0], item.globalId]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
@@ -204,6 +209,8 @@ export const FeedItem = memo(function FeedItem({
 
   if (item.contentType === "story") {
     const bg = item.content.mediaUrls[0];
+    const firstMediaType = item.content.mediaTypes[0];
+    const showStoryMedia = showInlineMedia && bg && !storyMediaFailed;
     const isIg = item.platform === "instagram";
     const gradientFallback = isIg
       ? "from-[var(--theme-media-rss)] via-[var(--theme-media-instagram)] to-[var(--theme-accent-secondary)]"
@@ -221,12 +228,24 @@ export const FeedItem = memo(function FeedItem({
         tabIndex={0}
         onKeyDown={handleActivateKeyDown}
       >
-        {showInlineMedia && bg ? (
+        {showStoryMedia && firstMediaType === "video" ? (
+          <video
+            src={bg}
+            muted
+            playsInline
+            controls
+            preload="metadata"
+            onClick={(event) => event.stopPropagation()}
+            onError={() => setStoryMediaFailed(true)}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        ) : showStoryMedia ? (
           <img
             src={bg}
             alt=""
             loading="lazy"
             decoding="async"
+            onError={() => setStoryMediaFailed(true)}
             className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
           />
         ) : (

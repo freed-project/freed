@@ -10,6 +10,10 @@ export * from "./types";
 // Re-export ranking algorithm (browser-safe, no Automerge)
 export * from "./ranking";
 
+// Re-export local content signal inference (browser-safe, no deps)
+export * from "./content-signals";
+export * from "./feed-signal-filters";
+
 // Re-export OPML utilities (browser-safe, no Automerge)
 export * from "./opml";
 

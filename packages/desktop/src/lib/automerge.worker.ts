@@ -21,6 +21,8 @@ import {
   createEmptyDoc,
   addAccount,
   addAccounts,
+  backfillContentSignals,
+  countContentSignalBackfillItems,
   addFeedItem,
   deduplicateDocFeedItems,
   hasLegacyIdentityGraphData,
@@ -31,6 +33,7 @@ import {
   removeAllFeeds,
   updateRssFeed,
   updateFeedItem,
+  summarizeDocContentSignals,
   removeFeedItem,
   markAsRead,
   markItemsAsRead,
@@ -183,6 +186,7 @@ function migrateLoadedIdentityGraph(message: string): void {
 function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean {
   if (
     "author" in updates ||
+    "contentSignals" in updates ||
     "content" in updates ||
     "contentType" in updates ||
     "preservedContent" in updates ||
@@ -787,6 +791,28 @@ async function handleRequest(
         ack(req.reqId);
         break;
 
+      case "UPSERT_CONNECTION_PERSONS":
+        await applyRequestChange((doc) => {
+          const now = Date.now();
+          for (const candidate of req.candidates) {
+            if (doc.persons[candidate.person.id]) {
+              updatePerson(doc, candidate.person.id, candidate.person);
+            } else {
+              addPerson(doc, candidate.person);
+            }
+            for (const accountId of candidate.accountIds) {
+              const account = doc.accounts[accountId];
+              if (!account || account.personId === candidate.person.id) continue;
+              updateAccount(doc, accountId, {
+                personId: candidate.person.id,
+                updatedAt: now,
+              });
+            }
+          }
+        }, `Upsert ${req.candidates.length.toLocaleString()} connection people`);
+        ack(req.reqId);
+        break;
+
       case "REMOVE_PERSON":
         await applyRequestChange((doc) => removePerson(doc, req.personId), "Remove person");
         ack(req.reqId);
@@ -887,6 +913,28 @@ async function handleRequest(
         }, "Deduplicate feed items by article link URL and linked social cross-posts", true);
         ack(req.reqId);
         break;
+
+      case "BACKFILL_CONTENT_SIGNALS": {
+        if (!currentDoc) throw new Error("Document not initialized");
+        let summary = summarizeDocContentSignals(currentDoc);
+        const pendingCount = countContentSignalBackfillItems(currentDoc);
+        if (pendingCount > 0) {
+          currentDoc = A.change(currentDoc, "Backfill content signals", (doc) => {
+            summary = backfillContentSignals(doc, req.batchSize);
+          });
+          bumpSearchCorpusVersion();
+          send({
+            type: "DEBUG_EVENT",
+            kind: "change",
+            detail:
+              `[content-signals] backfilled ${summary.updated.toLocaleString()} items, ` +
+              `${summary.remaining.toLocaleString()} remaining`,
+          });
+          await saveAndBroadcast(trace);
+        }
+        send({ reqId: req.reqId, type: "CONTENT_SIGNAL_BACKFILL_RESULT", summary });
+        break;
+      }
 
       case "GET_ALL_ITEM_IDS":
         if (!currentDoc) throw new Error("Document not initialized");

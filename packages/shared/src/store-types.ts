@@ -5,11 +5,22 @@
  * implement, enabling shared UI components to work with either store.
  */
 
-import type { Account, FeedItem, Friend, Person, ReachOutLog, UserPreferences, RssFeed } from "./types.js";
+import type {
+  Account,
+  ContentSignal,
+  FeedItem,
+  Friend,
+  Person,
+  ReachOutLog,
+  UserPreferences,
+  RssFeed,
+} from "./types.js";
 
 export interface RemoveFeedOptions {
   includeItems?: boolean;
 }
+
+export type SocialContentFilter = "all" | "posts" | "stories";
 
 /**
  * Filter options for the feed view.
@@ -19,7 +30,10 @@ export interface FilterOptions {
   platform?: string;
   feedUrl?: string;
   tags?: string[];
+  signals?: ContentSignal[];
   savedOnly?: boolean;
+  /** Direct Facebook and Instagram source views only. */
+  socialContentFilter?: SocialContentFilter;
   /** Navigate to the Archived view - shows only archived items. */
   archivedOnly?: boolean;
 }
@@ -128,6 +142,9 @@ export interface BaseAppState {
   removeAccount: (id: string) => Promise<void>;
   linkAccountToPerson: (accountId: string, personId: string | null) => Promise<void>;
   createConnectionPersonFromAccounts: (accountIds: string[], person?: Person) => Promise<string>;
+  createConnectionPersonsFromCandidates: (
+    candidates: Array<{ person: Person; accountIds: string[] }>,
+  ) => Promise<number>;
 
   // Preference actions
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;

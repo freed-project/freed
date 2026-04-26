@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef, type ReactNode } from "react";
 import type {
   Account,
   DeviceContact,
@@ -35,10 +35,7 @@ import {
   type AccountLinkSuggestion,
 } from "../../lib/account-link-suggestions.js";
 import { accountSubtitle, accountTitle, providerLabel } from "../../lib/account-labels.js";
-import {
-  FRIENDS_SIDEBAR_GAP_WIDTH_PX,
-  px,
-} from "../layout/layoutConstants.js";
+import { px } from "../layout/layoutConstants.js";
 
 const DEFAULT_SIDEBAR_WIDTH = 360;
 const MIN_SIDEBAR_WIDTH = 280;
@@ -422,14 +419,6 @@ export function FriendsView({
   }, [dragWidth, savedSidebarWidth]);
 
   const sidebarWidth = dragWidth ?? committedSidebarWidth;
-  const graphViewportStyle = isMobile
-    ? undefined
-    : friendsSidebarOpen
-      ? ({
-        "--theme-soft-viewport-extra-comp-right": px(FRIENDS_SIDEBAR_GAP_WIDTH_PX),
-        } as CSSProperties)
-      : undefined;
-
   const focusGraphNode = useCallback((id: string) => {
     graphRef.current?.focusNode(id);
   }, []);
@@ -592,6 +581,30 @@ export function FriendsView({
       setSelectedPerson(personId);
     },
     [linkAccountToPerson, setSelectedPerson],
+  );
+
+  const handlePinPersonPosition = useCallback(
+    async (personId: string, x: number, y: number) => {
+      await updatePerson(personId, {
+        graphX: Math.round(x),
+        graphY: Math.round(y),
+        graphPinned: true,
+        graphUpdatedAt: Date.now(),
+      });
+    },
+    [updatePerson],
+  );
+
+  const handlePinAccountPosition = useCallback(
+    async (accountId: string, x: number, y: number) => {
+      await updateAccount(accountId, {
+        graphX: Math.round(x),
+        graphY: Math.round(y),
+        graphPinned: true,
+        graphUpdatedAt: Date.now(),
+      });
+    },
+    [updateAccount],
   );
 
   const handlePromoteSelectedAccount = useCallback(() => {
@@ -1129,7 +1142,7 @@ export function FriendsView({
         className={`relative flex min-h-0 flex-1 pt-[var(--feed-card-gap,8px)] ${isMobile ? "flex-col" : "flex-row"}`}
       >
         {showGraphSurface ? (
-          <div className="relative min-h-0 min-w-0 flex-1" style={graphViewportStyle}>
+          <div className="relative min-h-0 min-w-0 flex-1">
             {(effectiveMode === "friends" && friendList.length === 0) || (effectiveMode === "all_content" && socialAccountCount === 0 && friendList.length === 0) ? (
               renderGraphEmptyState()
             ) : (
@@ -1146,6 +1159,8 @@ export function FriendsView({
                 onSelectAccount={(account) => handleSelectAccount(account, false)}
                 onClearSelection={showCollapsedSelectionCard ? handleClearSelection : undefined}
                 onLinkAccountToPerson={handleLinkAccountToPerson}
+                onPinPersonPosition={handlePinPersonPosition}
+                onPinAccountPosition={handlePinAccountPosition}
                 themeId={themeId}
               />
             )}

@@ -1,11 +1,11 @@
-import { useEffect, useState, useRef, useCallback, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useState, useRef, useCallback, type ReactNode } from "react";
 import { Sidebar } from "./Sidebar.js";
 import { Header } from "./Header.js";
 import { DebugPanel } from "../DebugPanel.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { SavedContentDialog } from "../SavedContentDialog.js";
 import { LibraryDialog } from "../LibraryDialog.js";
-import { useDebugStore } from "../../lib/debug-store.js";
+import { addDebugEvent, useDebugStore } from "../../lib/debug-store.js";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useCommandSurfaceStore } from "../../lib/command-surface-store.js";
 import { FriendsView } from "../friends/FriendsView.js";
@@ -31,9 +31,6 @@ import { MapView } from "../map/MapView.js";
 import { BackgroundAtmosphere } from "./BackgroundAtmosphere.js";
 import {
   AUXILIARY_DRAWER_GAP_WIDTH_PX,
-  FRIENDS_SIDEBAR_GAP_WIDTH_PX,
-  PRIMARY_SIDEBAR_GAP_WIDTH_PX,
-  px,
 } from "./layoutConstants.js";
 
 const DEFAULT_DEBUG_WIDTH = 320;
@@ -60,14 +57,10 @@ export function AppShell({ children }: AppShellProps) {
   const persons = useAppStore((s) => s.persons);
   const addPerson = useAppStore((s) => s.addPerson);
   const addAccounts = useAppStore((s) => s.addAccounts);
-  const createConnectionPersonFromAccounts = useAppStore((s) => s.createConnectionPersonFromAccounts);
+  const createConnectionPersonsFromCandidates = useAppStore((s) => s.createConnectionPersonsFromCandidates);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const themeId = useAppStore((s) => s.preferences.display.themeId);
   const showAtmosphere = activeView !== "friends" && activeView !== "map";
-  const effectivePrimarySidebarGapWidthPx =
-    activeView === "friends"
-      ? FRIENDS_SIDEBAR_GAP_WIDTH_PX
-      : PRIMARY_SIDEBAR_GAP_WIDTH_PX;
   const settingsOpen = useSettingsStore((s) => s.open);
   const requestSearchPalette = useCommandSurfaceStore((s) => s.requestSearchPalette);
   const addFeedOpen = useCommandSurfaceStore((s) => s.addFeedOpen);
@@ -210,15 +203,6 @@ export function AppShell({ children }: AppShellProps) {
     persistTheme(themeId);
   }, [isInitialized, themeId]);
 
-  const workspaceMaskStyle = isMobileDevice
-    ? undefined
-    : ({
-        "--theme-soft-viewport-base-comp-left":
-          desktopSidebarDisplayMode === "closed" ? "0px" : px(effectivePrimarySidebarGapWidthPx),
-        "--theme-soft-viewport-base-comp-right":
-          debugVisible ? px(AUXILIARY_DRAWER_GAP_WIDTH_PX) : "0px",
-      } as CSSProperties);
-
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -271,12 +255,11 @@ export function AppShell({ children }: AppShellProps) {
     provisionalPersonScanRef.current = { personCount, accountCount };
     const candidates = buildProvisionalPersonCandidates(persons, accounts);
     if (candidates.length === 0) return;
-    void (async () => {
-      for (const candidate of candidates) {
-        await createConnectionPersonFromAccounts(candidate.accountIds, candidate.person);
-      }
-    })();
-  }, [accounts, createConnectionPersonFromAccounts, isInitialized, persons]);
+    void createConnectionPersonsFromCandidates(candidates).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      addDebugEvent("error", `[Identity] provisional person repair failed: ${message}`);
+    });
+  }, [accounts, createConnectionPersonsFromCandidates, isInitialized, persons]);
 
   const handleLinkSuggestion = useCallback(async (suggestion: IdentitySuggestion) => {
     const match = contactSync.getMatchForSuggestion(suggestion.id);
@@ -340,7 +323,7 @@ export function AppShell({ children }: AppShellProps) {
       {/* On actual mobile devices, the layout flows naturally in the document so
           Safari can collapse its address bar when the feed scrolls. Desktop devices
           keep the fixed-height shell even when the viewport is narrow. */}
-      <div className={`app-theme-shell relative flex flex-1 flex-col ${isMobileDevice ? "" : "min-h-0"}`}>
+      <div className={`app-theme-shell relative flex min-w-0 flex-1 flex-col ${isMobileDevice ? "" : "min-h-0"}`}>
         {showAtmosphere ? <BackgroundAtmosphere /> : null}
         <Header
           mobileSidebarOpen={mobileSidebarOpen}
@@ -371,7 +354,6 @@ export function AppShell({ children }: AppShellProps) {
           />
           <main
             className={`min-w-0 flex-1 ${isMobileDevice ? "" : "min-h-0 overflow-hidden"}`}
-            style={workspaceMaskStyle}
           >
             {activeView === "friends"
               ? (

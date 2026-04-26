@@ -126,6 +126,36 @@ describe("identity graph v2 model", () => {
     expect(activityIndex.linkedAccountCounts.get("friend-grace")).toBe(1);
   });
 
+  it("counts RSS accounts like social identities when they are linked to a person", () => {
+    const accounts = {
+      "account-ada-rss": createAccount({
+        id: "account-ada-rss",
+        personId: "friend-ada",
+        provider: "rss",
+        externalId: "ada-feed-author",
+      }),
+    };
+    const feedItems = {
+      "item-rss": createFeedItem({
+        globalId: "item-rss",
+        platform: "rss",
+        contentType: "article",
+        author: { id: "ada-feed-author", handle: "ada", displayName: "Ada Notes" },
+        rssSource: {
+          feedUrl: "https://example.com/ada.xml",
+          feedTitle: "Ada Notes",
+          siteUrl: "https://example.com",
+        },
+      }),
+    };
+
+    const activityIndex = buildIdentityGraphActivityIndex(accounts, feedItems);
+
+    expect(activityIndex.socialCounts.get("rss:ada-feed-author")).toBe(1);
+    expect(activityIndex.personActivityCounts.get("friend-ada")).toBe(1);
+    expect(activityIndex.rssCounts.get("https://example.com/ada.xml")).toBe(1);
+  });
+
   it("derives person, account, and feed nodes in all-content mode", () => {
     const persons = [
       createPerson({ id: "friend-ada", name: "Ada Lovelace", relationshipStatus: "friend" }),
@@ -263,18 +293,20 @@ describe("identity graph v2 model", () => {
     );
   });
 
-  it("rebuilds model and layout quickly for a large synthetic graph", () => {
-    const personEntries = Array.from({ length: 180 }, (_, index) =>
+  it("rebuilds model and layout within budget for the benchmark graph", () => {
+    const benchmarkPeople = 1_000;
+    const benchmarkAccounts = 5_000;
+    const personEntries = Array.from({ length: benchmarkPeople }, (_, index) =>
       createPerson({
         id: `person-${index}`,
         name: `Person ${index}`,
-        relationshipStatus: index < 120 ? "friend" : "connection",
-        careLevel: (index < 120 ? 3 + (index % 3) : 2) as 1 | 2 | 3 | 4 | 5,
+        relationshipStatus: index < 820 ? "friend" : "connection",
+        careLevel: (index < 820 ? 3 + (index % 3) : 2) as 1 | 2 | 3 | 4 | 5,
       }),
     );
     const accountEntries = Object.fromEntries(
-      Array.from({ length: 1_440 }, (_, index) => {
-        const personId = index < 960 ? `person-${index % 180}` : undefined;
+      Array.from({ length: benchmarkAccounts }, (_, index) => {
+        const personId = `person-${index % benchmarkPeople}`;
         return [
           `account-${index}`,
           createAccount({
@@ -299,7 +331,7 @@ describe("identity graph v2 model", () => {
       ]),
     );
     const feedItems = Object.fromEntries(
-      Array.from({ length: 3_600 }, (_, index) => [
+      Array.from({ length: 8_000 }, (_, index) => [
         `item-${index}`,
         createFeedItem({
           globalId: `item-${index}`,
@@ -342,9 +374,10 @@ describe("identity graph v2 model", () => {
     const layoutElapsedMs = performance.now() - layoutStart;
 
     expect(model.nodes.length).toBeGreaterThan(1_800);
+    expect(model.nodes.length).toBeGreaterThanOrEqual(benchmarkPeople + benchmarkAccounts);
     expect(layout.nodes.length).toBe(model.nodes.length);
     expect(modelElapsedMs).toBeLessThan(500);
-    expect(layoutElapsedMs).toBeLessThan(500);
+    expect(layoutElapsedMs).toBeLessThan(2_000);
   });
 });
 
@@ -457,6 +490,80 @@ describe("identity graph v2 layout", () => {
       averageDistance((node) => node.kind === "feed" || (node.kind === "account" && !node.linkedPersonId)),
     );
     expect(firstLayout.nodes).toEqual(secondLayout.nodes);
+  });
+
+  it("places RSS feeds in the same provider island model as unlinked social accounts", () => {
+    const model = buildIdentityGraphModel({
+      persons: [],
+      accounts: {
+        "account-paper": createAccount({ id: "account-paper", provider: "x", externalId: "systems-paper", displayName: "Systems Paper" }),
+      },
+      feeds: {
+        "https://example.com/feed.xml": {
+          url: "https://example.com/feed.xml",
+          title: "Example Feed",
+          enabled: true,
+          trackUnread: true,
+        },
+      },
+      feedItems: {},
+      mode: "all_content",
+    });
+
+    const layout = buildIdentityGraphLayout({
+      model,
+      width: 1_400,
+      height: 900,
+    });
+
+    expect(layout.regions.map((region) => region.provider)).toEqual(
+      expect.arrayContaining(["rss", "x"]),
+    );
+    expect(layout.nodes.find((node) => node.kind === "feed")?.provider).toBe("rss");
+  });
+
+  it("honors pinned graph positions for people and accounts", () => {
+    const model = buildIdentityGraphModel({
+      persons: [
+        createPerson({
+          id: "friend-ada",
+          name: "Ada Lovelace",
+          relationshipStatus: "friend",
+          graphX: 222,
+          graphY: 333,
+          graphPinned: true,
+        }),
+      ],
+      accounts: {
+        "account-ada": createAccount({
+          id: "account-ada",
+          personId: "friend-ada",
+          provider: "instagram",
+          externalId: "ada-ig",
+          graphX: 444,
+          graphY: 555,
+          graphPinned: true,
+        }),
+      },
+      feeds: {},
+      feedItems: {},
+      mode: "all_content",
+    });
+
+    const layout = buildIdentityGraphLayout({
+      model,
+      width: 1_400,
+      height: 900,
+    });
+
+    expect(layout.nodes.find((node) => node.personId === "friend-ada")).toMatchObject({
+      x: 222,
+      y: 333,
+    });
+    expect(layout.nodes.find((node) => node.accountId === "account-ada")).toMatchObject({
+      x: 444,
+      y: 555,
+    });
   });
 });
 

@@ -93,3 +93,54 @@ test("switching release channels clears stale update state and rechecks the new 
     "https://dev.freed.wtf/api/downloads/mac-arm",
   );
 });
+
+test("selected release channel survives when browser storage is missing after relaunch", async ({
+  app,
+  page,
+}) => {
+  await app.goto();
+  await app.waitForReady();
+
+  const settingsButton = page.locator("button").filter({ hasText: /settings/i }).first();
+  await expect(settingsButton).toBeVisible({ timeout: 5_000 });
+  await settingsButton.click();
+
+  const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
+  await settingsDialog.getByRole("button", { name: /^Updates$/ }).click();
+
+  const releaseChannelSelect = page.getByTestId("settings-release-channel-select");
+  await expect(releaseChannelSelect).toHaveValue("production");
+  await releaseChannelSelect.selectOption("dev");
+  await expect(releaseChannelSelect).toHaveValue("dev");
+
+  await page.evaluate(() => {
+    const mockStoreKey = "__TAURI_MOCK_STORE__:release-channel.json";
+    const existing = JSON.parse(window.localStorage.getItem(mockStoreKey) ?? "{}") as Record<
+      string,
+      unknown
+    >;
+    window.localStorage.setItem(
+      mockStoreKey,
+      JSON.stringify({
+        ...existing,
+        channel: "dev",
+        installedChannel: "dev",
+      }),
+    );
+    window.localStorage.removeItem("freed-release-channel");
+  });
+
+  await page.reload();
+  await app.waitForReady();
+
+  await page.locator("button").filter({ hasText: /settings/i }).first().click();
+  const reopenedSettingsDialog = page.locator(".fixed.inset-0.z-50").last();
+  await reopenedSettingsDialog.getByRole("button", { name: /^Updates$/ }).click();
+
+  await expect(page.getByTestId("settings-release-channel-select")).toHaveValue("dev");
+  await expect(reopenedSettingsDialog.getByText(/Installed version:\s*v26\.4\.2500-dev/)).toBeVisible();
+
+  await page.getByTestId("settings-release-channel-select").selectOption("production");
+  await expect(page.getByTestId("settings-release-channel-select")).toHaveValue("production");
+  await expect(reopenedSettingsDialog.getByText(/Installed version:\s*v26\.4\.2500-dev/)).toBeVisible();
+});

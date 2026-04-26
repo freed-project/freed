@@ -397,6 +397,7 @@ Reward security researchers for responsible disclosure.
 | 10.13 | Sentiment analysis       | Medium     | ✓ Complete (AISummary.sentiment field)
 | 10.14 | Smart notifications      | High       |
 | 10.15 | AI settings UI           | Medium     | ✓ Complete (AISection.tsx in packages/ui)
+| 10.25 | Local content signals    | Medium     | ✓ Complete (rule-based contentSignals metadata, automatic ingestion inference, resumable desktop backfill, saved toolbar filter presets, and news classification)
 
 ### Extensibility
 
@@ -440,6 +441,7 @@ Reward security researchers for responsible disclosure.
 
 - [ ] Topic extraction works (at least one method)
 - [ ] Summarization available for long content
+- [x] Local content signals classify existing and newly ingested items without cloud AI, with saved feed filter presets and news classification in the toolbar
 - [ ] Smart notifications reduce noise
 
 ### Community

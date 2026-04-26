@@ -11,11 +11,13 @@
 import { create } from "zustand";
 import type { Account, FeedItem, FilterOptions, Friend, Person, ReachOutLog, UserPreferences, RssFeed, RemoveFeedOptions } from "@freed/shared";
 import {
+  applyFeedSignalModesToFilter,
   accountsFromLegacyFriend,
   buildConnectionPersonDraftFromAccounts,
   createDefaultPreferences,
   isPrunableConnectionPerson,
   personFromLegacyFriend,
+  resolveFeedSignalModesFromDisplay,
 } from "@freed/shared";
 import {
   initDoc,
@@ -37,6 +39,7 @@ import {
   docDeleteAllArchived,
   docPruneArchivedItems,
   docUpdatePreferences,
+  docBackfillContentSignals,
   docDeduplicateFeedItems,
   docHealUntitledFeedTitles,
   docAddAccount,
@@ -45,6 +48,7 @@ import {
   docAddPersons,
   docUpdateAccount,
   docUpdatePerson,
+  docUpsertConnectionPersons,
   docRemoveAccount,
   docRemovePerson,
   docLogReachOut,
@@ -165,6 +169,9 @@ interface AppState {
   removeAccount: (id: string) => Promise<void>;
   linkAccountToPerson: (accountId: string, personId: string | null) => Promise<void>;
   createConnectionPersonFromAccounts: (accountIds: string[], person?: Person) => Promise<string>;
+  createConnectionPersonsFromCandidates: (
+    candidates: Array<{ person: Person; accountIds: string[] }>,
+  ) => Promise<number>;
 
   // Preference actions (persisted to Automerge)
   updatePreferences: (update: Partial<UserPreferences>) => Promise<void>;
@@ -213,6 +220,41 @@ function shallowEqualRecord(
   );
 }
 
+function isMergeablePreferenceObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function mergePreferenceUpdate<T extends object>(
+  current: T,
+  update: Partial<T>,
+): T {
+  const next = { ...current };
+
+  for (const key of Object.keys(update) as Array<keyof T>) {
+    const currentValue = current[key];
+    const updateValue = update[key];
+    next[key] = (
+      isMergeablePreferenceObject(currentValue) && isMergeablePreferenceObject(updateValue)
+        ? mergePreferenceUpdate<Record<string, unknown>>(currentValue, updateValue)
+        : updateValue
+    ) as T[typeof key];
+  }
+
+  return next;
+}
+
+function mergeFacebookCapturePreferenceUpdate(
+  current: UserPreferences["fbCapture"],
+  update: Partial<UserPreferences["fbCapture"]>,
+): UserPreferences["fbCapture"] {
+  return {
+    knownGroups: update.knownGroups ? { ...update.knownGroups } : { ...current.knownGroups },
+    excludedGroupIds: update.excludedGroupIds
+      ? { ...update.excludedGroupIds }
+      : { ...current.excludedGroupIds },
+  };
+}
+
 async function pruneConnectionPersonIfNeeded(
   getState: () => AppState,
   personId: string | null | undefined,
@@ -241,6 +283,13 @@ async function runStartupMigrations(archivePruneDays: number): Promise<void> {
   try {
     if (archivePruneDays > 0) {
       await docPruneArchivedItems(archivePruneDays * 24 * 60 * 60 * 1000);
+    }
+  } catch { /* non-fatal */ }
+  try {
+    for (;;) {
+      const summary = await docBackfillContentSignals(200);
+      if (summary.updated === 0 || summary.remaining === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
     }
   } catch { /* non-fatal */ }
 }
@@ -361,6 +410,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       subscribe((state: DocState) => {
         const prev = get();
         let next: Partial<AppState> = { ...state };
+        const previousFeedSignalModes = resolveFeedSignalModesFromDisplay(prev.preferences.display);
+        const nextFeedSignalModes = resolveFeedSignalModesFromDisplay(state.preferences.display);
 
         if (shallowEqualRecord(state.feedUnreadCounts, prev.feedUnreadCounts))
           next = { ...next, feedUnreadCounts: prev.feedUnreadCounts };
@@ -370,6 +421,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           next = { ...next, unreadCountByPlatform: prev.unreadCountByPlatform };
         if (shallowEqualRecord(state.itemCountByPlatform, prev.itemCountByPlatform))
           next = { ...next, itemCountByPlatform: prev.itemCountByPlatform };
+        if (nextFeedSignalModes.join(",") !== previousFeedSignalModes.join(",")) {
+          next = {
+            ...next,
+            activeFilter: applyFeedSignalModesToFilter(prev.activeFilter, nextFeedSignalModes),
+          };
+        }
 
         set(next);
       });
@@ -386,6 +443,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Hydrate immediately from the initial DocState returned by the worker.
       set({
         ...docState,
+        activeFilter: applyFeedSignalModesToFilter(
+          get().activeFilter,
+          resolveFeedSignalModesFromDisplay(docState.preferences.display),
+        ),
         xAuth,
         fbAuth,
         igAuth,
@@ -544,6 +605,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     return person.id;
   },
 
+  createConnectionPersonsFromCandidates: async (candidates) => {
+    if (candidates.length === 0) return 0;
+    await docUpsertConnectionPersons(candidates);
+    return candidates.length;
+  },
+
   // Deprecated friend aliases
   addFriend: async (friend: Friend) => {
     await docAddPerson(personFromLegacyFriend(friend));
@@ -607,6 +674,16 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Preference actions
   updatePreferences: async (update) => {
+    const currentPreferences = get().preferences;
+    const nextPreferences = mergePreferenceUpdate(currentPreferences, update);
+    if (update.fbCapture !== undefined) {
+      nextPreferences.fbCapture = mergeFacebookCapturePreferenceUpdate(
+        currentPreferences.fbCapture,
+        update.fbCapture,
+      );
+    }
+    set({ preferences: nextPreferences });
+
     try {
       await docUpdatePreferences(update);
     } catch (error) {

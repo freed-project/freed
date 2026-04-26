@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createDefaultPreferences } from "@freed/shared";
 
 const {
   mockDocUpdatePreferences,
@@ -31,12 +32,14 @@ vi.mock("./automerge", () => ({
   docDeleteAllArchived: vi.fn(),
   docPruneArchivedItems: vi.fn(),
   docUpdatePreferences: mockDocUpdatePreferences,
+  docBackfillContentSignals: vi.fn(() => Promise.resolve({ updated: 0, remaining: 0 })),
   docDeduplicateFeedItems: vi.fn(),
   docHealUntitledFeedTitles: vi.fn(),
   docAddFriend: vi.fn(),
   docAddFriends: vi.fn(),
   docUpdateFriend: vi.fn(),
   docRemoveFriend: vi.fn(),
+  docUpsertConnectionPersons: vi.fn(),
   docLogReachOut: vi.fn(),
   docToggleLiked: vi.fn(),
   docConfirmLikedSynced: vi.fn(),
@@ -59,6 +62,36 @@ describe("store.updatePreferences", () => {
     mockDocUpdatePreferences.mockReset();
     mockRecordRuntimeError.mockReset();
     mockRecordBugReportEvent.mockReset();
+    useAppStore.setState({ preferences: createDefaultPreferences() });
+  });
+
+  it("applies display preference updates locally before persistence resolves", async () => {
+    let resolvePersistence: (() => void) | undefined;
+    mockDocUpdatePreferences.mockImplementationOnce(
+      () => new Promise<void>((resolve) => {
+        resolvePersistence = resolve;
+      }),
+    );
+
+    const updatePromise = useAppStore.getState().updatePreferences({
+      display: {
+        reading: {
+          dualColumnMode: false,
+        },
+      },
+    } as never);
+
+    expect(useAppStore.getState().preferences.display.reading.dualColumnMode).toBe(false);
+    expect(mockDocUpdatePreferences).toHaveBeenCalledWith({
+      display: {
+        reading: {
+          dualColumnMode: false,
+        },
+      },
+    });
+
+    resolvePersistence?.();
+    await expect(updatePromise).resolves.toBeUndefined();
   });
 
   it("records non-fatal diagnostics when persistence rejects", async () => {
@@ -82,6 +115,7 @@ describe("store.updatePreferences", () => {
       "Preference update failed",
       error.message,
     );
+    expect(useAppStore.getState().preferences.display.sidebarWidth).toBe(320);
   });
 
   it("passes map mode preference updates through to persistence", async () => {
@@ -106,5 +140,62 @@ describe("store.updatePreferences", () => {
     expect(mockDocUpdatePreferences).toHaveBeenCalledWith({
       display: { mapTimeMode: "future" },
     });
+  });
+
+  it("replaces Facebook exclusion records during optimistic updates", async () => {
+    useAppStore.setState((state) => ({
+      preferences: {
+        ...state.preferences,
+        fbCapture: {
+          knownGroups: {
+            one: {
+              id: "one",
+              name: "One",
+              url: "https://facebook.com/groups/one",
+            },
+          },
+          excludedGroupIds: {
+            one: true,
+          },
+        },
+      },
+    }));
+
+    let resolvePersistence: (() => void) | undefined;
+    mockDocUpdatePreferences.mockImplementationOnce(
+      () => new Promise<void>((resolve) => {
+        resolvePersistence = resolve;
+      }),
+    );
+
+    const updatePromise = useAppStore.getState().updatePreferences({
+      fbCapture: {
+        knownGroups: {
+          one: {
+            id: "one",
+            name: "One",
+            url: "https://facebook.com/groups/one",
+          },
+        },
+        excludedGroupIds: {},
+      },
+    } as never);
+
+    expect(useAppStore.getState().preferences.fbCapture.excludedGroupIds).toEqual({});
+    expect(mockDocUpdatePreferences).toHaveBeenCalledWith({
+      fbCapture: {
+        knownGroups: {
+          one: {
+            id: "one",
+            name: "One",
+            url: "https://facebook.com/groups/one",
+          },
+        },
+        excludedGroupIds: {},
+      },
+    });
+
+    resolvePersistence?.();
+    await expect(updatePromise).resolves.toBeUndefined();
   });
 });

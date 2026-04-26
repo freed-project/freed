@@ -43,10 +43,12 @@ export function SearchJumpField({
   compactSidebar = false,
   narrowSidebar = false,
   variant = "inline",
+  inlineMarginBottomPx,
 }: {
   compactSidebar?: boolean;
   narrowSidebar?: boolean;
   variant?: "inline" | "trigger";
+  inlineMarginBottomPx?: number;
 }) {
   const platform = usePlatform();
   const {
@@ -431,31 +433,23 @@ export function SearchJumpField({
       const fieldRect = triggerPaletteRef.current.getBoundingClientRect();
       const viewportPadding = 12;
       const gap = usesFloatingTrigger ? 10 : 8;
+      const sidebarRect = anchor.closest('[data-testid="app-sidebar"]')?.getBoundingClientRect();
       const maxTop = Math.max(
         viewportPadding,
         window.innerHeight - viewportPadding - fieldRect.height,
       );
-      const top = usesFloatingTrigger
-        ? Math.min(Math.max(viewportPadding, anchorRect.top), maxTop)
-        : Math.min(anchorRect.bottom + gap, maxTop);
-
-      if (usesFloatingTrigger) {
-        const maxLeft = Math.max(
-          viewportPadding,
-          window.innerWidth - viewportPadding - fieldRect.width,
-        );
-        setPalettePosition({
-          left: Math.min(anchorRect.right + gap, maxLeft),
-          top,
-          visibility: "visible",
-        });
-        return;
-      }
+      const top = Math.min(
+        Math.max(viewportPadding, usesFloatingTrigger ? (sidebarRect?.top ?? anchorRect.top) : anchorRect.top),
+        maxTop,
+      );
+      const maxLeft = Math.max(
+        viewportPadding,
+        window.innerWidth - viewportPadding - fieldRect.width,
+      );
 
       setPalettePosition({
-        left: anchorRect.left,
+        left: Math.min(anchorRect.right + gap, maxLeft),
         top,
-        width: anchorRect.width,
         visibility: "visible",
       });
     };
@@ -730,7 +724,7 @@ export function SearchJumpField({
     const triggerActive = showFloatingField || hasActiveSearch;
 
     return (
-      <div className={compactSidebar ? "relative z-20 w-full" : "relative z-20 mb-3 flex justify-center"}>
+      <div className={compactSidebar ? "relative z-20 mb-[2px] w-full" : "relative z-20 mb-3 flex justify-center"}>
         <Tooltip
           label="Search or run a command"
           side={compactSidebar ? "right" : undefined}
@@ -777,7 +771,15 @@ export function SearchJumpField({
   }
 
   return (
-    <div ref={inlineAnchorRef} className={`relative z-20 ${narrowSidebar ? "mb-2" : "mb-4"}`}>
+    <div
+      ref={inlineAnchorRef}
+      data-testid="sidebar-search-field-wrapper"
+      className="relative z-20"
+      style={{
+        marginBottom: `${inlineMarginBottomPx ?? (narrowSidebar ? 8 : 16)}px`,
+        transition: "margin-bottom 180ms ease",
+      }}
+    >
       <SearchField
         ref={inlineInputRef}
         value={inputValue}
