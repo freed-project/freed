@@ -594,6 +594,30 @@ export function FriendsView({
     [linkAccountToPerson, setSelectedPerson],
   );
 
+  const handlePinPersonPosition = useCallback(
+    async (personId: string, x: number, y: number) => {
+      await updatePerson(personId, {
+        graphX: Math.round(x),
+        graphY: Math.round(y),
+        graphPinned: true,
+        graphUpdatedAt: Date.now(),
+      });
+    },
+    [updatePerson],
+  );
+
+  const handlePinAccountPosition = useCallback(
+    async (accountId: string, x: number, y: number) => {
+      await updateAccount(accountId, {
+        graphX: Math.round(x),
+        graphY: Math.round(y),
+        graphPinned: true,
+        graphUpdatedAt: Date.now(),
+      });
+    },
+    [updateAccount],
+  );
+
   const handlePromoteSelectedAccount = useCallback(() => {
     if (!selectedAccount) return;
     setEditorState({ kind: "new", draft: friendDraftFromAccount(selectedAccount) });
@@ -1146,6 +1170,8 @@ export function FriendsView({
                 onSelectAccount={(account) => handleSelectAccount(account, false)}
                 onClearSelection={showCollapsedSelectionCard ? handleClearSelection : undefined}
                 onLinkAccountToPerson={handleLinkAccountToPerson}
+                onPinPersonPosition={handlePinPersonPosition}
+                onPinAccountPosition={handlePinAccountPosition}
                 themeId={themeId}
               />
             )}

@@ -23,6 +23,8 @@ import {
   hideItem,
   addRssFeed,
   removeRssFeed,
+  updateAccount,
+  updatePerson,
   updatePreferences,
 } from "@freed/shared/schema";
 import type { FreedDoc } from "@freed/shared/schema";
@@ -70,6 +72,59 @@ function makeAccount(overrides: Partial<Account> & {
     ...overrides,
   };
 }
+
+// =============================================================================
+// identity graph placement
+// =============================================================================
+
+describe("identity graph placement", () => {
+  it("preserves optional graph placement fields on people and accounts", () => {
+    let doc = createEmptyDoc();
+
+    doc = A.change(doc, (d) => {
+      addPerson(d, {
+        id: "person-graph",
+        name: "Graph Person",
+        relationshipStatus: "friend",
+        careLevel: 4,
+        graphX: 123,
+        graphY: 456,
+        graphPinned: true,
+        graphUpdatedAt: 789,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      addAccounts(d, [
+        makeAccount({
+          id: "account-graph",
+          personId: "person-graph",
+          kind: "social",
+          provider: "instagram",
+          externalId: "graph-person",
+          graphX: 234,
+          graphY: 567,
+          graphPinned: true,
+          graphUpdatedAt: 890,
+        }),
+      ]);
+      updatePerson(d, "person-graph", { graphX: 321, graphY: 654 });
+      updateAccount(d, "account-graph", { graphPinned: false });
+    });
+
+    expect(doc.persons["person-graph"]).toMatchObject({
+      graphX: 321,
+      graphY: 654,
+      graphPinned: true,
+      graphUpdatedAt: 789,
+    });
+    expect(doc.accounts["account-graph"]).toMatchObject({
+      graphX: 234,
+      graphY: 567,
+      graphPinned: false,
+      graphUpdatedAt: 890,
+    });
+  });
+});
 
 // =============================================================================
 // createEmptyDoc

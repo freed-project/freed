@@ -1,8 +1,8 @@
 /**
  * Sample data generator for regression testing.
  *
- * Produces 15 RSS feeds and 140 feed items (120 RSS articles + 20 saved
- * bookmarks) with deterministic IDs so repeated calls are idempotent
+ * Produces a showcase-scale local library with deterministic IDs so
+ * repeated calls are idempotent
  * against the existing duplicate guard in Automerge mutations.
  *
  * All feed URLs use the `https://sample.freed.wtf/` prefix to avoid
@@ -315,6 +315,28 @@ interface SampleFriendDef {
 export interface SampleDataOptions {
   batchId?: string;
   seed?: number;
+  scale?: "showcase" | "stress";
+  friendCount?: number;
+  identitiesPerFriend?: number;
+}
+
+export const SAMPLE_SHOWCASE_FEED_COUNT = 15;
+export const SAMPLE_SHOWCASE_FRIEND_COUNT = 250;
+export const SAMPLE_SHOWCASE_IDENTITIES_PER_FRIEND = 5;
+export const SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT =
+  SAMPLE_SHOWCASE_FRIEND_COUNT * SAMPLE_SHOWCASE_IDENTITIES_PER_FRIEND;
+export const SAMPLE_SHOWCASE_ITEM_COUNT =
+  SAMPLE_SHOWCASE_FEED_COUNT * 8 + 20 + 10 + 10 + 10 + 10 + 8 + 7 + SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT;
+export const SAMPLE_STRESS_FRIEND_COUNT = 1_000;
+export const SAMPLE_STRESS_IDENTITIES_PER_FRIEND = 5;
+export const SAMPLE_STRESS_SOCIAL_IDENTITY_COUNT =
+  SAMPLE_STRESS_FRIEND_COUNT * SAMPLE_STRESS_IDENTITIES_PER_FRIEND;
+
+interface ResolvedSampleDataOptions {
+  batchId: string;
+  seed: number;
+  friendCount: number;
+  identitiesPerFriend: number;
 }
 
 const SAMPLE_FRIEND_PERSONAS: Array<{
@@ -330,7 +352,7 @@ const SAMPLE_FRIEND_PERSONAS: Array<{
   { slug: "nina", name: "Nina Patel", careLevel: 4, bio: "Designer with a brutal eye for spacing and a soft spot for weird museums." },
   { slug: "omar", name: "Omar Hassan", careLevel: 5, bio: "Travels with one backpack, three chargers, and too many field notes." },
   { slug: "lena", name: "Lena Brooks", careLevel: 3, bio: "Makes espresso, prototypes interfaces, and disappears into bookstores." },
-  { slug: "marco", name: "Marco Silva", careLevel: 2, bio: "Half data viz nerd, half mountain weather goblin." },
+  { slug: "marco", name: "Marco Silva", careLevel: 2, bio: "Half data viz nerd, half mountain weather oracle." },
   { slug: "ivy", name: "Ivy Nguyen", careLevel: 4, bio: "Keeps a flawless train itinerary and posts exactly when the light is good." },
   { slug: "sofia", name: "Sofia Alvarez", careLevel: 3, bio: "City walker, recipe hoarder, and defender of messy sketchbooks." },
   { slug: "devon", name: "Devon Reed", careLevel: 2, bio: "Writes release notes like tiny poems and always has a charging cable." },
@@ -349,15 +371,6 @@ const SAMPLE_FRIEND_PERSONAS: Array<{
   { slug: "terry", name: "Terry Lin", careLevel: 2, bio: "Logistics brain, soft voice, excellent maps." },
   { slug: "cleo", name: "Cleo March", careLevel: 3, bio: "Lives between demo days, ferry terminals, and improbably good sandwiches." },
   { slug: "wes", name: "Wes Calder", careLevel: 4, bio: "Builds outdoor rigs, runs late, posts great photos anyway." },
-];
-
-const SAMPLE_SOCIAL_SOURCE_POOL: Friend["sources"] = [
-  ...INSTAGRAM_AUTHORS.map((author) => ({ platform: "instagram" as const, authorId: author.id, handle: author.handle, displayName: author.displayName })),
-  ...X_AUTHORS.map((author) => ({ platform: "x" as const, authorId: author.id, handle: author.handle, displayName: author.displayName })),
-  ...FACEBOOK_AUTHORS.map((author) => ({ platform: "facebook" as const, authorId: author.id, handle: author.handle, displayName: author.displayName })),
-  ...LINKEDIN_AUTHORS.map((author) => ({ platform: "linkedin" as const, authorId: author.id, handle: author.handle, displayName: author.displayName })),
-  ...IG_STORY_AUTHORS.map((author) => ({ platform: "instagram" as const, authorId: author.id, handle: author.handle, displayName: author.displayName })),
-  ...FB_STORY_AUTHORS.map((author) => ({ platform: "facebook" as const, authorId: author.id, handle: author.handle, displayName: author.displayName })),
 ];
 
 // ── Deterministic pseudo-random ─────────────────────────────────────────────
@@ -385,11 +398,18 @@ function makeBatchId(): string {
   return `batch-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function resolveSampleDataOptions(options?: SampleDataOptions): Required<SampleDataOptions> {
+function resolveSampleDataOptions(options?: SampleDataOptions): ResolvedSampleDataOptions {
   const batchId = options?.batchId ?? makeBatchId();
+  const scale = options?.scale ?? "showcase";
+  const friendCount = options?.friendCount ??
+    (scale === "stress" ? SAMPLE_STRESS_FRIEND_COUNT : SAMPLE_SHOWCASE_FRIEND_COUNT);
+  const identitiesPerFriend = options?.identitiesPerFriend ??
+    (scale === "stress" ? SAMPLE_STRESS_IDENTITIES_PER_FRIEND : SAMPLE_SHOWCASE_IDENTITIES_PER_FRIEND);
   return {
     batchId,
     seed: options?.seed ?? hashSeed(batchId),
+    friendCount,
+    identitiesPerFriend,
   };
 }
 
@@ -403,25 +423,73 @@ function namespaceId(batchId: string, value: string): string {
   return `${batchId}:${value}`;
 }
 
-function buildSampleFriendDefs(options?: SampleDataOptions): SampleFriendDef[] {
-  const { batchId, seed } = resolveSampleDataOptions(options);
-  const socialSourcePool = rotateArray(
-    SAMPLE_SOCIAL_SOURCE_POOL,
-    seed % SAMPLE_SOCIAL_SOURCE_POOL.length
-  ).map((source) => ({
-    ...source,
-    authorId: namespaceId(batchId, source.authorId),
-  }));
+const GENERATED_FIRST_NAMES = [
+  "Ari", "Blair", "Camille", "Drew", "Elliot", "Finley", "Greer", "Hollis",
+  "Indra", "Joss", "Keira", "Luca", "Marin", "Noor", "Orion", "Paz",
+  "Quinn", "Remy", "Sage", "Tobin", "Uma", "Vale", "Wren", "Xavi",
+  "Yael", "Zadie",
+];
 
-  return rotateArray(
-    SAMPLE_FRIEND_PERSONAS,
-    seed % SAMPLE_FRIEND_PERSONAS.length
-  ).map((persona, index) => {
+const GENERATED_LAST_NAMES = [
+  "Adler", "Bennett", "Caro", "Davenport", "Ellis", "Frost", "Ghosh",
+  "Hayes", "Ibarra", "Jain", "Keller", "Lopez", "Mori", "Novak",
+  "Okoye", "Price", "Rossi", "Sato", "Tan", "Uriarte", "Vega",
+  "Wolfe", "Xu", "Young", "Zaman",
+];
+
+const SOURCE_PROVIDERS = ["instagram", "x", "facebook", "linkedin", "rss"] as const;
+
+function generatedPersona(index: number): {
+  slug: string;
+  name: string;
+  careLevel: Friend["careLevel"];
+  bio: string;
+  notes?: string;
+} {
+  const existing = SAMPLE_FRIEND_PERSONAS[index % SAMPLE_FRIEND_PERSONAS.length];
+  if (index < SAMPLE_FRIEND_PERSONAS.length) {
+    return existing;
+  }
+
+  const first = GENERATED_FIRST_NAMES[index % GENERATED_FIRST_NAMES.length];
+  const last = GENERATED_LAST_NAMES[Math.floor(index / GENERATED_FIRST_NAMES.length) % GENERATED_LAST_NAMES.length];
+  const variant = Math.floor(index / (GENERATED_FIRST_NAMES.length * GENERATED_LAST_NAMES.length));
+  const name = `${first} ${last}${variant > 0 ? ` ${variant + 1}` : ""}`;
+  return {
+    slug: `${first}-${last}-${index}`.toLowerCase(),
+    name,
+    careLevel: ((index % 5) + 1) as Friend["careLevel"],
+    bio: "Sample friend with linked channels, recent activity, and enough graph signal to make the workspace worth opening.",
+  };
+}
+
+function sourceHandle(name: string, provider: typeof SOURCE_PROVIDERS[number], index: number): string {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "");
+  if (provider === "linkedin") return `${slug}-${index}`;
+  if (provider === "rss") return `${slug}.notes`;
+  return `@${slug}.${index}`;
+}
+
+function buildSampleFriendDefs(options?: SampleDataOptions): SampleFriendDef[] {
+  const { batchId, seed, friendCount, identitiesPerFriend } = resolveSampleDataOptions(options);
+
+  return Array.from({ length: friendCount }, (_, rawIndex) => {
+    const index = (rawIndex + seed) % friendCount;
+    const persona = generatedPersona(index);
     const avatarUrl = `https://picsum.photos/seed/friend-${batchId}-${persona.slug}/128/128`;
-    const primarySource = socialSourcePool[index];
-    const secondarySource = index < 10
-      ? socialSourcePool[SAMPLE_FRIEND_PERSONAS.length + index]
-      : null;
+    const sources = Array.from({ length: identitiesPerFriend }, (_, sourceIndex) => {
+      const provider = SOURCE_PROVIDERS[(index + sourceIndex) % SOURCE_PROVIDERS.length]!;
+      const providerSlug = provider === "rss" ? "rss" : provider;
+      const externalId = `${persona.slug}-${providerSlug}-${sourceIndex}`;
+      const handle = sourceHandle(persona.name, provider, sourceIndex);
+      return {
+        platform: provider,
+        authorId: namespaceId(batchId, externalId),
+        handle,
+        displayName: provider === "rss" ? `${persona.name} Notes` : persona.name,
+        avatarUrl,
+      };
+    });
 
     return {
       id: namespaceId(batchId, `sample-friend-${persona.slug}`),
@@ -430,12 +498,7 @@ function buildSampleFriendDefs(options?: SampleDataOptions): SampleFriendDef[] {
       bio: persona.bio,
       avatarUrl,
       ...(persona.notes ? { notes: persona.notes } : {}),
-      sources: [primarySource, secondarySource]
-        .filter((source): source is NonNullable<typeof source> => source !== null)
-        .map((source) => ({
-          ...source,
-          avatarUrl,
-        })),
+      sources,
     };
   });
 }
@@ -514,10 +577,12 @@ export function generateSampleLibraryData(options?: SampleDataOptions): {
  * repeated calls are idempotent against the Automerge duplicate guard.
  */
 export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
-  const { batchId, seed } = resolveSampleDataOptions(options);
+  const resolvedOptions = resolveSampleDataOptions(options);
+  const { batchId, seed } = resolvedOptions;
   const rand = mulberry32(seed);
   const now = Date.now();
   const items: FeedItem[] = [];
+  const sampleFriendDefs = buildSampleFriendDefs(resolvedOptions);
   const feedDefs = rotateArray(FEED_DEFS, seed % FEED_DEFS.length);
   const rssHeadlines = rotateArray(RSS_HEADLINES, seed % RSS_HEADLINES.length);
   const savedHeadlines = rotateArray(SAVED_HEADLINES, seed % SAVED_HEADLINES.length);
@@ -922,6 +987,76 @@ export function generateSampleItems(options?: SampleDataOptions): FeedItem[] {
       },
       topics: pickTopics(rand, 148 + si),
     });
+  }
+
+  let graphItemIndex = 0;
+  for (const friend of sampleFriendDefs) {
+    for (const source of friend.sources) {
+      const age = ((graphItemIndex % 90) / 90) * 21 * DAY + rand() * DAY;
+      const publishedAt = Math.round(now - age);
+      const contentType = source.platform === "rss" ? "article" : "post";
+      const text =
+        source.platform === "linkedin"
+          ? LINKEDIN_POSTS[graphItemIndex % LINKEDIN_POSTS.length]
+          : source.platform === "instagram"
+            ? INSTAGRAM_POSTS[graphItemIndex % INSTAGRAM_POSTS.length]
+            : source.platform === "facebook"
+              ? FACEBOOK_POSTS[graphItemIndex % FACEBOOK_POSTS.length]
+              : source.platform === "rss"
+                ? RSS_HEADLINES[graphItemIndex % RSS_HEADLINES.length]
+                : X_POSTS[graphItemIndex % X_POSTS.length];
+      const location =
+        graphItemIndex % 7 === 0
+          ? {
+              name: xLocations[graphItemIndex % xLocations.length],
+              source: "text_extraction" as const,
+            }
+          : undefined;
+
+      items.push({
+        globalId: namespaceId(batchId, `sample-graph:${source.platform}:${graphItemIndex}`),
+        platform: source.platform,
+        contentType,
+        capturedAt: publishedAt + 5_000,
+        publishedAt,
+        author: {
+          id: source.authorId,
+          handle: source.handle ?? source.authorId,
+          displayName: source.displayName ?? source.handle ?? friend.name,
+          avatarUrl: source.avatarUrl,
+        },
+        content: {
+          text,
+          mediaUrls: [],
+          mediaTypes: [],
+        },
+        ...(source.platform === "rss"
+          ? {
+              rssSource: {
+                feedUrl: `${SAMPLE_FEED_URL_PREFIX}${batchId}/people/${source.authorId}`,
+                feedTitle: source.displayName ?? source.handle ?? friend.name,
+                siteUrl: "https://sample.freed.wtf",
+              },
+            }
+          : {}),
+        ...(location ? { location } : {}),
+        engagement: source.platform === "rss"
+          ? undefined
+          : {
+              likes: Math.round(rand() * 1_200),
+              comments: Math.round(rand() * 90),
+            },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          readAt: graphItemIndex % 3 === 0 ? publishedAt + 12_000 : undefined,
+          tags: [],
+        },
+        topics: pickTopics(rand, 160 + graphItemIndex),
+      });
+      graphItemIndex += 1;
+    }
   }
 
   return items;

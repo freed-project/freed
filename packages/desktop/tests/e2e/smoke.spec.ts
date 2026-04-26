@@ -210,6 +210,16 @@ async function readGraphDebug(page: Page) {
           y: number;
           radius: number;
         }>;
+        regions: Array<{
+          id: string;
+          provider: string;
+          label: string;
+          x: number;
+          y: number;
+          radiusX: number;
+          radiusY: number;
+          count: number;
+        }>;
         transform: { x: number; y: number; scale: number };
         qualityMode: "interactive" | "settled";
         metrics: {
@@ -289,6 +299,19 @@ async function waitForGraphPerfToSettle(page: Page, timeout = 15_000) {
   throw new Error("Friends graph perf metrics did not settle in time");
 }
 
+async function waitForGraphSceneSyncAfter(page: Page, previousSceneSyncCount: number, timeout = 8_000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(50);
+    const next = await readGraphDebug(page);
+    if (next && next.metrics.sceneSyncCount > previousSceneSyncCount) {
+      return next;
+    }
+  }
+
+  throw new Error("Friends graph scene sync did not advance in time");
+}
+
 async function seedStressIdentityGraph(page: Page) {
   await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
@@ -296,7 +319,6 @@ async function seedStressIdentityGraph(page: Page) {
       docAddPersons: (persons: unknown[]) => Promise<void>;
       docAddAccounts: (accounts: unknown[]) => Promise<void>;
       docAddRssFeed: (feed: unknown) => Promise<void>;
-      docAddFeedItems: (items: unknown[]) => Promise<void>;
     };
     const store = w.__FREED_STORE__ as {
       getState: () => {
@@ -306,19 +328,19 @@ async function seedStressIdentityGraph(page: Page) {
     };
 
     const now = Date.now();
-    const persons = Array.from({ length: 100 }, (_, index) => ({
+    const persons = Array.from({ length: 1_000 }, (_, index) => ({
       id: `stress-person-${index}`,
       name: `Stress Person ${index}`,
-      relationshipStatus: index < 60 ? "friend" : "connection",
-      careLevel: index < 60 ? 3 + (index % 3) : 2,
+      relationshipStatus: index < 820 ? "friend" : "connection",
+      careLevel: index < 820 ? 3 + (index % 3) : 2,
       createdAt: now,
       updatedAt: now,
     }));
-    const accounts = Array.from({ length: 820 }, (_, index) => ({
+    const accounts = Array.from({ length: 5_000 }, (_, index) => ({
       id: `stress-account-${index}`,
-      personId: index < 580 ? `stress-person-${index % 100}` : undefined,
+      personId: `stress-person-${index % 1_000}`,
       kind: "social",
-      provider: index % 3 === 0 ? "instagram" : index % 3 === 1 ? "linkedin" : "x",
+      provider: index % 5 === 0 ? "rss" : index % 5 === 1 ? "instagram" : index % 5 === 2 ? "linkedin" : index % 5 === 3 ? "facebook" : "x",
       externalId: `stress-external-${index}`,
       handle: `stress-${index}`,
       displayName: `Stress Channel ${index}`,
@@ -328,43 +350,15 @@ async function seedStressIdentityGraph(page: Page) {
       createdAt: now,
       updatedAt: now,
     }));
-    const feeds = Array.from({ length: 90 }, (_, index) => ({
+    const feeds = Array.from({ length: 180 }, (_, index) => ({
       url: `https://stress.example/feed-${index}.xml`,
       title: `Stress Feed ${index}`,
       enabled: true,
       trackUnread: true,
     }));
-    const feedItems = Array.from({ length: 1_200 }, (_, index) => ({
-      globalId: `stress-item-${index}`,
-      platform: index % 5 === 0 ? "rss" : index % 2 === 0 ? "instagram" : "x",
-      contentType: index % 5 === 0 ? "article" : "post",
-      capturedAt: now - index * 60_000,
-      publishedAt: now - index * 60_000,
-      author: {
-        id: index % 5 === 0 ? `stress-feed-author-${index % 90}` : `stress-external-${index % 820}`,
-        handle: `stress-author-${index}`,
-        displayName: `Stress Author ${index}`,
-      },
-      content: {
-        text: `Stress item ${index}`,
-        mediaUrls: [],
-        mediaTypes: [],
-      },
-      rssSource:
-        index % 5 === 0
-          ? {
-              feedUrl: `https://stress.example/feed-${index % 90}.xml`,
-              feedTitle: `Stress Feed ${index % 90}`,
-            }
-          : undefined,
-      userState: { hidden: false, saved: false, archived: false, tags: [] },
-      topics: [],
-    }));
-
     await automerge.docAddPersons(persons);
     await automerge.docAddAccounts(accounts);
     await Promise.all(feeds.map((feed) => automerge.docAddRssFeed(feed)));
-    await automerge.docAddFeedItems(feedItems);
     await store.getState().updatePreferences({
       display: {
         friendsMode: "all_content",
@@ -3954,6 +3948,117 @@ test("dragging a channel onto a person re-links it and the graph state survives 
   }, { timeout: 10_000 });
 });
 
+test("dragging a person pins its graph position and survives reload", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddPersons: (persons: unknown[]) => Promise<void>;
+      docAddAccounts: (accounts: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
+        setActiveView: (view: string) => void;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddPersons([
+      {
+        id: "friend-pinned",
+        name: "Pinned Friend",
+        relationshipStatus: "friend",
+        careLevel: 5,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: "friend-anchor",
+        name: "Anchor Friend",
+        relationshipStatus: "friend",
+        careLevel: 4,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+    await automerge.docAddAccounts([
+      {
+        id: "social:instagram:pinned",
+        personId: "friend-pinned",
+        kind: "social",
+        provider: "instagram",
+        externalId: "pinned",
+        handle: "pinned",
+        displayName: "Pinned Channel",
+        firstSeenAt: now,
+        lastSeenAt: now,
+        discoveredFrom: "captured_item",
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+    await store.getState().updatePreferences({
+      display: {
+        friendsMode: "all_content",
+      },
+    });
+    store.getState().setActiveView("friends");
+  });
+
+  const viewport = page.getByTestId("friend-graph-viewport");
+  await expect(viewport).toBeVisible({ timeout: 10_000 });
+  await expect.poll(async () => {
+    return viewport.evaluate((element) => Number((element as HTMLElement).dataset.graphNodeCount ?? "0"));
+  }).toBeGreaterThanOrEqual(3);
+
+  const start = await graphNodeScreenPoint(page, { personId: "friend-pinned" });
+  expect(start).not.toBeNull();
+
+  await page.mouse.move(start!.x, start!.y);
+  await page.mouse.down();
+  await page.mouse.move(start!.x + 180, start!.y + 96, { steps: 12 });
+  await page.mouse.up();
+
+  const pinnedHandle = await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            persons: Record<string, { graphPinned?: boolean; graphX?: number; graphY?: number }>;
+          };
+        }
+      | undefined;
+    const person = store?.getState().persons["friend-pinned"];
+    if (!person?.graphPinned || typeof person.graphX !== "number" || typeof person.graphY !== "number") {
+      return null;
+    }
+    return { graphX: person.graphX, graphY: person.graphY };
+  }, { timeout: 10_000 });
+  const pinnedPosition = await pinnedHandle.jsonValue();
+  expect(pinnedPosition).not.toBeNull();
+
+  await page.reload();
+  await app.waitForReady();
+  await page.waitForFunction((expected) => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            persons: Record<string, { graphPinned?: boolean; graphX?: number; graphY?: number }>;
+          };
+        }
+      | undefined;
+    const person = store?.getState().persons["friend-pinned"];
+    return person?.graphPinned === true &&
+      person.graphX === expected.graphX &&
+      person.graphY === expected.graphY;
+  }, pinnedPosition, { timeout: 10_000 });
+});
+
 test("zooming the Friends graph keeps labels visible without collapsing the viewport", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
@@ -4107,6 +4212,19 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
   expect(initial!.metrics.layoutMs).toBeLessThan(500);
   expect(initial!.metrics.sceneSyncMs).toBeLessThan(40);
 
+  const benchmarkPoint = await graphNodeScreenPoint(page, { personId: "stress-person-0" });
+  expect(benchmarkPoint).not.toBeNull();
+
+  await page.mouse.move(benchmarkPoint!.x, benchmarkPoint!.y);
+  const afterHover = await waitForGraphSceneSyncAfter(page, initial!.metrics.sceneSyncCount);
+  expect(afterHover).not.toBeNull();
+  expect(afterHover!.metrics.sceneSyncMs).toBeLessThan(40);
+
+  await page.mouse.click(benchmarkPoint!.x, benchmarkPoint!.y);
+  const afterSelection = await waitForGraphSceneSyncAfter(page, afterHover!.metrics.sceneSyncCount);
+  expect(afterSelection).not.toBeNull();
+  expect(afterSelection!.metrics.sceneSyncMs).toBeLessThan(60);
+
   const box = await viewport.boundingBox();
   if (!box) {
     throw new Error("Friends graph viewport is not visible");
@@ -4134,7 +4252,10 @@ test("stress Friends graph degrades labels during motion and avoids expensive re
     await page.mouse.up();
   }
 
-  const settled = await waitForGraphPerfToSettle(page, 10_000);
+  await expect
+    .poll(async () => (await readGraphDebug(page))?.qualityMode, { timeout: 10_000 })
+    .toBe("settled");
+  const settled = await readGraphDebug(page);
   expect(settled).not.toBeNull();
   expect(settled!.metrics.visibleLabelCount).toBeGreaterThanOrEqual(
     duringPan?.metrics.visibleLabelCount ?? 0,
@@ -4274,6 +4395,10 @@ test("dense Friends graph stays visually structured in Scriptorium", async ({ ap
   await expect.poll(async () => {
     return viewport.evaluate((element) => Number((element as HTMLElement).dataset.graphNodeCount ?? "0"));
   }).toBeGreaterThan(20);
+
+  const debug = await readGraphDebug(page);
+  expect(debug?.regions.some((region) => region.provider === "rss")).toBe(true);
+  expect(debug?.regions.some((region) => region.provider === "instagram")).toBe(true);
 
   await expect(viewport).toHaveScreenshot("friends-graph-dense.png", {
     maxDiffPixelRatio: 0.05,

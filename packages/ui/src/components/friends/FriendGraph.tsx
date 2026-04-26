@@ -58,6 +58,8 @@ interface FriendGraphProps {
   onSelectAccount: (account: Account) => void;
   onClearSelection?: () => void;
   onLinkAccountToPerson?: (accountId: string, personId: string) => Promise<void> | void;
+  onPinPersonPosition?: (personId: string, x: number, y: number) => Promise<void> | void;
+  onPinAccountPosition?: (accountId: string, x: number, y: number) => Promise<void> | void;
   themeId?: ThemeId;
 }
 
@@ -84,7 +86,19 @@ type AccountDragState = {
   currentWorldY: number;
 };
 
-type DragState = PanState | AccountDragState;
+type PersonDragState = {
+  kind: "person-drag";
+  pointerId: number;
+  nodeId: string;
+  personId: string;
+  startX: number;
+  startY: number;
+  moved: boolean;
+  currentWorldX: number;
+  currentWorldY: number;
+};
+
+type DragState = PanState | AccountDragState | PersonDragState;
 
 type TouchPoint = {
   x: number;
@@ -101,8 +115,10 @@ type PinchState = {
 interface PixiScene {
   app: Application;
   world: Container;
+  regionLayer: Graphics;
   edgeLayer: Graphics;
   nodeLayer: Container;
+  hoverLayer: Graphics;
   labelLayer: Container;
   nodeDisplays: Map<string, NodeDisplay>;
   labelDisplays: Map<string, LabelDisplay>;
@@ -138,30 +154,30 @@ const FRIEND_GRAPH_VIEWPORT_MASK_STYLE = {
   "--theme-soft-viewport-base-comp-bottom": "0px",
 } as CSSProperties;
 
-const PROVIDER_COLORS: Record<string, number> = {
-  instagram: 0xd87093,
-  facebook: 0x4b79d8,
-  x: 0x64748b,
-  linkedin: 0x3b82c4,
-  rss: 0xb07a44,
-};
+interface RgbColor {
+  r: number;
+  g: number;
+  b: number;
+}
 
-const SCRIPTORIUM_PALETTE = {
-  friendFill: 0xb98047,
-  friendStroke: 0x2f1f12,
-  friendText: 0x20140b,
-  connectionFill: 0xd1ab77,
-  connectionStroke: 0x5d432d,
-  connectionText: 0x24160d,
-  feedFill: 0x8e6f4d,
-  feedStroke: 0x463221,
-  labelFill: 0xf0e0c7,
-  labelStroke: 0x715335,
-  labelText: 0x24170d,
-  edge: 0x5a4430,
-  selection: 0x1c1712,
-  highlight: 0x224f3d,
-};
+interface GraphThemePalette {
+  friendFill: number;
+  friendStroke: number;
+  friendText: number;
+  connectionFill: number;
+  connectionStroke: number;
+  connectionText: number;
+  channelStroke: number;
+  labelFill: number;
+  labelStroke: number;
+  labelText: number;
+  labelSelectedText: number;
+  edge: number;
+  selection: number;
+  highlight: number;
+  reconnect: number;
+  providerColors: Record<string, number>;
+}
 
 interface GraphPerfSnapshot {
   modelBuildMs: number;
@@ -260,8 +276,86 @@ function midpointBetween(first: TouchPoint, second: TouchPoint): TouchPoint {
   };
 }
 
-function kindColor(node: IdentityGraphLayoutNode, themeId?: ThemeId) {
-  const palette = SCRIPTORIUM_PALETTE;
+function rgbToNumber(color: RgbColor): number {
+  return (color.r << 16) + (color.g << 8) + color.b;
+}
+
+function mixColor(left: RgbColor, right: RgbColor, rightWeight: number): RgbColor {
+  const leftWeight = 1 - rightWeight;
+  return {
+    r: Math.round(left.r * leftWeight + right.r * rightWeight),
+    g: Math.round(left.g * leftWeight + right.g * rightWeight),
+    b: Math.round(left.b * leftWeight + right.b * rightWeight),
+  };
+}
+
+function parseRgbVariable(style: CSSStyleDeclaration, name: string, fallback: RgbColor): RgbColor {
+  const value = style.getPropertyValue(name).trim();
+  const parts = value.split(/\s+/).map((part) => Number(part));
+  if (parts.length >= 3 && parts.every((part) => Number.isFinite(part))) {
+    return {
+      r: Math.max(0, Math.min(255, Math.round(parts[0]!))),
+      g: Math.max(0, Math.min(255, Math.round(parts[1]!))),
+      b: Math.max(0, Math.min(255, Math.round(parts[2]!))),
+    };
+  }
+  return fallback;
+}
+
+function readGraphThemePalette(element: HTMLElement | null): GraphThemePalette {
+  const style = element ? getComputedStyle(element) : null;
+  const primary = style
+    ? parseRgbVariable(style, "--theme-accent-primary-rgb", { r: 59, g: 130, b: 246 })
+    : { r: 59, g: 130, b: 246 };
+  const secondary = style
+    ? parseRgbVariable(style, "--theme-accent-secondary-rgb", { r: 139, g: 92, b: 246 })
+    : { r: 139, g: 92, b: 246 };
+  const tertiary = style
+    ? parseRgbVariable(style, "--theme-accent-tertiary-rgb", { r: 6, g: 182, b: 212 })
+    : { r: 6, g: 182, b: 212 };
+  const shell = style
+    ? parseRgbVariable(style, "--theme-shell-rgb", { r: 10, g: 12, b: 20 })
+    : { r: 10, g: 12, b: 20 };
+  const warning = style
+    ? parseRgbVariable(style, "--theme-feedback-warning-rgb", { r: 245, g: 158, b: 11 })
+    : { r: 245, g: 158, b: 11 };
+  const surface = mixColor(shell, { r: 255, g: 255, b: 255 }, shell.r + shell.g + shell.b > 382 ? 0.08 : 0.82);
+  const isLight = shell.r + shell.g + shell.b > 382;
+  const text = isLight ? { r: 36, g: 24, b: 14 } : { r: 248, g: 250, b: 252 };
+  const mutedText = mixColor(text, shell, isLight ? 0.32 : 0.18);
+
+  return {
+    friendFill: rgbToNumber(mixColor(primary, secondary, 0.28)),
+    friendStroke: rgbToNumber(mixColor(text, primary, 0.18)),
+    friendText: rgbToNumber(text),
+    connectionFill: rgbToNumber(mixColor(secondary, surface, 0.34)),
+    connectionStroke: rgbToNumber(mixColor(mutedText, secondary, 0.28)),
+    connectionText: rgbToNumber(text),
+    channelStroke: rgbToNumber(mixColor(text, shell, 0.28)),
+    labelFill: rgbToNumber(mixColor(surface, text, isLight ? 0.04 : 0.1)),
+    labelStroke: rgbToNumber(mixColor(secondary, text, 0.16)),
+    labelText: rgbToNumber(text),
+    labelSelectedText: rgbToNumber(isLight ? { r: 255, g: 252, b: 245 } : { r: 8, g: 12, b: 18 }),
+    edge: rgbToNumber(mixColor(mutedText, secondary, 0.2)),
+    selection: rgbToNumber(mixColor(text, primary, 0.2)),
+    highlight: rgbToNumber(mixColor(primary, tertiary, 0.42)),
+    reconnect: rgbToNumber(warning),
+    providerColors: {
+      instagram: rgbToNumber(mixColor(secondary, warning, 0.22)),
+      facebook: rgbToNumber(mixColor(primary, tertiary, 0.18)),
+      x: rgbToNumber(mixColor(mutedText, primary, 0.16)),
+      linkedin: rgbToNumber(mixColor(primary, secondary, 0.16)),
+      rss: rgbToNumber(mixColor(warning, secondary, 0.2)),
+      other: rgbToNumber(mixColor(tertiary, mutedText, 0.28)),
+    },
+  };
+}
+
+function providerColor(provider: string | undefined, palette: GraphThemePalette): number {
+  return palette.providerColors[provider ?? "other"] ?? palette.providerColors.other;
+}
+
+function kindColor(node: IdentityGraphLayoutNode, palette: GraphThemePalette) {
   if (node.kind === "friend_person") {
     return {
       fill: palette.friendFill,
@@ -278,22 +372,14 @@ function kindColor(node: IdentityGraphLayoutNode, themeId?: ThemeId) {
   }
   if (node.kind === "feed") {
     return {
-      fill: palette.feedFill,
-      stroke: palette.feedStroke,
-      text: palette.labelText,
-    };
-  }
-  const providerColor = PROVIDER_COLORS[node.provider ?? "x"] ?? PROVIDER_COLORS.x;
-  if (themeId === "scriptorium") {
-    return {
-      fill: providerColor,
-      stroke: palette.selection,
+      fill: providerColor("rss", palette),
+      stroke: palette.channelStroke,
       text: palette.labelText,
     };
   }
   return {
-    fill: providerColor,
-    stroke: palette.selection,
+    fill: providerColor(node.provider, palette),
+    stroke: palette.channelStroke,
     text: palette.labelText,
   };
 }
@@ -309,14 +395,22 @@ function nodePosition(
   ) {
     return { x: drag.currentWorldX, y: drag.currentWorldY };
   }
+  if (
+    drag?.kind === "person-drag" &&
+    node.personId &&
+    drag.personId === node.personId
+  ) {
+    return { x: drag.currentWorldX, y: drag.currentWorldY };
+  }
   return { x: node.x, y: node.y };
 }
 
 function createNodeDisplay(
   node: IdentityGraphLayoutNode,
+  palette: GraphThemePalette,
   themeId?: ThemeId,
 ): NodeDisplay {
-  const palette = kindColor(node, themeId);
+  const nodePalette = kindColor(node, palette);
   const container = new Container();
   const outer = new Graphics();
   container.addChild(outer);
@@ -329,7 +423,7 @@ function createNodeDisplay(
     initials = new Text(
       node.initials ?? "",
       new TextStyle({
-        fill: palette.text,
+        fill: nodePalette.text,
         fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
         fontSize: Math.max(12, node.radius * 0.48),
         fontWeight: "700",
@@ -365,7 +459,7 @@ function createLabelDisplay(themeId?: ThemeId): LabelDisplay {
   const text = new Text(
     "",
     new TextStyle({
-      fill: SCRIPTORIUM_PALETTE.labelText,
+      fill: 0xffffff,
       fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
       fontSize: 12,
       fontWeight: "600",
@@ -428,6 +522,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     onSelectAccount,
     onClearSelection,
     onLinkAccountToPerson,
+    onPinPersonPosition,
+    onPinAccountPosition,
     themeId,
   },
   ref,
@@ -436,11 +532,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const canvasHostRef = useRef<HTMLDivElement>(null);
   const pixiRef = useRef<PixiScene | null>(null);
   const workerRef = useRef<Worker | null>(null);
-  const layoutRef = useRef<IdentityGraphLayout>({ nodes: [], edges: [] });
+  const layoutRef = useRef<IdentityGraphLayout>({ nodes: [], edges: [], regions: [] });
   const spatialIndexRef = useRef<SpatialIndex>({ cellSize: 96, buckets: new Map() });
   const dragStateRef = useRef<DragState | null>(null);
   const pinchStateRef = useRef<PinchState | null>(null);
   const activeTouchPointsRef = useRef<Map<number, TouchPoint>>(new Map());
+  const hoveredNodeIdRef = useRef<string | null>(null);
   const transformRef = useRef<ViewTransform>({ ...FRIEND_GRAPH_DEFAULT_TRANSFORM });
   const hasFittedInitialLayoutRef = useRef(false);
   const latestLayoutRequestIdRef = useRef(0);
@@ -517,6 +614,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const drag = dragStateRef.current;
     const transform = transformRef.current;
     const qualityMode = graphQualityModeRef.current;
+    const graphPalette = readGraphThemePalette(containerRef.current);
+    const hoveredNodeId = hoveredNodeIdRef.current;
     const highlighted = buildHighlightedNodeIds(
       layoutRef.current,
       selectedPersonId,
@@ -540,6 +639,15 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
     if (lastStaticRenderKeyRef.current !== staticRenderKey || !!accountDrag) {
       didStaticRender = true;
+      scene.regionLayer.clear();
+      for (const region of layoutRef.current.regions) {
+        const fill = providerColor(region.provider, graphPalette);
+        scene.regionLayer.lineStyle(1, fill, highlighted.size > 0 ? 0.08 : 0.18);
+        scene.regionLayer.beginFill(fill, highlighted.size > 0 ? 0.035 : 0.07);
+        scene.regionLayer.drawEllipse(region.x, region.y, region.radiusX, region.radiusY);
+        scene.regionLayer.endFill();
+      }
+
       scene.edgeLayer.clear();
       scene.edgeLayer.alpha = 1;
       for (const edge of layoutRef.current.edges) {
@@ -551,7 +659,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         const emphasized = highlighted.has(source.id) && highlighted.has(target.id);
         scene.edgeLayer.lineStyle(
           emphasized ? 2.1 : 1,
-          emphasized ? SCRIPTORIUM_PALETTE.highlight : SCRIPTORIUM_PALETTE.edge,
+          emphasized ? graphPalette.highlight : graphPalette.edge,
           emphasized ? 0.56 : highlighted.size > 0 ? 0.12 : 0.24,
         );
         scene.edgeLayer.moveTo(sourcePoint.x, sourcePoint.y);
@@ -564,12 +672,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         staleNodeIds.delete(node.id);
         let display = scene.nodeDisplays.get(node.id);
         if (!display) {
-          display = createNodeDisplay(node, themeId);
+          display = createNodeDisplay(node, graphPalette, themeId);
           scene.nodeDisplays.set(node.id, display);
           scene.nodeLayer.addChild(display.container);
         }
 
-        const palette = kindColor(node, themeId);
+        const palette = kindColor(node, graphPalette);
         const selected = isSelectedGraphNode(node, selectedPersonId, selectedAccountId);
         const alpha = nodeAlpha(
           node,
@@ -583,7 +691,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         display.outer.clear();
         display.outer.lineStyle(
           selected ? 3 : 1.4,
-          selected ? SCRIPTORIUM_PALETTE.selection : palette.stroke,
+          selected ? graphPalette.selection : palette.stroke,
           selected ? 0.95 : 0.72,
         );
         display.outer.beginFill(
@@ -628,7 +736,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
         if (display.providerDot) {
           display.providerDot.clear();
-          display.providerDot.beginFill(SCRIPTORIUM_PALETTE.selection, 0.72);
+          display.providerDot.beginFill(graphPalette.selection, 0.72);
           display.providerDot.drawCircle(
             node.radius * 0.52,
             -node.radius * 0.52,
@@ -638,11 +746,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         }
 
         display.highlightRing.clear();
-        if (
-          accountDrag?.dropTargetPersonId &&
-          node.personId === accountDrag.dropTargetPersonId
-        ) {
-          display.highlightRing.lineStyle(4, SCRIPTORIUM_PALETTE.highlight, 0.8);
+        if (accountDrag?.dropTargetPersonId && node.personId === accountDrag.dropTargetPersonId) {
+          display.highlightRing.lineStyle(4, graphPalette.highlight, 0.8);
           display.highlightRing.drawCircle(0, 0, node.radius + 6);
         }
       }
@@ -658,6 +763,16 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       perfSnapshotRef.current.nodeRestyleCount += layoutRef.current.nodes.length;
       if (!accountDrag) {
         lastStaticRenderKeyRef.current = staticRenderKey;
+      }
+    }
+
+    scene.hoverLayer.clear();
+    if (hoveredNodeId) {
+      const hoveredNode = nodeById.get(hoveredNodeId);
+      if (hoveredNode && !isSelectedGraphNode(hoveredNode, selectedPersonId, selectedAccountId)) {
+        const position = nodePosition(hoveredNode, drag);
+        scene.hoverLayer.lineStyle(2, graphPalette.highlight, 0.44);
+        scene.hoverLayer.drawCircle(position.x, position.y, hoveredNode.radius + 4);
       }
     }
 
@@ -756,9 +871,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         display.container.visible = true;
         display.container.position.set(label.x, label.y);
         display.background.clear();
-        display.background.lineStyle(1.15, SCRIPTORIUM_PALETTE.labelStroke, selected ? 0.78 : 0.46);
+        display.background.lineStyle(1.15, graphPalette.labelStroke, selected ? 0.78 : 0.46);
         display.background.beginFill(
-          selected ? SCRIPTORIUM_PALETTE.highlight : SCRIPTORIUM_PALETTE.labelFill,
+          selected ? graphPalette.highlight : graphPalette.labelFill,
           selected ? 0.94 : 0.96,
         );
         display.background.drawRoundedRect(-label.width / 2, 0, label.width, label.height, 10);
@@ -773,7 +888,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
             label.fontSize,
           ].join(":"),
           {
-            fill: selected ? 0xf7f4ed : SCRIPTORIUM_PALETTE.labelText,
+            fill: selected ? graphPalette.labelSelectedText : graphPalette.labelText,
             fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
             fontSize: label.fontSize,
             fontWeight: selected || label.node.kind === "friend_person" ? "700" : "600",
@@ -837,6 +952,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       (window as typeof window & {
         __FREED_GRAPH_DEBUG__?: {
           nodes: Array<Pick<IdentityGraphLayoutNode, "id" | "personId" | "accountId" | "feedUrl" | "linkedPersonId" | "kind" | "x" | "y" | "radius">>;
+          regions: IdentityGraphLayout["regions"];
           transform: ViewTransform;
           qualityMode: GraphQualityMode;
           metrics: GraphPerfSnapshot;
@@ -853,6 +969,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           y: nodePosition(node, drag).y,
           radius: node.radius,
         })),
+        regions: layoutRef.current.regions,
         transform: transformRef.current,
         qualityMode,
         metrics: { ...perfSnapshotRef.current },
@@ -966,18 +1083,24 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       canvasHost.appendChild(app.canvas);
 
       const world = new Container();
+      const regionLayer = new Graphics();
       const edgeLayer = new Graphics();
       const nodeLayer = new Container();
+      const hoverLayer = new Graphics();
       const labelLayer = new Container();
+      world.addChild(regionLayer);
       world.addChild(edgeLayer);
       world.addChild(nodeLayer);
+      world.addChild(hoverLayer);
       app.stage.addChild(world);
       app.stage.addChild(labelLayer);
       pixiRef.current = {
         app,
         world,
+        regionLayer,
         edgeLayer,
         nodeLayer,
+        hoverLayer,
         labelLayer,
         nodeDisplays: new Map(),
         labelDisplays: new Map(),
@@ -1201,6 +1324,19 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         currentWorldX: point.x,
         currentWorldY: point.y,
       };
+    } else if (hit?.personId) {
+      const point = viewportToWorld(event.clientX, event.clientY);
+      dragStateRef.current = {
+        kind: "person-drag",
+        pointerId: event.pointerId,
+        nodeId: hit.id,
+        personId: hit.personId,
+        startX: event.clientX,
+        startY: event.clientY,
+        moved: false,
+        currentWorldX: point.x,
+        currentWorldY: point.y,
+      };
     } else {
       dragStateRef.current = {
         kind: "pan",
@@ -1247,7 +1383,18 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     }
 
     const drag = dragStateRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag) {
+      if (event.pointerType === "mouse" || event.pointerType === "pen") {
+        const hit = hitNodeAt(event.clientX, event.clientY);
+        const nextHoveredNodeId = hit?.id ?? null;
+        if (hoveredNodeIdRef.current !== nextHoveredNodeId) {
+          hoveredNodeIdRef.current = nextHoveredNodeId;
+          scheduleSyncScene();
+        }
+      }
+      return;
+    }
+    if (drag.pointerId !== event.pointerId) return;
 
     if (drag.kind === "pan") {
       const deltaX = event.clientX - drag.startX;
@@ -1273,6 +1420,15 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     drag.currentWorldY = point.y;
     if (Math.abs(event.clientX - drag.startX) > 3 || Math.abs(event.clientY - drag.startY) > 3) {
       drag.moved = true;
+    }
+
+    if (drag.kind === "person-drag") {
+      if (event.pointerType === "touch") {
+        event.preventDefault();
+      }
+      markInteractive();
+      scheduleSyncScene();
+      return;
     }
 
     const hit = hitNodeAt(event.clientX, event.clientY);
@@ -1307,11 +1463,27 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       if (drag.moved && drag.dropTargetPersonId && onLinkAccountToPerson) {
         await onLinkAccountToPerson(drag.accountId, drag.dropTargetPersonId);
         focusNode(drag.dropTargetPersonId);
+      } else if (drag.moved) {
+        await onPinAccountPosition?.(drag.accountId, drag.currentWorldX, drag.currentWorldY);
       } else if (!drag.moved) {
         const account = accounts[drag.accountId];
         if (account) {
           onSelectAccount(account);
           focusNode(drag.accountId);
+        }
+      }
+      scheduleSyncScene();
+      return;
+    }
+
+    if (drag.kind === "person-drag") {
+      if (drag.moved) {
+        await onPinPersonPosition?.(drag.personId, drag.currentWorldX, drag.currentWorldY);
+      } else {
+        const person = personsById[drag.personId];
+        if (person) {
+          onSelectPerson(person);
+          focusNode(drag.personId);
         }
       }
       scheduleSyncScene();
@@ -1343,9 +1515,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       }
     }
     scheduleSyncScene();
-  }, [accounts, focusNode, hitNodeAt, onClearSelection, onLinkAccountToPerson, onSelectAccount, onSelectPerson, personsById, scheduleSyncScene]);
+  }, [accounts, focusNode, hitNodeAt, onClearSelection, onLinkAccountToPerson, onPinAccountPosition, onPinPersonPosition, onSelectAccount, onSelectPerson, personsById, scheduleSyncScene]);
 
   const handlePointerLeave = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (hoveredNodeIdRef.current) {
+      hoveredNodeIdRef.current = null;
+      scheduleSyncScene();
+    }
     if (event.pointerType === "touch") {
       activeTouchPointsRef.current.delete(event.pointerId);
     }
@@ -1389,13 +1565,25 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       aria-label="Friends identity graph"
     >
       <div className="theme-soft-viewport-content">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,247,232,0.34),transparent_36%),radial-gradient(circle_at_12%_84%,rgba(188,143,88,0.1),transparent_26%),linear-gradient(180deg,rgba(244,234,215,0.98),rgba(235,223,201,0.94))]" />
-        <div className="pointer-events-none absolute inset-0 rounded-[inherit] shadow-[inset_0_0_72px_rgba(84,58,35,0.12),inset_0_0_0_1px_rgba(92,71,52,0.12)]" />
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(circle at top, color-mix(in oklab, var(--theme-accent-primary) 22%, transparent), transparent 38%), radial-gradient(circle at 12% 84%, color-mix(in oklab, var(--theme-accent-secondary) 14%, transparent), transparent 30%), linear-gradient(180deg, color-mix(in oklab, var(--theme-bg-surface) 96%, transparent), color-mix(in oklab, var(--theme-bg-elevated, var(--theme-bg-surface)) 92%, transparent))",
+          }}
+        />
+        <div
+          className="pointer-events-none absolute inset-0 rounded-[inherit]"
+          style={{
+            boxShadow:
+              "inset 0 0 72px rgb(var(--theme-shell-rgb) / 0.16), inset 0 0 0 1px color-mix(in oklab, var(--theme-accent-secondary) 16%, transparent)",
+          }}
+        />
         <div ref={canvasHostRef} className="absolute inset-0" />
         {!layoutReady ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center">
             <div className="rounded-full border border-[color:rgb(var(--theme-border-rgb)/0.25)] bg-[color:rgb(var(--theme-surface-rgb)/0.8)] px-4 py-2 text-xs text-[color:var(--theme-text-muted)] backdrop-blur-sm">
-              Building graph…
+              Building graph...
             </div>
           </div>
         ) : null}

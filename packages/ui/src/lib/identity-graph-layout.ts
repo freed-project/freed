@@ -3,6 +3,14 @@ import type {
   IdentityGraphModel,
   IdentityGraphNode,
 } from "./identity-graph-model.js";
+import {
+  forceCenter,
+  forceCollide,
+  forceSimulation,
+  forceX,
+  forceY,
+  type SimulationNodeDatum,
+} from "d3-force";
 
 export interface ViewTransform {
   x: number;
@@ -24,6 +32,18 @@ export interface IdentityGraphLayoutNode extends IdentityGraphNode {
 export interface IdentityGraphLayout {
   nodes: IdentityGraphLayoutNode[];
   edges: IdentityGraphEdge[];
+  regions: IdentityGraphRegion[];
+}
+
+export interface IdentityGraphRegion {
+  id: string;
+  provider: string;
+  label: string;
+  x: number;
+  y: number;
+  radiusX: number;
+  radiusY: number;
+  count: number;
 }
 
 export interface SpatialIndex {
@@ -52,38 +72,108 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function placeRadialGroup(
-  nodes: IdentityGraphNode[],
+function seededUnit(value: string): number {
+  return (hashValue(value) % 10_000) / 10_000;
+}
+
+function seededAngle(value: string): number {
+  return seededUnit(value) * Math.PI * 2;
+}
+
+function hasPinnedPosition(node: IdentityGraphNode): boolean {
+  return node.graphPinned === true &&
+    typeof node.graphX === "number" &&
+    Number.isFinite(node.graphX) &&
+    typeof node.graphY === "number" &&
+    Number.isFinite(node.graphY);
+}
+
+function applyPinnedPosition(node: IdentityGraphNode, fallback: { x: number; y: number }): { x: number; y: number } {
+  if (hasPinnedPosition(node)) {
+    return {
+      x: node.graphX!,
+      y: node.graphY!,
+    };
+  }
+  return fallback;
+}
+
+interface ForcePersonNode extends SimulationNodeDatum {
+  source: IdentityGraphNode;
+  targetX: number;
+  targetY: number;
+}
+
+function providerLabel(provider: string): string {
+  if (provider === "rss") return "RSS";
+  if (provider === "x") return "X";
+  return provider.charAt(0).toUpperCase() + provider.slice(1);
+}
+
+function solvePersonField(
+  friendNodes: IdentityGraphNode[],
+  connectionNodes: IdentityGraphNode[],
   centerX: number,
   centerY: number,
-  baseRadius: number,
-  ringStep: number,
-  startAngle: number,
-  endAngle: number,
-  elongationY: number,
-  singleNodeAtCenter: boolean,
+  width: number,
+  height: number,
+  quality: GraphLayoutQuality,
 ): IdentityGraphLayoutNode[] {
+  const minDimension = Math.min(width, height);
+  const friendRadius = Math.max(84, minDimension * 0.18);
+  const connectionRadius = Math.max(220, minDimension * 0.36);
+  const nodes = [...friendNodes, ...connectionNodes];
   if (nodes.length === 0) return [];
-  if (nodes.length === 1) {
-    return [{
-      ...nodes[0],
-      x: centerX + (singleNodeAtCenter ? 0 : baseRadius),
-      y: centerY,
-    }];
-  }
 
-  return nodes.map((node, index) => {
-    const angleSpan = endAngle - startAngle;
-    const ratio = nodes.length === 1 ? 0.5 : index / Math.max(1, nodes.length - 1);
-    const angle = startAngle + angleSpan * ratio + ((hashValue(node.id) % 9) - 4) * 0.01;
-    const ring = Math.floor(index / 8);
-    const radius = baseRadius + ring * ringStep + (hashValue(node.id) % 17);
+  const forceNodes: ForcePersonNode[] = nodes.map((node, index) => {
+    const ringRadius = node.kind === "friend_person"
+      ? friendRadius + Math.floor(index / 56) * 58
+      : connectionRadius + Math.floor(index / 96) * 52;
+    const angle = seededAngle(node.id);
+    const targetX = centerX + Math.cos(angle) * ringRadius;
+    const targetY = centerY + Math.sin(angle) * ringRadius * 0.72;
+    const fallback = {
+      x: targetX + (seededUnit(`${node.id}:x`) - 0.5) * 26,
+      y: targetY + (seededUnit(`${node.id}:y`) - 0.5) * 26,
+    };
+    const pinned = applyPinnedPosition(node, fallback);
     return {
-      ...node,
-      x: centerX + Math.cos(angle) * radius,
-      y: centerY + Math.sin(angle) * radius * elongationY,
+      source: node,
+      x: pinned.x,
+      y: pinned.y,
+      fx: hasPinnedPosition(node) ? pinned.x : undefined,
+      fy: hasPinnedPosition(node) ? pinned.y : undefined,
+      targetX,
+      targetY,
     };
   });
+
+  const ticks = quality === "fast"
+    ? Math.min(34, 12 + Math.ceil(Math.sqrt(nodes.length)))
+    : Math.min(140, 42 + Math.ceil(Math.sqrt(nodes.length) * 4));
+  const simulation = forceSimulation(forceNodes)
+    .stop()
+    .alpha(0.82)
+    .alphaDecay(1 - Math.pow(0.001, 1 / ticks))
+    .velocityDecay(0.48)
+    .force("center", forceCenter(centerX, centerY).strength(0.012))
+    .force("x", forceX((node) => (node as ForcePersonNode).targetX).strength((node) =>
+      (node as ForcePersonNode).source.kind === "friend_person" ? 0.08 : 0.11,
+    ))
+    .force("y", forceY((node) => (node as ForcePersonNode).targetY).strength((node) =>
+      (node as ForcePersonNode).source.kind === "friend_person" ? 0.08 : 0.11,
+    ))
+    .force("collide", forceCollide((node) => (node as ForcePersonNode).source.radius + 18).iterations(quality === "fast" ? 1 : 2));
+
+  for (let index = 0; index < ticks; index += 1) {
+    simulation.tick();
+  }
+
+  return forceNodes.map((node) => ({
+    ...node.source,
+    x: node.x ?? node.targetX,
+    y: node.y ?? node.targetY,
+  }));
 }
 
 function buildOverlapBuckets(
@@ -145,6 +235,17 @@ export function nudgeOverlapsBucketed(
           const push = (minDistance - distance) / 2;
           const unitX = dx / distance;
           const unitY = dy / distance;
+          if (left.graphPinned && right.graphPinned) continue;
+          if (left.graphPinned) {
+            right.x += unitX * push * 2;
+            right.y += unitY * push * 2;
+            continue;
+          }
+          if (right.graphPinned) {
+            left.x -= unitX * push * 2;
+            left.y -= unitY * push * 2;
+            continue;
+          }
           left.x -= unitX * push;
           left.y -= unitY * push;
           right.x += unitX * push;
@@ -166,36 +267,24 @@ export function buildIdentityGraphLayout({
   const accountNodes = model.nodes.filter((node) => node.kind === "account");
   const feedNodes = model.nodes.filter((node) => node.kind === "feed");
   const nodeById = new Map<string, IdentityGraphLayoutNode>();
+  const regions: IdentityGraphRegion[] = [];
 
   const centerX = width / 2;
   const centerY = height / 2;
-  const innerRadius = Math.max(40, Math.min(width, height) * 0.11);
-  const middleRadius = Math.max(150, Math.min(width, height) * 0.27);
-  const outerRadius = Math.max(260, Math.min(width, height) * 0.42);
-  const feedRadius = Math.max(360, Math.min(width, height) * 0.56);
+  const minDimension = Math.min(width, height);
+  const outerRadius = Math.max(330, minDimension * 0.56);
 
-  const positionedFriends = placeRadialGroup(
+  const positionedPeople = solvePersonField(
     friendNodes,
-    centerX,
-    centerY,
-    innerRadius,
-    50,
-    -Math.PI * 0.92,
-    Math.PI * 0.92,
-    0.68,
-    true,
-  );
-  const positionedConnections = placeRadialGroup(
     connectionNodes,
     centerX,
     centerY,
-    middleRadius,
-    48,
-    -Math.PI * 0.98,
-    Math.PI * 0.98,
-    0.8,
-    false,
+    width,
+    height,
+    quality,
   );
+  const positionedFriends = positionedPeople.filter((node) => node.kind === "friend_person");
+  const positionedConnections = positionedPeople.filter((node) => node.kind === "connection_person");
 
   for (const node of [...positionedFriends, ...positionedConnections]) {
     nodeById.set(node.id, node);
@@ -228,18 +317,24 @@ export function buildIdentityGraphLayout({
         const ring = Math.floor(index / 10);
         const angle = (Math.PI * 2 * index) / Math.max(1, Math.min(bucket.length, 10)) + (hashValue(node.id) % 11) * 0.02;
         const orbit = anchor.radius + 34 + ring * 18;
-        const placed: IdentityGraphLayoutNode = {
-          ...node,
+        const fallback = {
           x: anchor.x + Math.cos(angle) * orbit,
           y: anchor.y + Math.sin(angle) * orbit,
+        };
+        const position = applyPinnedPosition(node, fallback);
+        const placed: IdentityGraphLayoutNode = {
+          ...node,
+          x: position.x,
+          y: position.y,
         };
         laidOutAccounts.push(placed);
         nodeById.set(node.id, placed);
       });
   }
 
+  const unlinkedChannels = [...unlinkedAccounts, ...feedNodes];
   const providerBuckets = new Map<string, IdentityGraphNode[]>();
-  for (const node of unlinkedAccounts) {
+  for (const node of unlinkedChannels) {
     const provider = node.provider ?? "other";
     const bucket = providerBuckets.get(provider);
     if (bucket) {
@@ -252,43 +347,51 @@ export function buildIdentityGraphLayout({
   providers.forEach((provider, providerIndex) => {
     const bucket = providerBuckets.get(provider) ?? [];
     const sectorCenter = (-Math.PI / 2) + (Math.PI * 2 * providerIndex) / Math.max(1, providers.length);
+    const islandRing = Math.floor(providerIndex / 8);
+    const islandRadius = outerRadius + islandRing * 120;
+    const islandX = centerX + Math.cos(sectorCenter) * islandRadius;
+    const islandY = centerY + Math.sin(sectorCenter) * islandRadius * 0.82;
+    const rows = Math.max(1, Math.ceil(Math.sqrt(bucket.length)));
+    const islandSize = Math.max(96, Math.ceil(Math.sqrt(bucket.length)) * 22);
+    regions.push({
+      id: `region:${provider}`,
+      provider,
+      label: providerLabel(provider),
+      x: islandX,
+      y: islandY,
+      radiusX: islandSize + 54,
+      radiusY: islandSize * 0.72 + 42,
+      count: bucket.length,
+    });
     bucket
-      .sort((left, right) => left.label.localeCompare(right.label))
+      .sort((left, right) =>
+        right.weight - left.weight ||
+        left.label.localeCompare(right.label),
+      )
       .forEach((node, index) => {
-        const ring = Math.floor(index / 18);
-        const sectorOffset = ((index % 18) - 8.5) * 0.065;
-        const radius = outerRadius + ring * 22 + (hashValue(node.id) % 15);
-        const angle = sectorCenter + sectorOffset;
+        const col = index % rows;
+        const row = Math.floor(index / rows);
+        const jitterX = (seededUnit(`${node.id}:provider-x`) - 0.5) * 10;
+        const jitterY = (seededUnit(`${node.id}:provider-y`) - 0.5) * 10;
+        const fallback = {
+          x: islandX + (col - (rows - 1) / 2) * 24 + jitterX,
+          y: islandY + (row - (Math.ceil(bucket.length / rows) - 1) / 2) * 24 + jitterY,
+        };
+        const position = applyPinnedPosition(node, fallback);
         const placed: IdentityGraphLayoutNode = {
           ...node,
-          x: centerX + Math.cos(angle) * radius,
-          y: centerY + Math.sin(angle) * radius * 0.84,
+          x: position.x,
+          y: position.y,
         };
         laidOutAccounts.push(placed);
         nodeById.set(node.id, placed);
       });
   });
 
-  const laidOutFeeds = feedNodes
-    .sort((left, right) => left.label.localeCompare(right.label))
-    .map((node, index) => {
-      const ring = Math.floor(index / 28);
-      const angle = (-Math.PI * 0.88) + ((Math.PI * 1.76) * (index % 28)) / Math.max(1, Math.min(feedNodes.length, 28));
-      const radius = feedRadius + ring * 20 + (hashValue(node.id) % 13);
-      const placed: IdentityGraphLayoutNode = {
-        ...node,
-        x: centerX + Math.cos(angle) * radius,
-        y: centerY + Math.sin(angle) * radius * 0.9,
-      };
-      nodeById.set(node.id, placed);
-      return placed;
-    });
-
   const nodes = [
     ...positionedFriends,
     ...positionedConnections,
     ...laidOutAccounts,
-    ...laidOutFeeds,
   ];
 
   const overlapIterations =
@@ -297,23 +400,21 @@ export function buildIdentityGraphLayout({
           friends: 2,
           connections: 2,
           accounts: 1,
-          feeds: 0,
         }
       : {
           friends: 4,
           connections: 5,
           accounts: 2,
-          feeds: 1,
         };
 
   nudgeOverlapsBucketed(positionedFriends, overlapIterations.friends);
   nudgeOverlapsBucketed(positionedConnections, overlapIterations.connections);
   nudgeOverlapsBucketed(laidOutAccounts, overlapIterations.accounts);
-  nudgeOverlapsBucketed(laidOutFeeds, overlapIterations.feeds);
 
   return {
     nodes,
     edges: model.edges,
+    regions,
   };
 }
 

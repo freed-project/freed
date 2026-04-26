@@ -1,11 +1,13 @@
 import { useCallback, useState } from "react";
+import {
+  SAMPLE_SHOWCASE_FEED_COUNT,
+  SAMPLE_SHOWCASE_FRIEND_COUNT,
+  SAMPLE_SHOWCASE_ITEM_COUNT,
+  SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
+} from "@freed/shared";
 import { refreshSampleLibraryData } from "../lib/sample-library-seed.js";
 import { useAppStore, usePlatform } from "../context/PlatformContext.js";
 import { toast } from "./Toast.js";
-
-const SAMPLE_SEED_FEED_COUNT = 10;
-const SAMPLE_SEED_ITEM_COUNT = 155;
-const SAMPLE_SEED_FRIEND_COUNT = 25;
 
 export function SampleDataTestingSection() {
   const initialize = useAppStore((s) => s.initialize);
@@ -32,7 +34,7 @@ export function SampleDataTestingSection() {
       });
       setSeedDone(true);
       toast.success(
-        `Sample data added: ${SAMPLE_SEED_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SEED_ITEM_COUNT.toLocaleString()} items, and ${SAMPLE_SEED_FRIEND_COUNT.toLocaleString()} friends.`,
+        `Sample data added: ${SAMPLE_SHOWCASE_FEED_COUNT.toLocaleString()} feeds, ${SAMPLE_SHOWCASE_ITEM_COUNT.toLocaleString()} items, ${SAMPLE_SHOWCASE_FRIEND_COUNT.toLocaleString()} friends, and ${SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT.toLocaleString()} social identities.`,
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to populate sample data");
