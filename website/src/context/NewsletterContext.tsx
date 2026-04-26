@@ -15,11 +15,13 @@ const MODAL_PATH = "/get";
 
 interface NewsletterContextType {
   isOpen: boolean;
+  isSubscribed: boolean;
   openModal: (options?: {
     email?: string;
     detailsOpen?: boolean;
   }) => void;
   closeModal: () => void;
+  markSubscribed: () => void;
   prefillEmail: string;
   prefillDetailsOpen: boolean;
 }
@@ -30,6 +32,7 @@ const NewsletterContext = createContext<NewsletterContextType | undefined>(
 
 export function NewsletterProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(false);
   const [prefillEmail, setPrefillEmail] = useState("");
   const [prefillDetailsOpen, setPrefillDetailsOpen] = useState(false);
   const pathname = usePathname();
@@ -82,6 +85,10 @@ export function NewsletterProvider({ children }: { children: ReactNode }) {
     }
   }, [router]);
 
+  const markSubscribed = useCallback(() => {
+    setIsSubscribed(true);
+  }, []);
+
   // Handle browser back/forward
   useEffect(() => {
     const onPopState = () => {
@@ -96,8 +103,10 @@ export function NewsletterProvider({ children }: { children: ReactNode }) {
     <NewsletterContext.Provider
       value={{
         isOpen,
+        isSubscribed,
         openModal,
         closeModal,
+        markSubscribed,
         prefillEmail,
         prefillDetailsOpen,
       }}

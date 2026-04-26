@@ -12,7 +12,7 @@ const ROTATING_WORDS = ["Feed", "Life", "Mind"];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Hero() {
-  const { openModal } = useNewsletter();
+  const { isSubscribed, openModal } = useNewsletter();
   const [wordIndex, setWordIndex] = useState(0);
   const [compactHeroAnimation, setCompactHeroAnimation] = useState(false);
   const [mobileEmail, setMobileEmail] = useState("");
@@ -137,57 +137,98 @@ export default function Hero() {
             people.
           </p>
 
-          <form
-            onSubmit={handleMobileSignup}
-            className="mx-auto flex w-full max-w-md flex-col gap-2 lg:hidden"
-          >
-            <label htmlFor="mobile-newsletter-email" className="sr-only">
-              Email
-            </label>
-            <div className="flex w-full items-stretch rounded-xl border border-[color-mix(in_srgb,var(--theme-border-strong)_82%,transparent)] bg-[color-mix(in_srgb,var(--theme-bg-elevated)_96%,transparent)] shadow-[0_0_0_1px_rgb(255_255_255_/_0.04),inset_0_1px_0_rgb(255_255_255_/_0.05)]">
-              <input
-                id="mobile-newsletter-email"
-                type="email"
-                value={mobileEmail}
-                onChange={(event) => {
-                  setMobileEmail(event.target.value);
-                  if (mobileEmailError) setMobileEmailError("");
-                }}
-                placeholder="your@email.com"
-                className="min-w-0 flex-1 bg-transparent px-4 py-3 text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
-                autoComplete="email"
-                inputMode="email"
-                aria-invalid={!!mobileEmailError}
-                aria-describedby={
-                  mobileEmailError ? "mobile-newsletter-error" : undefined
-                }
-                maxLength={254}
-                required
-              />
-              <button
-                type="submit"
-                className="shrink-0 rounded-r-xl px-4 text-sm font-semibold text-[var(--theme-button-primary-text)]"
-                style={{
-                  background: "var(--theme-button-primary-bg)",
-                }}
-              >
-                Join Us
-              </button>
+          {isSubscribed ? (
+            <div
+              role="status"
+              aria-live="polite"
+              className="mx-auto flex w-full max-w-md gap-3 rounded-xl border p-4 text-left lg:hidden"
+              style={{
+                background:
+                  "color-mix(in srgb, rgb(var(--theme-feedback-success-rgb)) 10%, var(--theme-bg-elevated))",
+                borderColor:
+                  "color-mix(in srgb, rgb(var(--theme-feedback-success-rgb)) 38%, var(--theme-border-strong))",
+                boxShadow:
+                  "0 0 0 1px rgb(255 255 255 / 0.04), inset 0 1px 0 rgb(255 255 255 / 0.05)",
+              }}
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[rgb(var(--theme-feedback-success-rgb))] text-white">
+                <svg
+                  aria-hidden="true"
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2.5}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M4.5 12.75l6 6 9-13.5"
+                  />
+                </svg>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-text-primary">
+                  You are now subscribed.
+                </p>
+                <p className="text-xs leading-relaxed text-text-secondary">
+                  We will email you a download link when Freed launches.
+                </p>
+              </div>
             </div>
-            {mobileEmailError && (
-              <p
-                id="mobile-newsletter-error"
-                role="status"
-                className="text-left text-xs text-[rgb(var(--theme-feedback-danger-rgb))]"
-              >
-                {mobileEmailError}
+          ) : (
+            <form
+              onSubmit={handleMobileSignup}
+              className="mx-auto flex w-full max-w-md flex-col gap-2 lg:hidden"
+            >
+              <label htmlFor="mobile-newsletter-email" className="sr-only">
+                Email
+              </label>
+              <div className="flex w-full items-stretch rounded-xl border border-[color-mix(in_srgb,var(--theme-border-strong)_82%,transparent)] bg-[color-mix(in_srgb,var(--theme-bg-elevated)_96%,transparent)] shadow-[0_0_0_1px_rgb(255_255_255_/_0.04),inset_0_1px_0_rgb(255_255_255_/_0.05)]">
+                <input
+                  id="mobile-newsletter-email"
+                  type="email"
+                  value={mobileEmail}
+                  onChange={(event) => {
+                    setMobileEmail(event.target.value);
+                    if (mobileEmailError) setMobileEmailError("");
+                  }}
+                  placeholder="your@email.com"
+                  className="min-w-0 flex-1 bg-transparent px-4 py-3 text-sm text-text-primary placeholder:text-text-muted focus:outline-none"
+                  autoComplete="email"
+                  inputMode="email"
+                  aria-invalid={!!mobileEmailError}
+                  aria-describedby={
+                    mobileEmailError ? "mobile-newsletter-error" : undefined
+                  }
+                  maxLength={254}
+                  required
+                />
+                <button
+                  type="submit"
+                  className="shrink-0 rounded-r-xl px-4 text-sm font-semibold text-[var(--theme-button-primary-text)]"
+                  style={{
+                    background: "var(--theme-button-primary-bg)",
+                  }}
+                >
+                  Join Us
+                </button>
+              </div>
+              {mobileEmailError && (
+                <p
+                  id="mobile-newsletter-error"
+                  role="status"
+                  className="text-left text-xs text-[rgb(var(--theme-feedback-danger-rgb))]"
+                >
+                  {mobileEmailError}
+                </p>
+              )}
+              <p className="text-xs leading-relaxed text-text-muted">
+                Freed is in early beta. You'll receive a download link when we
+                launch 🚀
               </p>
-            )}
-            <p className="text-xs leading-relaxed text-text-muted">
-              We're in early beta. You'll receive a free download link when we
-              launch 🚀
-            </p>
-          </form>
+            </form>
+          )}
 
           <div className="hidden flex-col flex-wrap justify-center gap-3 lg:flex lg:flex-row lg:justify-start lg:gap-4">
             <motion.button
