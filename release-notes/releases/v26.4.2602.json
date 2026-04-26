@@ -1,0 +1,112 @@
+{
+  "tag": "v26.4.2602",
+  "version": "26.4.2602",
+  "channel": "production",
+  "dayKey": "26.4.26",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-26T13:06:55.606Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.4.2305",
+    "previousPublishedDayTag": "v26.4.2305",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.2602"
+    ],
+    "relatedBuildTags": [
+      "v26.4.2401-dev",
+      "v26.4.2500-dev",
+      "v26.4.2602"
+    ],
+    "prNumbers": [
+      206,
+      207,
+      211,
+      213,
+      215,
+      216,
+      222,
+      227,
+      252,
+      264,
+      274,
+      275,
+      276,
+      277,
+      279,
+      280,
+      284,
+      285,
+      286,
+      288,
+      289,
+      290,
+      291,
+      294,
+      295,
+      296,
+      297,
+      301,
+      304,
+      305,
+      307,
+      310,
+      312,
+      313,
+      314,
+      315,
+      316,
+      317,
+      318,
+      319,
+      329,
+      334,
+      336
+    ],
+    "commitSubjects": [
+      "fix: promote provider health validation fix (#336)",
+      "release: approve v26.4.2601",
+      "release: v26.4.2601",
+      "fix: promote release validation e2e (#334)",
+      "release: approve v26.4.2600",
+      "release: v26.4.2600",
+      "chore: promote dev to main (#329)",
+      "chore: promote updater asset url fix to main (#313)"
+    ]
+  },
+  "release": {
+    "deck": "Friends graph workspace and preview fixes, complete phase 3 save-for-later truth pass, and unify desktop shell chrome",
+    "features": [
+      "Friends graph workspace and preview fixes",
+      "Complete phase 3 save-for-later truth pass",
+      "Unify desktop shell chrome"
+    ],
+    "fixes": [
+      "Release build and type-safety cleanup",
+      "Reader, feed, and header polish",
+      "Sync google contacts platform test cast",
+      "Prevent fatal google contacts oauth crash",
+      "Warm PWA article images for offline reading",
+      "Clarify desktop update channel state",
+      "Raise update dialogs above floating new button",
+      "Desktop e2e merge regression resolved"
+    ],
+    "followUps": [
+      "Reverse integrate main after v26.4.2305",
+      "Split dev and production validation tiers",
+      "Merge latest dev before release",
+      "Make feature workflow preview-first",
+      "Promote latest dev into main",
+      "Reduce desktop memory pressure",
+      "Sync UI package exports before production release",
+      "Global command palette",
+      "Stop release workflow deploying website",
+      "Tiered validation and reverse merge workflow",
+      "Social story filters"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2602\n\nFriends graph workspace and preview fixes, complete phase 3 save-for-later truth pass, and unify desktop shell chrome\n\n### Features\n\n- Friends graph workspace and preview fixes\n- Complete phase 3 save-for-later truth pass\n- Unify desktop shell chrome\n\n### Fixes\n\n- Release build and type-safety cleanup\n- Reader, feed, and header polish\n- Sync google contacts platform test cast\n- Prevent fatal google contacts oauth crash\n- Warm PWA article images for offline reading\n- Clarify desktop update channel state\n- Raise update dialogs above floating new button\n- Desktop e2e merge regression resolved\n\n### Follow-ups\n\n- Reverse integrate main after v26.4.2305\n- Split dev and production validation tiers\n- Merge latest dev before release\n- Make feature workflow preview-first\n- Promote latest dev into main\n- Reduce desktop memory pressure\n- Sync UI package exports before production release\n- Global command palette\n- Stop release workflow deploying website\n- Tiered validation and reverse merge workflow\n- Social story filters\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
