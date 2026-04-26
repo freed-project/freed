@@ -3540,7 +3540,8 @@ test("selecting a graph node shows a compact detail card when the Friends detail
     }, { timeout: 10_000 })
     .toBe(true);
 
-  const beforeClick = await readGraphSummary(page);
+  await page.waitForTimeout(600);
+  const beforeClick = await waitForGraphPerfToSettle(page);
   expect(beforeClick).not.toBeNull();
   await page.mouse.click(friendPoint!.x, friendPoint!.y);
 
@@ -3553,6 +3554,14 @@ test("selecting a graph node shows a compact detail card when the Friends detail
   expect(afterClick!.transform.x).toBeCloseTo(beforeClick!.transform.x, 1);
   expect(afterClick!.transform.y).toBeCloseTo(beforeClick!.transform.y, 1);
   expect(afterClick!.transform.scale).toBeCloseTo(beforeClick!.transform.scale, 3);
+  expect(afterClick!.metrics.edgeRebuildCount).toBe(beforeClick!.metrics.edgeRebuildCount);
+  expect(afterClick!.metrics.nodeRestyleCount).toBe(beforeClick!.metrics.nodeRestyleCount);
+  await page.mouse.dblclick(friendPoint!.x, friendPoint!.y);
+  const afterDoubleClick = await readGraphSummary(page);
+  expect(afterDoubleClick).not.toBeNull();
+  expect(afterDoubleClick!.transform.x).toBeCloseTo(beforeClick!.transform.x, 1);
+  expect(afterDoubleClick!.transform.y).toBeCloseTo(beforeClick!.transform.y, 1);
+  expect(afterDoubleClick!.transform.scale).toBeCloseTo(beforeClick!.transform.scale, 3);
   await page.waitForFunction(() => {
     const store = (window as Record<string, unknown>).__FREED_STORE__ as
       | { getState: () => { preferences: { display: { friendsSidebarOpen?: boolean } } } }

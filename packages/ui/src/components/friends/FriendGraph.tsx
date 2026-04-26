@@ -117,6 +117,7 @@ interface PixiScene {
   regionLayer: Graphics;
   regionLabelLayer: Container;
   edgeLayer: Graphics;
+  edgeHighlightLayer: Graphics;
   nodeLayer: Container;
   hoverLayer: Graphics;
   labelLayer: Container;
@@ -620,6 +621,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const drawRafRef = useRef(0);
   const settleTimerRef = useRef<number | null>(null);
   const lastStaticRenderKeyRef = useRef("");
+  const lastSelectionStyleKeyRef = useRef("");
   const lastLabelLayoutKeyRef = useRef("");
   const visibleLabelIdsRef = useRef<string[]>([]);
   const textStyleCacheRef = useRef<Map<string, TextStyle>>(new Map());
@@ -703,8 +705,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     const nodeById = new Map(layoutRef.current.nodes.map((node) => [node.id, node]));
     const staticRenderKey = [
       layoutVersion,
-      selectedPersonId ?? "",
-      selectedAccountId ?? "",
       themeId ?? "",
       accountDrag?.accountId ?? "",
       accountDrag?.dropTargetPersonId ?? "",
@@ -751,11 +751,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         if (!source || !target) continue;
         const sourcePoint = nodePosition(source, drag);
         const targetPoint = nodePosition(target, drag);
-        const emphasized = highlighted.has(source.id) && highlighted.has(target.id);
         scene.edgeLayer.lineStyle(
-          emphasized ? 2.4 : 1.45,
-          emphasized ? graphPalette.highlight : graphPalette.edge,
-          emphasized ? 0.72 : highlighted.size > 0 ? 0.24 : 0.52,
+          1.45,
+          graphPalette.edge,
+          0.52,
         );
         scene.edgeLayer.moveTo(sourcePoint.x, sourcePoint.y);
         scene.edgeLayer.lineTo(targetPoint.x, targetPoint.y);
@@ -773,7 +772,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         }
 
         const palette = kindColor(node, graphPalette);
-        const selected = isSelectedGraphNode(node, selectedPersonId, selectedAccountId);
         const alpha = nodeAlpha(
           node,
           highlighted,
@@ -785,9 +783,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
         display.outer.clear();
         display.outer.lineStyle(
-          selected ? 3 : 1.4,
-          selected ? graphPalette.selection : palette.stroke,
-          selected ? 0.95 : 0.72,
+          1.4,
+          palette.stroke,
+          0.72,
         );
         display.outer.beginFill(
           palette.fill,
@@ -863,6 +861,57 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         layoutReadyRef.current = true;
         setLayoutReady(true);
       }
+    }
+
+    const selectionStyleKey = [
+      layoutVersion,
+      selectedPersonId ?? "",
+      selectedAccountId ?? "",
+      themeId ?? "",
+      accountDrag?.dropTargetPersonId ?? "",
+    ].join("|");
+
+    if (lastSelectionStyleKeyRef.current !== selectionStyleKey || didStaticRender || !!accountDrag) {
+      scene.edgeLayer.alpha = highlighted.size > 0 ? 0.42 : 1;
+      scene.edgeHighlightLayer.clear();
+      if (highlighted.size > 0) {
+        for (const edge of layoutRef.current.edges) {
+          const source = nodeById.get(edge.sourceId);
+          const target = nodeById.get(edge.targetId);
+          if (!source || !target) continue;
+          if (!highlighted.has(source.id) || !highlighted.has(target.id)) continue;
+          const sourcePoint = nodePosition(source, drag);
+          const targetPoint = nodePosition(target, drag);
+          scene.edgeHighlightLayer.lineStyle(2.4, graphPalette.highlight, 0.72);
+          scene.edgeHighlightLayer.moveTo(sourcePoint.x, sourcePoint.y);
+          scene.edgeHighlightLayer.lineTo(targetPoint.x, targetPoint.y);
+        }
+      }
+
+      for (const node of layoutRef.current.nodes) {
+        const display = scene.nodeDisplays.get(node.id);
+        if (!display) continue;
+        const palette = kindColor(node, graphPalette);
+        const selected = isSelectedGraphNode(node, selectedPersonId, selectedAccountId);
+        display.container.alpha = nodeAlpha(
+          node,
+          highlighted,
+          accountDrag?.dropTargetPersonId ?? null,
+        );
+        display.outer.clear();
+        display.outer.lineStyle(
+          selected ? 3 : 1.4,
+          selected ? graphPalette.selection : palette.stroke,
+          selected ? 0.95 : 0.72,
+        );
+        display.outer.beginFill(
+          palette.fill,
+          node.kind === "feed" ? 0.72 : node.kind === "account" ? 0.9 : 0.96,
+        );
+        display.outer.drawCircle(0, 0, node.radius);
+        display.outer.endFill();
+      }
+      lastSelectionStyleKeyRef.current = selectionStyleKey;
     }
 
     const providerMetrics = providerLabelMetrics(transform.scale);
@@ -1258,11 +1307,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       const regionLayer = new Graphics();
       const regionLabelLayer = new Container();
       const edgeLayer = new Graphics();
+      const edgeHighlightLayer = new Graphics();
       const nodeLayer = new Container();
       const hoverLayer = new Graphics();
       const labelLayer = new Container();
       world.addChild(regionLayer);
       world.addChild(edgeLayer);
+      world.addChild(edgeHighlightLayer);
       world.addChild(nodeLayer);
       world.addChild(hoverLayer);
       world.addChild(regionLabelLayer);
@@ -1274,6 +1325,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         regionLayer,
         regionLabelLayer,
         edgeLayer,
+        edgeHighlightLayer,
         nodeLayer,
         hoverLayer,
         labelLayer,
@@ -1711,13 +1763,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   }, [scheduleSyncScene]);
 
   const handleDoubleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    const hit = hitNodeAt(event.clientX, event.clientY);
-    if (hit) {
-      focusNode(hit.id);
-    } else {
-      fitAll();
-    }
-  }, [fitAll, focusNode, hitNodeAt]);
+    event.preventDefault();
+  }, []);
 
   return (
     <div
