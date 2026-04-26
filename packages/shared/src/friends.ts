@@ -22,6 +22,24 @@ const SOCIAL_PLATFORMS = new Set<Platform>([
   "linkedin",
 ]);
 
+function inferredSocialProfileUrl(item: FeedItem): string | undefined {
+  const handle = item.author.handle?.replace(/^@/, "").trim();
+  if (!handle || handle === "unknown") return undefined;
+
+  if (item.platform === "instagram") {
+    return `https://www.instagram.com/${handle}/`;
+  }
+
+  if (item.platform === "facebook") {
+    const facebookHandle = handle.replace(/^fb:/, "");
+    return facebookHandle && facebookHandle !== "unknown"
+      ? `https://www.facebook.com/${facebookHandle}`
+      : undefined;
+  }
+
+  return undefined;
+}
+
 export function effectiveInterval(
   careLevel: 1 | 2 | 3 | 4 | 5,
   overrideDays?: number
@@ -91,6 +109,7 @@ export function buildDiscoveredAccountsFromItems(
     const key = `${item.platform}:${item.author.id}`;
     if (seen.has(key)) continue;
     seen.add(key);
+    const profileUrl = inferredSocialProfileUrl(item);
     missing.push({
       id: `social:${item.platform}:${item.author.id}`,
       kind: "social",
@@ -99,6 +118,7 @@ export function buildDiscoveredAccountsFromItems(
       handle: item.author.handle,
       displayName: item.author.displayName,
       avatarUrl: item.author.avatarUrl,
+      ...(profileUrl ? { profileUrl } : {}),
       firstSeenAt: item.publishedAt,
       lastSeenAt: item.publishedAt,
       discoveredFrom: item.contentType === "story" ? "story_author" : "captured_item",

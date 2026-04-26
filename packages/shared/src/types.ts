@@ -809,7 +809,7 @@ export function createDefaultPreferences(): UserPreferences {
     display: {
       itemsPerPage: 20,
       compactMode: false,
-      themeId: "neon",
+      themeId: "scriptorium",
       showEngagementCounts: false, // Hidden by default
       reading: {
         focusMode: false,

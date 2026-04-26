@@ -52,10 +52,26 @@ async function proxyFetch(args: Record<string, unknown>): Promise<string> {
   return resp.text();
 }
 
+async function proxyFetchBinary(args: Record<string, unknown>): Promise<number[]> {
+  const resp = await fetch("/api/proxy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url: args.url,
+      headers: args.headers ?? {},
+      method: args.method ?? "GET",
+      body: args.body ?? "",
+    }),
+  });
+  if (!resp.ok) throw new Error(`Proxy ${resp.status}: ${await resp.text()}`);
+  return Array.from(new Uint8Array(await resp.arrayBuffer()));
+}
+
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
   broadcast_doc: () => null,
   fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
+  fetch_binary_url: (args: Record<string, unknown>) => proxyFetchBinary({ url: args.url, method: "GET" }),
   x_api_request: (args: Record<string, unknown>) => proxyFetch(args),
   get_local_ip: () => "127.0.0.1",
   get_all_local_ips: () => [],

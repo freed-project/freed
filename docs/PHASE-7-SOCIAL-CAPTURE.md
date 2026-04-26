@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, Facebook group controls, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, same-platform social story duplicate repair, X reply hydration for the reader, and captured authors now feeding the Phase 8 account catalog for identity review
+> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, Facebook group controls, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, same-platform social story duplicate repair, X reply hydration for the reader, captured authors now feeding the Phase 8 account catalog for identity review, and a local permanent media vault for a user's own Meta media
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -105,6 +105,18 @@ Story scraping is interleaved with feed scraping in each session. A coin flip (~
 
 Background scrape and auth-check sessions now force provider media elements silent through the injected WebKit mask layer. Audio elements are paused outright, video elements are forced muted, and newly inserted media is re-silenced as the DOM changes.
 
+### Permanent Media Archive
+
+Facebook and Instagram settings now expose a local-only media archive for the user's own uploaded media. This is not the standard content cache. Files are copied under the Freed Desktop app-data folder in `media-vault/{provider}` and are kept until the user explicitly deletes the archive, removes that provider archive, or factory-resets Freed Desktop.
+
+The archive writes a local manifest with provider, source URL, post ID, media URL, local path, byte size, content hash, captured time, import source, and restore-planning roster hints. Media files, manifest rows, byte counts, failure records, retry state, and provider archive preferences are intentionally excluded from Automerge and are not synced.
+
+Historical completeness comes from Meta export import. The importer accepts Accounts Center ZIP exports, prefers JSON-backed structures, scans Facebook and Instagram media folders defensively, skips message attachments, records discovered account handles, and copies media into the permanent vault with content-hash dedupe.
+
+Recent coverage is continuous. After Facebook or Instagram sync stores captured items, Freed records roster metadata and attempts to archive recent own-account media when the provider archive is enabled and the user's handle is known. The archive dedupes by content hash, source URL, provider media ID, and normalized media URL, records bounded retry state for failed downloads, and never prunes permanent media.
+
+Profile backfill is user-started and visible in settings. The current implementation backfills media already captured from the user's own provider identity and marks those files with the profile-backfill import source. Direct historical own-profile DOM crawling remains selector-sensitive and should stay slower, resumable, and separately smoke-tested before we claim full coverage beyond Meta export import.
+
 ---
 
 ## Rate Limiting
@@ -144,7 +156,10 @@ const RATE_LIMITS = {
 | 7.13 | Outbox processor for cross-device sync      | ✓ Complete  |
 | 7.14 | Comment links (open on platform)            | ✓ Complete  |
 | 7.15 | Cross-platform dedup (IG/FB cross-posts)    | ✓ Complete  |
-| 7.16 | Reader reply hydration for X posts          | ✓ Complete  |
+| 7.16 | Permanent local media vault                 | ✓ Complete  |
+| 7.17 | Meta export import for own media            | ✓ Complete  |
+| 7.18 | Own-profile backfill crawler                | 🚧 In Progress |
+| 7.19 | Reader reply hydration for X posts          | ✓ Complete  |
 
 ---
 
@@ -178,8 +193,14 @@ const RATE_LIMITS = {
 - [x] Source indicators in sidebar for both platforms
 - [x] Sync indicator panel shows both platforms
 - [x] Direct Facebook and Instagram source views expose All, Posts, and Stories filters in the top toolbar
+- [x] Facebook and Instagram settings expose `Back up my uploaded media`, `Import Meta export`, `Backfill from profile`, `Back up now`, and `Open vault folder`
+- [x] Meta export ZIP import copies Facebook and Instagram media into a permanent local vault with a local manifest
+- [x] Permanent media archive state stays outside Automerge and is not synced
+- [x] Continuous backup archives recent own-account media after provider sync when the account handle is known
+- [x] Facebook roster planning keeps group ID, name, and URL in the local archive manifest
 - [ ] Facebook feed posts validated against real account (selector tuning)
 - [ ] Instagram feed posts validated against real account (selector tuning)
+- [ ] Direct own-profile crawler validated against saved Facebook profile, Instagram grid, reels, albums, and media-page DOM fixtures
 - [~] Stories captured, with IG + FB story scraping integrated, Instagram story location URLs preserved for map recovery, playable story video rendering in the feed, stable fallback IG story IDs, and same-platform story duplicate repair. Selector tuning still needs work.
 - [x] Cross-platform dedup (task 7.15): linked Facebook and Instagram stories or posts with similar text now collapse into one item when they land within a few minutes of each other, while preserving saved state, tags, and richer map metadata
 - [x] Like button with outbox pattern: intent recorded immediately, synced to platform async
