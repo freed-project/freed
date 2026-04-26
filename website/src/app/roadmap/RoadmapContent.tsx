@@ -862,7 +862,7 @@ function PhaseCard({ phase, index }: { phase: Phase; index: number }) {
 
       <div className="block sm:flex sm:items-start sm:justify-between sm:gap-4">
         <div className="w-full sm:flex-1">
-          <div className="flex items-center gap-3 mb-2 pr-28 sm:pr-0">
+          <div className="flex items-center gap-3 mb-2">
             <span className="text-2xl font-bold text-text-muted">
               {String(phase.number).padStart(2, "0")}
             </span>
@@ -873,14 +873,14 @@ function PhaseCard({ phase, index }: { phase: Phase; index: number }) {
           <p className="text-text-secondary">{phase.description}</p>
         </div>
 
-        <div className="absolute top-6 right-6 flex flex-col items-end gap-2 sm:static sm:shrink-0">
+        <div className="mt-4 flex items-center justify-between gap-3 sm:static sm:mt-0 sm:shrink-0 sm:flex-col sm:items-end sm:justify-start sm:gap-2">
           <span
-            className={`px-3 py-1 rounded-full text-xs font-medium ${style.badge}`}
+            className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium ${style.badge}`}
           >
             {style.badgeText}
           </span>
           {phase.planLink && (
-            <span className="text-xs text-text-muted group-hover:text-text-primary transition-colors duration-200 flex items-center gap-1">
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-xs text-text-muted transition-colors duration-200 group-hover:text-text-primary">
               View Plan →
             </span>
           )}
