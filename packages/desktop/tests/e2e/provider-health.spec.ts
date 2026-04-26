@@ -1473,29 +1473,55 @@ test("sidebar keeps friends and map under all, and LinkedIn falls back to source
   await app.goto();
   await app.waitForReady();
 
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+    };
     const store = w.__FREED_STORE__ as {
-      getState: () => {
-        itemCountByPlatform: Record<string, number>;
-        unreadCountByPlatform: Record<string, number>;
-      };
       setState: (partial: Record<string, unknown>) => void;
     };
-    const current = store.getState();
+    const now = Date.now();
+
+    await automerge.docBatchImportItems(
+      Array.from({ length: 38 }, (_, index) => ({
+        globalId: `linkedin:status-fallback-${index}`,
+        platform: "linkedin",
+        contentType: "post",
+        capturedAt: now - index * 60_000,
+        publishedAt: now - index * 60_000,
+        author: {
+          id: `linkedin-status-author-${index}`,
+          handle: `status-author-${index}`,
+          displayName: `LinkedIn Status Author ${index.toLocaleString()}`,
+        },
+        content: {
+          text: `LinkedIn status fallback item ${index.toLocaleString()}`,
+          mediaUrls: [],
+          mediaTypes: [],
+          linkPreview: {
+            url: `https://www.linkedin.com/feed/update/status-fallback-${index}/`,
+            title: `LinkedIn status fallback ${index.toLocaleString()}`,
+            description: "LinkedIn status fallback fixture",
+          },
+        },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+      })),
+    );
+
     store.setState({
       liAuth: {
         isAuthenticated: false,
       },
-      itemCountByPlatform: {
-        ...current.itemCountByPlatform,
-        linkedin: 38,
-      },
-      unreadCountByPlatform: {
-        ...current.unreadCountByPlatform,
-        linkedin: 15,
-      },
     });
+  });
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | { getState: () => { itemCountByPlatform: Record<string, number> } }
+      | undefined;
+    return (store?.getState().itemCountByPlatform.linkedin ?? 0) >= 38;
   });
 
   const sourceRowOrder = await page.evaluate(() =>
