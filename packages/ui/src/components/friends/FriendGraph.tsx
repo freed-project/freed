@@ -193,6 +193,8 @@ interface GraphPerfSnapshot {
   nodeRestyleCount: number;
   labelLayoutCount: number;
   visibleLabelCount: number;
+  visibleNodeLabelCount: number;
+  visibleProviderLabelCount: number;
   qualityMode: GraphQualityMode;
 }
 
@@ -209,6 +211,28 @@ function nowMs(): number {
 
 function estimateLabelWidth(label: string, fontSize: number): number {
   return Math.max(44, Math.round(label.length * fontSize * 0.57 + 20));
+}
+
+function graphNodeLabelFontSize(node: IdentityGraphLayoutNode, scale: number): number {
+  if (node.kind === "friend_person") return scale >= 1.12 ? 13 : 12;
+  if (node.kind === "connection_person") return scale >= 1.16 ? 12 : 11;
+  return 10.5;
+}
+
+function providerLabelMetrics(scale: number): {
+  fontSize: number;
+  height: number;
+  paddingX: number;
+  alpha: number;
+  gap: number;
+} {
+  if (scale < 0.55) {
+    return { fontSize: 16, height: 30, paddingX: 14, alpha: 0.96, gap: 18 };
+  }
+  if (scale < 0.9) {
+    return { fontSize: 14, height: 26, paddingX: 12, alpha: 0.9, gap: 16 };
+  }
+  return { fontSize: 12, height: 22, paddingX: 10, alpha: 0.76, gap: 14 };
 }
 
 function buildHighlightedNodeIds(
@@ -620,6 +644,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     nodeRestyleCount: 0,
     labelLayoutCount: 0,
     visibleLabelCount: 0,
+    visibleNodeLabelCount: 0,
+    visibleProviderLabelCount: 0,
     qualityMode: "settled",
   });
   const [canvasSize, setCanvasSize] = useState({ width: 900, height: DEFAULT_HEIGHT });
@@ -708,26 +734,6 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           scene.regionDisplays.set(region.id, display);
           scene.regionLabelLayer.addChild(display.container);
         }
-        const label = `${region.label} ${region.count.toLocaleString()}`;
-        const labelWidth = estimateLabelWidth(label, 11);
-        display.container.position.set(region.x, region.y - region.radiusY - 14);
-        display.container.alpha = highlighted.size > 0 ? 0.38 : 0.82;
-        display.background.clear();
-        display.background.lineStyle(1, fill, 0.38);
-        display.background.beginFill(graphPalette.labelFill, 0.82);
-        display.background.drawRoundedRect(-labelWidth / 2, -11, labelWidth, 22, 11);
-        display.background.endFill();
-        display.text.text = label;
-        display.text.style = getCachedTextStyle(
-          ["region", themeId ?? "default", region.provider, 11].join(":"),
-          {
-            fill,
-            fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
-            fontSize: 11,
-            fontWeight: "700",
-            letterSpacing: 1,
-          },
-        );
       }
       for (const staleRegionId of staleRegionIds) {
         const staleDisplay = scene.regionDisplays.get(staleRegionId);
@@ -859,6 +865,63 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       }
     }
 
+    const providerMetrics = providerLabelMetrics(transform.scale);
+    const providerLabelScale = 1 / transform.scale;
+    let visibleProviderLabelCount = 0;
+    for (const region of layoutRef.current.regions) {
+      const display = scene.regionDisplays.get(region.id);
+      if (!display) continue;
+      const fill = providerColor(region.provider, graphPalette);
+      const point = screenPointForPosition({ x: region.x, y: region.y }, transform);
+      const onScreen =
+        point.x >= -160 &&
+        point.x <= canvasSize.width + 160 &&
+        point.y >= -160 &&
+        point.y <= canvasSize.height + 160;
+      display.container.visible = onScreen;
+      if (!onScreen) continue;
+
+      visibleProviderLabelCount += 1;
+      const label = `${region.label} ${region.count.toLocaleString()}`;
+      const labelWidth = estimateLabelWidth(label, providerMetrics.fontSize) +
+        providerMetrics.paddingX * 2;
+      display.container.position.set(
+        region.x,
+        region.y - region.radiusY - providerMetrics.gap / transform.scale,
+      );
+      display.container.scale.set(providerLabelScale);
+      display.container.alpha = highlighted.size > 0
+        ? providerMetrics.alpha * 0.52
+        : providerMetrics.alpha;
+      display.background.clear();
+      display.background.lineStyle(1.2, fill, 0.58);
+      display.background.beginFill(graphPalette.labelFill, 0.88);
+      display.background.drawRoundedRect(
+        -labelWidth / 2,
+        -providerMetrics.height / 2,
+        labelWidth,
+        providerMetrics.height,
+        providerMetrics.height / 2,
+      );
+      display.background.endFill();
+      display.text.text = label;
+      display.text.style = getCachedTextStyle(
+        [
+          "region",
+          themeId ?? "default",
+          region.provider,
+          providerMetrics.fontSize,
+        ].join(":"),
+        {
+          fill,
+          fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
+          fontSize: providerMetrics.fontSize,
+          fontWeight: "700",
+          letterSpacing: 1,
+        },
+      );
+    }
+
     scene.hoverLayer.clear();
     if (hoveredNodeId) {
       const hoveredNode = nodeById.get(hoveredNodeId);
@@ -917,7 +980,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           continue;
         }
 
-        const fontSize = node.kind === "friend_person" ? 14 : node.kind === "connection_person" ? 13 : 12;
+        const fontSize = graphNodeLabelFontSize(node, transform.scale);
         const width = estimateLabelWidth(node.label, fontSize);
         const height = fontSize + 10;
         visibleLabels.push({
@@ -1001,7 +1064,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       const display = scene.labelDisplays.get(labelId);
       if (!node || !display) continue;
       const point = screenPointForPosition(nodePosition(node, drag), transform);
-      const fontSize = node.kind === "friend_person" ? 14 : node.kind === "connection_person" ? 13 : 12;
+      const fontSize = graphNodeLabelFontSize(node, transform.scale);
       const labelWidth = estimateLabelWidth(node.label, fontSize);
       const labelHeight = fontSize + 10;
       const labelX = point.x;
@@ -1034,7 +1097,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
     perfSnapshotRef.current.sceneSyncCount += 1;
     perfSnapshotRef.current.qualityMode = qualityMode;
-    perfSnapshotRef.current.visibleLabelCount = visibleLabelIdsRef.current.length;
+    const visibleLabelCount = visibleLabelIdsRef.current.length + visibleProviderLabelCount;
+    perfSnapshotRef.current.visibleLabelCount = visibleLabelCount;
+    perfSnapshotRef.current.visibleNodeLabelCount = visibleLabelIdsRef.current.length;
+    perfSnapshotRef.current.visibleProviderLabelCount = visibleProviderLabelCount;
     if (didStaticRender || didLabelLayout) {
       perfSnapshotRef.current.contentSyncCount += 1;
     } else {
@@ -1051,7 +1117,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       containerRef.current.dataset.graphLinkCount = String(layoutRef.current.edges.length);
       containerRef.current.dataset.graphPersonCount = String(personCount);
       containerRef.current.dataset.graphChannelCount = String(channelCount);
-      containerRef.current.dataset.visibleLabelCount = String(visibleLabelIdsRef.current.length);
+      containerRef.current.dataset.visibleLabelCount = String(visibleLabelCount);
       containerRef.current.dataset.graphQualityMode = qualityMode;
     }
     if (typeof window !== "undefined") {
@@ -1196,10 +1262,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       const hoverLayer = new Graphics();
       const labelLayer = new Container();
       world.addChild(regionLayer);
-      world.addChild(regionLabelLayer);
       world.addChild(edgeLayer);
       world.addChild(nodeLayer);
       world.addChild(hoverLayer);
+      world.addChild(regionLabelLayer);
       app.stage.addChild(world);
       app.stage.addChild(labelLayer);
       pixiRef.current = {

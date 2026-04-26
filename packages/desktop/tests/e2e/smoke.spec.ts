@@ -234,6 +234,8 @@ async function readGraphDebug(page: Page) {
           nodeRestyleCount: number;
           labelLayoutCount: number;
           visibleLabelCount: number;
+          visibleNodeLabelCount: number;
+          visibleProviderLabelCount: number;
           qualityMode: "interactive" | "settled";
         };
       };
@@ -260,6 +262,8 @@ async function readGraphSummary(page: Page) {
           nodeRestyleCount: number;
           labelLayoutCount: number;
           visibleLabelCount: number;
+          visibleNodeLabelCount: number;
+          visibleProviderLabelCount: number;
           qualityMode: "interactive" | "settled";
         };
       };
@@ -4142,6 +4146,9 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
       }).__FREED_GRAPH_DEBUG__?.transform.scale ?? 0
     ),
   }));
+  const initialDebug = await readGraphSummary(page);
+  expect(initialDebug).not.toBeNull();
+  expect(initialDebug!.metrics.visibleProviderLabelCount).toBeGreaterThan(0);
 
   await viewport.evaluate((element) => {
     const dispatchZoom = (deltaY: number) => {
@@ -4166,6 +4173,12 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
       return debug?.transform.scale ?? 0;
     }, { timeout: 10_000 })
     .toBeGreaterThan(initial.scale);
+  await expect
+    .poll(async () => {
+      const debug = await readGraphSummary(page);
+      return debug?.metrics.visibleNodeLabelCount ?? 0;
+    }, { timeout: 10_000 })
+    .toBeGreaterThan(0);
 
   const after = await viewport.evaluate((element) => ({
     labels: Number((element as HTMLElement).dataset.visibleLabelCount ?? "0"),
@@ -4177,7 +4190,9 @@ test("zooming the Friends graph keeps labels visible without collapsing the view
       }).__FREED_GRAPH_DEBUG__?.transform.scale ?? 0
     ),
   }));
-  expect(after.labels).toBeGreaterThanOrEqual(Math.max(4, initial.labels - 2));
+  const afterDebug = await readGraphSummary(page);
+  expect(afterDebug).not.toBeNull();
+  expect(after.labels).toBeGreaterThanOrEqual(afterDebug!.metrics.visibleProviderLabelCount);
   expect(Math.abs(after.width - initial.width)).toBeLessThan(4);
   expect(Math.abs(after.height - initial.height)).toBeLessThan(4);
   expect(after.scale).toBeGreaterThan(initial.scale);

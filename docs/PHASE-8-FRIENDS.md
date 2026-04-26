@@ -269,6 +269,7 @@ The graph renderer keeps Pixi, draws every graph role from theme tokens, and use
 The layout worker now uses bounded D3 Force ticks for the people field, places confirmed friends in the center by care and activity, leaves provisional identities in the middle field, orbits linked channels around their person, and places every unlinked channel in a provider island around the edge.
 Dragging a person or channel now pins its graph position unless the channel is dropped onto a person, in which case the existing link flow wins.
 Sample data now defaults to a showcase graph with 250 friends and 1,250 connected social identities, while the stress fixture covers 1,000 friends and 5,000 connected social identities.
+Semantic zoom now promotes provider island labels at low zoom while delaying person and channel labels until the operator zooms in, so the graph reads as geography first and detail second.
 
 ---
 
@@ -320,6 +321,7 @@ Sample data now defaults to a showcase graph with 250 friends and 1,250 connecte
 | 8.38 | Treat RSS as a normal provider island, with linked RSS accounts orbiting their person like other channels | Medium | Done |
 | 8.39 | Persist optional graph placement and support drag-to-pin without breaking drag-to-link | Medium | Done |
 | 8.40 | Expand showcase and stress sample graph coverage to 250 friends plus 1,250 identities and 1,000 friends plus 5,000 identities | Medium | Done |
+| 8.41 | Add semantic zoom hierarchy so provider island labels dominate low zoom and person labels appear at closer zoom | Medium | Done |
 
 ---
 
@@ -362,6 +364,7 @@ Sample data now defaults to a showcase graph with 250 friends and 1,250 connecte
 - [x] Empty provisional identities are removed automatically when their last linked channel moves away
 - [x] The Friends graph uses a WebGL Pixi renderer with worker-computed radial layout instead of the old main-thread canvas stack
 - [x] Semantic zoom reveals more labels as the operator zooms in, without crushing the viewport
+- [x] Provider island labels stay prominent at low zoom while person labels wait for closer inspection
 - [x] Pan and zoom reuse retained Pixi node and label objects instead of rebuilding the full scene every frame
 - [x] Scriptorium graph colors stay legible instead of washing node fills and labels into the stage
 - [x] Graph model construction uses single-pass activity indexing instead of rescanning every captured item per node
