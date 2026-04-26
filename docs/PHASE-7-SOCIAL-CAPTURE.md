@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress — Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, silent background media guarding, provider health summaries, smart backoff, Facebook group controls, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, and captured authors now feeding the Phase 8 account catalog for identity review
+> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, silent background media guarding, provider health summaries, smart backoff, Facebook group controls, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, same-platform social story duplicate repair, and captured authors now feeding the Phase 8 account catalog for identity review
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -98,7 +98,7 @@ Self-contained JavaScript injected into the WebView's execution context. No exte
 - **Facebook** (`fb-extract.js`): Locates "Feed posts" h3, walks subtrees for post-sized blocks
 - **Instagram** (`ig-extract.js`): Queries `<article>` elements, extracts author/caption/media from semantic header/footer structure
 - **Facebook stories** (`fb-stories-extract.js`): Injected into the FB story viewer overlay. Extracts author, media, timestamp, location/check-in. Emits via `fb-feed-data` with `postType: "story"`.
-- **Instagram stories** (`ig-stories-extract.js`): Injected into the IG story viewer overlay. Extracts author handle (from URL + DOM), media URL, timestamp, and location sticker metadata. The normalized `FeedItem.location` now preserves the sticker source plus Instagram `locationUrl`, so later map resolution can recover real place names from generic labels such as `Locations`.
+- **Instagram stories** (`ig-stories-extract.js`): Injected into the IG story viewer overlay. Extracts author handle (from URL + DOM), typed media URLs, timestamp, and location sticker metadata. Timestamp-like fallback story IDs are replaced with stable content hashes. The normalized `FeedItem.location` now preserves the sticker source plus Instagram `locationUrl`, so later map resolution can recover real place names from generic labels such as `Locations`.
 
 Story scraping is interleaved with feed scraping in each session. A coin flip (~50%) determines whether stories are scraped before or after the initial feed passes. ~15% of sessions skip story scraping entirely (real users don't always check stories). Up to 30 story frames are captured per session.
 
@@ -174,9 +174,10 @@ const RATE_LIMITS = {
 - [x] Empty states for both platforms in the feed view
 - [x] Source indicators in sidebar for both platforms
 - [x] Sync indicator panel shows both platforms
+- [x] Direct Facebook and Instagram source views expose All, Posts, and Stories filters in the top toolbar
 - [ ] Facebook feed posts validated against real account (selector tuning)
 - [ ] Instagram feed posts validated against real account (selector tuning)
-- [~] Stories captured, with IG + FB story scraping integrated and Instagram story location URLs preserved for map recovery. Stable IG story IDs and selector tuning still need work.
+- [~] Stories captured, with IG + FB story scraping integrated, Instagram story location URLs preserved for map recovery, playable story video rendering in the feed, stable fallback IG story IDs, and same-platform story duplicate repair. Selector tuning still needs work.
 - [x] Cross-platform dedup (task 7.15): linked Facebook and Instagram stories or posts with similar text now collapse into one item when they land within a few minutes of each other, while preserving saved state, tags, and richer map metadata
 - [x] Like button with outbox pattern: intent recorded immediately, synced to platform async
 - [x] Two-state like UI: "noted" (amber) vs "memorialized" (red confirmed on platform)

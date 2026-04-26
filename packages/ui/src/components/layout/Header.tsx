@@ -18,6 +18,7 @@ import {
   type MapMode,
   type MapTimeMode,
   type SidebarMode,
+  type SocialContentFilter,
   resolveMapMode,
 } from "@freed/shared";
 import { SearchField } from "../SearchField.js";
@@ -222,6 +223,7 @@ export function Header({
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
+  const setFilter = useAppStore((s) => s.setFilter);
   const setSearchQuery = useAppStore((s) => s.setSearchQuery);
   const display = useAppStore((s) => s.preferences.display);
 
@@ -269,6 +271,12 @@ export function Header({
   const showFeedBulkActions = activeView === "feed";
   const showArchivedToolbar = activeView === "feed" && activeFilter.archivedOnly === true;
   const showArchivedDeleteAction = showArchivedToolbar && (display.archivePruneDays ?? 30) > 0;
+  const showSocialContentControls =
+    activeView === "feed" &&
+    !selectedItem &&
+    !activeFilter.feedUrl &&
+    (activeFilter.platform === "facebook" || activeFilter.platform === "instagram");
+  const socialContentFilter: SocialContentFilter = activeFilter.socialContentFilter ?? "all";
 
   const unreadCount =
     activeFilter.savedOnly || activeFilter.archivedOnly
@@ -285,6 +293,19 @@ export function Header({
         : activeFilter.platform
           ? (archivableCountByPlatform[activeFilter.platform] ?? 0)
           : totalArchivableCount;
+
+  const handleSocialContentFilterChange = useCallback(
+    (value: SocialContentFilter) => {
+      const nextFilter = { ...activeFilter };
+      if (value === "all") {
+        delete nextFilter.socialContentFilter;
+      } else {
+        nextFilter.socialContentFilter = value;
+      }
+      setFilter(nextFilter);
+    },
+    [activeFilter, setFilter],
+  );
 
   const currentTitle = useMemo(() => {
     if (selectedItem) {
@@ -1116,6 +1137,23 @@ export function Header({
                     >
                       {deleteConfirmArmed ? "Confirm delete?" : "Delete archived"}
                     </button>
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot visible={showSocialContentControls} width="11rem" className="hidden md:flex">
+                  {showSocialContentControls ? (
+                    <ToolbarToggleGroup
+                      dataTestId="social-content-toolbar-filter"
+                      options={[
+                        { value: "all", label: "All" },
+                        { value: "posts", label: "Posts" },
+                        { value: "stories", label: "Stories" },
+                      ]}
+                      value={socialContentFilter}
+                      onChange={handleSocialContentFilterChange}
+                      compact
+                      getButtonProps={getToolbarControlProps}
+                    />
                   ) : null}
                 </ToolbarAnimatedSlot>
 
