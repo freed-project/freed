@@ -45,11 +45,21 @@ function normalizeSocialContentFilter(
 }
 
 export function canonicalizeFilterOptions(filter: FilterOptions): FilterOptions {
-  if (filter.savedOnly) return { savedOnly: true };
-  if (filter.archivedOnly) return { archivedOnly: true };
-
   const tags = uniqueSortedTags(filter.tags);
   const signals = uniqueSortedSignals(filter.signals);
+  if (filter.savedOnly) {
+    const next: FilterOptions = { savedOnly: true };
+    if (tags.length > 0) next.tags = tags;
+    if (signals.length > 0) next.signals = signals;
+    return next;
+  }
+  if (filter.archivedOnly) {
+    const next: FilterOptions = { archivedOnly: true };
+    if (tags.length > 0) next.tags = tags;
+    if (signals.length > 0) next.signals = signals;
+    return next;
+  }
+
   const feedUrl = normalizeText(filter.feedUrl);
   const platform = feedUrl ? "rss" : normalizeText(filter.platform) ?? undefined;
   const socialContentFilter =
@@ -127,8 +137,12 @@ export function parseNavigationState(input: string | NavigationPathLike): Naviga
   let activeFilter: FilterOptions;
   if (scope === "saved") {
     activeFilter = { savedOnly: true };
+    if (tags.length > 0) activeFilter.tags = tags;
+    if (signals.length > 0) activeFilter.signals = signals;
   } else if (scope === "archived") {
     activeFilter = { archivedOnly: true };
+    if (tags.length > 0) activeFilter.tags = tags;
+    if (signals.length > 0) activeFilter.signals = signals;
   } else if (feedUrl) {
     activeFilter = { platform: "rss", feedUrl };
     if (tags.length > 0) activeFilter.tags = tags;
@@ -166,6 +180,15 @@ export function serializeNavigationState(state: NavigationState): string {
     params.set("scope", "saved");
   } else if (activeFilter.archivedOnly) {
     params.set("scope", "archived");
+  }
+
+  if (activeFilter.savedOnly || activeFilter.archivedOnly) {
+    for (const tag of uniqueSortedTags(activeFilter.tags)) {
+      params.append("tag", tag);
+    }
+    for (const signal of uniqueSortedSignals(activeFilter.signals)) {
+      params.append("signal", signal);
+    }
   } else {
     if (activeFilter.feedUrl) {
       params.set("feed", activeFilter.feedUrl);
