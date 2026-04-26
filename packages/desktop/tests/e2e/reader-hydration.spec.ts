@@ -7,10 +7,17 @@ const STORY_AUTHOR = "Story Tester";
 const X_TITLE = "Deployment confirmed";
 const X_REPLY_TEXT = "The scale of this never stops being impressive.";
 const X_REPLY_MEDIA = "https://pbs.twimg.com/media/reply-rocket.jpg";
+const FB_TITLE = "Facebook post with real discussion";
+const FB_REPLY_TEXT = "This is useful context from the Facebook thread.";
+const FB_REPLY_MEDIA = "https://scontent.example/comment-image.jpg";
+const IG_TITLE = "Instagram reel with comments";
+const IG_REPLY_TEXT = "This reply belongs in the Freed reader.";
+const IG_REPLY_MEDIA = "https://cdninstagram.example/comment-frame.jpg";
+const STORY_REPLY_MESSAGE = "Story replies are private on this platform. Open the story to reply there.";
 
 async function injectItems(page: import("@playwright/test").Page): Promise<void> {
   await page.evaluate(
-    async ({ articleTitle, articleUrl, storyAuthor, xTitle }) => {
+    async ({ articleTitle, articleUrl, storyAuthor, xTitle, fbTitle, igTitle }) => {
       const now = Date.now();
       const w = window as Record<string, unknown>;
       const automerge = w.__FREED_AUTOMERGE__ as {
@@ -76,9 +83,80 @@ async function injectItems(page: import("@playwright/test").Page): Promise<void>
           topics: [],
           sourceUrl: "https://x.com/SpaceX/status/2048427420",
         },
+        {
+          globalId: "facebook:post-discussion",
+          platform: "facebook",
+          contentType: "post",
+          capturedAt: now - 3_000,
+          publishedAt: now - 3_000,
+          author: { id: "fb-author", handle: "fb-author", displayName: "Facebook Author" },
+          content: {
+            text: fbTitle,
+            mediaUrls: [],
+            mediaTypes: [],
+          },
+          userState: { hidden: false, saved: false, archived: false, tags: [] },
+          topics: [],
+          sourceUrl: "https://www.facebook.com/fb-author/posts/123",
+        },
+        {
+          globalId: "instagram:reel-discussion",
+          platform: "instagram",
+          contentType: "video",
+          capturedAt: now - 4_000,
+          publishedAt: now - 4_000,
+          author: { id: "ig-author", handle: "ig_author", displayName: "Instagram Author" },
+          content: {
+            text: igTitle,
+            mediaUrls: [],
+            mediaTypes: [],
+          },
+          userState: { hidden: false, saved: false, archived: false, tags: [] },
+          topics: [],
+          sourceUrl: "https://www.instagram.com/reel/ABC123/",
+        },
+        {
+          globalId: "fb:story-cached",
+          platform: "facebook",
+          contentType: "story",
+          capturedAt: now - 5_000,
+          publishedAt: now - 5_000,
+          author: { id: "fb-story-author", handle: "fb_story", displayName: "Facebook Story Author" },
+          content: {
+            text: "",
+            mediaUrls: ["https://scontent.example/story.jpg"],
+            mediaTypes: ["image"],
+          },
+          userState: { hidden: false, saved: false, archived: false, tags: [] },
+          topics: [],
+          sourceUrl: "https://www.facebook.com/stories/fb_story/123",
+        },
+        {
+          globalId: "ig:story-cached",
+          platform: "instagram",
+          contentType: "story",
+          capturedAt: now - 6_000,
+          publishedAt: now - 6_000,
+          author: { id: "ig-story-author", handle: "ig_story", displayName: "Instagram Story Author" },
+          content: {
+            text: "",
+            mediaUrls: ["https://cdninstagram.example/story.jpg"],
+            mediaTypes: ["image"],
+          },
+          userState: { hidden: false, saved: false, archived: false, tags: [] },
+          topics: [],
+          sourceUrl: "https://www.instagram.com/stories/ig_story/123",
+        },
       ]);
     },
-    { articleTitle: ARTICLE_TITLE, articleUrl: ARTICLE_URL, storyAuthor: STORY_AUTHOR, xTitle: X_TITLE },
+    {
+      articleTitle: ARTICLE_TITLE,
+      articleUrl: ARTICLE_URL,
+      storyAuthor: STORY_AUTHOR,
+      xTitle: X_TITLE,
+      fbTitle: FB_TITLE,
+      igTitle: IG_TITLE,
+    },
   );
 }
 
@@ -274,4 +352,90 @@ test("X post reader hydration renders replies with media", async ({ app, ipc }) 
   await expect(app.page.getByText("Replies")).toBeVisible();
   await expect(app.page.getByText(X_REPLY_TEXT)).toBeVisible();
   await expect(app.page.locator(`img[src="${X_REPLY_MEDIA}:large"]`)).toBeVisible();
+});
+
+test("Facebook post reader hydration renders inline comments with media", async ({ app, ipc }) => {
+  await app.goto();
+  await app.waitForReady();
+  await ipc.setHandler("fb_scrape_comments", () => ({
+    comments: [
+      {
+        id: "fb-comment-1",
+        authorName: "Facebook Reader",
+        authorHandle: "fb_reader",
+        text: "This is useful context from the Facebook thread.",
+        mediaUrls: ["https://scontent.example/comment-image.jpg"],
+        mediaTypes: ["image"],
+        engagement: { likes: 12 },
+      },
+    ],
+    extractedAt: Date.now(),
+    url: "https://www.facebook.com/fb-author/posts/123",
+    candidateCount: 1,
+  }));
+  await injectItems(app.page);
+
+  await app.page.locator("article").filter({ hasText: FB_TITLE }).first().click();
+  await expect
+    .poll(async () => (await ipc.invocations()).some((call) => call.cmd === "fb_scrape_comments"))
+    .toBe(true);
+  await expect(app.page.getByText("Replies")).toBeVisible();
+  await expect(app.page.getByText(FB_REPLY_TEXT)).toBeVisible();
+  await expect(app.page.locator(`img[src="${FB_REPLY_MEDIA}"]`)).toBeVisible();
+});
+
+test("Instagram reader hydration renders post comments inside Freed", async ({ app, ipc }) => {
+  await app.goto();
+  await app.waitForReady();
+  await ipc.setHandler("ig_scrape_comments", () => ({
+    comments: [
+      {
+        id: "ig-comment-1",
+        authorName: "Instagram Reader",
+        authorHandle: "ig_reader",
+        text: "This reply belongs in the Freed reader.",
+        mediaUrls: ["https://cdninstagram.example/comment-frame.jpg"],
+        mediaTypes: ["image"],
+        engagement: { likes: 7 },
+      },
+    ],
+    extractedAt: Date.now(),
+    url: "https://www.instagram.com/reel/ABC123/",
+    candidateCount: 1,
+  }));
+  await injectItems(app.page);
+
+  await app.page.locator("article").filter({ hasText: IG_TITLE }).first().click();
+  await expect
+    .poll(async () => (await ipc.invocations()).some((call) => call.cmd === "ig_scrape_comments"))
+    .toBe(true);
+  await expect(app.page.getByText("Replies")).toBeVisible();
+  await expect(app.page.getByText(IG_REPLY_TEXT)).toBeVisible();
+  await expect(app.page.locator(`img[src="${IG_REPLY_MEDIA}"]`)).toBeVisible();
+});
+
+test("Facebook and Instagram stories show that story replies stay private", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+  await injectItems(app.page);
+
+  await app.page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => { setSelectedItem: (id: string) => void };
+    };
+    store.getState().setSelectedItem("fb:story-cached");
+  });
+
+  await expect(app.page.getByText(STORY_REPLY_MESSAGE)).toBeVisible();
+  await expect(app.page.getByText("Connect to the internet")).toHaveCount(0);
+
+  await app.page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => { setSelectedItem: (id: string) => void };
+    };
+    store.getState().setSelectedItem("ig:story-cached");
+  });
+
+  await expect(app.page.getByText(STORY_REPLY_MESSAGE)).toBeVisible();
+  await expect(app.page.getByText("Connect to the internet")).toHaveCount(0);
 });

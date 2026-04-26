@@ -248,6 +248,9 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
   const displayMediaUrls = readerMediaUrls ?? item.content.mediaUrls;
   const displayMediaTypes = readerMediaTypes ?? item.content.mediaTypes;
   const isStory = item.contentType === "story";
+  const supportsThreadHydration =
+    !isStory &&
+    (item.platform === "x" || item.platform === "facebook" || item.platform === "instagram");
 
   // ─── Content waterfall ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -322,7 +325,7 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
       // provider paths here, so reader failures are not confused with CORS.
       if (hydrateReaderItem && navigator.onLine) {
         setIsCaching(true);
-        setIsThreadLoading(item.platform === "x");
+        setIsThreadLoading(supportsThreadHydration);
         try {
           const hydrated = await hydrateReaderItem(item, { cacheMode, pin: shouldPin });
           if (!cancelled) {
@@ -423,6 +426,7 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
     pinReaderItem,
     item.preservedContent?.text,
     item.userState.saved,
+    supportsThreadHydration,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleSaved = useCallback(() => {
