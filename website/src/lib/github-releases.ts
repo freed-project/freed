@@ -73,7 +73,6 @@ function githubHeaders(): HeadersInit {
   };
 
   const token =
-    process.env.GITHUB_RELEASES_TOKEN ??
     process.env.GITHUB_TOKEN ??
     process.env.GH_TOKEN ??
     process.env.RELEASE_GITHUB_TOKEN;
