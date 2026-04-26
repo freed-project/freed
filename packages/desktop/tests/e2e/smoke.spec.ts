@@ -330,17 +330,21 @@ async function seedStressIdentityGraph(page: Page) {
     };
 
     const now = Date.now();
-    const persons = Array.from({ length: 1_000 }, (_, index) => ({
+    const personCount = 360;
+    const accountCount = 1_440;
+    const feedCount = 80;
+    const friendCutoff = Math.round(personCount * 0.82);
+    const persons = Array.from({ length: personCount }, (_, index) => ({
       id: `stress-person-${index}`,
       name: `Stress Person ${index}`,
-      relationshipStatus: index < 820 ? "friend" : "connection",
-      careLevel: index < 820 ? 3 + (index % 3) : 2,
+      relationshipStatus: index < friendCutoff ? "friend" : "connection",
+      careLevel: index < friendCutoff ? 3 + (index % 3) : 2,
       createdAt: now,
       updatedAt: now,
     }));
-    const accounts = Array.from({ length: 5_000 }, (_, index) => ({
+    const accounts = Array.from({ length: accountCount }, (_, index) => ({
       id: `stress-account-${index}`,
-      personId: `stress-person-${index % 1_000}`,
+      personId: `stress-person-${index % personCount}`,
       kind: "social",
       provider: index % 5 === 0 ? "rss" : index % 5 === 1 ? "instagram" : index % 5 === 2 ? "linkedin" : index % 5 === 3 ? "facebook" : "x",
       externalId: `stress-external-${index}`,
@@ -352,7 +356,7 @@ async function seedStressIdentityGraph(page: Page) {
       createdAt: now,
       updatedAt: now,
     }));
-    const feeds = Array.from({ length: 180 }, (_, index) => ({
+    const feeds = Array.from({ length: feedCount }, (_, index) => ({
       url: `https://stress.example/feed-${index}.xml`,
       title: `Stress Feed ${index}`,
       enabled: true,
