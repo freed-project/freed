@@ -6,7 +6,6 @@ import {
   TextStyle,
 } from "pixi.js";
 import {
-  type CSSProperties,
   forwardRef,
   useCallback,
   useEffect,
@@ -116,11 +115,13 @@ interface PixiScene {
   app: Application;
   world: Container;
   regionLayer: Graphics;
+  regionLabelLayer: Container;
   edgeLayer: Graphics;
   nodeLayer: Container;
   hoverLayer: Graphics;
   labelLayer: Container;
   nodeDisplays: Map<string, NodeDisplay>;
+  regionDisplays: Map<string, RegionDisplay>;
   labelDisplays: Map<string, LabelDisplay>;
 }
 
@@ -139,6 +140,12 @@ interface LabelDisplay {
   text: Text;
 }
 
+interface RegionDisplay {
+  container: Container;
+  background: Graphics;
+  text: Text;
+}
+
 const DEFAULT_HEIGHT = 560;
 const FIT_PADDING = 84;
 const MIN_SCALE = 0.2;
@@ -146,13 +153,8 @@ const MAX_SCALE = 2.8;
 const TRACKPAD_PINCH_ZOOM_SPEED = 0.005;
 const GRAPH_INTERACTION_SETTLE_DELAY_MS = 140;
 const INTERACTIVE_LABEL_LIMIT = 16;
+const SETTLED_LABEL_LIMIT = 32;
 const CONTROL_BASE = "btn-secondary rounded-xl px-3 py-1.5 text-xs";
-const FRIEND_GRAPH_VIEWPORT_MASK_STYLE = {
-  "--theme-soft-viewport-base-comp-left": "0px",
-  "--theme-soft-viewport-base-comp-right": "0px",
-  "--theme-soft-viewport-base-comp-top": "0px",
-  "--theme-soft-viewport-base-comp-bottom": "0px",
-} as CSSProperties;
 
 interface RgbColor {
   r: number;
@@ -477,6 +479,55 @@ function createLabelDisplay(themeId?: ThemeId): LabelDisplay {
   };
 }
 
+function createRegionDisplay(themeId?: ThemeId): RegionDisplay {
+  const container = new Container();
+  const background = new Graphics();
+  const text = new Text(
+    "",
+    new TextStyle({
+      fill: 0xffffff,
+      fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
+      fontSize: 11,
+      fontWeight: "700",
+      letterSpacing: 1,
+    }),
+  );
+  text.anchor.set(0.5);
+  container.addChild(background);
+  container.addChild(text);
+
+  return {
+    container,
+    background,
+    text,
+  };
+}
+
+function edgeFadeAlpha(left: number, top: number, width: number, height: number, viewportWidth: number, viewportHeight: number): number {
+  const fadeDistance = 28;
+  const right = left + width;
+  const bottom = top + height;
+  const distances = [
+    right,
+    viewportWidth - left,
+    bottom,
+    viewportHeight - top,
+  ];
+  const nearest = Math.min(...distances);
+  return Math.max(0, Math.min(1, nearest / fadeDistance));
+}
+
+function graphFitItems(layout: IdentityGraphLayout): Array<{ x: number; y: number; radius: number }> {
+  return [
+    ...layout.nodes,
+    ...layout.regions.map((region) => ({
+      x: region.x,
+      y: region.y,
+      radius: Math.max(region.radiusX, region.radiusY),
+    })),
+  ];
+}
+
 function countLinkedAccountChanges(
   previousModel: IdentityGraphModel | null,
   nextModel: IdentityGraphModel,
@@ -556,6 +607,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   } | null>(null);
   const lastLayoutMsRef = useRef(0);
   const graphQualityModeRef = useRef<GraphQualityMode>("settled");
+  const layoutReadyRef = useRef(false);
   const perfSnapshotRef = useRef<GraphPerfSnapshot>({
     modelBuildMs: 0,
     layoutMs: 0,
@@ -640,12 +692,49 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     if (lastStaticRenderKeyRef.current !== staticRenderKey || !!accountDrag) {
       didStaticRender = true;
       scene.regionLayer.clear();
+      const staleRegionIds = new Set(scene.regionDisplays.keys());
       for (const region of layoutRef.current.regions) {
+        staleRegionIds.delete(region.id);
         const fill = providerColor(region.provider, graphPalette);
-        scene.regionLayer.lineStyle(1, fill, highlighted.size > 0 ? 0.08 : 0.18);
-        scene.regionLayer.beginFill(fill, highlighted.size > 0 ? 0.035 : 0.07);
+        const alpha = region.unlinkedCount > 0 ? 0.12 : 0.075;
+        scene.regionLayer.lineStyle(1.4, fill, highlighted.size > 0 ? 0.14 : 0.34);
+        scene.regionLayer.beginFill(fill, highlighted.size > 0 ? alpha * 0.5 : alpha);
         scene.regionLayer.drawEllipse(region.x, region.y, region.radiusX, region.radiusY);
         scene.regionLayer.endFill();
+
+        let display = scene.regionDisplays.get(region.id);
+        if (!display) {
+          display = createRegionDisplay(themeId);
+          scene.regionDisplays.set(region.id, display);
+          scene.regionLabelLayer.addChild(display.container);
+        }
+        const label = `${region.label} ${region.count.toLocaleString()}`;
+        const labelWidth = estimateLabelWidth(label, 11);
+        display.container.position.set(region.x, region.y - region.radiusY - 14);
+        display.container.alpha = highlighted.size > 0 ? 0.38 : 0.82;
+        display.background.clear();
+        display.background.lineStyle(1, fill, 0.38);
+        display.background.beginFill(graphPalette.labelFill, 0.82);
+        display.background.drawRoundedRect(-labelWidth / 2, -11, labelWidth, 22, 11);
+        display.background.endFill();
+        display.text.text = label;
+        display.text.style = getCachedTextStyle(
+          ["region", themeId ?? "default", region.provider, 11].join(":"),
+          {
+            fill,
+            fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
+            fontSize: 11,
+            fontWeight: "700",
+            letterSpacing: 1,
+          },
+        );
+      }
+      for (const staleRegionId of staleRegionIds) {
+        const staleDisplay = scene.regionDisplays.get(staleRegionId);
+        if (!staleDisplay) continue;
+        scene.regionLabelLayer.removeChild(staleDisplay.container);
+        staleDisplay.container.destroy({ children: true });
+        scene.regionDisplays.delete(staleRegionId);
       }
 
       scene.edgeLayer.clear();
@@ -658,9 +747,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         const targetPoint = nodePosition(target, drag);
         const emphasized = highlighted.has(source.id) && highlighted.has(target.id);
         scene.edgeLayer.lineStyle(
-          emphasized ? 2.1 : 1,
+          emphasized ? 2.4 : 1.45,
           emphasized ? graphPalette.highlight : graphPalette.edge,
-          emphasized ? 0.56 : highlighted.size > 0 ? 0.12 : 0.24,
+          emphasized ? 0.72 : highlighted.size > 0 ? 0.24 : 0.52,
         );
         scene.edgeLayer.moveTo(sourcePoint.x, sourcePoint.y);
         scene.edgeLayer.lineTo(targetPoint.x, targetPoint.y);
@@ -764,6 +853,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       if (!accountDrag) {
         lastStaticRenderKeyRef.current = staticRenderKey;
       }
+      if (!layoutReadyRef.current && scene.nodeDisplays.size > 0) {
+        layoutReadyRef.current = true;
+        setLayoutReady(true);
+      }
     }
 
     scene.hoverLayer.clear();
@@ -785,9 +878,9 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       themeId ?? "",
       qualityMode,
       accountDrag?.dropTargetPersonId ?? "",
-      Math.round(transform.scale * scaleBucketFactor),
-      Math.round(transform.x / transformBucketSize),
-      Math.round(transform.y / transformBucketSize),
+      qualityMode === "interactive" ? "stable" : Math.round(transform.scale * scaleBucketFactor),
+      qualityMode === "interactive" ? "stable" : Math.round(transform.x / transformBucketSize),
+      qualityMode === "interactive" ? "stable" : Math.round(transform.y / transformBucketSize),
     ].join("|");
 
     if (lastLabelLayoutKeyRef.current !== labelLayoutKey) {
@@ -846,7 +939,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       const occupied: Array<{ left: number; right: number; top: number; bottom: number }> = [];
       const nextVisibleLabelIds: string[] = [];
       const labelLimit =
-        qualityMode === "interactive" ? INTERACTIVE_LABEL_LIMIT : Number.POSITIVE_INFINITY;
+        qualityMode === "interactive" ? INTERACTIVE_LABEL_LIMIT : SETTLED_LABEL_LIMIT;
       for (const label of visibleLabels) {
         if (nextVisibleLabelIds.length >= labelLimit) break;
         const bounds = {
@@ -908,15 +1001,28 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       const display = scene.labelDisplays.get(labelId);
       if (!node || !display) continue;
       const point = screenPointForPosition(nodePosition(node, drag), transform);
-      display.container.visible = true;
-      display.container.position.set(
-        point.x,
-        point.y + node.radius * transform.scale + 14,
-      );
-      display.container.alpha = nodeAlpha(
+      const fontSize = node.kind === "friend_person" ? 14 : node.kind === "connection_person" ? 13 : 12;
+      const labelWidth = estimateLabelWidth(node.label, fontSize);
+      const labelHeight = fontSize + 10;
+      const labelX = point.x;
+      const labelY = point.y + node.radius * transform.scale + 14;
+      const baseAlpha = nodeAlpha(
         node,
         highlighted,
         drag?.kind === "account-drag" ? drag.dropTargetPersonId : null,
+      );
+      display.container.visible = true;
+      display.container.position.set(
+        labelX,
+        labelY,
+      );
+      display.container.alpha = baseAlpha * edgeFadeAlpha(
+        labelX - labelWidth / 2,
+        labelY,
+        labelWidth,
+        labelHeight,
+        canvasSize.width,
+        canvasSize.height,
       );
     }
 
@@ -1025,7 +1131,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const fitAll = useCallback(() => {
     if (layoutRef.current.nodes.length === 0) return;
     transformRef.current = fitTransformToNodes(
-      layoutRef.current.nodes,
+      graphFitItems(layoutRef.current),
       canvasSize.width,
       canvasSize.height,
       FIT_PADDING,
@@ -1084,11 +1190,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
 
       const world = new Container();
       const regionLayer = new Graphics();
+      const regionLabelLayer = new Container();
       const edgeLayer = new Graphics();
       const nodeLayer = new Container();
       const hoverLayer = new Graphics();
       const labelLayer = new Container();
       world.addChild(regionLayer);
+      world.addChild(regionLabelLayer);
       world.addChild(edgeLayer);
       world.addChild(nodeLayer);
       world.addChild(hoverLayer);
@@ -1098,11 +1206,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         app,
         world,
         regionLayer,
+        regionLabelLayer,
         edgeLayer,
         nodeLayer,
         hoverLayer,
         labelLayer,
         nodeDisplays: new Map(),
+        regionDisplays: new Map(),
         labelDisplays: new Map(),
       };
       scheduleSyncScene();
@@ -1170,13 +1280,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       lastLayoutMsRef.current = event.data.durationMs;
       if (!hasFittedInitialLayoutRef.current) {
         transformRef.current = fitTransformToNodes(
-          event.data.layout.nodes,
+          graphFitItems(event.data.layout),
           canvasSize.width,
           canvasSize.height,
           FIT_PADDING,
         );
         hasFittedInitialLayoutRef.current = true;
-        setLayoutReady(true);
       }
       setLayoutVersion((value) => value + 1);
       scheduleSyncScene();
@@ -1553,8 +1662,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     <div
       ref={containerRef}
       data-testid="friend-graph-viewport"
-      className="theme-soft-viewport relative h-full w-full overflow-hidden touch-none overscroll-contain"
-      style={FRIEND_GRAPH_VIEWPORT_MASK_STYLE}
+      className="relative h-full w-full overflow-hidden touch-none overscroll-contain"
       onWheel={handleWheel}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -1564,21 +1672,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
       onDoubleClick={handleDoubleClick}
       aria-label="Friends identity graph"
     >
-      <div className="theme-soft-viewport-content">
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(circle at top, color-mix(in oklab, var(--theme-accent-primary) 22%, transparent), transparent 38%), radial-gradient(circle at 12% 84%, color-mix(in oklab, var(--theme-accent-secondary) 14%, transparent), transparent 30%), linear-gradient(180deg, color-mix(in oklab, var(--theme-bg-surface) 96%, transparent), color-mix(in oklab, var(--theme-bg-elevated, var(--theme-bg-surface)) 92%, transparent))",
-          }}
-        />
-        <div
-          className="pointer-events-none absolute inset-0 rounded-[inherit]"
-          style={{
-            boxShadow:
-              "inset 0 0 72px rgb(var(--theme-shell-rgb) / 0.16), inset 0 0 0 1px color-mix(in oklab, var(--theme-accent-secondary) 16%, transparent)",
-          }}
-        />
+      <div className="absolute inset-0">
         <div ref={canvasHostRef} className="absolute inset-0" />
         {!layoutReady ? (
           <div className="absolute inset-0 z-10 flex items-center justify-center">

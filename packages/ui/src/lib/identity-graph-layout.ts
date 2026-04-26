@@ -44,6 +44,8 @@ export interface IdentityGraphRegion {
   radiusX: number;
   radiusY: number;
   count: number;
+  linkedCount: number;
+  unlinkedCount: number;
 }
 
 export interface SpatialIndex {
@@ -285,6 +287,21 @@ export function buildIdentityGraphLayout({
   );
   const positionedFriends = positionedPeople.filter((node) => node.kind === "friend_person");
   const positionedConnections = positionedPeople.filter((node) => node.kind === "connection_person");
+  const overlapIterations =
+    quality === "fast"
+      ? {
+          friends: 2,
+          connections: 2,
+          accountGroup: 1,
+        }
+      : {
+          friends: 4,
+          connections: 5,
+          accountGroup: 2,
+        };
+
+  nudgeOverlapsBucketed(positionedFriends, overlapIterations.friends);
+  nudgeOverlapsBucketed(positionedConnections, overlapIterations.connections);
 
   for (const node of [...positionedFriends, ...positionedConnections]) {
     nodeById.set(node.id, node);
@@ -292,7 +309,8 @@ export function buildIdentityGraphLayout({
 
   const linkedAccounts = accountNodes.filter((node) => node.linkedPersonId);
   const unlinkedAccounts = accountNodes.filter((node) => !node.linkedPersonId);
-  const laidOutAccounts: IdentityGraphLayoutNode[] = [];
+  const laidOutLinkedAccounts: IdentityGraphLayoutNode[] = [];
+  const laidOutUnlinkedChannels: IdentityGraphLayoutNode[] = [];
 
   const linkedByPerson = new Map<string, IdentityGraphNode[]>();
   for (const node of linkedAccounts) {
@@ -308,6 +326,7 @@ export function buildIdentityGraphLayout({
   for (const [personId, bucket] of linkedByPerson) {
     const anchor = nodeById.get(`person:${personId}`);
     if (!anchor) continue;
+    const placedBucket: IdentityGraphLayoutNode[] = [];
     bucket
       .sort((left, right) =>
         (left.provider ?? "").localeCompare(right.provider ?? "") ||
@@ -327,9 +346,29 @@ export function buildIdentityGraphLayout({
           x: position.x,
           y: position.y,
         };
-        laidOutAccounts.push(placed);
+        placedBucket.push(placed);
+        laidOutLinkedAccounts.push(placed);
         nodeById.set(node.id, placed);
       });
+    nudgeOverlapsBucketed(placedBucket, overlapIterations.accountGroup);
+  }
+
+  const allProviderCounts = new Map<string, { linked: number; unlinked: number }>();
+  for (const node of accountNodes) {
+    const provider = node.provider ?? "other";
+    const counts = allProviderCounts.get(provider) ?? { linked: 0, unlinked: 0 };
+    if (node.linkedPersonId) {
+      counts.linked += 1;
+    } else {
+      counts.unlinked += 1;
+    }
+    allProviderCounts.set(provider, counts);
+  }
+  for (const node of feedNodes) {
+    const provider = node.provider ?? "rss";
+    const counts = allProviderCounts.get(provider) ?? { linked: 0, unlinked: 0 };
+    counts.unlinked += 1;
+    allProviderCounts.set(provider, counts);
   }
 
   const unlinkedChannels = [...unlinkedAccounts, ...feedNodes];
@@ -343,9 +382,11 @@ export function buildIdentityGraphLayout({
       providerBuckets.set(provider, [node]);
     }
   }
-  const providers = [...providerBuckets.keys()].sort();
+  const providers = [...allProviderCounts.keys()].sort();
   providers.forEach((provider, providerIndex) => {
     const bucket = providerBuckets.get(provider) ?? [];
+    const counts = allProviderCounts.get(provider) ?? { linked: 0, unlinked: 0 };
+    const placedBucket: IdentityGraphLayoutNode[] = [];
     const sectorCenter = (-Math.PI / 2) + (Math.PI * 2 * providerIndex) / Math.max(1, providers.length);
     const islandRing = Math.floor(providerIndex / 8);
     const islandRadius = outerRadius + islandRing * 120;
@@ -361,7 +402,9 @@ export function buildIdentityGraphLayout({
       y: islandY,
       radiusX: islandSize + 54,
       radiusY: islandSize * 0.72 + 42,
-      count: bucket.length,
+      count: counts.linked + counts.unlinked,
+      linkedCount: counts.linked,
+      unlinkedCount: counts.unlinked,
     });
     bucket
       .sort((left, right) =>
@@ -383,33 +426,19 @@ export function buildIdentityGraphLayout({
           x: position.x,
           y: position.y,
         };
-        laidOutAccounts.push(placed);
+        placedBucket.push(placed);
+        laidOutUnlinkedChannels.push(placed);
         nodeById.set(node.id, placed);
       });
+    nudgeOverlapsBucketed(placedBucket, overlapIterations.accountGroup);
   });
 
   const nodes = [
     ...positionedFriends,
     ...positionedConnections,
-    ...laidOutAccounts,
+    ...laidOutLinkedAccounts,
+    ...laidOutUnlinkedChannels,
   ];
-
-  const overlapIterations =
-    quality === "fast"
-      ? {
-          friends: 2,
-          connections: 2,
-          accounts: 1,
-        }
-      : {
-          friends: 4,
-          connections: 5,
-          accounts: 2,
-        };
-
-  nudgeOverlapsBucketed(positionedFriends, overlapIterations.friends);
-  nudgeOverlapsBucketed(positionedConnections, overlapIterations.connections);
-  nudgeOverlapsBucketed(laidOutAccounts, overlapIterations.accounts);
 
   return {
     nodes,
