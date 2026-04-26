@@ -180,6 +180,7 @@ export default function NewsletterModal() {
   const {
     isOpen,
     closeModal,
+    markSubscribed,
     prefillEmail,
     prefillDetailsOpen,
   } = useNewsletter();
@@ -392,6 +393,7 @@ export default function NewsletterModal() {
           setDetailsOpen(false);
           setNameManuallyEdited(false);
           setState("idle");
+          markSubscribed();
           setSuccessMessage(
             "You are subscribed. We will email you about new builds and major progress."
           );
@@ -410,7 +412,16 @@ export default function NewsletterModal() {
         setTurnstileResetKey((current) => current + 1);
       }
     },
-    [company, detailsOpen, email, name, phoneNumber, state, turnstileToken],
+    [
+      company,
+      detailsOpen,
+      email,
+      markSubscribed,
+      name,
+      phoneNumber,
+      state,
+      turnstileToken,
+    ],
   );
 
   const handleClose = useCallback(() => {
@@ -456,6 +467,7 @@ export default function NewsletterModal() {
   const normalizedEmailInput = email.trim().toLowerCase();
   const isEmailInputValid = isValidEmailAddress(normalizedEmailInput);
   const isPhoneInputValid = isValidPhoneNumber(phoneNumber);
+  const isSubscribed = Boolean(successMessage);
 
   const handleOpenFreedWeb = useCallback(() => {
     window.open(freedWebUrl, "_blank", "noopener,noreferrer");
@@ -539,7 +551,7 @@ export default function NewsletterModal() {
           >
             <div
               ref={modalPanelRef}
-              className="newsletter-modal theme-panel relative w-full max-w-5xl overflow-hidden rounded-2xl"
+              className="newsletter-modal theme-panel relative w-full max-w-3xl overflow-hidden rounded-2xl"
             >
               <div
                 className="absolute top-0 left-1/4 h-32 w-32 rounded-full blur-3xl"
@@ -599,8 +611,8 @@ export default function NewsletterModal() {
                     </p>
                   </div>
 
-                  <div className="grid gap-0 lg:grid-cols-2 lg:items-start">
-                    <div className="pb-2 sm:py-4 lg:pr-8">
+                  <div className="mx-auto max-w-xl space-y-8">
+                    <section className="space-y-6">
                       <div className="mb-6 max-w-md">
                         <h4 className="flex items-center gap-4 text-2xl font-bold text-text-primary sm:text-3xl">
                           <CircledStepNumber>1</CircledStepNumber>
@@ -608,7 +620,50 @@ export default function NewsletterModal() {
                         </h4>
                       </div>
 
-                      <div className="relative">
+                      {isSubscribed && (
+                        <div
+                          role="status"
+                          aria-live="polite"
+                          className="rounded-xl border p-5"
+                          style={{
+                            background:
+                              "color-mix(in srgb, rgb(var(--theme-feedback-success-rgb)) 10%, var(--theme-bg-elevated))",
+                            borderColor:
+                              "color-mix(in srgb, rgb(var(--theme-feedback-success-rgb)) 38%, var(--theme-border-strong))",
+                            boxShadow:
+                              "0 0 0 1px rgb(255 255 255 / 0.04), inset 0 1px 0 rgb(255 255 255 / 0.05)",
+                          }}
+                        >
+                          <div className="flex gap-4">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[rgb(var(--theme-feedback-success-rgb))] text-white">
+                              <svg
+                                aria-hidden="true"
+                                className="h-5 w-5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                                strokeWidth={2.5}
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M4.5 12.75l6 6 9-13.5"
+                                />
+                              </svg>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-base font-semibold text-text-primary">
+                                You are now subscribed.
+                              </p>
+                              <p className="text-sm leading-relaxed text-text-secondary">
+                                We will email you about new builds and major progress.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {!isSubscribed && (
+                        <div className="relative">
                         <form onSubmit={handleSubmit} className="space-y-3">
                           <div
                             aria-hidden="true"
@@ -801,15 +856,6 @@ export default function NewsletterModal() {
                             )}
                           </AnimatePresence>
 
-                          {successMessage && (
-                            <p
-                              role="status"
-                              aria-live="polite"
-                              className="text-xs leading-relaxed text-[rgb(var(--theme-feedback-success-rgb))]"
-                            >
-                              {successMessage}
-                            </p>
-                          )}
                           {state === "error" && (
                             <p
                               id="newsletter-error"
@@ -825,9 +871,11 @@ export default function NewsletterModal() {
                           </p>
                         </form>
                       </div>
-                    </div>
+                      )}
+                    </section>
 
-                    <div className="space-y-5 pt-10 pb-2 sm:py-4 lg:pt-4 lg:pl-8 lg:border-l lg:border-freed-border">
+                    {isSubscribed && (
+                      <section className="space-y-5 border-t border-freed-border pt-6 pb-2">
                       <div className="max-w-lg space-y-2">
                         <h4 className="flex items-center gap-4 text-2xl font-bold text-text-primary sm:text-3xl">
                           <CircledStepNumber>2</CircledStepNumber>
@@ -981,8 +1029,9 @@ export default function NewsletterModal() {
                             </button>
                           )}
                         </div>
-                      </div>
-                    </div>
+                      </section>
+                    )}
+                  </div>
                 </>
               </div>
             </div>
