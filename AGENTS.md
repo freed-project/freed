@@ -270,6 +270,48 @@ for completeness and for any test that doesn't use `page.addInitScript`.
 This replaces manual testing. Never ask the user to click through the app to verify a fix -- write
 a test instead.
 
+### Debugging rare or stateful failures
+
+When fixing a rare, intermittent, long-running, stateful, or hard-to-reproduce failure, do not ship
+only a one-off patch. Treat the work as root-cause debugging plus mitigation. The same patch should
+make the next occurrence easier to explain, prove whether the mitigation worked, and reduce the odds
+that the same class of bug escapes again. If that is impossible, document exactly why in the PR.
+
+This rule applies to freezes, hangs, blank screens, stale renderers, stuck background jobs, sync
+stalls, data loss, data corruption, runaway memory, runaway CPU, repeated retries, update failures,
+cache poisoning, crash loops, and any fix where the first explanation is "this should not happen."
+
+Before changing code, preserve live evidence while the system is still in the bad state. Choose the
+evidence that fits the failure:
+
+- process state, stack samples, memory maps, open files, child processes, network sockets, and CPU or memory pressure
+- app logs, OS logs, crash reports, failed job records, retry history, queue depth, and last-success timestamps
+- local data footprint, cache size, snapshot size, database size, schema or version markers, and largest files
+- current route, visible UI state, selected account or provider, pending operation, and recent user or system events
+- remote service status, API response shape, deployment id, release channel, updater manifest, or sync peer state when relevant
+
+For the fix itself, add lightweight telemetry that distinguishes plausible failure classes. Prefer
+structured fields that can answer "what was the system doing, how long had it been doing it, what
+resource was growing, and what dependency was waiting?" Examples include:
+
+- heartbeat or progress payloads with event loop lag, visibility, route, app phase, pending operation, and oldest pending age
+- worker state, queue state, retry counters, timeout counters, active provider, active task id, and last successful checkpoint
+- persistence state, document size, cache size, snapshot activity, schema version, migration version, and save duration
+- native process RSS, child process RSS, heap usage, DOM node count, open handles, and relevant cache sizes
+- sleep, resume, hide, show, online, offline, update check, sync start, sync finish, and recovery timestamps
+- a small rotating diagnostics file when the failure could prevent normal logs or heartbeats from being delivered
+
+Mitigation and recovery behavior should be conservative and observable:
+
+- recover quickly enough to avoid leaving the user stuck
+- avoid churn when normal background throttling, offline state, or temporary provider errors explain the symptom
+- log the recovery reason, stale age or failed duration, last known state, probe results, resource usage, and whether the system resumed normal work afterward
+- recycle or reset related background resources when they may share the failing process, connection pool, cache, worker, or queue
+
+Tests should cover the state machine, thresholds, retry limits, and telemetry fields that prove the
+new behavior. If the root cause is still unknown after the patch, say that directly in the PR and
+list exactly what the new telemetry will prove on the next occurrence.
+
 ## Automerge
 
 **Schema** (`packages/shared/src/schema.ts`): backward-compatible only. Add optional fields; never delete (mark `@deprecated`).
