@@ -78,7 +78,7 @@ export function subscribeToStatus(cb: StatusSubscriber): () => void {
 }
 
 /** Returns items from the doc that have a URL but no cached content */
-function newStubItems(items: FeedItem[]): QueueEntry[] {
+function newStubItems(items: FeedItem[], options: { force?: boolean } = {}): QueueEntry[] {
   const queuedIds = new Set(queue.map((e) => e.globalId));
   return items
     .filter((item) => {
@@ -86,12 +86,47 @@ function newStubItems(items: FeedItem[]): QueueEntry[] {
         return false;
       }
       const url = item.content.linkPreview?.url;
-      return !!url && !item.preservedContent?.text;
+      return !!url && (options.force || !item.preservedContent?.text);
     })
     .map((item) => ({
       globalId: item.globalId,
       url: item.content.linkPreview!.url!,
     }));
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function textToParagraphs(text: string): string {
+  return text
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
+    .join("");
+}
+
+function renderItemReaderHtml(item: FeedItem): string {
+  const title = item.content.linkPreview?.title ?? item.content.text?.slice(0, 100) ?? item.author.displayName;
+  const body = item.content.text ? textToParagraphs(item.content.text) : "";
+  const media = item.content.mediaUrls
+    .map((url, index) => {
+      const type = item.content.mediaTypes[index];
+      const safeUrl = escapeHtml(url);
+      if (type === "video") {
+        return `<figure><video src="${safeUrl}" controls playsinline></video></figure>`;
+      }
+      return `<figure><img src="${safeUrl}" alt="" /></figure>`;
+    })
+    .join("");
+
+  return `<article><h1>${escapeHtml(title)}</h1>${media}${body}</article>`;
 }
 
 function pruneFailed(now = Date.now()): void {
@@ -123,10 +158,22 @@ function hasRecentFailure(globalId: string, now = Date.now()): boolean {
  * Add items to the fetch queue.
  * Skips items already queued, already failed, or that already have content.
  */
-export function enqueue(items: FeedItem[]): void {
-  const newEntries = newStubItems(items);
-  queue.push(...newEntries);
+export function enqueue(items: FeedItem[], options: { priority?: boolean; force?: boolean } = {}): void {
+  const newEntries = newStubItems(items, { force: options.force });
+  if (options.priority) {
+    queue.unshift(...newEntries.reverse());
+  } else {
+    queue.push(...newEntries);
+  }
   if (newEntries.length > 0) notifyStatus();
+}
+
+export async function pinReaderItem(item: FeedItem): Promise<void> {
+  const url = item.content.linkPreview?.url;
+  await contentCache.set(item.globalId, renderItemReaderHtml(item));
+  if (url) {
+    enqueue([item], { priority: true, force: true });
+  }
 }
 
 function maybeScanVisibleItems(items: FeedItem[], docItemCount: number): void {

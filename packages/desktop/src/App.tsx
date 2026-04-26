@@ -56,9 +56,10 @@ import { captureIgFeed } from "./lib/instagram-capture";
 import { captureLiFeed } from "./lib/li-capture";
 import { contentCache } from "./lib/content-cache";
 import { saveUrlInDesktop } from "./lib/save-url";
+import { hydrateReaderItem as hydrateReaderItemForDesktop } from "./lib/reader-hydration";
 import { importMarkdownFiles, exportLibrary } from "./lib/import-export";
 import { secureStorage } from "./lib/secure-storage";
-import { start as startContentFetcher, stop as stopContentFetcher } from "./lib/content-fetcher";
+import { pinReaderItem, start as startContentFetcher, stop as stopContentFetcher } from "./lib/content-fetcher";
 import { useAppStore as useDesktopStore, withProviderSyncing } from "./lib/store";
 import { pickContactViaTauri } from "./lib/contacts";
 import { FeedEmptyState } from "./components/FeedEmptyState";
@@ -652,6 +653,8 @@ function App() {
       // Local content cache (Tauri FS layer)
       getLocalContent: (globalId) => contentCache.get(globalId),
       getLocalPreservedText: (globalId) => getItemPreservedText(globalId),
+      hydrateReaderItem: hydrateReaderItemForDesktop,
+      pinReaderItem,
       // Encrypted API key store (type-widened: ApiKeyProvider -> string for PlatformConfig interface)
       secureStorage: secureStorage as {
         getApiKey: (provider: string) => Promise<string | null>;

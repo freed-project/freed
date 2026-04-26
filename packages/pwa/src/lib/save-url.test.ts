@@ -109,6 +109,7 @@ describe("saveUrlInPwa", () => {
       "https://example.com/article",
       "saved:abc123",
       "<article><p>Readable body</p></article>",
+      { pinned: true },
     );
     expect(mockWarmArticleImageCache).toHaveBeenCalledWith(
       "<article><p>Readable body</p></article>",

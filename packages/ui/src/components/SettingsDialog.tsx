@@ -36,6 +36,12 @@ import {
   getProviderStatusLabel,
   getProviderStatusTone,
 } from "../lib/provider-status.js";
+import {
+  READER_OFFLINE_CACHE_MODE_DESCRIPTIONS,
+  READER_OFFLINE_CACHE_MODE_LABELS,
+  useReaderOfflineCacheMode,
+  type ReaderOfflineCacheMode,
+} from "../lib/reader-cache-settings.js";
 import { ProviderStatusIndicator } from "./ProviderStatusIndicator.js";
 import { toast } from "./Toast.js";
 import { UpdateProgressBar } from "./UpdateProgressBar.js";
@@ -275,6 +281,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const pendingThemeIdRef = useRef<ThemeId | null>(null);
   const pendingThemeSaveSeqRef = useRef(0);
   const committedThemeIdRef = useRef(preferences.display.themeId);
+  const [readerOfflineCacheMode, setReaderOfflineCacheMode] = useReaderOfflineCacheMode();
   // Flat section list — drives scrollspy and right-pane rendering.
   // Keywords live in settings-sections.ts so Header's command palette can share them.
   const allSections: Section[] = buildSettingsSectionMetas({
@@ -982,6 +989,25 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   </div>
                 </div>
               )}
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm text-text-primary">Offline reader cache</p>
+                  <p className="mt-0.5 text-xs text-text-muted">
+                    {READER_OFFLINE_CACHE_MODE_DESCRIPTIONS[readerOfflineCacheMode]} This setting stays on this device.
+                  </p>
+                </div>
+                <select
+                  value={readerOfflineCacheMode}
+                  onChange={(e) => setReaderOfflineCacheMode(e.target.value as ReaderOfflineCacheMode)}
+                  className="theme-input theme-select shrink-0 rounded-xl px-3 py-2 text-sm text-text-primary focus:outline-none"
+                >
+                  {Object.entries(READER_OFFLINE_CACHE_MODE_LABELS).map(([mode, label]) => (
+                    <option key={mode} value={mode}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <p className="text-sm text-text-primary">Delete archived content after</p>

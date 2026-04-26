@@ -7,6 +7,8 @@ export {
   type BugReportingConfig,
   type AvailableUpdateInfo,
   type PlatformConfig,
+  type ReaderHydrationResult,
+  type ReaderThreadReply,
   type SidebarSourceStatusSummary,
   type SyncProviderSectionProps,
   type SyncProviderSectionSurface,
