@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, silent background media guarding, provider health summaries, smart backoff, Facebook group controls, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, same-platform social story duplicate repair, and captured authors now feeding the Phase 8 account catalog for identity review
+> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, Facebook group controls, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, same-platform social story duplicate repair, X reply hydration for the reader, and captured authors now feeding the Phase 8 account catalog for identity review
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -97,6 +97,7 @@ Self-contained JavaScript injected into the WebView's execution context. No exte
 
 - **Facebook** (`fb-extract.js`): Locates "Feed posts" h3, walks subtrees for post-sized blocks
 - **Instagram** (`ig-extract.js`): Queries `<article>` elements, extracts author/caption/media from semantic header/footer structure
+- **Long-form text expansion:** Facebook, Instagram, and LinkedIn extractors click common "see more" controls inside candidate post roots before reading text so long captions and essays are preserved in `content.text`.
 - **Facebook stories** (`fb-stories-extract.js`): Injected into the FB story viewer overlay. Extracts author, media, timestamp, location/check-in. Emits via `fb-feed-data` with `postType: "story"`.
 - **Instagram stories** (`ig-stories-extract.js`): Injected into the IG story viewer overlay. Extracts author handle (from URL + DOM), typed media URLs, timestamp, and location sticker metadata. Timestamp-like fallback story IDs are replaced with stable content hashes. The normalized `FeedItem.location` now preserves the sticker source plus Instagram `locationUrl`, so later map resolution can recover real place names from generic labels such as `Locations`.
 
@@ -143,6 +144,7 @@ const RATE_LIMITS = {
 | 7.13 | Outbox processor for cross-device sync      | ✓ Complete  |
 | 7.14 | Comment links (open on platform)            | ✓ Complete  |
 | 7.15 | Cross-platform dedup (IG/FB cross-posts)    | ✓ Complete  |
+| 7.16 | Reader reply hydration for X posts          | ✓ Complete  |
 
 ---
 
@@ -169,6 +171,7 @@ const RATE_LIMITS = {
 - [x] Social provider status dots switch to a live spinner while that provider is actively syncing
 - [x] Social provider sections include a line-by-line scrape log so users can see what the scraper is doing in real time
 - [x] Desktop social scraper commands serialize behind a shared native session lock so background WebKit jobs cannot overlap and starve the main renderer
+- [x] Facebook, Instagram, and LinkedIn extractors expand common long-text controls before normalization
 - [x] Social provider source menus surface a quick status explanation for warning or reconnect states before routing into full settings
 - [x] Captured social authors can backfill the Phase 8 account catalog so followed accounts exist before identity confirmation
 - [x] Empty states for both platforms in the feed view
@@ -183,6 +186,7 @@ const RATE_LIMITS = {
 - [x] Two-state like UI: "noted" (amber) vs "memorialized" (red confirmed on platform)
 - [x] Seen-sync via WebView navigation (FB/IG) - best-effort, confirmed via seenSyncedAt
 - [x] X likes via GraphQL FavoriteTweet/UnfavoriteTweet mutations
+- [x] X post reader hydration can fetch reply-thread items with media through the authenticated GraphQL path while online
 - [x] Comment links open post URL in system browser (platform-agnostic via PlatformContext.openUrl)
 - [x] sourceUrl populated across all normalizers (X, Facebook, Instagram, RSS, Saved)
 

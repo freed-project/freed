@@ -45,6 +45,26 @@ function makeStubItem(): FeedItem {
   };
 }
 
+function makeTextPostItem(): FeedItem {
+  return {
+    ...makeStubItem(),
+    globalId: "x:post-1",
+    platform: "x",
+    contentType: "post",
+    author: {
+      id: "space-x",
+      handle: "SpaceX",
+      displayName: "SpaceX",
+    },
+    content: {
+      text: "Deployment confirmed.\n\nLonger context should remain readable inside Freed.",
+      mediaUrls: ["https://pbs.twimg.com/media/rocket.jpg"],
+      mediaTypes: ["image"],
+    },
+    sourceUrl: "https://x.com/SpaceX/status/1",
+  };
+}
+
 async function loadContentFetcherModule() {
   vi.resetModules();
 
@@ -286,5 +306,42 @@ describe("content fetcher", () => {
       | undefined;
     expect(update?.preservedContent.text).toContain("Short AI summary");
     expect(update?.topics).toEqual(["ai", "reading"]);
+  });
+
+  it("pins existing text posts by writing reader HTML to the local cache", async () => {
+    const { mod, mockCacheSet } = await loadContentFetcherModule();
+
+    await mod.pinReaderItem(makeTextPostItem());
+
+    expect(mockCacheSet).toHaveBeenCalledWith(
+      "x:post-1",
+      expect.stringContaining("Deployment confirmed."),
+    );
+    const cacheCalls = mockCacheSet.mock.calls as unknown as Array<[string, string]>;
+    const cachedHtml = cacheCalls[0]?.[1];
+    expect(cachedHtml).toContain("rocket.jpg");
+    expect(cachedHtml).toContain("Longer context should remain readable inside Freed.");
+  });
+
+  it("puts saved URL items in the high-priority cache queue even when they have synced text", async () => {
+    const { mod, mockCacheSet } = await loadContentFetcherModule();
+    const statuses: Array<{ pending: number }> = [];
+    const unsubscribe = mod.subscribeToStatus((status: { pending: number }) => {
+      statuses.push(status);
+    });
+
+    await mod.pinReaderItem({
+      ...makeStubItem(),
+      preservedContent: {
+        text: "Synced preview",
+        wordCount: 2,
+        readingTime: 1,
+        preservedAt: 1,
+      },
+    });
+    unsubscribe();
+
+    expect(mockCacheSet).toHaveBeenCalledWith("rss:1", expect.stringContaining("Article title"));
+    expect(statuses.at(-1)?.pending).toBe(1);
   });
 });

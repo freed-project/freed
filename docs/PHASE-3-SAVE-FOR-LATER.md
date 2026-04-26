@@ -7,7 +7,8 @@
 > extraction, local HTML caching, Markdown import/export, background fetch
 > healing, user-visible AI controls, and hierarchical tag navigation. The PWA
 > now attempts full article capture through a server fetch proxy and falls back
-> to a sync-healed stub when a site blocks extraction or exceeds limits.
+> to a sync-healed stub when a site blocks extraction or exceeds limits. Saved
+> content is pinned in the device-local reader cache by default.
 
 ---
 
@@ -23,7 +24,7 @@ architecture is now:
 5. Render reader content through a layered waterfall:
    1. Local cached HTML
    2. Synced preserved text
-   3. Live fetch on open
+   3. Platform hydration on open when online
 
 ---
 
@@ -36,6 +37,9 @@ architecture is now:
 - **PWA:** posts the URL to a same-origin server fetch proxy, extracts readable
   content in the browser, caches article HTML in the Cache API, and writes a
   full saved item to Automerge.
+- **Saved cache pinning:** saved URL creation writes readable HTML into the
+  permanent device-local cache tier. Unsaving does not immediately remove the
+  local reader copy.
 - **PWA fallback:** when proxy fetch or extraction fails, the app writes a stub
   saved item so desktop sync can heal it later.
 
@@ -45,7 +49,9 @@ architecture is now:
   - Desktop uses Tauri FS
   - PWA uses the Cache API
 - **Layer 2:** synced `preservedContent.text`
-- **Layer 3:** live fetch on open when online
+- **Layer 3:** on-demand reader hydration when online. Freed Desktop uses native
+  fetch or provider-authenticated paths, while the PWA uses browser fetch where
+  the web platform allows it.
 
 ### Library Management
 
@@ -75,6 +81,7 @@ architecture is now:
 | 3.7 | Freed Markdown import/export | ✓ Complete | Import, export, and background fetch healing shipped |
 | 3.8 | User-facing AI summarization controls | ✓ Complete | Settings UI is live, desktop-only key storage stays local |
 | 3.9 | Broader mobile validation across hostile sites | ☐ Ongoing | Fallback stub mode remains intentional for blocked or oversized pages |
+| 3.10 | Saved content pinned in local reader cache | ✓ Complete | Saved URLs, saved posts, and saved stories enter the high-priority local cache path |
 
 ---
 

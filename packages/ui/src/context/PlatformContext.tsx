@@ -18,6 +18,7 @@ import type {
   ContactSyncState,
   BugReportDraft,
   BugReportIssueType,
+  FeedItem,
   GeneratedBugReportBundle,
   ImportProgress,
   ReportPrivacyTier,
@@ -25,6 +26,7 @@ import type {
 import type { OPMLFeedEntry, ReleaseChannel } from "@freed/shared";
 import type { ImportSummary, ProgressFn } from "../components/LibraryDialog.types.js";
 import type { ProviderStatusTone } from "../lib/provider-status.js";
+import type { ReaderOfflineCacheMode } from "../lib/reader-cache-settings.js";
 
 /**
  * Pixel offset reserved for macOS traffic-light window controls when
@@ -78,6 +80,34 @@ export interface BugReportingConfig {
   }) => Promise<GeneratedBugReportBundle>;
   exportBundle?: (bundle: GeneratedBugReportBundle) => Promise<void>;
   openUrl?: (url: string) => void;
+}
+
+export interface ReaderThreadReply {
+  id: string;
+  authorName: string;
+  authorHandle?: string;
+  authorAvatarUrl?: string;
+  text?: string;
+  publishedAt?: number;
+  mediaUrls: string[];
+  mediaTypes: Array<"image" | "video" | "link">;
+  sourceUrl?: string;
+  engagement?: {
+    likes?: number;
+    reposts?: number;
+    comments?: number;
+    views?: number;
+  };
+}
+
+export interface ReaderHydrationResult {
+  html?: string;
+  text?: string;
+  mediaUrls?: string[];
+  mediaTypes?: Array<"image" | "video" | "link">;
+  replies?: ReaderThreadReply[];
+  status?: "hydrated" | "partial" | "expired" | "auth_required" | "unsupported";
+  message?: string;
 }
 
 export interface PlatformConfig {
@@ -226,6 +256,22 @@ export interface PlatformConfig {
    * Desktop only.
    */
   getLocalPreservedText?: (globalId: string) => Promise<string | null>;
+
+  /**
+   * Hydrate reader content on demand from the host platform.
+   * Desktop can use native fetch and authenticated WebViews. PWA can use
+   * public browser fetch where possible.
+   */
+  hydrateReaderItem?: (
+    item: FeedItem,
+    options: {
+      cacheMode: ReaderOfflineCacheMode;
+      pin: boolean;
+    },
+  ) => Promise<ReaderHydrationResult>;
+
+  /** Pin the current item in the device-local reader cache. */
+  pinReaderItem?: (item: FeedItem) => Promise<void>;
 
   /**
    * Save a URL to the local library with full content extraction.

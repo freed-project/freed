@@ -1,9 +1,19 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { FeedItem as FeedItemType } from "@freed/shared";
-import { useAppStore, usePlatform, MACOS_TRAFFIC_LIGHT_INSET } from "../../context/PlatformContext.js";
+import {
+  useAppStore,
+  usePlatform,
+  MACOS_TRAFFIC_LIGHT_INSET,
+  type ReaderHydrationResult,
+  type ReaderThreadReply,
+} from "../../context/PlatformContext.js";
 import { applyFocusMode, type FocusOptions } from "@freed/shared";
 import { cacheArticleHtml, warmArticleImageCache } from "../../lib/article-cache.js";
+import {
+  getReaderOfflineCacheMode,
+  shouldPinOpenedReaderItem,
+} from "../../lib/reader-cache-settings.js";
 import { Tooltip } from "../Tooltip.js";
 import { ExternalLinkIcon, TrashIcon } from "../icons.js";
 
@@ -19,6 +29,7 @@ interface ReaderViewProps {
 
 /** Content source labels for the offline badge */
 type ContentSource = "cache" | "text" | "live" | null;
+type HydrationStatus = NonNullable<ReaderHydrationResult["status"]> | null;
 
 // ─── Structured content parser ───────────────────────────────────────────────
 //
@@ -191,7 +202,13 @@ const HEADING_CLASSES: Record<number, string> = {
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 
 export function ReaderView({ item, onClose, dualColumn = false, inline = false, onOpenUrl }: ReaderViewProps) {
-  const { headerDragRegion, getLocalContent, getLocalPreservedText } = usePlatform();
+  const {
+    headerDragRegion,
+    getLocalContent,
+    getLocalPreservedText,
+    hydrateReaderItem,
+    pinReaderItem,
+  } = usePlatform();
   const toggleSaved = useAppStore((s) => s.toggleSaved);
   const toggleArchived = useAppStore((s) => s.toggleArchived);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
@@ -220,16 +237,40 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
   const [contentSource, setContentSource] = useState<ContentSource>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCaching, setIsCaching] = useState(false);
+  const [hydrationStatus, setHydrationStatus] = useState<HydrationStatus>(null);
+  const [hydrationMessage, setHydrationMessage] = useState<string | null>(null);
+  const [readerMediaUrls, setReaderMediaUrls] = useState<string[] | null>(null);
+  const [readerMediaTypes, setReaderMediaTypes] = useState<Array<"image" | "video" | "link"> | null>(null);
+  const [threadReplies, setThreadReplies] = useState<ReaderThreadReply[]>([]);
+  const [isThreadLoading, setIsThreadLoading] = useState(false);
 
   const articleUrl = item.content.linkPreview?.url;
+  const displayMediaUrls = readerMediaUrls ?? item.content.mediaUrls;
+  const displayMediaTypes = readerMediaTypes ?? item.content.mediaTypes;
+  const isStory = item.contentType === "story";
 
   // ─── Content waterfall ─────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
 
     async function loadContent() {
+      const cacheMode = getReaderOfflineCacheMode();
+      const shouldPin = item.userState.saved || shouldPinOpenedReaderItem(cacheMode);
+      let hasReaderContent = false;
+
       setIsLoading(true);
+      setIsCaching(false);
+      setHydrationStatus(null);
+      setHydrationMessage(null);
+      setReaderMediaUrls(null);
+      setReaderMediaTypes(null);
+      setThreadReplies([]);
+      setIsThreadLoading(false);
       setPreservedText(item.preservedContent?.text ?? null);
+
+      if (item.userState.saved && pinReaderItem) {
+        void pinReaderItem(item);
+      }
 
       // Layer 1: Device-local content cache (desktop: Tauri FS, PWA: Cache API)
       if (getLocalContent) {
@@ -238,7 +279,7 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
           setHtml(cached);
           setContentSource("cache");
           setIsLoading(false);
-          return;
+          hasReaderContent = true;
         }
       } else if (articleUrl && "caches" in window) {
         try {
@@ -250,16 +291,16 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
               setHtml(text);
               setContentSource("cache");
               setIsLoading(false);
-              return;
+              hasReaderContent = true;
             }
           }
         } catch {
-          // Cache API unavailable -- continue waterfall
+          // Cache API unavailable, continue waterfall.
         }
       }
 
       // Layer 2: preservedContent.text -- always available for imported items
-      if (item.preservedContent?.text) {
+      if (!hasReaderContent && item.preservedContent?.text) {
         let localPreservedText = item.preservedContent.text;
         if (getLocalPreservedText) {
           try {
@@ -274,26 +315,67 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
           setContentSource("text");
           setIsLoading(false);
         }
+        hasReaderContent = true;
+      }
 
-        // Still try a live fetch to get the full HTML (async, non-blocking)
-        if (articleUrl && navigator.onLine) {
-          liveFetch(articleUrl, item.globalId, cancelled, (h) => {
-            if (!cancelled) {
-              setHtml(h);
+      // Layer 3: platform hydration. Desktop uses native fetch or authenticated
+      // provider paths here, so reader failures are not confused with CORS.
+      if (hydrateReaderItem && navigator.onLine) {
+        setIsCaching(true);
+        setIsThreadLoading(item.platform === "x");
+        try {
+          const hydrated = await hydrateReaderItem(item, { cacheMode, pin: shouldPin });
+          if (!cancelled) {
+            if (hydrated.html) {
+              setHtml(hydrated.html);
               setContentSource("live");
-              setIsCaching(false);
+              hasReaderContent = true;
             }
-          });
+            if (hydrated.text) {
+              setPreservedText(hydrated.text);
+              if (!hydrated.html) {
+                setHtml(null);
+                setContentSource("text");
+              }
+              hasReaderContent = true;
+            }
+            if (hydrated.mediaUrls?.length) {
+              setReaderMediaUrls(hydrated.mediaUrls);
+              setReaderMediaTypes(hydrated.mediaTypes ?? []);
+            }
+            if (hydrated.replies) {
+              setThreadReplies(hydrated.replies);
+            }
+            setHydrationStatus(hydrated.status ?? null);
+            setHydrationMessage(hydrated.message ?? null);
+            setIsLoading(false);
+          }
+        } catch {
+          if (!cancelled && !hasReaderContent) {
+            setHydrationStatus("unsupported");
+            setHydrationMessage("Freed could not hydrate this item inside the reader.");
+            setIsLoading(false);
+          }
+        } finally {
+          if (!cancelled) {
+            setIsCaching(false);
+            setIsThreadLoading(false);
+          }
         }
         return;
       }
 
-      // Layer 3: Live fetch (online only)
+      if (hasReaderContent) {
+        return;
+      }
+
+      // Layer 4: browser fetch fallback for platforms without a native hydrator.
       if (articleUrl && navigator.onLine) {
         setIsCaching(true);
         liveFetch(
           articleUrl,
           item.globalId,
+          shouldPin,
           cancelled,
           (h) => {
             if (!cancelled) {
@@ -316,6 +398,10 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
         if (!cancelled) {
           setHtml(null);
           setContentSource(null);
+          if (isStory && displayMediaUrls.length === 0) {
+            setHydrationStatus("expired");
+            setHydrationMessage("This story media was not captured before the source expired it.");
+          }
           setIsLoading(false);
         }
       }
@@ -328,7 +414,16 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
     return () => {
       cancelled = true;
     };
-  }, [item.globalId, articleUrl, getLocalContent, getLocalPreservedText, item.preservedContent?.text]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    item.globalId,
+    articleUrl,
+    getLocalContent,
+    getLocalPreservedText,
+    hydrateReaderItem,
+    pinReaderItem,
+    item.preservedContent?.text,
+    item.userState.saved,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleToggleSaved = useCallback(() => {
     toggleSaved(item.globalId);
@@ -578,8 +673,10 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
           )}
         </div>
 
-        {/* Featured image */}
-        {item.content.mediaUrls[0] && (
+        {/* Media */}
+        {isStory && displayMediaUrls.length > 0 ? (
+          <StoryMediaGallery urls={displayMediaUrls} types={displayMediaTypes} />
+        ) : !isStory && item.content.mediaUrls[0] ? (
           <img
             src={item.content.mediaUrls[0]}
             alt=""
@@ -587,6 +684,18 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
             decoding="async"
             className="mb-8 w-full rounded-xl bg-[var(--theme-bg-muted)] ring-1 ring-[var(--theme-border-subtle)]"
           />
+        ) : null}
+
+        {hydrationMessage && (
+          <div
+            className={`mb-6 rounded-xl border px-4 py-3 text-sm ${
+              hydrationStatus === "expired" || hydrationStatus === "auth_required"
+                ? "border-amber-500/25 bg-amber-500/10 text-amber-200"
+                : "border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] text-[var(--theme-text-secondary)]"
+            }`}
+          >
+            {hydrationMessage}
+          </div>
         )}
 
         {/* Content */}
@@ -604,10 +713,16 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
           <div className="text-lg leading-relaxed text-[var(--theme-text-secondary)]">
             {item.content.text || (
               <span className="italic text-[var(--theme-text-soft)]">
-                No content available. Connect to the internet to load this article.
+                {isStory
+                  ? "This story has no cached media. If the source still allows access, Freed will recover it while you are online."
+                  : "No reader content is available yet."}
               </span>
             )}
           </div>
+        )}
+
+        {(threadReplies.length > 0 || isThreadLoading) && (
+          <ThreadReplies replies={threadReplies} loading={isThreadLoading} />
         )}
 
         {/* Tags */}
@@ -712,6 +827,179 @@ function ArticleContent({ blocks }: { blocks: ContentBlock[] }) {
   );
 }
 
+function StoryMediaGallery({
+  urls,
+  types,
+}: {
+  urls: string[];
+  types: Array<"image" | "video" | "link">;
+}) {
+  return (
+    <div className="mb-8 space-y-3">
+      {urls.map((url, index) => {
+        const type = types[index] ?? inferMediaType(url);
+        return (
+          <div
+            key={`${url}-${index}`}
+            className="overflow-hidden rounded-xl bg-[var(--theme-bg-muted)] ring-1 ring-[var(--theme-border-subtle)]"
+          >
+            {type === "video" ? (
+              <video
+                src={url}
+                controls
+                playsInline
+                preload="metadata"
+                className="max-h-[70vh] w-full bg-black object-contain"
+              />
+            ) : (
+              <img
+                src={url}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="max-h-[70vh] w-full object-contain"
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ThreadReplies({
+  replies,
+  loading,
+}: {
+  replies: ReaderThreadReply[];
+  loading: boolean;
+}) {
+  return (
+    <section className="mt-10 border-t border-[var(--theme-border-subtle)] pt-8">
+      <div className="mb-4 flex items-center gap-3">
+        <h2 className="text-base font-semibold text-[var(--theme-text-primary)]">Replies</h2>
+        {loading && (
+          <div className="h-4 w-4 rounded-full border border-[var(--theme-border-quiet)] border-t-[var(--theme-accent-secondary)] animate-spin" />
+        )}
+      </div>
+      <div className="space-y-5">
+        {replies.map((reply) => (
+          <ReplyCard key={reply.id} reply={reply} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ReplyCard({ reply }: { reply: ReaderThreadReply }) {
+  const timeLabel = reply.publishedAt
+    ? formatDistanceToNow(reply.publishedAt, { addSuffix: true })
+    : null;
+  const metrics = [
+    formatMetric(reply.engagement?.comments, "comments"),
+    formatMetric(reply.engagement?.reposts, "reposts"),
+    formatMetric(reply.engagement?.likes, "likes"),
+    formatMetric(reply.engagement?.views, "views"),
+  ].filter(Boolean);
+
+  return (
+    <article className="rounded-xl border border-[var(--theme-border-subtle)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_55%,transparent)] p-4">
+      <div className="flex gap-3">
+        {reply.authorAvatarUrl ? (
+          <img
+            src={reply.authorAvatarUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="h-10 w-10 shrink-0 rounded-full bg-[var(--theme-bg-muted)]"
+          />
+        ) : (
+          <div className="h-10 w-10 shrink-0 rounded-full bg-[var(--theme-bg-muted)]" />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="font-medium text-[var(--theme-text-primary)]">{reply.authorName}</span>
+            {reply.authorHandle && (
+              <span className="text-[var(--theme-text-muted)]">@{reply.authorHandle}</span>
+            )}
+            {timeLabel && (
+              <>
+                <span className="text-[var(--theme-text-soft)]">•</span>
+                <span className="text-[var(--theme-text-muted)]">{timeLabel}</span>
+              </>
+            )}
+          </div>
+          {reply.text && (
+            <p className="mt-2 whitespace-pre-wrap text-base leading-relaxed text-[var(--theme-text-secondary)]">
+              {reply.text}
+            </p>
+          )}
+          {reply.mediaUrls.length > 0 && (
+            <ReplyMediaGrid urls={reply.mediaUrls} types={reply.mediaTypes} />
+          )}
+          {metrics.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--theme-text-muted)]">
+              {metrics.map((metric) => (
+                <span key={metric}>{metric}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function ReplyMediaGrid({
+  urls,
+  types,
+}: {
+  urls: string[];
+  types: Array<"image" | "video" | "link">;
+}) {
+  return (
+    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+      {urls.slice(0, 4).map((url, index) => {
+        const type = types[index] ?? inferMediaType(url);
+        return (
+          <div
+            key={`${url}-${index}`}
+            className="overflow-hidden rounded-lg bg-[var(--theme-bg-muted)] ring-1 ring-[var(--theme-border-subtle)]"
+          >
+            {type === "video" ? (
+              <video
+                src={url}
+                controls
+                playsInline
+                preload="metadata"
+                className="aspect-video w-full bg-black object-contain"
+              />
+            ) : (
+              <img
+                src={url}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="aspect-video w-full object-cover"
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function inferMediaType(url: string): "image" | "video" | "link" {
+  const pathname = url.split("?", 1)[0]?.toLowerCase() ?? "";
+  return /\.(mp4|m4v|webm|mov)$/.test(pathname) ? "video" : "image";
+}
+
+function formatMetric(value: number | undefined, label: string): string | null {
+  if (typeof value !== "number" || value <= 0) return null;
+  return `${value.toLocaleString()} ${label}`;
+}
+
 // ─── Focus text renderer ─────────────────────────────────────────────────────
 //
 // Renders text with focus-mode bolding on word beginnings. Each segment becomes
@@ -741,6 +1029,7 @@ function FocusText({ text, options }: { text: string; options: FocusOptions }) {
 async function liveFetch(
   url: string,
   globalId: string,
+  pinned: boolean,
   cancelled: boolean,
   onDone: (html: string) => void,
   onError?: () => void,
@@ -755,7 +1044,7 @@ async function liveFetch(
     if (cancelled) return;
 
     try {
-      await cacheArticleHtml(url, globalId, html);
+      await cacheArticleHtml(url, globalId, html, { pinned });
       void warmArticleImageCache(html, url);
     } catch {
       // Cache write failure is non-fatal

@@ -95,6 +95,18 @@ export default defineConfig({
             },
           },
           {
+            // Saved reader HTML is pinned by user intent and has no time based
+            // expiration. Manual cache clearing can still remove it.
+            urlPattern: ({ url }) => url.pathname.startsWith('/pinned-content/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'freed-articles-pinned-v1',
+              expiration: {
+                maxEntries: 10_000,
+              },
+            },
+          },
+          {
             // Automerge relay sync -- NetworkFirst so we always attempt live sync
             // but fall back to last cached state when offline.
             urlPattern: ({ url }) => url.pathname === '/sync',
