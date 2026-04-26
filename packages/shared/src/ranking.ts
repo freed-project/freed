@@ -5,7 +5,7 @@
  * Runs on Desktop/OpenClaw, results synced to edge devices.
  */
 
-import type { FeedItem, WeightPreferences } from "./types.js";
+import type { ContentSignal, FeedItem, WeightPreferences } from "./types.js";
 import type { SocialContentFilter } from "./store-types.js";
 
 /**
@@ -140,6 +140,7 @@ export function filterFeedItems(
     platform?: string;
     socialContentFilter?: SocialContentFilter;
     tags?: string[];
+    signals?: ContentSignal[];
     savedOnly?: boolean;
   } = {},
 ): FeedItem[] {
@@ -157,11 +158,7 @@ export function filterFeedItems(
     // Filter by platform
     if (options.platform && item.platform !== options.platform) return false;
 
-    if (
-      (options.platform === "facebook" || options.platform === "instagram") &&
-      options.socialContentFilter &&
-      options.socialContentFilter !== "all"
-    ) {
+    if (options.socialContentFilter && options.socialContentFilter !== "all") {
       if (options.socialContentFilter === "stories" && item.contentType !== "story") return false;
       if (options.socialContentFilter === "posts" && item.contentType === "story") return false;
     }
@@ -173,6 +170,12 @@ export function filterFeedItems(
     if (options.tags?.length) {
       const hasTag = options.tags.some((t) => item.userState.tags.includes(t));
       if (!hasTag) return false;
+    }
+
+    if (options.signals?.length) {
+      const itemSignals = item.contentSignals?.tags ?? [];
+      const hasSignal = options.signals.some((signal) => itemSignals.includes(signal));
+      if (!hasSignal) return false;
     }
 
     return true;

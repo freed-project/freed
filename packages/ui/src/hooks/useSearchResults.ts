@@ -58,7 +58,7 @@ function toSearchDoc(item: FeedItem): SearchDoc {
     authorHandle: item.author.handle,
     feedTitle: item.rssSource?.feedTitle ?? "",
     preservedText: item.preservedContent?.text?.slice(0, SEARCH_PRESERVED_TEXT_LIMIT) ?? "",
-    topics: item.topics.join(" "),
+    topics: [...item.topics, ...(item.contentSignals?.tags ?? [])].join(" "),
     tags: (item.userState.tags ?? []).join(" "),
     highlights: (item.userState.highlights ?? [])
       .map((h) => `${h.text} ${h.note ?? ""}`)

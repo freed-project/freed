@@ -328,7 +328,7 @@ describe("filterFeedItems", () => {
     ).toEqual(["fb-story"]);
   });
 
-  it("ignores the social content filter outside direct Facebook and Instagram sources", () => {
+  it("applies posts and stories filters across the unified feed", () => {
     const mixedItems: FeedItem[] = [
       makeItem({ globalId: "rss-article", platform: "rss", contentType: "article" }),
       makeItem({ globalId: "rss-story", platform: "rss", contentType: "story" }),
@@ -337,12 +337,15 @@ describe("filterFeedItems", () => {
 
     expect(
       filterFeedItems(mixedItems, { socialContentFilter: "posts" }).map((item) => item.globalId),
-    ).toEqual(["rss-article", "rss-story", "ig-story"]);
+    ).toEqual(["rss-article"]);
+    expect(
+      filterFeedItems(mixedItems, { socialContentFilter: "stories" }).map((item) => item.globalId),
+    ).toEqual(["rss-story", "ig-story"]);
     expect(
       filterFeedItems(mixedItems, {
         platform: "rss",
         socialContentFilter: "posts",
       }).map((item) => item.globalId),
-    ).toEqual(["rss-article", "rss-story"]);
+    ).toEqual(["rss-article"]);
   });
 });

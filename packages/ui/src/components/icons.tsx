@@ -62,6 +62,17 @@ export function ArchiveIcon({ className = "w-4 h-4", style }: IconProps) {
   );
 }
 
+/** Funnel shape for feed filtering. */
+export function FilterIcon({ className = "w-4 h-4", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
+      <path d="M4 5h16" />
+      <path d="M7 12h10" />
+      <path d="M10 19h4" />
+    </svg>
+  );
+}
+
 /** Location pin – map view. */
 export function MapPinIcon({ className = "w-4 h-4", style }: IconProps) {
   return (
