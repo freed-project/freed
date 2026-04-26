@@ -26,6 +26,7 @@ import { storeFbAuthState } from "./fb-auth";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
 import { isMemoryPressureCritical } from "./memory-monitor";
+import { archiveRecentProviderMedia, upsertMediaVaultRosterFromItems } from "./media-vault";
 
 // =============================================================================
 // Rate Limiting
@@ -326,6 +327,17 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
         .getState()
         .items.filter((i) => i.platform === "facebook").length;
       result.diag.itemsAdded = Math.max(0, after - before);
+      await upsertMediaVaultRosterFromItems("facebook", filteredItems);
+      const archivedCount = await archiveRecentProviderMedia(
+        "facebook",
+        useAppStore.getState().items.filter((i) => i.platform === "facebook"),
+      );
+      if (archivedCount > 0) {
+        addDebugEvent(
+          "change",
+          `[FB] archived ${archivedCount.toLocaleString()} permanent media file${archivedCount === 1 ? "" : "s"}`,
+        );
+      }
       addDebugEvent(
         "change",
         `[FB] synced: ${result.diag.postsExtracted.toLocaleString()} posts extracted, ${result.diag.itemsAdded.toLocaleString()} new items`,
