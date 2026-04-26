@@ -162,7 +162,7 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
   - [ ] Add one-click endpoint smoke test before release
   - [x] Set `BREVO_API_KEY` and `BREVO_LIST_ID` in Vercel
   - [x] Add Turnstile verification, a honeypot field, and basic abuse throttling to `/api/subscribe`
-  - [ ] Set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` in `freed-www`
+  - [x] Set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` in `freed-www`
   - [ ] Configure freed.wtf domain in Vercel
 - [ ] Send our first email newsletter
 - [ ] Fix navigation bar vertical clipping on overscroll (iOS/macOS bounce)
