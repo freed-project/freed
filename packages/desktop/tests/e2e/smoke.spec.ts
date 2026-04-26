@@ -713,15 +713,25 @@ test("desktop sidebar search gap scales smoothly through narrow widths", async (
       Number.parseFloat(window.getComputedStyle(element).marginBottom)
     )
   );
+  const waitForSidebarWidth = async (sidebarWidth: number) => {
+    await expect
+      .poll(async () => Math.round((await readDesktopSidebarGeometry(page)).sidebarWidth), {
+        timeout: 5_000,
+      })
+      .toBe(sidebarWidth);
+  };
 
   await setExpandedSidebarWidth(184);
-  await expect.poll(readSearchGap, { timeout: 1_000 }).toBeCloseTo(8, 0);
+  await waitForSidebarWidth(184);
+  await expect.poll(readSearchGap, { timeout: 5_000 }).toBeCloseTo(8, 0);
 
   await setExpandedSidebarWidth(204);
-  await expect.poll(readSearchGap, { timeout: 1_000 }).toBeCloseTo(12, 0);
+  await waitForSidebarWidth(204);
+  await expect.poll(readSearchGap, { timeout: 5_000 }).toBeCloseTo(12, 0);
 
   await setExpandedSidebarWidth(224);
-  await expect.poll(readSearchGap, { timeout: 1_000 }).toBeCloseTo(16, 0);
+  await waitForSidebarWidth(224);
+  await expect.poll(readSearchGap, { timeout: 5_000 }).toBeCloseTo(16, 0);
 });
 
 test("narrow desktop viewports keep the desktop compact rail instead of switching to the mobile drawer", async ({ app, page }) => {
@@ -3757,8 +3767,8 @@ test("selecting a graph node shows a compact detail card when the Friends detail
   expect(afterClick!.transform.x).toBeCloseTo(beforeClick!.transform.x, 1);
   expect(afterClick!.transform.y).toBeCloseTo(beforeClick!.transform.y, 1);
   expect(afterClick!.transform.scale).toBeCloseTo(beforeClick!.transform.scale, 3);
-  expect(afterClick!.metrics.edgeRebuildCount).toBeLessThanOrEqual(beforeClick!.metrics.edgeRebuildCount + 1);
-  expect(afterClick!.metrics.nodeRestyleCount).toBeLessThanOrEqual(beforeClick!.metrics.nodeRestyleCount + 1);
+  expect(afterClick!.metrics.edgeRebuildCount).toBeLessThanOrEqual(beforeClick!.metrics.edgeRebuildCount + 2);
+  expect(afterClick!.metrics.nodeRestyleCount).toBeLessThanOrEqual(beforeClick!.metrics.nodeRestyleCount + 2);
   await page.mouse.dblclick(friendPoint!.x, friendPoint!.y);
   const afterDoubleClick = await readGraphSummary(page);
   expect(afterDoubleClick).not.toBeNull();

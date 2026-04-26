@@ -1863,6 +1863,20 @@ test("feeds source indicator reflects aggregate feed health and active syncing",
       setState: (partial: Record<string, unknown>) => void;
     };
     store.setState({
+      feeds: {
+        "https://healthy.example/feed.xml": {
+          url: "https://healthy.example/feed.xml",
+          title: "Healthy Feed",
+          enabled: true,
+          trackUnread: true,
+        },
+        "https://broken.example/feed.xml": {
+          url: "https://broken.example/feed.xml",
+          title: "Broken Feed",
+          enabled: true,
+          trackUnread: true,
+        },
+      },
       providerSyncCounts: {
         rss: 0,
         x: 0,
