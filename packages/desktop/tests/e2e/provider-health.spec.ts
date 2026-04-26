@@ -1947,6 +1947,96 @@ test("source rows swap counts for an actions menu on hover", async ({ app, page 
   await expect(page.getByText("X / Twitter").first()).toBeVisible();
 });
 
+test("narrow labeled provider rows keep labels readable and source menus available", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        preferences: {
+          display: {
+            sidebarMode?: string;
+            sidebarWidth?: number;
+          };
+        };
+      };
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    const current = store.getState();
+
+    store.setState({
+      preferences: {
+        ...current.preferences,
+        display: {
+          ...current.preferences.display,
+          sidebarMode: "expanded",
+          sidebarWidth: 220,
+        },
+      },
+      xAuth: {
+        isAuthenticated: true,
+        cookies: { ct0: "ct0", authToken: "token" },
+      },
+    });
+  });
+
+  const sidebar = getDesktopSidebar(page);
+  const sourceIds = ["x", "facebook", "instagram", "linkedin", "rss"];
+  for (const sourceId of sourceIds) {
+    await expect(sidebar.getByTestId(`source-row-${sourceId}`)).toBeVisible();
+  }
+
+  const labelLayout = await page.evaluate((ids) => {
+    const sidebar = document.querySelector('[data-testid="app-sidebar"]');
+    if (!sidebar) return null;
+
+    return ids.map((id) => {
+      const row = sidebar.querySelector(`[data-testid="source-row-${id}"]`) as HTMLElement | null;
+      const label = row?.querySelector("span.min-w-0") as HTMLElement | null;
+      const actionSlot = row?.parentElement?.querySelector(".relative.h-6.shrink-0") as HTMLElement | null;
+      if (!row || !label || !actionSlot) {
+        return {
+          id,
+          found: false,
+          labelClientWidth: 0,
+          labelScrollWidth: 0,
+          actionSlotWidth: 0,
+        };
+      }
+
+      return {
+        id,
+        found: true,
+        labelClientWidth: label.clientWidth,
+        labelScrollWidth: label.scrollWidth,
+        actionSlotWidth: actionSlot.getBoundingClientRect().width,
+      };
+    });
+  }, sourceIds);
+
+  expect(labelLayout).not.toBeNull();
+  for (const row of labelLayout!) {
+    expect(row.found, row.id).toBe(true);
+    expect(row.labelClientWidth, row.id).toBeGreaterThanOrEqual(row.labelScrollWidth - 1);
+    expect(row.actionSlotWidth, row.id).toBeLessThanOrEqual(25);
+  }
+
+  const xRow = sidebar.getByTestId("source-row-x");
+  const xTrigger = sidebar.getByTestId("source-menu-trigger-x");
+  await expect(xTrigger).toHaveClass(/opacity-0/);
+
+  await xRow.hover();
+  await expect(xTrigger).toHaveClass(/opacity-100/);
+
+  await xTrigger.click();
+  await expect(page.getByTestId("source-context-menu-x")).toBeVisible();
+});
+
 test("source menu trigger toggles open and closed", async ({ app, page }) => {
   await seedAcceptedDesktopConsent(page);
 

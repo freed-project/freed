@@ -10,6 +10,7 @@ import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import type { FeedItem } from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
+import { PRIMARY_SIDEBAR_GAP_WIDTH_PX } from "../layout/layoutConstants.js";
 
 // ─── Compact sidebar panel for dual-column mode ────────────────────────────
 
@@ -31,6 +32,7 @@ interface CompactFeedPanelProps {
   selectionMoveDirection?: -1 | 0 | 1;
   onItemClick: (item: FeedItem) => void;
   width: number;
+  leadingOffset?: string;
 }
 
 const CompactFeedPanel = memo(function CompactFeedPanel({
@@ -39,6 +41,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   selectionMoveDirection = 0,
   onItemClick,
   width,
+  leadingOffset,
 }: CompactFeedPanelProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const scrollAnchorRef = useRef<{ index: number; offset: number } | null>(null);
@@ -156,7 +159,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
       ref={parentRef}
       data-testid="compact-feed-panel-scroll-container"
       className="theme-scroll-fade-y shrink-0 min-h-0 overflow-y-auto minimal-scroll bg-transparent"
-      style={{ width }}
+      style={{ width, marginInlineStart: leadingOffset }}
     >
       <div
         style={{ height: virtualizer.getTotalSize() }}
@@ -268,6 +271,11 @@ export function FeedView() {
   const canShowInlineReader = !isMobileDevice;
   const showInlineReader = !!selectedItemId && canShowInlineReader;
   const showDualColumn = dualColumnMode && canShowInlineReader && !autoCollapseReaderRail;
+  const desktopSidebarMode = useAppStore((s) => s.preferences.display.sidebarMode ?? "expanded");
+  const compactRailLeadingOffset =
+    !isMobileDevice && desktopSidebarMode !== "closed"
+      ? `calc(var(--feed-card-gap, 8px) - ${PRIMARY_SIDEBAR_GAP_WIDTH_PX}px)`
+      : undefined;
 
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
   const [keyboardFocusDirection, setKeyboardFocusDirection] = useState<-1 | 0 | 1>(0);
@@ -452,6 +460,7 @@ export function FeedView() {
                 selectionMoveDirection={compactSelectionDirection}
                 onItemClick={openItemDirect}
                 width={panelWidth}
+                leadingOffset={compactRailLeadingOffset}
               />
               <div
                 className="theme-resize-gap-handle w-4 shrink-0 self-stretch"

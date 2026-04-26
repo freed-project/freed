@@ -605,13 +605,8 @@ export function Header({
     ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
     : undefined;
   const sidebarHandleCenterline = "var(--freed-sidebar-handle-centerline, 264px)";
-  const layoutControlClusterWidthPx = showDesktopReaderLayoutToggle
-    ? LAYOUT_CONTROL_PAIR_WIDTH_PX
-    : LAYOUT_CONTROL_BUTTON_SIZE_PX;
-  const toolbarBoundaryWidth =
-    showReaderLayoutToggle
-      ? `calc(${sidebarHandleCenterline} + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)} + var(--freed-reader-rail-width, 0px))`
-      : `calc(${sidebarHandleCenterline} + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)})`;
+  const layoutControlClusterWidthPx = LAYOUT_CONTROL_BUTTON_SIZE_PX;
+  const toolbarBoundaryWidth = `calc(${sidebarHandleCenterline} + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)})`;
   const leftToolbarWidth = !isMobileDevice
     ? px(layoutControlMetrics.reservedWidthPx)
     : toolbarBoundaryWidth;
@@ -636,6 +631,11 @@ export function Header({
     left: px(layoutControlMetrics.clusterLeftPx),
     gap: px(LAYOUT_CONTROL_BUTTON_GAP_PX),
     ...(headerDragRegion ? noDrag : {}),
+  } as CSSProperties;
+  const toolbarContainerStyle = {
+    ...(headerDragRegion ? dragStyle : {}),
+    width: "100vw",
+    maxWidth: "100vw",
   } as CSSProperties;
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -816,10 +816,6 @@ export function Header({
         rootStyles.getPropertyValue("--freed-sidebar-handle-centerline"),
         264,
       );
-      const readerRailWidthPx = parsePixelValue(
-        rootStyles.getPropertyValue("--freed-reader-rail-width"),
-        0,
-      );
       const resizeHandle = document.querySelector(
         '[data-testid="app-sidebar-resize-handle"]',
       ) as HTMLElement | null;
@@ -831,9 +827,7 @@ export function Header({
         ? CLOSED_SIDEBAR_TOGGLE_LEFT_PX
         : handleCenterPx - LAYOUT_CONTROL_PAIR_WIDTH_PX / 2;
       const clusterLeftPx = Math.ceil(Math.max(idealClusterLeftPx, safeLeftPx));
-      const toolbarBoundaryWidthPx = showReaderLayoutToggle
-        ? handleCenterPx + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2 + readerRailWidthPx
-        : handleCenterPx + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
+      const toolbarBoundaryWidthPx = handleCenterPx + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
       const reservedWidthPx = Math.ceil(
         Math.max(
           clusterLeftPx + layoutControlClusterWidthPx + TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
@@ -892,8 +886,6 @@ export function Header({
     };
   }, [
     isMobileDevice,
-    layoutControlClusterWidthPx,
-    showReaderLayoutToggle,
     visibleDesktopSidebarMode,
   ]);
 
@@ -944,19 +936,19 @@ export function Header({
   return (
     <>
       <header
-        className={`sticky top-0 z-30 flex-shrink-0 ${
+        className={`sticky top-0 z-30 min-w-0 w-screen max-w-[100vw] flex-shrink-0 overflow-hidden ${
           headerDragRegion ? "" : "theme-attached-topbar-host pt-[env(safe-area-inset-top)]"
         }`}
       >
         <div
           data-testid="workspace-toolbar"
-          className={`theme-floating-panel theme-attached-topbar flex min-h-[58px] items-center px-0 ${showReaderLayoutToggle ? "gap-0" : "gap-3"}`}
+          className={`theme-floating-panel theme-attached-topbar flex min-h-[58px] w-full min-w-0 max-w-full items-center px-0 ${showReaderLayoutToggle ? "gap-0" : "gap-3"}`}
           {...(headerDragRegion
             ? {
                 "data-tauri-drag-region": true,
-                style: dragStyle,
               }
             : {})}
+          style={toolbarContainerStyle}
         >
           <div
             className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex shrink-0 items-center ${showReaderLayoutToggle ? "gap-0" : "gap-2"}`}
@@ -1018,32 +1010,13 @@ export function Header({
                     </button>
                   </Tooltip>
 
-                  {showDesktopReaderLayoutToggle ? (
-                    <Tooltip
-                      label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
-                    >
-                      <button
-                        onClick={handleToggleDualColumn}
-                        {...getToolbarControlProps()}
-                        className={TOOLBAR_LAYOUT_TOGGLE_BUTTON_CLASS}
-                        aria-pressed={display.reading.dualColumnMode}
-                        aria-label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
-                      >
-                        {display.reading.dualColumnMode ? (
-                          <ReaderRailHideIcon className="h-5 w-5" />
-                        ) : (
-                          <ReaderRailShowIcon className="h-5 w-5" />
-                        )}
-                      </button>
-                    </Tooltip>
-                  ) : null}
                 </div>
               ) : null}
             </div>
           </div>
 
           <div
-            className={`min-w-0 flex-1 ${selectedItem ? "pr-3 sm:pr-4" : ""}`}
+            className={`min-w-0 flex-1 ${selectedItem ? "pr-28 lg:pr-[17.5rem]" : ""}`}
             {...(headerDragRegion ? { "data-tauri-drag-region": true, style: dragStyle } : {})}
           >
             {selectedItem ? (
@@ -1097,7 +1070,9 @@ export function Header({
           </div>
 
           <div
-            className="theme-toolbar-cluster theme-toolbar-cluster-tight flex shrink-0 items-center pr-2 sm:pr-2.5"
+            className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex min-w-max shrink-0 items-center pr-2 sm:pr-2.5 ${
+              selectedItem ? "absolute right-8 top-1/2 -translate-y-1/2" : ""
+            }`}
           >
             {selectedItem ? (
               <>
@@ -1146,7 +1121,25 @@ export function Header({
                   </Tooltip>
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={true} width="2.5rem">
+                <ToolbarAnimatedSlot visible={showDesktopReaderLayoutToggle} width="2.5rem">
+                  <Tooltip label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}>
+                    <button
+                      onClick={handleToggleDualColumn}
+                      {...getToolbarControlProps()}
+                      className={`${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-neutral`}
+                      aria-pressed={display.reading.dualColumnMode}
+                      aria-label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
+                    >
+                      {display.reading.dualColumnMode ? (
+                        <ReaderRailHideIcon className="h-5 w-5" />
+                      ) : (
+                        <ReaderRailShowIcon className="h-5 w-5" />
+                      )}
+                    </button>
+                  </Tooltip>
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot visible={true} width="2.5rem" className="hidden lg:flex">
                   <Tooltip label={selectedItem.userState.archived ? "Unarchive" : "Archive"}>
                     <button
                       onClick={handleToggleReaderArchived}
@@ -1163,7 +1156,7 @@ export function Header({
                   </Tooltip>
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={!!selectedItem.sourceUrl} width="4.5rem">
+                <ToolbarAnimatedSlot visible={!!selectedItem.sourceUrl} width="4.5rem" className="hidden lg:flex">
                   {selectedItem.sourceUrl ? (
                     <button
                       onClick={handleOpenReaderUrl}

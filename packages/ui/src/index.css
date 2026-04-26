@@ -864,10 +864,6 @@ html[data-theme="scriptorium"] .theme-panel-muted {
 .theme-soft-viewport {
   --theme-soft-viewport-mask-size: 20px;
   --theme-soft-viewport-radius: 20px;
-  --theme-soft-viewport-comp-left: calc(var(--theme-soft-viewport-base-comp-left, 0px) + var(--theme-soft-viewport-extra-comp-left, 0px));
-  --theme-soft-viewport-comp-right: calc(var(--theme-soft-viewport-base-comp-right, 0px) + var(--theme-soft-viewport-extra-comp-right, 0px));
-  --theme-soft-viewport-comp-top: calc(var(--theme-soft-viewport-base-comp-top, 0px) + var(--theme-soft-viewport-extra-comp-top, 0px));
-  --theme-soft-viewport-comp-bottom: calc(var(--theme-soft-viewport-base-comp-bottom, 0px) + var(--theme-soft-viewport-extra-comp-bottom, 0px));
   position: relative;
   overflow: hidden;
   isolation: isolate;
@@ -895,17 +891,17 @@ html[data-theme="scriptorium"] .theme-panel-muted {
     -webkit-mask-image:
       linear-gradient(
         to right,
-        transparent calc(0px - var(--theme-soft-viewport-comp-left)),
-        #000 calc(var(--theme-soft-viewport-mask-size) - var(--theme-soft-viewport-comp-left)),
-        #000 calc(100% - var(--theme-soft-viewport-mask-size) + var(--theme-soft-viewport-comp-right)),
-        transparent calc(100% + var(--theme-soft-viewport-comp-right))
+        transparent 0,
+        #000 var(--theme-soft-viewport-mask-size),
+        #000 calc(100% - var(--theme-soft-viewport-mask-size)),
+        transparent 100%
       ),
       linear-gradient(
         to bottom,
-        transparent calc(0px - var(--theme-soft-viewport-comp-top)),
-        #000 calc(var(--theme-soft-viewport-mask-size) - var(--theme-soft-viewport-comp-top)),
-        #000 calc(100% - var(--theme-soft-viewport-mask-size) + var(--theme-soft-viewport-comp-bottom)),
-        transparent calc(100% + var(--theme-soft-viewport-comp-bottom))
+        transparent 0,
+        #000 var(--theme-soft-viewport-mask-size),
+        #000 calc(100% - var(--theme-soft-viewport-mask-size)),
+        transparent 100%
       );
     -webkit-mask-repeat: no-repeat, no-repeat;
     -webkit-mask-size: 100% 100%, 100% 100%;
@@ -913,17 +909,17 @@ html[data-theme="scriptorium"] .theme-panel-muted {
     mask-image:
       linear-gradient(
         to right,
-        transparent calc(0px - var(--theme-soft-viewport-comp-left)),
-        #000 calc(var(--theme-soft-viewport-mask-size) - var(--theme-soft-viewport-comp-left)),
-        #000 calc(100% - var(--theme-soft-viewport-mask-size) + var(--theme-soft-viewport-comp-right)),
-        transparent calc(100% + var(--theme-soft-viewport-comp-right))
+        transparent 0,
+        #000 var(--theme-soft-viewport-mask-size),
+        #000 calc(100% - var(--theme-soft-viewport-mask-size)),
+        transparent 100%
       ),
       linear-gradient(
         to bottom,
-        transparent calc(0px - var(--theme-soft-viewport-comp-top)),
-        #000 calc(var(--theme-soft-viewport-mask-size) - var(--theme-soft-viewport-comp-top)),
-        #000 calc(100% - var(--theme-soft-viewport-mask-size) + var(--theme-soft-viewport-comp-bottom)),
-        transparent calc(100% + var(--theme-soft-viewport-comp-bottom))
+        transparent 0,
+        #000 var(--theme-soft-viewport-mask-size),
+        #000 calc(100% - var(--theme-soft-viewport-mask-size)),
+        transparent 100%
       );
     mask-repeat: no-repeat, no-repeat;
     mask-size: 100% 100%, 100% 100%;
@@ -1067,9 +1063,10 @@ html[data-theme="scriptorium"] .phase-card-complete {
   position: fixed;
   z-index: 400;
   pointer-events: none;
-  min-width: 8.5rem;
+  min-width: 4rem;
   max-width: min(18rem, calc(100vw - 1.5rem));
   padding: 0.9rem 1rem;
+  text-align: center;
   border-radius: 14px;
   border: 1px solid
     color-mix(
@@ -1100,12 +1097,14 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
 .theme-tooltip-body {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 0.22rem;
 }
 
 .theme-tooltip-label {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.35rem;
   font-size: 13px;
   font-weight: 600;
@@ -1120,6 +1119,7 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
 .theme-tooltip-description {
   display: block;
   margin-top: 0.1rem;
+  text-align: center;
   font-size: 12px;
   line-height: 1.5;
   color: var(--theme-text-secondary);
@@ -1680,6 +1680,8 @@ html[data-theme="scriptorium"] .theme-floating-panel {
 .theme-toolbar-slot {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
+  width: var(--toolbar-slot-width, auto);
   min-width: 0;
   max-width: var(--toolbar-slot-width, 16rem);
   overflow: hidden;
@@ -1694,10 +1696,10 @@ html[data-theme="scriptorium"] .theme-floating-panel {
 
 .theme-toolbar-slot-visible {
   overflow: visible;
-  max-width: fit-content;
 }
 
 .theme-toolbar-slot-hidden {
+  width: 0 !important;
   max-width: 0 !important;
   opacity: 0;
   transform: translateX(10px);
