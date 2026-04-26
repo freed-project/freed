@@ -297,4 +297,52 @@ describe("filterFeedItems", () => {
     expect(result).toHaveLength(1);
     expect(result[0].globalId).toBe("visible-x");
   });
+
+  it("filters Facebook and Instagram source views by posts and stories", () => {
+    const socialItems: FeedItem[] = [
+      makeItem({ globalId: "ig-post", platform: "instagram", contentType: "post" }),
+      makeItem({ globalId: "ig-video", platform: "instagram", contentType: "video" }),
+      makeItem({ globalId: "ig-story", platform: "instagram", contentType: "story" }),
+      makeItem({ globalId: "fb-post", platform: "facebook", contentType: "post" }),
+      makeItem({ globalId: "fb-story", platform: "facebook", contentType: "story" }),
+      makeItem({ globalId: "rss-story", platform: "rss", contentType: "story" }),
+    ];
+
+    expect(
+      filterFeedItems(socialItems, {
+        platform: "instagram",
+        socialContentFilter: "posts",
+      }).map((item) => item.globalId),
+    ).toEqual(["ig-post", "ig-video"]);
+    expect(
+      filterFeedItems(socialItems, {
+        platform: "instagram",
+        socialContentFilter: "stories",
+      }).map((item) => item.globalId),
+    ).toEqual(["ig-story"]);
+    expect(
+      filterFeedItems(socialItems, {
+        platform: "facebook",
+        socialContentFilter: "stories",
+      }).map((item) => item.globalId),
+    ).toEqual(["fb-story"]);
+  });
+
+  it("ignores the social content filter outside direct Facebook and Instagram sources", () => {
+    const mixedItems: FeedItem[] = [
+      makeItem({ globalId: "rss-article", platform: "rss", contentType: "article" }),
+      makeItem({ globalId: "rss-story", platform: "rss", contentType: "story" }),
+      makeItem({ globalId: "ig-story", platform: "instagram", contentType: "story" }),
+    ];
+
+    expect(
+      filterFeedItems(mixedItems, { socialContentFilter: "posts" }).map((item) => item.globalId),
+    ).toEqual(["rss-article", "rss-story", "ig-story"]);
+    expect(
+      filterFeedItems(mixedItems, {
+        platform: "rss",
+        socialContentFilter: "posts",
+      }).map((item) => item.globalId),
+    ).toEqual(["rss-article", "rss-story"]);
+  });
 });

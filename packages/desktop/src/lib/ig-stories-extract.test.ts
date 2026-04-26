@@ -24,7 +24,7 @@ describe("ig-stories-extract.js", () => {
       <div role="dialog">
         <a href="https://www.instagram.com/alice/">alice</a>
         <img src="https://cdn.example/avatar.jpg" alt="avatar" />
-        <img src="https://cdn.example/story-frame.jpg" alt="story" />
+        <img src="https://scontent.example/story-frame.jpg" alt="story" />
         <time datetime="2026-03-23T12:00:00.000Z"></time>
       </div>
     `;
@@ -72,7 +72,14 @@ describe("ig-stories-extract.js", () => {
     const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
     setReadonlyNumber(dialog, "offsetHeight", 800);
 
-    const payloads: Array<{ posts: Array<{ shortcode: string; mediaUrls: string[]; isVideo: boolean }> }> = [];
+    const payloads: Array<{
+      posts: Array<{
+        shortcode: string;
+        mediaUrls: string[];
+        mediaTypes: string[];
+        isVideo: boolean;
+      }>;
+    }> = [];
     (
       window as unknown as {
         __TAURI__: { event: { emit: (_name: string, payload: unknown) => void } };
@@ -82,7 +89,12 @@ describe("ig-stories-extract.js", () => {
         emit: (_name, payload) => {
           payloads.push(
             payload as {
-              posts: Array<{ shortcode: string; mediaUrls: string[]; isVideo: boolean }>;
+              posts: Array<{
+                shortcode: string;
+                mediaUrls: string[];
+                mediaTypes: string[];
+                isVideo: boolean;
+              }>;
             },
           );
         },
@@ -97,5 +109,49 @@ describe("ig-stories-extract.js", () => {
     expect(payloads[0].posts[0].mediaUrls).toContain(
       "https://cdn.example/story-video.mp4",
     );
+    expect(payloads[0].posts[0].mediaTypes).toEqual(["video", "image"]);
+  });
+
+  it("uses a content hash when Instagram exposes a timestamp-like story ID", () => {
+    window.history.replaceState({}, "", "/stories/alice/1774389196662/");
+
+    document.body.innerHTML = `
+      <div role="dialog">
+        <a href="https://www.instagram.com/alice/">alice</a>
+        <img src="https://cdn.example/avatar.jpg" alt="avatar" />
+        <img src="https://scontent.example/story-frame.jpg" alt="story" />
+        <time datetime="2026-03-23T12:00:00.000Z"></time>
+      </div>
+    `;
+
+    const dialog = document.querySelector('[role="dialog"]') as HTMLElement;
+    const images = Array.from(document.querySelectorAll("img")) as HTMLImageElement[];
+    setReadonlyNumber(dialog, "offsetHeight", 800);
+    setReadonlyNumber(images[0], "width", 40);
+    setReadonlyNumber(images[0], "height", 40);
+    setReadonlyNumber(images[1], "width", 1080);
+    setReadonlyNumber(images[1], "height", 1920);
+
+    const payloads: Array<{ posts: Array<{ shortcode: string; mediaTypes: string[] }> }> = [];
+    (
+      window as unknown as {
+        __TAURI__: { event: { emit: (_name: string, payload: unknown) => void } };
+      }
+    ).__TAURI__ = {
+      event: {
+        emit: (_name, payload) => {
+          payloads.push(payload as { posts: Array<{ shortcode: string; mediaTypes: string[] }> });
+        },
+      },
+    };
+
+    window.eval(script);
+    window.history.replaceState({}, "", "/stories/alice/1774389204187/");
+    window.eval(script);
+
+    expect(payloads).toHaveLength(2);
+    expect(payloads[0].posts[0].shortcode).toMatch(/^story_[a-z0-9]+$/);
+    expect(payloads[1].posts[0].shortcode).toBe(payloads[0].posts[0].shortcode);
+    expect(payloads[0].posts[0].mediaTypes).toEqual(["image"]);
   });
 });

@@ -57,4 +57,32 @@ describe("igPostToFeedItem", () => {
       source: "geo_tag",
     });
   });
+
+  it("uses extractor media types when they are provided", () => {
+    const item = igPostToFeedItem({
+      shortcode: "story_video",
+      url: "https://www.instagram.com/stories/ada/story_video/",
+      authorHandle: "ada",
+      authorDisplayName: "Ada",
+      authorAvatarUrl: null,
+      authorProfileUrl: "https://www.instagram.com/ada/",
+      caption: null,
+      timestampIso: "2026-04-16T22:00:00.000Z",
+      mediaUrls: [
+        "https://cdn.example/story-video.mp4",
+        "https://cdn.example/story-poster.jpg",
+      ],
+      mediaTypes: ["video", "image"],
+      isVideo: true,
+      isCarousel: false,
+      likeCount: null,
+      commentCount: null,
+      hashtags: [],
+      location: null,
+      locationUrl: null,
+      postType: "story",
+    });
+
+    expect(item?.content.mediaTypes).toEqual(["video", "image"]);
+  });
 });
