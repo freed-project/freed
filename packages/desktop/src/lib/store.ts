@@ -240,6 +240,18 @@ function mergePreferenceUpdate<T extends object>(
   return next;
 }
 
+function mergeFacebookCapturePreferenceUpdate(
+  current: UserPreferences["fbCapture"],
+  update: Partial<UserPreferences["fbCapture"]>,
+): UserPreferences["fbCapture"] {
+  return {
+    knownGroups: update.knownGroups ? { ...update.knownGroups } : { ...current.knownGroups },
+    excludedGroupIds: update.excludedGroupIds
+      ? { ...update.excludedGroupIds }
+      : { ...current.excludedGroupIds },
+  };
+}
+
 async function pruneConnectionPersonIfNeeded(
   getState: () => AppState,
   personId: string | null | undefined,
@@ -640,7 +652,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Preference actions
   updatePreferences: async (update) => {
-    set({ preferences: mergePreferenceUpdate(get().preferences, update) });
+    const currentPreferences = get().preferences;
+    const nextPreferences = mergePreferenceUpdate(currentPreferences, update);
+    if (update.fbCapture !== undefined) {
+      nextPreferences.fbCapture = mergeFacebookCapturePreferenceUpdate(
+        currentPreferences.fbCapture,
+        update.fbCapture,
+      );
+    }
+    set({ preferences: nextPreferences });
 
     try {
       await docUpdatePreferences(update);

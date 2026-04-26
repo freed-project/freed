@@ -140,4 +140,61 @@ describe("store.updatePreferences", () => {
       display: { mapTimeMode: "future" },
     });
   });
+
+  it("replaces Facebook exclusion records during optimistic updates", async () => {
+    useAppStore.setState((state) => ({
+      preferences: {
+        ...state.preferences,
+        fbCapture: {
+          knownGroups: {
+            one: {
+              id: "one",
+              name: "One",
+              url: "https://facebook.com/groups/one",
+            },
+          },
+          excludedGroupIds: {
+            one: true,
+          },
+        },
+      },
+    }));
+
+    let resolvePersistence: (() => void) | undefined;
+    mockDocUpdatePreferences.mockImplementationOnce(
+      () => new Promise<void>((resolve) => {
+        resolvePersistence = resolve;
+      }),
+    );
+
+    const updatePromise = useAppStore.getState().updatePreferences({
+      fbCapture: {
+        knownGroups: {
+          one: {
+            id: "one",
+            name: "One",
+            url: "https://facebook.com/groups/one",
+          },
+        },
+        excludedGroupIds: {},
+      },
+    } as never);
+
+    expect(useAppStore.getState().preferences.fbCapture.excludedGroupIds).toEqual({});
+    expect(mockDocUpdatePreferences).toHaveBeenCalledWith({
+      fbCapture: {
+        knownGroups: {
+          one: {
+            id: "one",
+            name: "One",
+            url: "https://facebook.com/groups/one",
+          },
+        },
+        excludedGroupIds: {},
+      },
+    });
+
+    resolvePersistence?.();
+    await expect(updatePromise).resolves.toBeUndefined();
+  });
 });
