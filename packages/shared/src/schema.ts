@@ -377,6 +377,7 @@ const CROSS_POST_PLATFORMS = new Set<FeedItem["platform"]>([
   "facebook",
   "instagram",
 ]);
+const SAME_PLATFORM_STORY_DEDUP_WINDOW_MS = 10 * 60 * 1000;
 
 type LegacyFriendRoot = FreedDoc & {
   friends?: Record<string, Friend>;
@@ -433,6 +434,43 @@ function normalizedDedupText(item: FeedItem): string | null {
     .trim();
   if (normalized.length < CROSS_POST_MIN_TEXT_LENGTH) return null;
   return normalized.slice(0, CROSS_POST_TEXT_PREFIX_LENGTH).trim();
+}
+
+function normalizedStoryDedupText(item: FeedItem): string {
+  return (item.content.text ?? "")
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/www\.\S+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, CROSS_POST_TEXT_PREFIX_LENGTH);
+}
+
+function normalizedStoryMediaKey(item: FeedItem): string {
+  return item.content.mediaUrls[0] ?? item.sourceUrl ?? "";
+}
+
+function samePlatformStoryDedupKey(item: FeedItem): string | null {
+  if (!CROSS_POST_PLATFORMS.has(item.platform)) return null;
+  if (item.contentType !== "story") return null;
+
+  const mediaKey = normalizedStoryMediaKey(item);
+  const textKey = normalizedStoryDedupText(item);
+  if (!mediaKey && !textKey) return null;
+
+  const authorKey = item.author.id || item.author.handle || item.author.displayName;
+  const publishedBucket = Math.floor(item.publishedAt / SAME_PLATFORM_STORY_DEDUP_WINDOW_MS);
+  const locationKey = item.location?.url ?? item.location?.name ?? "";
+
+  return [
+    item.platform,
+    authorKey,
+    publishedBucket.toString(),
+    mediaKey,
+    locationKey,
+    textKey,
+  ].join("::");
 }
 
 function dedupIdentityKey(doc: FreedDoc, item: FeedItem): string | null {
@@ -726,6 +764,19 @@ export function deduplicateDocFeedItems(doc: FreedDoc): number {
   }
 
   for (const ids of exactUrlGroups.values()) {
+    addDedupGroup(unions, ids);
+  }
+
+  const samePlatformStoryGroups = new Map<string, string[]>();
+  for (const item of Object.values(doc.feedItems) as FeedItem[]) {
+    const groupKey = samePlatformStoryDedupKey(item);
+    if (!groupKey) continue;
+    const group = samePlatformStoryGroups.get(groupKey);
+    if (group) group.push(item.globalId);
+    else samePlatformStoryGroups.set(groupKey, [item.globalId]);
+  }
+
+  for (const ids of samePlatformStoryGroups.values()) {
     addDedupGroup(unions, ids);
   }
 

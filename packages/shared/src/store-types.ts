@@ -11,6 +11,8 @@ export interface RemoveFeedOptions {
   includeItems?: boolean;
 }
 
+export type SocialContentFilter = "all" | "posts" | "stories";
+
 /**
  * Filter options for the feed view.
  * Duplicated in both PWA and Desktop stores — canonicalized here.
@@ -20,6 +22,8 @@ export interface FilterOptions {
   feedUrl?: string;
   tags?: string[];
   savedOnly?: boolean;
+  /** Direct Facebook and Instagram source views only. */
+  socialContentFilter?: SocialContentFilter;
   /** Navigate to the Archived view - shows only archived items. */
   archivedOnly?: boolean;
 }

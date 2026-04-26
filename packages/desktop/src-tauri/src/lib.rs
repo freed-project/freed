@@ -56,6 +56,9 @@ const SOCIAL_SCRAPER_WINDOW_LABELS: [&str; 3] = ["fb-scraper", "ig-scraper", "li
 const STARTUP_RECOVERY_STATE_FILE: &str = "startup-recovery.json";
 const RECOVERY_WINDOW_LABEL: &str = "startup-recovery";
 const RECOVERY_WINDOW_ROUTE: &str = "startup-recovery.html";
+const RENDERER_STALE_LOG_AFTER: Duration = Duration::from_secs(150);
+const RENDERER_VISIBLE_RECOVERY_AFTER: Duration = Duration::from_secs(180);
+const RENDERER_HIDDEN_RECOVERY_AFTER: Duration = Duration::from_secs(600);
 const ENABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
     (function() {
         var token = "__freed_background_scraper__";
@@ -791,6 +794,8 @@ struct RendererHeartbeatStatus {
     last_visibility: String,
     last_href: String,
     stale_logged: bool,
+    recovery_attempts: u64,
+    last_recovery_at: Option<std::time::Instant>,
 }
 
 impl RendererHeartbeatStatus {
@@ -803,7 +808,138 @@ impl RendererHeartbeatStatus {
             last_visibility: "unknown".to_string(),
             last_href: String::new(),
             stale_logged: false,
+            recovery_attempts: 0,
+            last_recovery_at: None,
         }
+    }
+
+    fn note_heartbeat(
+        &mut self,
+        payload: &RendererHeartbeatPayload,
+        now: std::time::Instant,
+    ) -> (bool, u128, bool) {
+        let first_heartbeat = self.last_seen_at.is_none();
+        let gap_ms = self
+            .last_seen_at
+            .map(|last| now.duration_since(last).as_millis())
+            .unwrap_or_else(|| now.duration_since(self.started_at).as_millis());
+        let recovered = self.stale_logged || self.recovery_attempts > 0;
+
+        self.last_seen_at = Some(now);
+        self.last_seq = payload.seq;
+        self.last_reason = payload.reason.clone();
+        self.last_visibility = payload.visibility.clone();
+        self.last_href = payload.href.clone();
+        self.stale_logged = false;
+        self.recovery_attempts = 0;
+        self.last_recovery_at = None;
+
+        (first_heartbeat, gap_ms, recovered)
+    }
+
+    fn note_recovery_attempt(&mut self, now: std::time::Instant) -> u64 {
+        self.started_at = now;
+        self.last_seen_at = None;
+        self.last_seq = 0;
+        self.last_reason = "native-recovery".to_string();
+        self.last_visibility = "unknown".to_string();
+        self.last_href = String::new();
+        self.stale_logged = false;
+        self.recovery_attempts += 1;
+        self.last_recovery_at = Some(now);
+        self.recovery_attempts
+    }
+}
+
+fn renderer_recovery_threshold(is_visible: bool, last_visibility: &str) -> Duration {
+    if is_visible || last_visibility == "visible" {
+        RENDERER_VISIBLE_RECOVERY_AFTER
+    } else {
+        RENDERER_HIDDEN_RECOVERY_AFTER
+    }
+}
+
+fn runtime_memory_snapshot_for_log() -> (u64, Option<(u32, u64, u64)>) {
+    let pid = Pid::from_u32(std::process::id());
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_memory(),
+    );
+
+    let process_resident_bytes = system
+        .process(pid)
+        .map(|process| process.memory())
+        .unwrap_or(0);
+    let (webkit_pid, webkit_resident_bytes, webkit_virtual_bytes) =
+        best_effort_webkit_memory_stats(&system);
+    let webkit = webkit_pid
+        .zip(webkit_resident_bytes)
+        .zip(webkit_virtual_bytes)
+        .map(|((pid, resident), virtual_bytes)| (pid, resident, virtual_bytes));
+
+    (process_resident_bytes, webkit)
+}
+
+fn format_bytes_for_log(bytes: u64) -> String {
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = KIB * 1024.0;
+    const GIB: f64 = MIB * 1024.0;
+
+    let bytes_f = bytes as f64;
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes_f / KIB)
+    } else if bytes < 1024 * 1024 * 1024 {
+        format!("{:.1} MB", bytes_f / MIB)
+    } else {
+        format!("{:.2} GB", bytes_f / GIB)
+    }
+}
+
+#[cfg(test)]
+mod renderer_watchdog_tests {
+    use super::*;
+
+    #[test]
+    fn renderer_recovery_threshold_prefers_visible_windows() {
+        assert_eq!(
+            renderer_recovery_threshold(true, "hidden"),
+            RENDERER_VISIBLE_RECOVERY_AFTER
+        );
+        assert_eq!(
+            renderer_recovery_threshold(false, "visible"),
+            RENDERER_VISIBLE_RECOVERY_AFTER
+        );
+        assert_eq!(
+            renderer_recovery_threshold(false, "hidden"),
+            RENDERER_HIDDEN_RECOVERY_AFTER
+        );
+    }
+
+    #[test]
+    fn heartbeat_after_recovery_resets_recovery_state() {
+        let mut status = RendererHeartbeatStatus::new();
+        let attempt = status.note_recovery_attempt(std::time::Instant::now());
+        assert_eq!(attempt, 1);
+        assert_eq!(status.recovery_attempts, 1);
+
+        let payload = RendererHeartbeatPayload {
+            seq: 7,
+            ts: 1_777_000_000_000,
+            reason: "startup".to_string(),
+            visibility: "visible".to_string(),
+            href: "tauri://localhost".to_string(),
+        };
+        let (_first_heartbeat, _gap_ms, recovered) =
+            status.note_heartbeat(&payload, std::time::Instant::now());
+
+        assert!(recovered);
+        assert_eq!(status.recovery_attempts, 0);
+        assert!(status.last_recovery_at.is_none());
+        assert_eq!(status.last_seq, 7);
     }
 }
 
@@ -3480,6 +3616,44 @@ fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tau
     Ok(window)
 }
 
+fn recover_main_window(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
+    let was_visible = app
+        .get_webview_window("main")
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false);
+
+    if let Some(window) = app.get_webview_window("main") {
+        scrub_webview_before_destroy(&window);
+        window
+            .destroy()
+            .map_err(|error| format!("destroy failed: {}", error))?;
+        info!("[main-window] destroyed stale renderer ({})", reason);
+    }
+
+    let window = create_main_window(app).map_err(|error| error.to_string())?;
+
+    #[cfg(target_os = "macos")]
+    apply_vibrancy(
+        &window,
+        NSVisualEffectMaterial::UnderWindowBackground,
+        None,
+        None,
+    )
+    .map_err(|error| format!("vibrancy failed: {}", error))?;
+
+    if was_visible {
+        show_webview_window(&window);
+    } else {
+        let _ = window.hide();
+    }
+
+    info!(
+        "[main-window] rebuilt renderer after heartbeat stall reason={} restored_visible={}",
+        reason, was_visible
+    );
+    Ok(())
+}
+
 fn show_primary_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         show_webview_window(&window);
@@ -3832,19 +4006,8 @@ pub fn run() {
 
                 let now = std::time::Instant::now();
                 let mut health = renderer_health_for_listener.write().unwrap();
-                let first_heartbeat = health.last_seen_at.is_none();
-                let gap_ms = health
-                    .last_seen_at
-                    .map(|last| now.duration_since(last).as_millis())
-                    .unwrap_or_else(|| now.duration_since(health.started_at).as_millis());
-                let recovered = health.stale_logged;
-
-                health.last_seen_at = Some(now);
-                health.last_seq = payload.seq;
-                health.last_reason = payload.reason.clone();
-                health.last_visibility = payload.visibility.clone();
-                health.last_href = payload.href.clone();
-                health.stale_logged = false;
+                let (first_heartbeat, gap_ms, recovered) =
+                    health.note_heartbeat(&payload, now);
 
                 let href = truncate_for_log(&payload.href, 120);
                 if recovered {
@@ -3886,27 +4049,68 @@ pub fn run() {
                 loop {
                     tokio::time::sleep(Duration::from_secs(30)).await;
 
-                    let should_recycle_scrapers = {
+                    let is_main_visible = app_for_renderer_watchdog
+                        .get_webview_window("main")
+                        .and_then(|window| window.is_visible().ok())
+                        .unwrap_or(false);
+
+                    let (should_recycle_scrapers, should_recover_main) = {
                         let mut health = renderer_health_for_watchdog.write().unwrap();
                         let age = health
                             .last_seen_at
                             .map(|last| last.elapsed())
                             .unwrap_or_else(|| health.started_at.elapsed());
 
-                        if age <= Duration::from_secs(150) || health.stale_logged {
-                            false
-                        } else {
+                        let recovery_threshold =
+                            renderer_recovery_threshold(is_main_visible, &health.last_visibility);
+                        let should_log_stale =
+                            age > RENDERER_STALE_LOG_AFTER && !health.stale_logged;
+                        let should_recover =
+                            age > recovery_threshold &&
+                            health
+                                .last_recovery_at
+                                .map(|last| last.elapsed() > recovery_threshold)
+                                .unwrap_or(true);
+
+                        if should_log_stale {
+                            let (native_rss, webkit) = runtime_memory_snapshot_for_log();
+                            let webkit_details = webkit
+                                .map(|(pid, resident, virtual_bytes)| {
+                                    format!(
+                                        "webkit_pid={} webkit_rss={} webkit_virtual={}",
+                                        pid,
+                                        format_bytes_for_log(resident),
+                                        format_bytes_for_log(virtual_bytes)
+                                    )
+                                })
+                                .unwrap_or_else(|| "webkit_rss=unavailable".to_string());
                             warn!(
-                                "[main-window] renderer heartbeat stale age_ms={} last_seq={} last_reason={} visibility={} href={}",
+                                "[main-window] renderer heartbeat stale age_ms={} threshold_ms={} visible={} last_seq={} last_reason={} last_visibility={} href={} native_rss={} {}",
                                 age.as_millis(),
+                                recovery_threshold.as_millis(),
+                                is_main_visible,
                                 health.last_seq,
                                 health.last_reason,
                                 health.last_visibility,
-                                truncate_for_log(&health.last_href, 120)
+                                truncate_for_log(&health.last_href, 120),
+                                format_bytes_for_log(native_rss),
+                                webkit_details
                             );
                             health.stale_logged = true;
-                            true
                         }
+
+                        if should_recover {
+                            let attempt = health.note_recovery_attempt(std::time::Instant::now());
+                            warn!(
+                                "[main-window] recovering stale renderer attempt={} age_ms={} threshold_ms={} visible={}",
+                                attempt,
+                                age.as_millis(),
+                                recovery_threshold.as_millis(),
+                                is_main_visible
+                            );
+                        }
+
+                        (should_log_stale, should_recover)
                     };
 
                     if should_recycle_scrapers {
@@ -3914,6 +4118,23 @@ pub fn run() {
                             &app_for_renderer_watchdog,
                             "main renderer heartbeat stale",
                         );
+                    }
+
+                    if should_recover_main {
+                        if let Err(error) = recover_main_window(
+                            &app_for_renderer_watchdog,
+                            "renderer heartbeat stale",
+                        ) {
+                            error!(
+                                "[main-window] failed to recover stale renderer: {}",
+                                error
+                            );
+                        } else {
+                            recycle_social_scraper_windows(
+                                &app_for_renderer_watchdog,
+                                "main renderer recovered",
+                            );
+                        }
                     }
                 }
             });

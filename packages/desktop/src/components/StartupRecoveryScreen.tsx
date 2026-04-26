@@ -14,7 +14,12 @@ import {
   type PendingDesktopUpdate,
   resolveDesktopDownloadFallbackUrl,
 } from "../lib/desktop-updater";
-import { bootstrapDesktopReleaseChannel } from "../lib/release-channel";
+import {
+  bootstrapDesktopReleaseChannel,
+  loadDesktopReleaseChannelState,
+  persistDesktopInstalledReleaseChannel,
+  persistDesktopReleaseChannel,
+} from "../lib/release-channel";
 import { extractUpdatePreviewLine } from "../lib/update-release-preview";
 
 type RecoveryStatus =
@@ -27,7 +32,11 @@ type RecoveryStatus =
 const RETRY_COMMAND = "retry_startup_after_crash";
 
 export function StartupRecoveryScreen() {
-  const [releaseChannel] = useState(() => bootstrapDesktopReleaseChannel());
+  const [releaseChannel, setReleaseChannel] = useState(() => bootstrapDesktopReleaseChannel());
+  const [installedReleaseChannel, setInstalledReleaseChannel] = useState(() =>
+    bootstrapDesktopReleaseChannel(),
+  );
+  const [releaseChannelResolved, setReleaseChannelResolved] = useState(false);
   const [status, setStatus] = useState<RecoveryStatus>({ kind: "checking" });
   const [pendingUpdate, setPendingUpdate] = useState<PendingDesktopUpdate | null>(null);
   const [fallbackDownloadUrl, setFallbackDownloadUrl] = useState(
@@ -38,6 +47,28 @@ export function StartupRecoveryScreen() {
   const [downloadBusy, setDownloadBusy] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+    void loadDesktopReleaseChannelState()
+      .then(({ selectedChannel, installedChannel }) => {
+        if (!cancelled) {
+          setReleaseChannel(selectedChannel);
+          setInstalledReleaseChannel(installedChannel);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setReleaseChannelResolved(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!releaseChannelResolved) return;
+
     async function loadRecoveryUpdate() {
       try {
         const resolvedFallbackUrl = await resolveDesktopDownloadFallbackUrl(releaseChannel);
@@ -63,7 +94,7 @@ export function StartupRecoveryScreen() {
     }
 
     void loadRecoveryUpdate();
-  }, [releaseChannel]);
+  }, [releaseChannel, releaseChannelResolved]);
 
   const handleRetry = useCallback(async () => {
     setRetryBusy(true);
@@ -98,6 +129,9 @@ export function StartupRecoveryScreen() {
 
         setStatus({ kind: "available" });
       });
+      await persistDesktopInstalledReleaseChannel(pendingUpdate.channel);
+      setInstalledReleaseChannel(pendingUpdate.channel);
+      await persistDesktopReleaseChannel(releaseChannel);
       localStorage.setItem(JUST_UPDATED_KEY, version);
       await relaunch();
     } catch (error) {
@@ -106,7 +140,7 @@ export function StartupRecoveryScreen() {
         message: error instanceof Error ? error.message : "Install failed.",
       });
     }
-  }, [pendingUpdate]);
+  }, [pendingUpdate, releaseChannel]);
 
   const handleDownload = useCallback(async () => {
     setDownloadBusy(true);
@@ -213,7 +247,7 @@ export function StartupRecoveryScreen() {
           </p>
 
           <p className="mt-5 text-xs text-[var(--theme-text-muted)]">
-            Version {formatReleaseVersion(__APP_VERSION__)}
+            Version {formatReleaseVersion(__APP_VERSION__, installedReleaseChannel)}
           </p>
         </section>
       </div>

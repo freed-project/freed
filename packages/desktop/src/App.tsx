@@ -81,6 +81,8 @@ import { clearFatalRuntimeError, useFatalRuntimeError } from "@freed/ui/lib/bug-
 import { startMemoryMonitor, stopMemoryMonitor } from "./lib/memory-monitor";
 import {
   bootstrapDesktopReleaseChannel,
+  loadDesktopReleaseChannelState,
+  persistDesktopInstalledReleaseChannel,
   persistDesktopReleaseChannel,
 } from "./lib/release-channel";
 import {
@@ -124,9 +126,35 @@ function App() {
   const [releaseChannel, setReleaseChannelState] = useState<ReleaseChannel>(() =>
     bootstrapDesktopReleaseChannel(),
   );
+  const [installedReleaseChannel, setInstalledReleaseChannel] = useState<ReleaseChannel>(() =>
+    bootstrapDesktopReleaseChannel(),
+  );
+  const [releaseChannelResolved, setReleaseChannelResolved] = useState(IS_LOCAL_PREVIEW);
   const fatalError = useFatalRuntimeError();
 
   useDesktopNavigationHistory(legalAccepted);
+
+  useEffect(() => {
+    if (IS_LOCAL_PREVIEW) return;
+
+    let cancelled = false;
+    void loadDesktopReleaseChannelState()
+      .then(({ selectedChannel, installedChannel }) => {
+        if (!cancelled) {
+          setReleaseChannelState(selectedChannel);
+          setInstalledReleaseChannel(installedChannel);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setReleaseChannelResolved(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     void hasAcceptedDesktopBundle()
@@ -331,7 +359,7 @@ function App() {
 
   // Check once at launch, then continue polling in the background every 30 minutes.
   useEffect(() => {
-    if (!legalAccepted || IS_LOCAL_PREVIEW) return;
+    if (!legalAccepted || IS_LOCAL_PREVIEW || !releaseChannelResolved) return;
 
     async function poll() {
       try {
@@ -349,7 +377,7 @@ function App() {
     return () => {
       clearInterval(interval);
     };
-  }, [legalAccepted, runDesktopUpdateCheck]);
+  }, [legalAccepted, releaseChannelResolved, runDesktopUpdateCheck]);
 
   // Manual check triggered from Settings panel.
   const checkForUpdates = useCallback(async (): Promise<AvailableUpdateInfo | null> => {
@@ -361,7 +389,7 @@ function App() {
 
   // Recovery mode should trigger its own immediate update check.
   useEffect(() => {
-    if (!legalAccepted || IS_LOCAL_PREVIEW || !isCrashState) {
+    if (!legalAccepted || IS_LOCAL_PREVIEW || !releaseChannelResolved || !isCrashState) {
       crashRecoveryUpdateCheckStarted.current = false;
       return;
     }
@@ -370,7 +398,7 @@ function App() {
     void runDesktopUpdateCheck({ showCheckingState: false }).catch(() => {
       // Silent. Recovery still exposes the manual download path.
     });
-  }, [isCrashState, legalAccepted, runDesktopUpdateCheck]);
+  }, [isCrashState, legalAccepted, releaseChannelResolved, runDesktopUpdateCheck]);
 
   // Download + install with progress, then relaunch. Used by both the toast
   // and the "Install & Restart" button in Settings via PlatformContext.
@@ -393,6 +421,9 @@ function App() {
       });
 
       // Persist the installed version across the relaunch so we can greet the user.
+      await persistDesktopInstalledReleaseChannel(pending.channel);
+      setInstalledReleaseChannel(pending.channel);
+      await persistDesktopReleaseChannel(releaseChannel);
       localStorage.setItem(JUST_UPDATED_KEY, version);
       await relaunch();
     } catch (err) {
@@ -401,19 +432,19 @@ function App() {
         message: err instanceof Error ? err.message : "Update failed",
       });
     }
-  }, []);
+  }, [releaseChannel]);
 
   const handleRelaunch = useCallback(() => relaunch(), []);
   const handleDismissUpdate = useCallback(() => setUpdateState({ phase: "idle" }), []);
   const handleOpenLatestDownload = useCallback(() => {
     void shellOpen(fallbackDownloadUrl);
   }, [fallbackDownloadUrl]);
-  const setReleaseChannel = useCallback((channel: ReleaseChannel) => {
+  const setReleaseChannel = useCallback(async (channel: ReleaseChannel) => {
     if (channel === releaseChannel) {
       return;
     }
 
-    persistDesktopReleaseChannel(channel);
+    await persistDesktopReleaseChannel(channel);
     pendingUpdate.current = null;
     setUpdateState({ phase: "idle" });
     setReleaseChannelState(channel);
@@ -542,8 +573,9 @@ function App() {
       GoogleContactsSettingsContent: GoogleContactsSection,
       checkForUpdates: IS_LOCAL_PREVIEW ? undefined : checkForUpdates,
       applyUpdate: IS_LOCAL_PREVIEW ? undefined : applyUpdate,
-      releaseChannel: IS_LOCAL_PREVIEW ? undefined : releaseChannel,
-      setReleaseChannel: IS_LOCAL_PREVIEW ? undefined : setReleaseChannel,
+      releaseChannel: IS_LOCAL_PREVIEW || !releaseChannelResolved ? undefined : releaseChannel,
+      installedReleaseChannel: IS_LOCAL_PREVIEW || !releaseChannelResolved ? undefined : installedReleaseChannel,
+      setReleaseChannel: IS_LOCAL_PREVIEW || !releaseChannelResolved ? undefined : setReleaseChannel,
       factoryReset: handleFactoryReset,
       seedSocialConnections,
       activeCloudProviderLabel: () => {
@@ -639,7 +671,7 @@ function App() {
       })(),
       bugReporting: desktopBugReporting,
     }),
-     [checkForUpdates, applyUpdate, connectGoogleContacts, handleFactoryReset, reconnectCloudProvider, releaseChannel, retryCloudProvider, seedSocialConnections, setReleaseChannel, updateState],
+     [checkForUpdates, applyUpdate, connectGoogleContacts, handleFactoryReset, installedReleaseChannel, reconnectCloudProvider, releaseChannel, releaseChannelResolved, retryCloudProvider, seedSocialConnections, setReleaseChannel, updateState],
   );
 
   if (!legalResolved) {
@@ -718,7 +750,7 @@ function App() {
                     <path d="M3 8l3.5 3.5L13 5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                   <span className="text-sm text-text-primary">
-                    Updated to <span className="font-mono font-bold">v{formatReleaseVersion(justUpdated)}</span>
+                    Updated to <span className="font-mono font-bold">v{formatReleaseVersion(justUpdated, installedReleaseChannel)}</span>
                   </span>
                 </div>
               </div>

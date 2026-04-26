@@ -24,9 +24,13 @@ function buildAuthor(post: RawIgPost): Author {
 // =============================================================================
 
 function buildContent(post: RawIgPost): Content {
-  const mediaTypes = post.mediaUrls.map((): "image" | "video" => "image");
+  const mediaTypes = post.mediaTypes?.length === post.mediaUrls.length
+    ? post.mediaTypes
+    : post.mediaUrls.map((): "image" | "video" => "image");
   const allMediaTypes: ("image" | "video" | "link")[] =
-    post.isVideo ? ["video", ...mediaTypes.slice(1)] : mediaTypes;
+    post.isVideo && mediaTypes.length > 0 && !post.mediaTypes
+      ? ["video", ...mediaTypes.slice(1)]
+      : mediaTypes;
 
   return {
     ...(post.caption ? { text: post.caption } : {}),

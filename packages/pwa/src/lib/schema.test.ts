@@ -402,6 +402,65 @@ describe("deduplicateDocFeedItems", () => {
 
     expect(Object.keys(doc.feedItems)).toHaveLength(2);
   });
+
+  it("deduplicates same-platform stories with unstable captured story IDs", () => {
+    let doc = createEmptyDoc();
+
+    doc = A.change(doc, (d) => {
+      addFeedItem(d, makeItem({
+        globalId: "ig:story_ada_1774389196662",
+        platform: "instagram",
+        contentType: "story",
+        publishedAt: 1_774_389_007_000,
+        author: { id: "ig:ada", handle: "ada", displayName: "Ada" },
+        content: {
+          text: "",
+          mediaUrls: ["https://cdn.example/story-video.mp4"],
+          mediaTypes: ["video"],
+        },
+        location: {
+          name: "Big Bear, California",
+          source: "sticker",
+          url: "https://www.instagram.com/explore/locations/123/big-bear-california/",
+        },
+        userState: {
+          hidden: false,
+          saved: true,
+          savedAt: 1_774_389_200_000,
+          archived: false,
+          tags: ["trip"],
+        },
+      }));
+
+      addFeedItem(d, makeItem({
+        globalId: "ig:story_ada_1774389204187",
+        platform: "instagram",
+        contentType: "story",
+        publishedAt: 1_774_389_007_000,
+        author: { id: "ig:ada", handle: "ada", displayName: "Ada" },
+        content: {
+          text: "",
+          mediaUrls: ["https://cdn.example/story-video.mp4"],
+          mediaTypes: ["video"],
+        },
+        location: {
+          name: "Big Bear, California",
+          source: "sticker",
+          url: "https://www.instagram.com/explore/locations/123/big-bear-california/",
+        },
+      }));
+
+      deduplicateDocFeedItems(d);
+    });
+
+    expect(Object.keys(doc.feedItems)).toHaveLength(1);
+    const [survivor] = Object.values(doc.feedItems);
+    expect(survivor.platform).toBe("instagram");
+    expect(survivor.contentType).toBe("story");
+    expect(survivor.userState.saved).toBe(true);
+    expect(survivor.userState.tags).toContain("trip");
+    expect(survivor.content.mediaUrls).toContain("https://cdn.example/story-video.mp4");
+  });
 });
 
 // =============================================================================

@@ -263,6 +263,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     activeCloudProviderLabel,
     seedSocialConnections,
     releaseChannel,
+    installedReleaseChannel,
     setReleaseChannel,
     updateDownloadProgress,
   } = usePlatform();
@@ -521,7 +522,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [updateState, setUpdateState] = useState<UpdateCheckState>({ status: "idle" });
   const fadeTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const shouldRecheckAfterChannelChangeRef = useRef(false);
-  const displayVersion = formatReleaseVersion(__APP_VERSION__);
+  const displayVersion = formatReleaseVersion(
+    __APP_VERSION__,
+    installedReleaseChannel ?? releaseChannel,
+  );
 
   const runUpdateCheck = useCallback(async () => {
     if (!checkForUpdates) return;
