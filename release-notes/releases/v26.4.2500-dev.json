@@ -1,0 +1,40 @@
+{
+  "tag": "v26.4.2500-dev",
+  "version": "26.4.2500-dev",
+  "channel": "dev",
+  "dayKey": "26.4.25",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-26T02:26:45.171Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.2401-dev",
+    "previousPublishedDayTag": "v26.4.2401-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.2500-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.4.2500-dev"
+    ],
+    "prNumbers": [
+      317,
+      318,
+      319
+    ],
+    "commitSubjects": [
+      "fix: recover stale desktop renderer (#318)",
+      "feat: add social story filters (#319)",
+      "fix: preserve fb preference record replacement (#317)"
+    ]
+  },
+  "release": {
+    "deck": "Social story filters",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2500-dev\n\nSocial story filters\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
