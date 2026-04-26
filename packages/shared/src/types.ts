@@ -60,6 +60,22 @@ export type MapMode = "friends" | "all_content";
 export type MapTimeMode = "current" | "future" | "past";
 export type TimeRangeKind = "event" | "travel" | "overlap";
 
+/**
+ * Inferred intent signals used for feed filtering and ranking.
+ * These are not exclusive categories. A feed item can carry several signals.
+ */
+export type ContentSignal =
+  | "event"
+  | "essay"
+  | "moment"
+  | "life_update"
+  | "announcement"
+  | "recommendation"
+  | "request"
+  | "discussion"
+  | "promotion"
+  | "news";
+
 // =============================================================================
 // Feed Item
 // =============================================================================
@@ -177,6 +193,28 @@ export interface PreservedContent {
 
   /** When content was preserved */
   preservedAt: number;
+}
+
+export type ContentSignalMethod = "rules" | "ai" | "manual";
+
+export interface ContentSignals {
+  version: number;
+  method: ContentSignalMethod;
+  inferredAt: number;
+  scores: Partial<Record<ContentSignal, number>>;
+  tags: ContentSignal[];
+}
+
+export interface ContentSignalBackfillSummary {
+  version: number;
+  total: number;
+  scanned: number;
+  updated: number;
+  remaining: number;
+  counts: Record<ContentSignal, number>;
+  multiSignalCount: number;
+  untaggedCount: number;
+  samples: Partial<Record<ContentSignal, string[]>>;
 }
 
 /**
@@ -310,6 +348,9 @@ export interface FeedItem {
 
   /** Extracted/inferred topics */
   topics: string[];
+
+  /** Local or AI-inferred content intent signals */
+  contentSignals?: ContentSignals;
 
   /** Pre-computed priority score (0-100), calculated by Desktop/OpenClaw */
   priority?: number;
@@ -522,6 +563,7 @@ export interface ReadingEnhancements {
 }
 
 export type SidebarMode = "expanded" | "compact" | "closed";
+export type FeedSignalMode = "all" | "inspiring" | "events" | "personal" | "conversation" | "news";
 
 export interface DisplayPreferences {
   /** Items per page */
@@ -565,6 +607,12 @@ export interface DisplayPreferences {
 
   /** Saved map time filter. Unset means default to the current view. */
   mapTimeMode?: MapTimeMode;
+
+  /** Saved unified feed signal filter mode. Unset means show all items. */
+  feedSignalMode?: FeedSignalMode;
+
+  /** Saved unified feed signal filter modes. Empty means show all items. */
+  feedSignalModes?: FeedSignalMode[];
 
   /** Days to keep archived items before pruning (default: 30, 0 = never prune) */
   archivePruneDays: number;
@@ -765,6 +813,8 @@ export function createDefaultPreferences(): UserPreferences {
       friendsSidebarOpen: true,
       friendsMode: "all_content",
       mapTimeMode: "current",
+      feedSignalMode: "all",
+      feedSignalModes: [],
       archivePruneDays: 30,
     },
     xCapture: {

@@ -145,6 +145,7 @@ function migrateLoadedIdentityGraph(message: string): void {
 function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean {
   if (
     "author" in updates ||
+    "contentSignals" in updates ||
     "content" in updates ||
     "contentType" in updates ||
     "preservedContent" in updates ||

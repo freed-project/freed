@@ -5,7 +5,16 @@
  * implement, enabling shared UI components to work with either store.
  */
 
-import type { Account, FeedItem, Friend, Person, ReachOutLog, UserPreferences, RssFeed } from "./types.js";
+import type {
+  Account,
+  ContentSignal,
+  FeedItem,
+  Friend,
+  Person,
+  ReachOutLog,
+  UserPreferences,
+  RssFeed,
+} from "./types.js";
 
 export interface RemoveFeedOptions {
   includeItems?: boolean;
@@ -21,6 +30,7 @@ export interface FilterOptions {
   platform?: string;
   feedUrl?: string;
   tags?: string[];
+  signals?: ContentSignal[];
   savedOnly?: boolean;
   /** Direct Facebook and Instagram source views only. */
   socialContentFilter?: SocialContentFilter;

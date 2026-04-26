@@ -30,6 +30,7 @@ vi.mock("./automerge", () => ({
   docDeleteAllArchived: vi.fn(),
   docPruneArchivedItems: vi.fn(),
   docUpdatePreferences: vi.fn(),
+  docBackfillContentSignals: vi.fn(() => Promise.resolve({ updated: 0, remaining: 0 })),
   docDeduplicateFeedItems: vi.fn(),
   docHealUntitledFeedTitles: vi.fn(),
   docAddFriend: vi.fn(),

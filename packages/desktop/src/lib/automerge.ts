@@ -21,7 +21,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { hashSavedUrl } from "@freed/capture-save/normalize";
 import { addDebugEvent, setDocSnapshot, registerDocAccessors } from "@freed/ui/lib/debug-store";
-import type { Account, FeedItem, Person, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
+import type {
+  Account,
+  ContentSignalBackfillSummary,
+  FeedItem,
+  Person,
+  ReachOutLog,
+  RssFeed,
+  UserPreferences,
+} from "@freed/shared";
 import type { DocState, DocStats, FeedItemPatch, WorkerRequest, WorkerResponse } from "./automerge-types";
 import { log } from "./logger.js";
 export type { DocState } from "./automerge-types";
@@ -82,6 +90,14 @@ const pendingPreservedText = new Map<
   number,
   {
     resolve: (text: string | null) => void;
+    reject: (err: Error) => void;
+    timer: ReturnType<typeof setTimeout>;
+  }
+>();
+const pendingContentSignalBackfill = new Map<
+  number,
+  {
+    resolve: (summary: ContentSignalBackfillSummary) => void;
     reject: (err: Error) => void;
     timer: ReturnType<typeof setTimeout>;
   }
@@ -294,7 +310,24 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
     return;
   }
 
+  if (msg.type === "CONTENT_SIGNAL_BACKFILL_RESULT") {
+    const pendingBackfill = pendingContentSignalBackfill.get(msg.reqId);
+    if (!pendingBackfill) return;
+    clearTimeout(pendingBackfill.timer);
+    pendingContentSignalBackfill.delete(msg.reqId);
+    pendingBackfill.resolve(msg.summary);
+    return;
+  }
+
   // ACK
+  const pendingBackfill = pendingContentSignalBackfill.get(msg.reqId);
+  if (pendingBackfill && msg.error) {
+    clearTimeout(pendingBackfill.timer);
+    pendingContentSignalBackfill.delete(msg.reqId);
+    pendingBackfill.reject(new Error(msg.error));
+    return;
+  }
+
   const p = pending.get(msg.reqId);
   if (!p) return;
   clearTimeout(p.timer);
@@ -682,6 +715,27 @@ export async function docHealUntitledFeedTitles(): Promise<void> {
 export async function docDeduplicateFeedItems(): Promise<void> {
   const reqId = nextReqId++;
   return request({ reqId, type: "DEDUPLICATE_ITEMS" });
+}
+
+export async function docBackfillContentSignals(
+  batchSize: number = 200,
+): Promise<ContentSignalBackfillSummary> {
+  await workerReady;
+  return new Promise((resolve, reject) => {
+    const reqId = nextReqId++;
+    const timer = setTimeout(() => {
+      if (!pendingContentSignalBackfill.has(reqId)) return;
+      pendingContentSignalBackfill.delete(reqId);
+      reject(
+        new Error(
+          `[automerge-worker] request TIMEOUT op=BACKFILL_CONTENT_SIGNALS reqId=${reqId} timeout_ms=${WORKER_REQUEST_TIMEOUT_MS.toLocaleString()}`,
+        ),
+      );
+    }, WORKER_REQUEST_TIMEOUT_MS);
+
+    pendingContentSignalBackfill.set(reqId, { resolve, reject, timer });
+    worker.postMessage({ reqId, type: "BACKFILL_CONTENT_SIGNALS", batchSize } satisfies WorkerRequest);
+  });
 }
 
 /**

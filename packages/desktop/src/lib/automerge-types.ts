@@ -9,7 +9,16 @@
  *                    IMPORT_PROGRESS (chunk progress for large imports)
  */
 
-import type { Account, FeedItem, Friend, Person, ReachOutLog, RssFeed, UserPreferences } from "@freed/shared";
+import type {
+  Account,
+  ContentSignalBackfillSummary,
+  FeedItem,
+  Friend,
+  Person,
+  ReachOutLog,
+  RssFeed,
+  UserPreferences,
+} from "@freed/shared";
 
 // ---------------------------------------------------------------------------
 // Hydrated state - identical to PWA's DocState (imported for type safety)
@@ -93,6 +102,7 @@ export type WorkerRequest =
   | { reqId: number; type: "BATCH_IMPORT_ITEMS"; items: FeedItem[] }
   | { reqId: number; type: "HEAL_UNTITLED_FEEDS" }
   | { reqId: number; type: "DEDUPLICATE_ITEMS" }
+  | { reqId: number; type: "BACKFILL_CONTENT_SIGNALS"; batchSize?: number }
   | { reqId: number; type: "GET_ALL_ITEM_IDS" }
   | { reqId: number; type: "GET_DOC_BINARY" }
   | { reqId: number; type: "GET_ITEM_PRESERVED_TEXT"; globalId: string }
@@ -129,5 +139,7 @@ export type WorkerResponse =
   | { reqId: number; type: "DOC_BINARY"; binary: Uint8Array }
   /** On-demand preserved article text for the active reader item. */
   | { reqId: number; type: "ITEM_PRESERVED_TEXT"; globalId: string; text: string | null }
+  /** One-batch content signal backfill summary. */
+  | { reqId: number; type: "CONTENT_SIGNAL_BACKFILL_RESULT"; summary: ContentSignalBackfillSummary }
   /** Progress reporting for BATCH_IMPORT_ITEMS. */
   | { type: "IMPORT_PROGRESS"; chunkIndex: number; totalChunks: number };

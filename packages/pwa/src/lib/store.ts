@@ -9,11 +9,13 @@
 
 import { create } from "zustand";
 import {
+  applyFeedSignalModesToFilter,
   accountsFromLegacyFriend,
   buildConnectionPersonDraftFromAccounts,
   createDefaultPreferences,
   isPrunableConnectionPerson,
   personFromLegacyFriend,
+  resolveFeedSignalModesFromDisplay,
 } from "@freed/shared";
 import type { Account, BaseAppState, Friend, Person, ReachOutLog, RemoveFeedOptions } from "@freed/shared";
 import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
@@ -133,6 +135,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         const merged = {
           ...next,
         } as Partial<AppState>;
+        const previousFeedSignalModes = resolveFeedSignalModesFromDisplay(prev.preferences.display);
+        const nextFeedSignalModes = resolveFeedSignalModesFromDisplay(next.preferences.display);
         if (shallowEqualRecord(next.feedUnreadCounts, prev.feedUnreadCounts))
           merged.feedUnreadCounts = prev.feedUnreadCounts;
         if (shallowEqualRecord(next.feedTotalCounts, prev.feedTotalCounts))
@@ -141,10 +145,21 @@ export const useAppStore = create<AppState>((set, get) => ({
           merged.unreadCountByPlatform = prev.unreadCountByPlatform;
         if (shallowEqualRecord(next.itemCountByPlatform, prev.itemCountByPlatform))
           merged.itemCountByPlatform = prev.itemCountByPlatform;
+        if (nextFeedSignalModes.join(",") !== previousFeedSignalModes.join(",")) {
+          merged.activeFilter = applyFeedSignalModesToFilter(prev.activeFilter, nextFeedSignalModes);
+        }
         set(merged);
       });
 
-      set({ ...state, isInitialized: true, isLoading: false });
+      set({
+        ...state,
+        activeFilter: applyFeedSignalModesToFilter(
+          get().activeFilter,
+          resolveFeedSignalModesFromDisplay(state.preferences.display),
+        ),
+        isInitialized: true,
+        isLoading: false,
+      });
 
       // Prune archived items in the background. Idempotent; failure is non-fatal.
       // The subscriber above propagates the doc change to the UI automatically.
