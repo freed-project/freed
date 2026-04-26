@@ -131,6 +131,7 @@ Next.js 15 (App Router) site deployed to Vercel at freed.wtf.
 - RSS/Atom feed generation at build time
 - Public legal pages for Terms of Use, Privacy, and Desktop EULA
 - Get Freed modal now scrolls internally on small screens, removes the extra mobile subtitle under the main title, keeps the mobile signup and launch headings on matching vertical spacing, simplifies the mobile section copy, gives the mobile launch CTA a primary-tinted treatment, closes reliably from the `X` button even on direct `/get` visits, and defaults real mobile devices to a `Freed Web` launch target while still offering every desktop download explicitly
+- Mobile homepage hero now shows a direct email entry form that prefills the protected Get Freed signup flow, while desktop keeps the modal-first newsletter and download CTA
 - Mobile nav header now keeps a top-level `Get Freed` CTA beside the hamburger once the user scrolls away from the top of the homepage or lands on any non-home page, animating it in smoothly while the full mobile menu still exposes the same primary action inside the drawer
 - Marketing homepage now stays in its single-column mobile layout through tablet widths, including the mobile nav, compact hero treatment, and stacked content grids, before switching to desktop layouts at `lg`
 - Marketing-site manifesto buttons now use the shared theme secondary button treatment consistently, including both `Read the Manifesto` and `Why We Built This`

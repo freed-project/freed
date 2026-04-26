@@ -106,7 +106,7 @@ export default function ManifestoContent() {
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={openModal}
+                onClick={() => openModal()}
                 className="btn-primary text-base px-8 py-3"
               >
                 Free My Feed
@@ -204,7 +204,7 @@ export default function ManifestoContent() {
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              onClick={openModal}
+              onClick={() => openModal()}
               className="btn-primary text-base px-8 py-3"
             >
               Join the Movement

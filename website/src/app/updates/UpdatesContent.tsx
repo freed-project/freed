@@ -51,7 +51,7 @@ export default function UpdatesContent() {
             </a>
             <span className="text-text-muted hidden sm:inline">•</span>
             <button
-              onClick={openModal}
+              onClick={() => openModal()}
               className="text-sm font-medium text-[color:var(--theme-heading-accent)] hover:text-text-primary transition-colors"
             >
               Get email updates →
@@ -127,7 +127,7 @@ export default function UpdatesContent() {
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={openModal}
+            onClick={() => openModal()}
             className="btn-primary"
           >
             Get Email Updates

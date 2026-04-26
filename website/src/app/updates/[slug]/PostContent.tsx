@@ -177,7 +177,7 @@ export default function PostContent({ post }: PostContentProps) {
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={openModal}
+                  onClick={() => openModal()}
                   className="btn-primary text-sm"
                 >
                   Subscribe to Newsletter

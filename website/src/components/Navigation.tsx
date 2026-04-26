@@ -198,7 +198,7 @@ export default function Navigation() {
         GitHub
       </a>
 
-      <button onClick={openModal} className="btn-primary text-sm !py-2">
+      <button onClick={() => openModal()} className="btn-primary text-sm !py-2">
         Get Freed
       </button>
     </div>
@@ -299,7 +299,7 @@ export default function Navigation() {
                     }}
                   >
                     <motion.button
-                      onClick={openModal}
+                      onClick={() => openModal()}
                       initial={{ opacity: 0, x: 8 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: 8 }}
