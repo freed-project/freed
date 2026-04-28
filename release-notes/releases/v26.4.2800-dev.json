@@ -3,7 +3,7 @@
   "version": "26.4.2800-dev",
   "channel": "dev",
   "dayKey": "26.4.28",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-28T22:11:47.207Z",
   "model": "heuristic",
@@ -29,10 +29,19 @@
     ]
   },
   "release": {
-    "deck": "Preserve paused local AI download progress and build dev releases for all primary platforms",
+    "deck": "Dev releases now build for every primary supported platform",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      {
+        "title": "Dev release platform coverage",
+        "body": "Dev tagged releases now use the same primary build matrix as production, covering macOS Apple Silicon, macOS Intel, Windows x64, and Linux x64."
+      },
+      {
+        "title": "Local AI download progress",
+        "body": "Paused local AI model downloads keep their progress after the app reloads or restarts."
+      }
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2800-dev\n\nPreserve paused local AI download progress and build dev releases for all primary platforms\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2800-dev\n\nDev releases now build for every primary supported platform.\n\n### Fixes\n\n- Dev tagged releases now use the same primary build matrix as production, covering macOS Apple Silicon, macOS Intel, Windows x64, and Linux x64.\n- Paused local AI model downloads keep their progress after the app reloads or restarts.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
