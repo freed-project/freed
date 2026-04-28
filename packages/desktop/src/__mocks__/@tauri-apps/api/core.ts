@@ -52,6 +52,21 @@ async function proxyFetch(args: Record<string, unknown>): Promise<string> {
   return resp.text();
 }
 
+async function proxyFetchBinary(args: Record<string, unknown>): Promise<number[]> {
+  const resp = await fetch("/api/proxy", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      url: args.url,
+      headers: args.headers ?? {},
+      method: args.method ?? "GET",
+      body: args.body ?? "",
+    }),
+  });
+  if (!resp.ok) throw new Error(`Proxy ${resp.status}: ${await resp.text()}`);
+  return Array.from(new Uint8Array(await resp.arrayBuffer()));
+}
+
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
   broadcast_doc: () => null,
@@ -61,10 +76,12 @@ const handlers: Record<string, Handler> = {
     method: "GET",
     headers: { Authorization: `Bearer ${String(args.accessToken ?? "")}` },
   }),
+  fetch_binary_url: (args: Record<string, unknown>) => proxyFetchBinary({ url: args.url, method: "GET" }),
   x_api_request: (args: Record<string, unknown>) => proxyFetch(args),
   get_local_ip: () => "127.0.0.1",
   get_all_local_ips: () => [],
   get_sync_url: () => "ws://127.0.0.1:8765",
+  sha256_file: () => "",
   get_sync_client_count: () => 0,
   get_runtime_memory_stats: () => ({
     processResidentBytes: 64 * 1024 * 1024,
@@ -96,11 +113,13 @@ const handlers: Record<string, Handler> = {
   fb_check_auth: () => true,
   fb_scrape_feed: () => null,
   fb_scrape_groups: () => [],
+  fb_scrape_comments: () => null,
   fb_disconnect: () => null,
   ig_show_login: () => null,
   ig_hide_login: () => null,
   ig_check_auth: () => true,
   ig_scrape_feed: () => null,
+  ig_scrape_comments: () => null,
   ig_disconnect: () => null,
   li_show_login: () => null,
   li_hide_login: () => null,

@@ -52,6 +52,7 @@ import {
   docLogReachOut,
 } from "./automerge";
 import type { DocState } from "./automerge";
+import { pinReaderItemInPwa } from "./reader-cache";
 
 /** PWA-specific store state — extends the shared base with sync connection status. */
 interface AppState extends BaseAppState {
@@ -201,7 +202,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleSaved: async (id) => {
+    const item = get().items.find((candidate) => candidate.globalId === id);
+    const shouldPin = !!item && !item.userState.saved;
     await docToggleSaved(id);
+    if (shouldPin) {
+      void pinReaderItemInPwa(item).catch((error) => {
+        recordRuntimeError({ source: "pwa:pinReaderItem", error, fatal: false });
+      });
+    }
   },
 
   toggleArchived: async (id) => {

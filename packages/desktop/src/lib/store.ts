@@ -61,6 +61,7 @@ import { buildPlatformActionsRegistry } from "./platform-actions";
 import { startOutboxProcessor } from "./outbox";
 import { loadStoredCookies, type XAuthState } from "./x-auth";
 import { recordBugReportEvent, recordRuntimeError } from "@freed/ui/lib/bug-report";
+import { pinReaderItem } from "./content-fetcher";
 
 let outboxTeardown: (() => void) | null = null;
 import { initFbAuth, type FbAuthState } from "./fb-auth";
@@ -506,7 +507,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleSaved: async (id) => {
+    const item = get().items.find((candidate) => candidate.globalId === id);
+    const shouldPin = !!item && !item.userState.saved;
     await docToggleSaved(id);
+    if (shouldPin) {
+      void pinReaderItem(item).catch((error) => {
+        recordRuntimeError({
+          source: "desktop:pinReaderItem",
+          error: error instanceof Error ? error : new Error(String(error)),
+          fatal: false,
+        });
+      });
+    }
   },
 
   toggleArchived: async (id) => {

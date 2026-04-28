@@ -34,6 +34,7 @@
     "./lib/article-cache": "./src/lib/article-cache.ts",
     "./lib/map-navigation": "./src/lib/map-navigation.ts",
     "./lib/provider-status": "./src/lib/provider-status.ts",
+    "./lib/reader-cache-settings": "./src/lib/reader-cache-settings.ts",
     "./lib/release-channel": "./src/lib/release-channel.ts",
     "./lib/sample-library-seed": "./src/lib/sample-library-seed.ts",
     "./lib/settings-store": "./src/lib/settings-store.ts",

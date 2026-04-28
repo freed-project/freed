@@ -237,6 +237,61 @@ export interface AIPreferences {
   extractTopics: boolean;
 }
 
+export type LocalAIModelId =
+  | "semantic-embeddinggemma"
+  | "summary-qwen3"
+  | "assistant-gemma4";
+
+export type LocalAIModelStatus =
+  | "not_downloaded"
+  | "downloading"
+  | "paused"
+  | "available"
+  | "error"
+  | "unsupported";
+
+export interface LocalAIModelFileManifest {
+  path: string;
+  sizeBytes: number;
+  sha256?: string;
+  sha1?: string;
+}
+
+export interface LocalAIModelManifestEntry {
+  id: LocalAIModelId;
+  title: string;
+  capability: string;
+  description: string;
+  repo: string;
+  revision: string;
+  sourceUrl: string;
+  estimatedDownloadBytes: number;
+  estimatedStorageBytes: number;
+  hardwareNote: string;
+  requiresWebGPU: boolean;
+  wasmFallback: boolean;
+  files: LocalAIModelFileManifest[];
+}
+
+export interface LocalAIModelHealth {
+  lastIndexedItemCount?: number;
+  lastRunAt?: number;
+  failureCount?: number;
+}
+
+export interface LocalAIModelInstallState {
+  id: LocalAIModelId;
+  status: LocalAIModelStatus;
+  revision: string;
+  downloadedBytes: number;
+  totalBytes: number;
+  storageBytes: number;
+  installedAt?: number;
+  updatedAt: number;
+  lastError?: string;
+  health?: LocalAIModelHealth;
+}
+
 /**
  * User interaction state
  */
@@ -809,7 +864,7 @@ export function createDefaultPreferences(): UserPreferences {
     display: {
       itemsPerPage: 20,
       compactMode: false,
-      themeId: "neon",
+      themeId: "scriptorium",
       showEngagementCounts: false, // Hidden by default
       reading: {
         focusMode: false,

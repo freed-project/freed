@@ -10,8 +10,12 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import type { AIPreferences } from "@freed/shared";
+import type { AIPreferences, LocalAIModelId } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
+import type {
+  LocalAIModelDownloadProgress,
+  LocalAIModelViewState,
+} from "../../context/PlatformContext.js";
 import { SettingsToggle } from "../SettingsToggle.js";
 
 const DEFAULT_MODELS: Record<string, string> = {
@@ -29,6 +33,198 @@ const PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic",
   gemini: "Google Gemini",
 };
+
+const NUMBER_FORMAT = new Intl.NumberFormat();
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const maximumFractionDigits = value >= 10 || unitIndex === 0 ? 0 : 1;
+  return `${NUMBER_FORMAT.format(Number(value.toFixed(maximumFractionDigits)))} ${units[unitIndex]}`;
+}
+
+function formatLocalTime(timestamp?: number): string {
+  if (!timestamp) return "Never";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(timestamp));
+}
+
+function applyDownloadProgress(
+  models: LocalAIModelViewState[],
+  progress: LocalAIModelDownloadProgress,
+): LocalAIModelViewState[] {
+  return models.map((model) => {
+    if (model.manifest.id !== progress.id) return model;
+    return {
+      ...model,
+      state: {
+        ...model.state,
+        status: "downloading",
+        downloadedBytes: progress.downloadedBytes,
+        totalBytes: progress.totalBytes,
+        updatedAt: Date.now(),
+      },
+    };
+  });
+}
+
+function statusLabel(model: LocalAIModelViewState): string {
+  const { status } = model.state;
+  if (status === "available" && model.state.revision !== model.manifest.revision) {
+    return "Update available";
+  }
+  switch (status) {
+    case "available":
+      return "Ready";
+    case "downloading":
+      return "Downloading";
+    case "paused":
+      return "Paused";
+    case "error":
+      return "Needs attention";
+    case "unsupported":
+      return "Unsupported";
+    case "not_downloaded":
+    default:
+      return "Not installed";
+  }
+}
+
+function statusTone(status: string): string {
+  switch (status) {
+    case "available":
+      return "bg-[rgb(var(--theme-feedback-success-rgb)/0.12)] text-[rgb(var(--theme-feedback-success-rgb))]";
+    case "downloading":
+      return "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_16%,transparent)] text-[var(--theme-accent-secondary)]";
+    case "error":
+    case "unsupported":
+      return "bg-[rgb(var(--theme-feedback-danger-rgb)/0.12)] text-[rgb(var(--theme-feedback-danger-rgb))]";
+    case "paused":
+      return "bg-[rgb(var(--theme-feedback-warning-rgb)/0.16)] text-[rgb(var(--theme-feedback-warning-rgb))]";
+    default:
+      return "bg-[var(--theme-bg-muted)] text-[var(--theme-text-muted)]";
+  }
+}
+
+function LocalModelCard({
+  model,
+  busy,
+  onDownload,
+  onPause,
+  onRemove,
+  onOpenSource,
+}: {
+  model: LocalAIModelViewState;
+  busy: boolean;
+  onDownload: (id: LocalAIModelId) => void;
+  onPause: (id: LocalAIModelId) => void;
+  onRemove: (id: LocalAIModelId) => void;
+  onOpenSource: (url: string) => void;
+}) {
+  const progressTotal = model.state.totalBytes || model.manifest.estimatedDownloadBytes;
+  const progress = progressTotal > 0
+    ? Math.min(100, Math.round((model.state.downloadedBytes / progressTotal) * 100))
+    : 0;
+  const isDownloading = model.state.status === "downloading";
+  const isAvailable = model.state.status === "available";
+  const isUnsupported = model.state.status === "unsupported";
+  const needsUpdate = isAvailable && model.state.revision !== model.manifest.revision;
+  const actionDisabled = busy || isUnsupported;
+
+  return (
+    <div className="rounded-lg border border-[var(--theme-border-subtle)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_82%,transparent)] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-[var(--theme-text-primary)]">{model.manifest.title}</p>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusTone(model.state.status)}`}>
+              {statusLabel(model)}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-[var(--theme-text-muted)]">{model.manifest.description}</p>
+        </div>
+        <p className="shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2 py-0.5 text-[11px] text-[var(--theme-text-muted)]">
+          {model.manifest.capability}
+        </p>
+      </div>
+
+      <div className="mt-3 grid gap-2 text-xs text-[var(--theme-text-muted)] sm:grid-cols-2">
+        <p>Download: <span className="text-[var(--theme-text-secondary)]">{formatBytes(model.manifest.estimatedDownloadBytes)}</span></p>
+        <p>Storage: <span className="text-[var(--theme-text-secondary)]">{formatBytes(model.state.storageBytes || model.manifest.estimatedStorageBytes)}</span></p>
+        <p>Indexed: <span className="text-[var(--theme-text-secondary)]">{NUMBER_FORMAT.format(model.state.health?.lastIndexedItemCount ?? 0)} items</span></p>
+        <p>Last run: <span className="text-[var(--theme-text-secondary)]">{formatLocalTime(model.state.health?.lastRunAt)}</span></p>
+      </div>
+
+      <p className="mt-2 text-xs text-[var(--theme-text-soft)]">{model.manifest.hardwareNote}</p>
+
+      {isDownloading && (
+        <div className="mt-3">
+          <div className="h-2 overflow-hidden rounded-full bg-[var(--theme-bg-muted)]">
+            <div
+              className="h-full rounded-full bg-[var(--theme-accent-secondary)] transition-[width]"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <p className="mt-1 text-[11px] text-[var(--theme-text-muted)]">
+            {formatBytes(model.state.downloadedBytes)} of {formatBytes(progressTotal)}
+          </p>
+        </div>
+      )}
+
+      {model.state.lastError && (
+        <p className="mt-3 rounded-lg bg-[rgb(var(--theme-feedback-danger-rgb)/0.08)] px-3 py-2 text-xs text-[rgb(var(--theme-feedback-danger-rgb))]">
+          {model.state.lastError}
+        </p>
+      )}
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {isDownloading ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onPause(model.manifest.id)}
+            className="theme-toolbar-button-ghost rounded-lg px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
+          >
+            Pause
+          </button>
+        ) : isAvailable && !needsUpdate ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onRemove(model.manifest.id)}
+            className="theme-feedback-button-danger rounded-lg px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
+          >
+            Remove
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={actionDisabled}
+            onClick={() => onDownload(model.manifest.id)}
+            className="theme-accent-button rounded-lg px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
+          >
+            {needsUpdate ? "Update" : model.state.status === "paused" ? "Resume" : "Download"}
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => onOpenSource(model.manifest.sourceUrl)}
+          className="theme-toolbar-button-ghost rounded-lg px-3 py-1.5 text-xs transition-colors"
+        >
+          Source
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /** Dot indicator showing Ollama reachability */
 function OllamaStatus({ url }: { url: string }) {
@@ -127,7 +323,7 @@ function ApiKeyInput({
 }
 
 export function AISection() {
-  const { secureStorage } = usePlatform();
+  const { secureStorage, localAIModels, openUrl } = usePlatform();
   const preferences = useAppStore((s) => s.preferences);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
 
@@ -139,7 +335,24 @@ export function AISection() {
   };
 
   const [showOllamaUrl, setShowOllamaUrl] = useState(false);
+  const [localModels, setLocalModels] = useState<LocalAIModelViewState[]>([]);
+  const [localModelsLoading, setLocalModelsLoading] = useState(false);
+  const [busyModelId, setBusyModelId] = useState<LocalAIModelId | null>(null);
   const ollamaUrl = ai.ollamaUrl ?? "http://localhost:11434";
+
+  const refreshLocalModels = useCallback(async () => {
+    if (!localAIModels) return;
+    setLocalModelsLoading(true);
+    try {
+      setLocalModels(await localAIModels.listModels());
+    } finally {
+      setLocalModelsLoading(false);
+    }
+  }, [localAIModels]);
+
+  useEffect(() => {
+    void refreshLocalModels();
+  }, [refreshLocalModels]);
 
   const update = useCallback(
     (patch: Partial<AIPreferences>) => {
@@ -157,10 +370,73 @@ export function AISection() {
 
   const requiresKey = ai.provider === "openai" || ai.provider === "anthropic" || ai.provider === "gemini";
 
+  const handleDownloadLocalModel = useCallback((id: LocalAIModelId) => {
+    if (!localAIModels) return;
+    setBusyModelId(id);
+    void localAIModels
+      .downloadModel(id, (progress) => {
+        setLocalModels((current) => applyDownloadProgress(current, progress));
+      })
+      .then(setLocalModels)
+      .finally(() => setBusyModelId(null));
+  }, [localAIModels]);
+
+  const handlePauseLocalModel = useCallback((id: LocalAIModelId) => {
+    if (!localAIModels) return;
+    setBusyModelId(id);
+    void localAIModels.pauseDownload(id).then(setLocalModels).finally(() => setBusyModelId(null));
+  }, [localAIModels]);
+
+  const handleRemoveLocalModel = useCallback((id: LocalAIModelId) => {
+    if (!localAIModels) return;
+    setBusyModelId(id);
+    void localAIModels.removeModel(id).then(setLocalModels).finally(() => setBusyModelId(null));
+  }, [localAIModels]);
+
+  const handleOpenSource = useCallback((url: string) => {
+    if (openUrl) {
+      openUrl(url);
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, [openUrl]);
+
   return (
     <div className="space-y-4">
+      {localAIModels && (
+        <div className="space-y-3" data-testid="local-ai-model-settings">
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--theme-text-muted)]">
+              Optional Local AI
+            </h3>
+            <p className="mt-1 text-xs text-[var(--theme-text-muted)]">
+              Model packs stay out of the installer and are downloaded only when you turn them on here.
+            </p>
+          </div>
+          {localModelsLoading && localModels.length === 0 ? (
+            <p className="rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] px-3 py-2 text-xs text-[var(--theme-text-muted)]">
+              Checking local model state...
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {localModels.map((model) => (
+                <LocalModelCard
+                  key={model.manifest.id}
+                  model={model}
+                  busy={busyModelId === model.manifest.id}
+                  onDownload={handleDownloadLocalModel}
+                  onPause={handlePauseLocalModel}
+                  onRemove={handleRemoveLocalModel}
+                  onOpenSource={handleOpenSource}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--theme-text-muted)]">
-        AI Summarization
+        Cloud And Ollama Summaries
       </h3>
 
       {/* Provider */}

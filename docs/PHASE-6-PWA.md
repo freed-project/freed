@@ -1,6 +1,6 @@
 # Phase 6: PWA Reader
 
-> **Status:** ✅ Complete (first-run legal gate shipped, public-safe bug reporting shipped, homescreen install flow shipped, offline article and image caching shipped)
+> **Status:** ✅ Complete (first-run legal gate shipped, public-safe bug reporting shipped, homescreen install flow shipped, offline article and image caching shipped, local reader cache modes shipped)
 > **Dependencies:** Phase 4 (Sync Layer), Phase 5 (Desktop App)
 
 ---
@@ -14,7 +14,7 @@ Mobile companion to Freed Desktop for on-the-go reading. Timeline-focused, minim
 - **Shared codebase** — Same React app embedded in Desktop WebView and deployed to [app.freed.wtf](https://app.freed.wtf), with the dev channel on `dev-app.freed.wtf`
 - **Thin client** — Displays pre-computed rankings from Desktop/OpenClaw, minimal local computation
 - **Light saves** — Can save URLs with metadata extraction (og tags); full article extraction requires Desktop
-- **Offline-first** — Service worker caches feed data and images for offline reading
+- **Offline-first:** Service worker caches feed data, saved reader HTML, and images for offline reading
 - **Versioned first-run consent** — PWA startup is blocked until the current legal bundle is accepted locally in the browser
 - **URL-driven navigation** — Active view, feed scope, and open reader state serialize into the URL so browser back and forward behave naturally
 - **Desktop handoff in source settings** — PWA Settings exposes X / Twitter, Facebook, Instagram, and LinkedIn with clear Freed Desktop sync and download handoff states
@@ -254,7 +254,8 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] The shared floating mobile sidebar now behaves like a real toggle, so the same hamburger button opens and closes it cleanly
 - [x] Private diagnostics stay opt-in and are clearly separated from public GitHub sharing
 - [x] PWA installable on mobile (add to homescreen) — manifest ids and scope set, browser install notice shipped, iOS Safari homescreen guidance shipped, Playwright coverage added
-- [x] Offline access works (service worker + image cache) — article HTML and cacheable reader images are warmed locally for offline reading
+- [x] Offline access works (service worker + image cache), article HTML and cacheable reader images are warmed locally for offline reading
+- [x] Saved reader content uses the permanent pinned cache tier by default, with local cache modes for Saved Only, Everything Opened, Recent Feed, and Manual Only
 
 ---
 
@@ -286,4 +287,4 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 
 ## Deliverable
 
-Mobile-friendly PWA at [app.freed.wtf](https://app.freed.wtf), plus the dev channel at `dev-app.freed.wtf`, with offline article and image support.
+Mobile-friendly PWA at [app.freed.wtf](https://app.freed.wtf), plus the dev channel at `dev-app.freed.wtf`, with offline article, image, and pinned saved-reader support.

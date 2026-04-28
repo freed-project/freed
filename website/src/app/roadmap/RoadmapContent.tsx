@@ -719,7 +719,7 @@ const phases: Phase[] = [
     number: 3,
     title: "Save for Later",
     description:
-      "Save any URL from desktop or mobile. Full offline reading with layered content cache. AI summarization and tag navigation.",
+      "Save any URL from Freed Desktop or mobile. Full offline reading with layered content cache, saved-item pinning, on-demand reader hydration, AI summarization, and tag navigation.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-3-SAVE-FOR-LATER.md",
@@ -737,7 +737,7 @@ const phases: Phase[] = [
     number: 5,
     title: "Desktop & Mobile App",
     description:
-      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, a Freed-owned updater endpoint, launch-time and background update checks, local production or dev release-channel switching that keeps dev installs on the newest eligible build, first-run legal gating, provider risk interstitials, browser-style back and forward shortcuts, draggable shared top-toolbar chrome, a tri-state resizable source sidebar with compact icon rail and floating compact search, local snapshot rollback for disaster recovery, a native startup recovery window outside the React tree with in-place update install plus channel-aware browser fallback, a provider health dashboard, failing-feed unsubscribe tools, renderer heartbeat diagnostics in the local log, runtime memory telemetry for long-session leak hunting, renderer heap and DOM diagnostics, reduced worker payload churn during large-library updates, duplicate-fetch suppression, fetcher rescans gated to real library growth, incremental Automerge persistence compaction, leaner outbox retry bookkeeping, dead-feed health cleanup, capped preserved-text previews with on-demand reader fetches, labeled native local previews, reviewed cumulative release headings, paginated changelog history, a dev-to-main production promotion guard that blocks stale releases, public-safe bug reporting with clearer private bundle gating, and browser preview settings that no longer crash on native-only sections or background social refresh.",
+      "Freed Desktop ships for macOS (ARM + Intel), Windows, and Linux with signed auto-updates, a Freed-owned updater endpoint, launch-time and background update checks, local production or dev release-channel switching that keeps dev installs on the newest eligible build, first-run legal gating, provider risk interstitials, a permanent local social media vault outside Automerge, browser-style back and forward shortcuts, draggable shared top-toolbar chrome, a tri-state resizable source sidebar with compact icon rail and floating compact search, local snapshot rollback for disaster recovery, a native startup recovery window outside the React tree with in-place update install plus channel-aware browser fallback, a provider health dashboard, failing-feed unsubscribe tools, renderer heartbeat diagnostics in the local log, runtime memory telemetry for long-session leak hunting, renderer heap and DOM diagnostics, reduced worker payload churn during large-library updates, duplicate-fetch suppression, fetcher rescans gated to real library growth, incremental Automerge persistence compaction, leaner outbox retry bookkeeping, dead-feed health cleanup, capped preserved-text previews with on-demand reader hydration, X reply threads with media, Facebook and Instagram post comments, saved-item cache pinning, labeled native local previews, reviewed cumulative release headings, paginated changelog history, a dev-to-main production promotion guard that blocks stale releases, public-safe bug reporting with clearer private bundle gating, and browser preview settings that no longer crash on native-only sections or background social refresh.",
     status: "current",
     priority: true,
     planLink:
@@ -747,7 +747,7 @@ const phases: Phase[] = [
     number: 6,
     title: "PWA Reader",
     description:
-      "Primary mobile surface with first-run legal gating, URL-backed view state, warmed offline article plus image caching, homescreen install prompts for browser and iOS Safari flows, public-safe bug reporting with clearer private bundle controls, and switchable production or dev update channels across `app.freed.wtf` and the `dev` branch lane at `dev-app.freed.wtf`.",
+      "Primary mobile surface with first-run legal gating, URL-backed view state, pinned saved-reader caching, warmed offline article plus image caching, local offline cache modes, homescreen install prompts for browser and iOS Safari flows, public-safe bug reporting with clearer private bundle controls, and switchable production or dev update channels across `app.freed.wtf` and the `dev` branch lane at `dev-app.freed.wtf`.",
     status: "complete",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-6-PWA.md",
@@ -756,7 +756,7 @@ const phases: Phase[] = [
     number: 7,
     title: "Facebook + Instagram",
     description:
-      "Facebook and Instagram integrated via Tauri WebView scraping, with suggested-post filtering, source-level post and story filters, hardened playable story capture, same-platform story duplicate repair, silent background media guarding, serialized background scraper sessions, Facebook group controls, provider health summaries, and smart backoff when sync looks rate-limited.",
+      "Facebook and Instagram integrated via Tauri WebView scraping, with suggested-post filtering, long-text expansion, source-level post and story filters, hardened playable story capture, same-platform story duplicate repair, silent background media guarding, serialized background scraper sessions, Facebook group controls, provider health summaries, Meta export import, a permanent local archive for the user's own media, X, Facebook, and Instagram reply hydration in the reader, private story reply states, and smart backoff when sync looks rate-limited.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-7-SOCIAL-CAPTURE.md",
@@ -783,7 +783,7 @@ const phases: Phase[] = [
     number: 10,
     title: "Polish",
     description:
-      "Onboarding, statistics, local content signals with saved feed filter presets, AI features, plugin API, community infrastructure, and deeper crash recovery hardening.",
+      "Onboarding, statistics, local content signals with saved feed filter presets, optional local AI model packs, plugin API, community infrastructure, and deeper crash recovery hardening.",
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-10-POLISH.md",

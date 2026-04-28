@@ -50,6 +50,7 @@ export const BASE_SECTION_METAS: readonly SectionMeta[] = [
       "intensity", "light", "normal", "strong", "mark read", "scroll",
       "grayscale", "read grayscale", "read appearance",
       "archive", "delete archived", "prune", "reading",
+      "offline", "cache", "saved only", "everything opened", "recent feed", "manual only",
     ],
   },
   {

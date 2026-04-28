@@ -106,7 +106,16 @@ declare module "@tauri-apps/plugin-fs" {
     path: string,
     contents: string,
   ): Promise<void>;
-  export function remove(path: string): Promise<void>;
+  export function remove(path: string, options?: { recursive?: boolean }): Promise<void>;
+  export function rename(oldPath: string, newPath: string): Promise<void>;
+  export function size(path: string): Promise<number>;
+  export function open(
+    path: string,
+    options?: { write?: boolean; append?: boolean; create?: boolean; truncate?: boolean },
+  ): Promise<{
+    write(contents: Uint8Array): Promise<number>;
+    close(): Promise<void>;
+  }>;
   export function exists(path: string): Promise<boolean>;
   export function mkdir(
     path: string,

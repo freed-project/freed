@@ -25,6 +25,7 @@ import { storeIgAuthState } from "./instagram-auth";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
 import { isMemoryPressureCritical } from "./memory-monitor";
+import { archiveRecentProviderMedia, upsertMediaVaultRosterFromItems } from "./media-vault";
 
 // =============================================================================
 // Rate Limiting
@@ -262,6 +263,17 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
         .getState()
         .items.filter((i) => i.platform === "instagram").length;
       result.diag.itemsAdded = Math.max(0, after - before);
+      await upsertMediaVaultRosterFromItems("instagram", result.items);
+      const archivedCount = await archiveRecentProviderMedia(
+        "instagram",
+        useAppStore.getState().items.filter((i) => i.platform === "instagram"),
+      );
+      if (archivedCount > 0) {
+        addDebugEvent(
+          "change",
+          `[IG] archived ${archivedCount.toLocaleString()} permanent media file${archivedCount === 1 ? "" : "s"}`,
+        );
+      }
       addDebugEvent(
         "change",
         `[IG] synced: ${result.diag.postsExtracted.toLocaleString()} posts extracted, ${result.diag.itemsAdded.toLocaleString()} new items`,

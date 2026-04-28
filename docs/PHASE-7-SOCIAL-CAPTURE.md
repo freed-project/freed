@@ -1,6 +1,6 @@
 # Phase 7: Facebook + Instagram Capture
 
-> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, silent background media guarding, provider health summaries, smart backoff, Facebook group controls, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, same-platform social story duplicate repair, and captured authors now feeding the Phase 8 account catalog for identity review
+> **Status:** 🚧 In Progress: Facebook and Instagram integrated into Desktop via Tauri WebView scraping, with feed pollution filtering, long-text expansion before extraction, silent background media guarding, provider health summaries, smart backoff, Facebook group controls, source-level post and story filtering, preserved Instagram story location metadata for map recovery, linked-account cross-post dedup across IG and FB, same-platform social story duplicate repair, X, Facebook, and Instagram reply hydration for the reader, captured authors now feeding the Phase 8 account catalog for identity review, and a local permanent media vault for a user's own Meta media
 > **Dependencies:** Phase 5 (Desktop App)
 
 ---
@@ -97,12 +97,29 @@ Self-contained JavaScript injected into the WebView's execution context. No exte
 
 - **Facebook** (`fb-extract.js`): Locates "Feed posts" h3, walks subtrees for post-sized blocks
 - **Instagram** (`ig-extract.js`): Queries `<article>` elements, extracts author/caption/media from semantic header/footer structure
+- **Long-form text expansion:** Facebook, Instagram, and LinkedIn extractors click common "see more" controls inside candidate post roots before reading text so long captions and essays are preserved in `content.text`.
+- **Facebook comments** (`fb-comments-extract.js`): Opens the post URL in the authenticated WebView, expands visible comment controls, and emits inline reader replies with media.
+- **Instagram comments** (`ig-comments-extract.js`): Opens post and reel URLs in the authenticated WebView, expands visible comment controls, and emits inline reader replies with media.
 - **Facebook stories** (`fb-stories-extract.js`): Injected into the FB story viewer overlay. Extracts author, media, timestamp, location/check-in. Emits via `fb-feed-data` with `postType: "story"`.
 - **Instagram stories** (`ig-stories-extract.js`): Injected into the IG story viewer overlay. Extracts author handle (from URL + DOM), typed media URLs, timestamp, and location sticker metadata. Timestamp-like fallback story IDs are replaced with stable content hashes. The normalized `FeedItem.location` now preserves the sticker source plus Instagram `locationUrl`, so later map resolution can recover real place names from generic labels such as `Locations`.
 
 Story scraping is interleaved with feed scraping in each session. A coin flip (~50%) determines whether stories are scraped before or after the initial feed passes. ~15% of sessions skip story scraping entirely (real users don't always check stories). Up to 30 story frames are captured per session.
 
+Story replies are treated differently from post comments. Facebook and Instagram story replies are private inbox conversations, so the reader shows an explicit private-replies state and keeps the Open action for replying on the platform.
+
 Background scrape and auth-check sessions now force provider media elements silent through the injected WebKit mask layer. Audio elements are paused outright, video elements are forced muted, and newly inserted media is re-silenced as the DOM changes.
+
+### Permanent Media Archive
+
+Facebook and Instagram settings now expose a local-only media archive for the user's own uploaded media. This is not the standard content cache. Files are copied under the Freed Desktop app-data folder in `media-vault/{provider}` and are kept until the user explicitly deletes the archive, removes that provider archive, or factory-resets Freed Desktop.
+
+The archive writes a local manifest with provider, source URL, post ID, media URL, local path, byte size, content hash, captured time, import source, and restore-planning roster hints. Media files, manifest rows, byte counts, failure records, retry state, and provider archive preferences are intentionally excluded from Automerge and are not synced.
+
+Historical completeness comes from Meta export import. The importer accepts Accounts Center ZIP exports, prefers JSON-backed structures, scans Facebook and Instagram media folders defensively, skips message attachments, records discovered account handles, and copies media into the permanent vault with content-hash dedupe.
+
+Recent coverage is continuous. After Facebook or Instagram sync stores captured items, Freed records roster metadata and attempts to archive recent own-account media when the provider archive is enabled and the user's handle is known. The archive dedupes by content hash, source URL, provider media ID, and normalized media URL, records bounded retry state for failed downloads, and never prunes permanent media.
+
+Profile backfill is user-started and visible in settings. The current implementation backfills media already captured from the user's own provider identity and marks those files with the profile-backfill import source. Direct historical own-profile DOM crawling remains selector-sensitive and should stay slower, resumable, and separately smoke-tested before we claim full coverage beyond Meta export import.
 
 ---
 
@@ -143,6 +160,11 @@ const RATE_LIMITS = {
 | 7.13 | Outbox processor for cross-device sync      | ✓ Complete  |
 | 7.14 | Comment links (open on platform)            | ✓ Complete  |
 | 7.15 | Cross-platform dedup (IG/FB cross-posts)    | ✓ Complete  |
+| 7.16 | Permanent local media vault                 | ✓ Complete  |
+| 7.17 | Meta export import for own media            | ✓ Complete  |
+| 7.18 | Own-profile backfill crawler                | 🚧 In Progress |
+| 7.19 | Reader reply hydration for X posts          | ✓ Complete  |
+| 7.20 | Reader comment hydration for Facebook and Instagram posts | ✓ Complete |
 
 ---
 
@@ -169,20 +191,30 @@ const RATE_LIMITS = {
 - [x] Social provider status dots switch to a live spinner while that provider is actively syncing
 - [x] Social provider sections include a line-by-line scrape log so users can see what the scraper is doing in real time
 - [x] Desktop social scraper commands serialize behind a shared native session lock so background WebKit jobs cannot overlap and starve the main renderer
+- [x] Facebook, Instagram, and LinkedIn extractors expand common long-text controls before normalization
 - [x] Social provider source menus surface a quick status explanation for warning or reconnect states before routing into full settings
 - [x] Captured social authors can backfill the Phase 8 account catalog so followed accounts exist before identity confirmation
 - [x] Empty states for both platforms in the feed view
 - [x] Source indicators in sidebar for both platforms
 - [x] Sync indicator panel shows both platforms
 - [x] Direct Facebook and Instagram source views expose All, Posts, and Stories filters in the top toolbar
+- [x] Facebook and Instagram settings expose `Back up my uploaded media`, `Import Meta export`, `Backfill from profile`, `Back up now`, and `Open vault folder`
+- [x] Meta export ZIP import copies Facebook and Instagram media into a permanent local vault with a local manifest
+- [x] Permanent media archive state stays outside Automerge and is not synced
+- [x] Continuous backup archives recent own-account media after provider sync when the account handle is known
+- [x] Facebook roster planning keeps group ID, name, and URL in the local archive manifest
 - [ ] Facebook feed posts validated against real account (selector tuning)
 - [ ] Instagram feed posts validated against real account (selector tuning)
+- [ ] Direct own-profile crawler validated against saved Facebook profile, Instagram grid, reels, albums, and media-page DOM fixtures
 - [~] Stories captured, with IG + FB story scraping integrated, Instagram story location URLs preserved for map recovery, playable story video rendering in the feed, stable fallback IG story IDs, and same-platform story duplicate repair. Selector tuning still needs work.
 - [x] Cross-platform dedup (task 7.15): linked Facebook and Instagram stories or posts with similar text now collapse into one item when they land within a few minutes of each other, while preserving saved state, tags, and richer map metadata
 - [x] Like button with outbox pattern: intent recorded immediately, synced to platform async
 - [x] Two-state like UI: "noted" (amber) vs "memorialized" (red confirmed on platform)
 - [x] Seen-sync via WebView navigation (FB/IG) - best-effort, confirmed via seenSyncedAt
 - [x] X likes via GraphQL FavoriteTweet/UnfavoriteTweet mutations
+- [x] X post reader hydration can fetch reply-thread items with media through the authenticated GraphQL path while online
+- [x] Facebook and Instagram post reader hydration can fetch visible comments with media through authenticated WebView paths while online
+- [x] Facebook and Instagram stories show a precise private-replies state in the reader because story replies live in platform inboxes
 - [x] Comment links open post URL in system browser (platform-agnostic via PlatformContext.openUrl)
 - [x] sourceUrl populated across all normalizers (X, Facebook, Instagram, RSS, Saved)
 

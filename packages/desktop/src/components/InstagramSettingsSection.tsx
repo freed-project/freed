@@ -40,6 +40,7 @@ import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
 import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { withProviderSyncing } from "../lib/store";
 import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
+import { MediaVaultSettingsCard } from "./MediaVaultSettingsCard";
 
 // =============================================================================
 // Diagnostic Panel
@@ -113,6 +114,7 @@ export function InstagramSettingsSection({
   const isLoading = useAppStore((s) => s.isLoading);
   const storeError = useAppStore((s) => s.error);
   const setError = useAppStore((s) => s.setError);
+  const items = useAppStore((s) => s.items);
   const syncing = useAppStore((s) => (s.providerSyncCounts.instagram ?? 0) > 0);
   const healthSnapshot = useDebugStore((s) => s.health?.providers.instagram ?? null);
 
@@ -295,6 +297,13 @@ export function InstagramSettingsSection({
           {statusLine}
 
           {lastDiag && <IgDiagPanel diag={lastDiag} />}
+
+          <MediaVaultSettingsCard
+            provider="instagram"
+            providerLabel="Instagram"
+            items={items}
+            authenticated={igAuth.isAuthenticated}
+          />
 
           <details className="group">
             <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">

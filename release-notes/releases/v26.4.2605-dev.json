@@ -1,0 +1,87 @@
+{
+  "tag": "v26.4.2605-dev",
+  "version": "26.4.2605-dev",
+  "channel": "dev",
+  "dayKey": "26.4.26",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-26T22:07:28.286Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.2604-dev",
+    "previousPublishedDayTag": "v26.4.2500-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.2604-dev",
+      "v26.4.2605-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.4.2604-dev",
+      "v26.4.2605-dev"
+    ],
+    "prNumbers": [
+      320,
+      321,
+      322,
+      330,
+      331,
+      332,
+      333,
+      335,
+      337,
+      339,
+      340,
+      342,
+      343,
+      345,
+      346
+    ],
+    "commitSubjects": [
+      "feat: improve reader offline hydration (#346)",
+      "fix: default app themes to Scriptorium (#345)",
+      "feat: add permanent social media archive (#342)",
+      "fix: install newest eligible desktop update (#343)",
+      "release: polish v26.4.2604-dev notes",
+      "release: refresh v26.4.2604-dev notes",
+      "release: approve v26.4.2604-dev notes",
+      "release: v26.4.2604-dev",
+      "fix: harden release validation assertions (#340)",
+      "fix: preserve saved and archived signal filters (#339)",
+      "fix: stabilize graph selection perf assertion (#337)",
+      "fix: stabilize provider health status fallback test (#335)",
+      "fix: stabilize release validation e2e (#333)",
+      "fix: speed up production validation stress tests (#332)",
+      "fix: stabilize production validation e2e (#331)",
+      "fix: update rss source test fixture (#330)",
+      "fix: polish sidebar rail behavior (#320)",
+      "feat: rebuild friends graph for scale (#321)",
+      "feat: add content signal filters",
+      "fix: remember desktop release channel (#322)"
+    ]
+  },
+  "release": {
+    "deck": "Improve reader offline hydration, permanent social media archive, and rebuild friends graph for scale",
+    "features": [
+      "Improve reader offline hydration",
+      "Permanent social media archive",
+      "Rebuild friends graph for scale"
+    ],
+    "fixes": [
+      "Default app themes to Scriptorium",
+      "Harden release validation assertions",
+      "Preserve saved and archived signal filters",
+      "Graph selection perf assertion are now more stable",
+      "Provider health status fallback test are now more stable",
+      "Release validation e2e are now more stable",
+      "Speed up production validation stress tests",
+      "Update rss source test fixture",
+      "Polish sidebar rail behavior",
+      "Remember desktop release channel",
+      "Archived items no longer clear saved feed choices"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2605-dev\n\nImprove reader offline hydration, permanent social media archive, and rebuild friends graph for scale\n\n### Features\n\n- Improve reader offline hydration\n- Permanent social media archive\n- Rebuild friends graph for scale\n\n### Fixes\n\n- Default app themes to Scriptorium\n- Harden release validation assertions\n- Preserve saved and archived signal filters\n- Graph selection perf assertion are now more stable\n- Provider health status fallback test are now more stable\n- Release validation e2e are now more stable\n- Speed up production validation stress tests\n- Update rss source test fixture\n- Polish sidebar rail behavior\n- Remember desktop release channel\n- Archived items no longer clear saved feed choices\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

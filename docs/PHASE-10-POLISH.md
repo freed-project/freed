@@ -7,7 +7,7 @@
 
 ## Overview
 
-Final polish, accessibility, UX refinements, AI-powered features, and community infrastructure.
+Final polish, accessibility, UX refinements, optional local AI model packs, and community infrastructure.
 
 ---
 
@@ -398,6 +398,7 @@ Reward security researchers for responsible disclosure.
 | 10.14 | Smart notifications      | High       |
 | 10.15 | AI settings UI           | Medium     | ✓ Complete (AISection.tsx in packages/ui)
 | 10.25 | Local content signals    | Medium     | ✓ Complete (rule-based contentSignals metadata, automatic ingestion inference, resumable desktop backfill, saved toolbar filter presets, and news classification)
+| 10.26 | Optional local AI packs  | High       | ✓ Complete (disabled-by-default model cards, pinned download manifest, resumable desktop downloads, checksum verification, and removal controls)
 
 ### Extensibility
 
@@ -442,6 +443,7 @@ Reward security researchers for responsible disclosure.
 - [ ] Topic extraction works (at least one method)
 - [ ] Summarization available for long content
 - [x] Local content signals classify existing and newly ingested items without cloud AI, with saved feed filter presets and news classification in the toolbar
+- [x] Optional local AI model packs stay out of the installer, remain off by default, and install or remove from AI settings with device-local model state
 - [ ] Smart notifications reduce noise
 
 ### Community

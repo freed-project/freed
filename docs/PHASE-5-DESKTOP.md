@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -20,6 +20,7 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Ranking runs here** — Desktop computes `priority` scores, syncs to PWA via Automerge
 - **Versioned legal gate** — Freed Desktop blocks startup side effects until the current legal bundle is accepted locally on-device
 - **Provider risk interstitials** — X, Facebook, Instagram, and LinkedIn require separate local consent before login or sync actions
+- **Permanent social media vault:** Facebook and Instagram can copy the user's own uploaded media into local app data outside Automerge and outside normal cache pruning
 - **Manual disconnect clears active pauses:** Disconnecting a social provider clears its current pause and resets future backoff escalation, but keeps historical diagnostics intact
 - **Paused providers reuse the primary action:** Settings surfaces swap `Sync Now` to `Resume Now` when a provider is paused, instead of rendering a second resume button
 - **Internal navigation history** — Desktop keeps a browser-style serialized navigation stack so `Cmd+[` and `Cmd+]` move through views and open reader state
@@ -232,6 +233,7 @@ export async function captureDomFeed(
 - [x] First launch is blocked behind a local-only legal clickwrap gate
 - [x] Provider-specific capture flows require additional local risk consent
 - [x] Legal acceptance stays outside synced Automerge state
+- [x] Permanent Facebook and Instagram media archive stores files, manifest rows, byte counts, retry state, and provider archive preferences locally outside synced Automerge state
 - [x] Freed Desktop keeps rotating local database snapshots with a restore flow in Settings
 - [x] Desktop E2E test infrastructure bootstrapped (Playwright + VITE_TEST_TAURI=1 mock layer)
 - [x] Local desktop preview now defaults to the mocked browser harness, while tracked preview slots keep concurrent local threads to one desktop preview at a time unless native Tauri behavior is explicitly requested, and native preview windows carry a visible worktree and thread label
@@ -305,6 +307,7 @@ export async function captureDomFeed(
 - [x] Outbox retry bookkeeping now drops completed and terminally failed IDs instead of keeping a session-long retry map for every action it has ever seen
 - [x] Removing RSS feeds now also drops their retained provider-health diagnostics instead of keeping dead feed histories in memory and storage forever
 - [x] Desktop live UI state now caps preserved article text previews and fetches full preserved text on demand for the active reader item, instead of cloning entire article bodies through every feed-state update
+- [x] Desktop reader hydration now uses native fetch and authenticated provider paths on open, caches successful reader content locally, pins saved items by default, hydrates X reply threads with media, hydrates visible Facebook and Instagram post comments, and explains private story replies when the user is online
 - [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation
 - [x] Search now drops its MiniSearch index as soon as the query clears, rebuilds only when the worker says the searchable corpus changed, and indexes a smaller preserved-text window so one exploratory search cannot pin a second full-text copy of the library in renderer memory
 - [x] Desktop perf memory checks now use CDP heap-usage sampling instead of the broken zero-value metric path, and they include a heavy preserved-text search scenario so renderer retention regressions show up in CI
