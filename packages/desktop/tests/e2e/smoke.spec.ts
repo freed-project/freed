@@ -1724,6 +1724,109 @@ test("desktop primary feed scroller keeps the shared fade shell", async ({ app, 
   expect((fadeState?.webkitMaskImage || fadeState?.maskImage || "none")).not.toBe("none");
 });
 
+test("desktop primary feed marks scrolled-past rows as read", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(30);
+
+  const firstItemId = "rss:https://bench.example/feed.xml:bench-item-0";
+  const initialUnreadCount = await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            preferences: {
+              display: {
+                reading: {
+                  markReadOnScroll: boolean;
+                  showReadInGrayscale: boolean;
+                };
+              };
+            };
+            totalUnreadCount: number;
+          };
+        }
+      | undefined;
+    const state = store?.getState();
+    if (!state?.preferences.display.reading.markReadOnScroll) {
+      throw new Error("Mark read on scroll is not enabled");
+    }
+    if (!state.preferences.display.reading.showReadInGrayscale) {
+      throw new Error("Read grayscale is not enabled");
+    }
+    return state.totalUnreadCount;
+  });
+
+  await page.evaluate(() => {
+    const container = document.querySelector('[data-testid="feed-list-scroll-container"]') as HTMLElement | null;
+    if (!container) {
+      throw new Error("Feed scroll container was not found");
+    }
+    container.scrollTop = 1_400;
+    container.dispatchEvent(new Event("scroll"));
+  });
+
+  await expect
+    .poll(async () => page.evaluate((itemId) => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as
+        | {
+            getState: () => {
+              items: Array<{ globalId: string; userState: { readAt?: number } }>;
+            };
+          }
+        | undefined;
+      return Boolean(store?.getState().items.find((item) => item.globalId === itemId)?.userState.readAt);
+    }, firstItemId), { timeout: 10_000 })
+    .toBe(true);
+
+  await expect
+    .poll(async () => page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as
+        | { getState: () => { totalUnreadCount: number } }
+        | undefined;
+      return store?.getState().totalUnreadCount ?? Number.POSITIVE_INFINITY;
+    }), { timeout: 10_000 })
+    .toBeLessThan(initialUnreadCount);
+
+  await page.evaluate(() => {
+    const container = document.querySelector('[data-testid="feed-list-scroll-container"]') as HTMLElement | null;
+    if (!container) {
+      throw new Error("Feed scroll container was not found");
+    }
+    container.scrollTop = container.scrollHeight;
+    container.dispatchEvent(new Event("scroll"));
+  });
+
+  await expect
+    .poll(async () => page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as
+        | { getState: () => { totalUnreadCount: number } }
+        | undefined;
+      return store?.getState().totalUnreadCount ?? Number.POSITIVE_INFINITY;
+    }), { timeout: 10_000 })
+    .toBe(0);
+
+  await page.evaluate(() => {
+    const container = document.querySelector('[data-testid="feed-list-scroll-container"]') as HTMLElement | null;
+    if (!container) {
+      throw new Error("Feed scroll container was not found");
+    }
+    container.scrollTop = 0;
+    container.dispatchEvent(new Event("scroll"));
+  });
+
+  await expect
+    .poll(async () => page.evaluate(() => {
+      const container = document.querySelector('[data-testid="feed-list-scroll-container"]') as HTMLElement | null;
+      return container?.scrollTop ?? Number.NaN;
+    }), { timeout: 10_000 })
+    .toBe(0);
+
+  const topCard = page.locator("[data-feed-item-id]").first();
+  await expect(topCard).toBeVisible({ timeout: 10_000 });
+  await expect(topCard).toHaveClass(/grayscale/);
+});
+
 test("keyboard focus scrolling keeps a full row visible past the focused item", async ({ app, page }) => {
   await page.setViewportSize({ width: 1280, height: 600 });
   await app.goto();
