@@ -3,7 +3,7 @@
   "version": "26.4.2700-dev",
   "channel": "dev",
   "dayKey": "26.4.27",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-28T03:19:12.570Z",
   "model": "heuristic",
@@ -31,10 +31,13 @@
   "release": {
     "deck": "Optional local AI model downloads and complete Google integrations",
     "features": [
-      "Optional local AI model downloads"
+      "Optional local AI model downloads",
+      "Complete Google Drive and Google Contacts integrations"
     ],
-    "fixes": [],
+    "fixes": [
+      "Cancelable Google connection flows and native desktop Contacts API requests"
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2700-dev\n\nOptional local AI model downloads and complete Google integrations\n\n### Features\n\n- Optional local AI model downloads\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2700-dev\n\nOptional local AI model downloads and complete Google integrations\n\n### Features\n\n- Optional local AI model downloads\n- Complete Google Drive and Google Contacts integrations\n\n### Fixes\n\n- Cancelable Google connection flows and native desktop Contacts API requests\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)\n**Windows:** `.exe` (NSIS installer)\n**Linux:** `.AppImage`\n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
