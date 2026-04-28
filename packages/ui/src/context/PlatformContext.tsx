@@ -21,6 +21,9 @@ import type {
   FeedItem,
   GeneratedBugReportBundle,
   ImportProgress,
+  LocalAIModelId,
+  LocalAIModelInstallState,
+  LocalAIModelManifestEntry,
   ReportPrivacyTier,
 } from "@freed/shared";
 import type { OPMLFeedEntry, ReleaseChannel } from "@freed/shared";
@@ -108,6 +111,29 @@ export interface ReaderHydrationResult {
   replies?: ReaderThreadReply[];
   status?: "hydrated" | "partial" | "expired" | "auth_required" | "unsupported";
   message?: string;
+}
+
+export interface LocalAIModelDownloadProgress {
+  id: LocalAIModelId;
+  downloadedBytes: number;
+  totalBytes: number;
+  currentFile?: string;
+}
+
+export interface LocalAIModelViewState {
+  manifest: LocalAIModelManifestEntry;
+  state: LocalAIModelInstallState;
+  webGPUAvailable: boolean;
+}
+
+export interface LocalAIModelControls {
+  listModels: () => Promise<LocalAIModelViewState[]>;
+  downloadModel: (
+    id: LocalAIModelId,
+    onProgress?: (progress: LocalAIModelDownloadProgress) => void,
+  ) => Promise<LocalAIModelViewState[]>;
+  pauseDownload: (id: LocalAIModelId) => Promise<LocalAIModelViewState[]>;
+  removeModel: (id: LocalAIModelId) => Promise<LocalAIModelViewState[]>;
 }
 
 export interface PlatformConfig {
@@ -327,6 +353,9 @@ export interface PlatformConfig {
     setApiKey: (provider: string, key: string) => Promise<void>;
     clearApiKey: (provider: string) => Promise<void>;
   };
+
+  /** Device-local optional model downloads for offline AI. */
+  localAIModels?: LocalAIModelControls;
 
   /**
    * Google Contacts API integration.

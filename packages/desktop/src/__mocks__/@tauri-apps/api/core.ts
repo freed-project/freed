@@ -76,6 +76,7 @@ const handlers: Record<string, Handler> = {
   get_local_ip: () => "127.0.0.1",
   get_all_local_ips: () => [],
   get_sync_url: () => "ws://127.0.0.1:8765",
+  sha256_file: () => "",
   get_sync_client_count: () => 0,
   get_runtime_memory_stats: () => ({
     processResidentBytes: 64 * 1024 * 1024,

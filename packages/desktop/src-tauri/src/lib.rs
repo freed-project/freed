@@ -6,6 +6,7 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
 use rand::RngCore;
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -15,7 +16,7 @@ use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::menu::{Menu, MenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Listener, Manager};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, RwLock};
 use tokio::time::{timeout, Duration};
@@ -1216,6 +1217,36 @@ async fn reset_pairing_token(
     *state.pairing_token.write().unwrap() = new_token.clone();
     info!("[Sync] Pairing token rotated");
     Ok(new_token)
+}
+
+#[tauri::command]
+async fn sha256_file(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    let model_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("local-ai-models");
+    let root = model_root.canonicalize().map_err(|e| e.to_string())?;
+    let target = PathBuf::from(path).canonicalize().map_err(|e| e.to_string())?;
+    if !target.starts_with(&root) {
+        return Err("Refusing to hash a file outside the local AI model directory".to_string());
+    }
+
+    let mut file = tokio::fs::File::open(&target)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0u8; 1024 * 1024];
+
+    loop {
+        let read = file.read(&mut buffer).await.map_err(|e| e.to_string())?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 #[tauri::command]
@@ -4324,6 +4355,7 @@ pub fn run() {
             get_local_ip,
             get_all_local_ips,
             get_sync_url,
+            sha256_file,
             get_sync_client_count,
             get_runtime_memory_stats,
             broadcast_doc,

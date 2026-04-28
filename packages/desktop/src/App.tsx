@@ -59,6 +59,7 @@ import { saveUrlInDesktop } from "./lib/save-url";
 import { hydrateReaderItem as hydrateReaderItemForDesktop } from "./lib/reader-hydration";
 import { importMarkdownFiles, exportLibrary } from "./lib/import-export";
 import { secureStorage } from "./lib/secure-storage";
+import { localAIModels } from "./lib/local-ai-models";
 import { pinReaderItem, start as startContentFetcher, stop as stopContentFetcher } from "./lib/content-fetcher";
 import { useAppStore as useDesktopStore, withProviderSyncing } from "./lib/store";
 import { pickContactViaTauri } from "./lib/contacts";
@@ -661,6 +662,7 @@ function App() {
         setApiKey: (provider: string, key: string) => Promise<void>;
         clearApiKey: (provider: string) => Promise<void>;
       },
+      localAIModels,
       openUrl: (url: string) => { void shellOpen(url); },
       pickContact: pickContactViaTauri,
       googleContacts: {

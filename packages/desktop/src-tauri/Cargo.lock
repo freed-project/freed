@@ -1288,7 +1288,7 @@ dependencies = [
 
 [[package]]
 name = "freed-desktop"
-version = "26.4.2401"
+version = "26.4.2606"
 dependencies = [
  "base64 0.22.1",
  "criterion",
@@ -1306,6 +1306,7 @@ dependencies = [
  "rquest-util",
  "serde",
  "serde_json",
+ "sha2",
  "sysinfo",
  "tauri",
  "tauri-build",
