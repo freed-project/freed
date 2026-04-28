@@ -444,6 +444,7 @@ export function createLocalAIModelService(
     }));
 
     let completedBytes = 0;
+    let latestProgressBytes = 0;
     try {
       for (const file of model.files) {
         const downloaded = await downloadFile({
@@ -452,9 +453,13 @@ export function createLocalAIModelService(
           signal: controller.signal,
           completedBeforeFile: completedBytes,
           totalBytes,
-          onProgress,
+          onProgress: (progress) => {
+            latestProgressBytes = progress.downloadedBytes;
+            onProgress?.(progress);
+          },
         });
         completedBytes += downloaded;
+        latestProgressBytes = completedBytes;
         await updateModelState(id, (current) => ({
           ...current,
           downloadedBytes: completedBytes,
@@ -477,10 +482,13 @@ export function createLocalAIModelService(
       }));
     } catch (error) {
       const aborted = controller.signal.aborted;
+      const downloadedBytes = aborted
+        ? Math.max(completedBytes, latestProgressBytes)
+        : completedBytes;
       await updateModelState(id, (current) => ({
         ...current,
         status: aborted ? "paused" : "error",
-        downloadedBytes: completedBytes,
+        downloadedBytes,
         totalBytes,
         updatedAt: deps.now(),
         lastError: aborted

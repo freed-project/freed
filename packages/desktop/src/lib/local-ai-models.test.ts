@@ -203,10 +203,11 @@ describe("local AI model manager", () => {
 
     const pending = service.downloadModel("semantic-embeddinggemma");
     await firstChunk;
-    const paused = await service.pauseDownload("semantic-embeddinggemma");
-    await pending;
+    await service.pauseDownload("semantic-embeddinggemma");
+    const paused = await pending;
 
     expect(paused[0].state.status).toBe("paused");
+    expect(paused[0].state.downloadedBytes).toBe(2);
   });
 
   it("removes downloaded model files and resets state", async () => {
