@@ -242,13 +242,13 @@ export interface ContentSignalBackfillSummary {
 }
 
 /**
- * AI provider and model preferences (synced -- no secrets here)
+ * AI provider and model preferences (synced, no secrets here)
  */
 export interface AIPreferences {
   /** AI provider selection */
-  provider: "none" | "ollama" | "openai" | "anthropic" | "gemini";
+  provider: "none" | "integrated" | "ollama" | "openai" | "anthropic" | "gemini";
 
-  /** Model identifier (e.g. "qwen2.5:1.5b", "gpt-4o-mini", "claude-haiku-4-5") */
+  /** Model identifier, when the selected provider exposes a single model name */
   model: string;
 
   /** Ollama base URL (default: "http://localhost:11434") */
