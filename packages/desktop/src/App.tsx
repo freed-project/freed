@@ -33,10 +33,12 @@ import {
   stopAllCloudSyncs,
   getActiveProviders,
   getCloudToken,
+  getValidCloudToken,
   clearCloudProvider,
   deleteCloudFile,
   startCloudSync,
   initiateDesktopOAuth,
+  isOAuthCanceledError,
   storeCloudToken,
   type CloudProvider,
 } from "./lib/sync";
@@ -63,6 +65,7 @@ import { localAIModels } from "./lib/local-ai-models";
 import { pinReaderItem, start as startContentFetcher, stop as stopContentFetcher } from "./lib/content-fetcher";
 import { useAppStore as useDesktopStore, withProviderSyncing } from "./lib/store";
 import { pickContactViaTauri } from "./lib/contacts";
+import { fetchGoogleContactsViaTauri } from "./lib/google-contacts";
 import { FeedEmptyState } from "./components/FeedEmptyState";
 import { XSettingsSection } from "./components/XSettingsSection";
 import { FacebookSettingsSection } from "./components/FacebookSettingsSection";
@@ -123,6 +126,7 @@ function App() {
   const initialize = useAppStore((state) => state.initialize);
   const isInitialized = useAppStore((state) => state.isInitialized);
   const error = useAppStore((state) => state.error);
+  const tauriRuntimeAvailable = import.meta.env.VITE_TEST_TAURI === "1" || isTauri();
   const [legalResolved, setLegalResolved] = useState(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [releaseChannel, setReleaseChannelState] = useState<ReleaseChannel>(() =>
@@ -474,12 +478,13 @@ function App() {
   }, []);
 
   const retryCloudProvider = useCallback(async (provider: CloudProvider) => {
-    const token = getCloudToken(provider);
+    const token = await getValidCloudToken(provider);
     if (!token) return;
     await startCloudSync(provider, token);
   }, []);
 
   const recordGoogleContactsConnectError = useCallback((error: unknown) => {
+    if (isOAuthCanceledError(error)) return;
     const message = error instanceof Error ? error.message : "Google Contacts connection failed.";
     setContactSyncError(message, "auth");
     log.warn(`[contacts] Google reconnect failed: ${message}`);
@@ -490,7 +495,7 @@ function App() {
     try {
       const token = await initiateDesktopOAuth(provider);
       storeCloudToken(provider, token);
-      await startCloudSync(provider, token);
+      await startCloudSync(provider, token.accessToken);
     } catch (error) {
       if (provider === "gdrive") {
         recordGoogleContactsConnectError(error);
@@ -499,16 +504,38 @@ function App() {
     }
   }, [recordGoogleContactsConnectError]);
 
-  const connectGoogleContacts = useCallback(async () => {
+  const connectGoogleContacts = useCallback(async (options?: { signal?: AbortSignal }) => {
     try {
-      const token = await initiateDesktopOAuth("gdrive");
+      const token = await initiateDesktopOAuth("gdrive", options);
       storeCloudToken("gdrive", token);
-      await startCloudSync("gdrive", token);
+      await startCloudSync("gdrive", token.accessToken);
     } catch (error) {
+      if (isOAuthCanceledError(error)) {
+        log.info("[contacts] Google reconnect canceled");
+        throw error;
+      }
       recordGoogleContactsConnectError(error);
       throw error;
     }
   }, [recordGoogleContactsConnectError]);
+
+  const fetchGoogleContactsForDesktop = useCallback(async (
+    accessToken: string,
+    syncToken?: string | null,
+  ) => {
+    log.info(`[contacts] Google sync requested mode=${syncToken ? "incremental" : "full"}`);
+    try {
+      const result = await fetchGoogleContactsViaTauri(accessToken, syncToken);
+      log.info(
+        `[contacts] Google sync fetched contacts=${result.contacts.length.toLocaleString()} deleted=${result.deleted.length.toLocaleString()} next_sync_token=${result.nextSyncToken ? "yes" : "no"}`,
+      );
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      log.warn(`[contacts] Google sync failed: ${message}`);
+      throw error;
+    }
+  }, []);
 
   // Fake-authenticate all social providers for local testing. Writes stub
   // credentials to localStorage (matching the real auth persistence format)
@@ -572,7 +599,7 @@ function App() {
       FacebookSettingsContent: FacebookSettingsSection,
       InstagramSettingsContent: InstagramSettingsSection,
       LinkedInSettingsContent: LinkedInSettingsSection,
-      GoogleContactsSettingsContent: GoogleContactsSection,
+      GoogleContactsSettingsContent: tauriRuntimeAvailable ? GoogleContactsSection : null,
       checkForUpdates: IS_LOCAL_PREVIEW ? undefined : checkForUpdates,
       applyUpdate: IS_LOCAL_PREVIEW ? undefined : applyUpdate,
       releaseChannel: IS_LOCAL_PREVIEW || !releaseChannelResolved ? undefined : releaseChannel,
@@ -665,10 +692,13 @@ function App() {
       localAIModels,
       openUrl: (url: string) => { void shellOpen(url); },
       pickContact: pickContactViaTauri,
-      googleContacts: {
-        getToken: () => localStorage.getItem("freed_cloud_token_gdrive"),
-        connect: connectGoogleContacts,
-      },
+      googleContacts: tauriRuntimeAvailable
+        ? {
+            getToken: () => getValidCloudToken("gdrive"),
+            connect: connectGoogleContacts,
+            fetchContacts: fetchGoogleContactsForDesktop,
+          }
+        : undefined,
       updateDownloadProgress: ((): UpdateDownloadProgress | null => {
         if (updateState.phase === "downloading") return { phase: "downloading", percent: updateState.percent };
         if (updateState.phase === "error") return { phase: "error", message: updateState.message };
@@ -676,7 +706,7 @@ function App() {
       })(),
       bugReporting: desktopBugReporting,
     }),
-     [checkForUpdates, applyUpdate, connectGoogleContacts, handleFactoryReset, installedReleaseChannel, reconnectCloudProvider, releaseChannel, releaseChannelResolved, retryCloudProvider, seedSocialConnections, setReleaseChannel, updateState],
+     [checkForUpdates, applyUpdate, connectGoogleContacts, fetchGoogleContactsForDesktop, handleFactoryReset, installedReleaseChannel, reconnectCloudProvider, releaseChannel, releaseChannelResolved, retryCloudProvider, seedSocialConnections, setReleaseChannel, tauriRuntimeAvailable, updateState],
   );
 
   if (!legalResolved) {

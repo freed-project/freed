@@ -1,12 +1,12 @@
 /**
- * CloudProviderCard — canonical card for a single cloud sync provider.
+ * CloudProviderCard, canonical card for a single cloud sync provider.
  *
  * Single source of truth for provider icons, labels, detail copy, and card
  * layout. Used by both the PWA (SyncConnectDialog) and the desktop
  * (CloudSyncSetupDialog, MobileSyncTab). Do not duplicate this inline anywhere.
  */
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// Types
 
 /** Supported cloud sync providers. Mirrors packages/sync/src/cloud/types.ts. */
 export type CloudProvider = "gdrive" | "dropbox";
@@ -19,7 +19,7 @@ export type ProviderState =
 
 export type CloudProviderStatus = Record<CloudProvider, ProviderState>;
 
-// ─── Provider metadata ────────────────────────────────────────────────────────
+// Provider metadata
 
 const PROVIDER_META: Record<
   CloudProvider,
@@ -27,7 +27,7 @@ const PROVIDER_META: Record<
 > = {
   dropbox: {
     name: "Dropbox",
-    detail: "~1–4 s sync · /Apps/Freed/",
+    detail: "~1-4 s sync, /Apps/Freed/",
     icon: (
       <svg className="theme-icon-media h-6 w-6 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
         <path d="M6 2L0 6l6 4-6 4 6 4 6-4-6-4 6-4L6 2zM18 2l-6 4 6 4-6 4 6 4 6-4-6-4 6-4-6-4zM12 14l-6 4 6 4 6-4-6-4z" />
@@ -36,7 +36,7 @@ const PROVIDER_META: Record<
   },
   gdrive: {
     name: "Google Drive",
-    detail: "~5 s sync · app data folder",
+    detail: "~5 s sync, app data folder",
     icon: (
       <svg className="theme-icon-media h-6 w-6 flex-shrink-0" viewBox="0 0 87.3 78" fill="currentColor">
         <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L27.5 53H0c0 1.55.4 3.1 1.2 4.5z" />
@@ -50,12 +50,13 @@ const PROVIDER_META: Record<
   },
 };
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// Component
 
 interface CloudProviderCardProps {
   provider: CloudProvider;
   state: ProviderState;
   onConnect: (provider: CloudProvider) => void;
+  onCancelConnect?: (provider: CloudProvider) => void;
   /** If provided, a Disconnect button is shown when connected. */
   onDisconnect?: (provider: CloudProvider) => void;
 }
@@ -64,6 +65,7 @@ export function CloudProviderCard({
   provider,
   state,
   onConnect,
+  onCancelConnect,
   onDisconnect,
 }: CloudProviderCardProps) {
   const meta = PROVIDER_META[provider];
@@ -72,17 +74,26 @@ export function CloudProviderCard({
   const error = state.status === "error" ? state.error : undefined;
 
   const isIdle = !isConnected && !isConnecting;
+  const canCancel = isConnecting && !!onCancelConnect;
 
   return (
     <div
-      role={isIdle ? "button" : undefined}
-      tabIndex={isIdle ? 0 : undefined}
-      onClick={isIdle ? () => onConnect(provider) : undefined}
-      onKeyDown={isIdle ? (e) => e.key === "Enter" && onConnect(provider) : undefined}
+      role={isIdle || canCancel ? "button" : undefined}
+      tabIndex={isIdle || canCancel ? 0 : undefined}
+      onClick={isIdle ? () => onConnect(provider) : canCancel ? () => onCancelConnect?.(provider) : undefined}
+      onKeyDown={
+        isIdle || canCancel
+          ? (e) => {
+              if (e.key !== "Enter") return;
+              if (isIdle) onConnect(provider);
+              if (canCancel) onCancelConnect?.(provider);
+            }
+          : undefined
+      }
       className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
         isConnected
           ? "bg-[rgb(var(--theme-feedback-success-rgb)/0.06)] border-[rgb(var(--theme-feedback-success-rgb)/0.2)]"
-          : isIdle
+          : isIdle || canCancel
             ? "cursor-pointer border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] hover:border-[var(--theme-border-strong)] hover:bg-[var(--theme-bg-card-hover)]"
             : "border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)]"
       }`}
@@ -111,17 +122,29 @@ export function CloudProviderCard({
           Disconnect
         </button>
       ) : (
-        <span
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isConnecting) {
+              onCancelConnect?.(provider);
+            } else if (isIdle) {
+              onConnect(provider);
+            }
+          }}
+          disabled={!isIdle && !canCancel}
           className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-lg transition-colors ${
             isConnected
               ? "theme-status-pill-success"
               : isConnecting
-                ? "opacity-50 text-[var(--theme-accent-secondary)]"
+                ? canCancel
+                  ? "theme-accent-tag"
+                  : "opacity-50 text-[var(--theme-accent-secondary)]"
                 : "theme-accent-tag"
           }`}
         >
-          {isConnecting ? "Opening…" : isConnected ? "Connected" : "Connect"}
-        </span>
+          {isConnecting ? (canCancel ? "Cancel" : "Opening...") : isConnected ? "Connected" : "Connect"}
+        </button>
       )}
     </div>
   );

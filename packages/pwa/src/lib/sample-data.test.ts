@@ -49,6 +49,13 @@ describe("sample data batches", () => {
     expect(linkedItems.length).toBeGreaterThan(0);
   });
 
+  it("normalizes negative seeds when generating sample friends", () => {
+    const batch = generateSampleLibraryData({ batchId: "batch-negative", seed: -1 });
+
+    expect(batch.friends).toHaveLength(SAMPLE_SHOWCASE_FRIEND_COUNT);
+    expect(batch.friends.every((friend) => friend.id.includes("sample-friend-"))).toBe(true);
+  });
+
   it("includes LinkedIn posts that are linked to sample friends", () => {
     const batch = generateSampleLibraryData({ batchId: "batch-linkedin", seed: 9 });
     const friendMap = Object.fromEntries(batch.friends.map((friend) => [friend.id, friend]));

@@ -364,9 +364,10 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_PROVIDER_SHORT_NAME: ${{ secrets.APPLE_PROVIDER_SHORT_NAME }}
-          # Public OAuth client IDs — no secret needed for desktop PKCE flows
+          # Public OAuth client IDs. No secret needed for desktop PKCE flows.
           VITE_DROPBOX_CLIENT_ID: yaqbppqya009gky
           VITE_GDRIVE_DESKTOP_CLIENT_ID: 304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com
+          VITE_GDRIVE_TOKEN_PROXY_URL: https://app.freed.wtf/api/oauth/google
         with:
           projectPath: packages/desktop
           tauriScript: npx tauri
@@ -412,7 +413,7 @@ jobs:
             gh release upload "$TAG" "/tmp/$DST" --clobber || true
             echo "Uploaded $DST"
           else
-            echo "Artifact $SRC not found — skipping alias"
+            echo "Artifact $SRC not found, skipping alias"
           fi
 
   updater-manifest:

@@ -29,6 +29,7 @@ import {
   stopCloudSync,
   getCloudProvider,
   getCloudToken,
+  getValidCloudToken,
   clearCloudSync,
   deleteCloudFile,
 } from "./lib/sync";
@@ -308,7 +309,7 @@ function App() {
       // FriendEditor falls back to manual entry when this is undefined at runtime.
       pickContact: pickContactViaWebApi,
       googleContacts: {
-        getToken: () => localStorage.getItem("freed_cloud_token_gdrive"),
+        getToken: () => getValidCloudToken("gdrive"),
         connect: initiateGDriveOAuth,
       },
       openUrl: (url: string) => { window.open(url, "_blank", "noopener,noreferrer"); },

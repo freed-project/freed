@@ -1080,6 +1080,36 @@ async fn fetch_url(url: String) -> Result<String, String> {
     response.text().await.map_err(|e| e.to_string())
 }
 
+/// Fetch a Google API URL with a bearer token and return its body as text.
+#[tauri::command]
+async fn google_api_request(url: String, access_token: String) -> Result<String, String> {
+    let parsed = url::Url::parse(&url).map_err(|e| format!("Invalid Google API URL: {}", e))?;
+    if parsed.scheme() != "https" || parsed.host_str() != Some("people.googleapis.com") {
+        return Err("Google API URL is not allowed".to_string());
+    }
+
+    let client = reqwest::Client::builder()
+        .user_agent("Freed/1.0 (https://freed.wtf)")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let response = client
+        .get(parsed)
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|e| format!("Google API request failed: {}", e))?;
+
+    let status = response.status();
+    let body = response.text().await.map_err(|e| e.to_string())?;
+
+    if !status.is_success() {
+        return Err(format!("Google API error {}: {}", status.as_u16(), body));
+    }
+
+    Ok(body)
+}
+
 /// Fetch any URL and return its body as bytes for permanent local media archive.
 #[tauri::command]
 async fn fetch_binary_url(url: String) -> Result<Vec<u8>, String> {
@@ -4350,6 +4380,7 @@ pub fn run() {
             get_updater_target,
             retry_startup_after_crash,
             fetch_url,
+            google_api_request,
             fetch_binary_url,
             x_api_request,
             get_local_ip,

@@ -84,7 +84,7 @@ export async function getSyncUrl(): Promise<string> {
     return await invoke<string>("get_sync_url");
   } catch {
     const ip = await getLocalIP();
-    // Fallback lacks a token — any connection using this URL will be
+    // Fallback lacks a token. Any connection using this URL will be
     // rejected by the relay, which is correct (pairing requires a QR scan).
     return `ws://${ip}:${FALLBACK_SYNC_PORT}`;
   }
@@ -280,29 +280,215 @@ export function stopSync(): void {
 export type { CloudProvider };
 
 const CLOUD_TOKEN_KEY = (p: CloudProvider) => `freed_cloud_token_${p}`;
+const CLOUD_TOKEN_META_KEY = (p: CloudProvider) => `freed_cloud_token_meta_${p}`;
 const UPLOAD_DEBOUNCE_MS = 2_000;
+const TOKEN_REFRESH_SKEW_MS = 60_000;
 
 /** Per-provider abort controllers, upload timers, and doc-change unsubscribers. */
 const cloudAborts = new Map<CloudProvider, AbortController>();
 const uploadTimers = new Map<CloudProvider, ReturnType<typeof setTimeout>>();
 const cloudChangeUnsubscribes = new Map<CloudProvider, () => void>();
 
-// Desktop OAuth client IDs (not secret — embedded in the app bundle).
-const GDRIVE_CLIENT_ID = import.meta.env.VITE_GDRIVE_DESKTOP_CLIENT_ID ?? "";
+// Desktop OAuth client IDs. These are public and embedded in the app bundle.
+const DEFAULT_GDRIVE_DESKTOP_CLIENT_ID =
+  "304530272769-fkbpan1l071vdvum1j6kufvo8rbq6sm1.apps.googleusercontent.com";
+const GDRIVE_CLIENT_ID =
+  import.meta.env.VITE_GDRIVE_DESKTOP_CLIENT_ID || DEFAULT_GDRIVE_DESKTOP_CLIENT_ID;
 // Only needed when using a "Web application" OAuth client type for GDrive instead
 // of the correct "Desktop app" type. Desktop app clients support PKCE without a
 // client_secret; web app clients require it.
 const GDRIVE_CLIENT_SECRET = import.meta.env.VITE_GDRIVE_CLIENT_SECRET ?? "";
+const GDRIVE_TOKEN_PROXY_URL =
+  import.meta.env.VITE_GDRIVE_TOKEN_PROXY_URL ?? "https://app.freed.wtf/api/oauth/google";
 const DROPBOX_CLIENT_ID = import.meta.env.VITE_DROPBOX_CLIENT_ID ?? "";
 
-/** Persist an OAuth access token for a cloud provider. */
-export function storeCloudToken(provider: CloudProvider, token: string): void {
-  localStorage.setItem(CLOUD_TOKEN_KEY(provider), token);
+export interface CloudTokenBundle {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: number;
+}
+
+export interface DesktopOAuthOptions {
+  signal?: AbortSignal;
+}
+
+interface TokenExchangeResponse {
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: number;
+}
+
+function createOAuthCanceledError(): Error {
+  const error = new Error("Google connection canceled.");
+  error.name = "AbortError";
+  return error;
+}
+
+export function isOAuthCanceledError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function throwIfOAuthCanceled(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw createOAuthCanceledError();
+  }
+}
+
+function tokenBundleFromResponse(data: TokenExchangeResponse): CloudTokenBundle {
+  if (!data.access_token) throw new Error("Token exchange returned no access_token");
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    expiresAt: data.expires_in ? Date.now() + data.expires_in * 1000 : undefined,
+  };
+}
+
+function readCloudTokenBundle(provider: CloudProvider): CloudTokenBundle | null {
+  const meta = localStorage.getItem(CLOUD_TOKEN_META_KEY(provider));
+  if (meta) {
+    try {
+      const parsed = JSON.parse(meta) as Partial<CloudTokenBundle>;
+      if (typeof parsed.accessToken === "string" && parsed.accessToken) {
+        return {
+          accessToken: parsed.accessToken,
+          refreshToken: typeof parsed.refreshToken === "string" ? parsed.refreshToken : undefined,
+          expiresAt: typeof parsed.expiresAt === "number" ? parsed.expiresAt : undefined,
+        };
+      }
+    } catch {
+      localStorage.removeItem(CLOUD_TOKEN_META_KEY(provider));
+    }
+  }
+
+  const legacyToken = localStorage.getItem(CLOUD_TOKEN_KEY(provider));
+  return legacyToken ? { accessToken: legacyToken } : null;
+}
+
+/** Persist OAuth credentials for a cloud provider. */
+export function storeCloudToken(provider: CloudProvider, token: string | CloudTokenBundle): void {
+  const bundle = typeof token === "string" ? { accessToken: token } : token;
+  localStorage.setItem(CLOUD_TOKEN_KEY(provider), bundle.accessToken);
+  localStorage.setItem(CLOUD_TOKEN_META_KEY(provider), JSON.stringify(bundle));
 }
 
 /** Retrieve the stored OAuth access token for a cloud provider. */
 export function getCloudToken(provider: CloudProvider): string | null {
-  return localStorage.getItem(CLOUD_TOKEN_KEY(provider));
+  return readCloudTokenBundle(provider)?.accessToken ?? null;
+}
+
+async function refreshCloudToken(provider: CloudProvider, bundle: CloudTokenBundle): Promise<string | null> {
+  if (!bundle.refreshToken) return bundle.accessToken;
+
+  if (provider === "gdrive" && shouldUseGoogleTokenProxy()) {
+    return refreshGoogleTokenViaProxy(bundle.refreshToken);
+  }
+
+  const params = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: bundle.refreshToken,
+  });
+
+  let tokenUrl: string;
+  if (provider === "gdrive") {
+    params.set("client_id", GDRIVE_CLIENT_ID);
+    if (GDRIVE_CLIENT_SECRET) {
+      params.set("client_secret", GDRIVE_CLIENT_SECRET);
+    }
+    tokenUrl = "https://oauth2.googleapis.com/token";
+  } else {
+    params.set("client_id", DROPBOX_CLIENT_ID);
+    tokenUrl = "https://api.dropboxapi.com/oauth2/token";
+  }
+
+  const res = await fetch(tokenUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params,
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Token refresh failed (${res.status}): ${body}`);
+  }
+
+  const refreshed = tokenBundleFromResponse((await res.json()) as TokenExchangeResponse);
+  const nextBundle = {
+    ...refreshed,
+    refreshToken: refreshed.refreshToken ?? bundle.refreshToken,
+  };
+  storeCloudToken(provider, nextBundle);
+  return nextBundle.accessToken;
+}
+
+function shouldUseGoogleTokenProxy(): boolean {
+  return !!GDRIVE_TOKEN_PROXY_URL && !!GDRIVE_CLIENT_ID && !GDRIVE_CLIENT_SECRET;
+}
+
+function tokenBundleFromProxyResponse(data: TokenExchangeResponse): CloudTokenBundle {
+  return tokenBundleFromResponse(data);
+}
+
+async function exchangeGoogleCodeViaProxy(
+  code: string,
+  codeVerifier: string,
+  redirectUri: string,
+): Promise<CloudTokenBundle> {
+  const res = await fetch(GDRIVE_TOKEN_PROXY_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      code,
+      verifier: codeVerifier,
+      redirectUri,
+      clientId: GDRIVE_CLIENT_ID,
+    }),
+  });
+
+  const data = (await res.json().catch(() => ({ error: "invalid JSON from Google token proxy" }))) as
+    TokenExchangeResponse & { error?: string };
+
+  if (!res.ok) {
+    throw new Error(`Google token proxy failed (${res.status}): ${data.error ?? "token exchange failed"}`);
+  }
+
+  return tokenBundleFromProxyResponse(data);
+}
+
+async function refreshGoogleTokenViaProxy(refreshToken: string): Promise<string | null> {
+  const res = await fetch(GDRIVE_TOKEN_PROXY_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      grantType: "refresh_token",
+      refreshToken,
+      clientId: GDRIVE_CLIENT_ID,
+    }),
+  });
+
+  const data = (await res.json().catch(() => ({ error: "invalid JSON from Google token proxy" }))) as
+    TokenExchangeResponse & { error?: string };
+
+  if (!res.ok) {
+    throw new Error(`Google token proxy refresh failed (${res.status}): ${data.error ?? "token refresh failed"}`);
+  }
+
+  const refreshed = tokenBundleFromProxyResponse(data);
+  const nextBundle = {
+    ...refreshed,
+    refreshToken: refreshed.refreshToken ?? refreshToken,
+  };
+  storeCloudToken("gdrive", nextBundle);
+  return nextBundle.accessToken;
+}
+
+/** Return a non-expired access token when a refresh token is available. */
+export async function getValidCloudToken(provider: CloudProvider): Promise<string | null> {
+  const bundle = readCloudTokenBundle(provider);
+  if (!bundle) return null;
+  if (bundle.expiresAt && bundle.expiresAt - Date.now() <= TOKEN_REFRESH_SKEW_MS) {
+    return refreshCloudToken(provider, bundle);
+  }
+  return bundle.accessToken;
 }
 
 /** Return all providers that have a stored access token. */
@@ -314,6 +500,7 @@ export function getActiveProviders(): CloudProvider[] {
 /** Clear credentials for a provider and stop its sync loop. */
 export function clearCloudProvider(provider: CloudProvider): void {
   localStorage.removeItem(CLOUD_TOKEN_KEY(provider));
+  localStorage.removeItem(CLOUD_TOKEN_META_KEY(provider));
   stopCloudSync(provider);
 }
 
@@ -344,16 +531,24 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
  * localhost server. The system browser is opened, the user authenticates,
  * and the callback is captured without needing a public redirect URI.
  *
- * Resolves with the access token on success.
+ * Resolves with OAuth credentials on success.
  */
-export async function initiateDesktopOAuth(provider: CloudProvider): Promise<string> {
+export async function initiateDesktopOAuth(
+  provider: CloudProvider,
+  options: DesktopOAuthOptions = {},
+): Promise<CloudTokenBundle> {
+  const { signal } = options;
+  throwIfOAuthCanceled(signal);
+
   const verifier = generateCodeVerifier();
   const challenge = await generateCodeChallenge(verifier);
+  throwIfOAuthCanceled(signal);
 
   // Start the localhost server first so the port is known before we build the
   // OAuth URL. The Rust command returns the port and then waits for the callback.
   const port = await invoke<number>("start_oauth_server");
-  // Use localhost (not 127.0.0.1) — Dropbox and Google only accept the
+  throwIfOAuthCanceled(signal);
+  // Use localhost, not 127.0.0.1. Dropbox and Google only accept the
   // registered redirect URI prefix, and "http://localhost" is the standard
   // registration for desktop/native PKCE apps on both platforms.
   const redirectUri = `http://localhost:${port}/callback`;
@@ -387,28 +582,61 @@ export async function initiateDesktopOAuth(provider: CloudProvider): Promise<str
     authUrl = `https://www.dropbox.com/oauth2/authorize?${params}`;
   }
 
-  // Open system browser and wait for the Tauri backend to emit the code.
-  await shellOpen(authUrl);
-
-  const code = await new Promise<string>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      unlisten();
-      reject(new Error("OAuth timed out waiting for browser callback"));
-    }, 300_000);
-
-    let unlisten: () => void;
-    listen<{ code: string; state: string }>("cloud-oauth-code", (event) => {
-      clearTimeout(timer);
-      unlisten();
-      if (event.payload.state !== state) {
-        reject(new Error("OAuth state mismatch — possible CSRF"));
-        return;
-      }
-      resolve(event.payload.code);
-    }).then((fn) => {
-      unlisten = fn;
-    });
+  let unlisten: (() => void) | null = null;
+  let resolveCode!: (code: string) => void;
+  let rejectCode!: (error: Error) => void;
+  let cleanedUp = false;
+  let timer: ReturnType<typeof setTimeout>;
+  let handleAbort: () => void;
+  const codePromise = new Promise<string>((resolve, reject) => {
+    resolveCode = resolve;
+    rejectCode = reject;
   });
+  const cleanupCodeWait = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", handleAbort);
+    unlisten?.();
+  };
+  timer = setTimeout(() => {
+    cleanupCodeWait();
+    rejectCode(new Error("OAuth timed out waiting for browser callback"));
+  }, 300_000);
+
+  handleAbort = () => {
+    cleanupCodeWait();
+    rejectCode(createOAuthCanceledError());
+  };
+
+  unlisten = await listen<{ code: string; state: string }>("cloud-oauth-code", (event) => {
+    cleanupCodeWait();
+    if (event.payload.state !== state) {
+      rejectCode(new Error("OAuth state mismatch. Please try connecting again."));
+      return;
+    }
+    if (!event.payload.code) {
+      rejectCode(new Error("OAuth callback did not include an authorization code."));
+      return;
+    }
+    resolveCode(event.payload.code);
+  });
+  signal?.addEventListener("abort", handleAbort, { once: true });
+
+  // Register the callback listener before opening the browser so a fast auth
+  // redirect cannot beat the frontend subscription.
+  let code: string;
+  try {
+    throwIfOAuthCanceled(signal);
+    await shellOpen(authUrl);
+    code = await codePromise;
+  } catch (error) {
+    cleanupCodeWait();
+    throw error;
+  }
+
+  cleanupCodeWait();
+  throwIfOAuthCanceled(signal);
 
   // Exchange the authorization code for an access token.
   return exchangeCode(provider, code, verifier, redirectUri);
@@ -419,7 +647,7 @@ async function exchangeCode(
   code: string,
   codeVerifier: string,
   redirectUri: string,
-): Promise<string> {
+): Promise<CloudTokenBundle> {
   const params = new URLSearchParams({
     grant_type: "authorization_code",
     code,
@@ -429,6 +657,10 @@ async function exchangeCode(
 
   let tokenUrl: string;
   if (provider === "gdrive") {
+    if (shouldUseGoogleTokenProxy()) {
+      return exchangeGoogleCodeViaProxy(code, codeVerifier, redirectUri);
+    }
+
     params.set("client_id", GDRIVE_CLIENT_ID);
     // Desktop app OAuth clients use PKCE without a secret. If the console client
     // is a "Web application" type, VITE_GDRIVE_CLIENT_SECRET must be set or
@@ -453,8 +685,7 @@ async function exchangeCode(
     throw new Error(`Token exchange failed (${res.status}): ${body}`);
   }
 
-  const { access_token } = (await res.json()) as { access_token: string };
-  return access_token;
+  return tokenBundleFromResponse((await res.json()) as TokenExchangeResponse);
 }
 
 // ─── Sync loops ───────────────────────────────────────────────────────────────
@@ -470,11 +701,12 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
   const controller = new AbortController();
   cloudAborts.set(provider, controller);
   const { signal } = controller;
+  const resolveToken = async () => (provider === "gdrive" ? (await getValidCloudToken(provider)) ?? token : token);
 
   // Immediate pull to catch up on any changes since last session.
   try {
     const download = provider === "gdrive" ? gdriveDownloadLatest : dropboxDownloadLatest;
-    const remote = await download(token, signal);
+    const remote = await download(await resolveToken(), signal);
     if (remote) {
       await mergeDoc(remote);
       console.log("[CloudSync/%s] Initial merge (%d bytes)", provider, remote.length);
@@ -548,7 +780,24 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
   };
 
   if (provider === "gdrive") {
-    gdriveStartPollLoop(token, onRemoteChange, signal, cloudLog).catch(async (err) => {
+    const runGDrivePollLoop = async () => {
+      while (!signal.aborted) {
+        const pollToken = await resolveToken();
+        try {
+          await gdriveStartPollLoop(pollToken, onRemoteChange, signal, cloudLog);
+          return;
+        } catch (error) {
+          if (signal.aborted) return;
+          const status = typeof error === "object" && error !== null && "status" in error
+            ? (error as { status?: number }).status
+            : undefined;
+          if (status !== 401 && status !== 403) throw error;
+          await refreshCloudToken("gdrive", readCloudTokenBundle("gdrive") ?? { accessToken: pollToken });
+        }
+      }
+    };
+
+    runGDrivePollLoop().catch(async (err) => {
       if (!signal.aborted) {
         const msg = err instanceof Error ? err.message : String(err);
         log.error(`[cloud/gdrive] poll loop crashed: ${msg}`);
@@ -582,9 +831,9 @@ export async function startCloudSync(provider: CloudProvider, token: string): Pr
   }
 
   // Subscribe to local doc changes so every mutation is uploaded back.
-  // Debounced by scheduleCloudUpload — rapid edits coalesce into one upload.
+  // Debounced by scheduleCloudUpload. Rapid edits coalesce into one upload.
   const unsubscribe = subscribe(() => {
-    scheduleCloudUpload(provider, token);
+    scheduleCloudUpload(provider);
   });
   cloudChangeUnsubscribes.set(provider, unsubscribe);
 
@@ -633,7 +882,7 @@ export async function deleteCloudFile(provider: CloudProvider, token: string): P
  * can trigger a cloud backup. Debouncing prevents a flood of uploads during
  * rapid edits.
  */
-export function scheduleCloudUpload(provider: CloudProvider, token: string): void {
+export function scheduleCloudUpload(provider: CloudProvider, token?: string): void {
   const existing = uploadTimers.get(provider);
   if (existing) clearTimeout(existing);
 
@@ -642,10 +891,12 @@ export function scheduleCloudUpload(provider: CloudProvider, token: string): voi
     const binary = await getDocBinary();
     const startedAt = Date.now();
     try {
+      const uploadToken = token ?? await getValidCloudToken(provider);
+      if (!uploadToken) throw new Error("Cloud token missing. Reconnect the provider.");
       if (provider === "gdrive") {
-        await gdriveUploadSafe(token, binary);
+        await gdriveUploadSafe(uploadToken, binary);
       } else {
-        await dropboxUploadSafe(token, binary);
+        await dropboxUploadSafe(uploadToken, binary);
       }
       console.log("[CloudSync/%s] Uploaded (%d bytes)", provider, binary.byteLength);
       await recordProviderHealthEvent({
@@ -681,7 +932,8 @@ export function scheduleCloudUpload(provider: CloudProvider, token: string): voi
  */
 export async function startAllCloudSyncs(): Promise<void> {
   for (const provider of getActiveProviders()) {
-    const token = getCloudToken(provider)!;
+    const token = await getValidCloudToken(provider);
+    if (!token) continue;
     startCloudSync(provider, token).catch((err) => {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[CloudSync] Failed to resume ${provider}:`, err);

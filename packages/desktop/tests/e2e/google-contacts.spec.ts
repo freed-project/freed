@@ -102,6 +102,11 @@ test("Google Contacts appears in Settings > Sources", async ({ app }) => {
   const section = await openGoogleContactsSection(app.page, test);
   if (!section) return;
 
+  const settingsNav = app.page.getByRole("navigation").nth(1);
+  await expect(settingsNav.getByRole("button", { name: "Saved" })).toBeVisible();
+  const navLabels = (await settingsNav.getByRole("button").allTextContents()).map((label) => label.trim());
+  expect(navLabels.indexOf("Google Contacts")).toBe(navLabels.indexOf("Saved") + 1);
+
   await expect(section.getByText("Google Contacts", { exact: true })).toBeVisible();
   await expect(section.getByRole("button", { name: "Sync Now" })).toBeVisible();
   await expect(section.getByRole("button", { name: "Review Matches" })).toBeVisible();

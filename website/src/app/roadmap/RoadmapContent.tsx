@@ -728,7 +728,7 @@ const phases: Phase[] = [
     number: 4,
     title: "Sync Layer",
     description:
-      "Local relay and GDrive/Dropbox sync are working, with cloud health diagnostics, retry and reconnect actions, debug charts, and desktop snapshot restore. iCloud remains the open item.",
+      "Local relay and GDrive/Dropbox sync are working, with server-proxied Google token exchange, appDataFolder Drive polling, durable Google OAuth refresh, cloud health diagnostics, retry and reconnect actions, debug charts, and desktop snapshot restore. iCloud remains the open item.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-4-SYNC.md",
@@ -765,7 +765,7 @@ const phases: Phase[] = [
     number: 8,
     title: "Friends + Social Graph",
     description:
-      "A people CRM with a canonical Person plus Account identity graph, a Pixi WebGL Friends workspace with theme-aware graph roles, bounded D3 Force worker layout for the person field, single-pass activity indexing, bucketed overlap resolution, interactive label degradation during pan and zoom, confirmed friend hubs near the center, provisional human identities in the middle field, linked channels orbiting people, unlinked channels in provider islands around the edge, RSS treated as a normal provider island, retained scene-object caching so pan and zoom stay responsive, persisted drag-to-pin placement that keeps drag-to-link intact, expanded showcase and stress sample graphs, Google Contacts imports that create friend people by default, suggestion-only same-person review across platforms, a collapsible desktop details rail with a compact floating selection card when the rail is closed plus click-off dismissal on empty graph space, faster graph-native pinch zoom that stays inside the workspace on Safari, and a mobile `Details` mode in the shared toolbar while the map resolves identity through linked accounts with unified header controls plus current, future, and past filters and a quieter lower-left timeline scrubber for replay.",
+      "A people CRM with a canonical Person plus Account identity graph, a Pixi WebGL Friends workspace with theme-aware graph roles, bounded D3 Force worker layout for the person field, single-pass activity indexing, bucketed overlap resolution, interactive label degradation during pan and zoom, confirmed friend hubs near the center, provisional human identities in the middle field, linked channels orbiting people, unlinked channels in provider islands around the edge, RSS treated as a normal provider island, retained scene-object caching so pan and zoom stay responsive, persisted drag-to-pin placement that keeps drag-to-link intact, expanded showcase and stress sample graphs, Google Contacts imports that create friend people by default, server-proxied refreshable Google credentials for long-running Contacts sync, suggestion-only same-person review across platforms, a collapsible desktop details rail with a compact floating selection card when the rail is closed plus click-off dismissal on empty graph space, faster graph-native pinch zoom that stays inside the workspace on Safari, and a mobile `Details` mode in the shared toolbar while the map resolves identity through linked accounts with unified header controls plus current, future, and past filters and a quieter lower-left timeline scrubber for replay.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-8-FRIENDS.md",

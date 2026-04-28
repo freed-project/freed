@@ -303,13 +303,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const navStructure: NavStructureItem[] = [
     sectionById.appearance,
     sectionById.sync,
-    ...(GoogleContactsSettingsContent ? [sectionById.googleContacts] : []),
     {
       kind: "group",
       label: "Sources",
       icon: ICON_SOURCES,
       children: [
         sectionById.saved,
+        ...(GoogleContactsSettingsContent ? [sectionById.googleContacts] : []),
         ...(XSettingsContent ? [sectionById.x] : []),
         ...(FacebookSettingsContent ? [sectionById.facebook] : []),
         ...(InstagramSettingsContent ? [sectionById.instagram] : []),

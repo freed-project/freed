@@ -71,6 +71,11 @@ async function proxyFetchBinary(args: Record<string, unknown>): Promise<number[]
 const handlers: Record<string, Handler> = {
   broadcast_doc: () => null,
   fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
+  google_api_request: (args: Record<string, unknown>) => proxyFetch({
+    url: args.url,
+    method: "GET",
+    headers: { Authorization: `Bearer ${String(args.accessToken ?? "")}` },
+  }),
   fetch_binary_url: (args: Record<string, unknown>) => proxyFetchBinary({ url: args.url, method: "GET" }),
   x_api_request: (args: Record<string, unknown>) => proxyFetch(args),
   get_local_ip: () => "127.0.0.1",
