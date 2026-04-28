@@ -171,3 +171,57 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   const openReaderButton = app.page.locator("header").getByRole("button", { name: "Open", exact: true });
   await expect(openReaderButton).toBeVisible();
 });
+
+test("feed cards show compact event metadata from semantic enrichment", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+
+  await app.page.evaluate(async () => {
+    const publishedAt = Date.parse("2026-04-25T12:00:00Z");
+    const automerge = (window as Record<string, unknown>).__FREED_AUTOMERGE__ as {
+      docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+    };
+
+    await automerge.docBatchImportItems([
+      {
+        globalId: "test-semantic-event-card",
+        platform: "rss",
+        contentType: "article",
+        capturedAt: publishedAt,
+        publishedAt,
+        author: {
+          id: "semantic-feed",
+          handle: "semantic-feed",
+          displayName: "Semantic Feed",
+        },
+        content: {
+          text: "Join us at Civic Hall on May 12 at 7pm for a live event. RSVP now.",
+          mediaUrls: [],
+          mediaTypes: [],
+          linkPreview: {
+            url: "https://example.com/semantic-event",
+            title: "Semantic Event Card",
+            description: "A high-confidence event candidate for the feed card.",
+          },
+        },
+        userState: {
+          hidden: false,
+          saved: false,
+          archived: false,
+          tags: [],
+        },
+        topics: [],
+        rssSource: {
+          feedUrl: "https://example.com/semantic-feed.xml",
+          feedTitle: "Semantic Feed",
+          siteUrl: "https://example.com",
+        },
+        sourceUrl: "https://example.com/semantic-event",
+      },
+    ]);
+  });
+
+  const eventCard = app.page.locator("article").filter({ hasText: "Semantic Event Card" }).first();
+  await expect(eventCard).toBeVisible();
+  await expect(eventCard).toContainText(/Event/);
+});

@@ -66,6 +66,16 @@ export type TimeRangeKind = "event" | "travel" | "overlap";
  */
 export type ContentSignal =
   | "event"
+  | "deadline"
+  | "opportunity"
+  | "how_to"
+  | "reference"
+  | "transaction"
+  | "product_update"
+  | "alert"
+  | "deal"
+  | "place"
+  | "media"
   | "essay"
   | "moment"
   | "life_update"
@@ -203,6 +213,20 @@ export interface ContentSignals {
   inferredAt: number;
   scores: Partial<Record<ContentSignal, number>>;
   tags: ContentSignal[];
+}
+
+export interface EventCandidate {
+  version: number;
+  method: ContentSignalMethod;
+  detectedAt: number;
+  confidence: number;
+  title?: string;
+  startsAt?: number;
+  endsAt?: number;
+  timezone?: string;
+  locationName?: string;
+  locationUrl?: string;
+  evidence?: string;
 }
 
 export interface ContentSignalBackfillSummary {
@@ -406,6 +430,9 @@ export interface FeedItem {
 
   /** Local or AI-inferred content intent signals */
   contentSignals?: ContentSignals;
+
+  /** Compact local or AI-inferred event metadata. */
+  eventCandidate?: EventCandidate;
 
   /** Pre-computed priority score (0-100), calculated by Desktop/OpenClaw */
   priority?: number;

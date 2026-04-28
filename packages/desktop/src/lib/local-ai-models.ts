@@ -13,6 +13,7 @@ import {
 } from "@tauri-apps/plugin-fs";
 import type {
   LocalAIModelId,
+  LocalAIModelHealth,
   LocalAIModelInstallState,
   LocalAIModelManifestEntry,
 } from "@freed/shared";
@@ -542,11 +543,27 @@ export function createLocalAIModelService(
     return listModels();
   }
 
+  async function updateHealth(
+    id: LocalAIModelId,
+    health: LocalAIModelHealth,
+  ): Promise<LocalAIModelViewState[]> {
+    await updateModelState(id, (current) => ({
+      ...current,
+      health: {
+        ...current.health,
+        ...health,
+      },
+      updatedAt: deps.now(),
+    }));
+    return listModels();
+  }
+
   return {
     listModels,
     downloadModel,
     pauseDownload,
     removeModel,
+    updateHealth,
   };
 }
 

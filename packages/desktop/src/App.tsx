@@ -63,6 +63,7 @@ import { importMarkdownFiles, exportLibrary } from "./lib/import-export";
 import { secureStorage } from "./lib/secure-storage";
 import { localAIModels } from "./lib/local-ai-models";
 import { pinReaderItem, start as startContentFetcher, stop as stopContentFetcher } from "./lib/content-fetcher";
+import { start as startSemanticClassifier, stop as stopSemanticClassifier } from "./lib/semantic-classifier";
 import { useAppStore as useDesktopStore, withProviderSyncing } from "./lib/store";
 import { pickContactViaTauri } from "./lib/contacts";
 import { fetchGoogleContactsViaTauri } from "./lib/google-contacts";
@@ -198,10 +199,12 @@ function App() {
     }
     // Start background content fetcher -- processes article HTML fetch queue.
     startContentFetcher();
+    startSemanticClassifier();
     startMemoryMonitor({
       getAutomergeStats: getCachedDocStats,
       onCriticalPressure: () => {
         stopContentFetcher();
+        stopSemanticClassifier();
         toast.error("Freed paused background fetch because memory is critically high", {
           actionLabel: "Restart",
           onAction: () => {
@@ -215,6 +218,7 @@ function App() {
       stopSync();
       stopSnapshotManager();
       stopContentFetcher();
+      stopSemanticClassifier();
       stopMemoryMonitor();
     };
   }, [isInitialized, legalAccepted]);

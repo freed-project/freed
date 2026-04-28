@@ -187,8 +187,11 @@ function feedItemUpdatesAffectSearchCorpus(updates: Partial<FeedItem>): boolean 
   if (
     "author" in updates ||
     "contentSignals" in updates ||
+    "eventCandidate" in updates ||
     "content" in updates ||
     "contentType" in updates ||
+    "location" in updates ||
+    "timeRange" in updates ||
     "preservedContent" in updates ||
     "publishedAt" in updates ||
     "rssSource" in updates ||
