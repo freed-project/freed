@@ -132,6 +132,8 @@ jobs:
             exit 1
           fi
 
+          PRIMARY_RELEASE_MATRIX='{"include":[{"platform":"macos-latest","args":"--target aarch64-apple-darwin","rust_target":"aarch64-apple-darwin"},{"platform":"macos-latest","args":"--target x86_64-apple-darwin","rust_target":"x86_64-apple-darwin"},{"platform":"windows-latest","args":"--target x86_64-pc-windows-msvc","rust_target":"x86_64-pc-windows-msvc"},{"platform":"ubuntu-22.04","args":"","rust_target":"x86_64-unknown-linux-gnu"}]}'
+
           # Write to GITHUB_OUTPUT using heredoc to handle multiline
           {
             echo "release_body<<RELEASE_BODY_EOF"
@@ -143,11 +145,7 @@ jobs:
             else
               echo "is_prerelease=false"
             fi
-            if [[ "$CHANNEL" == "dev" ]]; then
-              echo 'release_matrix={"include":[{"platform":"macos-latest","args":"--target aarch64-apple-darwin","rust_target":"aarch64-apple-darwin"}]}'
-            else
-              echo 'release_matrix={"include":[{"platform":"macos-latest","args":"--target aarch64-apple-darwin","rust_target":"aarch64-apple-darwin"},{"platform":"macos-latest","args":"--target x86_64-apple-darwin","rust_target":"x86_64-apple-darwin"},{"platform":"windows-latest","args":"--target x86_64-pc-windows-msvc","rust_target":"x86_64-pc-windows-msvc"},{"platform":"ubuntu-22.04","args":"","rust_target":"x86_64-unknown-linux-gnu"}]}'
-            fi
+            echo "release_matrix=${PRIMARY_RELEASE_MATRIX}"
           } >> "$GITHUB_OUTPUT"
 
   validation:
