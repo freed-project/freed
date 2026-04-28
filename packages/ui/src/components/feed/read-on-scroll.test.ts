@@ -43,6 +43,29 @@ describe("read-on-scroll helpers", () => {
     expect(getNewlyPassedRowEnd([], 9999, 5, 2)).toBe(4);
   });
 
+  it("does not rewind the passed-row boundary when scrolling back up", () => {
+    const rows: Array<ReadTrackRow<TestItem>> = [
+      { type: "item", item: item("a") },
+      { type: "item", item: item("b") },
+      { type: "item", item: item("c") },
+      { type: "item", item: item("d") },
+      { type: "item", item: item("e") },
+    ];
+    const farDownRows = [
+      { index: 4, end: 1_100 },
+    ];
+    const backUpRows = [
+      { index: 1, end: 440 },
+      { index: 2, end: 660 },
+    ];
+
+    const passedEnd = getNewlyPassedRowEnd(farDownRows, 900, rows.length, -1);
+
+    expect(passedEnd).toBe(3);
+    expect(collectUnreadIdsFromRows(rows, 0, passedEnd ?? -1)).toEqual(["a", "b", "c", "d"]);
+    expect(getNewlyPassedRowEnd(backUpRows, 250, rows.length, passedEnd ?? -1)).toBeNull();
+  });
+
   it("returns the remaining unread ids when finishing a list", () => {
     expect(
       getRemainingUnreadIds([
