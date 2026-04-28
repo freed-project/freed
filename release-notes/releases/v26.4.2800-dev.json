@@ -1,0 +1,38 @@
+{
+  "tag": "v26.4.2800-dev",
+  "version": "26.4.2800-dev",
+  "channel": "dev",
+  "dayKey": "26.4.28",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-28T22:11:47.207Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.2700-dev",
+    "previousPublishedDayTag": "v26.4.2700-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.2800-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.4.2800-dev"
+    ],
+    "prNumbers": [
+      352,
+      353
+    ],
+    "commitSubjects": [
+      "fix: build dev releases for all primary platforms (#353)",
+      "fix: preserve paused local AI download progress (#352)"
+    ]
+  },
+  "release": {
+    "deck": "Preserve paused local AI download progress and build dev releases for all primary platforms",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2800-dev\n\nPreserve paused local AI download progress and build dev releases for all primary platforms\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
