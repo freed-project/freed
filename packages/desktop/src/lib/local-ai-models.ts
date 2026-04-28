@@ -281,6 +281,26 @@ export function createLocalAIModelService(
     }));
   }
 
+  async function measuredDownloadedBytes(model: LocalAIModelManifestEntry): Promise<number> {
+    let downloadedBytes = 0;
+
+    for (const file of model.files) {
+      const target = await filePath(model, file.path);
+      const partial = `${target}.partial`;
+
+      if (await deps.exists(target)) {
+        downloadedBytes += Math.min(await deps.size(target), file.sizeBytes);
+        continue;
+      }
+
+      if (await deps.exists(partial)) {
+        downloadedBytes += Math.min(await deps.size(partial), file.sizeBytes);
+      }
+    }
+
+    return downloadedBytes;
+  }
+
   async function verifyFile(path: string, file: LocalAIModelManifestEntry["files"][number]): Promise<void> {
     const actualSize = await deps.size(path);
     if (actualSize !== file.sizeBytes) {
@@ -444,7 +464,6 @@ export function createLocalAIModelService(
     }));
 
     let completedBytes = 0;
-    let latestProgressBytes = 0;
     try {
       for (const file of model.files) {
         const downloaded = await downloadFile({
@@ -453,13 +472,9 @@ export function createLocalAIModelService(
           signal: controller.signal,
           completedBeforeFile: completedBytes,
           totalBytes,
-          onProgress: (progress) => {
-            latestProgressBytes = progress.downloadedBytes;
-            onProgress?.(progress);
-          },
+          onProgress,
         });
         completedBytes += downloaded;
-        latestProgressBytes = completedBytes;
         await updateModelState(id, (current) => ({
           ...current,
           downloadedBytes: completedBytes,
@@ -483,7 +498,7 @@ export function createLocalAIModelService(
     } catch (error) {
       const aborted = controller.signal.aborted;
       const downloadedBytes = aborted
-        ? Math.max(completedBytes, latestProgressBytes)
+        ? await measuredDownloadedBytes(model)
         : completedBytes;
       await updateModelState(id, (current) => ({
         ...current,
