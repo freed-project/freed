@@ -187,13 +187,30 @@ describe("local AI model manager", () => {
     let wroteFirstChunk!: () => void;
     const firstChunk = new Promise<void>((resolve) => { wroteFirstChunk = resolve; });
     const { deps } = createDeps();
+    const originalOpen = deps.open;
+    deps.open = async (path, openOptions) => {
+      const handle = await originalOpen(path, openOptions);
+      let resolved = false;
+      return {
+        async write(data) {
+          const written = await handle.write(data);
+          if (!resolved) {
+            resolved = true;
+            wroteFirstChunk();
+          }
+          return written;
+        },
+        async close() {
+          await handle.close();
+        },
+      };
+    };
     deps.fetch = async (_url, init) => {
       const signal = init?.signal as AbortSignal;
       return new Response(
         new ReadableStream<Uint8Array>({
           start(controller) {
             controller.enqueue(TEXT.encode("he"));
-            wroteFirstChunk();
             signal.addEventListener("abort", () => controller.error(new DOMException("Aborted", "AbortError")));
           },
         }),
@@ -203,10 +220,11 @@ describe("local AI model manager", () => {
 
     const pending = service.downloadModel("semantic-embeddinggemma");
     await firstChunk;
-    const paused = await service.pauseDownload("semantic-embeddinggemma");
-    await pending;
+    await service.pauseDownload("semantic-embeddinggemma");
+    const paused = await pending;
 
     expect(paused[0].state.status).toBe("paused");
+    expect(paused[0].state.downloadedBytes).toBe(2);
   });
 
   it("removes downloaded model files and resets state", async () => {

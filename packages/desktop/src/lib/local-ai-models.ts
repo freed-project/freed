@@ -281,6 +281,26 @@ export function createLocalAIModelService(
     }));
   }
 
+  async function measuredDownloadedBytes(model: LocalAIModelManifestEntry): Promise<number> {
+    let downloadedBytes = 0;
+
+    for (const file of model.files) {
+      const target = await filePath(model, file.path);
+      const partial = `${target}.partial`;
+
+      if (await deps.exists(target)) {
+        downloadedBytes += Math.min(await deps.size(target), file.sizeBytes);
+        continue;
+      }
+
+      if (await deps.exists(partial)) {
+        downloadedBytes += Math.min(await deps.size(partial), file.sizeBytes);
+      }
+    }
+
+    return downloadedBytes;
+  }
+
   async function verifyFile(path: string, file: LocalAIModelManifestEntry["files"][number]): Promise<void> {
     const actualSize = await deps.size(path);
     if (actualSize !== file.sizeBytes) {
@@ -477,10 +497,13 @@ export function createLocalAIModelService(
       }));
     } catch (error) {
       const aborted = controller.signal.aborted;
+      const downloadedBytes = aborted
+        ? await measuredDownloadedBytes(model)
+        : completedBytes;
       await updateModelState(id, (current) => ({
         ...current,
         status: aborted ? "paused" : "error",
-        downloadedBytes: completedBytes,
+        downloadedBytes,
         totalBytes,
         updatedAt: deps.now(),
         lastError: aborted
