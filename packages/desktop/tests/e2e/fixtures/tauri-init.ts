@@ -27,6 +27,7 @@ export function tauriInitScript(): string {
     window.__TAURI_MOCK_HANDLERS__ = {
       broadcast_doc: timedHandler('broadcast_doc', function() { return null; }),
       fetch_url: () => '',
+      google_api_request: () => '{"connections":[],"nextSyncToken":"test-sync-token"}',
       get_local_ip: () => '127.0.0.1',
       get_all_local_ips: () => [],
       get_sync_url: () => 'ws://127.0.0.1:8765',

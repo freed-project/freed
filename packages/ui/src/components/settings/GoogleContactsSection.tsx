@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { usePlatform } from "../../context/PlatformContext.js";
 import { useContactSyncContext } from "../../context/ContactSyncContext.js";
 
@@ -37,6 +37,8 @@ export function GoogleContactsSection() {
   const { syncState, syncNow, openReview } = useContactSyncContext();
   const [connecting, setConnecting] = useState(false);
   const [connectErrorMessage, setConnectErrorMessage] = useState<string | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const connectAbortRef = useRef<AbortController | null>(null);
 
   const isConnected = syncState.authStatus === "connected";
   const needsReconnect = syncState.authStatus === "reconnect_required";
@@ -45,20 +47,42 @@ export function GoogleContactsSection() {
 
   const handleConnect = async () => {
     if (!googleContacts) return;
+    if (connecting) {
+      setShowCancelConfirm(true);
+      return;
+    }
+
+    const abortController = new AbortController();
+    connectAbortRef.current = abortController;
     setConnecting(true);
     try {
-      await googleContacts.connect();
+      await googleContacts.connect({ signal: abortController.signal });
       setConnectErrorMessage(null);
       await syncNow();
     } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        setConnectErrorMessage("Google Contacts connection canceled.");
+        return;
+      }
       setConnectErrorMessage(
         error instanceof Error ? error.message : "Google Contacts connection failed.",
       );
       // The platform connect() path is responsible for surfacing recoverable
       // auth errors in contact sync state. Keep the settings surface alive.
     } finally {
-      setConnecting(false);
+      if (connectAbortRef.current === abortController) {
+        connectAbortRef.current = null;
+        setConnecting(false);
+      }
     }
+  };
+
+  const confirmCancelConnect = () => {
+    connectAbortRef.current?.abort();
+    connectAbortRef.current = null;
+    setConnecting(false);
+    setShowCancelConfirm(false);
+    setConnectErrorMessage("Google Contacts connection canceled.");
   };
 
   const handleSync = async () => {
@@ -123,10 +147,10 @@ export function GoogleContactsSection() {
         <div className="flex flex-wrap gap-2">
           <button
             onClick={handleConnect}
-            disabled={!googleContacts || connecting || isSyncing}
+            disabled={!googleContacts || isSyncing}
             className="btn-primary rounded-lg px-3 py-1.5 text-sm disabled:opacity-50"
           >
-            {connecting ? "Connecting..." : needsReconnect || !isConnected ? "Reconnect Google" : "Reconnect"}
+            {connecting ? "Cancel Connection" : needsReconnect || !isConnected ? "Reconnect Google" : "Reconnect"}
           </button>
           <button
             onClick={handleSync}
@@ -144,6 +168,39 @@ export function GoogleContactsSection() {
           </button>
         </div>
       </div>
+      {showCancelConfirm && (
+        <div
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="google-contacts-cancel-title"
+        >
+          <div className="theme-dialog-panel w-full max-w-sm rounded-2xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] p-4 shadow-2xl">
+            <h2 id="google-contacts-cancel-title" className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+              Cancel Google Contacts connection?
+            </h2>
+            <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
+              The browser sign-in attempt will stop and you can reconnect again from settings.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="btn-secondary rounded-lg px-3 py-1.5 text-sm"
+                onClick={() => setShowCancelConfirm(false)}
+              >
+                Keep Connecting
+              </button>
+              <button
+                type="button"
+                className="btn-primary rounded-lg px-3 py-1.5 text-sm"
+                onClick={confirmCancelConnect}
+              >
+                Cancel Connection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

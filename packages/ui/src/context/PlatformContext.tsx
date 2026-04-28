@@ -23,6 +23,7 @@ import type {
   ReportPrivacyTier,
 } from "@freed/shared";
 import type { OPMLFeedEntry, ReleaseChannel } from "@freed/shared";
+import type { GoogleContactsResult } from "@freed/shared/google-contacts";
 import type { ImportSummary, ProgressFn } from "../components/LibraryDialog.types.js";
 import type { ProviderStatusTone } from "../lib/provider-status.js";
 
@@ -78,6 +79,10 @@ export interface BugReportingConfig {
   }) => Promise<GeneratedBugReportBundle>;
   exportBundle?: (bundle: GeneratedBugReportBundle) => Promise<void>;
   openUrl?: (url: string) => void;
+}
+
+export interface GoogleContactsConnectOptions {
+  signal?: AbortSignal;
 }
 
 export interface PlatformConfig {
@@ -289,9 +294,11 @@ export interface PlatformConfig {
    */
   googleContacts?: {
     /** Return the current Google OAuth access token, or null when not authenticated. */
-    getToken: () => string | null;
+    getToken: () => string | null | Promise<string | null>;
     /** Start or refresh the Google OAuth flow so contacts scope is granted. */
-    connect: () => Promise<void>;
+    connect: (options?: GoogleContactsConnectOptions) => Promise<void>;
+    /** Fetch Google Contacts through the platform's network layer when needed. */
+    fetchContacts?: (accessToken: string, syncToken?: string | null) => Promise<GoogleContactsResult>;
   };
 
   /**

@@ -56,6 +56,11 @@ async function proxyFetch(args: Record<string, unknown>): Promise<string> {
 const handlers: Record<string, Handler> = {
   broadcast_doc: () => null,
   fetch_url: (args: Record<string, unknown>) => proxyFetch({ url: args.url, method: "GET" }),
+  google_api_request: (args: Record<string, unknown>) => proxyFetch({
+    url: args.url,
+    method: "GET",
+    headers: { Authorization: `Bearer ${String(args.accessToken ?? "")}` },
+  }),
   x_api_request: (args: Record<string, unknown>) => proxyFetch(args),
   get_local_ip: () => "127.0.0.1",
   get_all_local_ips: () => [],

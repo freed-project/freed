@@ -151,8 +151,8 @@ export function buildSettingsSectionMetas(
   return [
     baseSectionById.appearance,
     baseSectionById.sync,
-    ...(availability.hasGoogleContacts ? [GOOGLE_CONTACTS_SECTION_META] : []),
     baseSectionById.saved,
+    ...(availability.hasGoogleContacts ? [GOOGLE_CONTACTS_SECTION_META] : []),
     ...(availability.hasX ? [X_SECTION_META] : []),
     ...(availability.hasFacebook ? [FB_SECTION_META] : []),
     ...(availability.hasInstagram ? [IG_SECTION_META] : []),
