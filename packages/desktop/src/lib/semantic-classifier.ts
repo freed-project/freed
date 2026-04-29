@@ -29,10 +29,10 @@ function scheduleBackfill(): void {
 async function recordSemanticHealth(summary: Awaited<ReturnType<typeof docBackfillContentSignals>>): Promise<void> {
   try {
     const models = await localAIModels.listModels();
-    const semanticModel = models.find((model) => model.manifest.id === "semantic-embeddinggemma");
+    const semanticModel = models.find((model) => model.manifest.id === "integrated-local-ai");
     if (!semanticModel || semanticModel.state.status !== "available") return;
 
-    await localAIModels.updateHealth("semantic-embeddinggemma", {
+    await localAIModels.updateHealth("integrated-local-ai", {
       lastIndexedItemCount: summary.total,
       lastRunAt,
       failureCount: failedCount,

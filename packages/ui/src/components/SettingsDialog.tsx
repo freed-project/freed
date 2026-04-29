@@ -1088,7 +1088,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       case "ai":
         return (
           <>
-            <SectionHeading label="AI" />
             <AISection />
           </>
         );
@@ -1384,7 +1383,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           theme-dialog-shell theme-settings-shell relative z-10 flex w-full flex-col
           h-[100dvh] rounded-none
           sm:rounded-[28px]
-          sm:flex-row sm:max-w-3xl sm:h-[80vh] sm:max-h-[700px]
+          sm:flex-row sm:max-w-3xl sm:h-[80vh] sm:max-h-[860px]
         `}
       >
         {/* ── Left column ────────────────────────────────────────────────── */}

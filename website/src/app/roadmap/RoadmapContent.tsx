@@ -783,7 +783,7 @@ const phases: Phase[] = [
     number: 10,
     title: "Polish",
     description:
-      "Onboarding, statistics, expanded local content signals with inclusive saved feed filter presets and compact event extraction, unified AI provider settings, optional local AI model packs, plugin API, community infrastructure, and deeper crash recovery hardening.",
+      "Onboarding, statistics, expanded local content signals with inclusive saved feed filter presets and compact event extraction, unified AI provider settings, one optional Integrated AI local pack, plugin API, community infrastructure, and deeper crash recovery hardening.",
     status: "upcoming",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-10-POLISH.md",

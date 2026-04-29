@@ -262,6 +262,7 @@ export interface AIPreferences {
 }
 
 export type LocalAIModelId =
+  | "integrated-local-ai"
   | "semantic-embeddinggemma"
   | "summary-qwen3"
   | "assistant-gemma4";
@@ -279,6 +280,9 @@ export interface LocalAIModelFileManifest {
   sizeBytes: number;
   sha256?: string;
   sha1?: string;
+  etag?: string;
+  repo?: string;
+  revision?: string;
 }
 
 export interface LocalAIModelManifestEntry {

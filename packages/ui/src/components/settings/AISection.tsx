@@ -43,7 +43,7 @@ const PROVIDER_OPTIONS: Array<{
     id: "integrated",
     label: "Integrated AI",
     eyebrow: "Recommended",
-    description: "Freed-managed local models for ranking, summaries, and extraction when installed.",
+    description: "Freed-managed local AI pack for ranking, summaries, and extraction when installed.",
     sharing: "Keeps content on this device",
   },
   {
@@ -85,6 +85,21 @@ const NUMBER_FORMAT = new Intl.NumberFormat();
 
 function isCloudProvider(provider: AIProvider): provider is CloudAIProvider {
   return CLOUD_PROVIDERS.has(provider);
+}
+
+function getAIProviderSharingLabel(provider: AIProvider): string {
+  const active = PROVIDER_OPTIONS.find((option) => option.id === provider) ?? PROVIDER_OPTIONS[0]!;
+  return active.sharing;
+}
+
+function sameAIPreferences(left: AIPreferences, right: AIPreferences): boolean {
+  return (
+    left.provider === right.provider &&
+    left.model === right.model &&
+    left.ollamaUrl === right.ollamaUrl &&
+    left.autoSummarize === right.autoSummarize &&
+    left.extractTopics === right.extractTopics
+  );
 }
 
 function formatBytes(bytes: number): string {
@@ -185,24 +200,8 @@ function ProviderSelector({
   value: AIProvider;
   onChange: (provider: AIProvider) => void;
 }) {
-  const active = PROVIDER_OPTIONS.find((option) => option.id === value) ?? PROVIDER_OPTIONS[0]!;
-
   return (
     <section className="space-y-3" data-testid="ai-provider-selector">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-xs font-semibold uppercase text-[var(--theme-text-muted)]">
-            AI Provider
-          </h3>
-          <p className="mt-1 text-xs text-[var(--theme-text-muted)]">
-            Choose one AI path. Everything below follows this selection.
-          </p>
-        </div>
-        <span className="shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--theme-text-secondary)]">
-          {active.sharing}
-        </span>
-      </div>
-
       <div className="grid gap-2 sm:grid-cols-2">
         {PROVIDER_OPTIONS.map((option) => {
           const selected = option.id === value;
@@ -233,9 +232,6 @@ function ProviderSelector({
               </span>
               <span className="mt-2 block text-xs leading-5 text-[var(--theme-text-muted)]">
                 {option.description}
-              </span>
-              <span className="mt-3 block text-[11px] font-medium text-[var(--theme-text-soft)]">
-                {option.sharing}
               </span>
             </button>
           );
@@ -494,14 +490,22 @@ export function AISection() {
     extractTopics: false,
   };
 
+  const [optimisticAI, setOptimisticAI] = useState<AIPreferences | null>(null);
   const [showOllamaUrl, setShowOllamaUrl] = useState(false);
   const [localModels, setLocalModels] = useState<LocalAIModelViewState[]>([]);
   const [localModelsLoading, setLocalModelsLoading] = useState(false);
   const [busyModelId, setBusyModelId] = useState<LocalAIModelId | null>(null);
-  const ollamaUrl = ai.ollamaUrl ?? "http://localhost:11434";
-  const cloudProvider = isCloudProvider(ai.provider) ? ai.provider : null;
+  const displayedAI = optimisticAI ?? ai;
+  const ollamaUrl = displayedAI.ollamaUrl ?? "http://localhost:11434";
+  const cloudProvider = isCloudProvider(displayedAI.provider) ? displayedAI.provider : null;
   const requiresKey = cloudProvider !== null;
-  const selectedProviderLabel = PROVIDER_LABELS[ai.provider];
+  const selectedProviderLabel = PROVIDER_LABELS[displayedAI.provider];
+
+  useEffect(() => {
+    if (optimisticAI && sameAIPreferences(optimisticAI, ai)) {
+      setOptimisticAI(null);
+    }
+  }, [ai, optimisticAI]);
 
   const refreshLocalModels = useCallback(async () => {
     if (!localAIModels) return;
@@ -514,24 +518,29 @@ export function AISection() {
   }, [localAIModels]);
 
   useEffect(() => {
-    if (ai.provider === "integrated") {
+    if (displayedAI.provider === "integrated") {
       void refreshLocalModels();
     }
-  }, [ai.provider, refreshLocalModels]);
+  }, [displayedAI.provider, refreshLocalModels]);
 
   const update = useCallback(
     (patch: Partial<AIPreferences>) => {
-      updatePreferences({ ai: { ...ai, ...patch } });
+      const nextAI = { ...displayedAI, ...patch };
+      setOptimisticAI(nextAI);
+      void updatePreferences({ ai: nextAI });
     },
-    [ai, updatePreferences],
+    [displayedAI, updatePreferences],
   );
 
   const handleProviderChange = (provider: AIProvider) => {
+    if (provider === displayedAI.provider) return;
+    const enablingFromOff = displayedAI.provider === "none" && provider !== "none";
+    const disabling = provider === "none";
     update({
       provider,
       model: DEFAULT_MODELS[provider],
-      autoSummarize: false,
-      extractTopics: false,
+      autoSummarize: disabling ? false : enablingFromOff ? true : displayedAI.autoSummarize,
+      extractTopics: disabling ? false : enablingFromOff ? true : displayedAI.extractTopics,
     });
   };
 
@@ -567,13 +576,13 @@ export function AISection() {
   }, [openUrl]);
 
   const featureDescriptions = useMemo(() => {
-    if (ai.provider === "integrated") {
+    if (displayedAI.provider === "integrated") {
       return {
-        summarize: "Uses an installed local generation pack. Nothing leaves this device.",
-        topics: "Uses installed local models after rules run. Vectors stay device-local.",
+        summarize: "Uses the installed local AI pack. Nothing leaves this device.",
+        topics: "Uses the installed local AI pack after rules run. Vectors stay device-local.",
       };
     }
-    if (ai.provider === "ollama") {
+    if (displayedAI.provider === "ollama") {
       return {
         summarize: "Sends article text to your Ollama endpoint when content is cached.",
         topics: "Uses topics returned by your Ollama model to improve ranking.",
@@ -583,20 +592,32 @@ export function AISection() {
       summarize: `Sends article text to ${selectedProviderLabel} when content is cached. API costs may apply.`,
       topics: `Uses topics returned by ${selectedProviderLabel} to improve ranking.`,
     };
-  }, [ai.provider, selectedProviderLabel]);
+  }, [displayedAI.provider, selectedProviderLabel]);
 
   return (
     <div className="space-y-5">
-      <ProviderSelector value={ai.provider} onChange={handleProviderChange} />
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-text-muted">
+          AI
+        </h3>
+        <span
+          className="shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--theme-text-secondary)]"
+          data-testid="ai-provider-sharing-label"
+        >
+          {getAIProviderSharingLabel(displayedAI.provider)}
+        </span>
+      </div>
 
-      {ai.provider === "integrated" && (
+      <ProviderSelector value={displayedAI.provider} onChange={handleProviderChange} />
+
+      {displayedAI.provider === "integrated" && (
         <section className="space-y-3" data-testid="local-ai-model-settings">
           <div>
             <h3 className="text-xs font-semibold uppercase text-[var(--theme-text-muted)]">
-              Integrated Model Downloads
+              Integrated AI Download
             </h3>
             <p className="mt-1 text-xs leading-5 text-[var(--theme-text-muted)]">
-              Freed Desktop does not ship model weights. Download only the capabilities you want.
+              Freed Desktop does not ship model weights. Download the local pack when you want Integrated AI.
             </p>
           </div>
           {!localAIModels ? (
@@ -625,7 +646,7 @@ export function AISection() {
         </section>
       )}
 
-      {ai.provider === "ollama" && (
+      {displayedAI.provider === "ollama" && (
         <section className="space-y-3">
           <h3 className="text-xs font-semibold uppercase text-[var(--theme-text-muted)]">
             Ollama Connection
@@ -645,7 +666,7 @@ export function AISection() {
             {showOllamaUrl && (
               <input
                 type="url"
-                value={ai.ollamaUrl ?? ""}
+                value={displayedAI.ollamaUrl ?? ""}
                 onChange={(event) => update({ ollamaUrl: event.target.value || undefined })}
                 placeholder="http://localhost:11434"
                 className="mt-3 w-full rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-1.5 font-mono text-sm text-[var(--theme-text-secondary)] placeholder-[var(--theme-text-soft)] transition-colors focus:border-[var(--theme-border-strong)] focus:outline-none"
@@ -653,8 +674,8 @@ export function AISection() {
             )}
           </div>
           <ModelNameField
-            provider={ai.provider}
-            value={ai.model}
+            provider={displayedAI.provider}
+            value={displayedAI.model}
             onChange={(model) => update({ model })}
           />
         </section>
@@ -666,8 +687,8 @@ export function AISection() {
             {selectedProviderLabel} Connection
           </h3>
           <ModelNameField
-            provider={ai.provider}
-            value={ai.model}
+            provider={displayedAI.provider}
+            value={displayedAI.model}
             onChange={(model) => update({ model })}
           />
           {secureStorage ? (
@@ -691,7 +712,7 @@ export function AISection() {
         </section>
       )}
 
-      {ai.provider !== "none" && (
+      {displayedAI.provider !== "none" && (
         <section className="space-y-3">
           <h3 className="text-xs font-semibold uppercase text-[var(--theme-text-muted)]">
             Enabled Workflows
@@ -699,13 +720,13 @@ export function AISection() {
           <SettingsToggle
             label="Summaries and extraction"
             description={featureDescriptions.summarize}
-            checked={ai.autoSummarize}
+            checked={displayedAI.autoSummarize}
             onChange={(value) => update({ autoSummarize: value })}
           />
           <SettingsToggle
             label="Topics and ranking"
             description={featureDescriptions.topics}
-            checked={ai.extractTopics}
+            checked={displayedAI.extractTopics}
             onChange={(value) => update({ extractTopics: value })}
           />
         </section>
