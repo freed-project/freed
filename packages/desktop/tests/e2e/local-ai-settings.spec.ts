@@ -1,6 +1,6 @@
 import { test, expect } from "./fixtures/app";
 
-test("local AI settings are disabled until a model pack is downloaded", async ({ app, page }) => {
+test("integrated AI model downloads stay disabled until selected", async ({ app, page }) => {
   await app.goto();
   await app.waitForReady();
 
@@ -11,9 +11,16 @@ test("local AI settings are disabled until a model pack is downloaded", async ({
   await expect(settingsDialog).toBeVisible({ timeout: 5_000 });
   await settingsDialog.getByRole("button", { name: "AI", exact: true }).click();
 
+  const providerSelector = settingsDialog.getByTestId("ai-provider-selector");
+  await expect(providerSelector).toBeVisible({ timeout: 5_000 });
+  await expect(providerSelector.getByRole("button", { name: /Off/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(settingsDialog.getByTestId("local-ai-model-settings")).toHaveCount(0);
+
+  await providerSelector.getByRole("button", { name: /Integrated AI/ }).click();
+
   const localAISettings = settingsDialog.getByTestId("local-ai-model-settings");
   await expect(localAISettings).toBeVisible({ timeout: 5_000 });
-  await expect(localAISettings.getByText("Optional Local AI")).toBeVisible();
+  await expect(localAISettings.getByText("Integrated Model Downloads")).toBeVisible();
   await expect(localAISettings.getByText("Semantic search and ranking")).toBeVisible();
   await expect(localAISettings.getByText("Local summaries")).toBeVisible();
   await expect(localAISettings.getByText("Advanced local assistant")).toBeVisible();

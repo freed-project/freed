@@ -44,6 +44,7 @@ interface SearchDoc {
   feedTitle: string;
   preservedText: string;
   topics: string;
+  semanticText: string;
   tags: string;
   highlights: string;
 }
@@ -59,6 +60,12 @@ function toSearchDoc(item: FeedItem): SearchDoc {
     feedTitle: item.rssSource?.feedTitle ?? "",
     preservedText: item.preservedContent?.text?.slice(0, SEARCH_PRESERVED_TEXT_LIMIT) ?? "",
     topics: [...item.topics, ...(item.contentSignals?.tags ?? [])].join(" "),
+    semanticText: [
+      item.eventCandidate?.title,
+      item.eventCandidate?.locationName,
+      item.eventCandidate?.evidence,
+      item.location?.name,
+    ].filter(Boolean).join(" "),
     tags: (item.userState.tags ?? []).join(" "),
     highlights: (item.userState.highlights ?? [])
       .map((h) => `${h.text} ${h.note ?? ""}`)
@@ -76,6 +83,7 @@ const SEARCH_FIELDS: Array<keyof Omit<SearchDoc, "id">> = [
   "feedTitle",
   "preservedText",
   "topics",
+  "semanticText",
   "tags",
   "highlights",
 ];
@@ -83,6 +91,7 @@ const SEARCH_FIELDS: Array<keyof Omit<SearchDoc, "id">> = [
 const FIELD_BOOST: Partial<Record<keyof Omit<SearchDoc, "id">, number>> = {
   linkTitle: 4,
   topics: 3,
+  semanticText: 3,
   tags: 3,
   authorName: 3,
   authorHandle: 3,

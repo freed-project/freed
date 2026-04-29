@@ -220,9 +220,12 @@ async function processNext(): Promise<void> {
 
     // Optionally run AI summarization (replaces raw text in Automerge with a concise summary)
     if (prefs?.autoSummarize && prefs.provider !== "none") {
-      const apiKey = prefs.provider !== "ollama"
-        ? await secureStorage.getApiKey(prefs.provider as "openai" | "anthropic" | "gemini")
+      const cloudProvider = prefs.provider === "openai" ||
+        prefs.provider === "anthropic" ||
+        prefs.provider === "gemini"
+        ? prefs.provider
         : null;
+      const apiKey = cloudProvider ? await secureStorage.getApiKey(cloudProvider) : null;
       const aiResult = await summarize(content.text, prefs, apiKey);
       if (aiResult) {
         summaryText = toSyncedPreservedText(aiResult.summary);

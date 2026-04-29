@@ -1,15 +1,10 @@
 /**
- * AI settings section for the Settings panel
+ * AI settings section for the Settings panel.
  *
- * Shows provider selection, model input, Ollama status, API key entry
- * (desktop only), and feature toggles. Rendered inside SettingsDialog
- * as the "AI" section.
- *
- * Provider preferences write to Automerge (synced).
- * API keys write to secureStorage (device-local, never synced).
+ * Provider preferences sync through Automerge. API keys stay device-local.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AIPreferences, LocalAIModelId } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import type {
@@ -18,23 +13,79 @@ import type {
 } from "../../context/PlatformContext.js";
 import { SettingsToggle } from "../SettingsToggle.js";
 
-const DEFAULT_MODELS: Record<string, string> = {
+type AIProvider = AIPreferences["provider"];
+type CloudAIProvider = Extract<AIProvider, "openai" | "anthropic" | "gemini">;
+
+const DEFAULT_MODELS: Record<AIProvider, string> = {
   none: "",
+  integrated: "",
   ollama: "qwen2.5:1.5b",
   openai: "gpt-4o-mini",
   anthropic: "claude-haiku-4-5",
   gemini: "gemini-2.0-flash",
 };
 
-const PROVIDER_LABELS: Record<string, string> = {
-  none: "None (disabled)",
-  ollama: "Ollama (free, runs locally)",
-  openai: "OpenAI",
-  anthropic: "Anthropic",
-  gemini: "Google Gemini",
-};
+const PROVIDER_OPTIONS: Array<{
+  id: AIProvider;
+  label: string;
+  eyebrow: string;
+  description: string;
+  sharing: string;
+}> = [
+  {
+    id: "none",
+    label: "Off",
+    eyebrow: "Default",
+    description: "Rules-only intelligence. No model downloads, endpoint calls, or API keys.",
+    sharing: "Shares nothing",
+  },
+  {
+    id: "integrated",
+    label: "Integrated AI",
+    eyebrow: "Recommended",
+    description: "Freed-managed local models for ranking, summaries, and extraction when installed.",
+    sharing: "Keeps content on this device",
+  },
+  {
+    id: "ollama",
+    label: "Ollama",
+    eyebrow: "Local endpoint",
+    description: "Use your own Ollama server and model names.",
+    sharing: "Sends content to your endpoint",
+  },
+  {
+    id: "openai",
+    label: "OpenAI",
+    eyebrow: "API",
+    description: "Use an OpenAI model for summaries and structured extraction.",
+    sharing: "Sends enabled AI text to OpenAI",
+  },
+  {
+    id: "anthropic",
+    label: "Anthropic",
+    eyebrow: "API",
+    description: "Use a Claude model for summaries and structured extraction.",
+    sharing: "Sends enabled AI text to Anthropic",
+  },
+  {
+    id: "gemini",
+    label: "Gemini",
+    eyebrow: "API",
+    description: "Use a Gemini model for summaries and structured extraction.",
+    sharing: "Sends enabled AI text to Google",
+  },
+];
 
+const PROVIDER_LABELS = Object.fromEntries(
+  PROVIDER_OPTIONS.map((option) => [option.id, option.label]),
+) as Record<AIProvider, string>;
+
+const CLOUD_PROVIDERS = new Set<AIProvider>(["openai", "anthropic", "gemini"]);
 const NUMBER_FORMAT = new Intl.NumberFormat();
+
+function isCloudProvider(provider: AIProvider): provider is CloudAIProvider {
+  return CLOUD_PROVIDERS.has(provider);
+}
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
@@ -114,6 +165,90 @@ function statusTone(status: string): string {
   }
 }
 
+function sharingCopy(provider: AIProvider): string {
+  if (provider === "none") {
+    return "AI is off. Freed still runs deterministic rules for content signals, and nothing is sent to a model.";
+  }
+  if (provider === "integrated") {
+    return "Integrated AI keeps content, vectors, summaries, and model cache data on this device. Model files download only after you press Download.";
+  }
+  if (provider === "ollama") {
+    return "Freed sends enabled AI text to your Ollama endpoint. Prompts and responses are not synced by Freed.";
+  }
+  return `Freed sends enabled AI text to ${PROVIDER_LABELS[provider]}. API keys stay on this device and are never synced.`;
+}
+
+function ProviderSelector({
+  value,
+  onChange,
+}: {
+  value: AIProvider;
+  onChange: (provider: AIProvider) => void;
+}) {
+  const active = PROVIDER_OPTIONS.find((option) => option.id === value) ?? PROVIDER_OPTIONS[0]!;
+
+  return (
+    <section className="space-y-3" data-testid="ai-provider-selector">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-xs font-semibold uppercase text-[var(--theme-text-muted)]">
+            AI Provider
+          </h3>
+          <p className="mt-1 text-xs text-[var(--theme-text-muted)]">
+            Choose one AI path. Everything below follows this selection.
+          </p>
+        </div>
+        <span className="shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2.5 py-1 text-[11px] font-medium text-[var(--theme-text-secondary)]">
+          {active.sharing}
+        </span>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        {PROVIDER_OPTIONS.map((option) => {
+          const selected = option.id === value;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => onChange(option.id)}
+              className={`min-h-[118px] rounded-lg border p-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--theme-accent-secondary)_38%,transparent)] ${
+                selected
+                  ? "border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_54%,var(--theme-border-subtle))] bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_12%,var(--theme-bg-surface))]"
+                  : "border-[var(--theme-border-subtle)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_78%,transparent)] hover:border-[var(--theme-border-strong)] hover:bg-[var(--theme-bg-muted)]"
+              }`}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold text-[var(--theme-text-primary)]">
+                  {option.label}
+                </span>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  selected
+                    ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent)] text-[var(--theme-accent-secondary)]"
+                    : "bg-[var(--theme-bg-muted)] text-[var(--theme-text-soft)]"
+                }`}
+                >
+                  {option.eyebrow}
+                </span>
+              </span>
+              <span className="mt-2 block text-xs leading-5 text-[var(--theme-text-muted)]">
+                {option.description}
+              </span>
+              <span className="mt-3 block text-[11px] font-medium text-[var(--theme-text-soft)]">
+                {option.sharing}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] px-3 py-2 text-xs leading-5 text-[var(--theme-text-muted)]">
+        {sharingCopy(value)}
+      </p>
+    </section>
+  );
+}
+
 function LocalModelCard({
   model,
   busy,
@@ -149,7 +284,7 @@ function LocalModelCard({
               {statusLabel(model)}
             </span>
           </div>
-          <p className="mt-1 text-xs text-[var(--theme-text-muted)]">{model.manifest.description}</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--theme-text-muted)]">{model.manifest.description}</p>
         </div>
         <p className="shrink-0 rounded-full bg-[var(--theme-bg-muted)] px-2 py-0.5 text-[11px] text-[var(--theme-text-muted)]">
           {model.manifest.capability}
@@ -163,7 +298,7 @@ function LocalModelCard({
         <p>Last run: <span className="text-[var(--theme-text-secondary)]">{formatLocalTime(model.state.health?.lastRunAt)}</span></p>
       </div>
 
-      <p className="mt-2 text-xs text-[var(--theme-text-soft)]">{model.manifest.hardwareNote}</p>
+      <p className="mt-2 text-xs leading-5 text-[var(--theme-text-soft)]">{model.manifest.hardwareNote}</p>
 
       {isDownloading && (
         <div className="mt-3">
@@ -180,7 +315,7 @@ function LocalModelCard({
       )}
 
       {model.state.lastError && (
-        <p className="mt-3 rounded-lg bg-[rgb(var(--theme-feedback-danger-rgb)/0.08)] px-3 py-2 text-xs text-[rgb(var(--theme-feedback-danger-rgb))]">
+        <p className="mt-3 rounded-lg bg-[rgb(var(--theme-feedback-danger-rgb)/0.08)] px-3 py-2 text-xs leading-5 text-[rgb(var(--theme-feedback-danger-rgb))]">
           {model.state.lastError}
         </p>
       )}
@@ -226,14 +361,13 @@ function LocalModelCard({
   );
 }
 
-/** Dot indicator showing Ollama reachability */
 function OllamaStatus({ url }: { url: string }) {
   const [reachable, setReachable] = useState<boolean | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     fetch(`${url}/api/tags`, { signal: AbortSignal.timeout(2_000) })
-      .then((r) => { if (!cancelled) setReachable(r.ok); })
+      .then((response) => { if (!cancelled) setReachable(response.ok); })
       .catch(() => { if (!cancelled) setReachable(false); });
     return () => { cancelled = true; };
   }, [url]);
@@ -241,20 +375,19 @@ function OllamaStatus({ url }: { url: string }) {
   if (reachable === null) return null;
   return (
     <span
-      title={reachable ? "Ollama is running" : "Ollama not reachable"}
+      title={reachable ? "Ollama is running" : "Ollama is not reachable"}
       className={`inline-block h-2 w-2 rounded-full ${reachable ? "bg-[rgb(var(--theme-feedback-success-rgb)/0.92)]" : "bg-[var(--theme-text-soft)]"}`}
     />
   );
 }
 
-/** Masked API key input -- write-only after save, displays bullets */
 function ApiKeyInput({
   provider,
   getApiKey,
   setApiKey,
   clearApiKey,
 }: {
-  provider: "openai" | "anthropic" | "gemini";
+  provider: CloudAIProvider;
   getApiKey: (p: string) => Promise<string | null>;
   setApiKey: (p: string, key: string) => Promise<void>;
   clearApiKey: (p: string) => Promise<void>;
@@ -264,7 +397,7 @@ function ApiKeyInput({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    getApiKey(provider).then((k) => setHasSaved(!!k));
+    getApiKey(provider).then((key) => setHasSaved(!!key));
   }, [provider, getApiKey]);
 
   const handleSave = async () => {
@@ -286,32 +419,34 @@ function ApiKeyInput({
   };
 
   return (
-    <div className="flex gap-2 items-center">
+    <div className="flex items-center gap-2">
       <input
         type="password"
-        value={hasSaved && !keyDraft ? "••••••••••••••••" : keyDraft}
-        onChange={(e) => {
+        value={hasSaved && !keyDraft ? "****************" : keyDraft}
+        onChange={(event) => {
           setHasSaved(false);
-          setKeyDraft(e.target.value);
+          setKeyDraft(event.target.value);
         }}
         onFocus={() => {
           if (hasSaved) setHasSaved(false);
         }}
         placeholder="Paste API key"
-        className="flex-1 rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-1.5 font-mono text-sm text-[var(--theme-text-secondary)] placeholder-[var(--theme-text-soft)] transition-colors focus:outline-none focus:border-[var(--theme-border-strong)]"
+        className="flex-1 rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-1.5 font-mono text-sm text-[var(--theme-text-secondary)] placeholder-[var(--theme-text-soft)] transition-colors focus:border-[var(--theme-border-strong)] focus:outline-none"
         spellCheck={false}
         autoComplete="off"
       />
       {!hasSaved ? (
         <button
+          type="button"
           onClick={handleSave}
           disabled={!keyDraft.trim() || saving}
           className="theme-accent-button rounded-lg px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
         >
-          {saving ? "Saving..." : "Save"}
+          {saving ? "Saving" : "Save"}
         </button>
       ) : (
         <button
+          type="button"
           onClick={handleClear}
           className="rounded-lg px-3 py-1.5 text-xs text-[color:var(--theme-text-muted)] transition-colors hover:bg-[rgb(var(--theme-feedback-danger-rgb)/0.1)] hover:text-[rgb(var(--theme-feedback-danger-rgb))]"
         >
@@ -322,10 +457,35 @@ function ApiKeyInput({
   );
 }
 
+function ModelNameField({
+  provider,
+  value,
+  onChange,
+}: {
+  provider: AIProvider;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  if (provider === "none" || provider === "integrated") return null;
+
+  return (
+    <div>
+      <label className="mb-1.5 block text-sm text-[var(--theme-text-secondary)]">Model</label>
+      <input
+        type="text"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={DEFAULT_MODELS[provider] || "Model name"}
+        className="w-full rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-1.5 font-mono text-sm text-[var(--theme-text-secondary)] placeholder-[var(--theme-text-soft)] transition-colors focus:border-[var(--theme-border-strong)] focus:outline-none"
+      />
+    </div>
+  );
+}
+
 export function AISection() {
   const { secureStorage, localAIModels, openUrl } = usePlatform();
-  const preferences = useAppStore((s) => s.preferences);
-  const updatePreferences = useAppStore((s) => s.updatePreferences);
+  const preferences = useAppStore((state) => state.preferences);
+  const updatePreferences = useAppStore((state) => state.updatePreferences);
 
   const ai: AIPreferences = preferences.ai ?? {
     provider: "none",
@@ -339,6 +499,9 @@ export function AISection() {
   const [localModelsLoading, setLocalModelsLoading] = useState(false);
   const [busyModelId, setBusyModelId] = useState<LocalAIModelId | null>(null);
   const ollamaUrl = ai.ollamaUrl ?? "http://localhost:11434";
+  const cloudProvider = isCloudProvider(ai.provider) ? ai.provider : null;
+  const requiresKey = cloudProvider !== null;
+  const selectedProviderLabel = PROVIDER_LABELS[ai.provider];
 
   const refreshLocalModels = useCallback(async () => {
     if (!localAIModels) return;
@@ -351,8 +514,10 @@ export function AISection() {
   }, [localAIModels]);
 
   useEffect(() => {
-    void refreshLocalModels();
-  }, [refreshLocalModels]);
+    if (ai.provider === "integrated") {
+      void refreshLocalModels();
+    }
+  }, [ai.provider, refreshLocalModels]);
 
   const update = useCallback(
     (patch: Partial<AIPreferences>) => {
@@ -361,14 +526,14 @@ export function AISection() {
     [ai, updatePreferences],
   );
 
-  const handleProviderChange = (provider: AIPreferences["provider"]) => {
+  const handleProviderChange = (provider: AIProvider) => {
     update({
       provider,
-      model: ai.model || DEFAULT_MODELS[provider] || "",
+      model: DEFAULT_MODELS[provider],
+      autoSummarize: false,
+      extractTopics: false,
     });
   };
-
-  const requiresKey = ai.provider === "openai" || ai.provider === "anthropic" || ai.provider === "gemini";
 
   const handleDownloadLocalModel = useCallback((id: LocalAIModelId) => {
     if (!localAIModels) return;
@@ -401,21 +566,46 @@ export function AISection() {
     window.open(url, "_blank", "noopener,noreferrer");
   }, [openUrl]);
 
+  const featureDescriptions = useMemo(() => {
+    if (ai.provider === "integrated") {
+      return {
+        summarize: "Uses an installed local generation pack. Nothing leaves this device.",
+        topics: "Uses installed local models after rules run. Vectors stay device-local.",
+      };
+    }
+    if (ai.provider === "ollama") {
+      return {
+        summarize: "Sends article text to your Ollama endpoint when content is cached.",
+        topics: "Uses topics returned by your Ollama model to improve ranking.",
+      };
+    }
+    return {
+      summarize: `Sends article text to ${selectedProviderLabel} when content is cached. API costs may apply.`,
+      topics: `Uses topics returned by ${selectedProviderLabel} to improve ranking.`,
+    };
+  }, [ai.provider, selectedProviderLabel]);
+
   return (
-    <div className="space-y-4">
-      {localAIModels && (
-        <div className="space-y-3" data-testid="local-ai-model-settings">
+    <div className="space-y-5">
+      <ProviderSelector value={ai.provider} onChange={handleProviderChange} />
+
+      {ai.provider === "integrated" && (
+        <section className="space-y-3" data-testid="local-ai-model-settings">
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--theme-text-muted)]">
-              Optional Local AI
+            <h3 className="text-xs font-semibold uppercase text-[var(--theme-text-muted)]">
+              Integrated Model Downloads
             </h3>
-            <p className="mt-1 text-xs text-[var(--theme-text-muted)]">
-              Model packs stay out of the installer and are downloaded only when you turn them on here.
+            <p className="mt-1 text-xs leading-5 text-[var(--theme-text-muted)]">
+              Freed Desktop does not ship model weights. Download only the capabilities you want.
             </p>
           </div>
-          {localModelsLoading && localModels.length === 0 ? (
+          {!localAIModels ? (
+            <p className="rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] px-3 py-2 text-xs leading-5 text-[var(--theme-text-muted)]">
+              Integrated downloads are available in Freed Desktop.
+            </p>
+          ) : localModelsLoading && localModels.length === 0 ? (
             <p className="rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] px-3 py-2 text-xs text-[var(--theme-text-muted)]">
-              Checking local model state...
+              Checking local model state
             </p>
           ) : (
             <div className="space-y-3">
@@ -432,103 +622,93 @@ export function AISection() {
               ))}
             </div>
           )}
-        </div>
+        </section>
       )}
 
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--theme-text-muted)]">
-        Cloud And Ollama Summaries
-      </h3>
-
-      {/* Provider */}
-      <div>
-        <label className="mb-1.5 block text-sm text-[var(--theme-text-secondary)]">Provider</label>
-        <select
-          value={ai.provider}
-          onChange={(e) => handleProviderChange(e.target.value as AIPreferences["provider"])}
-          className="theme-input theme-select w-full rounded-lg px-3 py-1.5 text-sm text-[var(--theme-text-secondary)] focus:outline-none"
-        >
-          {Object.entries(PROVIDER_LABELS).map(([val, label]) => (
-            <option key={val} value={val}>{label}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Ollama status + URL override */}
       {ai.provider === "ollama" && (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-sm text-[var(--theme-text-muted)]">
-            <OllamaStatus url={ollamaUrl} />
-            <span>Ollama at {ollamaUrl}</span>
-            <button
-              onClick={() => setShowOllamaUrl((v) => !v)}
-              className="text-xs underline text-[var(--theme-text-soft)] transition-colors hover:text-[var(--theme-accent-secondary)]"
-            >
-              {showOllamaUrl ? "Hide" : "Change"}
-            </button>
+        <section className="space-y-3">
+          <h3 className="text-xs font-semibold uppercase text-[var(--theme-text-muted)]">
+            Ollama Connection
+          </h3>
+          <div className="rounded-lg border border-[var(--theme-border-subtle)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_82%,transparent)] p-4">
+            <div className="flex items-center gap-2 text-sm text-[var(--theme-text-muted)]">
+              <OllamaStatus url={ollamaUrl} />
+              <span>Endpoint: {ollamaUrl}</span>
+              <button
+                type="button"
+                onClick={() => setShowOllamaUrl((value) => !value)}
+                className="text-xs text-[var(--theme-text-soft)] underline transition-colors hover:text-[var(--theme-accent-secondary)]"
+              >
+                {showOllamaUrl ? "Hide" : "Change"}
+              </button>
+            </div>
+            {showOllamaUrl && (
+              <input
+                type="url"
+                value={ai.ollamaUrl ?? ""}
+                onChange={(event) => update({ ollamaUrl: event.target.value || undefined })}
+                placeholder="http://localhost:11434"
+                className="mt-3 w-full rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-1.5 font-mono text-sm text-[var(--theme-text-secondary)] placeholder-[var(--theme-text-soft)] transition-colors focus:border-[var(--theme-border-strong)] focus:outline-none"
+              />
+            )}
           </div>
-          {showOllamaUrl && (
-            <input
-              type="url"
-              value={ai.ollamaUrl ?? ""}
-              onChange={(e) => update({ ollamaUrl: e.target.value || undefined })}
-              placeholder="http://localhost:11434"
-              className="w-full rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-1.5 font-mono text-sm text-[var(--theme-text-secondary)] placeholder-[var(--theme-text-soft)] transition-colors focus:outline-none focus:border-[var(--theme-border-strong)]"
-            />
-          )}
-        </div>
-      )}
-
-      {/* Model */}
-      {ai.provider !== "none" && (
-        <div>
-          <label className="mb-1.5 block text-sm text-[var(--theme-text-secondary)]">Model</label>
-          <input
-            type="text"
+          <ModelNameField
+            provider={ai.provider}
             value={ai.model}
-            onChange={(e) => update({ model: e.target.value })}
-            placeholder={DEFAULT_MODELS[ai.provider] ?? "Model name"}
-            className="w-full rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-input)] px-3 py-1.5 font-mono text-sm text-[var(--theme-text-secondary)] placeholder-[var(--theme-text-soft)] transition-colors focus:outline-none focus:border-[var(--theme-border-strong)]"
+            onChange={(model) => update({ model })}
           />
-        </div>
+        </section>
       )}
 
-      {/* API key -- desktop only */}
-      {requiresKey && secureStorage && (
-        <div>
-          <label className="mb-1.5 block text-sm text-[var(--theme-text-secondary)]">API Key</label>
-          <ApiKeyInput
-            provider={ai.provider as "openai" | "anthropic" | "gemini"}
-            getApiKey={secureStorage.getApiKey}
-            setApiKey={secureStorage.setApiKey}
-            clearApiKey={secureStorage.clearApiKey}
+      {requiresKey && (
+        <section className="space-y-3">
+          <h3 className="text-xs font-semibold uppercase text-[var(--theme-text-muted)]">
+            {selectedProviderLabel} Connection
+          </h3>
+          <ModelNameField
+            provider={ai.provider}
+            value={ai.model}
+            onChange={(model) => update({ model })}
           />
-          <p className="mt-1 text-[11px] text-[var(--theme-text-soft)]">
-            Stored encrypted on this device only. Never synced.
-          </p>
-        </div>
-      )}
-      {requiresKey && !secureStorage && (
-        <p className="theme-feedback-panel-warning theme-feedback-text-warning-muted rounded-lg px-3 py-2 text-xs">
-          API key storage is only available in the desktop app. On the PWA, saves are sent to your desktop for AI processing.
-        </p>
+          {secureStorage ? (
+            <div>
+              <label className="mb-1.5 block text-sm text-[var(--theme-text-secondary)]">API Key</label>
+              <ApiKeyInput
+                provider={cloudProvider}
+                getApiKey={secureStorage.getApiKey}
+                setApiKey={secureStorage.setApiKey}
+                clearApiKey={secureStorage.clearApiKey}
+              />
+              <p className="mt-1 text-[11px] text-[var(--theme-text-soft)]">
+                Stored encrypted on this device. Never synced.
+              </p>
+            </div>
+          ) : (
+            <p className="theme-feedback-panel-warning theme-feedback-text-warning-muted rounded-lg px-3 py-2 text-xs leading-5">
+              API key storage is available in Freed Desktop.
+            </p>
+          )}
+        </section>
       )}
 
-      {/* Toggles */}
       {ai.provider !== "none" && (
-        <div className="space-y-3 pt-1">
+        <section className="space-y-3">
+          <h3 className="text-xs font-semibold uppercase text-[var(--theme-text-muted)]">
+            Enabled Workflows
+          </h3>
           <SettingsToggle
-            label="Auto-summarize new saves"
-            description="Summarize articles as they are cached. May incur API costs with cloud providers."
+            label="Summaries and extraction"
+            description={featureDescriptions.summarize}
             checked={ai.autoSummarize}
-            onChange={(v) => update({ autoSummarize: v })}
+            onChange={(value) => update({ autoSummarize: value })}
           />
           <SettingsToggle
-            label="Extract topics for ranking"
-            description="Use AI to extract topics that feed the priority ranking algorithm."
+            label="Topics and ranking"
+            description={featureDescriptions.topics}
             checked={ai.extractTopics}
-            onChange={(v) => update({ extractTopics: v })}
+            onChange={(value) => update({ extractTopics: value })}
           />
-        </div>
+        </section>
       )}
     </div>
   );

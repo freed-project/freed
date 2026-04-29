@@ -20,13 +20,17 @@ import type {
   ContentSignal,
   ContentSignalBackfillSummary,
   ContentSignals,
+  EventCandidate,
+  LocationSource,
 } from "./types.js";
 import { createDefaultPreferences, createDefaultMeta } from "./types.js";
 import { friendForAuthor, personForAuthor } from "./friends.js";
 import {
   CONTENT_SIGNAL_KEYS,
   CONTENT_SIGNAL_VERSION,
+  EVENT_CANDIDATE_THRESHOLD,
   hasCurrentContentSignals,
+  inferEventCandidate,
   inferContentSignals,
 } from "./content-signals.js";
 
@@ -661,6 +665,70 @@ function applyContentSignalsToItem(
   target.tags.splice(0, target.tags.length, ...clean.tags);
 }
 
+function isStrongerLocationSource(source: LocationSource | undefined): boolean {
+  return source === "geo_tag" || source === "check_in" || source === "sticker";
+}
+
+function applyEventCandidateToItem(
+  item: FeedItem,
+  candidate: EventCandidate | null = inferEventCandidate(item, item.contentSignals ?? inferContentSignals(item)),
+): void {
+  if (!candidate) {
+    delete item.eventCandidate;
+    return;
+  }
+
+  const clean = stripUndefined(candidate);
+  if (!item.eventCandidate) {
+    item.eventCandidate = clean;
+  } else {
+    const target = item.eventCandidate;
+    target.version = clean.version;
+    target.method = clean.method;
+    target.detectedAt = clean.detectedAt;
+    target.confidence = clean.confidence;
+    assignOptionalField(target as unknown as Record<string, unknown>, "title", clean.title);
+    assignOptionalField(target as unknown as Record<string, unknown>, "startsAt", clean.startsAt);
+    assignOptionalField(target as unknown as Record<string, unknown>, "endsAt", clean.endsAt);
+    assignOptionalField(target as unknown as Record<string, unknown>, "timezone", clean.timezone);
+    assignOptionalField(target as unknown as Record<string, unknown>, "locationName", clean.locationName);
+    assignOptionalField(target as unknown as Record<string, unknown>, "locationUrl", clean.locationUrl);
+    assignOptionalField(target as unknown as Record<string, unknown>, "evidence", clean.evidence);
+  }
+
+  if (clean.confidence < EVENT_CANDIDATE_THRESHOLD) return;
+
+  if (clean.startsAt && !item.timeRange) {
+    item.timeRange = stripUndefined({
+      startsAt: clean.startsAt,
+      endsAt: clean.endsAt,
+      kind: "event",
+    });
+  }
+
+  if (clean.locationName && !isStrongerLocationSource(item.location?.source)) {
+    if (!item.location) {
+      item.location = stripUndefined({
+        name: clean.locationName,
+        url: clean.locationUrl,
+        source: "text_extraction",
+      });
+    } else if (item.location.source === "text_extraction") {
+      item.location.name = clean.locationName;
+      assignOptionalField(
+        item.location as unknown as Record<string, unknown>,
+        "url",
+        clean.locationUrl ?? item.location.url,
+      );
+    }
+  }
+}
+
+function applySemanticEnrichmentToItem(item: FeedItem): void {
+  applyContentSignalsToItem(item);
+  applyEventCandidateToItem(item);
+}
+
 function feedItemUpdatesAffectContentSignals(updates: Partial<FeedItem>): boolean {
   return (
     "author" in updates ||
@@ -795,7 +863,7 @@ function mergeFeedItemInto(target: FeedItem, source: FeedItem): void {
     ),
   );
   mergeUserState(target.userState, source.userState);
-  applyContentSignalsToItem(target);
+  applySemanticEnrichmentToItem(target);
 }
 
 function dedupKeeperId(doc: FreedDoc, ids: string[]): string {
@@ -935,7 +1003,7 @@ function normalizePerson(person: Person): Person {
 export function addFeedItem(doc: FreedDoc, item: FeedItem): void {
   const next = stripUndefined({ ...item }) as FeedItem;
   if (!hasCurrentContentSignals(next)) {
-    applyContentSignalsToItem(next);
+    applySemanticEnrichmentToItem(next);
   }
   doc.feedItems[item.globalId] = stripUndefined(next);
 }
@@ -964,25 +1032,17 @@ export function updateFeedItem(
     Object.assign(existing, cleanUpdates);
     if (nextSignals) {
       applyContentSignalsToItem(existing, nextSignals);
+      applyEventCandidateToItem(existing);
     } else if (feedItemUpdatesAffectContentSignals(updates)) {
-      applyContentSignalsToItem(existing);
+      applySemanticEnrichmentToItem(existing);
     }
   }
 }
 
 function createEmptyContentSignalCounts(): Record<ContentSignal, number> {
-  return {
-    event: 0,
-    essay: 0,
-    moment: 0,
-    life_update: 0,
-    announcement: 0,
-    recommendation: 0,
-    request: 0,
-    discussion: 0,
-    promotion: 0,
-    news: 0,
-  };
+  return Object.fromEntries(
+    CONTENT_SIGNAL_KEYS.map((signal) => [signal, 0]),
+  ) as Record<ContentSignal, number>;
 }
 
 function summarizeContentSignals(
@@ -1050,7 +1110,7 @@ export function backfillContentSignals(
   const batch = staleItems.slice(0, Math.max(1, batchSize));
 
   for (const item of batch) {
-    applyContentSignalsToItem(item);
+    applySemanticEnrichmentToItem(item);
   }
 
   return summarizeContentSignals(

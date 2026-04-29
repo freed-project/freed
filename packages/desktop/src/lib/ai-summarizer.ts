@@ -2,6 +2,7 @@
  * AI summarization adapter
  *
  * Provides a unified `summarize()` interface across:
+ *   - Integrated local model packs (disabled here until a local generation runner is wired)
  *   - Ollama (OpenAI-compatible local endpoint)
  *   - OpenAI (cloud)
  *   - Anthropic (Messages API)
@@ -159,7 +160,12 @@ export async function summarize(
   prefs: AIPreferences,
   apiKey?: string | null,
 ): Promise<AISummary | null> {
-  if (prefs.provider === "none" || !prefs.autoSummarize || !text.trim()) {
+  if (
+    prefs.provider === "none" ||
+    prefs.provider === "integrated" ||
+    !prefs.autoSummarize ||
+    !text.trim()
+  ) {
     return null;
   }
 
