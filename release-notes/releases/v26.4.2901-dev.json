@@ -1,0 +1,47 @@
+{
+  "tag": "v26.4.2901-dev",
+  "version": "26.4.2901-dev",
+  "channel": "dev",
+  "dayKey": "26.4.29",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-29T17:23:53.346Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.2900-dev",
+    "previousPublishedDayTag": "v26.4.2800-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.2900-dev",
+      "v26.4.2901-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.4.2900-dev",
+      "v26.4.2901-dev"
+    ],
+    "prNumbers": [
+      354,
+      356,
+      357
+    ],
+    "commitSubjects": [
+      "fix: prevent health persistence from freezing dev preview (#357)",
+      "docs: approve v26.4.2900-dev release notes",
+      "release: v26.4.2900-dev",
+      "feat: add semantic content enrichment (#354)",
+      "fix: mark feed items read while scrolling (#356)"
+    ]
+  },
+  "release": {
+    "deck": "Semantic content enrichment, unified AI provider settings, and feed items now mark read while scrolling",
+    "features": [
+      "Semantic content enrichment",
+      "Unified AI provider settings"
+    ],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2901-dev\n\nSemantic content enrichment, unified AI provider settings, and feed items now mark read while scrolling\n\n### Features\n\n- Semantic content enrichment\n- Unified AI provider settings\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
