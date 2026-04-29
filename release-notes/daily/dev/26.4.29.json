@@ -9,6 +9,7 @@
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
   "pinnedHighlights": [
+    "Feed items now mark read while scrolling",
     "Provider health persistence no longer uses the Tauri store mutex path that could freeze Freed Desktop shortly after launch"
   ],
   "editorialNotes": [],

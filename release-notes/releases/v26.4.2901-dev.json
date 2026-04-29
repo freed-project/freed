@@ -41,9 +41,10 @@
       "Unified AI provider settings"
     ],
     "fixes": [
+      "Feed items now mark read while scrolling",
       "Provider health persistence no longer uses the Tauri store mutex path that could freeze Freed Desktop shortly after launch"
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2901-dev\n\nSemantic content enrichment, unified AI provider settings, read-on-scroll fixes, and safer provider health persistence\n\n### Features\n\n- Semantic content enrichment\n- Unified AI provider settings\n\n### Fixes\n\n- Provider health persistence no longer uses the Tauri store mutex path that could freeze Freed Desktop shortly after launch\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2901-dev\n\nSemantic content enrichment, unified AI provider settings, read-on-scroll fixes, and safer provider health persistence\n\n### Features\n\n- Semantic content enrichment\n- Unified AI provider settings\n\n### Fixes\n\n- Feed items now mark read while scrolling, so normal feed reading updates state without opening every item.\n- Provider health persistence no longer uses the Tauri store mutex path that could freeze Freed Desktop shortly after launch.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
