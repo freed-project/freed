@@ -1,0 +1,40 @@
+{
+  "tag": "v26.4.2900-dev",
+  "version": "26.4.2900-dev",
+  "channel": "dev",
+  "dayKey": "26.4.29",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-29T15:32:47.337Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.2800-dev",
+    "previousPublishedDayTag": "v26.4.2800-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.2900-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.4.2900-dev"
+    ],
+    "prNumbers": [
+      354,
+      356
+    ],
+    "commitSubjects": [
+      "feat: add semantic content enrichment (#354)",
+      "fix: mark feed items read while scrolling (#356)"
+    ]
+  },
+  "release": {
+    "deck": "Semantic content enrichment and mark feed items read while scrolling",
+    "features": [
+      "Semantic content enrichment"
+    ],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2900-dev\n\nSemantic content enrichment and mark feed items read while scrolling\n\n### Features\n\n- Semantic content enrichment\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
