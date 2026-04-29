@@ -2,13 +2,15 @@
   "channel": "dev",
   "dayKey": "26.4.29",
   "date": "2026-04-29",
-  "preferredDeck": null,
+  "preferredDeck": "Semantic content enrichment, unified AI provider settings, read-on-scroll fixes, and safer provider health persistence",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
     "Demote internal cleanup unless it clearly changes the shipped product."
   ],
-  "pinnedHighlights": [],
+  "pinnedHighlights": [
+    "Provider health persistence no longer uses the Tauri store mutex path that could freeze Freed Desktop shortly after launch"
+  ],
   "editorialNotes": [],
   "updatedAt": "2026-04-29T17:23:53.347Z"
 }
