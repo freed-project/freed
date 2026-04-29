@@ -100,6 +100,11 @@ export function AppShell({ children }: AppShellProps) {
     savedContentOpen ||
     libraryDialogOpen ||
     showContactReview;
+  const forceCompactDesktopSidebar = !isMobileDevice && isMobileViewport;
+  const effectiveDesktopSidebarDisplayMode =
+    forceCompactDesktopSidebar && desktopSidebarMode !== "closed"
+      ? "compact"
+      : desktopSidebarDisplayMode;
 
   useEffect(() => {
     if (dragging.current || dragWidth !== null) return;
@@ -140,13 +145,13 @@ export function AppShell({ children }: AppShellProps) {
   }, [updatePreferences]);
 
   const handleDesktopSidebarToggle = useCallback(() => {
-    const nextMode = desktopSidebarMode === "closed"
+    const nextMode = effectiveDesktopSidebarDisplayMode === "closed"
       ? "expanded"
-      : desktopSidebarMode === "compact"
+      : effectiveDesktopSidebarDisplayMode === "compact"
         ? "closed"
         : "compact";
     persistDesktopSidebarMode(nextMode);
-  }, [desktopSidebarMode, persistDesktopSidebarMode]);
+  }, [effectiveDesktopSidebarDisplayMode, persistDesktopSidebarMode]);
 
   const handleFriendsSidebarOpenChange = useCallback((open: boolean) => {
     void updatePreferences({
@@ -224,6 +229,15 @@ export function AppShell({ children }: AppShellProps) {
     if (!isMobileDevice && mobileSidebarOpen) {
       setMobileSidebarOpen(false);
     }
+  }, [isMobileDevice, mobileSidebarOpen]);
+
+  useEffect(() => {
+    if (!isMobileDevice || !mobileSidebarOpen) return;
+
+    document.documentElement.classList.add("freed-mobile-sidebar-open");
+    return () => {
+      document.documentElement.classList.remove("freed-mobile-sidebar-open");
+    };
   }, [isMobileDevice, mobileSidebarOpen]);
 
   useEffect(() => {
@@ -329,7 +343,7 @@ export function AppShell({ children }: AppShellProps) {
           mobileSidebarOpen={mobileSidebarOpen}
           onMobileMenuToggle={() => setMobileSidebarOpen((value) => !value)}
           desktopSidebarMode={desktopSidebarMode}
-          desktopSidebarDisplayMode={desktopSidebarDisplayMode}
+          desktopSidebarDisplayMode={effectiveDesktopSidebarDisplayMode}
           onDesktopSidebarToggle={handleDesktopSidebarToggle}
           friendsSidebarOpen={friendsSidebarOpen}
           onFriendsSidebarToggle={() =>

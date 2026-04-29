@@ -82,6 +82,8 @@ When a user queues several small UI fixes for the same product surface, keep the
 
 - For each small UI fix, implement the narrow change, run the focused test or browser check that proves that behavior, then continue to the next queued task.
 - Do not run `npm run validate:feature` after every small visual adjustment. Run it at the publish checkpoint, or earlier only when the user asks for a full validation checkpoint.
+- Do not run desktop e2e between queued UI updates in the same thread unless the user asks for that checkpoint or the change is too risky to inspect with the live preview. Prefer keeping the preview running, applying the next queued visual fix, and doing one focused e2e pass after the queue settles.
+- When the user is actively sending browser comments or screenshots, treat the queue as still open. Give a short status update, keep the preview current, and wait to spend machine time on heavier verification until the user signals that the batch is ready or asks for tests.
 - If browser automation is needed for a visual fix, use it for that fix and keep the local preview current. Clean stale automation helpers before closeout, then restart the preview if the user still needs it.
 - Update the draft PR once after the queued batch is ready, unless the user asks for an interim publish.
 

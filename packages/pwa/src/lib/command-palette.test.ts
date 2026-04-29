@@ -443,7 +443,7 @@ describe("command palette", () => {
     keydown(window, "k", { metaKey: true });
     await flush();
 
-    const searchInput = document.querySelector<HTMLInputElement>('input[aria-label="Search or run a command"]');
+    const searchInput = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
     expect(searchInput).not.toBeNull();
     expect(document.activeElement).toBe(searchInput);
     expect(document.querySelector("[data-testid='command-palette-modal']")).toBeNull();
@@ -474,7 +474,7 @@ describe("command palette", () => {
     cleanups.push(render.cleanup);
     await flush();
 
-    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run a command"]');
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
     expect(input).not.toBeNull();
     act(() => input!.focus());
     await flush();
@@ -494,6 +494,41 @@ describe("command palette", () => {
       platform: "rss",
       feedUrl: "https://alpha.example/feed.xml",
     });
+  });
+
+  it("renders command action icons and keeps reset confirmation mounted after blur", async () => {
+    const resetDevice = vi.fn(async () => {});
+    const store = createTestStore();
+    const platform = createPlatform(store, { factoryReset: resetDevice });
+    const render = renderNode(
+      createElement(
+        PlatformProvider,
+        { value: platform, children: createElement(SearchJumpField) },
+      ),
+    );
+    cleanups.push(render.cleanup);
+    await flush();
+
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
+    expect(input).not.toBeNull();
+    act(() => input!.focus());
+    await flush();
+
+    const feedAction = document.querySelector("[data-testid='search-command-action-go-unified-feed']");
+    expect(feedAction?.querySelector("[data-testid='search-command-action-icon'] svg")).not.toBeNull();
+
+    changeInput(input!, "reset");
+    await flush();
+
+    const resetAction = document.querySelector("[data-testid='search-command-action-danger-reset-device']");
+    expect(resetAction?.querySelector("[data-testid='search-command-action-icon'] svg")).not.toBeNull();
+    click(resetAction!);
+    act(() => input!.blur());
+    await flush();
+
+    expect(document.body.textContent).toContain("Reset this device?");
+    expect(document.querySelector<HTMLInputElement>("#search-command-confirm")).not.toBeNull();
+    expect(resetDevice).not.toHaveBeenCalled();
   });
 
   it("shows destructive confirmation and refuses to run before the token matches", async () => {
@@ -524,7 +559,7 @@ describe("command palette", () => {
     cleanups.push(render.cleanup);
     await flush();
 
-    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run a command"]');
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
     expect(input).not.toBeNull();
     act(() => input!.focus());
     await flush();
@@ -577,7 +612,7 @@ describe("command palette", () => {
     cleanups.push(render.cleanup);
     await flush();
 
-    let input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run a command"]');
+    let input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
     expect(input).not.toBeNull();
     act(() => input!.focus());
     await flush();
@@ -595,7 +630,7 @@ describe("command palette", () => {
       feedUrl: "https://alpha.example/feed.xml",
     });
 
-    input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run a command"]');
+    input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
     expect(input).not.toBeNull();
     act(() => input!.focus());
     await flush();
