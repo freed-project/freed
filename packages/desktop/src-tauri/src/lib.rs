@@ -1609,10 +1609,7 @@ async fn start_oauth_server(app: tauri::AppHandle) -> Result<u16, String> {
 
 #[tauri::command]
 fn show_window(app: tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
+    let _ = start_main_window(&app);
 }
 
 #[tauri::command]
@@ -3740,6 +3737,15 @@ fn main_window_handle_available(_window: &tauri::WebviewWindow) -> bool {
     true
 }
 
+fn live_main_window(app: &tauri::AppHandle) -> Option<tauri::WebviewWindow> {
+    let window = app.get_webview_window(MAIN_WINDOW_LABEL)?;
+    if main_window_handle_available(&window) {
+        Some(window)
+    } else {
+        None
+    }
+}
+
 fn wait_for_main_window_release(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
     for attempt in 0..MAIN_WINDOW_RELEASE_POLL_ATTEMPTS {
         match app.get_webview_window(MAIN_WINDOW_LABEL) {
@@ -3836,7 +3842,7 @@ fn create_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, ta
 }
 
 fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tauri::Error> {
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+    if let Some(window) = live_main_window(app) {
         show_webview_window(&window);
         return Ok(window);
     }
@@ -3888,7 +3894,7 @@ fn recover_main_window(app: &tauri::AppHandle, reason: &str) -> Result<(), Strin
 }
 
 fn show_primary_window(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+    if let Some(window) = live_main_window(app) {
         show_webview_window(&window);
         return;
     }
@@ -3906,6 +3912,8 @@ fn show_primary_window(app: &tauri::AppHandle) {
         if let Ok(window) = open_or_focus_recovery_window(app) {
             show_webview_window(&window);
         }
+    } else {
+        let _ = start_main_window(app);
     }
 }
 
