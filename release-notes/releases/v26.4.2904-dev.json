@@ -3,7 +3,7 @@
   "version": "26.4.2904-dev",
   "channel": "dev",
   "dayKey": "26.4.29",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-30T03:58:49.926Z",
   "model": "heuristic",
@@ -54,7 +54,7 @@
     ]
   },
   "release": {
-    "deck": "Semantic content enrichment, unified AI provider settings, read-on-scroll fixes, and safer provider health persistence",
+    "deck": "Renderer recovery, semantic content enrichment, unified AI provider settings, and read-on-scroll fixes",
     "features": [
       "Semantic content enrichment",
       "Unified AI provider settings"
@@ -69,5 +69,5 @@
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2904-dev\n\nSemantic content enrichment, unified AI provider settings, read-on-scroll fixes, and safer provider health persistence\n\n### Features\n\n- Semantic content enrichment\n- Unified AI provider settings\n\n### Fixes\n\n- Recover main window after renderer stalls\n- Polish reader sidebar and toolbar layout\n- Polish AI settings local pack\n- Prevent health persistence from freezing dev preview\n- Mark feed items read while scrolling\n- Provider health persistence no longer uses the Tauri store mutex path that could freeze Freed Desktop shortly after launch\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2904-dev\n\nRenderer recovery, semantic content enrichment, unified AI provider settings, and read-on-scroll fixes\n\n### Features\n\n- Semantic content enrichment\n- Unified AI provider settings\n\n### Fixes\n\n- Recover Freed Desktop after main renderer stalls instead of leaving the app without a main window\n- Polish reader sidebar and toolbar layout\n- Polish AI settings local pack\n- Prevent health persistence from freezing dev preview\n- Mark feed items read while scrolling\n- Provider health persistence no longer uses the Tauri store mutex path that could freeze Freed Desktop shortly after launch\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
