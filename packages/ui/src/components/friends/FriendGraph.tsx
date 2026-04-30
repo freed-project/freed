@@ -1,7 +1,10 @@
 import {
   Application,
+  Assets,
   Container,
   Graphics,
+  Sprite,
+  Texture,
   Text,
   TextStyle,
 } from "pixi.js";
@@ -129,11 +132,18 @@ interface PixiScene {
 interface NodeDisplay {
   container: Container;
   outer: Graphics;
+  avatarSprite: Sprite;
+  avatarMask: Graphics;
   inner: Graphics | null;
-  initials: Text | null;
+  initials: Text;
   providerDot: Graphics | null;
   highlightRing: Graphics;
 }
+
+type AvatarTextureCacheEntry =
+  | { state: "loading" }
+  | { state: "loaded"; texture: Texture }
+  | { state: "failed" };
 
 interface LabelDisplay {
   container: Container;
@@ -442,24 +452,33 @@ function createNodeDisplay(
   const outer = new Graphics();
   container.addChild(outer);
 
+  const avatarSprite = new Sprite(Texture.EMPTY);
+  avatarSprite.anchor.set(0.5);
+  avatarSprite.visible = false;
+  container.addChild(avatarSprite);
+
+  const avatarMask = new Graphics();
+  container.addChild(avatarMask);
+  avatarSprite.mask = avatarMask;
+
   let inner: Graphics | null = null;
-  let initials: Text | null = null;
   if (node.kind === "friend_person" || node.kind === "connection_person") {
     inner = new Graphics();
     container.addChild(inner);
-    initials = new Text(
-      node.initials ?? "",
-      new TextStyle({
-        fill: nodePalette.text,
-        fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
-        fontSize: Math.max(12, node.radius * 0.48),
-        fontWeight: "700",
-        letterSpacing: 1,
-      }),
-    );
-    initials.anchor.set(0.5);
-    container.addChild(initials);
   }
+
+  const initials = new Text(
+    node.initials ?? "",
+    new TextStyle({
+      fill: nodePalette.text,
+      fontFamily: themeId === "scriptorium" ? "Georgia, serif" : "system-ui, sans-serif",
+      fontSize: Math.max(9, node.radius * 0.48),
+      fontWeight: "700",
+      letterSpacing: node.kind === "account" || node.kind === "feed" ? 0 : 1,
+    }),
+  );
+  initials.anchor.set(0.5);
+  container.addChild(initials);
 
   let providerDot: Graphics | null = null;
   if (node.kind === "account") {
@@ -473,6 +492,8 @@ function createNodeDisplay(
   return {
     container,
     outer,
+    avatarSprite,
+    avatarMask,
     inner,
     initials,
     providerDot,
@@ -625,6 +646,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const lastLabelLayoutKeyRef = useRef("");
   const visibleLabelIdsRef = useRef<string[]>([]);
   const textStyleCacheRef = useRef<Map<string, TextStyle>>(new Map());
+  const avatarTextureCacheRef = useRef<Map<string, AvatarTextureCacheEntry>>(new Map());
   const previousRequestedModelRef = useRef<IdentityGraphModel | null>(null);
   const previousRequestSnapshotRef = useRef<{
     signature: string;
@@ -634,6 +656,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
   const lastLayoutMsRef = useRef(0);
   const graphQualityModeRef = useRef<GraphQualityMode>("settled");
   const layoutReadyRef = useRef(false);
+  const syncSceneRef = useRef<() => void>(() => {});
   const perfSnapshotRef = useRef<GraphPerfSnapshot>({
     modelBuildMs: 0,
     layoutMs: 0,
@@ -703,6 +726,11 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     );
     const accountDrag = drag?.kind === "account-drag" ? drag : null;
     const nodeById = new Map(layoutRef.current.nodes.map((node) => [node.id, node]));
+    const avatarCache = avatarTextureCacheRef.current;
+    const queueAvatarRefresh = () => {
+      lastStaticRenderKeyRef.current = "";
+      requestAnimationFrame(() => syncSceneRef.current());
+    };
     const staticRenderKey = [
       layoutVersion,
       themeId ?? "",
@@ -794,6 +822,42 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         display.outer.drawCircle(0, 0, node.radius);
         display.outer.endFill();
 
+        display.avatarMask.clear();
+        display.avatarMask.beginFill(0xffffff, 1);
+        display.avatarMask.drawCircle(0, 0, node.radius);
+        display.avatarMask.endFill();
+
+        let avatarTexture: Texture | null = null;
+        const avatarUrl = node.avatarUrl ?? null;
+        if (avatarUrl) {
+          const cached = avatarCache.get(avatarUrl);
+          if (cached?.state === "loaded") {
+            avatarTexture = cached.texture;
+          } else if (!cached) {
+            avatarCache.set(avatarUrl, { state: "loading" });
+            void Assets.load<Texture>(avatarUrl)
+              .then((texture) => {
+                avatarCache.set(avatarUrl, { state: "loaded", texture });
+                queueAvatarRefresh();
+              })
+              .catch(() => {
+                avatarCache.set(avatarUrl, { state: "failed" });
+                queueAvatarRefresh();
+              });
+          }
+        }
+
+        if (avatarTexture) {
+          display.avatarSprite.texture = avatarTexture;
+          display.avatarSprite.width = node.radius * 2;
+          display.avatarSprite.height = node.radius * 2;
+          display.avatarSprite.visible = true;
+          display.initials.visible = false;
+        } else {
+          display.avatarSprite.visible = false;
+          display.initials.visible = true;
+        }
+
         if (display.inner) {
           display.inner.clear();
           display.inner.beginFill(0xffffff, 0.08);
@@ -805,27 +869,26 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
           display.inner.endFill();
         }
 
-        if (display.initials) {
-          display.initials.text = node.initials ?? "";
-          display.initials.style = getCachedTextStyle(
-            [
-              "initials",
-              themeId ?? "default",
-              palette.text,
-              Math.max(12, Math.round(node.radius * 0.48)),
-            ].join(":"),
-            {
-              fill: palette.text,
-              fontFamily:
-                themeId === "scriptorium"
-                  ? "Georgia, serif"
-                  : "system-ui, sans-serif",
-              fontSize: Math.max(12, node.radius * 0.48),
-              fontWeight: "700",
-              letterSpacing: 1,
-            },
-          );
-        }
+        display.initials.text = node.initials ?? "";
+        display.initials.style = getCachedTextStyle(
+          [
+            "initials",
+            themeId ?? "default",
+            palette.text,
+            Math.max(9, Math.round(node.radius * 0.48)),
+            node.kind,
+          ].join(":"),
+          {
+            fill: palette.text,
+            fontFamily:
+              themeId === "scriptorium"
+                ? "Georgia, serif"
+                : "system-ui, sans-serif",
+            fontSize: Math.max(9, node.radius * 0.48),
+            fontWeight: "700",
+            letterSpacing: node.kind === "account" || node.kind === "feed" ? 0 : 1,
+          },
+        );
 
         if (display.providerDot) {
           display.providerDot.clear();
@@ -910,6 +973,10 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         );
         display.outer.drawCircle(0, 0, node.radius);
         display.outer.endFill();
+        display.avatarMask.clear();
+        display.avatarMask.beginFill(0xffffff, 1);
+        display.avatarMask.drawCircle(0, 0, node.radius);
+        display.avatarMask.endFill();
       }
       lastSelectionStyleKeyRef.current = selectionStyleKey;
     }
@@ -1205,6 +1272,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     selectedPersonId,
     themeId,
   ]);
+  syncSceneRef.current = syncScene;
 
   const scheduleSyncScene = useCallback(() => {
     cancelAnimationFrame(drawRafRef.current);

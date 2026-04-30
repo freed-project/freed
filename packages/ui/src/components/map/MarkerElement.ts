@@ -1,5 +1,9 @@
 import type { FeedItem, Person, LocationMarkerSummary } from "@freed/shared";
-import { initialsForName, resolveFriendAvatarUrl } from "../../lib/friend-avatar.js";
+import {
+  channelInitialForName,
+  personInitialsForName,
+  resolveFriendAvatarUrl,
+} from "../../lib/friend-avatar.js";
 import type { FriendAvatarPalette } from "../../lib/friend-avatar-style.js";
 
 export type MarkerSize = "large" | "medium" | "small";
@@ -19,6 +23,24 @@ function markerSize(publishedAt: number): MarkerSize {
 
 function displayName(item: FeedItem, friend: Person | null): string {
   return friend?.name ?? item.author.displayName;
+}
+
+function markerInitials(item: FeedItem, friend: Person | null): string {
+  return friend
+    ? personInitialsForName(friend.name)
+    : channelInitialForName(item.author.displayName);
+}
+
+function appendFallbackLabel(
+  body: HTMLElement,
+  initials: string,
+  avatarPalette: FriendAvatarPalette,
+): void {
+  const fallbackLabel = document.createElement("span");
+  fallbackLabel.textContent = initials;
+  fallbackLabel.setAttribute("data-avatar-fallback", "true");
+  fallbackLabel.style.cssText = `position:relative;z-index:3;text-shadow:0 0 14px ${avatarPalette.initialsShadow};`;
+  body.appendChild(fallbackLabel);
 }
 
 export function createMarkerElement(
@@ -77,7 +99,7 @@ export function createMarkerElement(
   ].join(";");
   body.appendChild(glowRing);
 
-  const initials = initialsForName(displayName(item, friend));
+  const initials = markerInitials(item, friend);
 
   if (avatarUrl) {
     const img = document.createElement("img");
@@ -86,10 +108,7 @@ export function createMarkerElement(
     img.style.cssText = "width:100%;height:100%;object-fit:cover;position:relative;z-index:1;opacity:0.94;filter:saturate(0.9) contrast(1.02) brightness(0.92);";
     img.onerror = () => {
       img.remove();
-      const fallbackLabel = document.createElement("span");
-      fallbackLabel.textContent = initials;
-      fallbackLabel.style.cssText = `position:relative;z-index:3;text-shadow:0 0 14px ${avatarPalette.initialsShadow};`;
-      body.appendChild(fallbackLabel);
+      appendFallbackLabel(body, initials, avatarPalette);
     };
     body.appendChild(img);
 
@@ -116,10 +135,7 @@ export function createMarkerElement(
     ].join(";");
     body.appendChild(halo);
   } else {
-    const label = document.createElement("span");
-    label.textContent = initials;
-    label.style.cssText = `position:relative;z-index:3;text-shadow:0 0 14px ${avatarPalette.initialsShadow};`;
-    body.appendChild(label);
+    appendFallbackLabel(body, initials, avatarPalette);
   }
 
   if (marker.groupCount > 1) {

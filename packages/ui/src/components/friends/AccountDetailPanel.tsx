@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import type { Account, FeedItem, Person } from "@freed/shared";
-import { FriendAvatar } from "./FriendAvatar.js";
+import { ChannelAvatar } from "../ChannelAvatar.js";
 import { SearchField } from "../SearchField.js";
 import type { AccountLinkSuggestion } from "../../lib/account-link-suggestions.js";
 import { accountSubtitle, accountTitle, providerLabel } from "../../lib/account-labels.js";
@@ -103,10 +103,11 @@ export function AccountDetailPanel({
 
       <div className="theme-dialog-divider border-b px-4 py-4">
         <div className="flex items-start gap-3">
-          <FriendAvatar
+          <ChannelAvatar
             name={accountTitle(account)}
             avatarUrl={account.avatarUrl}
             size={56}
+            className="text-xl"
           />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">

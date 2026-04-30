@@ -194,3 +194,90 @@ describe("FeedItem story media", () => {
     }
   });
 });
+
+describe("FeedItem channel avatars", () => {
+  it("falls back to the channel initial when a story avatar fails", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlatformProvider value={platformConfig}>
+            <FeedItem
+              item={makeItem({
+                author: {
+                  displayName: "Lotus Alchemist",
+                  avatarUrl: "https://example.com/avatar.jpg",
+                },
+              })}
+            />
+          </PlatformProvider>,
+        );
+      });
+
+      const avatar = container.querySelector("img[src='https://example.com/avatar.jpg']");
+      expect(avatar).toBeInstanceOf(HTMLImageElement);
+
+      await act(async () => {
+        avatar?.dispatchEvent(new Event("error", { bubbles: true }));
+      });
+
+      expect(container.querySelector("img[src='https://example.com/avatar.jpg']")).toBeNull();
+      expect(container.textContent).toContain("L");
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
+  });
+
+  it("falls back to the channel initial when a regular post avatar fails", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root: Root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          <PlatformProvider value={platformConfig}>
+            <FeedItem
+              item={makeItem({
+                contentType: "post",
+                author: {
+                  displayName: "Lotus Alchemist",
+                  avatarUrl: "https://example.com/post-avatar.jpg",
+                },
+                content: {
+                  mediaUrls: [],
+                  mediaTypes: [],
+                },
+              })}
+            />
+          </PlatformProvider>,
+        );
+      });
+
+      const avatar = container.querySelector("img[src='https://example.com/post-avatar.jpg']");
+      expect(avatar).toBeInstanceOf(HTMLImageElement);
+
+      await act(async () => {
+        avatar?.dispatchEvent(new Event("error", { bubbles: true }));
+      });
+
+      expect(container.querySelector("img[src='https://example.com/post-avatar.jpg']")).toBeNull();
+      expect(container.textContent).toContain("L");
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
+  });
+});

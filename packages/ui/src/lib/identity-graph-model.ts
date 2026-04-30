@@ -1,4 +1,5 @@
 import type { Account, FeedItem, Person, RssFeed } from "@freed/shared";
+import { channelInitialForName, personInitialsForName } from "./friend-avatar.js";
 
 export type IdentityGraphMode = "friends" | "all_content";
 
@@ -22,6 +23,7 @@ export interface IdentityGraphNode {
   ring: 0 | 1 | 2 | 3;
   weight: number;
   initials?: string;
+  avatarUrl?: string | null;
   interactive: boolean;
   graphX?: number;
   graphY?: number;
@@ -87,15 +89,6 @@ function mixHash(current: number, value: string | number): number {
 
 function socialActivityKey(provider: string, externalId: string): string {
   return `${provider}:${externalId}`;
-}
-
-function initialsForLabel(label: string): string {
-  return label
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
 }
 
 export function buildIdentityGraphActivityIndex(
@@ -240,7 +233,8 @@ export function buildIdentityGraphModel({
       personId: person.id,
       ring: isFriend ? 0 : 1,
       weight: isFriend ? 100 + person.careLevel * 10 + linkedCount * 2 : 60 + linkedCount * 3,
-      initials: initialsForLabel(person.name),
+      initials: personInitialsForName(person.name),
+      avatarUrl: person.avatarUrl ?? null,
       interactive: true,
       graphX: person.graphX,
       graphY: person.graphY,
@@ -254,6 +248,7 @@ export function buildIdentityGraphModel({
     signatureHash = mixHash(signatureHash, node.ring);
     signatureHash = mixHash(signatureHash, Math.round(node.radius * 10));
     signatureHash = mixHash(signatureHash, node.weight);
+    signatureHash = mixHash(signatureHash, node.avatarUrl ?? "");
     signatureHash = mixHash(signatureHash, person.graphPinned ? 1 : 0);
     if (person.graphPinned && typeof person.graphX === "number" && typeof person.graphY === "number") {
       signatureHash = mixHash(signatureHash, Math.round(person.graphX));
@@ -296,6 +291,8 @@ export function buildIdentityGraphModel({
       provider: account.provider,
       ring: linkedPersonId ? 2 : 3,
       weight: (linkedPersonId ? 46 : 28) + itemCount,
+      initials: channelInitialForName(accountLabel(account)),
+      avatarUrl: account.avatarUrl ?? null,
       interactive: true,
       graphX: account.graphX,
       graphY: account.graphY,
@@ -309,6 +306,7 @@ export function buildIdentityGraphModel({
     signatureHash = mixHash(signatureHash, node.provider ?? "");
     signatureHash = mixHash(signatureHash, Math.round(node.radius * 10));
     signatureHash = mixHash(signatureHash, node.weight);
+    signatureHash = mixHash(signatureHash, node.avatarUrl ?? "");
     signatureHash = mixHash(signatureHash, account.graphPinned ? 1 : 0);
     if (account.graphPinned && typeof account.graphX === "number" && typeof account.graphY === "number") {
       signatureHash = mixHash(signatureHash, Math.round(account.graphX));
@@ -341,6 +339,8 @@ export function buildIdentityGraphModel({
         provider: "rss",
         ring: 3,
         weight: 16 + itemCount,
+        initials: channelInitialForName(feed.title || feed.url),
+        avatarUrl: feed.imageUrl ?? null,
         interactive: false,
         activityCount: itemCount,
         lastActivityAt: lastActivityAt > 0 ? lastActivityAt : undefined,
@@ -349,6 +349,7 @@ export function buildIdentityGraphModel({
       signatureHash = mixHash(signatureHash, node.id);
       signatureHash = mixHash(signatureHash, Math.round(node.radius * 10));
       signatureHash = mixHash(signatureHash, node.weight);
+      signatureHash = mixHash(signatureHash, node.avatarUrl ?? "");
     }
   }
 
