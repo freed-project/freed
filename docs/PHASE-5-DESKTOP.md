@@ -34,6 +34,7 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Inline Feeds chevron** — In the labeled desktop sidebar, the Feeds expand and collapse control now sits immediately after the `Feeds` label instead of aligning against the far-right count lane
 - **Balanced compact rail inset** — The icon-only desktop sidebar now uses the same outer inset on the bottom edge as it already uses on the top and sides, so the Settings button no longer sits flush against the floor
 - **Live toolbar reopen cue** — During desktop drag preview, once the primary sidebar crosses into the closed state, the toolbar control now swaps immediately from collapse to expand so the reopen affordance stays truthful before mouseup
+- **Animated preview rail toggle:** The desktop reader keeps the compact preview rail mounted through show and hide transitions, while `Animations: None` still snaps instantly
 
 ---
 
@@ -279,6 +280,7 @@ export async function captureDomFeed(
 - [x] Narrow desktop reader mode now stays inline instead of falling into the full-screen mobile overlay, auto-collapses the thumbnail rail, and keeps the compact desktop sidebar accessible while an item is open
 - [x] The primary sidebar and right debug drawer now render as floating shell cards using the same glassy header treatment as the marketing navbar
 - [x] Reader toolbar controls now lock to the live sidebar and thumbnail-rail widths, so the sidebar toggle, dual-column toggle, and back-to-list control stay aligned with the floating cards below them
+- [x] Toggling the desktop reader preview rail now animates the rail width open and closed unless global animations are set to none
 - [x] Settings now use a shared polished dropdown treatment, and Appearance keeps the theme selector as one compact row instead of a descriptive mini card with live hover and focus previews across every theme
 - [x] Settings use a stronger modal shadow plus a blur-only frosted backdrop, the backdrop temporarily clears while previewing themes so desktop and touch users can see the active page treatment underneath, and hover previews now blur between the previous and next theme before snapping back unless the user clicks
 - [x] The shared Settings shell now keeps the desktop close control aligned with the left sidebar header, while the mobile sheet runs flush to the top edge with a tighter toolbar and reliable section-to-section navigation
