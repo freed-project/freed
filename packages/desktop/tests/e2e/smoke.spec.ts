@@ -2030,14 +2030,16 @@ test("desktop primary feed marks scrolled-past rows as read", async ({ app, page
     return state.totalUnreadCount;
   });
 
-  await page.evaluate(() => {
-    const container = document.querySelector('[data-testid="feed-list-scroll-container"]') as HTMLElement | null;
-    if (!container) {
-      throw new Error("Feed scroll container was not found");
-    }
-    container.scrollTop = 1_400;
-    container.dispatchEvent(new Event("scroll"));
-  });
+  const feedContainer = page.getByTestId("feed-list-scroll-container");
+  await expect(feedContainer).toBeVisible();
+  const feedBox = await feedContainer.boundingBox();
+  if (!feedBox) {
+    throw new Error("Feed scroll container was not visible");
+  }
+  await page.mouse.move(feedBox.x + feedBox.width / 2, feedBox.y + feedBox.height / 2);
+  for (let index = 0; index < 8; index += 1) {
+    await page.mouse.wheel(0, 400);
+  }
 
   await expect
     .poll(async () => page.evaluate((itemId) => {
@@ -2098,6 +2100,85 @@ test("desktop primary feed marks scrolled-past rows as read", async ({ app, page
   const topCard = page.locator("[data-feed-item-id]").first();
   await expect(topCard).toBeVisible({ timeout: 10_000 });
   await expect(topCard).toHaveClass(/grayscale/);
+});
+
+test("desktop compact feed panel marks scrolled-past rows as read", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(30);
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+    return store?.getState().updatePreferences({
+      display: {
+        reading: {
+          dualColumnMode: true,
+          markReadOnScroll: true,
+          showReadInGrayscale: true,
+        },
+      },
+    });
+  });
+
+  await page.locator("[data-feed-item-id]").first().click();
+  const compactPanel = page.getByTestId("compact-feed-panel-scroll-container");
+  await expect(compactPanel).toBeVisible({ timeout: 5_000 });
+
+  const secondItemId = "rss:https://bench.example/feed.xml:bench-item-1";
+  const initialUnreadCount = await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | { getState: () => { totalUnreadCount: number } }
+      | undefined;
+    return store?.getState().totalUnreadCount ?? Number.POSITIVE_INFINITY;
+  });
+
+  const compactBox = await compactPanel.boundingBox();
+  if (!compactBox) {
+    throw new Error("Compact feed panel was not visible");
+  }
+  await page.mouse.move(compactBox.x + compactBox.width / 2, compactBox.y + compactBox.height / 2);
+  for (let index = 0; index < 8; index += 1) {
+    await page.mouse.wheel(0, 260);
+  }
+
+  await expect
+    .poll(async () => page.evaluate((itemId) => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as
+        | {
+            getState: () => {
+              items: Array<{ globalId: string; userState: { readAt?: number } }>;
+            };
+          }
+        | undefined;
+      return Boolean(store?.getState().items.find((item) => item.globalId === itemId)?.userState.readAt);
+    }, secondItemId), { timeout: 10_000 })
+    .toBe(true);
+
+  await expect
+    .poll(async () => page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as
+        | { getState: () => { totalUnreadCount: number } }
+        | undefined;
+      return store?.getState().totalUnreadCount ?? Number.POSITIVE_INFINITY;
+    }), { timeout: 10_000 })
+    .toBeLessThan(initialUnreadCount);
+
+  await compactPanel.evaluate((element) => {
+    const container = element as HTMLElement;
+    container.scrollTop = 0;
+    container.dispatchEvent(new Event("scroll"));
+  });
+
+  const secondCompactCard = compactPanel.locator(`[data-feed-item-id="${secondItemId}"]`).first();
+  await expect(secondCompactCard).toBeVisible({ timeout: 10_000 });
+  await expect(secondCompactCard).toHaveClass(/grayscale/);
 });
 
 test("keyboard focus scrolling keeps a full row visible past the focused item", async ({ app, page }) => {

@@ -7,6 +7,7 @@ import type {
   GeneratedBugReportBundle,
   ReportPrivacyTier,
 } from "@freed/shared";
+import { getReleaseChannelFromVersion } from "@freed/shared";
 import { useDebugStore } from "@freed/ui/lib/debug-store";
 import {
   buildBugReportManifest,
@@ -26,6 +27,11 @@ const APP_NAME = "Freed Desktop";
 
 interface DesktopRuntimeInfo {
   version: string;
+  releaseChannel: string;
+  buildKind: string;
+  commitSha: string | null;
+  commitRef: string | null;
+  deployedAt: string | null;
   platform: string;
   userAgent: string;
   appMode: "test" | "development" | "production";
@@ -58,6 +64,11 @@ async function getPlatformName(): Promise<string> {
 function getRuntimeInfo(platform: string): DesktopRuntimeInfo {
   return {
     version: __APP_VERSION__,
+    releaseChannel: getReleaseChannelFromVersion(__APP_VERSION__),
+    buildKind: __BUILD_KIND__,
+    commitSha: __BUILD_COMMIT_SHA__,
+    commitRef: __BUILD_COMMIT_REF__,
+    deployedAt: __BUILD_DEPLOYED_AT__,
     platform,
     userAgent: navigator.userAgent,
     appMode:

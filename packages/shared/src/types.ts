@@ -957,6 +957,96 @@ export function createDefaultPreferences(): UserPreferences {
   };
 }
 
+/**
+ * Merge persisted preferences with current defaults.
+ */
+export function mergeDefaultPreferences(
+  preferences?: Partial<UserPreferences> | null,
+): UserPreferences {
+  const defaults = createDefaultPreferences();
+  if (!preferences) {
+    return defaults;
+  }
+
+  const display = preferences.display as Partial<DisplayPreferences> | undefined;
+  const reading = display?.reading as Partial<ReadingEnhancements> | undefined;
+  const weights = preferences.weights as Partial<WeightPreferences> | undefined;
+  const ulysses = preferences.ulysses as Partial<UlyssesPreferences> | undefined;
+  const sync = preferences.sync as Partial<SyncPreferences> | undefined;
+  const xCapture = preferences.xCapture as Partial<XCapturePreferences> | undefined;
+  const fbCapture = preferences.fbCapture as Partial<FacebookCapturePreferences> | undefined;
+  const ai = preferences.ai as Partial<AIPreferences> | undefined;
+
+  return {
+    ...defaults,
+    ...preferences,
+    weights: {
+      ...defaults.weights,
+      ...weights,
+      platforms: {
+        ...defaults.weights.platforms,
+        ...(weights?.platforms ?? {}),
+      },
+      topics: {
+        ...defaults.weights.topics,
+        ...(weights?.topics ?? {}),
+      },
+      authors: {
+        ...defaults.weights.authors,
+        ...(weights?.authors ?? {}),
+      },
+    },
+    ulysses: {
+      ...defaults.ulysses,
+      ...ulysses,
+      allowedPaths: {
+        ...defaults.ulysses.allowedPaths,
+        ...(ulysses?.allowedPaths ?? {}),
+      },
+    },
+    sync: {
+      ...defaults.sync,
+      ...sync,
+    },
+    display: {
+      ...defaults.display,
+      ...display,
+      reading: {
+        ...defaults.display.reading,
+        ...reading,
+      },
+    },
+    xCapture: {
+      ...defaults.xCapture,
+      ...xCapture,
+      whitelist: {
+        ...defaults.xCapture.whitelist,
+        ...(xCapture?.whitelist ?? {}),
+      },
+      blacklist: {
+        ...defaults.xCapture.blacklist,
+        ...(xCapture?.blacklist ?? {}),
+      },
+    },
+    fbCapture: {
+      ...defaults.fbCapture,
+      ...fbCapture,
+      knownGroups: {
+        ...defaults.fbCapture.knownGroups,
+        ...(fbCapture?.knownGroups ?? {}),
+      },
+      excludedGroupIds: {
+        ...defaults.fbCapture.excludedGroupIds,
+        ...(fbCapture?.excludedGroupIds ?? {}),
+      },
+    },
+    ai: {
+      ...defaults.ai,
+      ...ai,
+    },
+  };
+}
+
 // =============================================================================
 // Google Contacts
 // =============================================================================

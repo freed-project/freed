@@ -47,7 +47,7 @@ import {
   confirmLikedSynced,
   confirmSeenSynced,
 } from "@freed/shared/schema";
-import { createDefaultPreferences, rankFeedItems } from "@freed/shared";
+import { mergeDefaultPreferences, rankFeedItems } from "@freed/shared";
 import type { Account, FeedItem, Friend, LegacyDeviceContact, LegacyFriendSource, Person, RssFeed, UserPreferences } from "@freed/shared";
 import type { DocState, WorkerRequest, WorkerResponse } from "./automerge-types";
 
@@ -176,46 +176,7 @@ function hydrateFromDoc(doc: FreedDoc): DocState {
   const persons = (plain.persons ?? {}) as Record<string, Person>;
   const accounts = (plain.accounts ?? {}) as Record<string, Account>;
   const friends = projectLegacyFriends(persons, accounts);
-  const preferences = {
-    ...createDefaultPreferences(),
-    ...(plain.preferences as Partial<UserPreferences>),
-    xCapture: {
-      ...createDefaultPreferences().xCapture,
-      ...(plain.preferences?.xCapture as Partial<UserPreferences["xCapture"]> | undefined),
-    },
-    fbCapture: {
-      ...createDefaultPreferences().fbCapture,
-      ...(plain.preferences?.fbCapture as Partial<UserPreferences["fbCapture"]> | undefined),
-    },
-    ai: {
-      ...createDefaultPreferences().ai,
-      ...(plain.preferences?.ai as Partial<UserPreferences["ai"]> | undefined),
-    },
-    display: {
-      ...createDefaultPreferences().display,
-      ...(plain.preferences?.display as Partial<UserPreferences["display"]> | undefined),
-      reading: {
-        ...createDefaultPreferences().display.reading,
-        ...(plain.preferences?.display?.reading as Partial<UserPreferences["display"]["reading"]> | undefined),
-      },
-    },
-    sync: {
-      ...createDefaultPreferences().sync,
-      ...(plain.preferences?.sync as Partial<UserPreferences["sync"]> | undefined),
-    },
-    ulysses: {
-      ...createDefaultPreferences().ulysses,
-      ...(plain.preferences?.ulysses as Partial<UserPreferences["ulysses"]> | undefined),
-      allowedPaths: {
-        ...createDefaultPreferences().ulysses.allowedPaths,
-        ...(plain.preferences?.ulysses?.allowedPaths as Record<string, string[]> | undefined),
-      },
-    },
-    weights: {
-      ...createDefaultPreferences().weights,
-      ...(plain.preferences?.weights as Partial<UserPreferences["weights"]> | undefined),
-    },
-  } satisfies UserPreferences;
+  const preferences = mergeDefaultPreferences(plain.preferences as Partial<UserPreferences> | undefined);
 
   const visibleItems = plainItems.filter((item) => !item.userState.hidden);
   const rankedItems = rankFeedItems(

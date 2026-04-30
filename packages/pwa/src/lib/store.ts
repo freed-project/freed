@@ -54,6 +54,19 @@ import {
 import type { DocState } from "./automerge";
 import { pinReaderItemInPwa } from "./reader-cache";
 
+function readStateIdTails(ids: readonly string[]): string[] {
+  return ids.slice(0, 5).map((id) => `...${id.slice(-8)}`);
+}
+
+function recordReadStateInfo(message: string, detail: Record<string, unknown>): void {
+  recordBugReportEvent(
+    "pwa:readState",
+    "info",
+    message,
+    JSON.stringify(detail),
+  );
+}
+
 /** PWA-specific store state — extends the shared base with sync connection status. */
 interface AppState extends BaseAppState {
   syncConnected: boolean;
@@ -194,7 +207,42 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   markItemsAsRead: async (ids) => {
-    await docMarkItemsAsRead(ids);
+    const nextIds = ids.filter(Boolean);
+    if (nextIds.length === 0) return;
+
+    const startedAt = performance.now();
+    const beforeUnreadCount = get().totalUnreadCount;
+    recordReadStateInfo(
+      `Queued ${nextIds.length.toLocaleString()} read mark${nextIds.length === 1 ? "" : "s"}`,
+      {
+        queuedCount: nextIds.length,
+        beforeUnreadCount,
+        itemIdTails: readStateIdTails(nextIds),
+      },
+    );
+
+    try {
+      await docMarkItemsAsRead(nextIds);
+      recordReadStateInfo(
+        `Flushed ${nextIds.length.toLocaleString()} read mark${nextIds.length === 1 ? "" : "s"}`,
+        {
+          batchCount: nextIds.length,
+          beforeUnreadCount,
+          afterUnreadCount: get().totalUnreadCount,
+          durationMs: Math.round(performance.now() - startedAt),
+          itemIdTails: readStateIdTails(nextIds),
+        },
+      );
+    } catch (error) {
+      recordRuntimeError({ source: "pwa:readState", error, fatal: false });
+      recordBugReportEvent(
+        "pwa:readState",
+        "error",
+        `Read state update failed for ${nextIds.length.toLocaleString()} item${nextIds.length === 1 ? "" : "s"}`,
+        error instanceof Error ? error.message : String(error),
+      );
+      throw error;
+    }
   },
 
   markAllAsRead: async (platform) => {
