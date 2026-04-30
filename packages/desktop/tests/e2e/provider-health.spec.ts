@@ -799,8 +799,117 @@ test("facebook groups settings separate last-active text and show active counts"
   await expect(page.getByRole("button", { name: "Activate all", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Deactivate all", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeVisible();
+  await expect(page.getByTestId("facebook-groups-filter")).toBeVisible();
+  await expect(page.getByTestId("facebook-groups-list-scroll")).toBeVisible();
   await expect(page.getByTestId("facebook-group-one-label")).toHaveText("CDA Buy Trade Or Sell");
   await expect(page.getByTestId("facebook-group-one-meta")).toHaveText("Last active about a minute ago");
+
+  await page.getByTestId("facebook-groups-filter").fill("North Idaho");
+  await expect(page.getByRole("button", { name: "Activate shown", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Deactivate shown", exact: true })).toBeVisible();
+  await expect(page.getByTestId("facebook-group-two-label")).toHaveText("North Idaho Life");
+  await expect(page.getByTestId("facebook-group-one-label")).toHaveCount(0);
+});
+
+test("late Facebook group loads stay inside the inner settings scroller", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      setState: (partial: Record<string, unknown>) => void;
+      getState: () => {
+        updatePreferences: (update: Record<string, unknown>) => Promise<void>;
+      };
+    };
+    const state = store.getState();
+
+    store.setState({
+      fbAuth: {
+        isAuthenticated: true,
+      },
+    });
+    await state.updatePreferences({
+      fbCapture: {
+        knownGroups: {},
+        excludedGroupIds: {},
+      },
+    });
+  });
+
+  await openSettingsSection(page, "Instagram");
+  await expect(page.getByTestId("facebook-groups-list-scroll")).toBeAttached();
+
+  const before = await page.evaluate(() => {
+    const scroll = document.querySelector<HTMLElement>("[data-testid='settings-scroll-container']");
+    const headings = Array.from(document.querySelectorAll<HTMLElement>("h3"));
+    const instagramHeading = headings.find((heading) => heading.textContent === "Instagram");
+    return {
+      scrollTop: scroll?.scrollTop ?? 0,
+      headingTop: instagramHeading?.getBoundingClientRect().top ?? 0,
+    };
+  });
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (update: Record<string, unknown>) => Promise<void>;
+      };
+    };
+    const knownGroups = Object.fromEntries(
+      Array.from({ length: 80 }, (_, index) => {
+        const id = `group-${index}`;
+        return [
+          id,
+          {
+            id,
+            name: `Late Loaded Group ${index.toLocaleString()} last active ${index.toLocaleString()}m ago`,
+            url: `https://facebook.com/groups/${id}`,
+          },
+        ];
+      }),
+    );
+
+    await store.getState().updatePreferences({
+      fbCapture: {
+        knownGroups,
+        excludedGroupIds: {},
+      },
+    });
+  });
+
+  await page.waitForFunction(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            preferences: {
+              fbCapture?: {
+                knownGroups?: Record<string, unknown>;
+              };
+            };
+          };
+        }
+      | undefined;
+    return Object.keys(store?.getState().preferences.fbCapture?.knownGroups ?? {}).length === 80;
+  });
+
+  const after = await page.evaluate(() => {
+    const scroll = document.querySelector<HTMLElement>("[data-testid='settings-scroll-container']");
+    const headings = Array.from(document.querySelectorAll<HTMLElement>("h3"));
+    const instagramHeading = headings.find((heading) => heading.textContent === "Instagram");
+    return {
+      scrollTop: scroll?.scrollTop ?? 0,
+      headingTop: instagramHeading?.getBoundingClientRect().top ?? 0,
+    };
+  });
+
+  expect(Math.abs(after.scrollTop - before.scrollTop)).toBeLessThanOrEqual(2);
+  expect(Math.abs(after.headingTop - before.headingTop)).toBeLessThanOrEqual(2);
 });
 
 test("auth failures in X settings prompt the user to reconnect", async ({ app, page }) => {
@@ -2569,6 +2678,16 @@ test("feeds settings surfaces one needs-review filter and bulk unsubscribe above
   const settingsDialog = page.locator(".fixed.inset-0.z-50").last();
 
   await expect(settingsDialog.getByRole("button", { name: "All (2)", exact: true })).toBeVisible();
+  await expect(settingsDialog.getByTestId("feeds-manage-filter")).toBeVisible();
+  await expect(settingsDialog.getByTestId("feeds-manage-list-scroll")).toBeVisible();
+  await settingsDialog.getByTestId("feeds-manage-filter").fill("healthy");
+  await expect(settingsDialog.getByText("Healthy Feed")).toBeVisible();
+  await expect(settingsDialog.getByText("Broken Feed")).toHaveCount(0);
+  await settingsDialog.getByTestId("feeds-manage-filter").fill("404");
+  await expect(settingsDialog.getByText("Broken Feed")).toBeVisible();
+  await expect(settingsDialog.getByText("404 Not Found")).toBeVisible();
+  await settingsDialog.getByTestId("feeds-manage-filter").fill("");
+
   const needsReviewButton = settingsDialog.getByRole("button", {
     name: "Needs review (1)",
     exact: true,

@@ -18,6 +18,7 @@
     "./components/SettingsDialog": "./src/components/SettingsDialog.tsx",
     "./components/UpdateProgressBar": "./src/components/UpdateProgressBar.tsx",
     "./components/settings/GoogleContactsSection": "./src/components/settings/GoogleContactsSection.tsx",
+    "./components/settings/SettingsListPanel": "./src/components/settings/SettingsListPanel.tsx",
     "./components/BugReportBoundary": "./src/components/BugReportBoundary.tsx",
     "./components/FatalErrorScreen": "./src/components/FatalErrorScreen.tsx",
     "./components/legal/LegalGate": "./src/components/legal/LegalGate.tsx",

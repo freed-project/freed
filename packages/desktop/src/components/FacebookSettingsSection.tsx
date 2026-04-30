@@ -16,6 +16,7 @@ import {
   getProviderStatusTone,
 } from "@freed/ui/lib/provider-status";
 import { ProviderStatusIndicator } from "@freed/ui/components/ProviderStatusIndicator";
+import { SettingsListPanel } from "@freed/ui/components/settings/SettingsListPanel";
 import type { FbGroupInfo } from "@freed/shared";
 import { useAppStore } from "../lib/store";
 import {
@@ -307,6 +308,36 @@ export function FacebookSettingsSection({
     await setExcludedGroups(nextExcluded);
   }, [groups, setExcludedGroups]);
 
+  const handleSelectShownGroups = useCallback(
+    async (shownGroups: readonly FbGroupInfo[]) => {
+      if (shownGroups.length === groups.length) {
+        await handleSelectAllGroups();
+        return;
+      }
+      const nextExcluded = { ...excludedGroupIds };
+      for (const group of shownGroups) {
+        delete nextExcluded[group.id];
+      }
+      await setExcludedGroups(nextExcluded);
+    },
+    [excludedGroupIds, groups.length, handleSelectAllGroups, setExcludedGroups],
+  );
+
+  const handleDeselectShownGroups = useCallback(
+    async (shownGroups: readonly FbGroupInfo[]) => {
+      if (shownGroups.length === groups.length) {
+        await handleDeselectAllGroups();
+        return;
+      }
+      const nextExcluded = { ...excludedGroupIds };
+      for (const group of shownGroups) {
+        nextExcluded[group.id] = true;
+      }
+      await setExcludedGroups(nextExcluded);
+    },
+    [excludedGroupIds, groups.length, handleDeselectAllGroups, setExcludedGroups],
+  );
+
   const handleRefreshGroups = useCallback(async () => {
     setRefreshingGroups(true);
     setError(null);
@@ -445,29 +476,44 @@ export function FacebookSettingsSection({
             authenticated={fbAuth.isAuthenticated}
           />
 
-          {groups.length > 0 && (
-            <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-baseline gap-2 min-w-0">
-                  <p className="text-sm text-[#a1a1aa]">Groups</p>
-                  <p className="text-xs text-[#71717a] truncate">
-                    {activeGroupCount.toLocaleString()} active of {groups.length.toLocaleString()} total
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
+          <SettingsListPanel
+            items={groups}
+            title="Groups"
+            summary={`${activeGroupCount.toLocaleString()} active of ${groups.length.toLocaleString()} total`}
+            searchPlaceholder="Filter groups"
+            ariaLabel="Filter Facebook groups"
+            emptyLabel="No groups found."
+            noMatchesLabel="No groups match that filter."
+            dataTestId="facebook-groups-list"
+            searchDataTestId="facebook-groups-filter"
+            scrollDataTestId="facebook-groups-list-scroll"
+            className="border-white/10 bg-white/5"
+            listClassName="space-y-3"
+            reserveScrollHeight
+            itemKey={(group) => group.id}
+            getSearchText={(group) => {
+              const { title, lastActiveText } = splitFacebookGroupName(group.name);
+              return [title, lastActiveText, group.id, group.url, group.name].filter(Boolean).join(" ");
+            }}
+            actions={(shownGroups, query) => {
+              const bulkTargetLabel = query ? "shown" : "all";
+              return (
+                <>
                   <button
                     type="button"
-                    onClick={() => { void handleSelectAllGroups(); }}
-                    className="text-xs text-[#71717a] hover:text-[#a1a1aa] transition-colors"
+                    onClick={() => { void handleSelectShownGroups(shownGroups); }}
+                    disabled={shownGroups.length === 0}
+                    className="text-xs text-[#71717a] hover:text-[#a1a1aa] disabled:opacity-50 transition-colors"
                   >
-                    Activate all
+                    Activate {bulkTargetLabel}
                   </button>
                   <button
                     type="button"
-                    onClick={() => { void handleDeselectAllGroups(); }}
-                    className="text-xs text-[#71717a] hover:text-[#a1a1aa] transition-colors"
+                    onClick={() => { void handleDeselectShownGroups(shownGroups); }}
+                    disabled={shownGroups.length === 0}
+                    className="text-xs text-[#71717a] hover:text-[#a1a1aa] disabled:opacity-50 transition-colors"
                   >
-                    Deactivate all
+                    Deactivate {bulkTargetLabel}
                   </button>
                   <button
                     type="button"
@@ -477,30 +523,26 @@ export function FacebookSettingsSection({
                   >
                     {refreshingGroups ? "Refreshing..." : "Refresh"}
                   </button>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {groups.map((group) => {
-                  const included = !excludedGroupIds[group.id];
-                  const { title, lastActiveText } = splitFacebookGroupName(group.name);
-                  return (
-                    <Toggle
-                      key={group.id}
-                      testId={`facebook-group-${group.id}`}
-                      label={title}
-                      checked={included}
-                      onChange={(nextIncluded) => {
-                        void handleToggleGroup(group, nextIncluded);
-                      }}
-                      meta={lastActiveText}
-                      description={included ? "Included in future syncs" : "Hidden from future syncs"}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          )}
+                </>
+              );
+            }}
+            renderItem={(group) => {
+              const included = !excludedGroupIds[group.id];
+              const { title, lastActiveText } = splitFacebookGroupName(group.name);
+              return (
+                <Toggle
+                  testId={`facebook-group-${group.id}`}
+                  label={title}
+                  checked={included}
+                  onChange={(nextIncluded) => {
+                    void handleToggleGroup(group, nextIncluded);
+                  }}
+                  meta={lastActiveText}
+                  description={included ? "Included in future syncs" : "Hidden from future syncs"}
+                />
+              );
+            }}
+          />
 
           <details className="group">
             <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">

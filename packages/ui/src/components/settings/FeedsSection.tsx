@@ -7,6 +7,7 @@ import { parseOPML, readFileAsText } from "@freed/shared";
 import type { OPMLFeedEntry, ImportProgress } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useDebugStore } from "../../lib/debug-store.js";
+import { SettingsListPanel } from "./SettingsListPanel.js";
 
 type FeedTab = "manage" | "import" | "export";
 type ImportPhase = "idle" | "preview" | "importing" | "complete";
@@ -26,6 +27,13 @@ function isLikelyDeadFeed(error?: string): boolean {
     /\bunknown host\b/i.test(error) ||
     /\bdns\b/i.test(error)
   );
+}
+
+function getFeedSearchText(
+  feed: { title: string; url: string; folder?: string },
+  extra?: string,
+): string {
+  return [feed.title, feed.url, feed.folder, extra].filter(Boolean).join(" ");
 }
 
 // ── Shared tab bar ────────────────────────────────────────────────────────────
@@ -192,20 +200,27 @@ function ManagePane() {
         </button>
       </div>
 
-      {filteredFeedList.length === 0 ? (
-          <div className="rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-card)] px-4 py-6 text-center">
-          <p className="text-sm text-[var(--theme-text-muted)]">
-            {feedFilter === "problem"
-              ? "No problem feeds right now."
-              : "No feeds subscribed yet."}
-          </p>
-        </div>
-      ) : (
-      <div
-        className="max-h-[min(52vh,32rem)] space-y-2 overflow-y-auto pr-1"
-        data-testid="feeds-manage-list"
-      >
-        {filteredFeedList.map((feed) => {
+      <SettingsListPanel
+        items={filteredFeedList}
+        title="Feeds"
+        searchPlaceholder="Filter feeds"
+        ariaLabel="Filter feeds"
+        emptyLabel={feedFilter === "problem" ? "No problem feeds right now." : "No feeds subscribed yet."}
+        noMatchesLabel="No feeds match that filter."
+        dataTestId="feeds-manage-list"
+        searchDataTestId="feeds-manage-filter"
+        scrollDataTestId="feeds-manage-list-scroll"
+        itemKey={(feed) => feed.url}
+        getSearchText={(feed) => {
+          const failingFeed = failingFeedByUrl.get(feed.url);
+          const status = failingFeed
+            ? isLikelyDeadFeed(failingFeed.lastError)
+              ? "Likely dead"
+              : "Failing"
+            : "";
+          return getFeedSearchText(feed, [status, failingFeed?.lastError].filter(Boolean).join(" "));
+        }}
+        renderItem={(feed) => {
           const failingFeed = failingFeedByUrl.get(feed.url);
           const showLikelyDead = !!failingFeed && isLikelyDeadFeed(failingFeed.lastError);
           return (
@@ -262,9 +277,8 @@ function ManagePane() {
               </button>
             </div>
           );
-        })}
-      </div>
-      )}
+        }}
+      />
 
       {showRemoveAll && (
         <div className="theme-elevated-overlay fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4 sm:items-center">
@@ -501,8 +515,22 @@ function ImportPane() {
           </button>
         )}
 
-        <div className="space-y-1 max-h-64 overflow-y-auto -mx-1 px-1">
-          {parsedFeeds.map((feed, i) => {
+        <SettingsListPanel
+          items={parsedFeeds.map((feed, index) => ({ feed, index }))}
+          title="Import preview"
+          searchPlaceholder="Filter import preview"
+          ariaLabel="Filter import preview"
+          emptyLabel="No feeds found."
+          noMatchesLabel="No feeds match that filter."
+          dataTestId="feeds-import-preview-list"
+          searchDataTestId="feeds-import-preview-filter"
+          scrollDataTestId="feeds-import-preview-list-scroll"
+          listClassName="space-y-1"
+          itemKey={({ feed, index }) => feed.url + index}
+          getSearchText={({ feed }) =>
+            getFeedSearchText(feed, existingUrls.has(feed.url) ? "subscribed" : "new")
+          }
+          renderItem={({ feed, index: i }) => {
             const isExisting = existingUrls.has(feed.url);
             const isSelected = selected.has(i);
             return (
@@ -535,8 +563,8 @@ function ImportPane() {
                 )}
               </label>
             );
-          })}
-        </div>
+          }}
+        />
 
         <div className="mt-4 flex justify-end gap-3 border-t border-[var(--theme-border-subtle)] pt-4">
           <button onClick={handleReset} className="px-4 py-2.5 text-sm text-[var(--theme-text-secondary)] transition-colors hover:text-[var(--theme-text-primary)]">
@@ -665,9 +693,21 @@ function ExportPane() {
         </svg>
       </div>
 
-      <div className="max-h-48 overflow-y-auto space-y-1">
-        {feedList.map((feed) => (
-          <div key={feed.url} className="flex items-center gap-2 px-3 py-2 rounded-lg">
+      <SettingsListPanel
+        items={feedList}
+        title="Export preview"
+        searchPlaceholder="Filter export preview"
+        ariaLabel="Filter export preview"
+        emptyLabel="No feed subscriptions to export."
+        noMatchesLabel="No feeds match that filter."
+        dataTestId="feeds-export-preview-list"
+        searchDataTestId="feeds-export-preview-filter"
+        scrollDataTestId="feeds-export-preview-list-scroll"
+        listClassName="space-y-1"
+        itemKey={(feed) => feed.url}
+        getSearchText={(feed) => getFeedSearchText(feed)}
+        renderItem={(feed) => (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg">
             <svg className="h-3.5 w-3.5 flex-shrink-0 text-[rgb(var(--theme-accent-secondary-rgb)/0.75)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7M6 17a1 1 0 110-2 1 1 0 010 2z" />
             </svg>
@@ -678,8 +718,8 @@ function ExportPane() {
               </span>
             )}
           </div>
-        ))}
-      </div>
+        )}
+      />
 
       <button
         onClick={() => exportFeedsAsOPML?.()}

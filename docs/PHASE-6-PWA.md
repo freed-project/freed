@@ -250,6 +250,7 @@ Build chain: `@freed/shared` → `@freed/sync` → `vite build` (configured in `
 - [x] PWA Settings surfaces X / Twitter, Facebook, Instagram, and LinkedIn with Freed Desktop sync and download handoff states
 - [x] Theme changes in Settings temporarily clear the frosted backdrop on touch devices so the active page treatment stays visible while previewing themes
 - [x] Mobile Settings now open as a full-height sheet with a persistent close button, larger back target, and reliable section jumps instead of snapping back to the last scrolled provider section
+- [x] Shared Settings list panels keep RSS management and OPML previews inside filtered inner scrollers capped to the Settings sheet height
 - [x] Appearance exposes `Show read in grayscale`, and mark-read-on-scroll now subtracts the feed list offset before marking mobile rows as passed
 - [x] The shared floating mobile sidebar now behaves like a real toggle, so the same hamburger button opens and closes it cleanly
 - [x] Private diagnostics stay opt-in and are clearly separated from public GitHub sharing
