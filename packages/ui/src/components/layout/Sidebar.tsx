@@ -906,6 +906,17 @@ export function Sidebar({
     source.id === "facebook" ||
     source.id === "instagram" ||
     source.id === "linkedin";
+  const isSocialSource = (source: SourceNavigationItem) =>
+    source.id === "x" ||
+    source.id === "facebook" ||
+    source.id === "instagram" ||
+    source.id === "linkedin";
+  const providerRowShellClass = rowCountsVisible ? "-mx-1.5 px-1.5" : "";
+  const providerRowLeadingPaddingClass = (source: SourceNavigationItem) =>
+    rowCountsVisible && isSocialSource(source) ? "pl-1" : rowLeadingPaddingClass;
+  const sourceMenuTriggerBaseClass = rowCountsVisible
+    ? "absolute right-0 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)]"
+    : "absolute top-[-1px] bottom-[-1px] right-0 flex items-center justify-center rounded-md px-1 transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)]";
   const sourceActionSlotClass = (source: SourceNavigationItem) => {
     if (rowCountsVisible) return "ml-1.5 w-[54px]";
     if (!sourceMenusVisible || !canShowSourceMenu(source)) return "ml-0 w-0";
@@ -1352,10 +1363,10 @@ export function Sidebar({
                     <li key={sourceKey(source)} className={sourceOrderClass(source)}>
                       <div className="space-y-1">
                         <div
-                          className={`group/source rounded-lg border transition-all ${
-                          isTopSourceActive(source)
-                            ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
-                            : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
+                          className={`group/source rounded-lg border transition-all ${providerRowShellClass} ${
+                            isTopSourceActive(source)
+                              ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
+                              : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
                           }`}
                         >
                           <div className="flex items-stretch gap-2">
@@ -1371,7 +1382,7 @@ export function Sidebar({
                             role="button"
                             tabIndex={0}
                             className={`
-                              flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 ${rowLeadingPaddingClass} ${rowVerticalPaddingClass} outline-none
+                              flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 ${providerRowLeadingPaddingClass(source)} ${rowVerticalPaddingClass} outline-none
                               ${
                                 isTopSourceActive(source)
                                   ? "text-[color:var(--theme-text-primary)]"
@@ -1465,7 +1476,7 @@ export function Sidebar({
                                       setSourceMenuAnchorElement(e.currentTarget);
                                     }
                                   }}
-                                  className={`absolute top-[-1px] bottom-[-1px] right-0 flex items-center justify-center rounded-md px-1 transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)] ${
+                                  className={`${sourceMenuTriggerBaseClass} ${
                                     openMenuSourceKey === sourceKey(source)
                                       ? "translate-x-0 bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-primary)] opacity-100"
                                       : "pointer-events-none translate-x-[-4px] text-[color:var(--theme-text-muted)] opacity-0 group-hover/source:pointer-events-auto group-hover/source:translate-x-0 group-hover/source:opacity-100"
@@ -1609,7 +1620,7 @@ export function Sidebar({
                 return (
                   <li
                     key={source.id ?? "all"}
-                    className={`${sourceOrderClass(source)} group/source flex items-stretch gap-0 rounded-lg border transition-all ${
+                    className={`${sourceOrderClass(source)} group/source flex items-stretch gap-0 rounded-lg border transition-all ${providerRowShellClass} ${
                       isTopSourceActive(source)
                         ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
                         : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
@@ -1619,7 +1630,7 @@ export function Sidebar({
                       onClick={() => handleSourceClick(source)}
                       data-testid={`source-row-${sourceKey(source)}`}
                       className={`
-                        flex-1 cursor-pointer flex items-center ${rowGapClass} ${rowLeadingPaddingClass} ${rowVerticalPaddingClass} min-w-0
+                        flex-1 cursor-pointer flex items-center ${rowGapClass} ${providerRowLeadingPaddingClass(source)} ${rowVerticalPaddingClass} min-w-0
                         text-left ${rowTextClass} transition-all
                         ${
                           isTopSourceActive(source)
@@ -1678,7 +1689,7 @@ export function Sidebar({
                                 setSourceMenuAnchorElement(e.currentTarget);
                               }
                             }}
-                            className={`absolute top-[-1px] bottom-[-1px] right-0 flex items-center justify-center rounded-md px-1 transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)] ${
+                            className={`${sourceMenuTriggerBaseClass} ${
                               openMenuSourceKey === sourceKey(source)
                                 ? "translate-x-0 bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-primary)] opacity-100"
                                 : "pointer-events-none translate-x-[-4px] text-[color:var(--theme-text-muted)] opacity-0 group-hover/source:pointer-events-auto group-hover/source:translate-x-0 group-hover/source:opacity-100"

@@ -2105,6 +2105,96 @@ test("source rows swap counts for an actions menu on hover", async ({ app, page 
   await expect(page.getByText("X / Twitter").first()).toBeVisible();
 });
 
+test("full detail provider rows expand highlights without moving counts", async ({ app, page }) => {
+  await seedAcceptedDesktopConsent(page);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(() => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        preferences: {
+          display: {
+            sidebarMode?: string;
+            sidebarWidth?: number;
+          };
+        };
+      };
+      setState: (partial: Record<string, unknown>) => void;
+    };
+    const current = store.getState();
+
+    store.setState({
+      preferences: {
+        ...current.preferences,
+        display: {
+          ...current.preferences.display,
+          sidebarMode: "expanded",
+          sidebarWidth: 256,
+        },
+      },
+      xAuth: {
+        isAuthenticated: true,
+        cookies: { ct0: "ct0", authToken: "token" },
+      },
+      unreadCountByPlatform: {
+        x: 45,
+      },
+      itemCountByPlatform: {
+        x: 350,
+      },
+    });
+  });
+
+  const sidebar = getDesktopSidebar(page);
+  await expect(sidebar.getByTestId("source-counts-x")).toContainText("45/350");
+
+  const layout = await page.evaluate(() => {
+    const sidebarElement = document.querySelector('[data-testid="app-sidebar"]');
+    const sourceRow = sidebarElement?.querySelector('[data-testid="source-row-x"]') as HTMLElement | null;
+    const savedRow = Array.from(sidebarElement?.querySelectorAll("button") ?? []).find((button) =>
+      button.textContent?.trim().startsWith("Saved")
+    ) as HTMLElement | undefined;
+    const rowShell = sourceRow?.parentElement as HTMLElement | null;
+    const sourceIcon = sourceRow?.querySelector("span.relative") as HTMLElement | null;
+    const savedIcon = savedRow?.querySelector("span.relative") as HTMLElement | null;
+    const count = sidebarElement?.querySelector('[data-testid="source-counts-x"]') as HTMLElement | null;
+    const actionSlot = rowShell?.querySelector(".relative.self-stretch.shrink-0") as HTMLElement | null;
+    const trigger = sidebarElement?.querySelector('[data-testid="source-menu-trigger-x"]') as HTMLElement | null;
+
+    if (!sourceRow || !savedRow || !rowShell || !sourceIcon || !savedIcon || !count || !actionSlot || !trigger) {
+      return null;
+    }
+
+    const rowRect = rowShell.getBoundingClientRect();
+    const sourceRowRect = sourceRow.getBoundingClientRect();
+    const sourceIconRect = sourceIcon.getBoundingClientRect();
+    const savedIconRect = savedIcon.getBoundingClientRect();
+    const countRect = count.getBoundingClientRect();
+    const actionSlotRect = actionSlot.getBoundingClientRect();
+    const triggerRect = trigger.getBoundingClientRect();
+
+    return {
+      highlightLeftPad: sourceRowRect.left - rowRect.left,
+      highlightRightPad: rowRect.right - countRect.right,
+      countSlotRightDelta: Math.abs(actionSlotRect.right - countRect.right),
+      socialIconShiftLeft: savedIconRect.left - sourceIconRect.left,
+      triggerWidth: triggerRect.width,
+      triggerHeight: triggerRect.height,
+    };
+  });
+
+  expect(layout).not.toBeNull();
+  expect(layout!.highlightLeftPad).toBeGreaterThanOrEqual(5);
+  expect(layout!.highlightRightPad).toBeGreaterThanOrEqual(7);
+  expect(layout!.countSlotRightDelta).toBeLessThanOrEqual(1);
+  expect(layout!.socialIconShiftLeft).toBeGreaterThanOrEqual(1);
+  expect(Math.abs(layout!.triggerWidth - layout!.triggerHeight)).toBeLessThanOrEqual(1);
+});
+
 test("narrow labeled provider rows keep labels readable and source menus available", async ({ app, page }) => {
   await seedAcceptedDesktopConsent(page);
 
@@ -2156,7 +2246,9 @@ test("narrow labeled provider rows keep labels readable and source menus availab
     return ids.map((id) => {
       const row = sidebar.querySelector(`[data-testid="source-row-${id}"]`) as HTMLElement | null;
       const label = row?.querySelector("span.min-w-0") as HTMLElement | null;
-      const actionSlot = row?.parentElement?.querySelector(".relative.h-6.shrink-0") as HTMLElement | null;
+      const actionSlot = row?.parentElement?.querySelector(
+        ".relative.self-stretch.shrink-0, .relative.h-6.shrink-0",
+      ) as HTMLElement | null;
       if (!row || !label || !actionSlot) {
         return {
           id,
@@ -2190,6 +2282,15 @@ test("narrow labeled provider rows keep labels readable and source menus availab
 
   await xRow.hover();
   await expect(xTrigger).toHaveClass(/opacity-100/);
+
+  const narrowTriggerLayout = await xTrigger.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      width: rect.width,
+      height: rect.height,
+    };
+  });
+  expect(narrowTriggerLayout.height - narrowTriggerLayout.width).toBeGreaterThanOrEqual(2);
 
   await xTrigger.click();
   await expect(page.getByTestId("source-context-menu-x")).toBeVisible();
