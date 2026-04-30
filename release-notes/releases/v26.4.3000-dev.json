@@ -3,7 +3,7 @@
   "version": "26.4.3000-dev",
   "channel": "dev",
   "dayKey": "26.4.30",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-30T17:09:34.930Z",
   "model": "heuristic",
@@ -29,10 +29,14 @@
     ]
   },
   "release": {
-    "deck": "Renderer recovery and model installs are now more stable and main window reopen after renderer recovery restored",
+    "deck": "Freed Desktop now keeps the app alive while rebuilding a stalled main window, and large AI model pack downloads put less pressure on the interface.",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Rebuild the main window through a hidden keepalive window during renderer recovery, so watchdog recovery no longer quits the app before the replacement window opens.",
+      "Batch local AI model file writes and throttle progress updates during model pack installs to keep Settings responsive during large downloads.",
+      "Keep Pause available while an AI model download is active."
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.3000-dev\n\nRenderer recovery and model installs are now more stable and main window reopen after renderer recovery restored\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.3000-dev\n\nFreed Desktop now keeps the app alive while rebuilding a stalled main window, and large AI model pack downloads put less pressure on the interface.\n\n### Fixes\n\n- Rebuild the main window through a hidden keepalive window during renderer recovery, so watchdog recovery no longer quits the app before the replacement window opens.\n- Batch local AI model file writes and throttle progress updates during model pack installs to keep Settings responsive during large downloads.\n- Keep Pause available while an AI model download is active.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
