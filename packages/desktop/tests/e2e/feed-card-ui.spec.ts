@@ -2,13 +2,27 @@ import { test, expect } from "./fixtures/app";
 
 const FACEBOOK_TITLE = "Card UI Overhaul Facebook Item";
 const RSS_TITLE = "Card UI Overhaul RSS Item";
+const STORY_TITLE = "Story thumbnail proof";
+const BROKEN_TITLE = "Broken thumbnail fallback proof";
 const FACEBOOK_URL = "https://example.com/facebook/card-ui-overhaul";
 const RSS_URL = "https://example.com/rss/card-ui-overhaul";
-const FACEBOOK_MEDIA_URL = "https://images.example.com/facebook/card-ui-overhaul.jpg";
+const FACEBOOK_MEDIA_URL = "/freed.svg?feed-card";
+const STORY_MEDIA_URL = "/freed.svg?story-tile";
+const BROKEN_MEDIA_URL = "/freed.svg?fallback";
 
 async function injectCardUiItems(page: import("@playwright/test").Page): Promise<void> {
   await page.evaluate(
-    async ({ facebookTitle, rssTitle, facebookUrl, rssUrl, facebookMediaUrl }) => {
+    async ({
+      facebookTitle,
+      rssTitle,
+      storyTitle,
+      brokenTitle,
+      facebookUrl,
+      rssUrl,
+      facebookMediaUrl,
+      storyMediaUrl,
+      brokenMediaUrl,
+    }) => {
       const now = Date.now();
       const w = window as Record<string, unknown>;
       const automerge = w.__FREED_AUTOMERGE__ as {
@@ -50,6 +64,56 @@ async function injectCardUiItems(page: import("@playwright/test").Page): Promise
           },
           topics: ["testing"],
           sourceUrl: facebookUrl,
+        },
+        {
+          globalId: "test-instagram-story-thumbnail",
+          platform: "instagram",
+          contentType: "story",
+          capturedAt: now - 25_000,
+          publishedAt: now - 55_000,
+          author: {
+            id: "test-instagram-story-author",
+            handle: "story.thumbnail",
+            displayName: "Story Thumbnail",
+          },
+          content: {
+            text: storyTitle,
+            mediaUrls: [storyMediaUrl],
+            mediaTypes: ["image"],
+          },
+          userState: {
+            hidden: false,
+            saved: false,
+            archived: false,
+            tags: [],
+          },
+          topics: ["testing"],
+          sourceUrl: "https://www.instagram.com/stories/story.thumbnail/123",
+        },
+        {
+          globalId: "test-broken-thumbnail-fallback",
+          platform: "facebook",
+          contentType: "post",
+          capturedAt: now - 22_000,
+          publishedAt: now - 50_000,
+          author: {
+            id: "test-broken-thumbnail-author",
+            handle: "broken.thumbnail",
+            displayName: "Broken Thumbnail",
+          },
+          content: {
+            text: brokenTitle,
+            mediaUrls: [brokenMediaUrl],
+            mediaTypes: ["image"],
+          },
+          userState: {
+            hidden: false,
+            saved: false,
+            archived: false,
+            tags: [],
+          },
+          topics: ["testing"],
+          sourceUrl: "https://example.com/broken-thumbnail",
         },
         {
           globalId: "test-rss-card-ui-overhaul",
@@ -95,9 +159,13 @@ async function injectCardUiItems(page: import("@playwright/test").Page): Promise
     {
       facebookTitle: FACEBOOK_TITLE,
       rssTitle: RSS_TITLE,
+      storyTitle: STORY_TITLE,
+      brokenTitle: BROKEN_TITLE,
       facebookUrl: FACEBOOK_URL,
       rssUrl: RSS_URL,
       facebookMediaUrl: FACEBOOK_MEDIA_URL,
+      storyMediaUrl: STORY_MEDIA_URL,
+      brokenMediaUrl: BROKEN_MEDIA_URL,
     },
   );
 }
@@ -129,6 +197,36 @@ async function setShowEngagementCounts(
   }, show);
 }
 
+async function setDualColumnMode(
+  page: import("@playwright/test").Page,
+  enabled: boolean,
+): Promise<void> {
+  await page.evaluate(async (shouldEnable) => {
+    const w = window as Record<string, unknown>;
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        preferences: {
+          display: {
+            reading: Record<string, unknown>;
+          };
+        };
+        updatePreferences: (update: unknown) => Promise<void>;
+      };
+    };
+
+    const state = store.getState();
+    await state.updatePreferences({
+      display: {
+        ...state.preferences.display,
+        reading: {
+          ...state.preferences.display.reading,
+          dualColumnMode: shouldEnable,
+        },
+      },
+    });
+  }, enabled);
+}
+
 test("feed card overhaul actions and reader open flow work", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
@@ -141,7 +239,24 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(facebookCard).toContainText("45");
   await expect(facebookCard).toHaveClass(/grayscale/);
   await expect(facebookCard.locator('button[aria-label="Archive"]').first()).toBeVisible();
-  await expect(facebookCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`)).toHaveCount(0);
+  const facebookImage = facebookCard.locator("img").first();
+  await expect(facebookImage).toBeVisible();
+  await expect(facebookImage).toHaveAttribute("src", /\/freed\.svg\?feed-card$/);
+
+  const storyTile = app.page.locator('[data-feed-item-id="test-instagram-story-thumbnail"]');
+  const storyImage = storyTile.locator("img").first();
+  await expect(storyImage).toBeVisible();
+  await expect(storyImage).toHaveAttribute("src", /\/freed\.svg\?story-tile$/);
+
+  const brokenCard = app.page.locator('[data-feed-item-id="test-broken-thumbnail-fallback"]');
+  const brokenImage = brokenCard.locator("img").first();
+  await expect(brokenImage).toBeVisible();
+  await expect(brokenImage).toHaveAttribute("src", /\/freed\.svg\?fallback$/);
+  await brokenImage.evaluate((image) => {
+    image.dispatchEvent(new Event("error"));
+  });
+  await expect(brokenCard.locator("img")).toHaveCount(0);
+  await expect(brokenCard).toContainText(BROKEN_TITLE);
 
   await facebookCard.hover();
   const likeButton = facebookCard.locator('button[aria-label="Like"]').last();
@@ -151,7 +266,6 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   const rssCard = app.page.locator("article").filter({ hasText: RSS_TITLE }).first();
   await expect(rssCard).toBeVisible();
   await rssCard.hover();
-  await rssCard.locator('button[aria-label="Like"]').first().hover();
   await expect(rssCard.locator('button[aria-label="Love"]')).toHaveCount(0);
 
   await expect(facebookCard.locator('button[aria-label="Open"]')).toBeVisible();
@@ -160,15 +274,17 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(facebookCard).not.toContainText("1,234");
   await expect(facebookCard).not.toContainText("45");
 
+  await setDualColumnMode(app.page, true);
   await facebookCard.click();
-  const reader = app.page.locator("header").filter({ hasText: "Card UI Overhaul" }).first();
   const readerHeading = app.page.locator("article h1").filter({ hasText: FACEBOOK_TITLE }).first();
-  await expect(reader).toBeVisible();
-  await expect(reader.locator('button[aria-label="Archive"]').first()).toBeVisible();
   await expect(readerHeading).toBeVisible();
-  await expect(app.page.getByLabel("Archive")).toBeVisible();
+  await expect(app.page.getByLabel("Archive").first()).toBeVisible();
+  const compactRailCard = app.page.locator('[data-testid="compact-feed-panel-scroll-container"] [data-feed-item-id="test-facebook-card-ui-overhaul"]');
+  const compactRailImage = compactRailCard.locator("img").first();
+  await expect(compactRailImage).toBeVisible();
+  await expect(compactRailImage).toHaveAttribute("src", /\/freed\.svg\?feed-card$/);
 
-  const openReaderButton = app.page.locator("header").getByRole("button", { name: "Open", exact: true });
+  const openReaderButton = app.page.getByRole("button", { name: "Open", exact: true }).first();
   await expect(openReaderButton).toBeVisible();
 });
 

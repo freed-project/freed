@@ -170,17 +170,18 @@ export const FeedItem = memo(function FeedItem({
   const likeCount = formatEngagementCount(item.engagement?.likes);
   const commentCount = formatEngagementCount(item.engagement?.comments);
   const semanticLabel = semanticChip(item);
+  const firstMediaUrl = item.content.mediaUrls[0];
 
   const [swipeX, setSwipeX] = useState(0);
-  const [storyMediaFailed, setStoryMediaFailed] = useState(false);
+  const [mediaFailed, setMediaFailed] = useState(false);
   const showInlineMedia = feedMediaPreviews === "inline";
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const swipeLocked = useRef<"horizontal" | "vertical" | null>(null);
 
   useEffect(() => {
-    setStoryMediaFailed(false);
-  }, [item.content.mediaUrls[0], item.globalId]);
+    setMediaFailed(false);
+  }, [firstMediaUrl, item.globalId]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX;
@@ -227,9 +228,9 @@ export const FeedItem = memo(function FeedItem({
   };
 
   if (item.contentType === "story") {
-    const bg = item.content.mediaUrls[0];
+    const bg = firstMediaUrl;
     const firstMediaType = item.content.mediaTypes[0];
-    const showStoryMedia = showInlineMedia && bg && !storyMediaFailed;
+    const showStoryMedia = showInlineMedia && bg && !mediaFailed;
     const isIg = item.platform === "instagram";
     const gradientFallback = isIg
       ? "from-[var(--theme-media-rss)] via-[var(--theme-media-instagram)] to-[var(--theme-accent-secondary)]"
@@ -255,7 +256,7 @@ export const FeedItem = memo(function FeedItem({
             controls
             preload="metadata"
             onClick={(event) => event.stopPropagation()}
-            onError={() => setStoryMediaFailed(true)}
+            onError={() => setMediaFailed(true)}
             className="absolute inset-0 w-full h-full object-cover"
           />
         ) : showStoryMedia ? (
@@ -264,7 +265,7 @@ export const FeedItem = memo(function FeedItem({
             alt=""
             loading="lazy"
             decoding="async"
-            onError={() => setStoryMediaFailed(true)}
+            onError={() => setMediaFailed(true)}
             className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
           />
         ) : (
@@ -353,13 +354,15 @@ export const FeedItem = memo(function FeedItem({
   }
 
   if (compact) {
+    const showCompactMedia = showInlineMedia && firstMediaUrl && !mediaFailed;
+
     return (
       <div className="relative overflow-hidden rounded-[var(--feed-card-radius)]" style={sharedTransitionStyle}>
         <article
           data-feed-item-id={item.globalId}
           data-focused={focused ? "true" : "false"}
           data-selected={selected ? "true" : "false"}
-          className={`feed-card group cursor-pointer aspect-square overflow-hidden p-3 flex flex-col transition-colors ${
+          className={`feed-card group relative cursor-pointer aspect-square overflow-hidden p-3 flex flex-col transition-colors ${
             selected
               ? "border-l-2 border-l-[var(--theme-accent-secondary)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)]"
               : "hover:bg-[var(--theme-bg-muted)]"
@@ -370,6 +373,20 @@ export const FeedItem = memo(function FeedItem({
           tabIndex={0}
           onKeyDown={handleActivateKeyDown}
         >
+          {showCompactMedia && (
+            <>
+              <img
+                src={firstMediaUrl}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                onError={() => setMediaFailed(true)}
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/5 to-black/70 pointer-events-none" />
+            </>
+          )}
+
           {!narrow && (
             <div className="flex items-center gap-2 mb-2">
               {item.author.avatarUrl ? (
@@ -378,16 +395,16 @@ export const FeedItem = memo(function FeedItem({
                   alt=""
                   loading="lazy"
                   decoding="async"
-                  className="w-7 h-7 rounded-full bg-white/5 ring-1 ring-white/10 shrink-0"
+                  className={`w-7 h-7 rounded-full bg-white/5 ring-1 shrink-0 object-cover ${showCompactMedia ? "ring-white/40" : "ring-white/10"}`}
                 />
               ) : (
-                <div className="theme-avatar-fallback flex h-7 w-7 items-center justify-center rounded-full font-medium shrink-0 text-xs">
+                <div className={`theme-avatar-fallback flex h-7 w-7 items-center justify-center rounded-full font-medium shrink-0 text-xs ${showCompactMedia ? "ring-1 ring-white/40" : ""}`}>
                   {item.author.displayName[0]?.toUpperCase() || "?"}
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <span className="font-medium text-xs truncate block">{item.author.displayName}</span>
-                <div className="flex items-center gap-1.5 text-[10px] text-[var(--theme-text-muted)]">
+                <span className={`font-medium text-xs truncate block ${showCompactMedia ? "text-white drop-shadow" : ""}`}>{item.author.displayName}</span>
+                <div className={`flex items-center gap-1.5 text-[10px] ${showCompactMedia ? "text-white/75" : "text-[var(--theme-text-muted)]"}`}>
                   <span>{platformIcon}</span>
                   <span className="truncate">{timeAgo}</span>
                 </div>
@@ -396,13 +413,13 @@ export const FeedItem = memo(function FeedItem({
           )}
 
           {item.content.linkPreview?.title && (
-            <h3 className={`font-semibold leading-snug mb-1 ${narrow ? "text-xs line-clamp-3" : "text-sm line-clamp-2"}`}>
+            <h3 className={`font-semibold leading-snug mb-1 ${showCompactMedia ? "mt-auto text-white drop-shadow" : ""} ${narrow ? "text-xs line-clamp-3" : "text-sm line-clamp-2"}`}>
               {item.content.linkPreview.title}
             </h3>
           )}
 
           {item.content.text && (
-            <p className={`text-[var(--theme-text-secondary)] leading-relaxed flex-1 min-h-0 ${narrow ? "text-[10px] line-clamp-4" : "text-xs line-clamp-3"}`}>
+            <p className={`${showCompactMedia ? "text-white/85 drop-shadow flex-none" : "text-[var(--theme-text-secondary)] flex-1"} leading-relaxed min-h-0 ${narrow ? "text-[10px] line-clamp-4" : "text-xs line-clamp-3"}`}>
               {item.content.text}
             </p>
           )}
@@ -635,13 +652,14 @@ export const FeedItem = memo(function FeedItem({
           </div>
         )}
 
-        {showInlineMedia && item.content.mediaUrls.length > 0 && (
+        {showInlineMedia && firstMediaUrl && !mediaFailed && (
           <div className="mt-3 rounded-xl overflow-hidden ring-1 ring-white/5">
             <img
-              src={item.content.mediaUrls[0]}
+              src={firstMediaUrl}
               alt=""
               loading="lazy"
               decoding="async"
+              onError={() => setMediaFailed(true)}
               className="w-full h-48 sm:h-56 object-cover bg-white/5"
             />
           </div>
