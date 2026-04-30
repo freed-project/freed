@@ -924,12 +924,6 @@ export function Sidebar({
   );
 
   useEffect(() => {
-    if (activeFilter.platform === "rss" || activeFilter.feedUrl) {
-      setRssFeedsOpen(true);
-    }
-  }, [activeFilter.feedUrl, activeFilter.platform]);
-
-  useEffect(() => {
     const maxPage = Math.max(0, totalFeedPages - 1);
     if (rssFeedPage > maxPage) {
       setRssFeedPage(maxPage);
