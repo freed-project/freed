@@ -21,6 +21,7 @@ import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { storeLiAuthState } from "./li-auth";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
 import { isMemoryPressureCritical } from "./memory-monitor";
+import { socialProviderCopy } from "./social-provider-copy";
 
 // =============================================================================
 // Rate Limiting
@@ -101,7 +102,7 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
 
   if (isMemoryPressureCritical()) {
     diag.errorStage = "memory_pressure";
-    diag.errorMessage = "LinkedIn sync paused because Freed Desktop memory is critically high.";
+    diag.errorMessage = socialProviderCopy("linkedin").memoryPressure;
     return { items: [], diag };
   }
 

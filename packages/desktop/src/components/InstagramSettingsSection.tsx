@@ -41,6 +41,7 @@ import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { withProviderSyncing } from "../lib/store";
 import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
 import { MediaVaultSettingsCard } from "./MediaVaultSettingsCard";
+import { socialProviderCopy } from "../lib/social-provider-copy";
 
 // =============================================================================
 // Diagnostic Panel
@@ -112,8 +113,6 @@ export function InstagramSettingsSection({
   const igAuth = useAppStore((s) => s.igAuth);
   const setIgAuth = useAppStore((s) => s.setIgAuth);
   const isLoading = useAppStore((s) => s.isLoading);
-  const storeError = useAppStore((s) => s.error);
-  const setError = useAppStore((s) => s.setError);
   const items = useAppStore((s) => s.items);
   const syncing = useAppStore((s) => (s.providerSyncCounts.instagram ?? 0) > 0);
   const healthSnapshot = useDebugStore((s) => s.health?.providers.instagram ?? null);
@@ -121,6 +120,8 @@ export function InstagramSettingsSection({
   const [checking, setChecking] = useState(false);
   const [lastDiag, setLastDiag] = useState<IgSyncDiag | null>(null);
   const [windowMode, setWindowMode] = useState(() => getIgScraperWindowMode());
+  const [actionError, setActionError] = useState<string | null>(null);
+  const copy = socialProviderCopy("instagram");
   const { confirm, dialog } = useProviderRiskGate("instagram");
 
   // Auto-detect login success from the WebView's on_navigation callback
@@ -139,19 +140,19 @@ export function InstagramSettingsSection({
 
   const handleLogin = useCallback(async () => {
     await confirm(async () => {
-      setError(null);
+      setActionError(null);
       try {
         await showIgLogin();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to open login window");
+        setActionError(err instanceof Error ? err.message : "Failed to open login window");
       }
     });
-  }, [confirm, setError]);
+  }, [confirm]);
 
   const handleCheckAuth = useCallback(async () => {
     await confirm(async () => {
       setChecking(true);
-      setError(null);
+      setActionError(null);
       try {
         const loggedIn = await checkIgAuth();
         const newState = { isAuthenticated: loggedIn, lastCheckedAt: Date.now() };
@@ -159,15 +160,15 @@ export function InstagramSettingsSection({
         storeIgAuthState(newState);
 
         if (!loggedIn) {
-          setError("Not logged in. Please log in through the Instagram window first.");
+          setActionError("Not logged in. Please log in through the Instagram window first.");
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Auth check failed");
+        setActionError(err instanceof Error ? err.message : "Auth check failed");
       } finally {
         setChecking(false);
       }
     });
-  }, [confirm, setIgAuth, setError]);
+  }, [confirm, setIgAuth]);
 
   const runSync = useCallback(async () => {
     setLastDiag(null);
@@ -188,11 +189,11 @@ export function InstagramSettingsSection({
     await resetProviderPauseState("instagram");
     setIgAuth({ isAuthenticated: false });
     setLastDiag(null);
-    setError(null);
-  }, [setIgAuth, setError]);
+    setActionError(null);
+  }, [setIgAuth]);
 
-  const syncError = storeError && igAuth.isAuthenticated ? storeError : null;
-  const authError = igAuth.lastCaptureError ?? syncError;
+  const syncError = igAuth.isAuthenticated ? igAuth.lastCaptureError ?? null : null;
+  const authError = igAuth.lastCaptureError ?? actionError;
   const needsReconnect = needsProviderReconnect(authError);
   const statusTone = getProviderStatusTone({
     isConnected: igAuth.isAuthenticated,
@@ -214,7 +215,7 @@ export function InstagramSettingsSection({
       if (lastDiag.itemsAdded === 0 && lastDiag.postsExtracted === 0) {
         return (
           <p className="text-xs text-[#52525b]">
-            Feed returned no posts. Instagram may need a moment to load.
+            {copy.feedReturnedEmpty}
           </p>
         );
       }
@@ -280,14 +281,18 @@ export function InstagramSettingsSection({
 
           {needsReconnect && (
             <p className="text-xs text-red-400 leading-relaxed">
-              {formatProviderReconnectMessage("Instagram", authError)}
+              {formatProviderReconnectMessage(copy.label, authError)}
             </p>
+          )}
+
+          {actionError && !needsReconnect && (
+            <p className="text-xs text-red-400 leading-relaxed">{actionError}</p>
           )}
 
           {syncError && !needsReconnect && (
             <p className="text-xs text-red-400 leading-relaxed">
               {syncError.includes("timeout")
-                ? "Scrape timed out. Instagram may be slow to load. Try again."
+                ? copy.timeout
                 : syncError}
             </p>
           )}
@@ -323,8 +328,7 @@ export function InstagramSettingsSection({
           </details>
 
           <p className="text-xs text-[#52525b] leading-relaxed">
-            Freed reads your Instagram feed through a native browser session.
-            Your traffic looks identical to normal browsing.
+            {copy.connectedInfo}
           </p>
         </div>
       </SyncProviderSectionSurface>
@@ -342,7 +346,7 @@ export function InstagramSettingsSection({
         <p className="text-sm text-[#71717a] leading-relaxed">
           {needsReconnect
             ? "Your Instagram session is no longer valid. Sign in again to restore sync."
-            : "Pull your Instagram feed into Freed. Log in through a native browser window. Freed reads your feed the same way you would, so your account stays safe."}
+            : copy.disconnectedSettings}
         </p>
         <div className="flex gap-2">
           <button
@@ -361,8 +365,11 @@ export function InstagramSettingsSection({
         </div>
         {needsReconnect && authError && (
           <p className="text-xs text-amber-400 leading-relaxed">
-            {formatProviderReconnectMessage("Instagram", authError)}
+            {formatProviderReconnectMessage(copy.label, authError)}
           </p>
+        )}
+        {actionError && !needsReconnect && (
+          <p className="text-xs text-red-400 leading-relaxed">{actionError}</p>
         )}
         <ProviderHealthSectionSummary provider="instagram" />
       </div>
