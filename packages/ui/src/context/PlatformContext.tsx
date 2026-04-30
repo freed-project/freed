@@ -22,6 +22,7 @@ import type {
   GeneratedBugReportBundle,
   ImportProgress,
   LocalAIModelId,
+  LocalAIHardwareProfile,
   LocalAIModelInstallState,
   LocalAIModelManifestEntry,
   ReportPrivacyTier,
@@ -129,16 +130,19 @@ export interface LocalAIModelViewState {
   manifest: LocalAIModelManifestEntry;
   state: LocalAIModelInstallState;
   webGPUAvailable: boolean;
+  selected: boolean;
 }
 
 export interface LocalAIModelControls {
   listModels: () => Promise<LocalAIModelViewState[]>;
+  selectModel: (id: LocalAIModelId) => Promise<LocalAIModelViewState[]>;
   downloadModel: (
     id: LocalAIModelId,
     onProgress?: (progress: LocalAIModelDownloadProgress) => void,
   ) => Promise<LocalAIModelViewState[]>;
   pauseDownload: (id: LocalAIModelId) => Promise<LocalAIModelViewState[]>;
   removeModel: (id: LocalAIModelId) => Promise<LocalAIModelViewState[]>;
+  getHardwareProfile: () => Promise<LocalAIHardwareProfile | null>;
 }
 
 export interface PlatformConfig {

@@ -262,10 +262,13 @@ export interface AIPreferences {
 }
 
 export type LocalAIModelId =
-  | "integrated-local-ai"
-  | "semantic-embeddinggemma"
-  | "summary-qwen3"
-  | "assistant-gemma4";
+  | "integrated-light"
+  | "integrated-balanced"
+  | "integrated-pro"
+  /** @deprecated Legacy single-pack id migrated to integrated-balanced. */
+  | "integrated-local-ai";
+
+export type LocalAIPackTier = "light" | "balanced" | "pro";
 
 export type LocalAIModelStatus =
   | "not_downloaded"
@@ -277,6 +280,7 @@ export type LocalAIModelStatus =
 
 export interface LocalAIModelFileManifest {
   path: string;
+  sourcePath?: string;
   sizeBytes: number;
   sha256?: string;
   sha1?: string;
@@ -287,6 +291,7 @@ export interface LocalAIModelFileManifest {
 
 export interface LocalAIModelManifestEntry {
   id: LocalAIModelId;
+  tier: LocalAIPackTier;
   title: string;
   capability: string;
   description: string;
@@ -298,7 +303,19 @@ export interface LocalAIModelManifestEntry {
   hardwareNote: string;
   requiresWebGPU: boolean;
   wasmFallback: boolean;
+  supportsSemanticSearch: boolean;
+  supportsSummaries: boolean;
+  supportsAssistant: boolean;
   files: LocalAIModelFileManifest[];
+}
+
+export interface LocalAIHardwareProfile {
+  totalMemoryBytes?: number;
+  availableMemoryBytes?: number;
+  availableAppDataBytes?: number;
+  os: string;
+  arch: string;
+  webGPUAvailable: boolean;
 }
 
 export interface LocalAIModelHealth {

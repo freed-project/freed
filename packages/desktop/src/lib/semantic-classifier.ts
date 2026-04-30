@@ -1,6 +1,6 @@
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { docBackfillContentSignals, subscribe } from "./automerge.js";
-import { localAIModels } from "./local-ai-models.js";
+import { localAIModels, subscribeToLocalAIModelState } from "./local-ai-models.js";
 import { log } from "./logger.js";
 
 const BATCH_SIZE = 100;
@@ -19,6 +19,7 @@ let lastScannedDocItemCount: number | null = null;
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let heartbeatHandle: ReturnType<typeof setInterval> | null = null;
 let unsubscribeDoc: (() => void) | null = null;
+let unsubscribeLocalAIModelState: (() => void) | null = null;
 let pending = 0;
 
 function scheduleBackfill(): void {
@@ -29,10 +30,12 @@ function scheduleBackfill(): void {
 async function recordSemanticHealth(summary: Awaited<ReturnType<typeof docBackfillContentSignals>>): Promise<void> {
   try {
     const models = await localAIModels.listModels();
-    const semanticModel = models.find((model) => model.manifest.id === "integrated-local-ai");
+    const semanticModel =
+      models.find((model) => model.selected && model.manifest.supportsSemanticSearch) ??
+      models.find((model) => model.manifest.supportsSemanticSearch);
     if (!semanticModel || semanticModel.state.status !== "available") return;
 
-    await localAIModels.updateHealth("integrated-local-ai", {
+    await localAIModels.updateHealth(semanticModel.manifest.id, {
       lastIndexedItemCount: summary.total,
       lastRunAt,
       failureCount: failedCount,
@@ -84,6 +87,9 @@ export function start(): void {
     lastScannedDocItemCount = state.docItemCount;
     scheduleBackfill();
   });
+  unsubscribeLocalAIModelState = subscribeToLocalAIModelState(() => {
+    scheduleBackfill();
+  });
 
   log.info("[semantic-classifier] started");
 
@@ -121,6 +127,11 @@ export function stop(): void {
   if (unsubscribeDoc) {
     unsubscribeDoc();
     unsubscribeDoc = null;
+  }
+
+  if (unsubscribeLocalAIModelState) {
+    unsubscribeLocalAIModelState();
+    unsubscribeLocalAIModelState = null;
   }
 
   log.info("[semantic-classifier] stopped");

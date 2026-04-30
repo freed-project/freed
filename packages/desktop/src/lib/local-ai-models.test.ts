@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import * as A from "@automerge/automerge";
 import type { LocalAIModelManifestEntry } from "@freed/shared";
-import { createDefaultPreferences } from "@freed/shared";
+import {
+  createDefaultPreferences,
+  recommendLocalAIModelId,
+} from "@freed/shared";
 import { createEmptyDoc } from "@freed/shared/schema";
 import {
   createLocalAIModelService,
+  subscribeToLocalAIModelState,
   type LocalAIModelServiceDeps,
 } from "./local-ai-models";
 
@@ -13,8 +17,9 @@ const HELLO_SHA1 = "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d";
 
 const TEST_MANIFEST: readonly LocalAIModelManifestEntry[] = [
   {
-    id: "integrated-local-ai",
-    title: "Integrated AI local pack",
+    id: "integrated-balanced",
+    tier: "balanced",
+    title: "Balanced",
     capability: "Search and summaries",
     description: "Test model",
     repo: "test/model",
@@ -25,6 +30,9 @@ const TEST_MANIFEST: readonly LocalAIModelManifestEntry[] = [
     hardwareNote: "Test hardware",
     requiresWebGPU: false,
     wasmFallback: true,
+    supportsSemanticSearch: true,
+    supportsSummaries: true,
+    supportsAssistant: false,
     files: [
       { path: "model.bin", sizeBytes: 5, sha1: HELLO_SHA1 },
       { path: "metadata.json", sizeBytes: 5, sha1: HELLO_SHA1, etag: "blob-id-not-raw-sha1" },
@@ -93,9 +101,18 @@ function createDeps(options: {
     },
     rename: async (oldPath, newPath) => {
       const file = files.get(oldPath);
-      if (!file) throw new Error(`ENOENT: ${oldPath}`);
-      files.set(newPath, file);
-      files.delete(oldPath);
+      if (file) {
+        files.set(newPath, file);
+        files.delete(oldPath);
+        return;
+      }
+      const prefix = oldPath.endsWith("/") ? oldPath : `${oldPath}/`;
+      const moved = Array.from(files.entries()).filter(([key]) => key.startsWith(prefix));
+      if (moved.length === 0) throw new Error(`ENOENT: ${oldPath}`);
+      for (const [key, value] of moved) {
+        files.set(`${newPath}/${key.slice(prefix.length)}`, value);
+        files.delete(key);
+      }
     },
     size: async (path) => {
       const file = files.get(path);
@@ -119,16 +136,51 @@ function createDeps(options: {
     now: () => 1_000,
     sha256File: async () => options.sha256 ?? "",
     webGPUAvailable: () => options.webGPUAvailable ?? true,
+    getHardwareProfile: async () => ({
+      totalMemoryBytes: 16 * 1024 * 1024 * 1024,
+      availableMemoryBytes: 10 * 1024 * 1024 * 1024,
+      availableAppDataBytes: 64 * 1024 * 1024 * 1024,
+      os: "macos",
+      arch: "aarch64",
+      webGPUAvailable: options.webGPUAvailable ?? true,
+    }),
   };
 
   return { deps, files, requests };
 }
 
 function modelPath(path: string): string {
-  return `/app/local-ai-models/integrated-local-ai/abc123/${path}`;
+  return `/app/local-ai-models/integrated-balanced/abc123/${path}`;
 }
 
 describe("local AI model manager", () => {
+  it("recommends local packs from hardware", () => {
+    const gib = 1024 ** 3;
+
+    expect(recommendLocalAIModelId({
+      totalMemoryBytes: 8 * gib,
+      webGPUAvailable: true,
+    })).toBe("integrated-light");
+    expect(recommendLocalAIModelId({
+      totalMemoryBytes: 16 * gib,
+      webGPUAvailable: true,
+    })).toBe("integrated-balanced");
+    expect(recommendLocalAIModelId({
+      totalMemoryBytes: 32 * gib,
+      webGPUAvailable: true,
+      availableAppDataBytes: 64 * gib,
+    })).toBe("integrated-pro");
+    expect(recommendLocalAIModelId({
+      totalMemoryBytes: 32 * gib,
+      webGPUAvailable: false,
+      availableAppDataBytes: 64 * gib,
+    })).toBe("integrated-light");
+    expect(recommendLocalAIModelId({
+      totalMemoryBytes: 32 * gib,
+      webGPUAvailable: true,
+    })).toBe("integrated-pro");
+  });
+
   it("keeps AI disabled by default", async () => {
     const { deps } = createDeps();
     const service = createLocalAIModelService(deps, TEST_MANIFEST);
@@ -148,7 +200,7 @@ describe("local AI model manager", () => {
     const { deps, files } = createDeps();
     const service = createLocalAIModelService(deps, TEST_MANIFEST);
 
-    const models = await service.downloadModel("integrated-local-ai");
+    const models = await service.downloadModel("integrated-balanced");
 
     expect(models[0].state.status).toBe("available");
     expect(files.has(modelPath("model.bin"))).toBe(true);
@@ -160,7 +212,7 @@ describe("local AI model manager", () => {
     const { deps } = createDeps();
     const service = createLocalAIModelService(deps, TEST_MANIFEST);
 
-    const models = await service.downloadModel("integrated-local-ai");
+    const models = await service.downloadModel("integrated-balanced");
 
     expect(models[0].state.status).toBe("available");
     expect(TEST_MANIFEST[0].files[1].etag).not.toBe(TEST_MANIFEST[0].files[1].sha1);
@@ -176,7 +228,7 @@ describe("local AI model manager", () => {
     const { deps } = createDeps();
     const service = createLocalAIModelService(deps, badManifest);
 
-    const models = await service.downloadModel("integrated-local-ai");
+    const models = await service.downloadModel("integrated-balanced");
 
     expect(models[0].state.status).toBe("error");
     expect(models[0].state.lastError).toContain("Checksum failed");
@@ -191,7 +243,7 @@ describe("local AI model manager", () => {
     });
     const service = createLocalAIModelService(deps, TEST_MANIFEST);
 
-    const models = await service.downloadModel("integrated-local-ai");
+    const models = await service.downloadModel("integrated-balanced");
 
     expect(requests[0].range).toBe("bytes=2-");
     expect(models[0].state.status).toBe("available");
@@ -225,7 +277,7 @@ describe("local AI model manager", () => {
     );
     const service = createLocalAIModelService(deps, TEST_MANIFEST);
 
-    const models = await service.downloadModel("integrated-local-ai");
+    const models = await service.downloadModel("integrated-balanced");
 
     expect(models[0].state.status).toBe("available");
     expect(writeSizes).toEqual([5, 5]);
@@ -274,9 +326,9 @@ describe("local AI model manager", () => {
     };
     const service = createLocalAIModelService(deps, largeChunkManifest);
 
-    const pending = service.downloadModel("integrated-local-ai");
+    const pending = service.downloadModel("integrated-balanced");
     await firstChunk;
-    await service.pauseDownload("integrated-local-ai");
+    await service.pauseDownload("integrated-balanced");
     const paused = await pending;
 
     expect(paused[0].state.status).toBe("paused");
@@ -287,11 +339,74 @@ describe("local AI model manager", () => {
     const { deps, files } = createDeps();
     const service = createLocalAIModelService(deps, TEST_MANIFEST);
 
-    await service.downloadModel("integrated-local-ai");
-    const models = await service.removeModel("integrated-local-ai");
+    await service.downloadModel("integrated-balanced");
+    const models = await service.removeModel("integrated-balanced");
 
     expect(models[0].state.status).toBe("not_downloaded");
     expect(files.has(modelPath("model.bin"))).toBe(false);
+  });
+
+  it("persists the selected pack locally", async () => {
+    const { deps } = createDeps();
+    const service = createLocalAIModelService(deps, TEST_MANIFEST);
+
+    const selected = await service.selectModel("integrated-balanced");
+    const reloaded = await service.listModels();
+
+    expect(selected[0].selected).toBe(true);
+    expect(reloaded[0].selected).toBe(true);
+  });
+
+  it("notifies local subscribers when pack state changes", async () => {
+    const { deps } = createDeps();
+    const service = createLocalAIModelService(deps, TEST_MANIFEST);
+    let notifications = 0;
+    const unsubscribe = subscribeToLocalAIModelState(() => {
+      notifications += 1;
+    });
+
+    try {
+      await service.selectModel("integrated-balanced");
+    } finally {
+      unsubscribe();
+    }
+
+    expect(notifications).toBe(1);
+  });
+
+  it("migrates legacy single-pack state into the balanced pack", async () => {
+    const statePath = "/app/local-ai-models/state.json";
+    const legacyPath = "/app/local-ai-models/integrated-local-ai/abc123/model.bin";
+    const { deps, files } = createDeps({
+      seedFiles: {
+        [statePath]: JSON.stringify({
+          version: 1,
+          selectedModelId: "integrated-local-ai",
+          models: {
+            "integrated-local-ai": {
+              id: "integrated-local-ai",
+              status: "paused",
+              revision: "abc123",
+              downloadedBytes: 5,
+              totalBytes: 10,
+              storageBytes: 5,
+              updatedAt: 999,
+            },
+          },
+        }),
+        [legacyPath]: "hello",
+      },
+    });
+    const service = createLocalAIModelService(deps, TEST_MANIFEST);
+
+    const models = await service.listModels();
+    const persisted = JSON.parse(new TextDecoder().decode(files.get(statePath)!));
+
+    expect(models[0].selected).toBe(true);
+    expect(models[0].state.status).toBe("paused");
+    expect(persisted.models["integrated-local-ai"]).toBeUndefined();
+    expect(persisted.models["integrated-balanced"].id).toBe("integrated-balanced");
+    expect(files.has(modelPath("model.bin"))).toBe(true);
   });
 
   it("does not add vectors or local model state to Automerge", () => {

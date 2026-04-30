@@ -5,6 +5,7 @@ interface SettingsToggleProps {
   checked: boolean;
   onChange: (nextChecked: boolean) => void;
   description?: ReactNode;
+  disabled?: boolean;
 }
 
 export function SettingsToggle({
@@ -12,6 +13,7 @@ export function SettingsToggle({
   checked,
   onChange,
   description,
+  disabled = false,
 }: SettingsToggleProps) {
   return (
     <button
@@ -19,8 +21,11 @@ export function SettingsToggle({
       role="switch"
       aria-checked={checked}
       aria-label={label}
-      onClick={() => onChange(!checked)}
-      className="group flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-[rgb(var(--theme-control-accent-rgb)/0.08)]"
+      disabled={disabled}
+      onClick={() => {
+        if (!disabled) onChange(!checked);
+      }}
+      className="group flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-[rgb(var(--theme-control-accent-rgb)/0.08)] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-transparent"
     >
       <div
         aria-hidden="true"

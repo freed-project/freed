@@ -7,7 +7,7 @@
 
 ## Overview
 
-Final polish, accessibility, UX refinements, one optional Integrated AI local pack, and community infrastructure.
+Final polish, accessibility, UX refinements, Integrated AI pack selection, and community infrastructure.
 
 ---
 
@@ -398,7 +398,7 @@ Reward security researchers for responsible disclosure.
 | 10.14 | Smart notifications      | High       |
 | 10.15 | AI settings UI           | Medium     | ✓ Complete (unified provider selector for Integrated AI, Ollama, OpenAI, Anthropic, and Gemini with provider-scoped sharing tags, optimistic selection, and default workflows when AI is enabled)
 | 10.25 | Local content signals    | Medium     | ✓ Complete (rule-based contentSignals metadata, automatic ingestion inference, resumable desktop semantic backfill, inclusive saved toolbar filter presets, expanded signal taxonomy, and compact event candidate extraction)
-| 10.26 | Optional local AI packs  | High       | ✓ Complete (disabled-by-default single Integrated AI pack, pinned download manifest, resumable desktop downloads, raw-file checksum verification, and removal controls)
+| 10.26 | Optional local AI packs  | High       | ✓ Complete (disabled-by-default Light, Balanced, and Pro Integrated AI packs, hardware-based recommendations, pinned download manifests, semantic scan health, source links, resumable desktop downloads, raw-file checksum verification, and removal controls)
 
 ### Extensibility
 
@@ -444,7 +444,7 @@ Reward security researchers for responsible disclosure.
 - [ ] Summarization available for long content
 - [x] AI settings start with a single provider choice that determines whether content stays local, goes to Ollama, or goes to a selected API provider, without selection flicker while preferences persist
 - [x] Local content signals classify existing and newly ingested items without cloud AI, with inclusive saved feed filter presets, expanded semantic signals, and compact event metadata for high-confidence upcoming items
-- [x] Optional local AI stays out of the installer, remains off by default, and installs or removes as one Integrated AI pack with device-local model state
+- [x] Optional local AI stays out of the installer, remains off by default, recommends Light, Balanced, or Pro from local hardware, stores pack selection plus model files in device-local state, and refreshes semantic scan health while settings is open
 - [ ] Smart notifications reduce noise
 
 ### Community
