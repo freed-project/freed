@@ -3,7 +3,7 @@
   "version": "26.4.3001-dev",
   "channel": "dev",
   "dayKey": "26.4.30",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-30T18:55:56.721Z",
   "model": "heuristic",
@@ -47,16 +47,23 @@
     ]
   },
   "release": {
-    "deck": "Scale desktop settings dialog with viewport, renderer recovery and model installs are now more stable, and main window reopen after renderer recovery restored",
-    "features": [],
+    "deck": "Animation controls now apply across the interface, story cards move cleanly into the sidebar rail, feed previews are easier to scan, and recovery work keeps Freed Desktop steadier during stalls and model installs.",
+    "features": [
+      "Add an Appearance animation control with None, Light, and Detailed options, so app motion can be reduced or disabled across controlled fades, slides, layout transitions, shimmers, and theme changes",
+      "Give story cards the same shared feed layout transition as regular cards, so opening a story can animate from the primary list into the compact sidebar rail instead of snapping"
+    ],
     "fixes": [
+      "Restore feed card max width and desktop feed thumbnails so dense feeds stay readable",
+      "Scope social provider error copy by provider, so Instagram, Facebook, LinkedIn, and X setup states say what actually failed",
+      "Scale the desktop Settings dialog with the viewport so tall settings lists remain usable on smaller displays",
       "Rebuild the main window through a hidden keepalive window during renderer recovery, so watchdog recovery no longer quits the app before the replacement window opens",
       "Batch local AI model file writes and throttle progress updates during model pack installs to keep Settings responsive during large downloads",
       "Keep Pause available while an AI model download is active"
     ],
     "followUps": [
+      "Motion preferences now have a synced default of Detailed, while None removes app-controlled animation for users who need a quiet interface",
       "Freed Desktop now keeps the app alive while rebuilding a stalled main window, and large AI model pack downloads put less pressure on the interface"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.3001-dev\n\nScale desktop settings dialog with viewport, renderer recovery and model installs are now more stable, and main window reopen after renderer recovery restored\n\n### Fixes\n\n- Rebuild the main window through a hidden keepalive window during renderer recovery, so watchdog recovery no longer quits the app before the replacement window opens\n- Batch local AI model file writes and throttle progress updates during model pack installs to keep Settings responsive during large downloads\n- Keep Pause available while an AI model download is active\n\n### Follow-ups\n\n- Freed Desktop now keeps the app alive while rebuilding a stalled main window, and large AI model pack downloads put less pressure on the interface\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.3001-dev\n\nAnimation controls now apply across the interface, story cards move cleanly into the sidebar rail, feed previews are easier to scan, and recovery work keeps Freed Desktop steadier during stalls and model installs.\n\n### Features\n\n- Add an Appearance animation control with None, Light, and Detailed options, so app motion can be reduced or disabled across controlled fades, slides, layout transitions, shimmers, and theme changes\n- Give story cards the same shared feed layout transition as regular cards, so opening a story can animate from the primary list into the compact sidebar rail instead of snapping\n\n### Fixes\n\n- Restore feed card max width and desktop feed thumbnails so dense feeds stay readable\n- Scope social provider error copy by provider, so Instagram, Facebook, LinkedIn, and X setup states say what actually failed\n- Scale the desktop Settings dialog with the viewport so tall settings lists remain usable on smaller displays\n- Rebuild the main window through a hidden keepalive window during renderer recovery, so watchdog recovery no longer quits the app before the replacement window opens\n- Batch local AI model file writes and throttle progress updates during model pack installs to keep Settings responsive during large downloads\n- Keep Pause available while an AI model download is active\n\n### Follow-ups\n\n- Motion preferences now have a synced default of Detailed, while None removes app-controlled animation for users who need a quiet interface\n- Freed Desktop now keeps the app alive while rebuilding a stalled main window, and large AI model pack downloads put less pressure on the interface\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
