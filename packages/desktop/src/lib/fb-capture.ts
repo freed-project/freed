@@ -25,7 +25,7 @@ import { getFbScraperWindowMode } from "./scraper-prefs";
 import { storeFbAuthState } from "./fb-auth";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
-import { isMemoryPressureCritical } from "./memory-monitor";
+import { formatBytesForMemoryLog, prepareSocialScrapeMemory } from "./memory-monitor";
 import { archiveRecentProviderMedia, upsertMediaVaultRosterFromItems } from "./media-vault";
 import { socialProviderCopy } from "./social-provider-copy";
 
@@ -111,9 +111,12 @@ export async function fetchFbFeed(): Promise<FbSyncResult> {
     errorMessage: null,
   };
 
-  if (isMemoryPressureCritical()) {
+  const memoryPrep = await prepareSocialScrapeMemory("facebook", "feed scrape");
+  if (!memoryPrep.mayProceed) {
     diag.errorStage = "memory_pressure";
-    diag.errorMessage = socialProviderCopy("facebook").memoryPressure;
+    diag.errorMessage =
+      `${socialProviderCopy("facebook").memoryPressure} ` +
+      `App RSS is ${formatBytesForMemoryLog(memoryPrep.after.appResidentBytes)} after cleanup.`;
     return { items: [], diag };
   }
 
@@ -368,6 +371,9 @@ export async function captureFbFeed(): Promise<FbSyncResult> {
       error instanceof Error ? error.message : "Failed to capture Facebook feed";
     store.setError(message);
     addDebugEvent("error", `[FB] captureFbFeed threw: ${message}`);
+    const errState = { ...useAppStore.getState().fbAuth, lastCaptureError: message };
+    store.setFbAuth(errState);
+    storeFbAuthState(errState);
     await recordProviderHealthEvent({
       provider: "facebook",
       outcome: "error",
