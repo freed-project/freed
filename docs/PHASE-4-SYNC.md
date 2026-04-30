@@ -3,7 +3,7 @@
 > **Status:** 🚧 In Progress
 > **Dependencies:** Phase 1-2 (Capture layers ✓)
 >
-> Local relay, GDrive/Dropbox cloud sync, desktop local snapshot rotation, "Sync Now" button, "Last synced" indicator, server-proxied Google token exchange, durable Google OAuth refresh, appDataFolder Drive polling, and cloud sync health diagnostics are all working. iCloud sync is the remaining open item.
+> Local relay, GDrive/Dropbox cloud sync, desktop local snapshot rotation, "Sync Now" button, "Last synced" indicator, server-proxied Google token exchange, durable Google OAuth refresh, appDataFolder Drive polling, cloud sync health diagnostics, and the no-cloud-sync launch banner are all working. iCloud sync is the remaining open item.
 
 ---
 
@@ -293,6 +293,7 @@ Each provider stores a single Automerge binary file. CRDT handles merge conflict
 - [x] Google Drive uses server-proxied Google token exchange when a web OAuth client is configured, watches appDataFolder changes, and refreshes stored OAuth credentials before Drive or Contacts calls
 - [x] At least one cloud provider works: GDrive and Dropbox both confirmed working on app.freed.wtf
 - [x] Desktop surfaces cloud sync health with retry/reconnect actions, recent failures, and debug charts
+- [x] Desktop no-cloud-sync launch banner self-dismisses after 15 seconds with a gentle countdown ring
 - [x] Desktop writes rotating local snapshots and can restore an older Automerge copy from Settings
 - [ ] iCloud sync integration
 

@@ -1,5 +1,5 @@
 /**
- * CloudSyncNudge — session-persistent toast that appears whenever no cloud
+ * CloudSyncNudge, session-persistent toast that appears whenever no cloud
  * provider is connected.
  *
  * Shown on every app launch until the user connects at least one provider.
@@ -8,8 +8,10 @@
  * Settings dialog pre-scrolled to the Sync section.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { getCloudToken } from "../lib/sync";
+
+const AUTO_DISMISS_MS = 15_000;
 
 /** Returns true when at least one cloud provider has a stored token. */
 export function hasAnyCloudProvider(): boolean {
@@ -26,24 +28,38 @@ export function CloudSyncNudge() {
     );
   }, []);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDismissed(true), AUTO_DISMISS_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   if (dismissed || hasAnyCloudProvider()) return null;
 
   return (
     <div className="fixed bottom-4 left-1/2 z-40 flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 items-center gap-3 rounded-xl border border-[var(--theme-border-subtle)] bg-[color-mix(in_oklab,var(--theme-bg-surface)_92%,transparent)] px-4 py-3 text-sm shadow-[var(--theme-header-shadow)] backdrop-blur-sm">
-      {/* Cloud icon */}
-      <svg
-        className="h-4 w-4 flex-shrink-0 text-[var(--theme-accent-secondary)]"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={1.5}
-          d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
-        />
-      </svg>
+      <span className="relative flex h-8 w-8 flex-shrink-0 items-center justify-center text-[var(--theme-accent-secondary)]">
+        <svg className="h-8 w-8" fill="none" viewBox="0 0 36 36" aria-hidden="true">
+          <path
+            className="cloud-sync-nudge-countdown"
+            d="M18 2.75a15.25 15.25 0 1 1 0 30.5a15.25 15.25 0 1 1 0-30.5"
+            pathLength={1}
+          />
+        </svg>
+        <svg
+          className="absolute h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          aria-hidden="true"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.5}
+            d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"
+          />
+        </svg>
+      </span>
 
       <p className="flex-1 leading-snug text-[var(--theme-text-secondary)]">
         No cloud sync, your feed won't reach mobile.
