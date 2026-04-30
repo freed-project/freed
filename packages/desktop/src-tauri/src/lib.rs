@@ -10,6 +10,8 @@ use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "macos")]
+use std::process::Command;
 use std::sync::{Arc, RwLock as StdRwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use sysinfo::{Disks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
@@ -56,6 +58,11 @@ fn sync_relay_port() -> u16 {
 const DEFAULT_WEBKIT_SAFARI_UA: &str =
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15";
 const SOCIAL_SCRAPER_WINDOW_LABELS: [&str; 3] = ["fb-scraper", "ig-scraper", "li-scraper"];
+const BYTES_PER_GIB: u64 = 1024 * 1024 * 1024;
+const MIN_CRITICAL_MEMORY_BYTES: u64 = 7 * BYTES_PER_GIB / 2;
+const MAX_CRITICAL_MEMORY_BYTES: u64 = 8 * BYTES_PER_GIB;
+const WEBKIT_CACHE_TRIM_AT_BYTES: u64 = 768 * 1024 * 1024;
+const WEBKIT_CACHE_TRIM_TARGET_BYTES: u64 = 512 * 1024 * 1024;
 const STARTUP_RECOVERY_STATE_FILE: &str = "startup-recovery.json";
 const RECOVERY_WINDOW_LABEL: &str = "startup-recovery";
 const RECOVERY_WINDOW_ROUTE: &str = "startup-recovery.html";
@@ -138,6 +145,35 @@ const INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS: &str = r#"
         if (typeof window.__FREED_SET_BACKGROUND_SCRAPER_MEDIA_GUARD__ === "function") {
             window.__FREED_SET_BACKGROUND_SCRAPER_MEDIA_GUARD__(true);
         }
+    })();
+"#;
+const CLEANUP_BACKGROUND_SCRAPER_MEDIA_JS: &str = r#"
+    (function() {
+        try {
+            var viewportHeight = window.innerHeight || document.documentElement.clientHeight || 900;
+            document.querySelectorAll('video,audio').forEach(function(node) {
+                try {
+                    node.pause();
+                    node.removeAttribute('src');
+                    node.querySelectorAll('source').forEach(function(source) {
+                        source.removeAttribute('src');
+                    });
+                    node.load();
+                } catch (_) {}
+            });
+            document.querySelectorAll('img[src],img[srcset]').forEach(function(img) {
+                try {
+                    var rect = img.getBoundingClientRect();
+                    var isOffscreen = rect.bottom < -600 || rect.top > viewportHeight + 600;
+                    if (!isOffscreen) return;
+                    if (!img.dataset.freedCapturedSrc) {
+                        img.dataset.freedCapturedSrc = img.currentSrc || img.src || "";
+                    }
+                    img.removeAttribute('src');
+                    img.removeAttribute('srcset');
+                } catch (_) {}
+            });
+        } catch (_) {}
     })();
 "#;
 
@@ -298,6 +334,10 @@ fn set_background_scraper_media_guard(
             DISABLE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS
         })
         .map_err(|e| e.to_string())
+}
+
+fn cleanup_background_scraper_media(window: &tauri::WebviewWindow) {
+    let _ = window.eval(CLEANUP_BACKGROUND_SCRAPER_MEDIA_JS);
 }
 
 fn prepare_background_scraper_window(
@@ -720,14 +760,22 @@ type RelayState = Arc<SyncRelayState>;
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RuntimeMemoryStats {
+    total_physical_memory_bytes: u64,
     process_resident_bytes: u64,
     process_virtual_bytes: u64,
+    app_resident_bytes: u64,
     webkit_resident_bytes: Option<u64>,
     webkit_virtual_bytes: Option<u64>,
     webkit_process_id: Option<u32>,
+    webkit_total_resident_bytes: u64,
+    webkit_process_count: u64,
+    webkit_largest_resident_bytes: Option<u64>,
+    webkit_largest_process_id: Option<u32>,
     webkit_telemetry_available: bool,
     indexed_db_bytes: Option<u64>,
     webkit_cache_bytes: Option<u64>,
+    memory_high_bytes: u64,
+    memory_critical_bytes: u64,
     relay_doc_bytes: u64,
     relay_client_count: u64,
 }
@@ -741,6 +789,24 @@ struct AIHardwareProfile {
     os: String,
     arch: String,
     web_gpu_available: bool,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ScrapeMemoryPreparation {
+    before: RuntimeMemoryStats,
+    after: RuntimeMemoryStats,
+    recycled_scraper_windows: bool,
+    cache_trimmed: bool,
+    may_proceed: bool,
+}
+
+struct WebkitMemoryStats {
+    total_resident_bytes: u64,
+    process_count: u64,
+    largest_resident_bytes: Option<u64>,
+    largest_virtual_bytes: Option<u64>,
+    largest_process_id: Option<u32>,
 }
 
 // ---------------------------------------------------------------------------
@@ -875,27 +941,15 @@ fn renderer_recovery_threshold(is_visible: bool, last_visibility: &str) -> Durat
     }
 }
 
-fn runtime_memory_snapshot_for_log() -> (u64, Option<(u32, u64, u64)>) {
-    let pid = Pid::from_u32(std::process::id());
-    let mut system = System::new();
-    system.refresh_processes_specifics(
-        ProcessesToUpdate::All,
-        true,
-        ProcessRefreshKind::nothing().with_memory(),
-    );
-
-    let process_resident_bytes = system
-        .process(pid)
-        .map(|process| process.memory())
-        .unwrap_or(0);
-    let (webkit_pid, webkit_resident_bytes, webkit_virtual_bytes) =
-        best_effort_webkit_memory_stats(&system);
-    let webkit = webkit_pid
-        .zip(webkit_resident_bytes)
-        .zip(webkit_virtual_bytes)
+fn runtime_memory_snapshot_for_log(app: &tauri::AppHandle) -> (u64, Option<(u32, u64, u64)>) {
+    let snapshot = collect_runtime_memory_stats(app, 0, 0);
+    let webkit = snapshot
+        .webkit_largest_process_id
+        .zip(snapshot.webkit_largest_resident_bytes)
+        .zip(snapshot.webkit_virtual_bytes)
         .map(|((pid, resident), virtual_bytes)| (pid, resident, virtual_bytes));
 
-    (process_resident_bytes, webkit)
+    (snapshot.process_resident_bytes, webkit)
 }
 
 fn format_bytes_for_log(bytes: u64) -> String {
@@ -1320,39 +1374,97 @@ fn dir_size_bytes(path: &Path) -> Option<u64> {
     Some(total)
 }
 
-fn best_effort_webkit_memory_stats(system: &System) -> (Option<u32>, Option<u64>, Option<u64>) {
+fn memory_pressure_limits(total_physical_memory_bytes: u64) -> (u64, u64) {
+    let proportional = total_physical_memory_bytes.saturating_mul(12) / 100;
+    let critical = proportional.clamp(MIN_CRITICAL_MEMORY_BYTES, MAX_CRITICAL_MEMORY_BYTES);
+    let high = critical.saturating_mul(70) / 100;
+    (high, critical)
+}
+
+fn path_is_under_any_root(path: &Path, roots: &[PathBuf]) -> bool {
+    roots.iter().any(|root| path.starts_with(root))
+}
+
+fn app_storage_roots(app: &tauri::AppHandle) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Ok(path) = app.path().app_cache_dir() {
+        roots.push(path);
+    }
+    if let Ok(path) = app.path().app_data_dir() {
+        roots.push(path);
+    }
+    roots
+}
+
+#[cfg(target_os = "macos")]
+fn macos_process_has_open_file_under_roots(pid: u32, roots: &[PathBuf]) -> bool {
+    let output = Command::new("/usr/sbin/lsof")
+        .args(["-n", "-P", "-p", &pid.to_string(), "-Fn"])
+        .output();
+
+    let Ok(output) = output else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.strip_prefix('n'))
+        .any(|path| path_is_under_any_root(Path::new(path), roots))
+}
+
+fn freed_webkit_memory_stats(system: &System, roots: &[PathBuf]) -> WebkitMemoryStats {
+    let mut total_resident_bytes = 0u64;
+    let mut process_count = 0u64;
+    let mut largest: Option<(u32, u64, u64)> = None;
+
     #[cfg(target_os = "macos")]
     {
-        let mut best: Option<(u32, u64, u64)> = None;
         for (pid, process) in system.processes() {
             let name = process.name().to_string_lossy();
             if !name.contains("WebKit.WebContent") {
                 continue;
             }
+            let pid_u32 = pid.as_u32();
+            if !macos_process_has_open_file_under_roots(pid_u32, roots) {
+                continue;
+            }
             let resident = process.memory();
             let virtual_bytes = process.virtual_memory();
-            if best
+            total_resident_bytes = total_resident_bytes.saturating_add(resident);
+            process_count += 1;
+            if largest
                 .map(|(_, best_resident, _)| resident > best_resident)
                 .unwrap_or(true)
             {
-                best = Some((pid.as_u32(), resident, virtual_bytes));
+                largest = Some((pid_u32, resident, virtual_bytes));
             }
-        }
-        if let Some((pid, resident, virtual_bytes)) = best {
-            return (Some(pid), Some(resident), Some(virtual_bytes));
         }
     }
 
-    (None, None, None)
+    let (largest_process_id, largest_resident_bytes, largest_virtual_bytes) = largest
+        .map(|(pid, resident, virtual_bytes)| (Some(pid), Some(resident), Some(virtual_bytes)))
+        .unwrap_or((None, None, None));
+
+    WebkitMemoryStats {
+        total_resident_bytes,
+        process_count,
+        largest_resident_bytes,
+        largest_virtual_bytes,
+        largest_process_id,
+    }
 }
 
-#[tauri::command]
-async fn get_runtime_memory_stats(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, RelayState>,
-) -> Result<RuntimeMemoryStats, String> {
+fn collect_runtime_memory_stats(
+    app: &tauri::AppHandle,
+    relay_doc_bytes: u64,
+    relay_client_count: u64,
+) -> RuntimeMemoryStats {
     let pid = Pid::from_u32(std::process::id());
     let mut system = System::new();
+    system.refresh_memory();
     system.refresh_processes_specifics(
         ProcessesToUpdate::Some(&[pid]),
         true,
@@ -1368,9 +1480,11 @@ async fn get_runtime_memory_stats(
         true,
         ProcessRefreshKind::nothing().with_memory(),
     );
-    let (webkit_process_id, webkit_resident_bytes, webkit_virtual_bytes) =
-        best_effort_webkit_memory_stats(&system);
 
+    let webkit = freed_webkit_memory_stats(&system, &app_storage_roots(app));
+    let total_physical_memory_bytes = system.total_memory();
+    let (memory_high_bytes, memory_critical_bytes) =
+        memory_pressure_limits(total_physical_memory_bytes);
     let indexed_db_bytes = app
         .path()
         .app_data_dir()
@@ -1381,7 +1495,169 @@ async fn get_runtime_memory_stats(
         .app_cache_dir()
         .ok()
         .and_then(|path| dir_size_bytes(&path.join("WebKit")));
+    let app_resident_bytes = process_resident_bytes.saturating_add(webkit.total_resident_bytes);
 
+    RuntimeMemoryStats {
+        total_physical_memory_bytes,
+        process_resident_bytes,
+        process_virtual_bytes,
+        app_resident_bytes,
+        webkit_resident_bytes: webkit.largest_resident_bytes,
+        webkit_virtual_bytes: webkit.largest_virtual_bytes,
+        webkit_process_id: webkit.largest_process_id,
+        webkit_total_resident_bytes: webkit.total_resident_bytes,
+        webkit_process_count: webkit.process_count,
+        webkit_largest_resident_bytes: webkit.largest_resident_bytes,
+        webkit_largest_process_id: webkit.largest_process_id,
+        webkit_telemetry_available: webkit.process_count > 0,
+        indexed_db_bytes,
+        webkit_cache_bytes,
+        memory_high_bytes,
+        memory_critical_bytes,
+        relay_doc_bytes,
+        relay_client_count,
+    }
+}
+
+fn collect_network_cache_blob_files(root: &Path, files: &mut Vec<(PathBuf, u64, SystemTime)>) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if metadata.is_dir() {
+            collect_network_cache_blob_files(&path, files);
+            continue;
+        }
+        if !metadata.is_file() {
+            continue;
+        }
+
+        let is_blob = path.components().any(|component| {
+            component
+                .as_os_str()
+                .to_string_lossy()
+                .eq_ignore_ascii_case("Blobs")
+        });
+        if is_blob {
+            files.push((
+                path,
+                metadata.len(),
+                metadata.modified().unwrap_or(UNIX_EPOCH),
+            ));
+        }
+    }
+}
+
+fn trim_webkit_network_cache(app: &tauri::AppHandle) -> bool {
+    let Ok(cache_root) = app.path().app_cache_dir() else {
+        return false;
+    };
+    let webkit_root = cache_root.join("WebKit");
+    let webkit_bytes = dir_size_bytes(&webkit_root).unwrap_or(0);
+    if webkit_bytes <= WEBKIT_CACHE_TRIM_AT_BYTES {
+        return false;
+    }
+
+    let network_cache_root = webkit_root.join("NetworkCache");
+    let mut files = Vec::new();
+    collect_network_cache_blob_files(&network_cache_root, &mut files);
+    files.sort_by_key(|(_, _, modified)| *modified);
+
+    let mut current_bytes = webkit_bytes;
+    let mut trimmed = false;
+    for (path, bytes, _) in files {
+        if current_bytes <= WEBKIT_CACHE_TRIM_TARGET_BYTES {
+            break;
+        }
+        if std::fs::remove_file(&path).is_ok() {
+            current_bytes = current_bytes.saturating_sub(bytes);
+            trimmed = true;
+        }
+    }
+
+    trimmed
+}
+
+fn scrape_memory_may_proceed(stats: &RuntimeMemoryStats) -> bool {
+    stats.app_resident_bytes < stats.memory_critical_bytes
+}
+
+fn recycle_social_scraper_windows_except(
+    app: &tauri::AppHandle,
+    preserve_label: Option<&str>,
+    reason: &str,
+) -> bool {
+    let mut recycled = false;
+    for label in SOCIAL_SCRAPER_WINDOW_LABELS {
+        if preserve_label == Some(label) {
+            continue;
+        }
+        if app.get_webview_window(label).is_some() {
+            recycled = true;
+        }
+        recycle_webview_window(app, label, reason);
+    }
+    recycled
+}
+
+async fn prepare_social_scrape_memory_internal(
+    app: &tauri::AppHandle,
+    provider: &str,
+    operation: &str,
+    relay_doc_bytes: u64,
+    relay_client_count: u64,
+    preserve_label: Option<&str>,
+) -> ScrapeMemoryPreparation {
+    let before = collect_runtime_memory_stats(app, relay_doc_bytes, relay_client_count);
+    let reason = format!("{} {} memory preflight", provider, operation);
+    let recycled_scraper_windows =
+        recycle_social_scraper_windows_except(app, preserve_label, &reason);
+    let cache_trimmed = trim_webkit_network_cache(app);
+
+    if recycled_scraper_windows || cache_trimmed {
+        tokio::time::sleep(Duration::from_millis(700)).await;
+    }
+
+    let after = collect_runtime_memory_stats(app, relay_doc_bytes, relay_client_count);
+    let may_proceed = scrape_memory_may_proceed(&after);
+
+    ScrapeMemoryPreparation {
+        before,
+        after,
+        recycled_scraper_windows,
+        cache_trimmed,
+        may_proceed,
+    }
+}
+
+async fn ensure_social_scrape_memory(
+    app: &tauri::AppHandle,
+    provider: &str,
+    operation: &str,
+    preserve_label: Option<&str>,
+) -> Result<(), String> {
+    let prep =
+        prepare_social_scrape_memory_internal(app, provider, operation, 0, 0, preserve_label).await;
+    if prep.may_proceed {
+        return Ok(());
+    }
+
+    Err(format!(
+        "{} sync paused because Freed Desktop memory remains critically high after cleanup.",
+        provider
+    ))
+}
+
+#[tauri::command]
+async fn get_runtime_memory_stats(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, RelayState>,
+) -> Result<RuntimeMemoryStats, String> {
     let relay_doc_bytes = state
         .current_doc
         .read()
@@ -1391,18 +1667,38 @@ async fn get_runtime_memory_stats(
         .unwrap_or(0);
     let relay_client_count = *state.client_count.read().await as u64;
 
-    Ok(RuntimeMemoryStats {
-        process_resident_bytes,
-        process_virtual_bytes,
-        webkit_resident_bytes,
-        webkit_virtual_bytes,
-        webkit_process_id,
-        webkit_telemetry_available: webkit_resident_bytes.is_some(),
-        indexed_db_bytes,
-        webkit_cache_bytes,
+    Ok(collect_runtime_memory_stats(
+        &app,
         relay_doc_bytes,
         relay_client_count,
-    })
+    ))
+}
+
+#[tauri::command]
+async fn prepare_social_scrape_memory(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, RelayState>,
+    provider: String,
+    operation: String,
+) -> Result<ScrapeMemoryPreparation, String> {
+    let relay_doc_bytes = state
+        .current_doc
+        .read()
+        .await
+        .as_ref()
+        .map(|doc| doc.len() as u64)
+        .unwrap_or(0);
+    let relay_client_count = *state.client_count.read().await as u64;
+
+    Ok(prepare_social_scrape_memory_internal(
+        &app,
+        &provider,
+        &operation,
+        relay_doc_bytes,
+        relay_client_count,
+        None,
+    )
+    .await)
 }
 
 #[tauri::command]
@@ -1889,6 +2185,7 @@ async fn fb_check_auth(
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_check_auth").await;
+    ensure_social_scrape_memory(&app, "Facebook", "auth check", Some("fb-scraper")).await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "auth check");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(w) => w,
@@ -2179,6 +2476,7 @@ async fn fb_scrape_feed(
     let fb_feed_url = "https://www.facebook.com/";
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_feed").await;
+    ensure_social_scrape_memory(&app, "Facebook", "feed scrape", None).await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "feed scrape complete");
 
@@ -2310,6 +2608,7 @@ async fn fb_scrape_feed(
             .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
 
         tokio::time::sleep(Duration::from_millis(300)).await;
+        cleanup_background_scraper_media(&wv);
 
         let scroll_amount = {
             use rand::Rng;
@@ -2387,6 +2686,7 @@ async fn fb_scrape_feed(
         .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
 
     tokio::time::sleep(Duration::from_millis(500)).await;
+    cleanup_background_scraper_media(&wv);
     info!(
         "[FB] scrape complete, {} extraction passes emitted",
         num_passes + 1
@@ -2406,6 +2706,7 @@ async fn fb_scrape_groups(
     let fb_groups_url = "https://www.facebook.com/groups/?category=joined";
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_groups").await;
+    ensure_social_scrape_memory(&app, "Facebook", "groups scrape", None).await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "groups scrape complete");
 
@@ -2679,6 +2980,7 @@ async fn ig_check_auth(
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "ig_check_auth").await;
+    ensure_social_scrape_memory(&app, "Instagram", "auth check", Some("ig-scraper")).await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "auth check");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(w) => w,
@@ -2740,6 +3042,7 @@ async fn ig_scrape_feed(
     let ig_feed_url = "https://www.instagram.com/?variant=following";
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_feed").await;
+    ensure_social_scrape_memory(&app, "Instagram", "feed scrape", None).await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "ig-scraper", "feed scrape complete");
 
@@ -2870,6 +3173,7 @@ async fn ig_scrape_feed(
             .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
 
         tokio::time::sleep(Duration::from_millis(300)).await;
+        cleanup_background_scraper_media(&wv);
 
         let scroll_amount = {
             use rand::Rng;
@@ -2970,6 +3274,7 @@ async fn ig_scrape_feed(
         .map_err(|e| format!("Failed to inject extraction script: {}", e))?;
 
     tokio::time::sleep(Duration::from_millis(500)).await;
+    cleanup_background_scraper_media(&wv);
     info!(
         "[IG] scrape complete, {} extraction passes emitted",
         num_passes + 1
@@ -3049,6 +3354,7 @@ async fn fb_visit_url(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_visit_url").await;
+    ensure_social_scrape_memory(&app, "Facebook", "visit", None).await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "visit complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
@@ -3080,6 +3386,7 @@ async fn ig_visit_url(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "ig_visit_url").await;
+    ensure_social_scrape_memory(&app, "Instagram", "visit", None).await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "visit complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
@@ -3117,6 +3424,7 @@ async fn fb_like_post(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "fb_like_post").await;
+    ensure_social_scrape_memory(&app, "Facebook", "like", None).await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "like complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
@@ -3166,6 +3474,7 @@ async fn ig_like_post(
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "ig_like_post").await;
+    ensure_social_scrape_memory(&app, "Instagram", "like", None).await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "like complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
@@ -3309,6 +3618,7 @@ async fn li_check_auth(
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.li_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "li_check_auth").await;
+    ensure_social_scrape_memory(&app, "LinkedIn", "auth check", Some("li-scraper")).await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "li-scraper", "auth check");
     let wv = match app.get_webview_window("li-scraper") {
         Some(w) => {
@@ -3382,6 +3692,7 @@ async fn li_scrape_feed(
     let li_feed_url = "https://www.linkedin.com/feed/";
     let scraper_user_agent = stored_or_default_user_agent(&capture.li_user_agent);
     let _scraper_session = acquire_background_scraper_session(&capture, "li_scrape_feed").await;
+    ensure_social_scrape_memory(&app, "LinkedIn", "feed scrape", None).await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "li-scraper", "feed scrape complete");
 
@@ -3490,6 +3801,7 @@ async fn li_scrape_feed(
         let is_last = i + 1 == num_passes;
         inject_script(&wv, is_last)?;
         tokio::time::sleep(Duration::from_millis(300)).await;
+        cleanup_background_scraper_media(&wv);
 
         let scroll_amount = {
             use rand::Rng;
@@ -4428,7 +4740,8 @@ pub fn run() {
                                 .unwrap_or(true);
 
                         if should_log_stale {
-                            let (native_rss, webkit) = runtime_memory_snapshot_for_log();
+                            let (native_rss, webkit) =
+                                runtime_memory_snapshot_for_log(&app_for_renderer_watchdog);
                             let webkit_details = webkit
                                 .map(|(pid, resident, virtual_bytes)| {
                                     format!(
@@ -4575,6 +4888,7 @@ pub fn run() {
             get_sync_client_count,
             get_runtime_memory_stats,
             get_ai_hardware_profile,
+            prepare_social_scrape_memory,
             broadcast_doc,
             reset_pairing_token,
             show_window,
@@ -4616,6 +4930,86 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn memory_pressure_limits_are_adaptive() {
+        assert_eq!(
+            memory_pressure_limits(16 * BYTES_PER_GIB),
+            (
+                MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+                MIN_CRITICAL_MEMORY_BYTES
+            )
+        );
+        assert_eq!(
+            memory_pressure_limits(32 * BYTES_PER_GIB),
+            (
+                (32 * BYTES_PER_GIB * 12 / 100) * 70 / 100,
+                32 * BYTES_PER_GIB * 12 / 100,
+            )
+        );
+        assert_eq!(
+            memory_pressure_limits(128 * BYTES_PER_GIB),
+            (
+                MAX_CRITICAL_MEMORY_BYTES * 70 / 100,
+                MAX_CRITICAL_MEMORY_BYTES
+            )
+        );
+    }
+
+    #[test]
+    fn app_storage_path_filter_excludes_safari_cache() {
+        let roots = vec![
+            PathBuf::from("/Users/aubrey/Library/Caches/wtf.freed.desktop"),
+            PathBuf::from("/Users/aubrey/Library/Application Support/wtf.freed.desktop"),
+        ];
+
+        assert!(path_is_under_any_root(
+            Path::new(
+                "/Users/aubrey/Library/Caches/wtf.freed.desktop/WebKit/NetworkCache/Version 17/Blobs/a"
+            ),
+            &roots,
+        ));
+        assert!(path_is_under_any_root(
+            Path::new("/Users/aubrey/Library/Application Support/wtf.freed.desktop/IndexedDB/file"),
+            &roots,
+        ));
+        assert!(!path_is_under_any_root(
+            Path::new(
+                "/Users/aubrey/Library/Containers/com.apple.Safari/Data/Library/Caches/com.apple.Safari/WebKitCache/Version 17/Blobs/a"
+            ),
+            &roots,
+        ));
+    }
+
+    #[test]
+    fn scrape_memory_blocks_only_when_after_cleanup_is_still_critical() {
+        let stats = RuntimeMemoryStats {
+            total_physical_memory_bytes: 16 * BYTES_PER_GIB,
+            process_resident_bytes: 128,
+            process_virtual_bytes: 256,
+            app_resident_bytes: MIN_CRITICAL_MEMORY_BYTES - 1,
+            webkit_resident_bytes: None,
+            webkit_virtual_bytes: None,
+            webkit_process_id: None,
+            webkit_total_resident_bytes: 0,
+            webkit_process_count: 0,
+            webkit_largest_resident_bytes: None,
+            webkit_largest_process_id: None,
+            webkit_telemetry_available: false,
+            indexed_db_bytes: None,
+            webkit_cache_bytes: None,
+            memory_high_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
+            memory_critical_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            relay_doc_bytes: 0,
+            relay_client_count: 0,
+        };
+
+        assert!(scrape_memory_may_proceed(&stats));
+        assert!(!scrape_memory_may_proceed(&RuntimeMemoryStats {
+            app_resident_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            ..stats
+        }));
+    }
 
     #[test]
     fn reconcile_marks_unfinished_boot_as_failed() {

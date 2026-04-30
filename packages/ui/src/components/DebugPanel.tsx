@@ -289,9 +289,42 @@ function ConnectionTab() {
 
           <div className="grid grid-cols-2 gap-2">
             <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>App RSS</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {formatOptionalBytes(runtimeMemory.appResidentBytes)}
+              </p>
+            </div>
+
+            <div className={DEBUG_CARD_CLASS}>
               <p className={DEBUG_LABEL_CLASS}>Process RSS</p>
               <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
                 {formatBytes(runtimeMemory.processResidentBytes)}
+              </p>
+            </div>
+
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>WebKit RSS</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {formatOptionalBytes(
+                  runtimeMemory.webkitTotalResidentBytes ??
+                    runtimeMemory.webkitResidentBytes,
+                )}
+              </p>
+            </div>
+
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>WebKit Processes</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {typeof runtimeMemory.webkitProcessCount === "number"
+                  ? runtimeMemory.webkitProcessCount.toLocaleString()
+                  : "-"}
+              </p>
+            </div>
+
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Memory Critical</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {formatOptionalBytes(runtimeMemory.memoryCriticalBytes)}
               </p>
             </div>
 

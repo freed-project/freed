@@ -20,7 +20,7 @@ import { getLiScraperWindowMode } from "./scraper-prefs";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { storeLiAuthState } from "./li-auth";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
-import { isMemoryPressureCritical } from "./memory-monitor";
+import { formatBytesForMemoryLog, prepareSocialScrapeMemory } from "./memory-monitor";
 import { socialProviderCopy } from "./social-provider-copy";
 
 // =============================================================================
@@ -100,9 +100,12 @@ export async function fetchLiFeed(): Promise<LiSyncResult> {
     return emptyResult;
   }
 
-  if (isMemoryPressureCritical()) {
+  const memoryPrep = await prepareSocialScrapeMemory("linkedin", "feed scrape");
+  if (!memoryPrep.mayProceed) {
     diag.errorStage = "memory_pressure";
-    diag.errorMessage = socialProviderCopy("linkedin").memoryPressure;
+    diag.errorMessage =
+      `${socialProviderCopy("linkedin").memoryPressure} ` +
+      `App RSS is ${formatBytesForMemoryLog(memoryPrep.after.appResidentBytes)} after cleanup.`;
     return { items: [], diag };
   }
 
@@ -345,6 +348,9 @@ export async function captureLiFeed(): Promise<LiSyncResult> {
       error instanceof Error ? error.message : "Failed to capture LinkedIn feed";
     store.setError(message);
     addDebugEvent("error", `[LI] captureLiFeed threw: ${message}`);
+    const errState = { ...useAppStore.getState().liAuth, lastCaptureError: message };
+    store.setLiAuth(errState);
+    storeLiAuthState(errState);
     await recordProviderHealthEvent({
       provider: "linkedin",
       outcome: "error",

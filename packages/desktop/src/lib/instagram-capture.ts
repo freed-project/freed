@@ -24,7 +24,7 @@ import { getIgScraperWindowMode } from "./scraper-prefs";
 import { storeIgAuthState } from "./instagram-auth";
 import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
-import { isMemoryPressureCritical } from "./memory-monitor";
+import { formatBytesForMemoryLog, prepareSocialScrapeMemory } from "./memory-monitor";
 import { archiveRecentProviderMedia, upsertMediaVaultRosterFromItems } from "./media-vault";
 import { socialProviderCopy } from "./social-provider-copy";
 
@@ -88,9 +88,12 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
     errorMessage: null,
   };
 
-  if (isMemoryPressureCritical()) {
+  const memoryPrep = await prepareSocialScrapeMemory("instagram", "feed scrape");
+  if (!memoryPrep.mayProceed) {
     diag.errorStage = "memory_pressure";
-    diag.errorMessage = socialProviderCopy("instagram").memoryPressure;
+    diag.errorMessage =
+      `${socialProviderCopy("instagram").memoryPressure} ` +
+      `App RSS is ${formatBytesForMemoryLog(memoryPrep.after.appResidentBytes)} after cleanup.`;
     return { items: [], diag };
   }
 
@@ -304,6 +307,9 @@ export async function captureIgFeed(): Promise<IgSyncResult> {
       error instanceof Error ? error.message : "Failed to capture Instagram feed";
     store.setError(message);
     addDebugEvent("error", `[IG] captureIgFeed threw: ${message}`);
+    const errState = { ...useAppStore.getState().igAuth, lastCaptureError: message };
+    store.setIgAuth(errState);
+    storeIgAuthState(errState);
     await recordProviderHealthEvent({
       provider: "instagram",
       outcome: "error",

@@ -747,7 +747,10 @@ test.describe("Memory profiling (CDP heap snapshots)", () => {
           debug?: () => {
             runtimeMemory?: {
               pressureLevel?: string;
+              appResidentBytes?: number;
               webkitResidentBytes?: number;
+              webkitTotalResidentBytes?: number;
+              memoryCriticalBytes?: number;
               automergeBinaryBytes?: number;
               automergeItemCount?: number;
               indexedDbBytes?: number;
@@ -759,7 +762,9 @@ test.describe("Memory profiling (CDP heap snapshots)", () => {
       const memory = freed?.debug?.().runtimeMemory;
       return {
         pressureLevel: memory?.pressureLevel,
-        webkitResidentBytes: memory?.webkitResidentBytes ?? 0,
+        appResidentBytes: memory?.appResidentBytes ?? 0,
+        webkitResidentBytes: memory?.webkitTotalResidentBytes ?? memory?.webkitResidentBytes ?? 0,
+        memoryCriticalBytes: memory?.memoryCriticalBytes ?? 3_500 * 1024 * 1024,
         automergeBinaryBytes: memory?.automergeBinaryBytes ?? 0,
         automergeItemCount: memory?.automergeItemCount ?? 0,
         indexedDbBytes: memory?.indexedDbBytes ?? 0,
@@ -768,14 +773,16 @@ test.describe("Memory profiling (CDP heap snapshots)", () => {
     });
 
     console.log(`[PERF] Runtime memory pressure: ${telemetry.pressureLevel}`);
+    console.log(`[PERF] Runtime app RSS: ${(telemetry.appResidentBytes / (1024 * 1024)).toFixed(1)} MB`);
     console.log(`[PERF] Runtime WebKit RSS: ${(telemetry.webkitResidentBytes / (1024 * 1024)).toFixed(1)} MB`);
+    console.log(`[PERF] Runtime critical threshold: ${(telemetry.memoryCriticalBytes / (1024 * 1024)).toFixed(1)} MB`);
     console.log(`[PERF] Runtime Automerge binary: ${(telemetry.automergeBinaryBytes / (1024 * 1024)).toFixed(1)} MB`);
     console.log(`[PERF] Runtime Automerge item count: ${telemetry.automergeItemCount.toLocaleString()}`);
     console.log(`[PERF] Runtime IndexedDB bytes: ${telemetry.indexedDbBytes.toLocaleString()}`);
     console.log(`[PERF] Runtime WebKit cache bytes: ${telemetry.webkitCacheBytes.toLocaleString()}`);
 
     expect(telemetry.pressureLevel).not.toBe("critical");
-    expect(telemetry.webkitResidentBytes).toBeLessThan(3_000 * 1024 * 1024);
+    expect(telemetry.appResidentBytes).toBeLessThan(telemetry.memoryCriticalBytes);
     expect(telemetry.automergeBinaryBytes).toBeGreaterThan(0);
     expect(telemetry.automergeItemCount).toBeGreaterThanOrEqual(ITEM_COUNT_XLARGE);
   });

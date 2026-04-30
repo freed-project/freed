@@ -50,16 +50,24 @@ export interface DocSnapshot {
 }
 
 export interface RuntimeMemorySnapshot {
+  totalPhysicalMemoryBytes?: number;
   processResidentBytes: number;
   processVirtualBytes: number;
+  appResidentBytes?: number;
   webkitResidentBytes?: number;
   webkitVirtualBytes?: number;
   webkitProcessId?: number;
+  webkitTotalResidentBytes?: number;
+  webkitProcessCount?: number;
+  webkitLargestResidentBytes?: number;
+  webkitLargestProcessId?: number;
   webkitTelemetryAvailable?: boolean;
   automergeBinaryBytes?: number;
   automergeItemCount?: number;
   indexedDbBytes?: number;
   webkitCacheBytes?: number;
+  memoryHighBytes?: number;
+  memoryCriticalBytes?: number;
   pressureLevel?: "normal" | "high" | "critical";
   relayDocBytes: number;
   relayClientCount: number;
