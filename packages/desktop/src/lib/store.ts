@@ -320,6 +320,19 @@ function recordReadStateFailure(error: unknown, batchSize: number): void {
   );
 }
 
+function readStateIdTails(ids: readonly string[]): string[] {
+  return ids.slice(0, 5).map((id) => `...${id.slice(-8)}`);
+}
+
+function recordReadStateInfo(message: string, detail: Record<string, unknown>): void {
+  recordBugReportEvent(
+    "desktop:readState",
+    "info",
+    message,
+    JSON.stringify(detail),
+  );
+}
+
 async function flushPendingReadMarks(): Promise<void> {
   if (readMarkBatchInFlight) return;
   readMarkBatchInFlight = true;
@@ -499,7 +512,36 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   markItemsAsRead: async (ids) => {
-    await queueReadMarks(ids);
+    const nextIds = ids.filter(Boolean);
+    if (nextIds.length === 0) return;
+
+    const startedAt = performance.now();
+    const beforeUnreadCount = get().totalUnreadCount;
+    recordReadStateInfo(
+      `Queued ${nextIds.length.toLocaleString()} read mark${nextIds.length === 1 ? "" : "s"}`,
+      {
+        queuedCount: nextIds.length,
+        beforeUnreadCount,
+        itemIdTails: readStateIdTails(nextIds),
+      },
+    );
+
+    try {
+      await queueReadMarks(nextIds);
+      recordReadStateInfo(
+        `Flushed ${nextIds.length.toLocaleString()} read mark${nextIds.length === 1 ? "" : "s"}`,
+        {
+          batchCount: nextIds.length,
+          beforeUnreadCount,
+          afterUnreadCount: get().totalUnreadCount,
+          durationMs: Math.round(performance.now() - startedAt),
+          itemIdTails: readStateIdTails(nextIds),
+        },
+      );
+    } catch (error) {
+      recordReadStateFailure(error, nextIds.length);
+      throw error;
+    }
   },
 
   markAllAsRead: async (platform) => {

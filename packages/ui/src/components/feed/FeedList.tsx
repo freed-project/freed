@@ -2,15 +2,7 @@ import { useRef, memo, useCallback, useEffect, useLayoutEffect, useMemo, useStat
 import { useVirtualizer, useWindowVirtualizer } from "@tanstack/react-virtual";
 import { FeedItem } from "./FeedItem.js";
 import { FeedItemSkeleton } from "./FeedItemSkeleton.js";
-import {
-  collectUnreadIdsFromRows as collectUnreadIdsFromReadRows,
-  getListViewportMetrics,
-  getNewlyPassedRowEnd,
-  getRemainingUnreadIds,
-  hasReachedListBottom,
-  type ReadTrackRow,
-  type VirtualRowRange,
-} from "./read-on-scroll.js";
+import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
@@ -117,14 +109,6 @@ interface FeedListProps {
   /** The active search query text — used in the empty state message */
   searchQuery?: string;
 }
-
-type ReadScrollVirtualizer = {
-  getVirtualItems: () => VirtualRowRange[];
-  getTotalSize: () => number;
-  options: {
-    scrollMargin?: number;
-  };
-};
 
 /**
  * Memoized per-row adapter. Keeps handler references stable so FeedItem's
@@ -354,87 +338,28 @@ export function FeedList({
     () => JSON.stringify({ activeFilter, searchQuery: searchQuery.trim() }),
     [activeFilter, searchQuery],
   );
-  const maxPassedRowIndexRef = useRef(-1);
-  const listSessionRef = useRef({
-    key: listKey,
-    items,
-    reachedBottom: false,
-  });
-
-  const flushReadIds = useCallback((ids: string[]) => {
-    if (ids.length === 0) return;
-    void markItemsAsRead(ids);
-  }, [markItemsAsRead]);
-
-  const collectUnreadIdsFromRows = useCallback((startIndex: number, endIndex: number) => {
-    return collectUnreadIdsFromReadRows(
-      rows as Array<ReadTrackRow<FeedItemType>>,
-      startIndex,
-      endIndex,
-    );
-  }, [rows]);
-
-  const finalizeListSession = useCallback((session: { items: FeedItemType[]; reachedBottom: boolean }) => {
-    if (!markReadOnScroll || !session.reachedBottom) return;
-    flushReadIds(getRemainingUnreadIds(session.items));
-  }, [flushReadIds, markReadOnScroll]);
-
-  const markRemainingUnreadInSession = useCallback(() => {
-    const session = listSessionRef.current;
-    if (session.reachedBottom) return;
-    session.reachedBottom = true;
-    flushReadIds(getRemainingUnreadIds(session.items));
-  }, [flushReadIds]);
-
-  const processReadOnScroll = useCallback((
-    virtualizer: ReadScrollVirtualizer,
-    scrollSource: "element" | "window",
-  ) => {
-    if (!markReadOnScroll) return;
-
-    const vItems = virtualizer.getVirtualItems();
-    if (vItems.length === 0) return;
-
-    const rawScrollTop = scrollSource === "window"
+  const getReadScrollMetrics = useCallback((scrollSource: "element" | "window", virtualizer: {
+    options?: { scrollMargin?: number };
+  }) => ({
+    rawScrollTop: scrollSource === "window"
       ? window.scrollY
-      : (parentRef.current?.scrollTop ?? 0);
-    const vpHeight = scrollSource === "window"
+      : (parentRef.current?.scrollTop ?? 0),
+    viewportHeight: scrollSource === "window"
       ? window.innerHeight
-      : (parentRef.current?.clientHeight ?? 0);
-    const scrollMargin = scrollSource === "window"
-      ? (virtualizer.options.scrollMargin ?? 0)
-      : 0;
-    const { scrollTop, viewportBottom: vpBottom } = getListViewportMetrics(
-      rawScrollTop,
-      vpHeight,
-      scrollMargin,
-    );
-
-    const newlyPassedEnd = getNewlyPassedRowEnd(
-      vItems,
-      scrollTop,
-      rows.length,
-      maxPassedRowIndexRef.current,
-    );
-    if (newlyPassedEnd !== null) {
-      const unreadIds = collectUnreadIdsFromRows(
-        maxPassedRowIndexRef.current + 1,
-        newlyPassedEnd,
-      );
-      maxPassedRowIndexRef.current = newlyPassedEnd;
-      flushReadIds(unreadIds);
-    }
-
-    if (hasReachedListBottom(rows.length, vpBottom, virtualizer.getTotalSize())) {
-      markRemainingUnreadInSession();
-    }
-  }, [
-    collectUnreadIdsFromRows,
-    flushReadIds,
+      : (parentRef.current?.clientHeight ?? 0),
+    scrollMargin: scrollSource === "window"
+      ? (virtualizer.options?.scrollMargin ?? 0)
+      : 0,
+  }), []);
+  const processReadOnScroll = useReadOnScrollTracker({
+    surface: isMobile ? "mobile-feed" : "primary-feed",
+    listKey,
+    rows,
+    items,
     markReadOnScroll,
-    markRemainingUnreadInSession,
-    rows.length,
-  ]);
+    getScrollMetrics: getReadScrollMetrics,
+    markItemsAsRead,
+  });
 
   const elementVirtualizer = useVirtualizer({
     count: isMobile ? 0 : rows.length,
@@ -507,27 +432,6 @@ export function FeedList({
     itemIndexToRowIndex,
     rows.length,
   ]);
-
-  useEffect(() => {
-    const session = listSessionRef.current;
-    if (session.key !== listKey) {
-      finalizeListSession(session);
-      listSessionRef.current = {
-        key: listKey,
-        items,
-        reachedBottom: false,
-      };
-      maxPassedRowIndexRef.current = -1;
-      return;
-    }
-    session.items = items;
-  }, [finalizeListSession, items, listKey]);
-
-  useEffect(() => {
-    return () => {
-      finalizeListSession(listSessionRef.current);
-    };
-  }, [finalizeListSession]);
 
   // Show shimmer placeholders while the doc is loading from IndexedDB.
   // Once isLoading flips false, items will populate and we drop into the

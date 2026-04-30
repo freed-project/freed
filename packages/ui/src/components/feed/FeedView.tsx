@@ -3,6 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { FeedList } from "./FeedList.js";
 import { ReaderView } from "./ReaderView.js";
 import { FeedItem as FeedItemCard } from "./FeedItem.js";
+import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
@@ -32,6 +33,9 @@ interface CompactFeedPanelProps {
   selectedId: string;
   selectionMoveDirection?: -1 | 0 | 1;
   onItemClick: (item: FeedItem) => void;
+  markReadOnScroll: boolean;
+  showReadInGrayscale: boolean;
+  markItemsAsRead: (ids: string[]) => Promise<void>;
   width: number;
   leadingOffset?: string;
 }
@@ -41,6 +45,9 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   selectedId,
   selectionMoveDirection = 0,
   onItemClick,
+  markReadOnScroll,
+  showReadInGrayscale,
+  markItemsAsRead,
   width,
   leadingOffset,
 }: CompactFeedPanelProps) {
@@ -85,12 +92,37 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     },
     [items, itemHeight, storyItemHeight],
   );
+  const readRows = useMemo(
+    () => items.map((item) => ({ type: "item" as const, item })),
+    [items],
+  );
+  const readListKey = useMemo(
+    () => items.map((item) => item.globalId).join("|"),
+    [items],
+  );
+  const getReadScrollMetrics = useCallback(() => ({
+    rawScrollTop: parentRef.current?.scrollTop ?? 0,
+    viewportHeight: parentRef.current?.clientHeight ?? 0,
+    scrollMargin: 0,
+  }), []);
+  const processReadOnScroll = useReadOnScrollTracker({
+    surface: "compact-feed",
+    listKey: readListKey,
+    rows: readRows,
+    items,
+    markReadOnScroll,
+    getScrollMetrics: getReadScrollMetrics,
+    markItemsAsRead,
+  });
 
   const virtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => parentRef.current,
     estimateSize: estimateItemSize,
     overscan: 3,
+    onChange: (instance) => {
+      processReadOnScroll(instance, "element");
+    },
   });
 
   // Restore scroll after DOM updates with new card sizes (runs before paint).
@@ -194,6 +226,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
                   compact
                   narrow={width < NARROW_THRESHOLD}
                   selected={item.globalId === selectedId}
+                  showReadInGrayscale={showReadInGrayscale}
                   onClick={() => onItemClick(item)}
                   storyHeight={item.contentType === "story" ? storyTileH : undefined}
                 />
@@ -267,6 +300,9 @@ export function FeedView() {
   );
 
   const dualColumnMode = useAppStore((s) => s.preferences.display.reading.dualColumnMode);
+  const markReadOnScroll = useAppStore((s) => s.preferences.display.reading.markReadOnScroll);
+  const showReadInGrayscale = useAppStore((s) => s.preferences.display.reading.showReadInGrayscale);
+  const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
   const isMobileViewport = useIsMobile();
   const isMobileDevice = useIsMobileDevice();
   const autoCollapseReaderRail = !isMobileDevice && isMobileViewport;
@@ -461,6 +497,9 @@ export function FeedView() {
                 selectedId={selectedItem.globalId}
                 selectionMoveDirection={compactSelectionDirection}
                 onItemClick={openItemDirect}
+                markReadOnScroll={markReadOnScroll}
+                showReadInGrayscale={showReadInGrayscale}
+                markItemsAsRead={markItemsAsRead}
                 width={panelWidth}
                 leadingOffset={compactRailLeadingOffset}
               />
