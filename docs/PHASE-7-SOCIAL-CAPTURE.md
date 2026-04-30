@@ -180,7 +180,7 @@ const RATE_LIMITS = {
 - [x] Both platforms integrated into Desktop refreshAllFeeds()
 - [x] Settings UI for both platforms (login, check connection, sync, disconnect), with the same provider section also reused inside Debug panel health cards
 - [x] Feed pollution filtering blocks promoted X entries and suggested FB/IG posts
-- [x] Facebook Settings includes per-group include/exclude controls for joined groups
+- [x] Facebook Settings includes per-group include/exclude controls for joined groups inside a filtered inner scroller that prevents late group loads from shifting the outer Settings view
 - [x] Desktop Sources settings expose per-source scraper window modes: shown, cloaked, hidden
 - [x] Background FB and IG scraper WebViews force provider media silent during scrape and auth-check flows
 - [x] Social providers surface paused/degraded health summaries in settings and the sidebar source surfaces
@@ -189,7 +189,7 @@ const RATE_LIMITS = {
 - [x] Settings Sources nav shows visible right-edge status dots, while the primary Sources sidebar keeps smaller inline status dots after each social provider name
 - [x] Social sync actions show an inline spinner only while that specific provider is actively syncing
 - [x] Social provider status dots switch to a live spinner while that provider is actively syncing
-- [x] Social provider sections include a line-by-line scrape log so users can see what the scraper is doing in real time
+- [x] Social provider sections include a filtered line-by-line scrape log so users can see what the scraper is doing in real time without expanding the outer Settings view
 - [x] Desktop social scraper commands serialize behind a shared native session lock so background WebKit jobs cannot overlap and starve the main renderer
 - [x] Facebook, Instagram, and LinkedIn extractors expand common long-text controls before normalization
 - [x] Social provider source menus surface a quick status explanation for warning or reconnect states before routing into full settings

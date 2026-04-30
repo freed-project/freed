@@ -254,7 +254,7 @@ export async function captureDomFeed(
 - [x] Debug panel Health tab charts provider reliability plus daily and hourly pull volume across RSS, X, Facebook, Instagram, LinkedIn, Google Drive, and Dropbox, with an in-card duration dropdown for each provider
 - [x] Failing RSS feeds can be reviewed and unsubscribed from the health panel, with optional article/history deletion
 - [x] Provider status indicators switch to a live spinner while that provider is actively syncing
-- [x] Social provider sections surface a scrollable scrape log with line-by-line progress while capture is running
+- [x] Social provider sections surface a filtered inner scrape log with line-by-line progress while capture is running
 - [x] Settings modal includes an explicit close button in the sidebar on larger screens and at the mobile header edge on small screens
 - [x] Risk dialogs and other central overlay modals stay vertically scrollable on tiny mobile screens so action buttons remain reachable
 - [x] Desktop sync header and source settings surface degraded or paused provider health outside the debug panel
@@ -271,7 +271,7 @@ export async function captureDomFeed(
 - [x] Clicking `Sync now` shows a visible `Syncing Initiated` acknowledgment while the menu stays open, even if the provider is already syncing
 - [x] `Cooling down` uses a small amber emoji indicator instead of an amber spinner so the paused state feels distinct at a glance
 - [x] LinkedIn and the other social source rows keep a sidebar status indicator even if auth state lags behind, falling back to the provider's actual item counts before hiding the dot
-- [x] Facebook group settings show active group counts in the header, keep refresh with the bulk actions, and split scraped `Last active ...` text into its own smaller right-aligned column instead of mashing it into the group name
+- [x] Facebook group settings show active group counts in the header, keep refresh with the bulk actions, split scraped `Last active ...` text into its own smaller right-aligned column, and keep late-loaded groups inside a filtered inner scroller capped to the Settings modal
 - [x] The redundant desktop header sync dropdown has been removed, leaving the sidebar source menus and provider settings as the canonical sync status and action surfaces
 - [x] Desktop view chrome now routes through one shared top toolbar, so feed, reader, and Friends stop stacking separate bars on top of each other
 - [x] Desktop top-toolbar controls now keep normal click behavior, but a full drag gesture from the wordmark, title area, or toolbar buttons repositions the native window the way a title bar should
@@ -295,7 +295,8 @@ export async function captureDomFeed(
 - [x] Expanded sidebar padding now flips between tighter roomy and condensed presets at a crossover instead of interpolating linearly, labeled widths below 200px drop counts, chevrons, and similar trailing chrome before labels, narrow-width labels now clip cleanly without ellipses and keep a small inner right gutter before the shell edge, provider status dots and spinners now ride on the source icons at every sidebar width, widths below 100px snap into the compact rail, compact search moves into a floating palette, and the shared mobile drawer now closes when the same hamburger button is tapped again
 - [x] Provider sync actions swap to an inline spinner while that specific provider is actively syncing
 - [x] Provider health badges and section headers use specific state labels like `Cooling down`, `Paused`, `Reconnect required`, and `Sync issue` instead of generic attention copy
-- [x] Settings > Feeds can filter to one needs-review bucket and bulk unsubscribe the currently shown set from a toolbar above the list, while each row still shows whether the feed looks likely dead or just failing
+- [x] Settings expandable lists now use the shared filtered inner-list panel, so Facebook groups, RSS management, OPML previews, saved import errors, and scrape logs cannot stretch the outer Settings scroll when content loads late
+- [x] Settings > Feeds can filter to one needs-review bucket and bulk unsubscribe the currently shown set from a toolbar above the list, while the feed rows sit in their own searchable inner scroller and still show whether the feed looks likely dead or just failing
 - [x] Settings > Saved now shows an overview dashboard with saved-volume charts and source mix, instead of listing every saved item inline
 - [x] Desktop debug tooling now samples runtime memory, relay document size, relay client count, and content-fetcher queue depth so long-run RAM growth can be correlated without attaching Instruments first
 - [x] Desktop diagnostics now also sample renderer JS heap and DOM node counts so overnight RAM growth can be split between native process pressure and WebView pressure

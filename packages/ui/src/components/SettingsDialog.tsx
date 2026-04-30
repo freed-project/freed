@@ -9,7 +9,7 @@
  * "pushes" to that section's content with a back button (iOS-style).
  */
 
-import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   formatReleaseVersion,
   RELEASE_CHANNEL_LABELS,
@@ -1389,6 +1389,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           sm:rounded-[28px]
           sm:flex-row sm:w-[clamp(48rem,78vw,70rem)] sm:max-w-none sm:h-[min(85dvh,65rem)] sm:max-h-none
         `}
+        style={{
+          "--settings-inner-list-max-height": isMobile
+            ? "50dvh"
+            : "min(42.5dvh, 32.5rem)",
+        } as CSSProperties}
       >
         {/* ── Left column ────────────────────────────────────────────────── */}
         <div
