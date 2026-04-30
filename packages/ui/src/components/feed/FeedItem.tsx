@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent,
 import { formatDistanceToNow } from "date-fns";
 import { PLATFORM_LABELS, type FeedItem as FeedItemType } from "@freed/shared";
 import { usePlatform } from "../../context/PlatformContext.js";
+import { ChannelAvatar } from "../ChannelAvatar.js";
 import { Tooltip } from "../Tooltip.js";
 import {
   RssIcon,
@@ -277,17 +278,13 @@ export const FeedItem = memo(function FeedItem({
           <div className="absolute inset-0 bg-gradient-to-b from-black/65 via-black/10 to-black/55 pointer-events-none" />
 
           <div className="absolute top-0 left-0 right-0 p-3 flex items-center gap-2">
-            {item.author.avatarUrl ? (
-              <img
-                src={item.author.avatarUrl}
-                alt=""
-                className="w-7 h-7 rounded-full ring-2 ring-white/50 shrink-0 object-cover"
-              />
-            ) : (
-              <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${gradientFallback} flex items-center justify-center text-[11px] font-bold ring-2 ring-white/50 shrink-0`}>
-                {item.author.displayName[0]?.toUpperCase() ?? "?"}
-              </div>
-            )}
+            <ChannelAvatar
+              name={item.author.displayName}
+              avatarUrl={item.author.avatarUrl}
+              size={28}
+              className={`bg-gradient-to-br ${gradientFallback} text-[11px] font-bold text-white ring-2 ring-white/50`}
+              imageClassName="ring-0"
+            />
             <div className="flex-1 min-w-0">
               <span className="text-[11px] font-semibold text-white drop-shadow truncate block leading-tight">
                 {item.author.displayName}
@@ -392,19 +389,12 @@ export const FeedItem = memo(function FeedItem({
 
           {!narrow && (
             <div className="flex items-center gap-2 mb-2">
-              {item.author.avatarUrl ? (
-                <img
-                  src={item.author.avatarUrl}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  className={`w-7 h-7 rounded-full bg-white/5 ring-1 shrink-0 object-cover ${showCompactMedia ? "ring-white/40" : "ring-white/10"}`}
-                />
-              ) : (
-                <div className={`theme-avatar-fallback flex h-7 w-7 items-center justify-center rounded-full font-medium shrink-0 text-xs ${showCompactMedia ? "ring-1 ring-white/40" : ""}`}>
-                  {item.author.displayName[0]?.toUpperCase() || "?"}
-                </div>
-              )}
+              <ChannelAvatar
+                name={item.author.displayName}
+                avatarUrl={item.author.avatarUrl}
+                size={28}
+                className={`text-xs ring-1 ${showCompactMedia ? "ring-white/40" : "ring-white/10"}`}
+              />
               <div className="flex-1 min-w-0">
                 <span className={`font-medium text-xs truncate block ${showCompactMedia ? "text-white drop-shadow" : ""}`}>{item.author.displayName}</span>
                 <div className={`flex items-center gap-1.5 text-[10px] ${showCompactMedia ? "text-white/75" : "text-[var(--theme-text-muted)]"}`}>
@@ -491,19 +481,12 @@ export const FeedItem = memo(function FeedItem({
         onKeyDown={handleActivateKeyDown}
       >
         <div className="flex items-center gap-3 mb-3">
-          {item.author.avatarUrl ? (
-            <img
-              src={item.author.avatarUrl}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="w-10 h-10 rounded-full bg-white/5 ring-1 ring-white/10 shrink-0"
-            />
-          ) : (
-            <div className="theme-avatar-fallback flex h-10 w-10 items-center justify-center rounded-full font-medium shrink-0 text-lg">
-              {item.author.displayName[0]?.toUpperCase() || "?"}
-            </div>
-          )}
+          <ChannelAvatar
+            name={item.author.displayName}
+            avatarUrl={item.author.avatarUrl}
+            size={40}
+            className="text-lg ring-1 ring-white/10"
+          />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-medium truncate">{item.author.displayName}</span>

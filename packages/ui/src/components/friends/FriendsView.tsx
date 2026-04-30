@@ -19,6 +19,7 @@ import { FriendGraph } from "./FriendGraph.js";
 import { FriendDetailPanel } from "./FriendDetailPanel.js";
 import { AccountDetailPanel } from "./AccountDetailPanel.js";
 import { FriendEditor } from "./FriendEditor.js";
+import { ChannelAvatar } from "../ChannelAvatar.js";
 import { SearchField } from "../SearchField.js";
 import { UsersIcon, MapPinIcon } from "../icons.js";
 import {
@@ -967,10 +968,11 @@ export function FriendsView({
       return (
         <CompactDetailCard>
           <div className="flex items-start gap-3">
-            <FriendAvatar
+            <ChannelAvatar
               name={accountTitle(selectedAccount)}
               avatarUrl={selectedAccount.avatarUrl}
               size={48}
+              className="text-lg"
             />
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-3">
