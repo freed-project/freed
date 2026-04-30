@@ -821,7 +821,7 @@ export function Header({
   const macosTrafficLightInsetStyle = headerDragRegion
     ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
     : undefined;
-  const sidebarHandleCenterline = "var(--freed-sidebar-toolbar-centerline, var(--freed-sidebar-handle-centerline, 264px))";
+  const sidebarHandleCenterline = "var(--freed-sidebar-handle-centerline, 264px)";
   const toolbarBoundaryWidth = `calc(${sidebarHandleCenterline} + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)})`;
   const leftToolbarWidth = !isMobileDevice
     ? px(layoutControlMetrics.reservedWidthPx)
@@ -858,6 +858,7 @@ export function Header({
   } as CSSProperties;
   const toolbarContainerStyle = {
     ...(headerDragRegion ? dragStyle : {}),
+    boxSizing: "border-box",
     height: px(TOP_TOOLBAR_HEIGHT_PX),
     minHeight: px(TOP_TOOLBAR_HEIGHT_PX),
     width: "100%",
@@ -1083,26 +1084,35 @@ export function Header({
       );
       const rootStyles = window.getComputedStyle(document.documentElement);
       sidebarHandleCenterlineStyleRef.current = rootStyles.getPropertyValue(
-        "--freed-sidebar-toolbar-centerline",
-      ) || rootStyles.getPropertyValue(
         "--freed-sidebar-handle-centerline",
       );
       const fallbackHandleCenterPx = parsePixelValue(
         sidebarHandleCenterlineStyleRef.current,
         264,
       );
-      const sidebarRightEdgePx = fallbackHandleCenterPx;
+      const resizeHandle = document.querySelector(
+        '[data-testid="app-sidebar-resize-handle"]',
+      ) as HTMLElement | null;
+      const resizeHandleRect = resizeHandle?.getBoundingClientRect() ?? null;
+      const handleCenterPx = resizeHandleRect
+        ? resizeHandleRect.left + resizeHandleRect.width / 2 - hostRect.left
+        : fallbackHandleCenterPx;
+      const readerLayoutControlPairWidthPx =
+        READER_LAYOUT_CONTROL_BUTTON_SIZE_PX * 2 + READER_LAYOUT_CONTROL_BUTTON_GAP_PX;
       const idealSidebarToggleLeftPx = visibleDesktopSidebarMode === "closed"
         ? CLOSED_SIDEBAR_TOGGLE_LEFT_PX
-        : sidebarRightEdgePx - READER_LAYOUT_CONTROL_BUTTON_SIZE_PX;
+        : handleCenterPx - readerLayoutControlPairWidthPx / 2;
       const sidebarToggleLeftPx = Math.ceil(Math.max(idealSidebarToggleLeftPx, safeLeftPx));
       const previewToggleLeftPx = Math.ceil(
         sidebarToggleLeftPx + READER_LAYOUT_CONTROL_BUTTON_SIZE_PX + READER_LAYOUT_CONTROL_BUTTON_GAP_PX,
       );
       const toolbarBoundaryWidthPx = previewToggleLeftPx + READER_LAYOUT_CONTROL_BUTTON_SIZE_PX;
+      const toolbarSlotPaddingRightPx = showDesktopReaderLayoutToggle
+        ? 0
+        : TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX;
       const reservedWidthPx = Math.ceil(
         Math.max(
-          toolbarBoundaryWidthPx + TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
+          toolbarBoundaryWidthPx + toolbarSlotPaddingRightPx,
           toolbarBoundaryWidthPx,
         ),
       );
@@ -1139,8 +1149,6 @@ export function Header({
         : new MutationObserver(() => {
             const nextHandleCenterlineStyle = window
               .getComputedStyle(document.documentElement)
-              .getPropertyValue("--freed-sidebar-toolbar-centerline") || window
-              .getComputedStyle(document.documentElement)
               .getPropertyValue("--freed-sidebar-handle-centerline");
             if (nextHandleCenterlineStyle === sidebarHandleCenterlineStyleRef.current) {
               return;
@@ -1169,6 +1177,7 @@ export function Header({
     };
   }, [
     isMobileDevice,
+    showDesktopReaderLayoutToggle,
     visibleDesktopSidebarMode,
   ]);
 
