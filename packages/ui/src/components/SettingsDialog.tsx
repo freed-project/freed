@@ -888,9 +888,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   function renderSectionBlock(id: SectionId) {
     const isVisible = visibleSections.some((s) => s.id === id);
     if (!isVisible) return null;
-    const mobileSectionMinHeightClass = isMobile && mobileView === "section"
-      ? "min-h-[calc(100%+6rem)]"
-      : "min-h-full";
+    const sectionMinHeight = isMobile && mobileView !== "section"
+      ? "100%"
+      : "calc(100% + 20rem)";
 
     // SectionContent and this wrapper both stay plain function calls because
     // they are defined inside SettingsDialog. Rendering either as JSX would
@@ -898,7 +898,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     // active subtree, which is visible as periodic flicker in provider sections
     // when sync health updates land.
     return (
-      <section data-section={id} className={`pb-8 flex flex-col ${mobileSectionMinHeightClass}`}>
+      <section
+        data-section={id}
+        className="flex flex-col pb-8"
+        style={{ minHeight: sectionMinHeight }}
+      >
         {SectionContent({ id })}
       </section>
     );
@@ -1383,7 +1387,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           theme-dialog-shell theme-settings-shell relative z-10 flex w-full flex-col
           h-[100dvh] rounded-none
           sm:rounded-[28px]
-          sm:flex-row sm:max-w-3xl sm:h-[80vh] sm:max-h-[860px]
+          sm:flex-row sm:w-[clamp(48rem,78vw,70rem)] sm:max-w-none sm:h-[min(85dvh,65rem)] sm:max-h-none
         `}
       >
         {/* ── Left column ────────────────────────────────────────────────── */}
@@ -1493,7 +1497,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           <div
             ref={scrollRef}
             data-testid="settings-scroll-container"
-            className="flex-1 overflow-y-auto px-6 pt-6 [&>section+section]:mt-14"
+            className="flex-1 overflow-y-auto px-6 pt-6 [&>section+section]:mt-24"
             style={{ paddingBottom: scrollContainerBottomPadding }}
           >
             {searchLower && visibleSections.length === 0 ? (
