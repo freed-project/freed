@@ -728,7 +728,7 @@ const phases: Phase[] = [
     number: 4,
     title: "Sync Layer",
     description:
-      "Local relay and GDrive/Dropbox sync are working, with server-proxied Google token exchange, appDataFolder Drive polling, durable Google OAuth refresh, cloud health diagnostics, retry and reconnect actions, debug charts, and desktop snapshot restore. iCloud remains the open item.",
+      "Local relay and GDrive/Dropbox sync are working, with server-proxied Google token exchange, appDataFolder Drive polling, durable Google OAuth refresh, cloud health diagnostics, retry and reconnect actions, debug charts, the timed no-cloud-sync launch banner, and desktop snapshot restore. iCloud remains the open item.",
     status: "current",
     planLink:
       "https://github.com/freed-project/freed/blob/dev/docs/PHASE-4-SYNC.md",
