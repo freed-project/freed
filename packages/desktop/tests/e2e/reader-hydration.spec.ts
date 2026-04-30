@@ -414,7 +414,80 @@ test("Instagram reader hydration renders post comments inside Freed", async ({ a
   await expect(app.page.locator(`img[src="${IG_REPLY_MEDIA}"]`)).toBeVisible();
 });
 
-test("Facebook and Instagram stories show that story replies stay private", async ({ app }) => {
+test("narrow desktop reader keeps rail gutters even and open action furthest right", async ({ app }) => {
+  await app.page.setViewportSize({ width: 700, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await injectItems(app.page);
+
+  const feedCard = app.page.locator('[data-feed-item-id="rss:reader-hydration"]');
+  await expect(feedCard).toBeVisible();
+
+  await expect.poll(async () =>
+    app.page.evaluate(() => {
+      const main = document.querySelector("main") as HTMLElement | null;
+      const card = document.querySelector('[data-feed-item-id="rss:reader-hydration"]') as HTMLElement | null;
+      if (!main || !card) return null;
+
+      const feedCardGap = parseFloat(window.getComputedStyle(document.documentElement).getPropertyValue("--feed-card-gap"));
+      const mainRect = main.getBoundingClientRect();
+      const cardRect = card.getBoundingClientRect();
+      return {
+        left: Math.round(cardRect.left - mainRect.left),
+        right: Math.round(mainRect.right - cardRect.right),
+        expected: Math.round(feedCardGap),
+      };
+    }),
+  ).toMatchObject({ left: 8, right: 8, expected: 8 });
+
+  await app.page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => { setSelectedItem: (id: string) => void };
+    };
+    store.getState().setSelectedItem("fb:story-cached");
+  });
+
+  await expect(app.page.getByTestId("reader-article")).toBeVisible();
+  await expect(app.page.getByRole("button", { name: "Open", exact: true })).toBeVisible();
+
+  await expect.poll(async () =>
+    app.page.evaluate(() => {
+      const article = document.querySelector('[data-testid="reader-article"]') as HTMLElement | null;
+      const storyMedia = document.querySelector('img[src="https://scontent.example/story.jpg"]') as HTMLElement | null;
+      const toolbar = document.querySelector('[data-testid="workspace-toolbar"]') as HTMLElement | null;
+      const openButton = toolbar?.querySelector('[aria-label="Open"]') as HTMLElement | null;
+      const overflowButton = toolbar?.querySelector('[aria-label="More actions"]') as HTMLElement | null;
+      if (!article || !storyMedia || !toolbar || !openButton || !overflowButton) return null;
+
+      const feedCardGap = parseFloat(window.getComputedStyle(document.documentElement).getPropertyValue("--feed-card-gap"));
+      const articleRect = article.getBoundingClientRect();
+      const mediaRect = storyMedia.getBoundingClientRect();
+      const openRect = openButton.getBoundingClientRect();
+      const overflowRect = overflowButton.getBoundingClientRect();
+      return {
+        readerLeft: Math.round(mediaRect.left - articleRect.left),
+        readerRight: Math.round(articleRect.right - mediaRect.right),
+        expected: Math.round(feedCardGap),
+        openAfterOverflow: openRect.left >= overflowRect.right,
+        openRightmost: openRect.right >= overflowRect.right,
+        openHeight: Math.round(openRect.height),
+        overflowHeight: Math.round(overflowRect.height),
+        openTop: Math.round(openRect.top),
+        overflowTop: Math.round(overflowRect.top),
+      };
+    }),
+  ).toMatchObject({
+    readerLeft: 8,
+    readerRight: 8,
+    expected: 8,
+    openAfterOverflow: true,
+    openRightmost: true,
+    openHeight: 40,
+    overflowHeight: 40,
+  });
+});
+
+test("Facebook and Instagram stories show that story replies stay private", async ({ app, ipc }) => {
   await app.goto();
   await app.waitForReady();
   await injectItems(app.page);
@@ -427,6 +500,10 @@ test("Facebook and Instagram stories show that story replies stay private", asyn
   });
 
   await expect(app.page.getByText(STORY_REPLY_MESSAGE)).toBeVisible();
+  await app.page.getByRole("button", { name: "Open the story" }).click();
+  await expect.poll(async () => (await ipc.openedUrls()).at(-1)).toBe(
+    "https://www.facebook.com/stories/fb_story/123",
+  );
   await expect(app.page.getByText("Connect to the internet")).toHaveCount(0);
 
   await app.page.evaluate(() => {
@@ -437,5 +514,9 @@ test("Facebook and Instagram stories show that story replies stay private", asyn
   });
 
   await expect(app.page.getByText(STORY_REPLY_MESSAGE)).toBeVisible();
+  await app.page.getByRole("button", { name: "Open the story" }).click();
+  await expect.poll(async () => (await ipc.openedUrls()).at(-1)).toBe(
+    "https://www.instagram.com/stories/ig_story/123",
+  );
   await expect(app.page.getByText("Connect to the internet")).toHaveCount(0);
 });

@@ -386,6 +386,12 @@ export function Header({
     showFeedSignalFilter && !showCollapsedToolbarFilterMenu;
   const showInlineReaderBookmark =
     !!selectedItem && !isBelowReaderBookmarkToolbar;
+  const collapsedReaderTitlePaddingClass = selectedItem?.sourceUrl
+    ? showInlineReaderBookmark ? "pr-[11rem]" : "pr-[8.5rem]"
+    : showInlineReaderBookmark ? "pr-[6.5rem]" : "pr-14";
+  const collapsedReaderActionWidthClass = selectedItem?.sourceUrl
+    ? showInlineReaderBookmark ? "w-[11rem]" : "w-[8.5rem]"
+    : showInlineReaderBookmark ? "w-[6.5rem]" : "w-14";
 
   const filteredUnreadItemIds = useMemo(
     () => filteredItems
@@ -770,19 +776,6 @@ export function Header({
               aria-hidden="true"
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-            </svg>
-          ),
-        });
-      }
-
-      if (selectedItem.sourceUrl) {
-        actions.push({
-          id: "open",
-          label: "Open",
-          onClick: handleOpenReaderUrl,
-          icon: (
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5h5m0 0v5m0-5L10 14M5 9v10h10" />
             </svg>
           ),
         });
@@ -1426,7 +1419,7 @@ export function Header({
           </div>
 
           <div
-            className={`min-w-0 basis-0 flex-1 overflow-hidden ${selectedItem && isBelowLargeToolbar ? "pr-14" : ""}`}
+            className={`min-w-0 basis-0 flex-1 overflow-hidden ${selectedItem && isBelowLargeToolbar ? collapsedReaderTitlePaddingClass : ""}`}
             {...(headerDragRegion ? { "data-tauri-drag-region": true, style: dragStyle } : {})}
           >
             {selectedItem ? (
@@ -1489,7 +1482,7 @@ export function Header({
           <div
             className={selectedItem
               ? isBelowLargeToolbar
-                ? `theme-toolbar-cluster theme-toolbar-cluster-tight absolute right-0 top-1/2 z-10 flex shrink-0 -translate-y-1/2 items-center justify-end pr-2 ${showInlineReaderBookmark ? "w-[6.5rem]" : "w-14"}`
+                ? `theme-toolbar-cluster theme-toolbar-cluster-tight absolute right-0 top-1/2 z-10 flex shrink-0 -translate-y-1/2 items-center justify-end pr-2 ${collapsedReaderActionWidthClass}`
                 : "theme-toolbar-cluster theme-toolbar-cluster-tight ml-auto flex min-w-max shrink-0 items-center pr-2"
               : "theme-toolbar-cluster theme-toolbar-cluster-tight flex min-w-max shrink-0 items-center pr-2 sm:pr-2.5"}
           >
@@ -1575,22 +1568,6 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                {selectedItem.sourceUrl && !isBelowLargeToolbar ? (
-                  <ToolbarAnimatedSlot visible={true} width="4.5rem" className="hidden lg:flex">
-                    <button
-                      onClick={handleOpenReaderUrl}
-                      {...getToolbarControlProps()}
-                      className="theme-toolbar-button-neutral inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm"
-                      aria-label="Open"
-                    >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5h5m0 0v5m0-5L10 14M5 9v10h10" />
-                      </svg>
-                      <span className="hidden lg:inline">Open</span>
-                    </button>
-                  </ToolbarAnimatedSlot>
-                ) : null}
-
                 <ToolbarAnimatedSlot visible={!isBelowLargeToolbar} width="2.5rem" className="hidden lg:flex">
                   {!isBelowLargeToolbar ? (
                   <Tooltip label={selectedItem.userState.archived ? "Unarchive" : "Archive"}>
@@ -1609,6 +1586,22 @@ export function Header({
                   </Tooltip>
                   ) : null}
                 </ToolbarAnimatedSlot>
+
+                {selectedItem.sourceUrl ? (
+                  <ToolbarAnimatedSlot visible={true} width="4.5rem" style={{ order: 99 }}>
+                    <button
+                      onClick={handleOpenReaderUrl}
+                      {...getToolbarControlProps({ width: "4.5rem" })}
+                      className="theme-toolbar-button-neutral inline-flex h-10 items-center justify-center gap-1.5 rounded-lg px-2.5 py-0 text-sm"
+                      aria-label="Open"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5h5m0 0v5m0-5L10 14M5 9v10h10" />
+                      </svg>
+                      <span>Open</span>
+                    </button>
+                  </ToolbarAnimatedSlot>
+                ) : null}
               </>
             ) : (
               <>
