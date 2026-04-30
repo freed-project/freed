@@ -3,7 +3,7 @@
   "version": "26.4.3002-dev",
   "channel": "dev",
   "dayKey": "26.4.30",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-04-30T20:27:55.294Z",
   "model": "heuristic",
@@ -61,13 +61,14 @@
     ]
   },
   "release": {
-    "deck": "Integrated AI pack ladder, global animation controls, and feed card max width restored",
+    "deck": "Integrated AI pack ladder, adaptive social scrape memory handling, and global animation controls",
     "features": [
       "Integrated AI pack ladder",
       "An Appearance animation control with None, Light, and Detailed options, so app motion can be reduced or disabled across controlled fades, slides, layout transitions, shimmers, and theme changes",
       "Give story cards the same shared feed layout transition as regular cards, so opening a story can animate from the primary list into the compact sidebar rail instead of snapping"
     ],
     "fixes": [
+      "Social scrapes now measure Freed-owned WebKit memory, reclaim stale scraper windows and oversized network cache, and keep provider errors scoped to the right settings panel",
       "Show desktop feed thumbnails",
       "Scope social provider error copy",
       "Constrain settings list growth",
@@ -80,8 +81,9 @@
     ],
     "followUps": [
       "Freed Desktop now keeps the app alive while rebuilding a stalled main window, and large AI model pack downloads put less pressure on the interface",
+      "Facebook, Instagram, and LinkedIn scraping should keep moving for larger libraries unless Freed itself remains under unsafe memory pressure after cleanup",
       "Motion preferences now have a synced default of Detailed, while None removes app-controlled animation for users who need a quiet interface"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.4.3002-dev\n\nIntegrated AI pack ladder, global animation controls, and feed card max width restored\n\n### Features\n\n- Integrated AI pack ladder\n- An Appearance animation control with None, Light, and Detailed options, so app motion can be reduced or disabled across controlled fades, slides, layout transitions, shimmers, and theme changes\n- Give story cards the same shared feed layout transition as regular cards, so opening a story can animate from the primary list into the compact sidebar rail instead of snapping\n\n### Fixes\n\n- Show desktop feed thumbnails\n- Scope social provider error copy\n- Constrain settings list growth\n- Scale desktop settings dialog with viewport\n- Renderer recovery and model installs are now more stable\n- Main window reopen after renderer recovery restored\n- Rebuild the main window through a hidden keepalive window during renderer recovery, so watchdog recovery no longer quits the app before the replacement window opens\n- Batch local AI model file writes and throttle progress updates during model pack installs to keep Settings responsive during large downloads\n- Keep Pause available while an AI model download is active\n\n### Follow-ups\n\n- Freed Desktop now keeps the app alive while rebuilding a stalled main window, and large AI model pack downloads put less pressure on the interface\n- Motion preferences now have a synced default of Detailed, while None removes app-controlled animation for users who need a quiet interface\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.3002-dev\n\nIntegrated AI pack ladder, adaptive social scrape memory handling, and global animation controls\n\n### Features\n\n- Integrated AI pack ladder\n- An Appearance animation control with None, Light, and Detailed options, so app motion can be reduced or disabled across controlled fades, slides, layout transitions, shimmers, and theme changes\n- Give story cards the same shared feed layout transition as regular cards, so opening a story can animate from the primary list into the compact sidebar rail instead of snapping\n\n### Fixes\n\n- Social scrapes now measure Freed-owned WebKit memory, reclaim stale scraper windows and oversized network cache, and keep provider errors scoped to the right settings panel\n- Show desktop feed thumbnails\n- Scope social provider error copy\n- Constrain settings list growth\n- Scale desktop settings dialog with viewport\n- Renderer recovery and model installs are now more stable\n- Main window reopen after renderer recovery restored\n- Rebuild the main window through a hidden keepalive window during renderer recovery, so watchdog recovery no longer quits the app before the replacement window opens\n- Batch local AI model file writes and throttle progress updates during model pack installs to keep Settings responsive during large downloads\n- Keep Pause available while an AI model download is active\n\n### Follow-ups\n\n- Freed Desktop now keeps the app alive while rebuilding a stalled main window, and large AI model pack downloads put less pressure on the interface\n- Facebook, Instagram, and LinkedIn scraping should keep moving for larger libraries unless Freed itself remains under unsafe memory pressure after cleanup\n- Motion preferences now have a synced default of Detailed, while None removes app-controlled animation for users who need a quiet interface\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
