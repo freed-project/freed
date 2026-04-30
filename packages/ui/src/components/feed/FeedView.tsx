@@ -10,6 +10,7 @@ import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import type { FeedItem } from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
+import { animationAwareScrollBehavior } from "../../lib/animation-preferences.js";
 
 // ─── Compact sidebar panel for dual-column mode ────────────────────────────
 
@@ -121,7 +122,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
   const didInitialScroll = useRef(false);
   useLayoutEffect(() => {
     if (selectedIndex < 0) return;
-    const behavior = didInitialScroll.current ? "smooth" : "auto";
+    const behavior = animationAwareScrollBehavior(didInitialScroll.current ? "smooth" : "auto");
 
     if (selectionMoveDirection === 0) {
       virtualizer.scrollToIndex(selectedIndex, {

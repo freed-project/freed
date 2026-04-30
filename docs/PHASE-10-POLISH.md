@@ -7,7 +7,7 @@
 
 ## Overview
 
-Final polish, accessibility, UX refinements, one optional Integrated AI local pack, and community infrastructure.
+Final polish, accessibility, UX refinements, global animation controls, one optional Integrated AI local pack, and community infrastructure.
 
 ---
 
@@ -177,7 +177,17 @@ export function useKeyboardShortcuts() {
 
 ### Reduced Motion
 
+Appearance now exposes a synced `Animations` preference with `None`, `Light`, and `Detailed` options. `Detailed` keeps the full interface motion, `Light` keeps short layout and state feedback while cutting decorative loops, and `None` disables app-controlled fades, slides, layout morphs, shimmers, spinners, and theme transition blur.
+
 ```css
+html[data-animation="none"] *,
+html[data-animation="none"] *::before,
+html[data-animation="none"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -382,7 +392,7 @@ Reward security researchers for responsible disclosure.
 | 10.4  | Export to CSV                      | Low        |
 | 10.5  | Keyboard shortcuts                 | Medium     |
 | 10.6  | Screen reader support              | Medium     |
-| 10.7  | Reduced motion support             | Low        |
+| 10.7  | Reduced motion support             | Low        | ✓ Complete (Appearance animation intensity controls plus global app motion gating)
 | 10.8  | Color contrast audit               | Low        |
 | 10.9  | Native Liquid Glass buttons        | High       |
 | 10.24 | Command bar — full action launcher | High       | ✓ Complete (Global `Cmd/Ctrl+K` palette with navigation, creation, current-item, sync, and danger actions)
@@ -435,7 +445,7 @@ Reward security researchers for responsible disclosure.
 - [ ] Export works to JSON and CSV
 - [ ] Keyboard navigation complete
 - [ ] Screen reader accessible
-- [ ] Reduced motion respected
+- [x] Reduced motion respected through `Animations: None`, OS reduced motion, and reduced View Transition behavior
 - [x] Command bar can trigger every major app action without a mouse
 
 ### AI

@@ -611,6 +611,11 @@ export interface SyncPreferences {
 export type ReadingIntensity = "light" | "normal" | "strong";
 
 /**
+ * Global interface animation intensity
+ */
+export type AnimationIntensity = "none" | "light" | "detailed";
+
+/**
  * Visual theme identifiers shared across website, desktop, and PWA.
  */
 export type ThemeId =
@@ -663,6 +668,9 @@ export interface DisplayPreferences {
 
   /** Show engagement counts (default: false - opt-in only) */
   showEngagementCounts: boolean;
+
+  /** Global interface animation intensity (default: detailed) */
+  animationIntensity: AnimationIntensity;
 
   /** Reading enhancements */
   reading: ReadingEnhancements;
@@ -897,6 +905,7 @@ export function createDefaultPreferences(): UserPreferences {
       compactMode: false,
       themeId: "scriptorium",
       showEngagementCounts: false, // Hidden by default
+      animationIntensity: "detailed",
       reading: {
         focusMode: false,
         focusIntensity: "normal",

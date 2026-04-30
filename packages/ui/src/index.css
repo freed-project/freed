@@ -687,6 +687,49 @@ body {
   }
 }
 
+html[data-animation="none"],
+html[data-animation="none"] * {
+  scroll-behavior: auto !important;
+}
+
+html[data-animation="none"] *,
+html[data-animation="none"] *::before,
+html[data-animation="none"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-delay: 0ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  transition-delay: 0ms !important;
+}
+
+html[data-animation="none"] .feed-card,
+html[data-animation="none"] .theme-card-soft,
+html[data-animation="none"] .theme-floating-panel,
+html[data-animation="none"] .theme-dialog-shell,
+html[data-animation="none"] .theme-settings-overlay {
+  transition: none !important;
+}
+
+html[data-animation="none"] .feed-card:active,
+html[data-animation="none"] .theme-fab-button:hover,
+html[data-animation="none"] .theme-fab-button:active,
+html[data-animation="none"] [data-feed-item-id] img {
+  transform: none !important;
+}
+
+html[data-animation="light"] .animate-pulse,
+html[data-animation="light"] .feed-signal-checkbox-feedback,
+html[data-animation="light"] .feed-signal-check-icon {
+  animation: none !important;
+}
+
+html[data-animation="light"] .feed-card,
+html[data-animation="light"] .theme-card-soft,
+html[data-animation="light"] .theme-floating-panel,
+html[data-animation="light"] .theme-dialog-shell {
+  transition-duration: 120ms !important;
+}
+
 .font-logo {
   font-family: var(--font-logo);
   letter-spacing: -0.02em;
@@ -1424,6 +1467,13 @@ html[data-theme="scriptorium"] .feed-card {
   html.feed-layout-transition::view-transition-new(*) {
     animation-duration: 340ms;
     animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  html[data-animation="light"].feed-layout-transition::view-transition-group(*),
+  html[data-animation="light"].feed-layout-transition::view-transition-old(*),
+  html[data-animation="light"].feed-layout-transition::view-transition-new(*) {
+    animation-duration: 160ms;
+    animation-timing-function: ease-out;
   }
 }
 

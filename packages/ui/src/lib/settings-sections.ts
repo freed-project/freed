@@ -48,6 +48,7 @@ export const BASE_SECTION_METAS: readonly SectionMeta[] = [
       "engagement", "counts", "likes", "reposts", "views",
       "focus", "focus mode", "bionic", "bold", "reading speed",
       "intensity", "light", "normal", "strong", "mark read", "scroll",
+      "animations", "motion", "reduced motion", "none", "detailed",
       "grayscale", "read grayscale", "read appearance",
       "archive", "delete archived", "prune", "reading",
       "offline", "cache", "saved only", "everything opened", "recent feed", "manual only",

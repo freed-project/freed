@@ -237,117 +237,120 @@ export const FeedItem = memo(function FeedItem({
       : "from-[var(--theme-media-facebook)] to-[var(--theme-media-linkedin)]";
 
     return (
-      <div
-        data-feed-item-id={item.globalId}
-        data-focused={focused ? "true" : "false"}
-        className={`relative overflow-hidden rounded-[var(--feed-card-radius)] cursor-pointer group select-none w-full transition-opacity ${readVisualClass}`}
-        style={{ height: storyHeight }}
-        onClick={handleActivateClick}
-        onMouseEnter={onMouseEnter}
-        role="button"
-        tabIndex={0}
-        onKeyDown={handleActivateKeyDown}
-      >
-        {showStoryMedia && firstMediaType === "video" ? (
-          <video
-            src={bg}
-            muted
-            playsInline
-            controls
-            preload="metadata"
-            onClick={(event) => event.stopPropagation()}
-            onError={() => setMediaFailed(true)}
-            className="absolute inset-0 w-full h-full object-cover"
-          />
-        ) : showStoryMedia ? (
-          <img
-            src={bg}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            onError={() => setMediaFailed(true)}
-            className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
-          />
-        ) : (
-          <div className={`absolute inset-0 bg-gradient-to-br ${gradientFallback}`} />
-        )}
-
-        <div className="absolute inset-0 bg-gradient-to-b from-black/65 via-black/10 to-black/55 pointer-events-none" />
-
-        <div className="absolute top-0 left-0 right-0 p-3 flex items-center gap-2">
-          {item.author.avatarUrl ? (
+      <div className="relative overflow-hidden rounded-[var(--feed-card-radius)]" style={sharedTransitionStyle}>
+        <div
+          data-feed-item-id={item.globalId}
+          data-focused={focused ? "true" : "false"}
+          data-selected={selected ? "true" : "false"}
+          className={`relative overflow-hidden rounded-[var(--feed-card-radius)] cursor-pointer group select-none w-full transition-opacity ${readVisualClass}`}
+          style={{ height: storyHeight }}
+          onClick={handleActivateClick}
+          onMouseEnter={onMouseEnter}
+          role="button"
+          tabIndex={0}
+          onKeyDown={handleActivateKeyDown}
+        >
+          {showStoryMedia && firstMediaType === "video" ? (
+            <video
+              src={bg}
+              muted
+              playsInline
+              controls
+              preload="metadata"
+              onClick={(event) => event.stopPropagation()}
+              onError={() => setMediaFailed(true)}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          ) : showStoryMedia ? (
             <img
-              src={item.author.avatarUrl}
+              src={bg}
               alt=""
-              className="w-7 h-7 rounded-full ring-2 ring-white/50 shrink-0 object-cover"
+              loading="lazy"
+              decoding="async"
+              onError={() => setMediaFailed(true)}
+              className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
             />
           ) : (
-            <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${gradientFallback} flex items-center justify-center text-[11px] font-bold ring-2 ring-white/50 shrink-0`}>
-              {item.author.displayName[0]?.toUpperCase() ?? "?"}
-            </div>
+            <div className={`absolute inset-0 bg-gradient-to-br ${gradientFallback}`} />
           )}
-          <div className="flex-1 min-w-0">
-            <span className="text-[11px] font-semibold text-white drop-shadow truncate block leading-tight">
-              {item.author.displayName}
-            </span>
-            <span className="text-[10px] text-white/70 leading-none">{timeAgo}</span>
-          </div>
-          <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-[10px] text-white font-medium">
-            Story
-          </span>
-        </div>
 
-        <div className="absolute bottom-0 left-0 right-0 p-3 flex items-end gap-2">
-          <div className="flex items-center gap-1.5 shrink-0 text-white/75">
-            {platformIcons[item.platform] ?? <span className="text-xs">📄</span>}
-          </div>
+          <div className="absolute inset-0 bg-gradient-to-b from-black/65 via-black/10 to-black/55 pointer-events-none" />
 
-          <div className="flex-1 min-w-0">
-            {item.content.text && (
-              <p className="text-[11px] text-white/90 drop-shadow line-clamp-1 leading-tight mb-1">
-                {item.content.text}
-              </p>
+          <div className="absolute top-0 left-0 right-0 p-3 flex items-center gap-2">
+            {item.author.avatarUrl ? (
+              <img
+                src={item.author.avatarUrl}
+                alt=""
+                className="w-7 h-7 rounded-full ring-2 ring-white/50 shrink-0 object-cover"
+              />
+            ) : (
+              <div className={`w-7 h-7 rounded-full bg-gradient-to-br ${gradientFallback} flex items-center justify-center text-[11px] font-bold ring-2 ring-white/50 shrink-0`}>
+                {item.author.displayName[0]?.toUpperCase() ?? "?"}
+              </div>
             )}
-            {item.location?.name && (
-              <span className="inline-flex items-center gap-1 text-[10px] text-white/80 bg-black/35 backdrop-blur-sm rounded-full px-2 py-0.5">
-                <svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-                </svg>
-                {item.location.name}
+            <div className="flex-1 min-w-0">
+              <span className="text-[11px] font-semibold text-white drop-shadow truncate block leading-tight">
+                {item.author.displayName}
               </span>
-            )}
+              <span className="text-[10px] text-white/70 leading-none">{timeAgo}</span>
+            </div>
+            <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-white/20 backdrop-blur-sm text-[10px] text-white font-medium">
+              Story
+            </span>
           </div>
 
-          {(onSave || onArchive) && (
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-              {onSave && (
-                <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"} side="top">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onSave(e); }}
-                    aria-label={item.userState.saved ? "Remove bookmark" : "Bookmark"}
-                    className={`p-1.5 rounded-lg bg-black/35 backdrop-blur-sm transition-colors ${
-                      item.userState.saved ? "text-[var(--theme-accent-secondary)]" : "text-white/70 hover:text-[var(--theme-accent-secondary)]"
-                    }`}
-                  >
-                    <svg className="w-3.5 h-3.5" fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                    </svg>
-                  </button>
-                </Tooltip>
+          <div className="absolute bottom-0 left-0 right-0 p-3 flex items-end gap-2">
+            <div className="flex items-center gap-1.5 shrink-0 text-white/75">
+              {platformIcons[item.platform] ?? <span className="text-xs">📄</span>}
+            </div>
+
+            <div className="flex-1 min-w-0">
+              {item.content.text && (
+                <p className="text-[11px] text-white/90 drop-shadow line-clamp-1 leading-tight mb-1">
+                  {item.content.text}
+                </p>
               )}
-              {onArchive && (
-                <Tooltip label="Archive" side="top">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onArchive(e); }}
-                    aria-label="Archive"
-                    className="p-1.5 rounded-lg bg-black/35 backdrop-blur-sm text-white/70 hover:text-[rgb(var(--theme-feedback-success-rgb))] transition-colors"
-                  >
-                    <TrashIcon className="w-3.5 h-3.5" />
-                  </button>
-                </Tooltip>
+              {item.location?.name && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-white/80 bg-black/35 backdrop-blur-sm rounded-full px-2 py-0.5">
+                  <svg className="w-2.5 h-2.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+                  </svg>
+                  {item.location.name}
+                </span>
               )}
             </div>
-          )}
+
+            {(onSave || onArchive) && (
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                {onSave && (
+                  <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"} side="top">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onSave(e); }}
+                      aria-label={item.userState.saved ? "Remove bookmark" : "Bookmark"}
+                      className={`p-1.5 rounded-lg bg-black/35 backdrop-blur-sm transition-colors ${
+                        item.userState.saved ? "text-[var(--theme-accent-secondary)]" : "text-white/70 hover:text-[var(--theme-accent-secondary)]"
+                      }`}
+                    >
+                      <svg className="w-3.5 h-3.5" fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                      </svg>
+                    </button>
+                  </Tooltip>
+                )}
+                {onArchive && (
+                  <Tooltip label="Archive" side="top">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onArchive(e); }}
+                      aria-label="Archive"
+                      className="p-1.5 rounded-lg bg-black/35 backdrop-blur-sm text-white/70 hover:text-[rgb(var(--theme-feedback-success-rgb))] transition-colors"
+                    >
+                      <TrashIcon className="w-3.5 h-3.5" />
+                    </button>
+                  </Tooltip>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );

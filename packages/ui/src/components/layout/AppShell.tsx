@@ -27,6 +27,10 @@ import {
   createContactAccountFromGoogleContact,
 } from "@freed/shared/google-contacts-automation";
 import { applyThemeToDocument, persistTheme } from "../../lib/theme.js";
+import {
+  applyAnimationIntensityToDocument,
+  resolveAnimationIntensity,
+} from "../../lib/animation-preferences.js";
 import { MapView } from "../map/MapView.js";
 import { BackgroundAtmosphere } from "./BackgroundAtmosphere.js";
 import {
@@ -60,6 +64,9 @@ export function AppShell({ children }: AppShellProps) {
   const createConnectionPersonsFromCandidates = useAppStore((s) => s.createConnectionPersonsFromCandidates);
   const isInitialized = useAppStore((s) => s.isInitialized);
   const themeId = useAppStore((s) => s.preferences.display.themeId);
+  const animationIntensity = useAppStore((s) =>
+    resolveAnimationIntensity(s.preferences.display.animationIntensity),
+  );
   const showAtmosphere = activeView !== "friends" && activeView !== "map";
   const settingsOpen = useSettingsStore((s) => s.open);
   const requestSearchPalette = useCommandSurfaceStore((s) => s.requestSearchPalette);
@@ -207,6 +214,11 @@ export function AppShell({ children }: AppShellProps) {
     applyThemeToDocument(themeId);
     persistTheme(themeId);
   }, [isInitialized, themeId]);
+
+  useEffect(() => {
+    if (!isInitialized) return;
+    applyAnimationIntensityToDocument(animationIntensity);
+  }, [animationIntensity, isInitialized]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -388,7 +400,11 @@ export function AppShell({ children }: AppShellProps) {
             style={{
               width: debugVisible ? debugWidth + AUXILIARY_DRAWER_GAP_WIDTH_PX : 0,
               opacity: debugVisible ? 1 : 0,
-              transition: dragging.current ? "none" : "width 300ms ease-in-out, opacity 180ms ease-in-out",
+              transition: dragging.current || animationIntensity === "none"
+                ? "none"
+                : animationIntensity === "light"
+                  ? "width 140ms ease-out, opacity 120ms ease-out"
+                  : "width 300ms ease-in-out, opacity 180ms ease-in-out",
             }}
           >
             <div className="relative flex h-full w-full items-stretch">
