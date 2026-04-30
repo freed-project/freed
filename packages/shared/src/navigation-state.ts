@@ -62,6 +62,7 @@ export function canonicalizeFilterOptions(filter: FilterOptions): FilterOptions 
 
   const feedUrl = normalizeText(filter.feedUrl);
   const platform = feedUrl ? "rss" : normalizeText(filter.platform) ?? undefined;
+  const authorId = feedUrl ? null : normalizeText(filter.authorId);
   const socialContentFilter =
     platform === "facebook" || platform === "instagram"
       ? normalizeSocialContentFilter(filter.socialContentFilter)
@@ -69,6 +70,7 @@ export function canonicalizeFilterOptions(filter: FilterOptions): FilterOptions 
   const next: FilterOptions = {};
 
   if (platform) next.platform = platform;
+  if (platform && authorId) next.authorId = authorId;
   if (feedUrl) next.feedUrl = feedUrl;
   if (socialContentFilter) next.socialContentFilter = socialContentFilter;
   if (tags.length > 0) next.tags = tags;
@@ -130,6 +132,7 @@ export function parseNavigationState(input: string | NavigationPathLike): Naviga
   const scope = normalizeText(params.get("scope"));
   const feedUrl = normalizeText(params.get("feed"));
   const platform = normalizeText(params.get("platform"));
+  const authorId = normalizeText(params.get("author"));
   const socialContentFilter = normalizeSocialContentFilter(params.get("content") as FilterOptions["socialContentFilter"] | null);
   const tags = uniqueSortedTags(params.getAll("tag"));
   const signals = uniqueSortedSignals(params.getAll("signal"));
@@ -150,6 +153,7 @@ export function parseNavigationState(input: string | NavigationPathLike): Naviga
   } else {
     activeFilter = {};
     if (platform) activeFilter.platform = platform;
+    if (platform && authorId) activeFilter.authorId = authorId;
     if (socialContentFilter) activeFilter.socialContentFilter = socialContentFilter;
     if (tags.length > 0) activeFilter.tags = tags;
     if (signals.length > 0) activeFilter.signals = signals;
@@ -194,6 +198,9 @@ export function serializeNavigationState(state: NavigationState): string {
       params.set("feed", activeFilter.feedUrl);
     } else if (activeFilter.platform) {
       params.set("platform", activeFilter.platform);
+      if (activeFilter.authorId) {
+        params.set("author", activeFilter.authorId);
+      }
     }
 
     if (activeFilter.socialContentFilter && activeFilter.socialContentFilter !== "all") {
@@ -228,6 +235,7 @@ export function navigationStatesEqual(a: NavigationState, b: NavigationState): b
     left.activeView === right.activeView
     && left.selectedItemId === right.selectedItemId
     && left.activeFilter.platform === right.activeFilter.platform
+    && left.activeFilter.authorId === right.activeFilter.authorId
     && left.activeFilter.feedUrl === right.activeFilter.feedUrl
     && (left.activeFilter.socialContentFilter ?? "all") === (right.activeFilter.socialContentFilter ?? "all")
     && !!left.activeFilter.savedOnly === !!right.activeFilter.savedOnly

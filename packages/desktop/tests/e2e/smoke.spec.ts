@@ -1277,9 +1277,14 @@ test("compact sidebar search opens as a floating palette and closes cleanly", as
   await expect(page.getByTestId("compact-sidebar-search-palette")).toHaveCount(0);
   await expect(trigger).toHaveAttribute("aria-pressed", "true");
 
-  const headerSearch = page.getByTestId("workspace-toolbar").getByPlaceholder("Search");
-  await expect(headerSearch).toBeVisible();
-  await page.getByTestId("workspace-toolbar").getByLabel("Clear search").click();
+  await expect(page.getByTestId("workspace-toolbar").getByLabel("Search all sources")).toHaveCount(0);
+  await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("Search: face");
+  await page.evaluate(() => {
+    const store = (window as any).__FREED_STORE__ as {
+      getState: () => { setSearchQuery: (query: string) => void };
+    };
+    store.getState().setSearchQuery("");
+  });
   await expect(page.getByTestId("workspace-toolbar-title-block")).toBeVisible();
   await expect(trigger).toHaveAttribute("aria-pressed", "false");
 });

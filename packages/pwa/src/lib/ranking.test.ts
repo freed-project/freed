@@ -267,6 +267,27 @@ describe("filterFeedItems", () => {
     expect(result).toHaveLength(1);
   });
 
+  it("filters by platform and author id", () => {
+    const socialItems: FeedItem[] = [
+      makeItem({ globalId: "rob-x", platform: "x", author: { id: "rob", handle: "@rob", displayName: "Rob" } }),
+      makeItem({ globalId: "ada-x", platform: "x", author: { id: "ada", handle: "@ada", displayName: "Ada" } }),
+      makeItem({ globalId: "rob-rss", platform: "rss", author: { id: "rob", handle: "rob", displayName: "Rob RSS" } }),
+      makeItem({
+        globalId: "rob-archived",
+        platform: "x",
+        author: { id: "rob", handle: "@rob", displayName: "Rob" },
+        userState: { hidden: false, saved: false, archived: true, tags: [] },
+      }),
+    ];
+
+    expect(
+      filterFeedItems(socialItems, { platform: "x", authorId: "rob" }).map((item) => item.globalId),
+    ).toEqual(["rob-x"]);
+    expect(
+      filterFeedItems(socialItems, { platform: "x", authorId: "rob", archivedOnly: true }).map((item) => item.globalId),
+    ).toEqual(["rob-archived"]);
+  });
+
   it("filters to saved only", () => {
     const result = filterFeedItems(items, { savedOnly: true });
     expect(result.every((i) => i.userState.saved)).toBe(true);

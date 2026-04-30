@@ -312,7 +312,7 @@ export async function captureDomFeed(
 - [x] Desktop reader hydration now uses native fetch and authenticated provider paths on open, caches successful reader content locally, pins saved items by default, hydrates X reply threads with media, hydrates visible Facebook and Instagram post comments, and explains private story replies when the user is online
 - [x] Freed Desktop feed cards now show captured media thumbnails in the full feed, social story tiles, and the compact reader rail, with broken image fallback to the existing text card
 - [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation
-- [x] Search now drops its MiniSearch index as soon as the query clears, rebuilds only when the worker says the searchable corpus changed, and indexes a smaller preserved-text window so one exploratory search cannot pin a second full-text copy of the library in renderer memory
+- [x] Search now builds a shared MiniSearch index asynchronously in chunks, drops it after the query clears, rebuilds only when the worker says the searchable corpus changed, and indexes a smaller preserved-text window so one exploratory search cannot pin duplicate full-text copies of the library in renderer memory
 - [x] Desktop perf memory checks now use CDP heap-usage sampling instead of the broken zero-value metric path, and they include a heavy preserved-text search scenario so renderer retention regressions show up in CI
 - [ ] Windows installer is code-signed (requires EV certificate)
 - [x] Update server runs on a Freed-owned domain instead of pointing the updater directly at GitHub Releases

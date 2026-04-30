@@ -323,6 +323,7 @@ Semantic zoom now promotes provider island labels at low zoom while delaying per
 | 8.39 | Persist optional graph placement and support drag-to-pin without breaking drag-to-link | Medium | Done |
 | 8.40 | Expand showcase and stress sample graph coverage to 250 friends plus 1,250 identities and 1,000 friends plus 5,000 identities | Medium | Done |
 | 8.41 | Add semantic zoom hierarchy so provider island labels dominate low zoom and person labels appear at closer zoom | Medium | Done |
+| 8.42 | Search and filter the primary feed by followed social channel names | Medium | Done |
 
 ---
 
@@ -379,6 +380,7 @@ Semantic zoom now promotes provider island labels at low zoom while delaying per
 - [x] Optional graph placement fields persist for persons and accounts
 - [x] Dragging a person or channel pins the graph position, while channel drops onto people still link accounts
 - [x] Stress coverage exercises 1,000 friends plus 5,000 connected social identities
+- [x] Primary search can find followed social channels by account name or handle and filter the feed to that exact channel
 - [x] Graph benchmarks cover model build time, worker layout time, scene sync time, pan and zoom sync time, selection and hover sync time, visible label count, and quality mode transitions
 - [x] Desktop browser tests cover mixed-tier graph load, drag-to-link persistence, semantic zoom label growth, and a seeded dense-graph screenshot
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map

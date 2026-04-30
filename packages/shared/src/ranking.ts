@@ -138,6 +138,7 @@ export function filterFeedItems(
     /** Show only archived items (the Archived view). Mutually exclusive with normal feed. */
     archivedOnly?: boolean;
     platform?: string;
+    authorId?: string;
     socialContentFilter?: SocialContentFilter;
     tags?: string[];
     signals?: ContentSignal[];
@@ -157,6 +158,7 @@ export function filterFeedItems(
 
     // Filter by platform
     if (options.platform && item.platform !== options.platform) return false;
+    if (options.authorId && item.author.id !== options.authorId) return false;
 
     if (options.socialContentFilter && options.socialContentFilter !== "all") {
       if (options.socialContentFilter === "stories" && item.contentType !== "story") return false;

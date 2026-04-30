@@ -17,6 +17,8 @@ export interface CommandPaletteAction {
   fallback?: boolean;
 }
 
+const MAX_COMMAND_RESULTS = 40;
+
 function normalizeQuery(value: string): string {
   return value.trim().toLocaleLowerCase();
 }
@@ -89,7 +91,7 @@ export function filterCommandPaletteActions(
     });
 
   const fallback = ranked.filter(({ action }) => action.fallback);
-  const regular = ranked.filter(({ action }) => !action.fallback);
+  const regular = ranked.filter(({ action }) => !action.fallback).slice(0, MAX_COMMAND_RESULTS);
 
   return [...regular, ...fallback].map(({ action }) => action);
 }

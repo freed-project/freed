@@ -9,10 +9,15 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
-import type { FilterOptions, Platform } from "@freed/shared";
+import {
+  filterFeedItems,
+  isFriendAuthoredItem,
+  type FilterOptions,
+  type Platform,
+} from "@freed/shared";
 
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
-import { useSearchResults } from "../../hooks/useSearchResults.js";
+import { prepareSearchIndex } from "../../hooks/useSearchResults.js";
 import { buildCommandPaletteActions } from "../../lib/command-palette-registry.js";
 import {
   filterCommandPaletteActions,
@@ -114,16 +119,16 @@ function getCommandPaletteIcon(action: CommandPaletteAction): ReactNode {
   if (action.id === "go-source-rss" || action.id.startsWith("go-feed-") || action.id === "go-settings-feeds" || action.id === "scope-sync-rss") {
     return <RssIcon className={iconClass} />;
   }
-  if (action.id === "go-source-x" || action.id === "go-settings-x") {
+  if (action.id === "go-source-x" || action.id === "go-settings-x" || action.id.startsWith("go-channel-x-")) {
     return <XIcon className={iconClass} />;
   }
-  if (action.id === "go-source-facebook" || action.id === "go-settings-facebook") {
+  if (action.id === "go-source-facebook" || action.id === "go-settings-facebook" || action.id.startsWith("go-channel-facebook-")) {
     return <FacebookIcon className={iconClass} />;
   }
-  if (action.id === "go-source-instagram" || action.id === "go-settings-instagram") {
+  if (action.id === "go-source-instagram" || action.id === "go-settings-instagram" || action.id.startsWith("go-channel-instagram-")) {
     return <InstagramIcon className={iconClass} />;
   }
-  if (action.id === "go-source-linkedin" || action.id === "go-settings-linkedin") {
+  if (action.id === "go-source-linkedin" || action.id === "go-settings-linkedin" || action.id.startsWith("go-channel-linkedin-")) {
     return <LinkedInIcon className={iconClass} />;
   }
   if (action.id === "go-settings-googleContacts") {
@@ -327,27 +332,26 @@ export function SearchJumpField({
     [items, selectedItemId],
   );
 
-  const { filteredItems } = useSearchResults(
-    items,
-    searchQuery,
-    activeFilter,
-    searchCorpusVersion,
-    display.friendsMode ?? "all_content",
-    persons,
-    accounts,
-    friends,
-  );
+  const commandScopeItems = useMemo(() => {
+    const identityItems = display.friendsMode === "friends"
+      ? items.filter((item) => isFriendAuthoredItem(item, persons, accounts, friends))
+      : items;
+    const filtered = filterFeedItems(identityItems, activeFilter);
+    return activeFilter.feedUrl
+      ? filtered.filter((item) => item.rssSource?.feedUrl === activeFilter.feedUrl)
+      : filtered;
+  }, [accounts, activeFilter, display.friendsMode, friends, items, persons]);
 
   const unreadScopeIds = useMemo(
-    () => filteredItems.filter((item) => !item.userState.readAt).map((item) => item.globalId),
-    [filteredItems],
+    () => commandScopeItems.filter((item) => !item.userState.readAt).map((item) => item.globalId),
+    [commandScopeItems],
   );
   const archivableScopeItems = useMemo(
     () =>
-      filteredItems.filter(
+      commandScopeItems.filter(
         (item) => !!item.userState.readAt && !item.userState.saved && !item.userState.archived,
       ),
-    [filteredItems],
+    [commandScopeItems],
   );
   const savedArchivedCount = useMemo(
     () => items.filter((item) => item.userState.saved && item.userState.archived).length,
@@ -363,6 +367,25 @@ export function SearchJumpField({
         .filter((feed) => feed.enabled)
         .sort((left, right) => left.title.localeCompare(right.title)),
     [feeds],
+  );
+  const socialChannels = useMemo(
+    () =>
+      Object.values(accounts)
+        .filter((account) =>
+          account.kind === "social" &&
+          account.provider !== "rss" &&
+          account.provider !== "saved"
+        )
+        .map((account) => ({
+          account,
+          personName: account.personId ? persons[account.personId]?.name : undefined,
+        }))
+        .sort((left, right) => {
+          const leftTitle = left.account.displayName ?? left.account.handle ?? left.account.externalId;
+          const rightTitle = right.account.displayName ?? right.account.handle ?? right.account.externalId;
+          return leftTitle.localeCompare(rightTitle);
+        }),
+    [accounts, persons],
   );
   const allTags = useMemo(() => collectAllTags(items), [items]);
   const tagFilters = useMemo(() => buildTopLevelTagFilters(allTags), [allTags]);
@@ -399,6 +422,9 @@ export function SearchJumpField({
     setConfirmValue("");
     setIsTriggerOpen(false);
   }, []);
+  const prepareSearch = useCallback(() => {
+    void prepareSearchIndex(items, searchCorpusVersion, accounts);
+  }, [accounts, items, searchCorpusVersion]);
 
   const actions = useMemo(
     () =>
@@ -415,6 +441,7 @@ export function SearchJumpField({
           url: feed.url,
           title: feed.title,
         })),
+        socialChannels,
         tagFilters,
         currentSourceId,
         selectedItem,
@@ -423,7 +450,9 @@ export function SearchJumpField({
         savedArchivedCount,
         archivedCount,
         openSettingsTo,
-        navigateToFeed: (filter: FilterOptions) =>
+        navigateToFeed: (filter: FilterOptions) => {
+          setSearchQuery("");
+          setInputValue("");
           navigateToFeedView(
             {
               setActiveView,
@@ -432,7 +461,8 @@ export function SearchJumpField({
               setFilter,
             },
             filter,
-          ),
+          );
+        },
         navigateToFriends: () => {
           setSelectedItem(null);
           setSelectedPerson(null);
@@ -519,6 +549,7 @@ export function SearchJumpField({
       openSavedContentDialog,
       openSettingsTo,
       openUrl,
+      prepareSearch,
       importMarkdown,
       exportMarkdown,
       saveUrl,
@@ -529,6 +560,7 @@ export function SearchJumpField({
       setSearchQuery,
       setSelectedItem,
       setSelectedPerson,
+      socialChannels,
       settingsSections,
       syncRssNow,
       syncSourceNow,
@@ -840,6 +872,7 @@ export function SearchJumpField({
                 autoFocus
                 value={inputValue}
                 onChange={(event) => setInputValue(event.target.value)}
+                onFocus={prepareSearch}
                 onKeyDown={handleInputKeyDown}
                 onClear={clearSearch}
                 placeholder="Search or run"
@@ -936,7 +969,10 @@ export function SearchJumpField({
             ref={triggerButtonRef}
             type="button"
             data-testid="compact-sidebar-search-trigger"
-            onClick={() => setIsTriggerOpen((value) => !value)}
+            onClick={() => {
+              prepareSearch();
+              setIsTriggerOpen((value) => !value);
+            }}
             className={compactSidebar
               ? `relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-[var(--card-radius)] border transition-colors ${
                   triggerActive
@@ -986,7 +1022,10 @@ export function SearchJumpField({
         ref={inlineInputRef}
         value={inputValue}
         onChange={(event) => setInputValue(event.target.value)}
-        onFocus={() => setIsFocused(true)}
+        onFocus={() => {
+          prepareSearch();
+          setIsFocused(true);
+        }}
         onBlur={() => {
           window.setTimeout(() => {
             if (!triggerPaletteRef.current?.matches(":hover")) {

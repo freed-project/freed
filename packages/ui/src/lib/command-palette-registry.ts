@@ -1,5 +1,6 @@
-import type { FilterOptions, FeedItem, Platform } from "@freed/shared";
+import type { Account, FilterOptions, FeedItem, Platform } from "@freed/shared";
 import { PLATFORM_LABELS } from "@freed/shared";
+import { accountTitle, providerLabel } from "./account-labels.js";
 import { toast } from "../components/Toast.js";
 import type { AvailableUpdateInfo } from "../context/PlatformContext.js";
 import type { CommandPaletteAction } from "./command-palette.js";
@@ -20,6 +21,11 @@ interface SourceDestination {
   label: string;
 }
 
+interface SocialChannelDestination {
+  account: Account;
+  personName?: string;
+}
+
 interface BuildCommandPaletteActionsOptions {
   query: string;
   activeView: "feed" | "friends" | "map";
@@ -27,6 +33,7 @@ interface BuildCommandPaletteActionsOptions {
   settingsSections: readonly SectionMeta[];
   topSources: readonly SourceDestination[];
   feeds: readonly FeedDestination[];
+  socialChannels?: readonly SocialChannelDestination[];
   tagFilters: readonly TagFilter[];
   currentSourceId: Platform | null;
   selectedItem: FeedItem | null;
@@ -59,6 +66,9 @@ interface BuildCommandPaletteActionsOptions {
   activeCloudProviderLabel?: (() => string | null) | null;
 }
 
+const MAX_TYPED_FEED_ACTIONS = 25;
+const MAX_TYPED_CHANNEL_ACTIONS = 25;
+
 async function runWithToast(
   runner: () => void | Promise<void>,
   successMessage?: string,
@@ -77,6 +87,19 @@ function currentSourceLabel(sourceId: Platform | null): string | null {
   return sourceId ? PLATFORM_LABELS[sourceId] ?? sourceId.toLocaleUpperCase() : null;
 }
 
+function normalizedNeedle(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+function candidateMatchesQuery(candidates: ReadonlyArray<string | undefined>, query: string): boolean {
+  if (!query) return false;
+  return candidates.some((candidate) => candidate?.toLocaleLowerCase().includes(query));
+}
+
+function withoutAtPrefix(value: string | undefined): string | undefined {
+  return value?.startsWith("@") ? value.slice(1) : value;
+}
+
 export function buildCommandPaletteActions({
   query,
   activeView,
@@ -84,6 +107,7 @@ export function buildCommandPaletteActions({
   settingsSections,
   topSources,
   feeds,
+  socialChannels = [],
   tagFilters,
   currentSourceId,
   selectedItem,
@@ -115,6 +139,8 @@ export function buildCommandPaletteActions({
   factoryReset,
   activeCloudProviderLabel,
 }: BuildCommandPaletteActionsOptions): CommandPaletteAction[] {
+  const trimmedQuery = query.trim();
+  const normalizedQuery = normalizedNeedle(query);
   const actions: CommandPaletteAction[] = [
     {
       id: "go-unified-feed",
@@ -200,15 +226,59 @@ export function buildCommandPaletteActions({
     });
   }
 
-  for (const feed of feeds) {
-    actions.push({
-      id: `go-feed-${feed.url}`,
-      title: feed.title,
-      section: "Go to",
-      keywords: [feed.url.toLocaleLowerCase(), "feed", "rss", feed.title.toLocaleLowerCase()],
-      entity: true,
-      run: () => navigateToFeed({ platform: "rss", feedUrl: feed.url }),
-    });
+  if (trimmedQuery) {
+    for (const feed of feeds
+      .filter((feed) => candidateMatchesQuery([feed.title, feed.url, "feed", "rss"], normalizedQuery))
+      .slice(0, MAX_TYPED_FEED_ACTIONS)) {
+      actions.push({
+        id: `go-feed-${feed.url}`,
+        title: feed.title,
+        section: "Go to",
+        keywords: [feed.url.toLocaleLowerCase(), "feed", "rss", feed.title.toLocaleLowerCase()],
+        entity: true,
+        run: () => navigateToFeed({ platform: "rss", feedUrl: feed.url }),
+      });
+    }
+
+    for (const { account, personName } of socialChannels
+      .filter(({ account, personName }) =>
+        candidateMatchesQuery(
+          [
+            accountTitle(account),
+            account.displayName,
+            account.handle,
+            withoutAtPrefix(account.handle),
+            account.externalId,
+            account.externalId.slice(-8),
+            providerLabel(account.provider),
+            personName,
+            "channel",
+            "social",
+          ],
+          normalizedQuery,
+        ),
+      )
+      .slice(0, MAX_TYPED_CHANNEL_ACTIONS)) {
+      const label = accountTitle(account);
+      const provider = providerLabel(account.provider);
+      actions.push({
+        id: `go-channel-${account.provider}-${account.externalId}`,
+        title: label,
+        section: "Go to",
+        keywords: [
+          provider.toLocaleLowerCase(),
+          account.externalId.toLocaleLowerCase(),
+          account.externalId.slice(-8).toLocaleLowerCase(),
+          account.handle?.toLocaleLowerCase() ?? "",
+          withoutAtPrefix(account.handle)?.toLocaleLowerCase() ?? "",
+          personName?.toLocaleLowerCase() ?? "",
+          "channel",
+          "social",
+        ].filter(Boolean),
+        entity: true,
+        run: () => navigateToFeed({ platform: account.provider as Platform, authorId: account.externalId }),
+      });
+    }
   }
 
   for (const tagFilter of tagFilters) {
@@ -371,7 +441,7 @@ export function buildCommandPaletteActions({
     });
   }
 
-  if (deleteAllArchived) {
+  if (trimmedQuery && deleteAllArchived) {
     actions.push({
       id: "danger-delete-archived",
       title: "Delete all archived items",
@@ -392,7 +462,7 @@ export function buildCommandPaletteActions({
     });
   }
 
-  if (factoryReset) {
+  if (trimmedQuery && factoryReset) {
     actions.push({
       id: "danger-reset-device",
       title: "Factory reset this device",
@@ -425,17 +495,17 @@ export function buildCommandPaletteActions({
     }
   }
 
-  if (query.trim()) {
+  if (trimmedQuery) {
     actions.push({
       id: "search-feed",
       title:
         activeView === "feed"
-          ? `Search current feed for "${query.trim()}"`
-          : `Search feed for "${query.trim()}"`,
+          ? `Search current feed for "${trimmedQuery}"`
+          : `Search feed for "${trimmedQuery}"`,
       section: "Search",
-      keywords: [query.trim().toLocaleLowerCase(), "search", "feed"],
+      keywords: [normalizedQuery, "search", "feed"],
       fallback: true,
-      run: () => applyFeedSearch(query.trim()),
+      run: () => applyFeedSearch(trimmedQuery),
     });
   }
 

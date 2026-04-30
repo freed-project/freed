@@ -112,11 +112,13 @@ Freed now has a real global command palette, opened with `Cmd/Ctrl+K`, mounted f
 
 The command palette now covers:
 
-- **Navigation**: Unified Feed, Saved, Archived, Friends, Map, every top source, every RSS feed, top-level tag scopes, and every visible settings section
+- **Navigation**: Unified Feed, Saved, Archived, Friends, Map, every top source, typed RSS feed matches, followed social channel matches, top-level tag scopes, and every visible settings section
 - **Create flows**: Add RSS Feed, Save URL, import Freed Markdown, export Freed Markdown
 - **Current item actions**: Open original URL, close reader, save or unsave, archive or unarchive, like or unlike when supported
 - **Current scope actions**: Mark current scope read, archive current scope read items, unarchive saved items, sync RSS, sync the current provider, and check for updates when supported
 - **Danger actions**: Delete all archived items plus local or cloud-backed factory reset, guarded by typed confirmation
+
+Blank suggestions now stay compact. Individual RSS feeds and danger actions are hidden until the operator starts typing, and broad matches are capped so a large feed list cannot turn the command surface into a scroll chore.
 
 The shared extension points now live in `packages/ui/src/lib/command-palette.ts`, `packages/ui/src/lib/command-palette-registry.ts`, and `packages/ui/src/lib/command-surface-store.ts`.
 
