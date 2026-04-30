@@ -671,7 +671,7 @@ export function Sidebar({
       ? "pr-1"
       : narrowLabeledSidebar
         ? "pr-0"
-        : "pr-1.5";
+        : "pr-0.5";
   const rowGapClass = isMobileDevice ? "gap-3.5" : narrowLabeledSidebar ? "gap-2" : "gap-3";
   const rowTextClass = isMobileDevice ? "text-base" : "text-sm";
   const rowVerticalPaddingClass = isMobileDevice ? "py-3" : "py-1.5";
@@ -896,8 +896,8 @@ export function Sidebar({
     if (rowCountsVisible) return "ml-1.5 w-[54px]";
     if (!sourceMenusVisible || !canShowSourceMenu(source)) return "ml-0 w-0";
     return openMenuSourceKey === sourceKey(source)
-      ? "ml-0 w-6"
-      : "ml-0 w-0 group-hover/source:w-6";
+      ? "ml-0 w-[26px]"
+      : "ml-0 w-0 group-hover/source:w-[26px]";
   };
 
   const selectedMenuSource = openMenuSourceKey
@@ -1062,7 +1062,7 @@ export function Sidebar({
   const pendingFriendsBadge = pendingMatchCount > 0
     ? renderSidebarIconBadge(<span className="flex h-2.5 w-2.5 rounded-full bg-[var(--theme-accent-secondary)]" />)
     : undefined;
-  const sidebarLabelClass = `min-w-0 flex-1 truncate whitespace-nowrap ${narrowLabeledSidebar ? "pr-0" : "pr-1"} [text-overflow:clip]`;
+  const sidebarLabelClass = `min-w-0 flex-1 truncate whitespace-nowrap ${narrowLabeledSidebar ? "pr-0" : "pr-0.5"}`;
   const sidebarFeedLabelClass = `${sidebarLabelClass} text-xs`;
 
   const sidebarBody = (
@@ -1097,7 +1097,7 @@ export function Sidebar({
               ) : (
                 <li
                   key={source.id ?? "all"}
-                  className={`order-1 group/source flex items-stretch gap-2 rounded-lg border transition-all ${
+                  className={`order-1 group/source flex items-stretch gap-0 rounded-lg border transition-all ${
                     isTopSourceActive(source)
                       ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
                       : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
@@ -1387,7 +1387,7 @@ export function Sidebar({
                                 labeledSourceIconSizeClass(source.id),
                               )}
                               <div className="flex min-w-0 flex-1 items-center gap-1">
-                                <span className="min-w-0 overflow-hidden whitespace-nowrap pr-[2px] [text-overflow:clip]">
+                                <span className="min-w-0 truncate whitespace-nowrap pr-0.5">
                                   {source.label}
                                 </span>
                                 {rssAccordionVisible ? (
@@ -1601,7 +1601,7 @@ export function Sidebar({
                 return (
                   <li
                     key={source.id ?? "all"}
-                    className={`${sourceOrderClass(source)} group/source flex items-stretch gap-2 rounded-lg border transition-all ${
+                    className={`${sourceOrderClass(source)} group/source flex items-stretch gap-0 rounded-lg border transition-all ${
                       isTopSourceActive(source)
                         ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
                         : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
@@ -1946,7 +1946,7 @@ function TagTreeNode({
           <svg className="w-3 h-3 shrink-0 text-[color:var(--theme-text-soft)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
           </svg>
-          <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap pr-1.5 [text-overflow:clip]">{label}</span>
+          <span className="min-w-0 flex-1 truncate whitespace-nowrap pr-0.5">{label}</span>
         </button>
         {hasChildren && (
           <button
