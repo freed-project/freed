@@ -1,5 +1,331 @@
 [
   {
+    "version": "26.4.2904-dev",
+    "tagName": "v26.4.2904-dev",
+    "channel": "dev",
+    "date": "2026-04-30T04:19:00Z",
+    "deck": "Renderer recovery, semantic content enrichment, unified AI provider settings, and read-on-scroll fixes",
+    "features": [
+      {
+        "text": "Semantic content enrichment"
+      },
+      {
+        "text": "Unified AI provider settings"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Recover Freed Desktop after main renderer stalls instead of leaving the app without a main window"
+      },
+      {
+        "text": "Polish reader sidebar and toolbar layout"
+      },
+      {
+        "text": "Polish AI settings local pack"
+      },
+      {
+        "text": "Prevent health persistence from freezing dev preview"
+      },
+      {
+        "text": "Mark feed items read while scrolling"
+      },
+      {
+        "text": "Provider health persistence no longer uses the Tauri store mutex path that could freeze Freed Desktop shortly after launch"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2904-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.4.2900-dev",
+      "26.4.2901-dev",
+      "26.4.2902-dev",
+      "26.4.2903-dev",
+      "26.4.2904-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.2900-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2900-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.2901-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2901-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.2902-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2902-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.2903-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2903-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.2904-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2904-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.4.2800-dev",
+    "tagName": "v26.4.2800-dev",
+    "channel": "dev",
+    "date": "2026-04-28T22:32:24Z",
+    "deck": "Dev releases now build for every primary supported platform.",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Dev tagged releases now use the same primary build matrix as production, covering macOS Apple Silicon, macOS Intel, Windows x64, and Linux x64."
+      },
+      {
+        "text": "Paused local AI model downloads keep their progress after the app reloads or restarts."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2800-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.4.2800-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.2800-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2800-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.4.2700-dev",
+    "tagName": "v26.4.2700-dev",
+    "channel": "dev",
+    "date": "2026-04-28T03:35:29Z",
+    "deck": "Optional local AI model downloads and complete Google integrations",
+    "features": [
+      {
+        "text": "Optional local AI model downloads"
+      },
+      {
+        "text": "Complete Google Drive and Google Contacts integrations"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Cancelable Google connection flows and native desktop Contacts API requests"
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2700-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.4.2700-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.2700-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2700-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.4.2606-dev",
+    "tagName": "v26.4.2606-dev",
+    "channel": "dev",
+    "date": "2026-04-26T23:04:34Z",
+    "deck": "Hydrate social comments in reader, improve reader offline hydration, and permanent social media archive",
+    "features": [
+      {
+        "text": "Hydrate social comments in reader"
+      },
+      {
+        "text": "Improve reader offline hydration"
+      },
+      {
+        "text": "Permanent social media archive"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Default app themes to Scriptorium"
+      },
+      {
+        "text": "Harden release validation assertions"
+      },
+      {
+        "text": "Preserve saved and archived signal filters"
+      },
+      {
+        "text": "Graph selection perf assertions are more stable"
+      },
+      {
+        "text": "Provider health status fallback tests are more stable"
+      },
+      {
+        "text": "Release validation E2E is more stable"
+      },
+      {
+        "text": "Production validation stress tests are faster"
+      },
+      {
+        "text": "RSS source test fixtures are more accurate"
+      },
+      {
+        "text": "Polish sidebar rail behavior"
+      },
+      {
+        "text": "Remember desktop release channel"
+      },
+      {
+        "text": "Archived items no longer clear saved feed choices"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Rebuild friends graph for scale"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2606-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.4.2604-dev",
+      "26.4.2605-dev",
+      "26.4.2606-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.2604-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2604-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.2605-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2605-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.2606-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2606-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.4.2500-dev",
+    "tagName": "v26.4.2500-dev",
+    "channel": "dev",
+    "date": "2026-04-26T02:39:50Z",
+    "deck": "Social story filters",
+    "features": [],
+    "fixes": [],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2500-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.4.2500-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.2500-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2500-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.4.2401-dev",
+    "tagName": "v26.4.2401-dev",
+    "channel": "dev",
+    "date": "2026-04-24T17:42:26Z",
+    "deck": "Friends graph workspace and preview fixes, complete phase 3 save-for-later truth pass, and unify desktop shell chrome",
+    "features": [
+      {
+        "text": "Friends graph workspace and preview fixes"
+      },
+      {
+        "text": "Complete phase 3 save-for-later truth pass"
+      },
+      {
+        "text": "Unify desktop shell chrome"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Release build and type-safety cleanup"
+      },
+      {
+        "text": "Reader, feed, and header polish"
+      },
+      {
+        "text": "Sync google contacts platform test cast"
+      },
+      {
+        "text": "Prevent fatal google contacts oauth crash"
+      },
+      {
+        "text": "Warm PWA article images for offline reading"
+      },
+      {
+        "text": "Clarify desktop update channel state"
+      },
+      {
+        "text": "Raise update dialogs above floating new button"
+      },
+      {
+        "text": "Desktop e2e merge regression resolved"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Reverse integrate main after v26.4.2305"
+      },
+      {
+        "text": "Split dev and production validation tiers"
+      },
+      {
+        "text": "Merge latest dev before release"
+      },
+      {
+        "text": "Make feature workflow preview-first"
+      },
+      {
+        "text": "Promote latest dev into main"
+      },
+      {
+        "text": "Reduce desktop memory pressure"
+      },
+      {
+        "text": "Sync UI package exports before production release"
+      },
+      {
+        "text": "Global command palette"
+      },
+      {
+        "text": "Stop release workflow deploying website"
+      },
+      {
+        "text": "Tiered validation and reverse merge workflow"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2401-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.4.2401-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.2401-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.2401-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
     "version": "26.4.2305",
     "tagName": "v26.4.2305",
     "channel": "production",
