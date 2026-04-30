@@ -41,6 +41,7 @@ use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
 const DEFAULT_SYNC_RELAY_PORT: u16 = 8765;
 const MAIN_WINDOW_LABEL: &str = "main";
+const MAIN_WINDOW_RECOVERY_KEEPALIVE_LABEL: &str = "main-recovery-keepalive";
 const PRIMARY_MENU_ITEM_SHOW: &str = "show";
 const PRIMARY_MENU_ITEM_QUIT: &str = "quit";
 
@@ -1260,7 +1261,9 @@ async fn sha256_file(app: tauri::AppHandle, path: String) -> Result<String, Stri
         .map_err(|e| e.to_string())?
         .join("local-ai-models");
     let root = model_root.canonicalize().map_err(|e| e.to_string())?;
-    let target = PathBuf::from(path).canonicalize().map_err(|e| e.to_string())?;
+    let target = PathBuf::from(path)
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
     if !target.starts_with(&root) {
         return Err("Refusing to hash a file outside the local AI model directory".to_string());
     }
@@ -3841,6 +3844,57 @@ fn create_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, ta
     Ok(window)
 }
 
+fn open_main_window_recovery_keepalive(
+    app: &tauri::AppHandle,
+    reason: &str,
+) -> Result<tauri::WebviewWindow, String> {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_RECOVERY_KEEPALIVE_LABEL) {
+        info!(
+            "[main-window] reusing renderer recovery keepalive reason={}",
+            reason
+        );
+        return Ok(window);
+    }
+
+    let window = tauri::WebviewWindowBuilder::new(
+        app,
+        MAIN_WINDOW_RECOVERY_KEEPALIVE_LABEL,
+        tauri::WebviewUrl::App(RECOVERY_WINDOW_ROUTE.into()),
+    )
+    .title("Freed")
+    .inner_size(1.0, 1.0)
+    .resizable(false)
+    .decorations(false)
+    .focused(false)
+    .visible(false)
+    .skip_taskbar(true)
+    .build()
+    .map_err(|error| format!("recovery keepalive build failed: {}", error))?;
+
+    info!(
+        "[main-window] opened renderer recovery keepalive reason={}",
+        reason
+    );
+    Ok(window)
+}
+
+fn close_main_window_recovery_keepalive(app: &tauri::AppHandle, reason: &str) {
+    let Some(window) = app.get_webview_window(MAIN_WINDOW_RECOVERY_KEEPALIVE_LABEL) else {
+        return;
+    };
+
+    match window.destroy() {
+        Ok(()) => info!(
+            "[main-window] closed renderer recovery keepalive reason={}",
+            reason
+        ),
+        Err(error) => warn!(
+            "[main-window] failed to close renderer recovery keepalive reason={} error={}",
+            reason, error
+        ),
+    }
+}
+
 fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tauri::Error> {
     if let Some(window) = live_main_window(app) {
         show_webview_window(&window);
@@ -3863,6 +3917,27 @@ fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tau
 }
 
 fn recover_main_window(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
+    let _keepalive = open_main_window_recovery_keepalive(app, reason)?;
+    let outcome = recover_main_window_with_keepalive(app, reason);
+
+    if outcome.is_ok() {
+        close_main_window_recovery_keepalive(app, reason);
+    } else if let Err(error) = &outcome {
+        warn!(
+            "[main-window] renderer recovery failed after keepalive opened reason={} error={}",
+            reason, error
+        );
+
+        if let Ok(window) = open_or_focus_recovery_window(app) {
+            show_webview_window(&window);
+            close_main_window_recovery_keepalive(app, reason);
+        }
+    }
+
+    outcome
+}
+
+fn recover_main_window_with_keepalive(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
     let was_visible = app
         .get_webview_window(MAIN_WINDOW_LABEL)
         .and_then(|window| window.is_visible().ok())

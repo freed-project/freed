@@ -25,6 +25,8 @@ import type {
 const STATE_VERSION = 1;
 const MODEL_ROOT_DIR = "local-ai-models";
 const STATE_FILE = "state.json";
+const MIN_STREAM_WRITE_BYTES = 1024 * 1024;
+const MIN_PROGRESS_INTERVAL_MS = 250;
 
 export const LOCAL_AI_MODEL_MANIFEST: readonly LocalAIModelManifestEntry[] = [
   {
@@ -295,12 +297,42 @@ export function createLocalAIModelService(
     }
 
     const reader = response.body.getReader();
+    const pendingChunks: Uint8Array[] = [];
+    let pendingBytes = 0;
+
+    const flush = async () => {
+      if (pendingBytes === 0) return;
+
+      const bytes = pendingChunks.length === 1
+        ? pendingChunks[0]
+        : new Uint8Array(pendingBytes);
+
+      if (pendingChunks.length > 1) {
+        let offset = 0;
+        for (const chunk of pendingChunks) {
+          bytes.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+      }
+
+      pendingChunks.length = 0;
+      pendingBytes = 0;
+      await handle.write(bytes);
+      onChunk(bytes.byteLength);
+    };
+
     while (true) {
       const next = await reader.read();
-      if (next.done) return;
+      if (next.done) {
+        await flush();
+        return;
+      }
       if (!next.value) continue;
-      await handle.write(next.value);
-      onChunk(next.value.byteLength);
+      pendingChunks.push(next.value);
+      pendingBytes += next.value.byteLength;
+      if (pendingBytes >= MIN_STREAM_WRITE_BYTES) {
+        await flush();
+      }
     }
   }
 
@@ -370,16 +402,25 @@ export function createLocalAIModelService(
     });
 
     let writtenForFile = existingPartialBytes;
+    let lastProgressAt = 0;
+    const emitProgress = (force = false) => {
+      const now = deps.now();
+      if (!force && now - lastProgressAt < MIN_PROGRESS_INTERVAL_MS) return;
+      lastProgressAt = now;
+      onProgress?.({
+        id: model.id,
+        currentFile: file.path,
+        downloadedBytes: completedBeforeFile + writtenForFile,
+        totalBytes,
+      });
+    };
+
     try {
       await writeResponseBody(response, handle, (bytes) => {
         writtenForFile += bytes;
-        onProgress?.({
-          id: model.id,
-          currentFile: file.path,
-          downloadedBytes: completedBeforeFile + writtenForFile,
-          totalBytes,
-        });
+        emitProgress();
       });
+      emitProgress(true);
     } finally {
       await handle.close();
     }
