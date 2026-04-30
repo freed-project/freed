@@ -1,13 +1,16 @@
 [
   {
-    "version": "26.4.3001-dev",
-    "tagName": "v26.4.3001-dev",
+    "version": "26.4.3002-dev",
+    "tagName": "v26.4.3002-dev",
     "channel": "dev",
-    "date": "2026-04-30T19:17:22Z",
-    "deck": "Animation controls now apply across the interface, story cards move cleanly into the sidebar rail, feed previews are easier to scan, and recovery work keeps Freed Desktop steadier during stalls and model installs.",
+    "date": "2026-04-30T20:48:39Z",
+    "deck": "Integrated AI pack ladder, adaptive social scrape memory handling, and global animation controls",
     "features": [
       {
-        "text": "Add an Appearance animation control with None, Light, and Detailed options, so app motion can be reduced or disabled across controlled fades, slides, layout transitions, shimmers, and theme changes"
+        "text": "Integrated AI pack ladder"
+      },
+      {
+        "text": "An Appearance animation control with None, Light, and Detailed options, so app motion can be reduced or disabled across controlled fades, slides, layout transitions, shimmers, and theme changes"
       },
       {
         "text": "Give story cards the same shared feed layout transition as regular cards, so opening a story can animate from the primary list into the compact sidebar rail instead of snapping"
@@ -15,13 +18,25 @@
     ],
     "fixes": [
       {
-        "text": "Restore feed card max width and desktop feed thumbnails so dense feeds stay readable"
+        "text": "Social scrapes now measure Freed-owned WebKit memory, reclaim stale scraper windows and oversized network cache, and keep provider errors scoped to the right settings panel"
       },
       {
-        "text": "Scope social provider error copy by provider, so Instagram, Facebook, LinkedIn, and X setup states say what actually failed"
+        "text": "Show desktop feed thumbnails"
       },
       {
-        "text": "Scale the desktop Settings dialog with the viewport so tall settings lists remain usable on smaller displays"
+        "text": "Scope social provider error copy"
+      },
+      {
+        "text": "Constrain settings list growth"
+      },
+      {
+        "text": "Scale desktop settings dialog with viewport"
+      },
+      {
+        "text": "Renderer recovery and model installs are now more stable"
+      },
+      {
+        "text": "Main window reopen after renderer recovery restored"
       },
       {
         "text": "Rebuild the main window through a hidden keepalive window during renderer recovery, so watchdog recovery no longer quits the app before the replacement window opens"
@@ -35,17 +50,21 @@
     ],
     "followUps": [
       {
-        "text": "Motion preferences now have a synced default of Detailed, while None removes app-controlled animation for users who need a quiet interface"
+        "text": "Freed Desktop now keeps the app alive while rebuilding a stalled main window, and large AI model pack downloads put less pressure on the interface"
       },
       {
-        "text": "Freed Desktop now keeps the app alive while rebuilding a stalled main window, and large AI model pack downloads put less pressure on the interface"
+        "text": "Facebook, Instagram, and LinkedIn scraping should keep moving for larger libraries unless Freed itself remains under unsafe memory pressure after cleanup"
+      },
+      {
+        "text": "Motion preferences now have a synced default of Detailed, while None removes app-controlled animation for users who need a quiet interface"
       }
     ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.3001-dev",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.3002-dev",
     "prNumbers": [],
     "builds": [
       "26.4.3000-dev",
-      "26.4.3001-dev"
+      "26.4.3001-dev",
+      "26.4.3002-dev"
     ],
     "buildLinks": [
       {
@@ -56,6 +75,11 @@
       {
         "version": "26.4.3001-dev",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.3001-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.3002-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.3002-dev",
         "channel": "dev"
       }
     ]
