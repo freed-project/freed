@@ -40,6 +40,7 @@ use objc2_web_kit::WKWebViewConfiguration;
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
 const DEFAULT_SYNC_RELAY_PORT: u16 = 8765;
+const MAIN_WINDOW_LABEL: &str = "main";
 const PRIMARY_MENU_ITEM_SHOW: &str = "show";
 const PRIMARY_MENU_ITEM_QUIT: &str = "quit";
 
@@ -60,6 +61,8 @@ const RECOVERY_WINDOW_ROUTE: &str = "startup-recovery.html";
 const RENDERER_STALE_LOG_AFTER: Duration = Duration::from_secs(150);
 const RENDERER_VISIBLE_RECOVERY_AFTER: Duration = Duration::from_secs(180);
 const RENDERER_HIDDEN_RECOVERY_AFTER: Duration = Duration::from_secs(600);
+const MAIN_WINDOW_RELEASE_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const MAIN_WINDOW_RELEASE_POLL_ATTEMPTS: usize = 20;
 const ENABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
     (function() {
         var token = "__freed_background_scraper__";
@@ -1606,7 +1609,7 @@ async fn start_oauth_server(app: tauri::AppHandle) -> Result<u16, String> {
 
 #[tauri::command]
 fn show_window(app: tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         let _ = window.show();
         let _ = window.set_focus();
     }
@@ -3727,14 +3730,83 @@ fn disable_window_restoration(window: &tauri::WebviewWindow) {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn main_window_handle_available(window: &tauri::WebviewWindow) -> bool {
+    window.ns_window().is_ok()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn main_window_handle_available(_window: &tauri::WebviewWindow) -> bool {
+    true
+}
+
+fn wait_for_main_window_release(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
+    for attempt in 0..MAIN_WINDOW_RELEASE_POLL_ATTEMPTS {
+        match app.get_webview_window(MAIN_WINDOW_LABEL) {
+            None => return Ok(()),
+            Some(window) if !main_window_handle_available(&window) => {
+                if attempt == 0 {
+                    warn!(
+                        "[main-window] waiting for destroyed window label to unregister reason={}",
+                        reason
+                    );
+                }
+            }
+            Some(_) => {
+                if attempt == 0 {
+                    warn!(
+                        "[main-window] window label still registered after destroy reason={}",
+                        reason
+                    );
+                }
+            }
+        }
+
+        std::thread::sleep(MAIN_WINDOW_RELEASE_POLL_INTERVAL);
+    }
+
+    Err(format!(
+        "main window label stayed registered for {} ms after destroy",
+        MAIN_WINDOW_RELEASE_POLL_INTERVAL.as_millis() * MAIN_WINDOW_RELEASE_POLL_ATTEMPTS as u128
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn apply_main_window_vibrancy(window: &tauri::WebviewWindow, context: &str) -> bool {
+    match apply_vibrancy(
+        window,
+        NSVisualEffectMaterial::UnderWindowBackground,
+        None,
+        None,
+    ) {
+        Ok(()) => true,
+        Err(error) => {
+            warn!(
+                "[main-window] vibrancy unavailable context={} error={}",
+                context, error
+            );
+            false
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn apply_main_window_vibrancy(_window: &tauri::WebviewWindow, _context: &str) -> bool {
+    false
+}
+
 fn show_webview_window(window: &tauri::WebviewWindow) {
     let _ = window.show();
     let _ = window.set_focus();
 }
 
 fn create_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tauri::Error> {
-    if let Some(window) = app.get_webview_window("main") {
-        return Ok(window);
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        if main_window_handle_available(&window) {
+            return Ok(window);
+        }
+
+        warn!("[main-window] ignoring registered window with unavailable native handle");
     }
 
     let window_config = app
@@ -3742,7 +3814,7 @@ fn create_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, ta
         .app
         .windows
         .iter()
-        .find(|config| config.label == "main")
+        .find(|config| config.label == MAIN_WINDOW_LABEL)
         .expect("missing main window config")
         .clone();
 
@@ -3764,7 +3836,7 @@ fn create_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, ta
 }
 
 fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tauri::Error> {
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         show_webview_window(&window);
         return Ok(window);
     }
@@ -3775,44 +3847,31 @@ fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tau
     }
 
     let window = create_main_window(app)?;
-
-    #[cfg(target_os = "macos")]
-    apply_vibrancy(
-        &window,
-        NSVisualEffectMaterial::UnderWindowBackground,
-        None,
-        None,
-    )
-    .expect("Failed to apply vibrancy");
-
     show_webview_window(&window);
+    let vibrancy_applied = apply_main_window_vibrancy(&window, "startup");
+    info!(
+        "[main-window] startup window ready vibrancy_applied={}",
+        vibrancy_applied
+    );
     Ok(window)
 }
 
 fn recover_main_window(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
     let was_visible = app
-        .get_webview_window("main")
+        .get_webview_window(MAIN_WINDOW_LABEL)
         .and_then(|window| window.is_visible().ok())
         .unwrap_or(false);
 
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         scrub_webview_before_destroy(&window);
         window
             .destroy()
             .map_err(|error| format!("destroy failed: {}", error))?;
         info!("[main-window] destroyed stale renderer ({})", reason);
+        wait_for_main_window_release(app, reason)?;
     }
 
     let window = create_main_window(app).map_err(|error| error.to_string())?;
-
-    #[cfg(target_os = "macos")]
-    apply_vibrancy(
-        &window,
-        NSVisualEffectMaterial::UnderWindowBackground,
-        None,
-        None,
-    )
-    .map_err(|error| format!("vibrancy failed: {}", error))?;
 
     if was_visible {
         show_webview_window(&window);
@@ -3820,15 +3879,16 @@ fn recover_main_window(app: &tauri::AppHandle, reason: &str) -> Result<(), Strin
         let _ = window.hide();
     }
 
+    let vibrancy_applied = apply_main_window_vibrancy(&window, "renderer-recovery");
     info!(
-        "[main-window] rebuilt renderer after heartbeat stall reason={} restored_visible={}",
-        reason, was_visible
+        "[main-window] rebuilt renderer after heartbeat stall reason={} restored_visible={} vibrancy_applied={}",
+        reason, was_visible, vibrancy_applied
     );
     Ok(())
 }
 
 fn show_primary_window(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         show_webview_window(&window);
         return;
     }
@@ -4223,7 +4283,7 @@ pub fn run() {
                     tokio::time::sleep(Duration::from_secs(30)).await;
 
                     let is_main_visible = app_for_renderer_watchdog
-                        .get_webview_window("main")
+                        .get_webview_window(MAIN_WINDOW_LABEL)
                         .and_then(|window| window.is_visible().ok())
                         .unwrap_or(false);
 
@@ -4364,11 +4424,14 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == "main" {
+                if window.label() == MAIN_WINDOW_LABEL {
                     window.hide().unwrap();
                     api.prevent_close();
                 } else if window.label() == RECOVERY_WINDOW_LABEL
-                    && window.app_handle().get_webview_window("main").is_none()
+                    && window
+                        .app_handle()
+                        .get_webview_window(MAIN_WINDOW_LABEL)
+                        .is_none()
                 {
                     window.app_handle().exit(0);
                 }
