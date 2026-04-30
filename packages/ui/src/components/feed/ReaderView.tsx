@@ -200,6 +200,7 @@ const HEADING_CLASSES: Record<number, string> = {
 };
 
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
+const STORY_REPLY_MESSAGE = "Story replies are private on this platform. Open the story to reply there.";
 
 export function ReaderView({ item, onClose, dualColumn = false, inline = false, onOpenUrl }: ReaderViewProps) {
   const {
@@ -248,6 +249,11 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
   const displayMediaUrls = readerMediaUrls ?? item.content.mediaUrls;
   const displayMediaTypes = readerMediaTypes ?? item.content.mediaTypes;
   const isStory = item.contentType === "story";
+  const canOpenSource = Boolean(onOpenUrl && item.sourceUrl);
+  const handleOpenSource = useCallback(() => {
+    if (!onOpenUrl || !item.sourceUrl) return;
+    onOpenUrl(item.sourceUrl);
+  }, [item.sourceUrl, onOpenUrl]);
   const supportsThreadHydration =
     !isStory &&
     (item.platform === "x" || item.platform === "facebook" || item.platform === "instagram");
@@ -643,7 +649,10 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
       )}
 
       {/* Article content */}
-      <article className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <article
+        data-testid="reader-article"
+        className="mx-auto w-full max-w-3xl max-[959px]:max-w-none px-[var(--feed-card-gap,8px)] py-6 sm:py-8 min-[960px]:px-6"
+      >
         {/* Meta */}
         <div className="mb-6">
           <div className="mb-4 flex flex-wrap items-center gap-3 text-sm text-[var(--theme-text-muted)]">
@@ -698,7 +707,21 @@ export function ReaderView({ item, onClose, dualColumn = false, inline = false, 
                 : "border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] text-[var(--theme-text-secondary)]"
             }`}
           >
-            {hydrationMessage}
+            {hydrationMessage === STORY_REPLY_MESSAGE && canOpenSource ? (
+              <>
+                Story replies are private on this platform.{" "}
+                <button
+                  type="button"
+                  onClick={handleOpenSource}
+                  className="font-medium text-[var(--theme-accent-secondary)] underline decoration-[color:rgb(var(--theme-accent-secondary-rgb)/0.4)] underline-offset-2 transition-colors hover:text-[var(--theme-text-primary)]"
+                >
+                  Open the story
+                </button>{" "}
+                to reply there.
+              </>
+            ) : (
+              hydrationMessage
+            )}
           </div>
         )}
 

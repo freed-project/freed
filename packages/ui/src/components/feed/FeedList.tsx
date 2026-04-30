@@ -552,7 +552,7 @@ export function FeedList({
                 }}
               >
                 <div
-                  className="max-w-2xl mx-auto"
+                  className="mx-auto w-full max-w-2xl max-[959px]:max-w-none"
                   style={{
                     paddingInline: `${FEED_CARD_GAP}px`,
                     paddingBottom: `${FEED_CARD_GAP}px`,
@@ -629,7 +629,7 @@ export function FeedList({
               }}
             >
               <div
-                className="max-w-2xl mx-auto"
+                className="mx-auto w-full max-w-2xl max-[959px]:max-w-none"
                 style={{
                   paddingInline: `${feedCardHorizontalGutter}px`,
                   paddingBottom: `${FEED_CARD_GAP}px`,
