@@ -283,6 +283,7 @@ export async function captureDomFeed(
 - [x] Settings use a stronger modal shadow plus a blur-only frosted backdrop, the backdrop temporarily clears while previewing themes so desktop and touch users can see the active page treatment underneath, and hover previews now blur between the previous and next theme before snapping back unless the user clicks
 - [x] The shared Settings shell now keeps the desktop close control aligned with the left sidebar header, while the mobile sheet runs flush to the top edge with a tighter toolbar and reliable section-to-section navigation
 - [x] Appearance now exposes `Show read in grayscale`, and mark-read-on-scroll correctly normalizes mobile list offsets before deciding which rows have scrolled past
+- [x] Appearance now exposes synced global animation intensity controls, and story cards share the same feed-to-reader layout transition path as regular cards
 - [x] Desktop resize grips now live in the gaps between floating panels and use neutral hover feedback instead of a loud accent stripe
 - [x] Friends and Map sit directly under `All` in the primary Sources sidebar so navigation order matches the product's main reading flow
 - [x] Feeds sidebar status uses aggregate feed health, stays green when at least one followed feed is healthy, turns amber only when every followed feed is failing, and shows a spinner while RSS sync is actively running

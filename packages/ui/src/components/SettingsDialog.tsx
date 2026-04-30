@@ -18,6 +18,7 @@ import {
   SAMPLE_SHOWCASE_FRIEND_COUNT,
   SAMPLE_SHOWCASE_ITEM_COUNT,
   SAMPLE_SHOWCASE_SOCIAL_IDENTITY_COUNT,
+  type AnimationIntensity,
   type ReleaseChannel,
 } from "@freed/shared";
 import { THEME_DEFINITIONS, type ThemeId } from "@freed/shared/themes";
@@ -32,6 +33,7 @@ import {
   persistTheme,
   useThemePreviewController,
 } from "../lib/theme.js";
+import { animationAwareScrollBehavior } from "../lib/animation-preferences.js";
 import {
   getProviderStatusLabel,
   getProviderStatusTone,
@@ -81,6 +83,12 @@ interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
 }
+
+const ANIMATION_OPTIONS: ReadonlyArray<{ value: AnimationIntensity; label: string }> = [
+  { value: "none", label: "None" },
+  { value: "light", label: "Light" },
+  { value: "detailed", label: "Detailed" },
+];
 
 type ProviderSectionId = Extract<SectionId, "x" | "facebook" | "instagram" | "linkedin">;
 type ProviderAuthState = {
@@ -763,7 +771,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     container.addEventListener("scrollend", clearScrolling, { once: true });
     scrollEndTimerRef.current = setTimeout(clearScrolling, 800);
 
-    container.scrollTo({ top: targetTop, behavior });
+    container.scrollTo({ top: targetTop, behavior: animationAwareScrollBehavior(behavior) });
   }, [isMobile]);
 
   useEffect(() => {
@@ -993,6 +1001,25 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   </div>
                 </div>
               )}
+              <div className="space-y-2">
+                <p className="text-sm text-text-secondary">Animations</p>
+                <div className="flex gap-2">
+                  {ANIMATION_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => handleDisplayChange({ animationIntensity: option.value })}
+                      className={`flex-1 rounded-lg border py-1.5 text-sm transition-colors ${
+                        display.animationIntensity === option.value
+                          ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_20%,transparent)] text-[var(--theme-accent-secondary)] border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_30%,transparent)]"
+                          : "bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] text-text-muted hover:text-text-primary border-transparent"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="flex items-center justify-between gap-4">
                 <div className="min-w-0">
                   <p className="text-sm text-text-primary">Offline reader cache</p>

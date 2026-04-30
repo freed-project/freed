@@ -288,6 +288,54 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(openReaderButton).toBeVisible();
 });
 
+test("story cards participate in feed layout transitions", async ({ app }) => {
+  await app.goto();
+  await app.waitForReady();
+  await injectCardUiItems(app.page);
+  await setDualColumnMode(app.page, true);
+
+  await app.page.evaluate(() => {
+    const doc = document as Document & {
+      startViewTransition?: (update: () => void) => { finished: Promise<void> };
+    };
+    const state = { count: 0 };
+    (window as Record<string, unknown>).__FREED_STORY_VIEW_TRANSITIONS__ = state;
+
+    Object.defineProperty(doc, "startViewTransition", {
+      configurable: true,
+      writable: true,
+      value: (update: () => void) => {
+        state.count += 1;
+        update();
+        return { finished: Promise.resolve() };
+      },
+    });
+  });
+
+  const storyTile = app.page.locator('[data-feed-item-id="test-instagram-story-thumbnail"]').first();
+  await expect(storyTile).toBeVisible({ timeout: 5_000 });
+
+  const transitionName = await storyTile.evaluate((element) =>
+    window.getComputedStyle(element.parentElement as Element).viewTransitionName,
+  );
+  expect(transitionName).toBe("feed-card-test-instagram-story-thumbnail");
+
+  await storyTile.click();
+  await expect(app.page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({
+    timeout: 5_000,
+  });
+  await expect(app.page.getByLabel("Back to list")).toBeVisible({ timeout: 5_000 });
+
+  await expect.poll(async () => {
+    return app.page.evaluate(() => {
+      const state = (window as Record<string, unknown>).__FREED_STORY_VIEW_TRANSITIONS__ as
+        | { count: number }
+        | undefined;
+      return state?.count ?? 0;
+    });
+  }).toBe(1);
+});
+
 test("feed cards show compact event metadata from semantic enrichment", async ({ app }) => {
   await app.goto();
   await app.waitForReady();

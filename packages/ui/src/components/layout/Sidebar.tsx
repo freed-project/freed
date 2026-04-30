@@ -20,6 +20,7 @@ import { getTopSourceItems, type SourceNavigationItem } from "../../lib/source-n
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { SearchJumpField } from "./SearchJumpField.js";
+import { resolveAnimationIntensity } from "../../lib/animation-preferences.js";
 import { buildTopLevelTagFilters, childTagsOf, collectAllTags } from "../../lib/tag-navigation.js";
 import { navigateToFeedView } from "../../lib/workspace-navigation.js";
 import {
@@ -462,6 +463,7 @@ export function Sidebar({
   const setActiveView = useAppStore((s) => s.setActiveView);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const display = useAppStore((s) => s.preferences.display);
+  const animationIntensity = resolveAnimationIntensity(display.animationIntensity);
   const health = useDebugStore((s) => s.health);
 
   const savedCount = useMemo(() => items.filter((i) => i.userState.saved).length, [items]);
@@ -630,7 +632,11 @@ export function Sidebar({
       : compactRail
       ? `${COMPACT_RAIL_OUTER_INSET_PX}px`
       : `calc(${sidebarPaddingBlockPx}px + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))`,
-    transition: "padding 180ms ease",
+    transition: animationIntensity === "none"
+      ? "none"
+      : animationIntensity === "light"
+        ? "padding 120ms ease-out"
+        : "padding 180ms ease",
   };
   const desktopShellWidth = renderMode === "closed"
     ? 0
@@ -679,16 +685,24 @@ export function Sidebar({
   const countTextClass = isMobileDevice ? "text-xs" : "text-[10px]";
   const mobileSidebarWidth = `min(${MOBILE_SIDEBAR_WIDTH_PX}px, calc(100vw - ${MOBILE_SIDEBAR_VIEWPORT_MARGIN_PX}px))`;
   const inlineSearchGapPx = sidebarPaddingBlockPx;
-  const desktopShellTransition = dragWidth !== null && !snapPreviewActive
+  const desktopShellTransition = animationIntensity === "none" || (dragWidth !== null && !snapPreviewActive)
     ? "none"
     : snapPreviewActive
-      ? "width 180ms ease, opacity 160ms ease"
-      : "width 220ms ease, opacity 180ms ease";
-  const desktopAsideTransition = dragWidth !== null && !snapPreviewActive
+      ? animationIntensity === "light"
+        ? "width 120ms ease-out, opacity 100ms ease-out"
+        : "width 180ms ease, opacity 160ms ease"
+      : animationIntensity === "light"
+        ? "width 140ms ease-out, opacity 120ms ease-out"
+        : "width 220ms ease, opacity 180ms ease";
+  const desktopAsideTransition = animationIntensity === "none" || (dragWidth !== null && !snapPreviewActive)
     ? "none"
     : snapPreviewActive
-      ? "width 180ms ease, transform 180ms ease, opacity 160ms ease"
-      : "width 220ms ease, transform 220ms ease, opacity 180ms ease";
+      ? animationIntensity === "light"
+        ? "width 120ms ease-out, transform 120ms ease-out, opacity 100ms ease-out"
+        : "width 180ms ease, transform 180ms ease, opacity 160ms ease"
+      : animationIntensity === "light"
+        ? "width 140ms ease-out, transform 140ms ease-out, opacity 120ms ease-out"
+        : "width 220ms ease, transform 220ms ease, opacity 180ms ease";
   const desktopAsideTransform = renderMode === "closed"
     ? closedPreviewActive
       ? "translateX(calc(-100% - var(--feed-card-gap, 8px)))"

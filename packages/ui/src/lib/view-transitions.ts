@@ -1,3 +1,5 @@
+import { shouldEliminateMotion } from "./animation-preferences.js";
+
 type ViewTransitionLike = {
   finished: Promise<void>;
 };
@@ -7,10 +9,7 @@ type ViewTransitionDocument = Document & {
 };
 
 export function runFeedLayoutTransition(update: () => void): void {
-  if (
-    typeof window === "undefined" ||
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  ) {
+  if (typeof window === "undefined" || shouldEliminateMotion()) {
     update();
     return;
   }
