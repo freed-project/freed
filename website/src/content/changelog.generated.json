@@ -1,5 +1,37 @@
 [
   {
+    "version": "26.4.3000-dev",
+    "tagName": "v26.4.3000-dev",
+    "channel": "dev",
+    "date": "2026-04-30T17:30:31Z",
+    "deck": "Freed Desktop now keeps the app alive while rebuilding a stalled main window, and large AI model pack downloads put less pressure on the interface.",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Rebuild the main window through a hidden keepalive window during renderer recovery, so watchdog recovery no longer quits the app before the replacement window opens."
+      },
+      {
+        "text": "Batch local AI model file writes and throttle progress updates during model pack installs to keep Settings responsive during large downloads."
+      },
+      {
+        "text": "Keep Pause available while an AI model download is active."
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.3000-dev",
+    "prNumbers": [],
+    "builds": [
+      "26.4.3000-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.4.3000-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.3000-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
     "version": "26.4.2904-dev",
     "tagName": "v26.4.2904-dev",
     "channel": "dev",
