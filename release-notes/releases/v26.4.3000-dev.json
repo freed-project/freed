@@ -1,0 +1,38 @@
+{
+  "tag": "v26.4.3000-dev",
+  "version": "26.4.3000-dev",
+  "channel": "dev",
+  "dayKey": "26.4.30",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-30T17:09:34.930Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.2904-dev",
+    "previousPublishedDayTag": "v26.4.2904-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.3000-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.4.3000-dev"
+    ],
+    "prNumbers": [
+      361,
+      362
+    ],
+    "commitSubjects": [
+      "fix: stabilize renderer recovery and model installs (#362)",
+      "fix: restore main window reopen after renderer recovery (#361)"
+    ]
+  },
+  "release": {
+    "deck": "Renderer recovery and model installs are now more stable and main window reopen after renderer recovery restored",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.3000-dev\n\nRenderer recovery and model installs are now more stable and main window reopen after renderer recovery restored\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
