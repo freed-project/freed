@@ -197,7 +197,49 @@ describe("local AI model manager", () => {
     expect(models[0].state.status).toBe("available");
   });
 
+  it("batches streamed chunks before writing model files", async () => {
+    const { deps } = createDeps();
+    const writeSizes: number[] = [];
+    const originalOpen = deps.open;
+    deps.open = async (path, openOptions) => {
+      const handle = await originalOpen(path, openOptions);
+      return {
+        async write(data) {
+          writeSizes.push(data.byteLength);
+          return handle.write(data);
+        },
+        async close() {
+          await handle.close();
+        },
+      };
+    };
+    deps.fetch = async () => new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(TEXT.encode("h"));
+          controller.enqueue(TEXT.encode("el"));
+          controller.enqueue(TEXT.encode("lo"));
+          controller.close();
+        },
+      }),
+    );
+    const service = createLocalAIModelService(deps, TEST_MANIFEST);
+
+    const models = await service.downloadModel("integrated-local-ai");
+
+    expect(models[0].state.status).toBe("available");
+    expect(writeSizes).toEqual([5, 5]);
+  });
+
   it("pauses an active download", async () => {
+    const largeChunkManifest: readonly LocalAIModelManifestEntry[] = [
+      {
+        ...TEST_MANIFEST[0],
+        estimatedDownloadBytes: 1_048_576,
+        estimatedStorageBytes: 1_048_576,
+        files: [{ path: "model.bin", sizeBytes: 1_048_576 }],
+      },
+    ];
     let wroteFirstChunk!: () => void;
     const firstChunk = new Promise<void>((resolve) => { wroteFirstChunk = resolve; });
     const { deps } = createDeps();
@@ -224,13 +266,13 @@ describe("local AI model manager", () => {
       return new Response(
         new ReadableStream<Uint8Array>({
           start(controller) {
-            controller.enqueue(TEXT.encode("he"));
+            controller.enqueue(new Uint8Array(1_048_576));
             signal.addEventListener("abort", () => controller.error(new DOMException("Aborted", "AbortError")));
           },
         }),
       );
     };
-    const service = createLocalAIModelService(deps, TEST_MANIFEST);
+    const service = createLocalAIModelService(deps, largeChunkManifest);
 
     const pending = service.downloadModel("integrated-local-ai");
     await firstChunk;
@@ -238,7 +280,7 @@ describe("local AI model manager", () => {
     const paused = await pending;
 
     expect(paused[0].state.status).toBe("paused");
-    expect(paused[0].state.downloadedBytes).toBe(2);
+    expect(paused[0].state.downloadedBytes).toBe(1_048_576);
   });
 
   it("removes downloaded model files and resets state", async () => {

@@ -634,7 +634,7 @@ export function AISection() {
                 <LocalModelCard
                   key={model.manifest.id}
                   model={model}
-                  busy={busyModelId === model.manifest.id}
+                  busy={busyModelId === model.manifest.id && model.state.status !== "downloading"}
                   onDownload={handleDownloadLocalModel}
                   onPause={handlePauseLocalModel}
                   onRemove={handleRemoveLocalModel}
