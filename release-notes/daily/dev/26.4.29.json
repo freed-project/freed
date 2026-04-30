@@ -13,5 +13,5 @@
     "Provider health persistence no longer uses the Tauri store mutex path that could freeze Freed Desktop shortly after launch"
   ],
   "editorialNotes": [],
-  "updatedAt": "2026-04-29T23:59:25.468Z"
+  "updatedAt": "2026-04-30T03:58:49.927Z"
 }
