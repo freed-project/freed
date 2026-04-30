@@ -1,0 +1,87 @@
+{
+  "tag": "v26.4.3002-dev",
+  "version": "26.4.3002-dev",
+  "channel": "dev",
+  "dayKey": "26.4.30",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-30T20:27:55.294Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.3001-dev",
+    "previousPublishedDayTag": "v26.4.2904-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.3000-dev",
+      "v26.4.3001-dev",
+      "v26.4.3002-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.4.3000-dev",
+      "v26.4.3001-dev",
+      "v26.4.3002-dev"
+    ],
+    "prNumbers": [
+      355,
+      361,
+      362,
+      363,
+      364,
+      365,
+      366,
+      367,
+      368,
+      369,
+      370,
+      371,
+      372,
+      373
+    ],
+    "commitSubjects": [
+      "fix: improve social scrape memory handling (#373)",
+      "fix: harden feed read scroll tracking (#372)",
+      "fix: polish contextual toolbar titles (#371)",
+      "feat: add integrated AI pack ladder (#364)",
+      "fix: require arrow click to expand feeds (#370)",
+      "docs: approve v26.4.3001-dev release notes",
+      "release: v26.4.3001-dev",
+      "fix: add global animation controls (#369)",
+      "fix: restore feed card max width (#368)",
+      "fix: show desktop feed thumbnails (#367)",
+      "fix: scope social provider error copy (#366)",
+      "fix: constrain settings list growth (#365)",
+      "fix: polish sidebar toolbar controls (#363)",
+      "fix: scale desktop settings dialog with viewport (#355)",
+      "docs: approve v26.4.3000-dev release notes",
+      "release: v26.4.3000-dev",
+      "fix: stabilize renderer recovery and model installs (#362)",
+      "fix: restore main window reopen after renderer recovery (#361)"
+    ]
+  },
+  "release": {
+    "deck": "Integrated AI pack ladder, global animation controls, and feed card max width restored",
+    "features": [
+      "Integrated AI pack ladder",
+      "An Appearance animation control with None, Light, and Detailed options, so app motion can be reduced or disabled across controlled fades, slides, layout transitions, shimmers, and theme changes",
+      "Give story cards the same shared feed layout transition as regular cards, so opening a story can animate from the primary list into the compact sidebar rail instead of snapping"
+    ],
+    "fixes": [
+      "Show desktop feed thumbnails",
+      "Scope social provider error copy",
+      "Constrain settings list growth",
+      "Scale desktop settings dialog with viewport",
+      "Renderer recovery and model installs are now more stable",
+      "Main window reopen after renderer recovery restored",
+      "Rebuild the main window through a hidden keepalive window during renderer recovery, so watchdog recovery no longer quits the app before the replacement window opens",
+      "Batch local AI model file writes and throttle progress updates during model pack installs to keep Settings responsive during large downloads",
+      "Keep Pause available while an AI model download is active"
+    ],
+    "followUps": [
+      "Freed Desktop now keeps the app alive while rebuilding a stalled main window, and large AI model pack downloads put less pressure on the interface",
+      "Motion preferences now have a synced default of Detailed, while None removes app-controlled animation for users who need a quiet interface"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.3002-dev\n\nIntegrated AI pack ladder, global animation controls, and feed card max width restored\n\n### Features\n\n- Integrated AI pack ladder\n- An Appearance animation control with None, Light, and Detailed options, so app motion can be reduced or disabled across controlled fades, slides, layout transitions, shimmers, and theme changes\n- Give story cards the same shared feed layout transition as regular cards, so opening a story can animate from the primary list into the compact sidebar rail instead of snapping\n\n### Fixes\n\n- Show desktop feed thumbnails\n- Scope social provider error copy\n- Constrain settings list growth\n- Scale desktop settings dialog with viewport\n- Renderer recovery and model installs are now more stable\n- Main window reopen after renderer recovery restored\n- Rebuild the main window through a hidden keepalive window during renderer recovery, so watchdog recovery no longer quits the app before the replacement window opens\n- Batch local AI model file writes and throttle progress updates during model pack installs to keep Settings responsive during large downloads\n- Keep Pause available while an AI model download is active\n\n### Follow-ups\n\n- Freed Desktop now keeps the app alive while rebuilding a stalled main window, and large AI model pack downloads put less pressure on the interface\n- Motion preferences now have a synced default of Detailed, while None removes app-controlled animation for users who need a quiet interface\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
