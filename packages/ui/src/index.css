@@ -1113,7 +1113,7 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
 }
 
 .theme-tooltip-panel:has(.theme-tooltip-badge) .theme-tooltip-label {
-  padding-right: 1.5rem;
+  padding-inline: 0.75rem;
 }
 
 .theme-tooltip-description {
@@ -1492,6 +1492,18 @@ html[data-theme="scriptorium"] .theme-floating-panel {
   background: var(--theme-attached-topbar-background);
 }
 
+.theme-mobile-sidebar {
+  background: var(--theme-attached-topbar-background);
+  border-right: 1px solid var(--theme-header-border);
+  box-shadow: 28px 0 80px rgb(0 0 0 / 0.34);
+}
+
+html.freed-mobile-sidebar-open,
+html.freed-mobile-sidebar-open body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 .theme-resize-gap-handle {
   position: relative;
   cursor: col-resize;
@@ -1634,6 +1646,33 @@ html[data-theme="scriptorium"] .theme-floating-panel {
   flex-shrink: 0;
 }
 
+.theme-toolbar-reader-layout-button {
+  display: inline-flex;
+  box-sizing: border-box;
+  height: 2rem;
+  width: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--theme-text-muted);
+  line-height: 1;
+  transition: color 0.18s ease;
+}
+
+.theme-toolbar-reader-layout-button:hover {
+  border-color: transparent;
+  background: transparent;
+  color: var(--theme-text-secondary);
+}
+
+.theme-toolbar-reader-layout-button > svg {
+  display: block;
+  flex-shrink: 0;
+}
+
 .theme-fab-button {
   background: color-mix(
     in oklab,
@@ -1670,7 +1709,7 @@ html[data-theme="scriptorium"] .theme-floating-panel {
 }
 
 .theme-toolbar-cluster-tight > .theme-toolbar-slot + .theme-toolbar-slot {
-  margin-inline-start: 0.375rem;
+  margin-inline-start: 0.5rem;
 }
 
 .theme-reader-rail-slot {

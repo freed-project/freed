@@ -30,6 +30,7 @@ import { SearchField } from "../SearchField.js";
 import { Tooltip } from "../Tooltip.js";
 import {
   ArchiveIcon,
+  AnimatedMenuIcon,
   FilterIcon,
   ReaderRailHideIcon,
   ReaderRailShowIcon,
@@ -48,6 +49,7 @@ import {
 } from "../../context/PlatformContext.js";
 import { getFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
 import {
+  COMPACT_PRIMARY_SIDEBAR_WIDTH_PX,
   PRIMARY_SIDEBAR_GAP_WIDTH_PX,
   TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
   px,
@@ -66,23 +68,34 @@ interface HeaderProps {
 }
 
 type FriendsToolbarMode = MapMode | "details";
+interface ToolbarOverflowAction {
+  id: string;
+  label: string;
+  onClick: () => void;
+  icon: ReactNode;
+  active?: boolean;
+  danger?: boolean;
+}
 
 const noDrag = { WebkitAppRegion: "no-drag" } as CSSProperties;
 const dragStyle = { WebkitAppRegion: "drag" } as CSSProperties;
 const toolbarControlStyle = { ...noDrag, userSelect: "none" } as CSSProperties;
 const TOOLBAR_DRAG_THRESHOLD_PX = 6;
+const TOP_TOOLBAR_HEIGHT_PX =
+  COMPACT_PRIMARY_SIDEBAR_WIDTH_PX + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
 const TOOLBAR_ICON_BUTTON_CLASS =
   "theme-toolbar-icon-button rounded-lg";
-const TOOLBAR_LAYOUT_TOGGLE_BUTTON_CLASS =
-  `${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-ghost`;
-const LAYOUT_CONTROL_BUTTON_SIZE_PX = 40;
-const LAYOUT_CONTROL_BUTTON_GAP_PX = 8;
-const LAYOUT_CONTROL_PAIR_WIDTH_PX =
-  LAYOUT_CONTROL_BUTTON_SIZE_PX * 2 + LAYOUT_CONTROL_BUTTON_GAP_PX;
+const TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS =
+  "theme-toolbar-reader-layout-button rounded-lg";
+const READER_LAYOUT_CONTROL_BUTTON_SIZE_PX = 32;
+const READER_LAYOUT_CONTROL_BUTTON_GAP_PX = 0;
 const LAYOUT_CONTROL_SAFE_GAP_PX = 8;
 const CLOSED_SIDEBAR_TOGGLE_LEFT_PX = 12;
 const DEFAULT_LAYOUT_CONTROL_SAFE_LEFT_PX = 180;
 const DEFAULT_LAYOUT_CONTROL_RESERVED_WIDTH_PX = 280;
+const TOOLBAR_SLOT_WIDTH_CONTENT = "max-content";
+const TOOLBAR_COLLAPSE_BREAKPOINT_PX = 1200;
+const READER_BOOKMARK_INLINE_MIN_WIDTH_PX = 980;
 
 function formatItemCount(count: number): string {
   return `${count.toLocaleString()} item${count === 1 ? "" : "s"}`;
@@ -130,6 +143,7 @@ function ToolbarToggleGroup<T extends string>({
   value,
   onChange,
   compact = false,
+  fullWidth = false,
   dataTestId,
   getButtonProps,
 }: {
@@ -137,13 +151,14 @@ function ToolbarToggleGroup<T extends string>({
   value: T;
   onChange: (value: T) => void;
   compact?: boolean;
+  fullWidth?: boolean;
   dataTestId?: string;
   getButtonProps?: () => ButtonHTMLAttributes<HTMLButtonElement>;
 }) {
   return (
     <div
       data-testid={dataTestId}
-      className={`theme-toolbar-segmented inline-flex items-center ${compact ? "theme-toolbar-segmented-compact" : ""}`}
+      className={`theme-toolbar-segmented ${fullWidth ? "flex w-full" : "inline-flex"} items-center ${compact ? "theme-toolbar-segmented-compact" : ""}`}
       role="tablist"
     >
       {options.map((option) => {
@@ -154,7 +169,7 @@ function ToolbarToggleGroup<T extends string>({
             type="button"
             onClick={() => onChange(option.value)}
             aria-pressed={selected}
-            className={`theme-toolbar-segment whitespace-nowrap ${
+            className={`theme-toolbar-segment whitespace-nowrap ${fullWidth ? "flex-1" : ""} ${
               selected ? "theme-toolbar-segment-active" : "theme-toolbar-segment-inactive"
             }`}
             {...getButtonProps?.()}
@@ -164,6 +179,16 @@ function ToolbarToggleGroup<T extends string>({
         );
       })}
     </div>
+  );
+}
+
+function ToolbarOverflowIcon({ className = "h-5 w-5" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="6" cy="12" r="1.8" />
+      <circle cx="12" cy="12" r="1.8" />
+      <circle cx="18" cy="12" r="1.8" />
+    </svg>
   );
 }
 
@@ -272,6 +297,12 @@ export function Header({
     mappedAllContentCount,
   );
   const effectiveFriendsMode = display.friendsMode ?? "all_content";
+  const [isBelowLargeToolbar, setIsBelowLargeToolbar] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < TOOLBAR_COLLAPSE_BREAKPOINT_PX,
+  );
+  const [isBelowReaderBookmarkToolbar, setIsBelowReaderBookmarkToolbar] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < READER_BOOKMARK_INLINE_MIN_WIDTH_PX,
+  );
   const showWorkspaceIdentityControls = activeView === "friends" || activeView === "map";
   const showMapTimeControls = activeView === "map";
   const showFeedBulkActions = activeView === "feed";
@@ -288,6 +319,29 @@ export function Header({
       activeFilter.platform === "facebook" ||
       activeFilter.platform === "instagram");
   const socialContentFilter: SocialContentFilter = activeFilter.socialContentFilter ?? "all";
+  const collapseToolbarViewControls =
+    !selectedItem &&
+    (isMobile || isBelowLargeToolbar);
+  const showInlineWorkspaceIdentityControls =
+    showWorkspaceIdentityControls && !collapseToolbarViewControls;
+  const showInlineMapTimeControls =
+    showMapTimeControls && !collapseToolbarViewControls;
+  const showInlineSocialContentControls =
+    showSocialContentControls && !collapseToolbarViewControls;
+  const showCollapsedToolbarFilterMenu =
+    !selectedItem &&
+    (
+      (collapseToolbarViewControls && (
+        showWorkspaceIdentityControls ||
+        showMapTimeControls ||
+        showSocialContentControls
+      )) ||
+      ((isMobile || collapseToolbarViewControls) && showFeedSignalFilter)
+    );
+  const showInlineFeedSignalFilter =
+    showFeedSignalFilter && !showCollapsedToolbarFilterMenu;
+  const showInlineReaderBookmark =
+    !!selectedItem && !isBelowReaderBookmarkToolbar;
 
   const unreadCount =
     activeFilter.savedOnly || activeFilter.archivedOnly
@@ -318,16 +372,20 @@ export function Header({
     [activeFilter, setFilter],
   );
 
+  const currentListTitle = useMemo(() => {
+    if (activeView === "friends") return "Friends";
+    if (activeView === "map") return "Map";
+    return scopeLabel;
+  }, [activeView, scopeLabel]);
+
   const currentTitle = useMemo(() => {
     if (selectedItem) {
       return selectedItem.content.linkPreview?.title
         ?? selectedItem.content.text?.slice(0, 90)
         ?? selectedItem.author.displayName;
     }
-    if (activeView === "friends") return "Friends";
-    if (activeView === "map") return "Map";
-    return scopeLabel;
-  }, [activeView, scopeLabel, selectedItem]);
+    return currentListTitle;
+  }, [currentListTitle, selectedItem]);
 
   const currentSubtitle = useMemo(() => {
     if (selectedItem) {
@@ -385,7 +443,13 @@ export function Header({
     mode: FeedSignalMode;
     tick: number;
   } | null>(null);
-
+  const [toolbarOverflowMenuOpen, setToolbarOverflowMenuOpen] = useState(false);
+  const toolbarOverflowMenuRef = useRef<HTMLDivElement>(null);
+  const toolbarOverflowButtonRef = useRef<HTMLButtonElement>(null);
+  const [toolbarOverflowMenuPosition, setToolbarOverflowMenuPosition] = useState<{
+    top: number;
+    right: number;
+  } | null>(null);
   const updateDisplayPreference = useCallback((patch: Partial<DisplayPreferences>) => {
     void updatePreferences({
       display: patch,
@@ -478,8 +542,25 @@ export function Header({
 
   const toggleSignalFilterMenu = useCallback(() => {
     updateSignalFilterMenuPosition();
+    setToolbarOverflowMenuOpen(false);
     setSignalFilterMenuOpen((value) => !value);
   }, [updateSignalFilterMenuPosition]);
+
+  const updateToolbarOverflowMenuPosition = useCallback(() => {
+    const button = toolbarOverflowButtonRef.current;
+    if (!button) return;
+    const rect = button.getBoundingClientRect();
+    setToolbarOverflowMenuPosition({
+      top: Math.round(rect.bottom + 8),
+      right: Math.max(8, Math.round(window.innerWidth - rect.right)),
+    });
+  }, []);
+
+  const toggleToolbarOverflowMenu = useCallback(() => {
+    updateToolbarOverflowMenuPosition();
+    setSignalFilterMenuOpen(false);
+    setToolbarOverflowMenuOpen((value) => !value);
+  }, [updateToolbarOverflowMenuPosition]);
 
   const handleIdentityModeChange = useCallback((key: "friendsMode" | "mapMode", mode: MapMode) => {
     updateDisplayPreference({ [key]: mode });
@@ -584,13 +665,149 @@ export function Header({
     void unarchiveSavedItems();
   }, [unarchiveSavedItems]);
 
+  const toolbarOverflowActions = useMemo<ToolbarOverflowAction[]>(() => {
+    const actions: ToolbarOverflowAction[] = [];
+
+    if (selectedItem && isBelowLargeToolbar) {
+      actions.push({
+        id: "focus",
+        label: display.reading.focusMode ? "Disable focus mode" : "Enable focus mode",
+        onClick: handleToggleFocusMode,
+        active: display.reading.focusMode,
+        icon: (
+          <span className="inline-flex h-5 w-5 items-center justify-center text-sm font-black" aria-hidden="true">
+            F
+          </span>
+        ),
+      });
+
+      if (!showInlineReaderBookmark) {
+        actions.push({
+          id: "bookmark-reader",
+          label: selectedItem.userState.saved ? "Remove bookmark" : "Bookmark",
+          onClick: handleToggleReaderSaved,
+          active: selectedItem.userState.saved,
+          icon: (
+            <svg
+              className="h-5 w-5"
+              fill={selectedItem.userState.saved ? "currentColor" : "none"}
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+            </svg>
+          ),
+        });
+      }
+
+      if (selectedItem.sourceUrl) {
+        actions.push({
+          id: "open",
+          label: "Open",
+          onClick: handleOpenReaderUrl,
+          icon: (
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5h5m0 0v5m0-5L10 14M5 9v10h10" />
+            </svg>
+          ),
+        });
+      }
+
+      actions.push({
+        id: "archive-reader",
+        label: selectedItem.userState.archived ? "Unarchive" : "Archive",
+        onClick: handleToggleReaderArchived,
+        active: selectedItem.userState.archived,
+        icon: <ArchiveIcon className="h-5 w-5" />,
+      });
+    }
+
+    if (!selectedItem && isBelowLargeToolbar) {
+      if (showArchivedToolbar && savedArchivedCount > 0) {
+        actions.push({
+          id: "unarchive-saved",
+          label: `Unarchive saved (${savedArchivedCount.toLocaleString()})`,
+          onClick: handleUnarchiveSavedClick,
+          icon: <ArchiveIcon className="h-5 w-5" />,
+        });
+      }
+
+      if (showArchivedDeleteAction) {
+        actions.push({
+          id: "delete-archived",
+          label: deleteConfirmArmed ? "Confirm delete?" : "Delete archived",
+          onClick: handleDeleteArchivedClick,
+          danger: deleteConfirmArmed,
+          icon: (
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4h6v3" />
+            </svg>
+          ),
+        });
+      }
+
+      if (showFeedBulkActions && unreadCount > 0) {
+        actions.push({
+          id: "mark-read",
+          label: `Mark ${unreadCount.toLocaleString()} unread as read`,
+          onClick: () => markAllAsRead(activeFilter.platform),
+          icon: (
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          ),
+        });
+      }
+
+      if (showFeedBulkActions && archivableCount > 0) {
+        actions.push({
+          id: "archive-read",
+          label: `Archive ${archivableCount.toLocaleString()} read items`,
+          onClick: () => archiveAllReadUnsaved(activeFilter.platform, activeFilter.feedUrl),
+          icon: (
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          ),
+        });
+      }
+    }
+
+    return actions;
+  }, [
+    activeFilter.feedUrl,
+    activeFilter.platform,
+    archiveAllReadUnsaved,
+    archivableCount,
+    deleteConfirmArmed,
+    display.reading.focusMode,
+    handleDeleteArchivedClick,
+    handleOpenReaderUrl,
+    handleToggleFocusMode,
+    handleToggleReaderSaved,
+    handleToggleReaderArchived,
+    handleUnarchiveSavedClick,
+    isBelowLargeToolbar,
+    markAllAsRead,
+    savedArchivedCount,
+    selectedItem,
+    showInlineReaderBookmark,
+    showArchivedDeleteAction,
+    showArchivedToolbar,
+    showFeedBulkActions,
+    unreadCount,
+  ]);
+  const showToolbarOverflowMenuButton = toolbarOverflowActions.length > 0;
+
   const showReaderLayoutToggle =
     !isMobile &&
     !!selectedItem;
   const showDesktopReaderLayoutToggle =
     showReaderLayoutToggle && visibleDesktopSidebarMode !== "closed";
   const [layoutControlMetrics, setLayoutControlMetrics] = useState({
-    clusterLeftPx: DEFAULT_LAYOUT_CONTROL_SAFE_LEFT_PX,
+    sidebarToggleLeftPx: DEFAULT_LAYOUT_CONTROL_SAFE_LEFT_PX,
+    previewToggleLeftPx: DEFAULT_LAYOUT_CONTROL_SAFE_LEFT_PX + READER_LAYOUT_CONTROL_BUTTON_SIZE_PX,
     reservedWidthPx: DEFAULT_LAYOUT_CONTROL_RESERVED_WIDTH_PX,
   });
   const activeSearchQuery = searchQuery.trim();
@@ -604,8 +821,7 @@ export function Header({
   const macosTrafficLightInsetStyle = headerDragRegion
     ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
     : undefined;
-  const sidebarHandleCenterline = "var(--freed-sidebar-handle-centerline, 264px)";
-  const layoutControlClusterWidthPx = LAYOUT_CONTROL_BUTTON_SIZE_PX;
+  const sidebarHandleCenterline = "var(--freed-sidebar-toolbar-centerline, var(--freed-sidebar-handle-centerline, 264px))";
   const toolbarBoundaryWidth = `calc(${sidebarHandleCenterline} + ${px(PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2)})`;
   const leftToolbarWidth = !isMobileDevice
     ? px(layoutControlMetrics.reservedWidthPx)
@@ -628,14 +844,24 @@ export function Header({
     paddingRight: px(TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX),
   } as CSSProperties;
   const layoutControlClusterStyle = {
-    left: px(layoutControlMetrics.clusterLeftPx),
-    gap: px(LAYOUT_CONTROL_BUTTON_GAP_PX),
+    left: 0,
+    width: px(layoutControlMetrics.reservedWidthPx),
+    ...(headerDragRegion ? noDrag : {}),
+  } as CSSProperties;
+  const sidebarTogglePositionStyle = {
+    left: px(layoutControlMetrics.sidebarToggleLeftPx),
+    ...(headerDragRegion ? noDrag : {}),
+  } as CSSProperties;
+  const previewTogglePositionStyle = {
+    left: px(layoutControlMetrics.previewToggleLeftPx),
     ...(headerDragRegion ? noDrag : {}),
   } as CSSProperties;
   const toolbarContainerStyle = {
     ...(headerDragRegion ? dragStyle : {}),
-    width: "100vw",
-    maxWidth: "100vw",
+    height: px(TOP_TOOLBAR_HEIGHT_PX),
+    minHeight: px(TOP_TOOLBAR_HEIGHT_PX),
+    width: "100%",
+    maxWidth: "100%",
   } as CSSProperties;
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -643,6 +869,7 @@ export function Header({
   const toolbarSearchInputRef = useRef<HTMLInputElement | null>(null);
   const layoutControlHostRef = useRef<HTMLDivElement | null>(null);
   const wordmarkRef = useRef<HTMLSpanElement | null>(null);
+  const sidebarHandleCenterlineStyleRef = useRef<string | null>(null);
   const toolbarDragGestureRef = useRef<{
     pointerId: number;
     startX: number;
@@ -765,6 +992,17 @@ export function Header({
   }, [dropdownOpen]);
 
   useEffect(() => {
+    const updateToolbarBreakpoints = () => {
+      setIsBelowLargeToolbar(window.innerWidth < TOOLBAR_COLLAPSE_BREAKPOINT_PX);
+      setIsBelowReaderBookmarkToolbar(window.innerWidth < READER_BOOKMARK_INLINE_MIN_WIDTH_PX);
+    };
+
+    updateToolbarBreakpoints();
+    window.addEventListener("resize", updateToolbarBreakpoints);
+    return () => window.removeEventListener("resize", updateToolbarBreakpoints);
+  }, []);
+
+  useEffect(() => {
     if (!signalFilterMenuOpen) return;
     const handleClick = (e: MouseEvent) => {
       if (
@@ -792,6 +1030,38 @@ export function Header({
   }, [signalFilterMenuOpen, updateSignalFilterMenuPosition]);
 
   useEffect(() => {
+    if (!toolbarOverflowMenuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (
+        toolbarOverflowMenuRef.current &&
+        !toolbarOverflowMenuRef.current.contains(e.target as Node)
+        && toolbarOverflowButtonRef.current &&
+        !toolbarOverflowButtonRef.current.contains(e.target as Node)
+      ) {
+        setToolbarOverflowMenuOpen(false);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setToolbarOverflowMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    window.addEventListener("resize", updateToolbarOverflowMenuPosition);
+    window.addEventListener("scroll", updateToolbarOverflowMenuPosition, true);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+      window.removeEventListener("resize", updateToolbarOverflowMenuPosition);
+      window.removeEventListener("scroll", updateToolbarOverflowMenuPosition, true);
+    };
+  }, [toolbarOverflowMenuOpen, updateToolbarOverflowMenuPosition]);
+
+  useEffect(() => {
+    if (toolbarOverflowActions.length > 0) return;
+    setToolbarOverflowMenuOpen(false);
+  }, [toolbarOverflowActions.length]);
+
+  useEffect(() => {
     if (!showToolbarSearch) return;
     toolbarSearchInputRef.current?.focus();
     toolbarSearchInputRef.current?.setSelectionRange(searchQuery.length, searchQuery.length);
@@ -812,38 +1082,41 @@ export function Header({
         wordmarkRect.right - hostRect.left + LAYOUT_CONTROL_SAFE_GAP_PX,
       );
       const rootStyles = window.getComputedStyle(document.documentElement);
+      sidebarHandleCenterlineStyleRef.current = rootStyles.getPropertyValue(
+        "--freed-sidebar-toolbar-centerline",
+      ) || rootStyles.getPropertyValue(
+        "--freed-sidebar-handle-centerline",
+      );
       const fallbackHandleCenterPx = parsePixelValue(
-        rootStyles.getPropertyValue("--freed-sidebar-handle-centerline"),
+        sidebarHandleCenterlineStyleRef.current,
         264,
       );
-      const resizeHandle = document.querySelector(
-        '[data-testid="app-sidebar-resize-handle"]',
-      ) as HTMLElement | null;
-      const resizeHandleRect = resizeHandle?.getBoundingClientRect() ?? null;
-      const handleCenterPx = resizeHandleRect
-        ? resizeHandleRect.left + resizeHandleRect.width / 2 - hostRect.left
-        : fallbackHandleCenterPx;
-      const idealClusterLeftPx = visibleDesktopSidebarMode === "closed"
+      const sidebarRightEdgePx = fallbackHandleCenterPx;
+      const idealSidebarToggleLeftPx = visibleDesktopSidebarMode === "closed"
         ? CLOSED_SIDEBAR_TOGGLE_LEFT_PX
-        : handleCenterPx - LAYOUT_CONTROL_PAIR_WIDTH_PX / 2;
-      const clusterLeftPx = Math.ceil(Math.max(idealClusterLeftPx, safeLeftPx));
-      const toolbarBoundaryWidthPx = handleCenterPx + PRIMARY_SIDEBAR_GAP_WIDTH_PX / 2;
+        : sidebarRightEdgePx - READER_LAYOUT_CONTROL_BUTTON_SIZE_PX;
+      const sidebarToggleLeftPx = Math.ceil(Math.max(idealSidebarToggleLeftPx, safeLeftPx));
+      const previewToggleLeftPx = Math.ceil(
+        sidebarToggleLeftPx + READER_LAYOUT_CONTROL_BUTTON_SIZE_PX + READER_LAYOUT_CONTROL_BUTTON_GAP_PX,
+      );
+      const toolbarBoundaryWidthPx = previewToggleLeftPx + READER_LAYOUT_CONTROL_BUTTON_SIZE_PX;
       const reservedWidthPx = Math.ceil(
         Math.max(
-          clusterLeftPx + layoutControlClusterWidthPx + TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
+          toolbarBoundaryWidthPx + TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX,
           toolbarBoundaryWidthPx,
         ),
       );
 
       setLayoutControlMetrics((current) => {
         if (
-          Math.abs(current.clusterLeftPx - clusterLeftPx) < 1 &&
+          Math.abs(current.sidebarToggleLeftPx - sidebarToggleLeftPx) < 1 &&
+          Math.abs(current.previewToggleLeftPx - previewToggleLeftPx) < 1 &&
           Math.abs(current.reservedWidthPx - reservedWidthPx) < 1
         ) {
           return current;
         }
 
-        return { clusterLeftPx, reservedWidthPx };
+        return { sidebarToggleLeftPx, previewToggleLeftPx, reservedWidthPx };
       });
     };
 
@@ -863,7 +1136,17 @@ export function Header({
     const mutationObserver =
       typeof MutationObserver === "undefined"
         ? null
-        : new MutationObserver(updateLayoutControlMetrics);
+        : new MutationObserver(() => {
+            const nextHandleCenterlineStyle = window
+              .getComputedStyle(document.documentElement)
+              .getPropertyValue("--freed-sidebar-toolbar-centerline") || window
+              .getComputedStyle(document.documentElement)
+              .getPropertyValue("--freed-sidebar-handle-centerline");
+            if (nextHandleCenterlineStyle === sidebarHandleCenterlineStyleRef.current) {
+              return;
+            }
+            updateLayoutControlMetrics();
+          });
     mutationObserver?.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["style"],
@@ -936,13 +1219,13 @@ export function Header({
   return (
     <>
       <header
-        className={`sticky top-0 z-30 min-w-0 w-screen max-w-[100vw] flex-shrink-0 overflow-hidden ${
+        className={`sticky top-0 z-30 min-w-0 w-full max-w-full flex-shrink-0 overflow-hidden ${
           headerDragRegion ? "" : "theme-attached-topbar-host pt-[env(safe-area-inset-top)]"
         }`}
       >
-        <div
-          data-testid="workspace-toolbar"
-          className={`theme-floating-panel theme-attached-topbar flex min-h-[58px] w-full min-w-0 max-w-full items-center px-0 ${showReaderLayoutToggle ? "gap-0" : "gap-3"}`}
+    <div
+      data-testid="workspace-toolbar"
+          className="theme-floating-panel theme-attached-topbar relative flex w-full min-w-0 max-w-full items-center px-0 gap-2"
           {...(headerDragRegion
             ? {
                 "data-tauri-drag-region": true,
@@ -951,7 +1234,7 @@ export function Header({
           style={toolbarContainerStyle}
         >
           <div
-            className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex shrink-0 items-center ${showReaderLayoutToggle ? "gap-0" : "gap-2"}`}
+            className="theme-toolbar-cluster theme-toolbar-cluster-tight flex shrink-0 items-center"
           >
             <div
               ref={layoutControlHostRef}
@@ -963,15 +1246,11 @@ export function Header({
                 <button
                   onClick={onMobileMenuToggle}
                   {...getToolbarControlProps()}
-                  className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                    mobileSidebarOpen ? "theme-toolbar-button-active" : "theme-toolbar-button-neutral"
-                  }`}
+                  className={`${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-ghost`}
                   aria-label={mobileSidebarOpen ? "Close menu" : "Open menu"}
                   aria-pressed={mobileSidebarOpen}
                 >
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                  </svg>
+                  <AnimatedMenuIcon open={mobileSidebarOpen} className="h-5 w-5" />
                 </button>
               </Tooltip>
               ) : null}
@@ -980,7 +1259,7 @@ export function Header({
                 <span
                   ref={wordmarkRef}
                   data-testid="workspace-toolbar-wordmark"
-                  className="relative top-[2px] cursor-default select-none text-lg font-bold gradient-text font-logo"
+                  className="cursor-default select-none text-lg font-bold gradient-text font-logo"
                 >
                   FREED
                 </span>
@@ -989,26 +1268,54 @@ export function Header({
               {!isMobileDevice ? (
                 <div
                   data-testid="desktop-layout-control-cluster"
-                  className="absolute top-1/2 flex -translate-y-1/2 items-center"
+                  className="absolute inset-y-0"
                   style={layoutControlClusterStyle}
                 >
-                  <Tooltip
-                    label={desktopSidebarToggleLabel}
+                  <span
+                    className="absolute top-1/2 inline-flex -translate-y-1/2"
+                    style={sidebarTogglePositionStyle}
                   >
-                    <button
-                      onClick={onDesktopSidebarToggle}
-                      {...getToolbarControlProps()}
-                      data-testid="desktop-sidebar-toggle"
-                      className={TOOLBAR_LAYOUT_TOGGLE_BUTTON_CLASS}
-                      aria-label={desktopSidebarToggleLabel}
+                    <Tooltip
+                      label={desktopSidebarToggleLabel}
                     >
-                      {visibleDesktopSidebarMode === "closed" ? (
-                        <SidebarExpandIcon className="h-5 w-5" />
-                      ) : (
-                        <SidebarCollapseIcon className="h-5 w-5" />
-                      )}
-                    </button>
-                  </Tooltip>
+                      <button
+                        onClick={onDesktopSidebarToggle}
+                        {...getToolbarControlProps()}
+                        data-testid="desktop-sidebar-toggle"
+                        className={TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS}
+                        aria-label={desktopSidebarToggleLabel}
+                      >
+                        {visibleDesktopSidebarMode === "closed" ? (
+                          <SidebarExpandIcon className="h-5 w-5" />
+                        ) : (
+                          <SidebarCollapseIcon className="h-5 w-5" />
+                        )}
+                      </button>
+                    </Tooltip>
+                  </span>
+
+                  {showDesktopReaderLayoutToggle ? (
+                    <span
+                      className="absolute top-1/2 inline-flex -translate-y-1/2"
+                      style={previewTogglePositionStyle}
+                    >
+                      <Tooltip label={display.reading.dualColumnMode ? "Hide Previews" : "Show Previews"}>
+                        <button
+                          onClick={handleToggleDualColumn}
+                          {...getToolbarControlProps()}
+                          className={TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS}
+                          aria-pressed={display.reading.dualColumnMode}
+                          aria-label={display.reading.dualColumnMode ? "Hide Previews" : "Show Previews"}
+                        >
+                          {display.reading.dualColumnMode ? (
+                            <ReaderRailHideIcon className="h-5 w-5" />
+                          ) : (
+                            <ReaderRailShowIcon className="h-5 w-5" />
+                          )}
+                        </button>
+                      </Tooltip>
+                    </span>
+                  ) : null}
 
                 </div>
               ) : null}
@@ -1016,7 +1323,7 @@ export function Header({
           </div>
 
           <div
-            className={`min-w-0 flex-1 ${selectedItem ? "pr-28 lg:pr-[17.5rem]" : ""}`}
+            className={`min-w-0 basis-0 flex-1 overflow-hidden ${selectedItem && isBelowLargeToolbar ? "pr-14" : ""}`}
             {...(headerDragRegion ? { "data-tauri-drag-region": true, style: dragStyle } : {})}
           >
             {selectedItem ? (
@@ -1024,10 +1331,10 @@ export function Header({
                 onClick={handleCloseReader}
                 {...getToolbarControlProps()}
                 data-testid="workspace-toolbar-reader-back"
-                className="group flex w-full min-w-0 items-center gap-2 rounded-xl px-2 py-1.5 text-left transition-colors hover:bg-[var(--theme-bg-muted)]"
+                className="group flex w-full min-w-0 items-center gap-1 rounded-lg px-1 py-1 text-left transition-colors hover:bg-[var(--theme-bg-muted)]"
                 aria-label="Back to list"
               >
-                <span className="pointer-events-none flex shrink-0 items-center rounded-xl p-2">
+                <span className="pointer-events-none flex shrink-0 items-center rounded-lg p-1.5">
                   <svg
                     className="h-4 w-4 shrink-0 text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]"
                     fill="none"
@@ -1041,8 +1348,9 @@ export function Header({
                   data-testid="workspace-toolbar-reader-title-block"
                   className="pointer-events-none min-w-0 flex-1 cursor-default select-none"
                 >
-                  <p className="truncate text-sm font-medium text-[var(--theme-text-secondary)]">{currentTitle}</p>
-                  <p className="truncate text-xs text-[var(--theme-text-muted)]">{currentSubtitle}</p>
+                  <p className="truncate text-sm font-medium text-[var(--theme-text-secondary)]">
+                    {currentListTitle}
+                  </p>
                 </div>
               </button>
             ) : showToolbarSearch ? (
@@ -1063,25 +1371,35 @@ export function Header({
                 data-testid="workspace-toolbar-title-block"
                 className="min-w-0 cursor-default select-none px-1"
               >
-                <p className="truncate text-sm font-semibold text-[var(--theme-text-secondary)]">{currentTitle}</p>
-                <p className="truncate text-xs text-[var(--theme-text-muted)]">{currentSubtitle}</p>
+                <p className="truncate text-sm font-semibold text-[var(--theme-text-secondary)]">
+                  {currentTitle}
+                  <span className="mx-1.5 font-normal text-[var(--theme-text-muted)]">•</span>
+                  <span className="font-normal text-[var(--theme-text-muted)]">{currentSubtitle}</span>
+                </p>
               </div>
             )}
           </div>
 
           <div
-            className={`theme-toolbar-cluster theme-toolbar-cluster-tight flex min-w-max shrink-0 items-center pr-2 sm:pr-2.5 ${
-              selectedItem ? "absolute right-8 top-1/2 -translate-y-1/2" : ""
-            }`}
+            className={selectedItem
+              ? isBelowLargeToolbar
+                ? `theme-toolbar-cluster theme-toolbar-cluster-tight absolute right-0 top-1/2 z-10 flex shrink-0 -translate-y-1/2 items-center justify-end pr-2 ${showInlineReaderBookmark ? "w-[6.5rem]" : "w-14"}`
+                : "theme-toolbar-cluster theme-toolbar-cluster-tight ml-auto flex min-w-max shrink-0 items-center pr-2"
+              : "theme-toolbar-cluster theme-toolbar-cluster-tight flex min-w-max shrink-0 items-center pr-2 sm:pr-2.5"}
           >
             {selectedItem ? (
               <>
-                <ToolbarAnimatedSlot visible={!isMobile} width="5.25rem" className="hidden lg:flex">
+                <ToolbarAnimatedSlot visible={!isMobile && !isBelowLargeToolbar} width="4.5rem" className="hidden lg:flex">
+                  {!isBelowLargeToolbar ? (
                   <Tooltip label={display.reading.focusMode ? "Disable focus mode" : "Enable focus mode"}>
                     <button
                       onClick={handleToggleFocusMode}
                       {...getToolbarControlProps()}
-                      className={`rounded-lg px-2.5 py-2 text-sm font-bold lg:inline-flex ${
+                      style={{
+                        ...(headerDragRegion ? toolbarControlStyle : undefined),
+                        width: "4.5rem",
+                      }}
+                      className={`w-full justify-center rounded-lg px-2.5 py-2 text-sm font-bold lg:inline-flex ${
                         display.reading.focusMode
                           ? "theme-toolbar-button-active"
                           : "theme-toolbar-button-neutral"
@@ -1095,51 +1413,80 @@ export function Header({
                       </span>
                     </button>
                   </Tooltip>
+                  ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={true} width="2.5rem">
-                  <Tooltip label={selectedItem.userState.saved ? "Remove bookmark" : "Bookmark"}>
-                    <button
-                      onClick={handleToggleReaderSaved}
-                      {...getToolbarControlProps()}
-                      className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                        selectedItem.userState.saved
-                          ? "theme-toolbar-button-active"
-                          : "theme-toolbar-button-neutral"
-                      }`}
-                      aria-label={selectedItem.userState.saved ? "Unsave" : "Save"}
-                    >
-                      <svg
-                        className="h-5 w-5"
-                        fill={selectedItem.userState.saved ? "currentColor" : "none"}
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
+                <ToolbarAnimatedSlot visible={showInlineReaderBookmark} width="2.5rem">
+                  {showInlineReaderBookmark ? (
+                    <Tooltip label={selectedItem.userState.saved ? "Remove bookmark" : "Bookmark"}>
+                      <button
+                        onClick={handleToggleReaderSaved}
+                        {...getToolbarControlProps()}
+                        className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
+                          selectedItem.userState.saved
+                            ? "theme-toolbar-button-active"
+                            : "theme-toolbar-button-neutral"
+                        }`}
+                        aria-label={selectedItem.userState.saved ? "Unsave" : "Save"}
                       >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                      </svg>
-                    </button>
-                  </Tooltip>
+                        <svg
+                          className="h-5 w-5"
+                          fill={selectedItem.userState.saved ? "currentColor" : "none"}
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                        </svg>
+                      </button>
+                    </Tooltip>
+                  ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showDesktopReaderLayoutToggle} width="2.5rem">
-                  <Tooltip label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}>
+                <ToolbarAnimatedSlot
+                  visible={showToolbarOverflowMenuButton}
+                  width="2.5rem"
+                  flushStartMargin={isBelowLargeToolbar && !showInlineReaderBookmark}
+                  style={{ order: 98 }}
+                >
+                  {showToolbarOverflowMenuButton ? (
+                    <Tooltip label="More actions">
+                      <button
+                        ref={toolbarOverflowButtonRef}
+                        type="button"
+                        onClick={toggleToolbarOverflowMenu}
+                        {...getToolbarControlProps()}
+                        data-testid="toolbar-overflow-button"
+                        className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
+                          isMobileDevice ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
+                        }`}
+                        aria-haspopup="menu"
+                        aria-expanded={toolbarOverflowMenuOpen}
+                        aria-label="More actions"
+                      >
+                        <ToolbarOverflowIcon />
+                      </button>
+                    </Tooltip>
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
+                {selectedItem.sourceUrl && !isBelowLargeToolbar ? (
+                  <ToolbarAnimatedSlot visible={true} width="4.5rem" className="hidden lg:flex">
                     <button
-                      onClick={handleToggleDualColumn}
+                      onClick={handleOpenReaderUrl}
                       {...getToolbarControlProps()}
-                      className={`${TOOLBAR_ICON_BUTTON_CLASS} theme-toolbar-button-neutral`}
-                      aria-pressed={display.reading.dualColumnMode}
-                      aria-label={display.reading.dualColumnMode ? "Hide thumbnail rail" : "Show thumbnail rail"}
+                      className="theme-toolbar-button-neutral inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm"
+                      aria-label="Open"
                     >
-                      {display.reading.dualColumnMode ? (
-                        <ReaderRailHideIcon className="h-5 w-5" />
-                      ) : (
-                        <ReaderRailShowIcon className="h-5 w-5" />
-                      )}
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5h5m0 0v5m0-5L10 14M5 9v10h10" />
+                      </svg>
+                      <span className="hidden lg:inline">Open</span>
                     </button>
-                  </Tooltip>
-                </ToolbarAnimatedSlot>
+                  </ToolbarAnimatedSlot>
+                ) : null}
 
-                <ToolbarAnimatedSlot visible={true} width="2.5rem" className="hidden lg:flex">
+                <ToolbarAnimatedSlot visible={!isBelowLargeToolbar} width="2.5rem" className="hidden lg:flex">
+                  {!isBelowLargeToolbar ? (
                   <Tooltip label={selectedItem.userState.archived ? "Unarchive" : "Archive"}>
                     <button
                       onClick={handleToggleReaderArchived}
@@ -1154,27 +1501,12 @@ export function Header({
                       <ArchiveIcon className="h-5 w-5" />
                     </button>
                   </Tooltip>
-                </ToolbarAnimatedSlot>
-
-                <ToolbarAnimatedSlot visible={!!selectedItem.sourceUrl} width="4.5rem" className="hidden lg:flex">
-                  {selectedItem.sourceUrl ? (
-                    <button
-                      onClick={handleOpenReaderUrl}
-                      {...getToolbarControlProps()}
-                      className="theme-toolbar-button-neutral inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm"
-                      aria-label="Open"
-                    >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5h5m0 0v5m0-5L10 14M5 9v10h10" />
-                      </svg>
-                      <span className="hidden lg:inline">Open</span>
-                    </button>
                   ) : null}
                 </ToolbarAnimatedSlot>
               </>
             ) : (
               <>
-                <ToolbarAnimatedSlot visible={!!HeaderSyncIndicator} width="4.5rem" className="hidden md:flex">
+                <ToolbarAnimatedSlot visible={!!HeaderSyncIndicator} width={TOOLBAR_SLOT_WIDTH_CONTENT} className="hidden md:flex">
                   {HeaderSyncIndicator ? (
                     <div className="hidden md:flex">
                       <HeaderSyncIndicator />
@@ -1183,10 +1515,10 @@ export function Header({
                 </ToolbarAnimatedSlot>
 
                 <ToolbarAnimatedSlot
-                  visible={showWorkspaceIdentityControls}
-                  width={activeView === "friends" && isMobile ? "13.75rem" : "12rem"}
+                  visible={showInlineWorkspaceIdentityControls}
+                  width={TOOLBAR_SLOT_WIDTH_CONTENT}
                 >
-                  {showWorkspaceIdentityControls ? (
+                  {showInlineWorkspaceIdentityControls ? (
                     <ToolbarToggleGroup
                       dataTestId={activeView === "map" ? "map-toolbar-scope" : "friends-toolbar-lens"}
                       options={
@@ -1215,8 +1547,8 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showMapTimeControls} width="14rem">
-                  {showMapTimeControls ? (
+                <ToolbarAnimatedSlot visible={showInlineMapTimeControls} width={TOOLBAR_SLOT_WIDTH_CONTENT}>
+                  {showInlineMapTimeControls ? (
                     <ToolbarToggleGroup
                       dataTestId="map-toolbar-timeframe"
                       options={[
@@ -1232,8 +1564,8 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showArchivedToolbar} width="11rem" className="hidden xl:flex">
-                  {showArchivedToolbar ? (
+                <ToolbarAnimatedSlot visible={showArchivedToolbar && !isBelowLargeToolbar} width={TOOLBAR_SLOT_WIDTH_CONTENT} className="hidden xl:flex">
+                  {showArchivedToolbar && !isBelowLargeToolbar ? (
                     <span className="text-xs text-[var(--theme-text-muted)]">
                       {getRetentionLabel(display.archivePruneDays ?? 30)}
                     </span>
@@ -1241,11 +1573,11 @@ export function Header({
                 </ToolbarAnimatedSlot>
 
                 <ToolbarAnimatedSlot
-                  visible={showArchivedToolbar && savedArchivedCount > 0}
-                  width="11rem"
+                  visible={showArchivedToolbar && savedArchivedCount > 0 && !isBelowLargeToolbar}
+                  width={TOOLBAR_SLOT_WIDTH_CONTENT}
                   className="hidden lg:flex"
                 >
-                  {showArchivedToolbar && savedArchivedCount > 0 ? (
+                  {showArchivedToolbar && savedArchivedCount > 0 && !isBelowLargeToolbar ? (
                     <button
                       onClick={handleUnarchiveSavedClick}
                       {...getToolbarControlProps()}
@@ -1256,8 +1588,8 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showArchivedDeleteAction} width="11rem" className="hidden lg:flex">
-                  {showArchivedDeleteAction ? (
+                <ToolbarAnimatedSlot visible={showArchivedDeleteAction && !isBelowLargeToolbar} width={TOOLBAR_SLOT_WIDTH_CONTENT} className="hidden lg:flex">
+                  {showArchivedDeleteAction && !isBelowLargeToolbar ? (
                     <button
                       onClick={handleDeleteArchivedClick}
                       {...getToolbarControlProps()}
@@ -1272,8 +1604,8 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showFeedBulkActions && unreadCount > 0} width="9.5rem" className="hidden lg:flex">
-                  {showFeedBulkActions && unreadCount > 0 ? (
+                <ToolbarAnimatedSlot visible={showFeedBulkActions && unreadCount > 0 && !isBelowLargeToolbar} width={TOOLBAR_SLOT_WIDTH_CONTENT} className="hidden lg:flex">
+                  {showFeedBulkActions && unreadCount > 0 && !isBelowLargeToolbar ? (
                     <Tooltip label={`Mark all ${unreadCount.toLocaleString()} items as read`} className="hidden lg:flex">
                       <button
                         onClick={() => markAllAsRead(activeFilter.platform)}
@@ -1289,8 +1621,8 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showFeedBulkActions && archivableCount > 0} width="8rem" className="hidden lg:flex">
-                  {showFeedBulkActions && archivableCount > 0 ? (
+                <ToolbarAnimatedSlot visible={showFeedBulkActions && archivableCount > 0 && !isBelowLargeToolbar} width={TOOLBAR_SLOT_WIDTH_CONTENT} className="hidden lg:flex">
+                  {showFeedBulkActions && archivableCount > 0 && !isBelowLargeToolbar ? (
                     <Tooltip label={`Archive all ${archivableCount.toLocaleString()} read (unsaved) items`} className="hidden lg:flex">
                       <button
                         onClick={() => archiveAllReadUnsaved(activeFilter.platform, activeFilter.feedUrl)}
@@ -1306,8 +1638,8 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showSocialContentControls} width="11rem" className="hidden md:flex">
-                  {showSocialContentControls ? (
+                <ToolbarAnimatedSlot visible={showInlineSocialContentControls} width={TOOLBAR_SLOT_WIDTH_CONTENT}>
+                  {showInlineSocialContentControls ? (
                     <ToolbarToggleGroup
                       dataTestId="social-content-toolbar-filter"
                       options={[
@@ -1323,8 +1655,8 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showFeedSignalFilter} width="10rem" className="hidden sm:flex">
-                  {showFeedSignalFilter ? (
+                <ToolbarAnimatedSlot visible={showInlineFeedSignalFilter} width={TOOLBAR_SLOT_WIDTH_CONTENT}>
+                  {showInlineFeedSignalFilter ? (
                     <div className="relative flex">
                       <Tooltip label="Filter feed">
                         <button
@@ -1346,7 +1678,7 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showFriendsSidebarToggle} width="3rem" className="hidden md:flex">
+                <ToolbarAnimatedSlot visible={showFriendsSidebarToggle} width={TOOLBAR_SLOT_WIDTH_CONTENT} className="hidden md:flex">
                   {showFriendsSidebarToggle ? (
                     <Tooltip label={friendsSidebarOpen ? "Hide details" : "Show details"}>
                       <button
@@ -1367,25 +1699,181 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
+                <ToolbarAnimatedSlot
+                  visible={showToolbarOverflowMenuButton || showCollapsedToolbarFilterMenu}
+                  width={showToolbarOverflowMenuButton && showCollapsedToolbarFilterMenu ? "5.375rem" : "2.5rem"}
+                >
+                  {showToolbarOverflowMenuButton || showCollapsedToolbarFilterMenu ? (
+                    <div className="flex items-center gap-2">
+                      {showToolbarOverflowMenuButton ? (
+                        <Tooltip label="More actions">
+                          <button
+                            ref={toolbarOverflowButtonRef}
+                            type="button"
+                            onClick={toggleToolbarOverflowMenu}
+                            {...getToolbarControlProps()}
+                            data-testid="toolbar-overflow-button"
+                            className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
+                              isMobileDevice ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
+                            }`}
+                            aria-haspopup="menu"
+                            aria-expanded={toolbarOverflowMenuOpen}
+                            aria-label="More actions"
+                          >
+                            <ToolbarOverflowIcon />
+                          </button>
+                        </Tooltip>
+                      ) : null}
+                      {showCollapsedToolbarFilterMenu ? (
+                        <Tooltip label="Filter view">
+                          <button
+                            ref={signalFilterButtonRef}
+                            type="button"
+                            onClick={toggleSignalFilterMenu}
+                            {...getToolbarControlProps()}
+                            data-testid="mobile-toolbar-filter-button"
+                            className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
+                              isMobileDevice ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
+                            }`}
+                            aria-haspopup="menu"
+                            aria-expanded={signalFilterMenuOpen}
+                            aria-label="Filter view"
+                          >
+                            <FilterIcon className="h-5 w-5" />
+                          </button>
+                        </Tooltip>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
               </>
             )}
           </div>
         </div>
       </header>
 
-      {signalFilterMenuOpen && showFeedSignalFilter ? (
+      {toolbarOverflowMenuOpen && showToolbarOverflowMenuButton ? (
+        <div
+          ref={toolbarOverflowMenuRef}
+          data-testid="toolbar-overflow-menu"
+          role="menu"
+          className="theme-dialog-shell fixed z-[300] w-[16rem] max-w-[calc(100vw-1rem)] overflow-hidden py-1.5 shadow-2xl shadow-black/35"
+          style={{
+            top: toolbarOverflowMenuPosition?.top ?? 60,
+            right: toolbarOverflowMenuPosition?.right ?? 8,
+            ...(headerDragRegion ? noDrag : {}),
+          }}
+        >
+          {toolbarOverflowActions.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                action.onClick();
+                if (action.id !== "delete-archived" || action.danger) {
+                  setToolbarOverflowMenuOpen(false);
+                }
+              }}
+              className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--theme-bg-muted)] ${
+                action.danger
+                  ? "text-red-400"
+                  : action.active
+                    ? "text-[var(--theme-text-primary)]"
+                    : "text-[var(--theme-text-secondary)]"
+              }`}
+            >
+              <span className="shrink-0 text-current">{action.icon}</span>
+              <span className="min-w-0 flex-1 truncate">{action.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {signalFilterMenuOpen && (showFeedSignalFilter || showCollapsedToolbarFilterMenu) ? (
         <div
           ref={signalFilterMenuRef}
           data-testid="feed-signal-filter-menu"
           role="menu"
-          className="theme-dialog-shell fixed z-[300] w-[20rem] overflow-hidden py-2 shadow-2xl shadow-black/35"
+          className="theme-dialog-shell fixed z-[300] w-[20rem] max-w-[calc(100vw-1rem)] overflow-hidden py-2 shadow-2xl shadow-black/35"
           style={{
             top: signalFilterMenuPosition?.top ?? 60,
             right: signalFilterMenuPosition?.right ?? 8,
             ...(headerDragRegion ? noDrag : {}),
           }}
         >
-          {[everythingSignalPreset, ...selectableFeedSignalPresets].map((preset) => {
+          {showCollapsedToolbarFilterMenu && showSocialContentControls ? (
+            <div className={`${showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 pb-3 pt-1`}>
+              <ToolbarToggleGroup
+                dataTestId="mobile-social-content-toolbar-filter"
+                options={[
+                  { value: "all", label: "All" },
+                  { value: "posts", label: "Posts" },
+                  { value: "stories", label: "Stories" },
+                ]}
+                value={socialContentFilter}
+                onChange={handleSocialContentFilterChange}
+                compact
+                fullWidth
+              />
+            </div>
+          ) : null}
+
+          {showCollapsedToolbarFilterMenu && showWorkspaceIdentityControls ? (
+            <div className={`${showMapTimeControls || showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
+              <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                View
+              </p>
+              <ToolbarToggleGroup
+                dataTestId={activeView === "map" ? "mobile-map-toolbar-scope" : "mobile-friends-toolbar-lens"}
+                options={
+                  activeView === "friends"
+                    ? [
+                        { value: "friends", label: "Friends" },
+                        { value: "all_content", label: "All content" },
+                        { value: "details", label: "Details" },
+                      ]
+                    : [
+                        { value: "friends", label: "Friends" },
+                        { value: "all_content", label: "All content" },
+                      ]
+                }
+                value={activeView === "map" ? effectiveMapMode : friendsToolbarValue}
+                onChange={(mode) => {
+                  if (activeView === "map") {
+                    handleIdentityModeChange("mapMode", mode as MapMode);
+                    return;
+                  }
+                  handleFriendsToolbarModeChange(mode as FriendsToolbarMode);
+                }}
+                compact
+                fullWidth
+              />
+            </div>
+          ) : null}
+
+          {showCollapsedToolbarFilterMenu && showMapTimeControls ? (
+            <div className="px-3 py-3">
+              <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                Time
+              </p>
+              <ToolbarToggleGroup
+                dataTestId="mobile-map-toolbar-timeframe"
+                options={[
+                  { value: "current", label: "Current" },
+                  { value: "future", label: "Future" },
+                  { value: "past", label: "Past" },
+                ]}
+                value={display.mapTimeMode ?? "current"}
+                onChange={handleMapTimeModeChange}
+                compact
+                fullWidth
+              />
+            </div>
+          ) : null}
+
+          {showFeedSignalFilter ? [everythingSignalPreset, ...selectableFeedSignalPresets].map((preset) => {
             const selected = preset.mode === "all"
               ? allFeedSignalsSelected
               : allFeedSignalsSelected || activeFeedSignalModeSet.has(preset.mode);
@@ -1427,7 +1915,7 @@ export function Header({
                 </span>
               </button>
             );
-          })}
+          }) : null}
         </div>
       ) : null}
 

@@ -66,6 +66,16 @@ export type TimeRangeKind = "event" | "travel" | "overlap";
  */
 export type ContentSignal =
   | "event"
+  | "deadline"
+  | "opportunity"
+  | "how_to"
+  | "reference"
+  | "transaction"
+  | "product_update"
+  | "alert"
+  | "deal"
+  | "place"
+  | "media"
   | "essay"
   | "moment"
   | "life_update"
@@ -205,6 +215,20 @@ export interface ContentSignals {
   tags: ContentSignal[];
 }
 
+export interface EventCandidate {
+  version: number;
+  method: ContentSignalMethod;
+  detectedAt: number;
+  confidence: number;
+  title?: string;
+  startsAt?: number;
+  endsAt?: number;
+  timezone?: string;
+  locationName?: string;
+  locationUrl?: string;
+  evidence?: string;
+}
+
 export interface ContentSignalBackfillSummary {
   version: number;
   total: number;
@@ -218,13 +242,13 @@ export interface ContentSignalBackfillSummary {
 }
 
 /**
- * AI provider and model preferences (synced -- no secrets here)
+ * AI provider and model preferences (synced, no secrets here)
  */
 export interface AIPreferences {
   /** AI provider selection */
-  provider: "none" | "ollama" | "openai" | "anthropic" | "gemini";
+  provider: "none" | "integrated" | "ollama" | "openai" | "anthropic" | "gemini";
 
-  /** Model identifier (e.g. "qwen2.5:1.5b", "gpt-4o-mini", "claude-haiku-4-5") */
+  /** Model identifier, when the selected provider exposes a single model name */
   model: string;
 
   /** Ollama base URL (default: "http://localhost:11434") */
@@ -238,6 +262,7 @@ export interface AIPreferences {
 }
 
 export type LocalAIModelId =
+  | "integrated-local-ai"
   | "semantic-embeddinggemma"
   | "summary-qwen3"
   | "assistant-gemma4";
@@ -255,6 +280,9 @@ export interface LocalAIModelFileManifest {
   sizeBytes: number;
   sha256?: string;
   sha1?: string;
+  etag?: string;
+  repo?: string;
+  revision?: string;
 }
 
 export interface LocalAIModelManifestEntry {
@@ -406,6 +434,9 @@ export interface FeedItem {
 
   /** Local or AI-inferred content intent signals */
   contentSignals?: ContentSignals;
+
+  /** Compact local or AI-inferred event metadata. */
+  eventCandidate?: EventCandidate;
 
   /** Pre-computed priority score (0-100), calculated by Desktop/OpenClaw */
   priority?: number;

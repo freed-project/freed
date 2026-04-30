@@ -13,19 +13,22 @@ const HELLO_SHA1 = "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d";
 
 const TEST_MANIFEST: readonly LocalAIModelManifestEntry[] = [
   {
-    id: "semantic-embeddinggemma",
-    title: "Semantic search and ranking",
-    capability: "Embeddings",
+    id: "integrated-local-ai",
+    title: "Integrated AI local pack",
+    capability: "Search and summaries",
     description: "Test model",
     repo: "test/model",
     revision: "abc123",
     sourceUrl: "https://example.com/model",
-    estimatedDownloadBytes: 5,
-    estimatedStorageBytes: 5,
+    estimatedDownloadBytes: 10,
+    estimatedStorageBytes: 10,
     hardwareNote: "Test hardware",
     requiresWebGPU: false,
     wasmFallback: true,
-    files: [{ path: "model.bin", sizeBytes: 5, sha1: HELLO_SHA1 }],
+    files: [
+      { path: "model.bin", sizeBytes: 5, sha1: HELLO_SHA1 },
+      { path: "metadata.json", sizeBytes: 5, sha1: HELLO_SHA1, etag: "blob-id-not-raw-sha1" },
+    ],
   },
 ];
 
@@ -122,7 +125,7 @@ function createDeps(options: {
 }
 
 function modelPath(path: string): string {
-  return `/app/local-ai-models/semantic-embeddinggemma/abc123/${path}`;
+  return `/app/local-ai-models/integrated-local-ai/abc123/${path}`;
 }
 
 describe("local AI model manager", () => {
@@ -145,11 +148,22 @@ describe("local AI model manager", () => {
     const { deps, files } = createDeps();
     const service = createLocalAIModelService(deps, TEST_MANIFEST);
 
-    const models = await service.downloadModel("semantic-embeddinggemma");
+    const models = await service.downloadModel("integrated-local-ai");
 
     expect(models[0].state.status).toBe("available");
     expect(files.has(modelPath("model.bin"))).toBe(true);
-    expect(models[0].state.storageBytes).toBe(5);
+    expect(files.has(modelPath("metadata.json"))).toBe(true);
+    expect(models[0].state.storageBytes).toBe(10);
+  });
+
+  it("treats Hugging Face etags as metadata, not raw file checksums", async () => {
+    const { deps } = createDeps();
+    const service = createLocalAIModelService(deps, TEST_MANIFEST);
+
+    const models = await service.downloadModel("integrated-local-ai");
+
+    expect(models[0].state.status).toBe("available");
+    expect(TEST_MANIFEST[0].files[1].etag).not.toBe(TEST_MANIFEST[0].files[1].sha1);
   });
 
   it("records checksum failures without marking the model available", async () => {
@@ -162,7 +176,7 @@ describe("local AI model manager", () => {
     const { deps } = createDeps();
     const service = createLocalAIModelService(deps, badManifest);
 
-    const models = await service.downloadModel("semantic-embeddinggemma");
+    const models = await service.downloadModel("integrated-local-ai");
 
     expect(models[0].state.status).toBe("error");
     expect(models[0].state.lastError).toContain("Checksum failed");
@@ -177,7 +191,7 @@ describe("local AI model manager", () => {
     });
     const service = createLocalAIModelService(deps, TEST_MANIFEST);
 
-    const models = await service.downloadModel("semantic-embeddinggemma");
+    const models = await service.downloadModel("integrated-local-ai");
 
     expect(requests[0].range).toBe("bytes=2-");
     expect(models[0].state.status).toBe("available");
@@ -218,9 +232,9 @@ describe("local AI model manager", () => {
     };
     const service = createLocalAIModelService(deps, TEST_MANIFEST);
 
-    const pending = service.downloadModel("semantic-embeddinggemma");
+    const pending = service.downloadModel("integrated-local-ai");
     await firstChunk;
-    await service.pauseDownload("semantic-embeddinggemma");
+    await service.pauseDownload("integrated-local-ai");
     const paused = await pending;
 
     expect(paused[0].state.status).toBe("paused");
@@ -231,8 +245,8 @@ describe("local AI model manager", () => {
     const { deps, files } = createDeps();
     const service = createLocalAIModelService(deps, TEST_MANIFEST);
 
-    await service.downloadModel("semantic-embeddinggemma");
-    const models = await service.removeModel("semantic-embeddinggemma");
+    await service.downloadModel("integrated-local-ai");
+    const models = await service.removeModel("integrated-local-ai");
 
     expect(models[0].state.status).toBe("not_downloaded");
     expect(files.has(modelPath("model.bin"))).toBe(false);

@@ -18,14 +18,14 @@ export const FEED_SIGNAL_FILTER_PRESETS: readonly FeedSignalFilterPreset[] = [
   {
     mode: "inspiring",
     label: "Inspiring",
-    description: "Essays, recommendations, and memorable moments.",
-    signals: ["essay", "recommendation", "moment"],
+    description: "Essays, guides, references, recommendations, and memorable moments.",
+    signals: ["essay", "how_to", "reference", "recommendation", "moment"],
   },
   {
     mode: "events",
     label: "Events",
-    description: "Promoted events and time-bound happenings.",
-    signals: ["event", "promotion"],
+    description: "Events, deadlines, opportunities, and time-bound offers.",
+    signals: ["event", "deadline", "opportunity", "deal", "promotion"],
   },
   {
     mode: "personal",
@@ -42,8 +42,8 @@ export const FEED_SIGNAL_FILTER_PRESETS: readonly FeedSignalFilterPreset[] = [
   {
     mode: "news",
     label: "News",
-    description: "Reported stories, current events, and news analysis.",
-    signals: ["news"],
+    description: "Reported stories, alerts, product updates, and news analysis.",
+    signals: ["news", "alert", "product_update"],
   },
 ] as const;
 

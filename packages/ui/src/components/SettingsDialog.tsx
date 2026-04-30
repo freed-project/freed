@@ -1092,7 +1092,6 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
       case "ai":
         return (
           <>
-            <SectionHeading label="AI" />
             <AISection />
           </>
         );

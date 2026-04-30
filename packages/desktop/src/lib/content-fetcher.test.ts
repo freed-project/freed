@@ -149,9 +149,11 @@ async function loadContentFetcherModule() {
 async function loadContentFetcherModuleWithAi({
   autoSummarize,
   extractTopics,
+  provider = "openai",
 }: {
   autoSummarize: boolean;
   extractTopics: boolean;
+  provider?: "integrated" | "openai";
 }) {
   vi.resetModules();
 
@@ -184,6 +186,7 @@ async function loadContentFetcherModuleWithAi({
     topics: ["ai", "reading"],
     sentiment: "neutral" as const,
   }));
+  const mockGetApiKey = vi.fn(async () => "test-key");
 
   vi.doMock("@tauri-apps/api/core", () => ({ invoke: mockInvoke }));
   vi.doMock("@freed/capture-save/browser", () => ({
@@ -204,8 +207,8 @@ async function loadContentFetcherModuleWithAi({
           ai: {
             autoSummarize,
             extractTopics,
-            provider: "openai",
-            model: "gpt-4o-mini",
+            provider,
+            model: provider === "openai" ? "gpt-4o-mini" : "",
           },
         },
       }),
@@ -216,7 +219,7 @@ async function loadContentFetcherModuleWithAi({
   }));
   vi.doMock("./secure-storage.js", () => ({
     secureStorage: {
-      getApiKey: vi.fn(async () => "test-key"),
+      getApiKey: mockGetApiKey,
     },
   }));
   vi.doMock("@freed/ui/lib/debug-store", () => ({
@@ -236,6 +239,7 @@ async function loadContentFetcherModuleWithAi({
     subscriberRef,
     mockDocUpdateFeedItem,
     mockSummarize,
+    mockGetApiKey,
   };
 }
 
@@ -306,6 +310,25 @@ describe("content fetcher", () => {
       | undefined;
     expect(update?.preservedContent.text).toContain("Short AI summary");
     expect(update?.topics).toEqual(["ai", "reading"]);
+  });
+
+  it("does not request an API key when integrated AI is selected", async () => {
+    vi.useFakeTimers();
+    const { mod, subscriberRef, mockGetApiKey, mockSummarize } = await loadContentFetcherModuleWithAi({
+      autoSummarize: true,
+      extractTopics: true,
+      provider: "integrated",
+    });
+
+    mod.start();
+    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    await vi.advanceTimersByTimeAsync(2_000);
+    mod.stop();
+
+    expect(mockGetApiKey).not.toHaveBeenCalled();
+    expect(mockSummarize).toHaveBeenCalledWith(LONG_TEXT, expect.objectContaining({
+      provider: "integrated",
+    }), null);
   });
 
   it("pins existing text posts by writing reader HTML to the local cache", async () => {

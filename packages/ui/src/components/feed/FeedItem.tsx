@@ -51,6 +51,24 @@ function feedCardTransitionName(globalId: string): string {
 
 const cls = "w-3.5 h-3.5";
 const SWIPE_THRESHOLD = 72;
+const EVENT_CHIP_THRESHOLD = 0.7;
+const EVENT_DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+function semanticChip(item: FeedItemType): string | null {
+  const candidate = item.eventCandidate;
+  if (candidate?.startsAt && candidate.confidence >= EVENT_CHIP_THRESHOLD) {
+    return `Event ${EVENT_DATE_FORMAT.format(new Date(candidate.startsAt))}`;
+  }
+  if (item.contentSignals?.tags.includes("deadline")) {
+    return "Deadline";
+  }
+  return null;
+}
 
 const platformIcons: Record<string, ReactNode> = {
   x: <XIcon className={cls} />,
@@ -151,6 +169,7 @@ export const FeedItem = memo(function FeedItem({
   const hasReactionPalette = reactions.length > 1;
   const likeCount = formatEngagementCount(item.engagement?.likes);
   const commentCount = formatEngagementCount(item.engagement?.comments);
+  const semanticLabel = semanticChip(item);
 
   const [swipeX, setSwipeX] = useState(0);
   const [storyMediaFailed, setStoryMediaFailed] = useState(false);
@@ -388,8 +407,13 @@ export const FeedItem = memo(function FeedItem({
             </p>
           )}
 
-          {item.userState.tags.length > 0 && (
+          {(semanticLabel || item.userState.tags.length > 0) && (
             <div className="mt-auto pt-2 flex flex-wrap gap-1">
+              {semanticLabel && (
+                <span className="theme-accent-tag rounded-full px-1.5 py-0.5 text-[10px]">
+                  {semanticLabel}
+                </span>
+              )}
               {item.userState.tags.slice(0, 2).map((tag) => (
                 <span
                   key={tag}
@@ -601,6 +625,14 @@ export const FeedItem = memo(function FeedItem({
           <p className="mb-3 leading-relaxed line-clamp-3 text-[var(--theme-text-secondary)]">
             {item.content.text}
           </p>
+        )}
+
+        {semanticLabel && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            <span className="theme-accent-tag rounded-full px-2.5 py-1 text-xs">
+              {semanticLabel}
+            </span>
+          </div>
         )}
 
         {showInlineMedia && item.content.mediaUrls.length > 0 && (

@@ -1,0 +1,43 @@
+{
+  "tag": "v26.4.2900-dev",
+  "version": "26.4.2900-dev",
+  "channel": "dev",
+  "dayKey": "26.4.29",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-29T15:32:47.337Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.2800-dev",
+    "previousPublishedDayTag": "v26.4.2800-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.2900-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.4.2900-dev"
+    ],
+    "prNumbers": [
+      354,
+      356
+    ],
+    "commitSubjects": [
+      "feat: add semantic content enrichment (#354)",
+      "fix: mark feed items read while scrolling (#356)"
+    ]
+  },
+  "release": {
+    "deck": "Semantic enrichment, unified AI settings, and smoother read tracking",
+    "features": [
+      "Semantic content enrichment",
+      "Unified AI provider settings"
+    ],
+    "fixes": [
+      "Feed items now mark read while scrolling"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2900-dev\n\nSemantic enrichment, unified AI settings, and smoother read tracking\n\n### Features\n\n- Adds expanded local content signals, inclusive signal filters, search indexing, and compact event candidate extraction.\n- Unifies AI settings around one provider choice for Off, Integrated AI, Ollama, OpenAI, Anthropic, and Gemini.\n\n### Fixes\n\n- Feed items now mark read while scrolling, so normal feed reading updates state without opening every item.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

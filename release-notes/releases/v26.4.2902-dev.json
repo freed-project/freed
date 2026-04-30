@@ -1,0 +1,59 @@
+{
+  "tag": "v26.4.2902-dev",
+  "version": "26.4.2902-dev",
+  "channel": "dev",
+  "dayKey": "26.4.29",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-29T19:43:59.903Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.2901-dev",
+    "previousPublishedDayTag": "v26.4.2800-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.2900-dev",
+      "v26.4.2901-dev",
+      "v26.4.2902-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.4.2900-dev",
+      "v26.4.2901-dev",
+      "v26.4.2902-dev"
+    ],
+    "prNumbers": [
+      354,
+      356,
+      357,
+      358
+    ],
+    "commitSubjects": [
+      "fix: polish AI settings local pack (#358)",
+      "docs: include same-day dev release note",
+      "docs: approve v26.4.2901-dev release notes",
+      "release: v26.4.2901-dev",
+      "fix: prevent health persistence from freezing dev preview (#357)",
+      "docs: approve v26.4.2900-dev release notes",
+      "release: v26.4.2900-dev",
+      "feat: add semantic content enrichment (#354)",
+      "fix: mark feed items read while scrolling (#356)"
+    ]
+  },
+  "release": {
+    "deck": "Semantic content enrichment, unified AI provider settings, read-on-scroll fixes, and safer provider health persistence",
+    "features": [
+      "Semantic content enrichment",
+      "Unified AI provider settings"
+    ],
+    "fixes": [
+      "Polish AI settings local pack",
+      "Prevent health persistence from freezing dev preview",
+      "Mark feed items read while scrolling",
+      "Provider health persistence no longer uses the Tauri store mutex path that could freeze Freed Desktop shortly after launch"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.2902-dev\n\nSemantic content enrichment, unified AI provider settings, read-on-scroll fixes, and safer provider health persistence\n\n### Features\n\n- Semantic content enrichment\n- Unified AI provider settings\n\n### Fixes\n\n- Polish AI settings local pack\n- Prevent health persistence from freezing dev preview\n- Mark feed items read while scrolling\n- Provider health persistence no longer uses the Tauri store mutex path that could freeze Freed Desktop shortly after launch\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

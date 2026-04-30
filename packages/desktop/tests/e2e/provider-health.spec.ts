@@ -1420,28 +1420,37 @@ test("settings sources nav shows provider status dots", async ({ app, page }) =>
 
   const facebookSourceIndicatorLayout = await page.evaluate(() => {
     const desktopSidebar = document.querySelector('[data-testid="app-sidebar"]');
-    const row = desktopSidebar?.querySelector('[data-testid="source-row-facebook"]')?.parentElement;
+    const row = desktopSidebar?.querySelector('[data-testid="source-row-facebook"]') as HTMLElement | null;
     const indicator = row?.querySelector('[data-testid="source-indicator-facebook"]');
-    const indicatorSlot = row?.querySelector('[data-testid="source-indicator-slot-facebook"]');
-    const label = row?.querySelector('[data-testid="source-row-facebook"] span.min-w-0.flex-1.truncate');
-    if (!indicator || !indicatorSlot || !label || !row) {
+    const label = row?.querySelector("span.min-w-0.flex-1.truncate");
+    const icon = row?.querySelector("svg");
+    if (!indicator || !label || !row || !icon) {
       return null;
     }
 
     const indicatorRect = indicator.getBoundingClientRect();
     const labelRect = label.getBoundingClientRect();
+    const iconRect = icon.getBoundingClientRect();
     const rowRect = row.getBoundingClientRect();
     return {
       indicatorLeft: indicatorRect.left,
       indicatorRight: indicatorRect.right,
-      indicatorOpacity: window.getComputedStyle(indicatorSlot).opacity,
+      indicatorCenterX: indicatorRect.left + indicatorRect.width / 2,
+      indicatorCenterY: indicatorRect.top + indicatorRect.height / 2,
+      iconRight: iconRect.right,
+      iconTop: iconRect.top,
+      indicatorOpacity: window.getComputedStyle(indicator).opacity,
+      labelLeft: labelRect.left,
       labelRight: labelRect.right,
       rowRight: rowRect.right,
     };
   });
 
   expect(facebookSourceIndicatorLayout).not.toBeNull();
-  expect(facebookSourceIndicatorLayout!.indicatorLeft).toBeGreaterThan(facebookSourceIndicatorLayout!.labelRight);
+  expect(facebookSourceIndicatorLayout!.indicatorRight).toBeLessThan(facebookSourceIndicatorLayout!.labelLeft + 2);
+  expect(Math.abs(facebookSourceIndicatorLayout!.indicatorCenterX - facebookSourceIndicatorLayout!.iconRight)).toBeLessThanOrEqual(2);
+  expect(facebookSourceIndicatorLayout!.indicatorCenterY).toBeGreaterThanOrEqual(facebookSourceIndicatorLayout!.iconTop - 3);
+  expect(facebookSourceIndicatorLayout!.indicatorCenterY).toBeLessThanOrEqual(facebookSourceIndicatorLayout!.iconTop + 3);
   expect(facebookSourceIndicatorLayout!.indicatorRight).toBeLessThan(facebookSourceIndicatorLayout!.rowRight);
   expect(facebookSourceIndicatorLayout!.indicatorOpacity).toBe("1");
 

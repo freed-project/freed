@@ -13,6 +13,7 @@ import {
 } from "@tauri-apps/plugin-fs";
 import type {
   LocalAIModelId,
+  LocalAIModelHealth,
   LocalAIModelInstallState,
   LocalAIModelManifestEntry,
 } from "@freed/shared";
@@ -27,75 +28,32 @@ const STATE_FILE = "state.json";
 
 export const LOCAL_AI_MODEL_MANIFEST: readonly LocalAIModelManifestEntry[] = [
   {
-    id: "semantic-embeddinggemma",
-    title: "Semantic search and ranking",
-    capability: "Embeddings",
-    description: "Indexes saved items and feed text for local semantic matching.",
+    id: "integrated-local-ai",
+    title: "Integrated AI local pack",
+    capability: "Search and summaries",
+    description: "Downloads the local pack Freed uses for semantic matching, summaries, and extraction.",
     repo: "onnx-community/embeddinggemma-300m-ONNX",
     revision: "5090578d9565bb06545b4552f76e6bc2c93e4a66",
-    sourceUrl: "https://huggingface.co/onnx-community/embeddinggemma-300m-ONNX",
-    estimatedDownloadBytes: 223_000_000,
-    estimatedStorageBytes: 223_000_000,
-    hardwareNote: "Works best with WebGPU. CPU fallback is allowed for smaller libraries.",
+    sourceUrl: "https://huggingface.co/onnx-community",
+    estimatedDownloadBytes: 778_176_031,
+    estimatedStorageBytes: 778_176_031,
+    hardwareNote: "WebGPU is used for summaries. Semantic matching can fall back for smaller libraries.",
     requiresWebGPU: false,
     wasmFallback: true,
     files: [
-      { path: "config.json", sizeBytes: 1_765, sha1: "edb6342fb0d447a42960920034c773ddd6ed6d55" },
+      { path: "config.json", sizeBytes: 1_765, sha1: "642d36a14c0399cb650a398e8a144aec0cb1f9ed", etag: "edb6342fb0d447a42960920034c773ddd6ed6d55" },
       { path: "onnx/model_q4.onnx", sizeBytes: 519_322, sha256: "ad1dfee81a70f7944b9b9d1cc6e48075b832881cf33fab2f2b248be78f3f0043" },
       { path: "onnx/model_q4.onnx_data", sizeBytes: 196_725_760, sha256: "599962c3143b040de2dd05e5975be3e9091dd067cacc6a8f7186e3203bab9e02" },
-      { path: "special_tokens_map.json", sizeBytes: 662, sha1: "1a6193244714d3d78be48666cb02cdbfac62ad86" },
+      { path: "special_tokens_map.json", sizeBytes: 662, sha1: "c68a97cd335d5d3ba89873356d789916f6a3e304", etag: "1a6193244714d3d78be48666cb02cdbfac62ad86" },
       { path: "tokenizer.json", sizeBytes: 20_323_312, sha256: "4dda02faaf32bc91031dc8c88457ac272b00c1016cc679757d1c441b248b9c47" },
       { path: "tokenizer.model", sizeBytes: 4_689_074, sha256: "1299c11d7cf632ef3b4e11937501358ada021bbdf7c47638d13c0ee982f2e79c" },
-      { path: "tokenizer_config.json", sizeBytes: 1_156_830, sha1: "73b499ae604d0bcbeb2889639a42f46462e9d372" },
-    ],
-  },
-  {
-    id: "summary-qwen3",
-    title: "Local summaries",
-    capability: "Compact generation",
-    description: "Downloads the compact local generation pack reserved for summary benchmarks.",
-    repo: "onnx-community/Qwen3-0.6B-ONNX",
-    revision: "da1453100cf3ff33ef56d17983fc7a8648706db6",
-    sourceUrl: "https://huggingface.co/onnx-community/Qwen3-0.6B-ONNX",
-    estimatedDownloadBytes: 555_000_000,
-    estimatedStorageBytes: 555_000_000,
-    hardwareNote: "Requires WebGPU for acceptable latency in Freed Desktop.",
-    requiresWebGPU: true,
-    wasmFallback: false,
-    files: [
-      { path: "onnxruntime/webgpu/webgpu-int4-kld-block-32/chat_template.jinja", sizeBytes: 4_168, sha1: "01be9b307daa2d425f7c168c9fb145a286e0afb4" },
-      { path: "onnxruntime/webgpu/webgpu-int4-kld-block-32/config.json", sizeBytes: 9_033, sha1: "d0a1f0936e40260ebc455b29c1f8e02364852e4e" },
-      { path: "onnxruntime/webgpu/webgpu-int4-kld-block-32/genai_config.json", sizeBytes: 1_752, sha1: "51c41d433774036fecd682183abe686f19f9441e" },
-      { path: "onnxruntime/webgpu/webgpu-int4-kld-block-32/model.onnx", sizeBytes: 543_321_042, sha256: "5e9fb386cb1a14009b02b43b0e0f0043e248ad5a6d3c3521c9a516062509909a" },
-      { path: "onnxruntime/webgpu/webgpu-int4-kld-block-32/tokenizer.json", sizeBytes: 11_422_648, sha256: "979d160e081df25a1bf7f4e2e8f4c441b5dfdc9a8e84aec9f32e80445e1b59b8" },
-      { path: "onnxruntime/webgpu/webgpu-int4-kld-block-32/tokenizer_config.json", sizeBytes: 663, sha1: "eeb7009b684350496c7020a205e8ee025d9ee159" },
-    ],
-  },
-  {
-    id: "assistant-gemma4",
-    title: "Advanced local assistant",
-    capability: "Gemma 4 E2B",
-    description: "Downloads the large Gemma 4 E2B text pack for explicit local assistant experiments.",
-    repo: "onnx-community/gemma-4-E2B-it-ONNX",
-    revision: "9f4bef82ea6e296bc69f8a2f5939f73af81b07a6",
-    sourceUrl: "https://huggingface.co/onnx-community/gemma-4-E2B-it-ONNX",
-    estimatedDownloadBytes: 3_140_000_000,
-    estimatedStorageBytes: 3_140_000_000,
-    hardwareNote: "Requires WebGPU and several gigabytes of free memory.",
-    requiresWebGPU: true,
-    wasmFallback: false,
-    files: [
-      { path: "chat_template.jinja", sizeBytes: 16_317, sha1: "07e50e69a8c445f2c31a089b828e85b2a93942bf" },
-      { path: "config.json", sizeBytes: 5_549, sha1: "a7f7623b5229c8498655847bd9cdeea34e5017f6" },
-      { path: "generation_config.json", sizeBytes: 238, sha1: "b2b0ab11eaf5317ad648bb48ce64b110532d661a" },
-      { path: "preprocessor_config.json", sizeBytes: 43, sha1: "6418e09c5fdb500f7ad9e86a7de9de7e60317f34" },
-      { path: "processor_config.json", sizeBytes: 1_689, sha1: "5465974d23e1eca2c46c2809b26c997946ce0d90" },
-      { path: "tokenizer.json", sizeBytes: 19_439_251, sha256: "47bd35616c7c782aaca6ccf48c75f3461d5877170984b8836b375107d0a9f566" },
-      { path: "tokenizer_config.json", sizeBytes: 18_807, sha1: "8dc6453271e40decb8ebdb68f4f9421d306dd6b3" },
-      { path: "onnx/embed_tokens_q4f16.onnx", sizeBytes: 5_621, sha256: "d7ca53f6a169471b5699b2f57ee4c7aa2c73732b0152f3909e64b71384444825" },
-      { path: "onnx/embed_tokens_q4f16.onnx_data", sizeBytes: 1_590_689_792, sha256: "024b199e6358ed42970f807686add5f9430d7e254ca7ce22fc9c83f015b9c517" },
-      { path: "onnx/decoder_model_merged_q4f16.onnx", sizeBytes: 673_231, sha256: "73c0f1fe04f9a3a048fb3319c0671b6cf0346bf33a3a8624c853bcffe01c24a4" },
-      { path: "onnx/decoder_model_merged_q4f16.onnx_data", sizeBytes: 1_519_700_992, sha256: "3b27245a7396cb7039a4e4118bd2a8aa35106bae381522edf7c4867b5f22bb10" },
+      { path: "tokenizer_config.json", sizeBytes: 1_156_830, sha1: "545813b40d80d9c3b66a94a62aa52d201eb62ef3", etag: "73b499ae604d0bcbeb2889639a42f46462e9d372" },
+      { path: "onnxruntime/webgpu/webgpu-int4-kld-block-32/chat_template.jinja", sizeBytes: 4_168, sha1: "b066ba71c1b579388fd5a74a44bfe0fc582cf715", etag: "01be9b307daa2d425f7c168c9fb145a286e0afb4", repo: "onnx-community/Qwen3-0.6B-ONNX", revision: "da1453100cf3ff33ef56d17983fc7a8648706db6" },
+      { path: "onnxruntime/webgpu/webgpu-int4-kld-block-32/config.json", sizeBytes: 9_033, sha1: "b13fd212b2f112112f478b1fe7a73ba4bde53131", etag: "d0a1f0936e40260ebc455b29c1f8e02364852e4e", repo: "onnx-community/Qwen3-0.6B-ONNX", revision: "da1453100cf3ff33ef56d17983fc7a8648706db6" },
+      { path: "onnxruntime/webgpu/webgpu-int4-kld-block-32/genai_config.json", sizeBytes: 1_752, sha1: "f30d5e22b7e7f3f8c9102b9ec586d700ba08e414", etag: "51c41d433774036fecd682183abe686f19f9441e", repo: "onnx-community/Qwen3-0.6B-ONNX", revision: "da1453100cf3ff33ef56d17983fc7a8648706db6" },
+      { path: "onnxruntime/webgpu/webgpu-int4-kld-block-32/model.onnx", sizeBytes: 543_321_042, sha256: "5e9fb386cb1a14009b02b43b0e0f0043e248ad5a6d3c3521c9a516062509909a", repo: "onnx-community/Qwen3-0.6B-ONNX", revision: "da1453100cf3ff33ef56d17983fc7a8648706db6" },
+      { path: "onnxruntime/webgpu/webgpu-int4-kld-block-32/tokenizer.json", sizeBytes: 11_422_648, sha256: "979d160e081df25a1bf7f4e2e8f4c441b5dfdc9a8e84aec9f32e80445e1b59b8", repo: "onnx-community/Qwen3-0.6B-ONNX", revision: "da1453100cf3ff33ef56d17983fc7a8648706db6" },
+      { path: "onnxruntime/webgpu/webgpu-int4-kld-block-32/tokenizer_config.json", sizeBytes: 663, sha1: "3be0ca3b160c42f21c4f3b0b3b77a2f5de9d846c", etag: "eeb7009b684350496c7020a205e8ee025d9ee159", repo: "onnx-community/Qwen3-0.6B-ONNX", revision: "da1453100cf3ff33ef56d17983fc7a8648706db6" },
     ],
   },
 ];
@@ -385,7 +343,9 @@ export function createLocalAIModelService(
       headers.set("Range", `bytes=${existingPartialBytes}-`);
     }
 
-    const url = `https://huggingface.co/${model.repo}/resolve/${model.revision}/${file.path}`;
+    const fileRepo = file.repo ?? model.repo;
+    const fileRevision = file.revision ?? model.revision;
+    const url = `https://huggingface.co/${fileRepo}/resolve/${fileRevision}/${file.path}`;
     let response = await deps.fetch(url, { headers, signal });
     if (response.status === 416 && existingPartialBytes > 0) {
       await deps.remove(partial);
@@ -542,11 +502,27 @@ export function createLocalAIModelService(
     return listModels();
   }
 
+  async function updateHealth(
+    id: LocalAIModelId,
+    health: LocalAIModelHealth,
+  ): Promise<LocalAIModelViewState[]> {
+    await updateModelState(id, (current) => ({
+      ...current,
+      health: {
+        ...current.health,
+        ...health,
+      },
+      updatedAt: deps.now(),
+    }));
+    return listModels();
+  }
+
   return {
     listModels,
     downloadModel,
     pauseDownload,
     removeModel,
+    updateHealth,
   };
 }
 

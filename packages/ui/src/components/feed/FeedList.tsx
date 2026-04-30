@@ -9,6 +9,7 @@ import {
   getRemainingUnreadIds,
   hasReachedListBottom,
   type ReadTrackRow,
+  type VirtualRowRange,
 } from "./read-on-scroll.js";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
@@ -17,13 +18,13 @@ import { useIsMobile } from "../../hooks/useIsMobile.js";
 // ── Story grouping ────────────────────────────────────────────────────────────
 
 const FEED_CARD_GAP = 8;
+const DESKTOP_FEED_CARD_HORIZONTAL_GUTTER = 0;
 const TILE_GAP = FEED_CARD_GAP;
 const MIN_TILE_W = 80; // minimum tile width before a column wraps
 const MAX_TILE_H = 288;
-// Tailwind max-w-2xl = 42rem = 672px. Story rows are wrapped in a centered
-// container with 10px side gutters, so the usable tile area is at most 652px
-// regardless of how wide the scroll container actually is.
-const MAX_CONTENT_W = 672;
+// Story rows fill the primary content lane with the same outer gutter as cards.
+// The usable tile area tracks the scroll container instead of centering a
+// narrow column inside it.
 
 /**
  * Height-to-width ratio for story tiles based on column count.
@@ -117,6 +118,14 @@ interface FeedListProps {
   /** The active search query text — used in the empty state message */
   searchQuery?: string;
 }
+
+type ReadScrollVirtualizer = {
+  getVirtualItems: () => VirtualRowRange[];
+  getTotalSize: () => number;
+  options: {
+    scrollMargin?: number;
+  };
+};
 
 /**
  * Memoized per-row adapter. Keeps handler references stable so FeedItem's
@@ -248,6 +257,9 @@ export function FeedList({
   const windowListRef = useRef<HTMLDivElement>(null);
 
   const isMobile = useIsMobile();
+  const feedCardHorizontalGutter = isMobile
+    ? FEED_CARD_GAP
+    : DESKTOP_FEED_CARD_HORIZONTAL_GUTTER;
   const { FeedEmptyState } = usePlatform();
   const isLoading = useAppStore((s) => s.isLoading);
   const activeFilter = useAppStore((s) => s.activeFilter);
@@ -303,9 +315,9 @@ export function FeedList({
   // Max grid columns based on current container width (capped at 3).
   // Inner width = containerWidth minus the feed-card gutter on each side.
   const maxCols = useMemo(() => {
-    const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - FEED_CARD_GAP * 2, 0);
+    const inner = Math.max(containerWidth - feedCardHorizontalGutter * 2, 0);
     return Math.max(1, Math.min(3, Math.floor((inner + TILE_GAP) / (MIN_TILE_W + TILE_GAP))));
-  }, [containerWidth]);
+  }, [containerWidth, feedCardHorizontalGutter]);
 
   // Preprocess items into virtual rows, collapsing consecutive stories into grids.
   const rows = useMemo(() => buildRows(items, maxCols), [items, maxCols]);
@@ -330,14 +342,100 @@ export function FeedList({
     (index: number) => {
       const row = rows[index];
       if (!row || row.type !== "stories") return 220;
-      const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - FEED_CARD_GAP * 2, 0);
+      const inner = Math.max(containerWidth - feedCardHorizontalGutter * 2, 0);
       const nc = row.numCols;
       const tileWidth = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
       const tileHeight = Math.min(tileWidth * storyHeightRatio(nc), MAX_TILE_H);
       return Math.round(tileHeight + FEED_CARD_GAP + (index === 0 ? FEED_CARD_GAP : 0));
     },
-    [rows, containerWidth],
+    [rows, containerWidth, feedCardHorizontalGutter],
   );
+
+  const listKey = useMemo(
+    () => JSON.stringify({ activeFilter, searchQuery: searchQuery.trim() }),
+    [activeFilter, searchQuery],
+  );
+  const maxPassedRowIndexRef = useRef(-1);
+  const listSessionRef = useRef({
+    key: listKey,
+    items,
+    reachedBottom: false,
+  });
+
+  const flushReadIds = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    void markItemsAsRead(ids);
+  }, [markItemsAsRead]);
+
+  const collectUnreadIdsFromRows = useCallback((startIndex: number, endIndex: number) => {
+    return collectUnreadIdsFromReadRows(
+      rows as Array<ReadTrackRow<FeedItemType>>,
+      startIndex,
+      endIndex,
+    );
+  }, [rows]);
+
+  const finalizeListSession = useCallback((session: { items: FeedItemType[]; reachedBottom: boolean }) => {
+    if (!markReadOnScroll || !session.reachedBottom) return;
+    flushReadIds(getRemainingUnreadIds(session.items));
+  }, [flushReadIds, markReadOnScroll]);
+
+  const markRemainingUnreadInSession = useCallback(() => {
+    const session = listSessionRef.current;
+    if (session.reachedBottom) return;
+    session.reachedBottom = true;
+    flushReadIds(getRemainingUnreadIds(session.items));
+  }, [flushReadIds]);
+
+  const processReadOnScroll = useCallback((
+    virtualizer: ReadScrollVirtualizer,
+    scrollSource: "element" | "window",
+  ) => {
+    if (!markReadOnScroll) return;
+
+    const vItems = virtualizer.getVirtualItems();
+    if (vItems.length === 0) return;
+
+    const rawScrollTop = scrollSource === "window"
+      ? window.scrollY
+      : (parentRef.current?.scrollTop ?? 0);
+    const vpHeight = scrollSource === "window"
+      ? window.innerHeight
+      : (parentRef.current?.clientHeight ?? 0);
+    const scrollMargin = scrollSource === "window"
+      ? (virtualizer.options.scrollMargin ?? 0)
+      : 0;
+    const { scrollTop, viewportBottom: vpBottom } = getListViewportMetrics(
+      rawScrollTop,
+      vpHeight,
+      scrollMargin,
+    );
+
+    const newlyPassedEnd = getNewlyPassedRowEnd(
+      vItems,
+      scrollTop,
+      rows.length,
+      maxPassedRowIndexRef.current,
+    );
+    if (newlyPassedEnd !== null) {
+      const unreadIds = collectUnreadIdsFromRows(
+        maxPassedRowIndexRef.current + 1,
+        newlyPassedEnd,
+      );
+      maxPassedRowIndexRef.current = newlyPassedEnd;
+      flushReadIds(unreadIds);
+    }
+
+    if (hasReachedListBottom(rows.length, vpBottom, virtualizer.getTotalSize())) {
+      markRemainingUnreadInSession();
+    }
+  }, [
+    collectUnreadIdsFromRows,
+    flushReadIds,
+    markReadOnScroll,
+    markRemainingUnreadInSession,
+    rows.length,
+  ]);
 
   const elementVirtualizer = useVirtualizer({
     count: isMobile ? 0 : rows.length,
@@ -345,6 +443,9 @@ export function FeedList({
     estimateSize: estimateRowSize,
     overscan: 5,
     measureElement: (el) => el.getBoundingClientRect().height,
+    onChange: (instance) => {
+      if (!isMobile) processReadOnScroll(instance, "element");
+    },
   });
 
   const windowVirtualizer = useWindowVirtualizer({
@@ -354,6 +455,9 @@ export function FeedList({
     // Distance from window top to the list container. Accounts for the sticky
     // header so items are offset correctly as window.scrollY changes.
     scrollMargin: windowListRef.current?.offsetTop ?? 0,
+    onChange: (instance) => {
+      if (isMobile) processReadOnScroll(instance, "window");
+    },
   });
 
   useLayoutEffect(() => {
@@ -405,35 +509,6 @@ export function FeedList({
     rows.length,
   ]);
 
-  const listKey = useMemo(
-    () => JSON.stringify({ activeFilter, searchQuery: searchQuery.trim() }),
-    [activeFilter, searchQuery],
-  );
-  const maxPassedRowIndexRef = useRef(-1);
-  const listSessionRef = useRef({
-    key: listKey,
-    items,
-    reachedBottom: false,
-  });
-
-  const flushReadIds = useCallback((ids: string[]) => {
-    if (ids.length === 0) return;
-    void markItemsAsRead(ids);
-  }, [markItemsAsRead]);
-
-  const collectUnreadIdsFromRows = useCallback((startIndex: number, endIndex: number) => {
-    return collectUnreadIdsFromReadRows(
-      rows as Array<ReadTrackRow<FeedItemType>>,
-      startIndex,
-      endIndex,
-    );
-  }, [rows]);
-
-  const finalizeListSession = useCallback((session: { items: FeedItemType[]; reachedBottom: boolean }) => {
-    if (!markReadOnScroll || !session.reachedBottom) return;
-    flushReadIds(getRemainingUnreadIds(session.items));
-  }, [flushReadIds, markReadOnScroll]);
-
   useEffect(() => {
     const session = listSessionRef.current;
     if (session.key !== listKey) {
@@ -455,61 +530,6 @@ export function FeedList({
     };
   }, [finalizeListSession]);
 
-  // Mark rows as read once the viewport has fully scrolled past them.
-  useEffect(() => {
-    if (!markReadOnScroll) return;
-
-    const vItems = isMobile
-      ? windowVirtualizer.getVirtualItems()
-      : elementVirtualizer.getVirtualItems();
-    if (vItems.length === 0) return;
-
-    const rawScrollTop = isMobile
-      ? window.scrollY
-      : (parentRef.current?.scrollTop ?? 0);
-    const vpHeight = isMobile
-      ? window.innerHeight
-      : (parentRef.current?.clientHeight ?? 0);
-    const scrollMargin = isMobile
-      ? (windowVirtualizer.options.scrollMargin ?? 0)
-      : 0;
-    const { scrollTop, viewportBottom: vpBottom } = getListViewportMetrics(
-      rawScrollTop,
-      vpHeight,
-      scrollMargin,
-    );
-    const totalSize = isMobile
-      ? windowVirtualizer.getTotalSize()
-      : elementVirtualizer.getTotalSize();
-
-    const newlyPassedEnd = getNewlyPassedRowEnd(
-      vItems,
-      scrollTop,
-      rows.length,
-      maxPassedRowIndexRef.current,
-    );
-    if (newlyPassedEnd !== null) {
-      const unreadIds = collectUnreadIdsFromRows(
-        maxPassedRowIndexRef.current + 1,
-        newlyPassedEnd,
-      );
-      maxPassedRowIndexRef.current = newlyPassedEnd;
-      flushReadIds(unreadIds);
-    }
-
-    if (hasReachedListBottom(rows.length, vpBottom, totalSize)) {
-      listSessionRef.current.reachedBottom = true;
-    }
-  }, [
-    collectUnreadIdsFromRows,
-    elementVirtualizer,
-    flushReadIds,
-    isMobile,
-    markReadOnScroll,
-    rows,
-    windowVirtualizer,
-  ]);
-
   // Show shimmer placeholders while the doc is loading from IndexedDB.
   // Once isLoading flips false, items will populate and we drop into the
   // normal virtualizer path (or the empty state if the library is genuinely empty).
@@ -517,9 +537,9 @@ export function FeedList({
     return (
       <div className="flex-1 min-h-0 overflow-auto overscroll-none minimal-scroll">
         <div
-          className="max-w-2xl mx-auto"
+          className="w-full"
           style={{
-            paddingInline: `${FEED_CARD_GAP}px`,
+            paddingInline: `${feedCardHorizontalGutter}px`,
             paddingTop: `${FEED_CARD_GAP}px`,
             paddingBottom: `${FEED_CARD_GAP}px`,
           }}
@@ -629,7 +649,7 @@ export function FeedList({
                 }}
               >
                 <div
-                  className="max-w-2xl mx-auto"
+                  className="w-full"
                   style={{
                     paddingInline: `${FEED_CARD_GAP}px`,
                     paddingBottom: `${FEED_CARD_GAP}px`,
@@ -637,7 +657,7 @@ export function FeedList({
                   }}
                 >
                   {row.type === "stories" ? (() => {
-                    const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - FEED_CARD_GAP * 2, 0);
+                    const inner = Math.max(containerWidth - feedCardHorizontalGutter * 2, 0);
                     const nc = row.numCols;
                     const tw = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
                     const th = Math.round(Math.min(tw * storyHeightRatio(nc), MAX_TILE_H));
@@ -706,15 +726,15 @@ export function FeedList({
               }}
             >
               <div
-                className="max-w-2xl mx-auto"
+                className="w-full"
                 style={{
-                  paddingInline: `${FEED_CARD_GAP}px`,
+                  paddingInline: `${feedCardHorizontalGutter}px`,
                   paddingBottom: `${FEED_CARD_GAP}px`,
                   paddingTop: virtualItem.index === 0 ? `${FEED_CARD_GAP}px` : undefined,
                 }}
               >
                 {row.type === "stories" ? (() => {
-                  const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - FEED_CARD_GAP * 2, 0);
+                  const inner = Math.max(containerWidth - feedCardHorizontalGutter * 2, 0);
                   const nc = row.numCols;
                   const tw = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
                   const th = Math.round(Math.min(tw * storyHeightRatio(nc), MAX_TILE_H));

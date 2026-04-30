@@ -10,7 +10,6 @@ import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import type { FeedItem } from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
-import { PRIMARY_SIDEBAR_GAP_WIDTH_PX } from "../layout/layoutConstants.js";
 
 // ─── Compact sidebar panel for dual-column mode ────────────────────────────
 
@@ -19,11 +18,12 @@ const MAX_PANEL_WIDTH = 500;
 const DEFAULT_PANEL_WIDTH = 150;
 const NARROW_THRESHOLD = 150;
 const COMPACT_CARD_GAP = 8;
-const COMPACT_CARD_X_PAD = 0;
+const COMPACT_CARD_LEFT_PAD = 8;
+const COMPACT_CARD_RIGHT_PAD = 4;
 
 // Card geometry: all cards are square (width × width), including story tiles.
 // Wrapper padding and row spacing match the nav-button radius token at 10px.
-const CARD_H_PAD = COMPACT_CARD_X_PAD * 2;
+const CARD_H_PAD = COMPACT_CARD_LEFT_PAD + COMPACT_CARD_RIGHT_PAD;
 const CARD_V_GAP = COMPACT_CARD_GAP;
 
 interface CompactFeedPanelProps {
@@ -158,7 +158,7 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
     <div
       ref={parentRef}
       data-testid="compact-feed-panel-scroll-container"
-      className="theme-scroll-fade-y shrink-0 min-h-0 overflow-y-auto minimal-scroll bg-transparent"
+      className="theme-scroll-fade-y shrink-0 min-h-0 overflow-y-auto overflow-x-visible minimal-scroll bg-transparent"
       style={{ width, marginInlineStart: leadingOffset }}
     >
       <div
@@ -182,7 +182,8 @@ const CompactFeedPanel = memo(function CompactFeedPanel({
             >
               <div
                 style={{
-                  paddingInline: `${COMPACT_CARD_X_PAD}px`,
+                  paddingLeft: `${COMPACT_CARD_LEFT_PAD}px`,
+                  paddingRight: `${COMPACT_CARD_RIGHT_PAD}px`,
                   paddingBottom: `${COMPACT_CARD_GAP}px`,
                   paddingTop: vi.index === 0 ? `${COMPACT_CARD_GAP}px` : undefined,
                 }}
@@ -274,7 +275,7 @@ export function FeedView() {
   const desktopSidebarMode = useAppStore((s) => s.preferences.display.sidebarMode ?? "expanded");
   const compactRailLeadingOffset =
     !isMobileDevice && desktopSidebarMode !== "closed"
-      ? `calc(var(--feed-card-gap, 8px) - ${PRIMARY_SIDEBAR_GAP_WIDTH_PX}px)`
+      ? `-${COMPACT_CARD_LEFT_PAD}px`
       : undefined;
 
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
@@ -451,7 +452,7 @@ export function FeedView() {
   if (showInlineReader && selectedItem) {
     return (
       <div className="h-full flex flex-col overflow-hidden">
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-y-hidden overflow-x-visible">
           {showDualColumn ? (
             <>
               <CompactFeedPanel
