@@ -9,7 +9,7 @@
  *   1. Cold load         - time from navigate() to isInitialized with 3k items
  *   2. Scroll            - frame budget while fast-scrolling 3k-item feed
  *   3. Mark-as-read      - hydrateFromDoc cost across 20 rapid mutations
- *   4. Search input      - MiniSearch index rebuild cost while typing a query
+ *   4. Search input      - async MiniSearch index preparation while typing a query
  *   5. Reader view open  - simultaneous setSelectedItem + markAsRead with 3k items
  *   6. CPU profile       - V8 call-stack profile of markAsRead with 3k items
  */
@@ -368,11 +368,11 @@ test.describe("Mark-as-read storm (hydrateFromDoc cost)", () => {
 
 // ─── 4. Search input ─────────────────────────────────────────────────────────
 
-test.describe("Search input (MiniSearch index rebuild)", () => {
-  test("typing a 5-character query with 3k items", async ({ app, page }) => {
+test.describe("Search input (async MiniSearch index preparation)", () => {
+  test("typing a 5-character query with 5k items", async ({ app, page }) => {
     await app.goto();
     await app.waitForReady();
-    await app.injectRssItems(ITEM_COUNT_LARGE);
+    await app.injectRssItems(ITEM_COUNT_XLARGE);
 
     // Locate the search input by its placeholder.
     const searchInput = page.getByPlaceholder(/search/i).first();
@@ -387,7 +387,7 @@ test.describe("Search input (MiniSearch index rebuild)", () => {
       }).observe({ type: "longtask", buffered: false });
     });
 
-    const elapsed = await measureBrowserMs(page, "Type 'bench' into search (3k items)", async () => {
+    const elapsed = await measureBrowserMs(page, "Type 'bench' into search (5k items)", async () => {
       // Type one character at a time - each keystroke fires a state update.
       await searchInput.pressSequentially("bench", { delay: 50 });
       // Wait for search results to stabilise.
@@ -406,8 +406,8 @@ test.describe("Search input (MiniSearch index rebuild)", () => {
     console.log(`[PERF] Search typing elapsed: ${elapsed.toLocaleString()} ms`);
     console.log(`[PERF] Search long tasks: ${searchLongTasks.count}, worst: ${Math.round(searchLongTasks.worstMs)} ms`);
 
-    // Typing should never cause a frame to take more than 300ms.
-    expect(searchLongTasks.worstMs).toBeLessThan(300);
+    // Typing should not wait on a synchronous full-corpus index build.
+    expect(searchLongTasks.worstMs).toBeLessThan(180);
 
     // Verify search actually produces results (proves MiniSearch is working).
     await expect(page.locator(".feed-card")).not.toHaveCount(0, { timeout: 2_000 });

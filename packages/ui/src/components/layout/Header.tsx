@@ -26,7 +26,6 @@ import {
   type SocialContentFilter,
   resolveMapMode,
 } from "@freed/shared";
-import { SearchField } from "../SearchField.js";
 import { Tooltip } from "../Tooltip.js";
 import {
   ArchiveIcon,
@@ -299,8 +298,8 @@ export function Header({
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setFilter = useAppStore((s) => s.setFilter);
-  const setSearchQuery = useAppStore((s) => s.setSearchQuery);
   const display = useAppStore((s) => s.preferences.display);
+  const activeSearchQuery = searchQuery.trim();
 
   const { filteredItems, isSearching, resultCount } = useSearchResults(
     items,
@@ -317,7 +316,7 @@ export function Header({
     [items, selectedItemId],
   );
 
-  const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds), [activeFilter, feeds]);
+  const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds, accounts), [accounts, activeFilter, feeds]);
   const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
   const mappedFriendCount = useMemo(
     () => countFriendsWithRecentLocationUpdates(items, friends),
@@ -545,8 +544,9 @@ export function Header({
         ?? selectedItem.content.text?.slice(0, 90)
         ?? selectedItem.author.displayName;
     }
+    if (isSearching) return `Search: ${activeSearchQuery}`;
     return contextualListTitle;
-  }, [contextualListTitle, selectedItem]);
+  }, [activeSearchQuery, contextualListTitle, isSearching, selectedItem]);
   const feedSignalCountBaseFilter = useMemo(() => {
     const nextFilter = { ...activeFilter };
     delete nextFilter.signals;
@@ -884,8 +884,6 @@ export function Header({
     reservedWidthPx: DEFAULT_LAYOUT_CONTROL_RESERVED_WIDTH_PX,
   });
   const [previewToggleMounted, setPreviewToggleMounted] = useState(false);
-  const activeSearchQuery = searchQuery.trim();
-  const showToolbarSearch = !selectedItem && activeSearchQuery.length > 0;
   const showFriendsSidebarToggle = activeView === "friends" && !isMobile;
   const friendsToolbarValue: FriendsToolbarMode =
     isMobile && activeView === "friends" && friendsMobileSurface === "details"
@@ -941,7 +939,6 @@ export function Header({
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const toolbarSearchInputRef = useRef<HTMLInputElement | null>(null);
   const layoutControlHostRef = useRef<HTMLDivElement | null>(null);
   const previewToggleButtonRef = useRef<HTMLButtonElement | null>(null);
   const wordmarkRef = useRef<HTMLSpanElement | null>(null);
@@ -1141,12 +1138,6 @@ export function Header({
     if (toolbarOverflowActions.length > 0) return;
     setToolbarOverflowMenuOpen(false);
   }, [toolbarOverflowActions.length]);
-
-  useEffect(() => {
-    if (!showToolbarSearch) return;
-    toolbarSearchInputRef.current?.focus();
-    toolbarSearchInputRef.current?.setSelectionRange(searchQuery.length, searchQuery.length);
-  }, [showToolbarSearch]);
 
   useLayoutEffect(() => {
     if (isMobileDevice) return undefined;
@@ -1459,19 +1450,6 @@ export function Header({
                   </p>
                 </div>
               </button>
-            ) : showToolbarSearch ? (
-              <div className="px-1" style={headerDragRegion ? noDrag : undefined}>
-                <SearchField
-                  ref={toolbarSearchInputRef}
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.currentTarget.value)}
-                  onClear={() => setSearchQuery("")}
-                  placeholder="Search"
-                  aria-label="Search all sources"
-                  containerClassName="w-full"
-                  inputClassName="h-10 rounded-xl bg-[var(--theme-bg-input)] text-sm"
-                />
-              </div>
             ) : (
               <div
                 data-testid="workspace-toolbar-title-block"

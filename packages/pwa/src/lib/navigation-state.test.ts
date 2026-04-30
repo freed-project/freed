@@ -83,4 +83,36 @@ describe("navigation state", () => {
       ),
     ).toBe(true);
   });
+
+  it("preserves author filters on platform views", () => {
+    const state: NavigationState = {
+      activeView: "feed",
+      activeFilter: {
+        platform: "x",
+        authorId: "rob",
+        tags: ["people"],
+      },
+      selectedItemId: null,
+    };
+
+    const serialized = serializeNavigationState(state);
+
+    expect(serialized).toBe("/?platform=x&author=rob&tag=people");
+    expect(parseNavigationState(serialized)).toEqual(state);
+    expect(canonicalizeFilterOptions({ platform: "x", authorId: "rob" })).toEqual({
+      platform: "x",
+      authorId: "rob",
+    });
+  });
+
+  it("drops author filters from feed URL scopes", () => {
+    expect(canonicalizeFilterOptions({
+      platform: "x",
+      authorId: "rob",
+      feedUrl: "https://example.com/feed.xml",
+    })).toEqual({
+      platform: "rss",
+      feedUrl: "https://example.com/feed.xml",
+    });
+  });
 });

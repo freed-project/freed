@@ -28,6 +28,8 @@ export type SocialContentFilter = "all" | "posts" | "stories";
  */
 export interface FilterOptions {
   platform?: string;
+  /** Scope a platform feed to one captured author or followed social channel. */
+  authorId?: string;
   feedUrl?: string;
   tags?: string[];
   signals?: ContentSignal[];

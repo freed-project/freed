@@ -3,7 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { create } from "zustand";
-import type { BaseAppState, FeedItem, FilterOptions } from "@freed/shared";
+import type { Account, BaseAppState, FeedItem, FilterOptions } from "@freed/shared";
 import type { PlatformConfig } from "../../../ui/src/context/PlatformContext.tsx";
 import { PlatformProvider } from "../../../ui/src/context/PlatformContext.tsx";
 import { AppShell } from "../../../ui/src/components/layout/AppShell.tsx";
@@ -421,6 +421,84 @@ describe("command palette", () => {
     expect(actions.at(-1)?.id).toBe("search-feed");
   });
 
+  it("hides feed and danger suggestions until the user types", () => {
+    const common = {
+      activeView: "feed" as const,
+      activeFilter: {},
+      settingsSections: [],
+      topSources: [{ id: "rss" as const, label: "Feeds" }],
+      feeds: [{ url: "https://alpha.example/feed.xml", title: "Alpha Feed" }],
+      tagFilters: [],
+      currentSourceId: null,
+      selectedItem: null,
+      unreadScopeCount: 0,
+      archivableScopeCount: 0,
+      savedArchivedCount: 0,
+      archivedCount: 2,
+      openSettingsTo: noop,
+      navigateToFeed: noop,
+      navigateToFriends: noop,
+      navigateToMap: noop,
+      applyFeedSearch: noop,
+      deleteAllArchived: noop,
+    };
+
+    const blankActions = filterCommandPaletteActions(buildCommandPaletteActions({ ...common, query: "" }), "");
+    expect(blankActions.some((action) => action.id.startsWith("go-feed-"))).toBe(false);
+    expect(blankActions.some((action) => action.id.startsWith("danger-"))).toBe(false);
+
+    const typedActions = filterCommandPaletteActions(buildCommandPaletteActions({ ...common, query: "alpha" }), "alpha");
+    expect(typedActions.some((action) => action.id === "go-feed-https://alpha.example/feed.xml")).toBe(true);
+    expect(typedActions.some((action) => action.id === "danger-delete-archived")).toBe(false);
+
+    const dangerActions = filterCommandPaletteActions(buildCommandPaletteActions({ ...common, query: "delete" }), "delete");
+    expect(dangerActions.some((action) => action.id === "danger-delete-archived")).toBe(true);
+  });
+
+  it("adds typed social channel suggestions that navigate to an author filter", () => {
+    const navigateToFeed = vi.fn();
+    const account: Account = {
+      id: "social:x:rob",
+      kind: "social",
+      provider: "x",
+      externalId: "rob",
+      handle: "@rob",
+      displayName: "Rob Beschizza",
+      firstSeenAt: 1,
+      lastSeenAt: 1,
+      discoveredFrom: "captured_item",
+      createdAt: 1,
+      updatedAt: 1,
+    };
+
+    const actions = buildCommandPaletteActions({
+      query: "besch",
+      activeView: "feed",
+      activeFilter: {},
+      settingsSections: [],
+      topSources: [],
+      feeds: [],
+      socialChannels: [{ account, personName: "Rob" }],
+      tagFilters: [],
+      currentSourceId: null,
+      selectedItem: null,
+      unreadScopeCount: 0,
+      archivableScopeCount: 0,
+      savedArchivedCount: 0,
+      archivedCount: 0,
+      openSettingsTo: noop,
+      navigateToFeed,
+      navigateToFriends: noop,
+      navigateToMap: noop,
+      applyFeedSearch: noop,
+    });
+
+    const channelAction = actions.find((action) => action.id === "go-channel-x-rob");
+    expect(channelAction?.title).toBe("Rob Beschizza");
+    channelAction?.run();
+    expect(navigateToFeed).toHaveBeenCalledWith({ platform: "x", authorId: "rob" });
+  });
+
   it("focuses the sidebar search from AppShell with Cmd/Ctrl+K", async () => {
     const shortcutSpy = vi.fn();
     const store = createTestStore();
@@ -563,6 +641,8 @@ describe("command palette", () => {
     expect(input).not.toBeNull();
     act(() => input!.focus());
     await flush();
+    changeInput(input!, "delete");
+    await flush();
 
     const deleteAction = Array.from(document.querySelectorAll("button")).find((button) =>
       button.textContent?.includes("Delete all archived items"),
@@ -616,6 +696,8 @@ describe("command palette", () => {
     expect(input).not.toBeNull();
     act(() => input!.focus());
     await flush();
+    changeInput(input!, "alpha");
+    await flush();
 
     const feedAction = Array.from(document.querySelectorAll("button")).find((button) =>
       button.textContent?.includes("Alpha Feed"),
@@ -629,6 +711,7 @@ describe("command palette", () => {
       platform: "rss",
       feedUrl: "https://alpha.example/feed.xml",
     });
+    expect(store.getState().searchQuery).toBe("");
 
     input = document.querySelector<HTMLInputElement>('input[aria-label="Search or run"]');
     expect(input).not.toBeNull();

@@ -26,12 +26,14 @@
  * section is small while the memory cost of duplicating that text is not.
  */
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import MiniSearch from "minisearch";
 import { filterFeedItems, isFriendAuthoredItem, sortByPriority } from "@freed/shared";
 import type { Account, FeedItem, FilterOptions, Friend, Person } from "@freed/shared";
 
 const SEARCH_PRESERVED_TEXT_LIMIT = 1_200;
+const SEARCH_INDEX_CHUNK_SIZE = 250;
+const SEARCH_INDEX_RELEASE_DELAY_MS = 75;
 
 /** Flat document shape fed to MiniSearch (one per FeedItem). */
 interface SearchDoc {
@@ -42,6 +44,7 @@ interface SearchDoc {
   authorName: string;
   authorHandle: string;
   feedTitle: string;
+  accountAliases: string;
   preservedText: string;
   topics: string;
   semanticText: string;
@@ -49,7 +52,40 @@ interface SearchDoc {
   highlights: string;
 }
 
-function toSearchDoc(item: FeedItem): SearchDoc {
+function accountKey(platform: string, authorId: string): string {
+  return `${platform}:${authorId}`;
+}
+
+function buildAccountAliasMap(accounts: Record<string, Account>): Map<string, string> {
+  const aliases = new Map<string, string>();
+  for (const account of Object.values(accounts)) {
+    if (account.kind !== "social") continue;
+    const values = [
+      account.displayName,
+      account.handle,
+      account.handle?.startsWith("@") ? account.handle.slice(1) : undefined,
+      account.externalId,
+      account.externalId.slice(-8),
+    ].filter((value): value is string => Boolean(value?.trim()));
+    aliases.set(accountKey(account.provider, account.externalId), values.join(" "));
+  }
+  return aliases;
+}
+
+function accountSignature(accounts: Record<string, Account>): string {
+  return Object.values(accounts)
+    .filter((account) => account.kind === "social")
+    .map((account) => [
+      account.provider,
+      account.externalId,
+      account.displayName ?? "",
+      account.handle ?? "",
+    ].join(":"))
+    .sort()
+    .join("|");
+}
+
+function toSearchDoc(item: FeedItem, accountAliases: Map<string, string>): SearchDoc {
   return {
     id: item.globalId,
     text: item.content.text ?? "",
@@ -58,6 +94,7 @@ function toSearchDoc(item: FeedItem): SearchDoc {
     authorName: item.author.displayName,
     authorHandle: item.author.handle,
     feedTitle: item.rssSource?.feedTitle ?? "",
+    accountAliases: accountAliases.get(accountKey(item.platform, item.author.id)) ?? "",
     preservedText: item.preservedContent?.text?.slice(0, SEARCH_PRESERVED_TEXT_LIMIT) ?? "",
     topics: [...item.topics, ...(item.contentSignals?.tags ?? [])].join(" "),
     semanticText: [
@@ -81,6 +118,7 @@ const SEARCH_FIELDS: Array<keyof Omit<SearchDoc, "id">> = [
   "authorName",
   "authorHandle",
   "feedTitle",
+  "accountAliases",
   "preservedText",
   "topics",
   "semanticText",
@@ -95,6 +133,7 @@ const FIELD_BOOST: Partial<Record<keyof Omit<SearchDoc, "id">, number>> = {
   tags: 3,
   authorName: 3,
   authorHandle: 3,
+  accountAliases: 3,
   text: 2,
   linkDesc: 2,
   feedTitle: 2,
@@ -102,13 +141,126 @@ const FIELD_BOOST: Partial<Record<keyof Omit<SearchDoc, "id">, number>> = {
   preservedText: 1,
 };
 
-function buildIndex(items: FeedItem[]): MiniSearch<SearchDoc> {
+function createIndex(): MiniSearch<SearchDoc> {
+  return new MiniSearch<SearchDoc>({
+    idField: "id",
+    fields: SEARCH_FIELDS as string[],
+    storeFields: ["id"],
+  });
+}
+
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, 0);
+  });
+}
+
+async function buildSearchDocs(
+  items: FeedItem[],
+  accounts: Record<string, Account>,
+): Promise<SearchDoc[]> {
+  const aliases = buildAccountAliasMap(accounts);
+  const docs: SearchDoc[] = [];
+  for (let index = 0; index < items.length; index += SEARCH_INDEX_CHUNK_SIZE) {
+    const chunk = items.slice(index, index + SEARCH_INDEX_CHUNK_SIZE);
+    for (const item of chunk) {
+      docs.push(toSearchDoc(item, aliases));
+    }
+    await yieldToBrowser();
+  }
+  return docs;
+}
+
+async function buildIndex(
+  items: FeedItem[],
+  accounts: Record<string, Account>,
+): Promise<MiniSearch<SearchDoc>> {
+  const docs = await buildSearchDocs(items, accounts);
+  const ms = createIndex();
+  await ms.addAllAsync(docs, { chunkSize: SEARCH_INDEX_CHUNK_SIZE });
+  return ms;
+}
+
+interface SharedSearchIndexCache {
+  key: string;
+  index: MiniSearch<SearchDoc> | null;
+  promise: Promise<MiniSearch<SearchDoc>>;
+}
+
+let sharedSearchIndexCache: SharedSearchIndexCache | null = null;
+let releaseSearchIndexTimer: ReturnType<typeof setTimeout> | null = null;
+
+function searchIndexKey(
+  items: FeedItem[],
+  searchCorpusVersion: number,
+  accounts: Record<string, Account>,
+): string {
+  return `${searchCorpusVersion}:${items.length}:${accountSignature(accounts)}`;
+}
+
+export function releaseSearchIndexSoon(): void {
+  if (releaseSearchIndexTimer) clearTimeout(releaseSearchIndexTimer);
+  releaseSearchIndexTimer = setTimeout(() => {
+    sharedSearchIndexCache = null;
+    releaseSearchIndexTimer = null;
+  }, SEARCH_INDEX_RELEASE_DELAY_MS);
+}
+
+export function prepareSearchIndex(
+  items: FeedItem[],
+  searchCorpusVersion: number,
+  accounts: Record<string, Account>,
+): Promise<MiniSearch<SearchDoc>> {
+  if (releaseSearchIndexTimer) {
+    clearTimeout(releaseSearchIndexTimer);
+    releaseSearchIndexTimer = null;
+  }
+
+  const key = searchIndexKey(items, searchCorpusVersion, accounts);
+  if (sharedSearchIndexCache?.key === key) return sharedSearchIndexCache.promise;
+
+  const promise = buildIndex(items, accounts)
+    .then((index) => {
+      if (sharedSearchIndexCache?.key === key) {
+        sharedSearchIndexCache.index = index;
+      }
+      return index;
+    })
+    .catch((error) => {
+      if (sharedSearchIndexCache?.key === key) {
+        sharedSearchIndexCache = null;
+      }
+      throw error;
+    });
+
+  sharedSearchIndexCache = { key, index: null, promise };
+  return promise;
+}
+
+function getPreparedSearchIndex(
+  items: FeedItem[],
+  searchCorpusVersion: number,
+  accounts: Record<string, Account>,
+): MiniSearch<SearchDoc> | null {
+  const key = searchIndexKey(items, searchCorpusVersion, accounts);
+  return sharedSearchIndexCache?.key === key ? sharedSearchIndexCache.index : null;
+}
+
+function searchOptionsForQuery(query: string) {
+  const longestTermLength = Math.max(0, ...query.split(/\s+/).map((term) => term.length));
+  return {
+    boost: FIELD_BOOST as Record<string, number>,
+    fuzzy: longestTermLength >= 4 ? 0.2 : false,
+    prefix: true,
+  };
+}
+
+function buildEmptyIndex(): MiniSearch<SearchDoc> {
   const ms = new MiniSearch<SearchDoc>({
     idField: "id",
     fields: SEARCH_FIELDS as string[],
     storeFields: ["id"],
   });
-  ms.addAll(items.map(toSearchDoc));
   return ms;
 }
 
@@ -141,27 +293,42 @@ export function useSearchResults(
   friends: Record<string, Friend>,
 ): SearchResults {
   const trimmedQuery = searchQuery.trim();
+  const [index, setIndex] = useState<MiniSearch<SearchDoc> | null>(() =>
+    getPreparedSearchIndex(items, searchCorpusVersion, accounts),
+  );
+  const itemById = useMemo(() => new Map(items.map((item) => [item.globalId, item])), [items]);
 
-  // Cache the index and the corpus version it was built from across renders.
-  // Using refs instead of useMemo lets us control invalidation independently of
-  // React's referential equality check on `items`.
-  const indexRef = useRef<MiniSearch<SearchDoc> | null>(null);
-  const versionRef = useRef<number>(-1);
-
-  if (!trimmedQuery) {
-    indexRef.current = null;
-    versionRef.current = -1;
-  }
-
-  // When a query is active, ensure the index is up to date with the current
-  // corpus. The worker bumps searchCorpusVersion only for search-relevant
-  // changes, so mark-as-read, save, and archive churn does not rebuild.
-  if (trimmedQuery) {
-    if (!indexRef.current || searchCorpusVersion !== versionRef.current) {
-      indexRef.current = buildIndex(items);
-      versionRef.current = searchCorpusVersion;
+  useEffect(() => {
+    let cancelled = false;
+    if (!trimmedQuery) {
+      setIndex(null);
+      releaseSearchIndexSoon();
+      return () => {
+        cancelled = true;
+      };
     }
-  }
+
+    const prepared = getPreparedSearchIndex(items, searchCorpusVersion, accounts);
+    if (prepared) {
+      setIndex(prepared);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setIndex(null);
+    prepareSearchIndex(items, searchCorpusVersion, accounts)
+      .then((nextIndex) => {
+        if (!cancelled) setIndex(nextIndex);
+      })
+      .catch(() => {
+        if (!cancelled) setIndex(buildEmptyIndex());
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accounts, items, searchCorpusVersion, trimmedQuery]);
 
   return useMemo(() => {
     const filterIdentityMode = (candidateItems: FeedItem[]): FeedItem[] =>
@@ -179,15 +346,13 @@ export function useSearchResults(
     }
 
     // Search then filter — preserving MiniSearch's relevance ordering.
-    const index = indexRef.current!;
-    const hits = index.search(trimmedQuery, {
-      boost: FIELD_BOOST as Record<string, number>,
-      fuzzy: 0.2,
-      prefix: true,
-    });
+    if (!index) {
+      return { filteredItems: [], isSearching: true, resultCount: 0 };
+    }
+
+    const hits = index.search(trimmedQuery, searchOptionsForQuery(trimmedQuery));
 
     const scoreById = new Map(hits.map((r) => [r.id as string, r.score]));
-    const itemById = new Map(items.map((item) => [item.globalId, item]));
 
     // Map results back to FeedItems, preserving MiniSearch order.
     const matchingItems = hits
@@ -206,5 +371,5 @@ export function useSearchResults(
     );
 
     return { filteredItems: sorted, isSearching: true, resultCount: sorted.length };
-  }, [accounts, activeFilter, friends, identityMode, items, persons, searchCorpusVersion, trimmedQuery]);
+  }, [accounts, activeFilter, friends, identityMode, index, itemById, items, persons, trimmedQuery]);
 }
