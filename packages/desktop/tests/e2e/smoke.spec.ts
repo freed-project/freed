@@ -560,11 +560,13 @@ test("desktop toolbar wordmark and passive title block avoid text-selection affo
 
     const wordmarkStyle = window.getComputedStyle(wordmark);
     const titleBlockStyle = window.getComputedStyle(titleBlock);
+    const titleTextStyle = window.getComputedStyle(titleBlock.querySelector("p") as HTMLElement);
     return {
       wordmarkCursor: wordmarkStyle.cursor,
       wordmarkUserSelect: wordmarkStyle.userSelect,
       titleBlockCursor: titleBlockStyle.cursor,
       titleBlockUserSelect: titleBlockStyle.userSelect,
+      titleTextAlign: titleTextStyle.textAlign,
     };
   });
 
@@ -573,6 +575,7 @@ test("desktop toolbar wordmark and passive title block avoid text-selection affo
   expect(styleState?.wordmarkUserSelect).toBe("none");
   expect(styleState?.titleBlockCursor).toBe("default");
   expect(styleState?.titleBlockUserSelect).toBe("none");
+  expect(styleState?.titleTextAlign).toBe("center");
 });
 
 test("desktop toolbar title stays clear of the wordmark and sidebar toggle at narrow sidebar widths", async ({ app, page }) => {
@@ -2934,6 +2937,7 @@ test("dual-column reader toolbar toggles stay aligned with the sidebar and rail"
     const dualColumnToggle = document.querySelector(
       '[aria-label="Hide Previews"], [aria-label="Show Previews"]',
     ) as HTMLElement | null;
+    const dualColumnToggleIcon = dualColumnToggle?.querySelector("svg") as SVGElement | null;
     const archiveButton = document.querySelector('[aria-label="Archive"], [aria-label="Unarchive"]') as HTMLElement | null;
     const openButton = document.querySelector('[aria-label="Open"]') as HTMLElement | null;
     const backButton = document.querySelector('[aria-label="Back to list"]') as HTMLElement | null;
@@ -2963,6 +2967,7 @@ test("dual-column reader toolbar toggles stay aligned with the sidebar and rail"
     const sidebarToggleIconRect = sidebarToggleIcon?.getBoundingClientRect() ?? null;
     const bookmarkButtonRect = bookmarkButton.getBoundingClientRect();
     const dualColumnToggleRect = dualColumnToggle.getBoundingClientRect();
+    const dualColumnToggleIconRect = dualColumnToggleIcon?.getBoundingClientRect() ?? null;
     const archiveButtonRect = archiveButton.getBoundingClientRect();
     const openButtonRect = openButton?.getBoundingClientRect() ?? null;
     const backButtonRect = backButton.getBoundingClientRect();
@@ -3014,6 +3019,7 @@ test("dual-column reader toolbar toggles stay aligned with the sidebar and rail"
       dualColumnToggleCenterY: dualColumnToggleRect.top + dualColumnToggleRect.height / 2,
       dualColumnToggleLeft: dualColumnToggleRect.left,
       dualColumnToggleRight: dualColumnToggleRect.right,
+      dualColumnToggleIconRight: dualColumnToggleIconRect?.right ?? dualColumnToggleRect.right,
       dualColumnToggleWidth: dualColumnToggleRect.width,
       dualColumnToggleHeight: dualColumnToggleRect.height,
       archiveButtonTop: archiveButtonRect.top,
@@ -3023,7 +3029,7 @@ test("dual-column reader toolbar toggles stay aligned with the sidebar and rail"
       archiveButtonHeight: archiveButtonRect.height,
       bookmarkButtonCenterY: bookmarkButtonRect.top + bookmarkButtonRect.height / 2,
       backButtonLeft: backButtonRect.left,
-      previewBackGap: backButtonRect.left - dualColumnToggleRect.right,
+      previewBackGap: backButtonRect.left - (dualColumnToggleIconRect?.right ?? dualColumnToggleRect.right),
       focusButtonLeft: firstReaderActionRect.left,
       focusButtonRight: firstReaderActionRect.right,
       readerTitleRightGap: firstReaderActionRect.left - backButtonRect.right,
@@ -3047,8 +3053,7 @@ test("dual-column reader toolbar toggles stay aligned with the sidebar and rail"
   expect(alignment.archiveButtonRight).toBeLessThanOrEqual(alignment.toolbarRight - 8);
   expect(Math.abs(alignment.rightActionMargin - LAYOUT_CONTROL_GAP_PX)).toBeLessThanOrEqual(1);
   expect(Math.abs(alignment.readerTitleRightGap - LAYOUT_CONTROL_GAP_PX)).toBeLessThanOrEqual(1);
-  expect(alignment.previewBackGap).toBeGreaterThanOrEqual(4);
-  expect(alignment.previewBackGap).toBeLessThanOrEqual(8);
+  expect(Math.abs(alignment.previewBackGap - LAYOUT_CONTROL_GAP_PX)).toBeLessThanOrEqual(1);
   for (const gap of alignment.actionGaps) {
     expect(Math.abs(gap - LAYOUT_CONTROL_GAP_PX)).toBeLessThanOrEqual(1);
   }
@@ -3233,17 +3238,23 @@ test("forced compact reader toolbar keeps sidebar and overflow controls aligned"
     const wordmark = toolbar?.querySelector('[data-testid="workspace-toolbar-wordmark"]') as HTMLElement | null;
     const layoutControlCluster = document.querySelector('[data-testid="desktop-layout-control-cluster"]') as HTMLElement | null;
     const sidebarToggle = toolbar?.querySelector('[data-testid="desktop-sidebar-toggle"]') as HTMLElement | null;
+    const backButton = toolbar?.querySelector('[data-testid="workspace-toolbar-reader-back"]') as HTMLElement | null;
+    const readerTitleBlock = toolbar?.querySelector('[data-testid="workspace-toolbar-reader-title-block"]') as HTMLElement | null;
+    const readerBackIcon = toolbar?.querySelector('[data-testid="workspace-toolbar-reader-back-icon"]') as SVGElement | null;
     const bookmarkButton = toolbar?.querySelector('[aria-label="Save"], [aria-label="Unsave"]') as HTMLElement | null;
     const archiveButton = toolbar?.querySelector('[aria-label="Archive"], [aria-label="Unarchive"]') as HTMLElement | null;
     const overflowButton = toolbar?.querySelector('[data-testid="toolbar-overflow-button"]') as HTMLElement | null;
 
-    if (!wordmark || !layoutControlCluster || !sidebarToggle || !overflowButton) {
+    if (!wordmark || !layoutControlCluster || !sidebarToggle || !backButton || !readerTitleBlock || !readerBackIcon || !overflowButton) {
       throw new Error("Narrow reader toolbar buttons were not found");
     }
 
     const wordmarkRect = wordmark.getBoundingClientRect();
     const toolbarRect = toolbar!.getBoundingClientRect();
     const sidebarToggleRect = sidebarToggle.getBoundingClientRect();
+    const backButtonRect = backButton.getBoundingClientRect();
+    const readerTitleBlockRect = readerTitleBlock.getBoundingClientRect();
+    const readerBackIconRect = readerBackIcon.getBoundingClientRect();
     const bookmarkRect = bookmarkButton?.getBoundingClientRect() ?? null;
     const archiveRect = archiveButton?.getBoundingClientRect() ?? null;
     const overflowRect = overflowButton.getBoundingClientRect();
@@ -3252,6 +3263,18 @@ test("forced compact reader toolbar keeps sidebar and overflow controls aligned"
       wordmarkRight: wordmarkRect.right,
       sidebarToggleLeft: sidebarToggleRect.left,
       sidebarToggleRight: sidebarToggleRect.right,
+      sidebarBackGap: backButtonRect.left - sidebarToggleRect.right,
+      readerTitleText: readerTitleBlock.textContent?.replace(/\s+/g, " ").trim() ?? "",
+      readerTitleTextAlign: window.getComputedStyle(readerTitleBlock).textAlign,
+      readerTitleCenterGap: Math.abs(
+        readerTitleBlockRect.left + readerTitleBlockRect.width / 2 -
+        (backButtonRect.left + backButtonRect.width / 2),
+      ),
+      readerIconCenterGap: Math.abs(
+        readerBackIconRect.top + readerBackIconRect.height / 2 -
+        (readerTitleBlockRect.top + readerTitleBlockRect.height / 2),
+      ),
+      readerIconTextGap: readerTitleBlockRect.right > readerBackIconRect.right,
       viewportWidth: window.innerWidth,
       toolbarRight: toolbarRect.right,
       bookmarkInlineVisible: bookmarkRect
@@ -3270,6 +3293,13 @@ test("forced compact reader toolbar keeps sidebar and overflow controls aligned"
 
   expect(layout.sidebarToggleInLeftCluster).toBe(true);
   expect(Math.abs(layout.sidebarToggleLeft - layout.wordmarkRight - LAYOUT_CONTROL_GAP_PX)).toBeLessThanOrEqual(1);
+  expect(layout.sidebarBackGap).toBeGreaterThanOrEqual(0);
+  expect(layout.sidebarBackGap).toBeLessThanOrEqual(LAYOUT_CONTROL_GAP_PX);
+  expect(layout.readerTitleText).toMatch(/^All Sources\s*•\s*\d+ items$/);
+  expect(layout.readerTitleTextAlign).toBe("center");
+  expect(layout.readerTitleCenterGap).toBeLessThanOrEqual(1);
+  expect(layout.readerIconCenterGap).toBeLessThanOrEqual(1);
+  expect(layout.readerIconTextGap).toBe(true);
   expect(layout.sidebarToggleRight).toBeLessThanOrEqual(layout.toolbarRight - 8);
   expect(layout.bookmarkInlineVisible).toBe(false);
   expect(layout.overflowRight).toBeLessThanOrEqual(layout.viewportWidth + 48);
@@ -3290,9 +3320,51 @@ test("narrow reader toolbar moves hidden actions into the overflow menu", async 
   await app.waitForReady();
   await app.injectRssItems(4);
 
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+
+    void store?.getState().updatePreferences({
+      display: {
+        reading: {
+          dualColumnMode: true,
+        },
+      },
+    });
+  });
+
   await page.getByText("Article 0:", { exact: false }).click();
+  await expect.poll(async () => {
+    return page.evaluate(() => document.documentElement.classList.contains("feed-layout-transition"));
+  }).toBe(false);
+  await expect(page.getByRole("button", { name: "Hide Previews" })).toBeVisible({ timeout: 5_000 });
   const overflowButton = page.getByTestId("toolbar-overflow-button");
   await expect(overflowButton).toBeVisible({ timeout: 5_000 });
+  const spacing = await page.evaluate(() => {
+    const previewButton = document.querySelector('[aria-label="Hide Previews"]') as HTMLElement | null;
+    const previewIcon = previewButton?.querySelector("svg") as SVGElement | null;
+    const backButton = document.querySelector('[data-testid="workspace-toolbar-reader-back"]') as HTMLElement | null;
+    const overflowButton = document.querySelector('[data-testid="toolbar-overflow-button"]') as HTMLElement | null;
+    if (!previewIcon || !backButton || !overflowButton) {
+      throw new Error("Narrow reader toolbar spacing elements were not found");
+    }
+
+    const previewIconRect = previewIcon.getBoundingClientRect();
+    const backButtonRect = backButton.getBoundingClientRect();
+    const overflowButtonRect = overflowButton.getBoundingClientRect();
+
+    return {
+      leftGap: backButtonRect.left - previewIconRect.right,
+      rightGap: overflowButtonRect.left - backButtonRect.right,
+    };
+  });
+  expect(Math.abs(spacing.leftGap - spacing.rightGap)).toBeLessThanOrEqual(1);
+
   await overflowButton.click();
   const overflowMenu = page.getByTestId("toolbar-overflow-menu");
   await expect(overflowMenu.getByRole("menuitem", { name: "Enable focus mode" })).toBeVisible();
@@ -3325,7 +3397,177 @@ test("narrow feed toolbar moves bulk actions into the overflow menu", async ({ a
   await expect(overflowMenu.getByRole("menuitem", { name: /Archive .* read items/ })).toBeVisible();
 });
 
-test("mobile feed toolbar places overflow actions before the filter button", async ({ app, page }) => {
+test("feed toolbar bulk action counts follow the active filter", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+    await store?.getState().updatePreferences({
+      display: {
+        reading: {
+          markReadOnScroll: false,
+        },
+      },
+    });
+  });
+
+  const activeFeedUrl = "https://bench.example/active-filter-feed.xml";
+  const otherFeedUrl = "https://bench.example/other-filter-feed.xml";
+  await app.injectRssItems(2, activeFeedUrl);
+  await app.injectRssItems(6, otherFeedUrl);
+
+  await page.evaluate(async ({ activeFeedUrl, otherFeedUrl }) => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            setFilter: (filter: { feedUrl: string }) => void;
+            markItemsAsRead: (ids: string[]) => Promise<void>;
+          };
+        }
+      | undefined;
+    const state = store?.getState();
+    await state?.markItemsAsRead([
+      `rss:${activeFeedUrl}:bench-item-0`,
+      `rss:${otherFeedUrl}:bench-item-0`,
+      `rss:${otherFeedUrl}:bench-item-1`,
+      `rss:${otherFeedUrl}:bench-item-2`,
+      `rss:${otherFeedUrl}:bench-item-3`,
+    ]);
+    state?.setFilter({ feedUrl: activeFeedUrl });
+  }, { activeFeedUrl, otherFeedUrl });
+
+  await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("2 items");
+  await expect(page.getByTestId("workspace-toolbar").locator("button").filter({ hasText: / unread$/ })).toHaveCount(0);
+  await expect(page.getByTestId("workspace-toolbar").locator("button").filter({ hasText: / read$/ })).toHaveCount(0);
+
+  const overflowButton = page.getByTestId("toolbar-overflow-button");
+  await expect(overflowButton).toBeVisible({ timeout: 5_000 });
+  await overflowButton.click();
+
+  const overflowMenu = page.getByTestId("toolbar-overflow-menu");
+  await expect(overflowMenu.getByRole("menuitem", { name: "Mark 1 unread as read" })).toBeVisible();
+  await expect(overflowMenu.getByRole("menuitem", { name: "Archive 1 read items" })).toBeVisible();
+});
+
+test("feed toolbar title describes active content filters", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const now = Date.now();
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+    };
+    const store = w.__FREED_STORE__ as
+      | {
+          getState: () => {
+            setFilter: (filter: unknown) => void;
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+
+    await automerge.docBatchImportItems([
+      {
+        globalId: "context-title-facebook-story",
+        platform: "facebook",
+        contentType: "story",
+        capturedAt: now - 10_000,
+        publishedAt: now - 10_000,
+        author: { id: "fb:context-title", handle: "context.title", displayName: "Context Title" },
+        content: { text: "Facebook story title fixture", mediaUrls: [], mediaTypes: [] },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+        contentSignals: { version: 3, method: "manual", inferredAt: now, scores: { life_update: 1 }, tags: ["life_update"] },
+      },
+      {
+        globalId: "context-title-conversation",
+        platform: "facebook",
+        contentType: "post",
+        capturedAt: now - 20_000,
+        publishedAt: now - 20_000,
+        author: { id: "fb:context-title", handle: "context.title", displayName: "Context Title" },
+        content: { text: "Conversation post title fixture", mediaUrls: [], mediaTypes: [] },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+        contentSignals: { version: 3, method: "manual", inferredAt: now, scores: { request: 1 }, tags: ["request"] },
+      },
+      {
+        globalId: "context-title-news",
+        platform: "linkedin",
+        contentType: "post",
+        capturedAt: now - 30_000,
+        publishedAt: now - 30_000,
+        author: { id: "li:context-title", handle: "context.title", displayName: "Context Title" },
+        content: { text: "News post title fixture", mediaUrls: [], mediaTypes: [] },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+        contentSignals: { version: 3, method: "manual", inferredAt: now, scores: { news: 1 }, tags: ["news"] },
+      },
+    ]);
+
+    await store?.getState().updatePreferences({
+      display: {
+        feedSignalModes: ["conversation", "news"],
+      },
+    });
+    store?.getState().setFilter({ signals: ["request", "discussion", "news", "alert", "product_update"] });
+  });
+
+  await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("Conversations and News");
+  await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("2 items");
+
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            setFilter: (filter: unknown) => void;
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+    await store?.getState().updatePreferences({
+      display: {
+        feedSignalModes: ["conversation", "news", "personal"],
+      },
+    });
+    store?.getState().setFilter({
+      signals: ["request", "discussion", "news", "alert", "product_update", "life_update", "moment"],
+    });
+  });
+  await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("Filtered");
+
+  await page.evaluate(async () => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            setFilter: (filter: unknown) => void;
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+    await store?.getState().updatePreferences({
+      display: {
+        feedSignalModes: [],
+      },
+    });
+    store?.getState().setFilter({ platform: "facebook", socialContentFilter: "stories" });
+  });
+  await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("Facebook Stories");
+  await expect(page.getByTestId("workspace-toolbar-title-block")).toContainText("1 item");
+});
+
+test("mobile feed toolbar keeps more actions as the rightmost control", async ({ app, page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await app.goto();
   await app.waitForReady();
@@ -3346,12 +3588,12 @@ test("mobile feed toolbar places overflow actions before the filter button", asy
     }
 
     return {
-      gap: filterRect.left - overflowRect.right,
-      overflowRight: overflowRect.right,
-      filterLeft: filterRect.left,
+      gap: overflowRect.left - filterRect.right,
+      filterRight: filterRect.right,
+      overflowLeft: overflowRect.left,
     };
   });
-  expect(geometry.overflowRight).toBeLessThanOrEqual(geometry.filterLeft);
+  expect(geometry.filterRight).toBeLessThanOrEqual(geometry.overflowLeft);
   expect(geometry.gap).toBeGreaterThanOrEqual(0);
 
   await overflowButton.click();

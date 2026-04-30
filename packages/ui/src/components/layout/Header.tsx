@@ -88,6 +88,7 @@ const TOOLBAR_ICON_BUTTON_CLASS =
 const TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS =
   "theme-toolbar-reader-layout-button rounded-lg";
 const READER_LAYOUT_CONTROL_BUTTON_SIZE_PX = 32;
+const READER_LAYOUT_CONTROL_ICON_SIZE_PX = 20;
 const READER_LAYOUT_CONTROL_BUTTON_GAP_PX = 0;
 const LAYOUT_CONTROL_SAFE_GAP_PX = 8;
 const CLOSED_SIDEBAR_TOGGLE_LEFT_PX = 12;
@@ -192,6 +193,55 @@ function ToolbarOverflowIcon({ className = "h-5 w-5" }: { className?: string }) 
   );
 }
 
+function joinTitleParts(parts: readonly string[]): string {
+  if (parts.length <= 1) return parts[0] ?? "";
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+}
+
+function signalTitlePart(modes: readonly FeedSignalMode[]): string | null {
+  if (modes.length === 0) return null;
+  if (modes.length > 2) return "Filtered";
+  const labels = modes.map((mode) =>
+    mode === "conversation"
+      ? "Conversations"
+      : FEED_SIGNAL_FILTER_PRESETS.find((preset) => preset.mode === mode)?.label ?? "Filtered"
+  );
+  return joinTitleParts(labels);
+}
+
+function contentKindTitlePart(filter: { platform?: string; feedUrl?: string; socialContentFilter?: SocialContentFilter }): string | null {
+  if (filter.feedUrl || filter.platform === "rss") return "Articles";
+  if (filter.socialContentFilter === "stories") return "Stories";
+  if (filter.socialContentFilter === "posts") return "Posts";
+  return null;
+}
+
+function contextualFeedTitle({
+  filter,
+  scopeLabel,
+  activeSignalModes,
+  allSignalsSelected,
+}: {
+  filter: { platform?: string; feedUrl?: string; socialContentFilter?: SocialContentFilter; savedOnly?: boolean; archivedOnly?: boolean };
+  scopeLabel: string;
+  activeSignalModes: readonly FeedSignalMode[];
+  allSignalsSelected: boolean;
+}): string {
+  if (filter.savedOnly || filter.archivedOnly) return scopeLabel;
+
+  const signalPart = allSignalsSelected ? null : signalTitlePart(activeSignalModes);
+  const kindPart = contentKindTitlePart(filter);
+  const providerPart =
+    filter.platform && filter.platform !== "rss"
+      ? scopeLabel
+      : null;
+  const hasContentFilter = !!signalPart || filter.socialContentFilter === "posts" || filter.socialContentFilter === "stories";
+
+  if (!providerPart && !hasContentFilter) return scopeLabel;
+  return [...(providerPart ? [providerPart] : []), ...(signalPart ? [signalPart] : []), ...(kindPart ? [kindPart] : [])].join(" ");
+}
+
 export function Header({
   mobileSidebarOpen,
   onMobileMenuToggle,
@@ -240,14 +290,8 @@ export function Header({
   const searchQuery = useAppStore((s) => s.searchQuery);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
   const selectedItemId = useAppStore((s) => s.selectedItemId);
-  const totalUnreadCount = useAppStore((s) => s.totalUnreadCount);
-  const unreadCountByPlatform = useAppStore((s) => s.unreadCountByPlatform);
-  const totalArchivableCount = useAppStore((s) => s.totalArchivableCount);
-  const archivableCountByPlatform = useAppStore((s) => s.archivableCountByPlatform);
-  const archivableFeedCounts = useAppStore((s) => s.archivableFeedCounts);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
-  const markAllAsRead = useAppStore((s) => s.markAllAsRead);
-  const archiveAllReadUnsaved = useAppStore((s) => s.archiveAllReadUnsaved);
+  const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
   const unarchiveSavedItems = useAppStore((s) => s.unarchiveSavedItems);
   const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
@@ -343,21 +387,25 @@ export function Header({
   const showInlineReaderBookmark =
     !!selectedItem && !isBelowReaderBookmarkToolbar;
 
-  const unreadCount =
-    activeFilter.savedOnly || activeFilter.archivedOnly
-      ? 0
-      : activeFilter.platform
-        ? (unreadCountByPlatform[activeFilter.platform] ?? 0)
-        : totalUnreadCount;
-
-  const archivableCount =
-    activeFilter.savedOnly || activeFilter.archivedOnly
-      ? 0
-      : activeFilter.feedUrl
-        ? (archivableFeedCounts[activeFilter.feedUrl] ?? 0)
-        : activeFilter.platform
-          ? (archivableCountByPlatform[activeFilter.platform] ?? 0)
-          : totalArchivableCount;
+  const filteredUnreadItemIds = useMemo(
+    () => filteredItems
+      .filter((item) => !item.userState.readAt && !item.userState.hidden && !item.userState.archived)
+      .map((item) => item.globalId),
+    [filteredItems],
+  );
+  const filteredArchivableItemIds = useMemo(
+    () => filteredItems
+      .filter((item) =>
+        !!item.userState.readAt &&
+        !item.userState.hidden &&
+        !item.userState.archived &&
+        !item.userState.saved
+      )
+      .map((item) => item.globalId),
+    [filteredItems],
+  );
+  const unreadCount = filteredUnreadItemIds.length;
+  const archivableCount = filteredArchivableItemIds.length;
 
   const handleSocialContentFilterChange = useCallback(
     (value: SocialContentFilter) => {
@@ -378,22 +426,7 @@ export function Header({
     return scopeLabel;
   }, [activeView, scopeLabel]);
 
-  const currentTitle = useMemo(() => {
-    if (selectedItem) {
-      return selectedItem.content.linkPreview?.title
-        ?? selectedItem.content.text?.slice(0, 90)
-        ?? selectedItem.author.displayName;
-    }
-    return currentListTitle;
-  }, [currentListTitle, selectedItem]);
-
-  const currentSubtitle = useMemo(() => {
-    if (selectedItem) {
-      const source = selectedItem.platform
-        ? selectedItem.platform.toLocaleUpperCase()
-        : scopeLabel;
-      return `${selectedItem.author.displayName} • ${source}`;
-    }
+  const currentListSubtitle = useMemo(() => {
     if (activeView === "friends") {
       if (pendingMatchCount > 0) {
         if (effectiveFriendsMode === "all_content") {
@@ -429,8 +462,17 @@ export function Header({
     resultCount,
     socialAccountCount,
     scopeLabel,
-    selectedItem,
   ]);
+
+  const currentSubtitle = useMemo(() => {
+    if (selectedItem) {
+      const source = selectedItem.platform
+        ? selectedItem.platform.toLocaleUpperCase()
+        : scopeLabel;
+      return `${selectedItem.author.displayName} • ${source}`;
+    }
+    return currentListSubtitle;
+  }, [currentListSubtitle, scopeLabel, selectedItem]);
 
   const [signalFilterMenuOpen, setSignalFilterMenuOpen] = useState(false);
   const signalFilterMenuRef = useRef<HTMLDivElement>(null);
@@ -481,6 +523,30 @@ export function Header({
     : activeFeedSignalModes.length === 1
       ? FEED_SIGNAL_FILTER_PRESETS.find((preset) => preset.mode === activeFeedSignalModes[0])?.label ?? "Custom"
       : `${activeFeedSignalModes.length.toLocaleString()} filters`;
+  const contextualListTitle = useMemo(() => {
+    if (activeView !== "feed") return currentListTitle;
+    return contextualFeedTitle({
+      filter: activeFilter,
+      scopeLabel,
+      activeSignalModes: activeFeedSignalModes,
+      allSignalsSelected: allFeedSignalsSelected,
+    });
+  }, [
+    activeFeedSignalModes,
+    activeFilter,
+    activeView,
+    allFeedSignalsSelected,
+    currentListTitle,
+    scopeLabel,
+  ]);
+  const currentTitle = useMemo(() => {
+    if (selectedItem) {
+      return selectedItem.content.linkPreview?.title
+        ?? selectedItem.content.text?.slice(0, 90)
+        ?? selectedItem.author.displayName;
+    }
+    return contextualListTitle;
+  }, [contextualListTitle, selectedItem]);
   const feedSignalCountBaseFilter = useMemo(() => {
     const nextFilter = { ...activeFilter };
     delete nextFilter.signals;
@@ -665,6 +731,14 @@ export function Header({
     void unarchiveSavedItems();
   }, [unarchiveSavedItems]);
 
+  const handleMarkFilteredUnreadAsRead = useCallback(() => {
+    void markItemsAsRead(filteredUnreadItemIds);
+  }, [filteredUnreadItemIds, markItemsAsRead]);
+
+  const handleArchiveFilteredRead = useCallback(() => {
+    void Promise.all(filteredArchivableItemIds.map((id) => toggleArchived(id)));
+  }, [filteredArchivableItemIds, toggleArchived]);
+
   const toolbarOverflowActions = useMemo<ToolbarOverflowAction[]>(() => {
     const actions: ToolbarOverflowAction[] = [];
 
@@ -747,49 +821,48 @@ export function Header({
         });
       }
 
-      if (showFeedBulkActions && unreadCount > 0) {
-        actions.push({
-          id: "mark-read",
-          label: `Mark ${unreadCount.toLocaleString()} unread as read`,
-          onClick: () => markAllAsRead(activeFilter.platform),
-          icon: (
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          ),
-        });
-      }
+    }
 
-      if (showFeedBulkActions && archivableCount > 0) {
-        actions.push({
-          id: "archive-read",
-          label: `Archive ${archivableCount.toLocaleString()} read items`,
-          onClick: () => archiveAllReadUnsaved(activeFilter.platform, activeFilter.feedUrl),
-          icon: (
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          ),
-        });
-      }
+    if (!selectedItem && showFeedBulkActions && unreadCount > 0) {
+      actions.push({
+        id: "mark-read",
+        label: `Mark ${unreadCount.toLocaleString()} unread as read`,
+        onClick: handleMarkFilteredUnreadAsRead,
+        icon: (
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        ),
+      });
+    }
+
+    if (!selectedItem && showFeedBulkActions && archivableCount > 0) {
+      actions.push({
+        id: "archive-read",
+        label: `Archive ${archivableCount.toLocaleString()} read items`,
+        onClick: handleArchiveFilteredRead,
+        icon: (
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        ),
+      });
     }
 
     return actions;
   }, [
-    activeFilter.feedUrl,
-    activeFilter.platform,
-    archiveAllReadUnsaved,
     archivableCount,
     deleteConfirmArmed,
     display.reading.focusMode,
+    handleArchiveFilteredRead,
     handleDeleteArchivedClick,
+    handleMarkFilteredUnreadAsRead,
     handleOpenReaderUrl,
     handleToggleFocusMode,
     handleToggleReaderSaved,
     handleToggleReaderArchived,
     handleUnarchiveSavedClick,
     isBelowLargeToolbar,
-    markAllAsRead,
     savedArchivedCount,
     selectedItem,
     showInlineReaderBookmark,
@@ -810,6 +883,7 @@ export function Header({
     previewToggleLeftPx: DEFAULT_LAYOUT_CONTROL_SAFE_LEFT_PX + READER_LAYOUT_CONTROL_BUTTON_SIZE_PX,
     reservedWidthPx: DEFAULT_LAYOUT_CONTROL_RESERVED_WIDTH_PX,
   });
+  const [previewToggleMounted, setPreviewToggleMounted] = useState(false);
   const activeSearchQuery = searchQuery.trim();
   const showToolbarSearch = !selectedItem && activeSearchQuery.length > 0;
   const showFriendsSidebarToggle = activeView === "friends" && !isMobile;
@@ -869,6 +943,7 @@ export function Header({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const toolbarSearchInputRef = useRef<HTMLInputElement | null>(null);
   const layoutControlHostRef = useRef<HTMLDivElement | null>(null);
+  const previewToggleButtonRef = useRef<HTMLButtonElement | null>(null);
   const wordmarkRef = useRef<HTMLSpanElement | null>(null);
   const sidebarHandleCenterlineStyleRef = useRef<string | null>(null);
   const toolbarDragGestureRef = useRef<{
@@ -953,6 +1028,11 @@ export function Header({
     event.preventDefault();
     event.stopPropagation();
   }, [clearSuppressedToolbarClick]);
+
+  const handlePreviewToggleButtonRef = useCallback((node: HTMLButtonElement | null) => {
+    previewToggleButtonRef.current = node;
+    setPreviewToggleMounted(Boolean(node));
+  }, []);
 
   const getToolbarControlProps = useCallback((style?: CSSProperties) => ({
     ...(canManuallyDragToolbarControls
@@ -1097,8 +1177,13 @@ export function Header({
       const handleCenterPx = resizeHandleRect
         ? resizeHandleRect.left + resizeHandleRect.width / 2 - hostRect.left
         : fallbackHandleCenterPx;
+      const previewToggleButton = previewToggleButtonRef.current;
+      const previewToggleVisible =
+        !!previewToggleButton && previewToggleButton.getClientRects().length > 0;
+      const readerLayoutControlButtonCount = previewToggleVisible ? 2 : 1;
       const readerLayoutControlPairWidthPx =
-        READER_LAYOUT_CONTROL_BUTTON_SIZE_PX * 2 + READER_LAYOUT_CONTROL_BUTTON_GAP_PX;
+        READER_LAYOUT_CONTROL_BUTTON_SIZE_PX * readerLayoutControlButtonCount +
+        READER_LAYOUT_CONTROL_BUTTON_GAP_PX * (readerLayoutControlButtonCount - 1);
       const idealSidebarToggleLeftPx = visibleDesktopSidebarMode === "closed"
         ? CLOSED_SIDEBAR_TOGGLE_LEFT_PX
         : handleCenterPx - readerLayoutControlPairWidthPx / 2;
@@ -1106,8 +1191,13 @@ export function Header({
       const previewToggleLeftPx = Math.ceil(
         sidebarToggleLeftPx + READER_LAYOUT_CONTROL_BUTTON_SIZE_PX + READER_LAYOUT_CONTROL_BUTTON_GAP_PX,
       );
-      const toolbarBoundaryWidthPx = previewToggleLeftPx + READER_LAYOUT_CONTROL_BUTTON_SIZE_PX;
-      const toolbarSlotPaddingRightPx = showDesktopReaderLayoutToggle
+      const readerLayoutControlVisualInsetPx =
+        (READER_LAYOUT_CONTROL_BUTTON_SIZE_PX - READER_LAYOUT_CONTROL_ICON_SIZE_PX) / 2;
+      const toolbarBoundaryWidthPx =
+        sidebarToggleLeftPx +
+        readerLayoutControlPairWidthPx -
+        (selectedItem ? readerLayoutControlVisualInsetPx : 0);
+      const toolbarSlotPaddingRightPx = selectedItem
         ? 0
         : TOOLBAR_SIDEBAR_SLOT_PADDING_RIGHT_PX;
       const reservedWidthPx = Math.ceil(
@@ -1177,7 +1267,10 @@ export function Header({
     };
   }, [
     isMobileDevice,
+    previewToggleMounted,
+    selectedItem,
     showDesktopReaderLayoutToggle,
+    showReaderLayoutToggle,
     visibleDesktopSidebarMode,
   ]);
 
@@ -1310,6 +1403,7 @@ export function Header({
                     >
                       <Tooltip label={display.reading.dualColumnMode ? "Hide Previews" : "Show Previews"}>
                         <button
+                          ref={handlePreviewToggleButtonRef}
                           onClick={handleToggleDualColumn}
                           {...getToolbarControlProps()}
                           className={TOOLBAR_READER_LAYOUT_TOGGLE_BUTTON_CLASS}
@@ -1340,25 +1434,28 @@ export function Header({
                 onClick={handleCloseReader}
                 {...getToolbarControlProps()}
                 data-testid="workspace-toolbar-reader-back"
-                className="group flex w-full min-w-0 items-center gap-1 rounded-lg px-1 py-1 text-left transition-colors hover:bg-[var(--theme-bg-muted)]"
+                className="group flex w-full min-w-0 items-center justify-center rounded-lg px-1 py-1 text-center transition-colors hover:bg-[var(--theme-bg-muted)]"
                 aria-label="Back to list"
               >
-                <span className="pointer-events-none flex shrink-0 items-center rounded-lg p-1.5">
-                  <svg
-                    className="h-4 w-4 shrink-0 text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                </span>
                 <div
                   data-testid="workspace-toolbar-reader-title-block"
-                  className="pointer-events-none min-w-0 flex-1 cursor-default select-none"
+                  className="pointer-events-none flex min-w-0 max-w-full cursor-default select-none items-center justify-center gap-2 text-center"
                 >
+                  <span className="flex h-8 w-5 shrink-0 items-center justify-center rounded-lg">
+                    <svg
+                      data-testid="workspace-toolbar-reader-back-icon"
+                      className="h-4 w-4 shrink-0 text-[var(--theme-text-muted)] transition-colors group-hover:text-[var(--theme-text-secondary)]"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </span>
                   <p className="truncate text-sm font-medium text-[var(--theme-text-secondary)]">
-                    {currentListTitle}
+                    {contextualListTitle}
+                    <span className="mx-1.5 font-normal text-[var(--theme-text-muted)]">•</span>
+                    <span className="font-normal text-[var(--theme-text-muted)]">{currentListSubtitle}</span>
                   </p>
                 </div>
               </button>
@@ -1378,9 +1475,9 @@ export function Header({
             ) : (
               <div
                 data-testid="workspace-toolbar-title-block"
-                className="min-w-0 cursor-default select-none px-1"
+                className="flex min-w-0 cursor-default select-none justify-center px-1 text-center"
               >
-                <p className="truncate text-sm font-semibold text-[var(--theme-text-secondary)]">
+                <p className="truncate text-center text-sm font-semibold text-[var(--theme-text-secondary)]">
                   {currentTitle}
                   <span className="mx-1.5 font-normal text-[var(--theme-text-muted)]">•</span>
                   <span className="font-normal text-[var(--theme-text-muted)]">{currentSubtitle}</span>
@@ -1613,40 +1710,6 @@ export function Header({
                   ) : null}
                 </ToolbarAnimatedSlot>
 
-                <ToolbarAnimatedSlot visible={showFeedBulkActions && unreadCount > 0 && !isBelowLargeToolbar} width={TOOLBAR_SLOT_WIDTH_CONTENT} className="hidden lg:flex">
-                  {showFeedBulkActions && unreadCount > 0 && !isBelowLargeToolbar ? (
-                    <Tooltip label={`Mark all ${unreadCount.toLocaleString()} items as read`} className="hidden lg:flex">
-                      <button
-                        onClick={() => markAllAsRead(activeFilter.platform)}
-                        {...getToolbarControlProps()}
-                        className="theme-toolbar-button-ghost flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm"
-                      >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <span>{unreadCount.toLocaleString()} unread</span>
-                      </button>
-                    </Tooltip>
-                  ) : null}
-                </ToolbarAnimatedSlot>
-
-                <ToolbarAnimatedSlot visible={showFeedBulkActions && archivableCount > 0 && !isBelowLargeToolbar} width={TOOLBAR_SLOT_WIDTH_CONTENT} className="hidden lg:flex">
-                  {showFeedBulkActions && archivableCount > 0 && !isBelowLargeToolbar ? (
-                    <Tooltip label={`Archive all ${archivableCount.toLocaleString()} read (unsaved) items`} className="hidden lg:flex">
-                      <button
-                        onClick={() => archiveAllReadUnsaved(activeFilter.platform, activeFilter.feedUrl)}
-                        {...getToolbarControlProps()}
-                        className="theme-toolbar-button-ghost flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm"
-                      >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span>{archivableCount.toLocaleString()} read</span>
-                      </button>
-                    </Tooltip>
-                  ) : null}
-                </ToolbarAnimatedSlot>
-
                 <ToolbarAnimatedSlot visible={showInlineSocialContentControls} width={TOOLBAR_SLOT_WIDTH_CONTENT}>
                   {showInlineSocialContentControls ? (
                     <ToolbarToggleGroup
@@ -1714,25 +1777,6 @@ export function Header({
                 >
                   {showToolbarOverflowMenuButton || showCollapsedToolbarFilterMenu ? (
                     <div className="flex items-center gap-2">
-                      {showToolbarOverflowMenuButton ? (
-                        <Tooltip label="More actions">
-                          <button
-                            ref={toolbarOverflowButtonRef}
-                            type="button"
-                            onClick={toggleToolbarOverflowMenu}
-                            {...getToolbarControlProps()}
-                            data-testid="toolbar-overflow-button"
-                            className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
-                              isMobileDevice ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
-                            }`}
-                            aria-haspopup="menu"
-                            aria-expanded={toolbarOverflowMenuOpen}
-                            aria-label="More actions"
-                          >
-                            <ToolbarOverflowIcon />
-                          </button>
-                        </Tooltip>
-                      ) : null}
                       {showCollapsedToolbarFilterMenu ? (
                         <Tooltip label="Filter view">
                           <button
@@ -1749,6 +1793,25 @@ export function Header({
                             aria-label="Filter view"
                           >
                             <FilterIcon className="h-5 w-5" />
+                          </button>
+                        </Tooltip>
+                      ) : null}
+                      {showToolbarOverflowMenuButton ? (
+                        <Tooltip label="More actions">
+                          <button
+                            ref={toolbarOverflowButtonRef}
+                            type="button"
+                            onClick={toggleToolbarOverflowMenu}
+                            {...getToolbarControlProps()}
+                            data-testid="toolbar-overflow-button"
+                            className={`${TOOLBAR_ICON_BUTTON_CLASS} ${
+                              isMobileDevice ? "theme-toolbar-button-ghost" : "theme-toolbar-button-neutral"
+                            }`}
+                            aria-haspopup="menu"
+                            aria-expanded={toolbarOverflowMenuOpen}
+                            aria-label="More actions"
+                          >
+                            <ToolbarOverflowIcon />
                           </button>
                         </Tooltip>
                       ) : null}
