@@ -1,0 +1,62 @@
+{
+  "tag": "v26.4.3001-dev",
+  "version": "26.4.3001-dev",
+  "channel": "dev",
+  "dayKey": "26.4.30",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-04-30T18:55:56.721Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.3000-dev",
+    "previousPublishedDayTag": "v26.4.2904-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.4.3000-dev",
+      "v26.4.3001-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.4.3000-dev",
+      "v26.4.3001-dev"
+    ],
+    "prNumbers": [
+      355,
+      361,
+      362,
+      363,
+      365,
+      366,
+      367,
+      368,
+      369
+    ],
+    "commitSubjects": [
+      "fix: add global animation controls (#369)",
+      "fix: restore feed card max width (#368)",
+      "fix: show desktop feed thumbnails (#367)",
+      "fix: scope social provider error copy (#366)",
+      "fix: constrain settings list growth (#365)",
+      "fix: polish sidebar toolbar controls (#363)",
+      "fix: scale desktop settings dialog with viewport (#355)",
+      "docs: approve v26.4.3000-dev release notes",
+      "release: v26.4.3000-dev",
+      "fix: stabilize renderer recovery and model installs (#362)",
+      "fix: restore main window reopen after renderer recovery (#361)"
+    ]
+  },
+  "release": {
+    "deck": "Scale desktop settings dialog with viewport, renderer recovery and model installs are now more stable, and main window reopen after renderer recovery restored",
+    "features": [],
+    "fixes": [
+      "Rebuild the main window through a hidden keepalive window during renderer recovery, so watchdog recovery no longer quits the app before the replacement window opens",
+      "Batch local AI model file writes and throttle progress updates during model pack installs to keep Settings responsive during large downloads",
+      "Keep Pause available while an AI model download is active"
+    ],
+    "followUps": [
+      "Freed Desktop now keeps the app alive while rebuilding a stalled main window, and large AI model pack downloads put less pressure on the interface"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.4.3001-dev\n\nScale desktop settings dialog with viewport, renderer recovery and model installs are now more stable, and main window reopen after renderer recovery restored\n\n### Fixes\n\n- Rebuild the main window through a hidden keepalive window during renderer recovery, so watchdog recovery no longer quits the app before the replacement window opens\n- Batch local AI model file writes and throttle progress updates during model pack installs to keep Settings responsive during large downloads\n- Keep Pause available while an AI model download is active\n\n### Follow-ups\n\n- Freed Desktop now keeps the app alive while rebuilding a stalled main window, and large AI model pack downloads put less pressure on the interface\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
