@@ -8,6 +8,10 @@ import {
   type ThemeDefinition,
   type ThemeId,
 } from "@freed/shared/themes";
+import {
+  getDocumentAnimationIntensity,
+  prefersReducedMotion,
+} from "./animation-preferences.js";
 
 export {
   DEFAULT_THEME_ID,
@@ -22,6 +26,7 @@ const THEME_TRANSITION_BLUR_OUT_MS = 90;
 const THEME_TRANSITION_BLUR_IN_MS = 210;
 const THEME_TRANSITION_CLEANUP_BUFFER_MS = 40;
 const THEME_TRANSITION_BLUR_AMOUNT = "7px";
+const LIGHT_THEME_TRANSITION_MS = 110;
 
 type ThemeTransitionPhase = "blur-out" | "blur-in";
 
@@ -76,7 +81,11 @@ function clearThemeTransitionTimers(): void {
   }
 }
 
-function setThemeTransitionPhase(phase: ThemeTransitionPhase, durationMs: number): void {
+function setThemeTransitionPhase(
+  phase: ThemeTransitionPhase,
+  durationMs: number,
+  blurAmount = THEME_TRANSITION_BLUR_AMOUNT,
+): void {
   const root = getDocumentRoot();
   if (!root) {
     return;
@@ -84,7 +93,7 @@ function setThemeTransitionPhase(phase: ThemeTransitionPhase, durationMs: number
 
   root.dataset.themeTransition = phase;
   root.style.setProperty("--theme-transition-duration", `${durationMs}ms`);
-  root.style.setProperty("--theme-transition-blur", THEME_TRANSITION_BLUR_AMOUNT);
+  root.style.setProperty("--theme-transition-blur", blurAmount);
   root.style.setProperty("--theme-transition-opacity", "0.965");
   root.style.setProperty("--theme-transition-saturate", "0.985");
 }
@@ -100,14 +109,6 @@ function clearThemeTransitionStyles(): void {
   root.style.removeProperty("--theme-transition-blur");
   root.style.removeProperty("--theme-transition-opacity");
   root.style.removeProperty("--theme-transition-saturate");
-}
-
-function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-    return false;
-  }
-
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 export function getStoredThemeId(): ThemeId {
@@ -152,10 +153,32 @@ function transitionThemeOnDocument(themeId: ThemeId): void {
     return;
   }
 
-  if (prefersReducedMotion()) {
+  const animationIntensity = getDocumentAnimationIntensity();
+  if (animationIntensity === "none" || prefersReducedMotion()) {
     clearThemeTransitionTimers();
     clearThemeTransitionStyles();
     applyThemeToDocument(themeId);
+    return;
+  }
+
+  if (animationIntensity === "light") {
+    clearThemeTransitionTimers();
+    themeTransitionState.token += 1;
+    const transitionToken = themeTransitionState.token;
+
+    applyThemeToDocument(themeId);
+    setThemeTransitionPhase("blur-in", LIGHT_THEME_TRANSITION_MS, "0px");
+    root.style.setProperty("--theme-transition-opacity", "1");
+    root.style.setProperty("--theme-transition-saturate", "1");
+
+    themeTransitionState.cleanupTimer = window.setTimeout(() => {
+      if (themeTransitionState.token !== transitionToken) {
+        return;
+      }
+
+      clearThemeTransitionStyles();
+      themeTransitionState.cleanupTimer = null;
+    }, LIGHT_THEME_TRANSITION_MS + THEME_TRANSITION_CLEANUP_BUFFER_MS);
     return;
   }
 

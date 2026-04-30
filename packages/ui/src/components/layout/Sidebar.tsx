@@ -20,6 +20,7 @@ import { getTopSourceItems, type SourceNavigationItem } from "../../lib/source-n
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { useIsMobileDevice } from "../../hooks/useIsMobileDevice.js";
 import { SearchJumpField } from "./SearchJumpField.js";
+import { resolveAnimationIntensity } from "../../lib/animation-preferences.js";
 import { buildTopLevelTagFilters, childTagsOf, collectAllTags } from "../../lib/tag-navigation.js";
 import { navigateToFeedView } from "../../lib/workspace-navigation.js";
 import {
@@ -462,6 +463,7 @@ export function Sidebar({
   const setActiveView = useAppStore((s) => s.setActiveView);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const display = useAppStore((s) => s.preferences.display);
+  const animationIntensity = resolveAnimationIntensity(display.animationIntensity);
   const health = useDebugStore((s) => s.health);
 
   const savedCount = useMemo(() => items.filter((i) => i.userState.saved).length, [items]);
@@ -630,7 +632,11 @@ export function Sidebar({
       : compactRail
       ? `${COMPACT_RAIL_OUTER_INSET_PX}px`
       : `calc(${sidebarPaddingBlockPx}px + 100lvh - 100dvh + env(safe-area-inset-bottom, 0px))`,
-    transition: "padding 180ms ease",
+    transition: animationIntensity === "none"
+      ? "none"
+      : animationIntensity === "light"
+        ? "padding 120ms ease-out"
+        : "padding 180ms ease",
   };
   const desktopShellWidth = renderMode === "closed"
     ? 0
@@ -671,7 +677,7 @@ export function Sidebar({
       ? "pr-1"
       : narrowLabeledSidebar
         ? "pr-0"
-        : "pr-1.5";
+        : "pr-0.5";
   const rowGapClass = isMobileDevice ? "gap-3.5" : narrowLabeledSidebar ? "gap-2" : "gap-3";
   const rowTextClass = isMobileDevice ? "text-base" : "text-sm";
   const rowVerticalPaddingClass = isMobileDevice ? "py-3" : "py-1.5";
@@ -679,16 +685,24 @@ export function Sidebar({
   const countTextClass = isMobileDevice ? "text-xs" : "text-[10px]";
   const mobileSidebarWidth = `min(${MOBILE_SIDEBAR_WIDTH_PX}px, calc(100vw - ${MOBILE_SIDEBAR_VIEWPORT_MARGIN_PX}px))`;
   const inlineSearchGapPx = sidebarPaddingBlockPx;
-  const desktopShellTransition = dragWidth !== null && !snapPreviewActive
+  const desktopShellTransition = animationIntensity === "none" || (dragWidth !== null && !snapPreviewActive)
     ? "none"
     : snapPreviewActive
-      ? "width 180ms ease, opacity 160ms ease"
-      : "width 220ms ease, opacity 180ms ease";
-  const desktopAsideTransition = dragWidth !== null && !snapPreviewActive
+      ? animationIntensity === "light"
+        ? "width 120ms ease-out, opacity 100ms ease-out"
+        : "width 180ms ease, opacity 160ms ease"
+      : animationIntensity === "light"
+        ? "width 140ms ease-out, opacity 120ms ease-out"
+        : "width 220ms ease, opacity 180ms ease";
+  const desktopAsideTransition = animationIntensity === "none" || (dragWidth !== null && !snapPreviewActive)
     ? "none"
     : snapPreviewActive
-      ? "width 180ms ease, transform 180ms ease, opacity 160ms ease"
-      : "width 220ms ease, transform 220ms ease, opacity 180ms ease";
+      ? animationIntensity === "light"
+        ? "width 120ms ease-out, transform 120ms ease-out, opacity 100ms ease-out"
+        : "width 180ms ease, transform 180ms ease, opacity 160ms ease"
+      : animationIntensity === "light"
+        ? "width 140ms ease-out, transform 140ms ease-out, opacity 120ms ease-out"
+        : "width 220ms ease, transform 220ms ease, opacity 180ms ease";
   const desktopAsideTransform = renderMode === "closed"
     ? closedPreviewActive
       ? "translateX(calc(-100% - var(--feed-card-gap, 8px)))"
@@ -896,8 +910,8 @@ export function Sidebar({
     if (rowCountsVisible) return "ml-1.5 w-[54px]";
     if (!sourceMenusVisible || !canShowSourceMenu(source)) return "ml-0 w-0";
     return openMenuSourceKey === sourceKey(source)
-      ? "ml-0 w-6"
-      : "ml-0 w-0 group-hover/source:w-6";
+      ? "ml-0 w-[26px]"
+      : "ml-0 w-0 group-hover/source:w-[26px]";
   };
 
   const selectedMenuSource = openMenuSourceKey
@@ -908,12 +922,6 @@ export function Sidebar({
     () => (selectedMenuSource ? (getSourceStatus?.(selectedMenuSourceId) ?? null) : null),
     [getSourceStatus, selectedMenuSource, selectedMenuSourceId, providerSyncCounts, health],
   );
-
-  useEffect(() => {
-    if (activeFilter.platform === "rss" || activeFilter.feedUrl) {
-      setRssFeedsOpen(true);
-    }
-  }, [activeFilter.feedUrl, activeFilter.platform]);
 
   useEffect(() => {
     const maxPage = Math.max(0, totalFeedPages - 1);
@@ -1062,7 +1070,7 @@ export function Sidebar({
   const pendingFriendsBadge = pendingMatchCount > 0
     ? renderSidebarIconBadge(<span className="flex h-2.5 w-2.5 rounded-full bg-[var(--theme-accent-secondary)]" />)
     : undefined;
-  const sidebarLabelClass = `min-w-0 flex-1 truncate whitespace-nowrap ${narrowLabeledSidebar ? "pr-0" : "pr-1"} [text-overflow:clip]`;
+  const sidebarLabelClass = `min-w-0 flex-1 truncate whitespace-nowrap ${narrowLabeledSidebar ? "pr-0" : "pr-0.5"}`;
   const sidebarFeedLabelClass = `${sidebarLabelClass} text-xs`;
 
   const sidebarBody = (
@@ -1097,7 +1105,7 @@ export function Sidebar({
               ) : (
                 <li
                   key={source.id ?? "all"}
-                  className={`order-1 group/source flex items-stretch gap-2 rounded-lg border transition-all ${
+                  className={`order-1 group/source flex items-stretch gap-0 rounded-lg border transition-all ${
                     isTopSourceActive(source)
                       ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
                       : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
@@ -1387,7 +1395,7 @@ export function Sidebar({
                                 labeledSourceIconSizeClass(source.id),
                               )}
                               <div className="flex min-w-0 flex-1 items-center gap-1">
-                                <span className="min-w-0 overflow-hidden whitespace-nowrap pr-[2px] [text-overflow:clip]">
+                                <span className="min-w-0 truncate whitespace-nowrap pr-0.5">
                                   {source.label}
                                 </span>
                                 {rssAccordionVisible ? (
@@ -1601,7 +1609,7 @@ export function Sidebar({
                 return (
                   <li
                     key={source.id ?? "all"}
-                    className={`${sourceOrderClass(source)} group/source flex items-stretch gap-2 rounded-lg border transition-all ${
+                    className={`${sourceOrderClass(source)} group/source flex items-stretch gap-0 rounded-lg border transition-all ${
                       isTopSourceActive(source)
                         ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
                         : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
@@ -1946,7 +1954,7 @@ function TagTreeNode({
           <svg className="w-3 h-3 shrink-0 text-[color:var(--theme-text-soft)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
           </svg>
-          <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap pr-1.5 [text-overflow:clip]">{label}</span>
+          <span className="min-w-0 flex-1 truncate whitespace-nowrap pr-0.5">{label}</span>
         </button>
         {hasChildren && (
           <button

@@ -26,6 +26,7 @@ import { attachScraperMediaDiagListener } from "./scraper-media-diag";
 import { getProviderPause, recordProviderHealthEvent } from "./provider-health";
 import { isMemoryPressureCritical } from "./memory-monitor";
 import { archiveRecentProviderMedia, upsertMediaVaultRosterFromItems } from "./media-vault";
+import { socialProviderCopy } from "./social-provider-copy";
 
 // =============================================================================
 // Rate Limiting
@@ -89,7 +90,7 @@ export async function fetchIgFeed(): Promise<IgSyncResult> {
 
   if (isMemoryPressureCritical()) {
     diag.errorStage = "memory_pressure";
-    diag.errorMessage = "Instagram sync paused because Freed Desktop memory is critically high.";
+    diag.errorMessage = socialProviderCopy("instagram").memoryPressure;
     return { items: [], diag };
   }
 

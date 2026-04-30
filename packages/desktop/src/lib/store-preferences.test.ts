@@ -94,6 +94,23 @@ describe("store.updatePreferences", () => {
     await expect(updatePromise).resolves.toBeUndefined();
   });
 
+  it("defaults animations to detailed", () => {
+    expect(useAppStore.getState().preferences.display.animationIntensity).toBe("detailed");
+  });
+
+  it("persists animation preference updates", async () => {
+    await expect(
+      useAppStore.getState().updatePreferences({
+        display: { animationIntensity: "none" },
+      } as never),
+    ).resolves.toBeUndefined();
+
+    expect(useAppStore.getState().preferences.display.animationIntensity).toBe("none");
+    expect(mockDocUpdatePreferences).toHaveBeenCalledWith({
+      display: { animationIntensity: "none" },
+    });
+  });
+
   it("records non-fatal diagnostics when persistence rejects", async () => {
     const error = new Error("[automerge-worker] request TIMEOUT op=UPDATE_PREFERENCES reqId=126");
     mockDocUpdatePreferences.mockRejectedValueOnce(error);

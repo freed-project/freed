@@ -16,6 +16,7 @@ import {
   getProviderStatusTone,
 } from "@freed/ui/lib/provider-status";
 import { ProviderStatusIndicator } from "@freed/ui/components/ProviderStatusIndicator";
+import { SettingsListPanel } from "@freed/ui/components/settings/SettingsListPanel";
 import type { FbGroupInfo } from "@freed/shared";
 import { useAppStore } from "../lib/store";
 import {
@@ -42,6 +43,7 @@ import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { withProviderSyncing } from "../lib/store";
 import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
 import { MediaVaultSettingsCard } from "./MediaVaultSettingsCard";
+import { socialProviderCopy } from "../lib/social-provider-copy";
 
 // =============================================================================
 // Diagnostic Panel
@@ -195,8 +197,6 @@ export function FacebookSettingsSection({
   const fbCapture = useAppStore((s) => s.preferences.fbCapture);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const isLoading = useAppStore((s) => s.isLoading);
-  const storeError = useAppStore((s) => s.error);
-  const setError = useAppStore((s) => s.setError);
   const items = useAppStore((s) => s.items);
   const syncing = useAppStore((s) => (s.providerSyncCounts.facebook ?? 0) > 0);
   const healthSnapshot = useDebugStore((s) => s.health?.providers.facebook ?? null);
@@ -205,6 +205,8 @@ export function FacebookSettingsSection({
   const [refreshingGroups, setRefreshingGroups] = useState(false);
   const [lastDiag, setLastDiag] = useState<FbSyncDiag | null>(null);
   const [windowMode, setWindowMode] = useState(() => getFbScraperWindowMode());
+  const [actionError, setActionError] = useState<string | null>(null);
+  const copy = socialProviderCopy("facebook");
   const { confirm, dialog } = useProviderRiskGate("facebook");
 
   const knownGroups = fbCapture?.knownGroups ?? {};
@@ -230,19 +232,19 @@ export function FacebookSettingsSection({
 
   const handleLogin = useCallback(async () => {
     await confirm(async () => {
-      setError(null);
+      setActionError(null);
       try {
         await showFbLogin();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to open login window");
+        setActionError(err instanceof Error ? err.message : "Failed to open login window");
       }
     });
-  }, [confirm, setError]);
+  }, [confirm]);
 
   const handleCheckAuth = useCallback(async () => {
     await confirm(async () => {
       setChecking(true);
-      setError(null);
+      setActionError(null);
       try {
         const loggedIn = await checkFbAuth();
         const newState = { isAuthenticated: loggedIn, lastCheckedAt: Date.now() };
@@ -250,15 +252,15 @@ export function FacebookSettingsSection({
         storeFbAuthState(newState);
 
         if (!loggedIn) {
-          setError("Not logged in. Please log in through the Facebook window first.");
+          setActionError("Not logged in. Please log in through the Facebook window first.");
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Auth check failed");
+        setActionError(err instanceof Error ? err.message : "Auth check failed");
       } finally {
         setChecking(false);
       }
     });
-  }, [confirm, setFbAuth, setError]);
+  }, [confirm, setFbAuth]);
 
   const runSync = useCallback(async () => {
     setLastDiag(null);
@@ -307,17 +309,47 @@ export function FacebookSettingsSection({
     await setExcludedGroups(nextExcluded);
   }, [groups, setExcludedGroups]);
 
+  const handleSelectShownGroups = useCallback(
+    async (shownGroups: readonly FbGroupInfo[]) => {
+      if (shownGroups.length === groups.length) {
+        await handleSelectAllGroups();
+        return;
+      }
+      const nextExcluded = { ...excludedGroupIds };
+      for (const group of shownGroups) {
+        delete nextExcluded[group.id];
+      }
+      await setExcludedGroups(nextExcluded);
+    },
+    [excludedGroupIds, groups.length, handleSelectAllGroups, setExcludedGroups],
+  );
+
+  const handleDeselectShownGroups = useCallback(
+    async (shownGroups: readonly FbGroupInfo[]) => {
+      if (shownGroups.length === groups.length) {
+        await handleDeselectAllGroups();
+        return;
+      }
+      const nextExcluded = { ...excludedGroupIds };
+      for (const group of shownGroups) {
+        nextExcluded[group.id] = true;
+      }
+      await setExcludedGroups(nextExcluded);
+    },
+    [excludedGroupIds, groups.length, handleDeselectAllGroups, setExcludedGroups],
+  );
+
   const handleRefreshGroups = useCallback(async () => {
     setRefreshingGroups(true);
-    setError(null);
+    setActionError(null);
     try {
       await captureFbGroups();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to refresh Facebook groups");
+      setActionError(err instanceof Error ? err.message : "Failed to refresh Facebook groups");
     } finally {
       setRefreshingGroups(false);
     }
-  }, [setError]);
+  }, []);
 
   const handleDisconnect = useCallback(async () => {
     try {
@@ -328,11 +360,11 @@ export function FacebookSettingsSection({
     await resetProviderPauseState("facebook");
     setFbAuth({ isAuthenticated: false });
     setLastDiag(null);
-    setError(null);
-  }, [setFbAuth, setError]);
+    setActionError(null);
+  }, [setFbAuth]);
 
-  const syncError = storeError && fbAuth.isAuthenticated ? storeError : null;
-  const authError = fbAuth.lastCaptureError ?? syncError;
+  const syncError = fbAuth.isAuthenticated ? fbAuth.lastCaptureError ?? null : null;
+  const authError = fbAuth.lastCaptureError ?? actionError;
   const needsReconnect = needsProviderReconnect(authError);
   const statusTone = getProviderStatusTone({
     isConnected: fbAuth.isAuthenticated,
@@ -354,7 +386,7 @@ export function FacebookSettingsSection({
       if (lastDiag.itemsAdded === 0 && lastDiag.postsExtracted === 0) {
         return (
           <p className="text-xs text-[#52525b]">
-            Feed returned no posts. Facebook may need a moment to load.
+            {copy.feedReturnedEmpty}
           </p>
         );
       }
@@ -420,14 +452,18 @@ export function FacebookSettingsSection({
 
           {needsReconnect && (
             <p className="text-xs text-red-400 leading-relaxed">
-              {formatProviderReconnectMessage("Facebook", authError)}
+              {formatProviderReconnectMessage(copy.label, authError)}
             </p>
+          )}
+
+          {actionError && !needsReconnect && (
+            <p className="text-xs text-red-400 leading-relaxed">{actionError}</p>
           )}
 
           {syncError && !needsReconnect && (
             <p className="text-xs text-red-400 leading-relaxed">
               {syncError.includes("timeout")
-                ? "Scrape timed out. Facebook may be slow to load. Try again."
+                ? copy.timeout
                 : syncError}
             </p>
           )}
@@ -445,29 +481,44 @@ export function FacebookSettingsSection({
             authenticated={fbAuth.isAuthenticated}
           />
 
-          {groups.length > 0 && (
-            <div className="space-y-3 rounded-xl border border-white/10 bg-white/5 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-baseline gap-2 min-w-0">
-                  <p className="text-sm text-[#a1a1aa]">Groups</p>
-                  <p className="text-xs text-[#71717a] truncate">
-                    {activeGroupCount.toLocaleString()} active of {groups.length.toLocaleString()} total
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
+          <SettingsListPanel
+            items={groups}
+            title="Groups"
+            summary={`${activeGroupCount.toLocaleString()} active of ${groups.length.toLocaleString()} total`}
+            searchPlaceholder="Filter groups"
+            ariaLabel="Filter Facebook groups"
+            emptyLabel="No groups found."
+            noMatchesLabel="No groups match that filter."
+            dataTestId="facebook-groups-list"
+            searchDataTestId="facebook-groups-filter"
+            scrollDataTestId="facebook-groups-list-scroll"
+            className="border-white/10 bg-white/5"
+            listClassName="space-y-3"
+            reserveScrollHeight
+            itemKey={(group) => group.id}
+            getSearchText={(group) => {
+              const { title, lastActiveText } = splitFacebookGroupName(group.name);
+              return [title, lastActiveText, group.id, group.url, group.name].filter(Boolean).join(" ");
+            }}
+            actions={(shownGroups, query) => {
+              const bulkTargetLabel = query ? "shown" : "all";
+              return (
+                <>
                   <button
                     type="button"
-                    onClick={() => { void handleSelectAllGroups(); }}
-                    className="text-xs text-[#71717a] hover:text-[#a1a1aa] transition-colors"
+                    onClick={() => { void handleSelectShownGroups(shownGroups); }}
+                    disabled={shownGroups.length === 0}
+                    className="text-xs text-[#71717a] hover:text-[#a1a1aa] disabled:opacity-50 transition-colors"
                   >
-                    Activate all
+                    Activate {bulkTargetLabel}
                   </button>
                   <button
                     type="button"
-                    onClick={() => { void handleDeselectAllGroups(); }}
-                    className="text-xs text-[#71717a] hover:text-[#a1a1aa] transition-colors"
+                    onClick={() => { void handleDeselectShownGroups(shownGroups); }}
+                    disabled={shownGroups.length === 0}
+                    className="text-xs text-[#71717a] hover:text-[#a1a1aa] disabled:opacity-50 transition-colors"
                   >
-                    Deactivate all
+                    Deactivate {bulkTargetLabel}
                   </button>
                   <button
                     type="button"
@@ -477,30 +528,26 @@ export function FacebookSettingsSection({
                   >
                     {refreshingGroups ? "Refreshing..." : "Refresh"}
                   </button>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {groups.map((group) => {
-                  const included = !excludedGroupIds[group.id];
-                  const { title, lastActiveText } = splitFacebookGroupName(group.name);
-                  return (
-                    <Toggle
-                      key={group.id}
-                      testId={`facebook-group-${group.id}`}
-                      label={title}
-                      checked={included}
-                      onChange={(nextIncluded) => {
-                        void handleToggleGroup(group, nextIncluded);
-                      }}
-                      meta={lastActiveText}
-                      description={included ? "Included in future syncs" : "Hidden from future syncs"}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          )}
+                </>
+              );
+            }}
+            renderItem={(group) => {
+              const included = !excludedGroupIds[group.id];
+              const { title, lastActiveText } = splitFacebookGroupName(group.name);
+              return (
+                <Toggle
+                  testId={`facebook-group-${group.id}`}
+                  label={title}
+                  checked={included}
+                  onChange={(nextIncluded) => {
+                    void handleToggleGroup(group, nextIncluded);
+                  }}
+                  meta={lastActiveText}
+                  description={included ? "Included in future syncs" : "Hidden from future syncs"}
+                />
+              );
+            }}
+          />
 
           <details className="group">
             <summary className="text-xs text-[#52525b] hover:text-[#71717a] cursor-pointer select-none list-none flex items-center gap-1">
@@ -520,8 +567,7 @@ export function FacebookSettingsSection({
           </details>
 
           <p className="text-xs text-[#52525b] leading-relaxed">
-            Freed reads your Facebook feed through a native browser session.
-            Your traffic looks identical to normal browsing.
+            {copy.connectedInfo}
           </p>
         </div>
       </SyncProviderSectionSurface>
@@ -539,7 +585,7 @@ export function FacebookSettingsSection({
         <p className="text-sm text-[#71717a] leading-relaxed">
           {needsReconnect
             ? "Your Facebook session is no longer valid. Sign in again to restore sync."
-            : "Pull your Facebook feed into Freed. Log in through a native browser window. Freed reads your feed the same way you would, so your account stays safe."}
+            : copy.disconnectedSettings}
         </p>
         <div className="flex gap-2">
           <button
@@ -558,8 +604,11 @@ export function FacebookSettingsSection({
         </div>
         {needsReconnect && authError && (
           <p className="text-xs text-amber-400 leading-relaxed">
-            {formatProviderReconnectMessage("Facebook", authError)}
+            {formatProviderReconnectMessage(copy.label, authError)}
           </p>
+        )}
+        {actionError && !needsReconnect && (
+          <p className="text-xs text-red-400 leading-relaxed">{actionError}</p>
         )}
         <ProviderHealthSectionSummary provider="facebook" />
       </div>
