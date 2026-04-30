@@ -1,32 +1,61 @@
 [
   {
-    "version": "26.4.3000-dev",
-    "tagName": "v26.4.3000-dev",
+    "version": "26.4.3001-dev",
+    "tagName": "v26.4.3001-dev",
     "channel": "dev",
-    "date": "2026-04-30T17:30:31Z",
-    "deck": "Freed Desktop now keeps the app alive while rebuilding a stalled main window, and large AI model pack downloads put less pressure on the interface.",
-    "features": [],
-    "fixes": [
+    "date": "2026-04-30T19:17:22Z",
+    "deck": "Animation controls now apply across the interface, story cards move cleanly into the sidebar rail, feed previews are easier to scan, and recovery work keeps Freed Desktop steadier during stalls and model installs.",
+    "features": [
       {
-        "text": "Rebuild the main window through a hidden keepalive window during renderer recovery, so watchdog recovery no longer quits the app before the replacement window opens."
+        "text": "Add an Appearance animation control with None, Light, and Detailed options, so app motion can be reduced or disabled across controlled fades, slides, layout transitions, shimmers, and theme changes"
       },
       {
-        "text": "Batch local AI model file writes and throttle progress updates during model pack installs to keep Settings responsive during large downloads."
-      },
-      {
-        "text": "Keep Pause available while an AI model download is active."
+        "text": "Give story cards the same shared feed layout transition as regular cards, so opening a story can animate from the primary list into the compact sidebar rail instead of snapping"
       }
     ],
-    "followUps": [],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.3000-dev",
+    "fixes": [
+      {
+        "text": "Restore feed card max width and desktop feed thumbnails so dense feeds stay readable"
+      },
+      {
+        "text": "Scope social provider error copy by provider, so Instagram, Facebook, LinkedIn, and X setup states say what actually failed"
+      },
+      {
+        "text": "Scale the desktop Settings dialog with the viewport so tall settings lists remain usable on smaller displays"
+      },
+      {
+        "text": "Rebuild the main window through a hidden keepalive window during renderer recovery, so watchdog recovery no longer quits the app before the replacement window opens"
+      },
+      {
+        "text": "Batch local AI model file writes and throttle progress updates during model pack installs to keep Settings responsive during large downloads"
+      },
+      {
+        "text": "Keep Pause available while an AI model download is active"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Motion preferences now have a synced default of Detailed, while None removes app-controlled animation for users who need a quiet interface"
+      },
+      {
+        "text": "Freed Desktop now keeps the app alive while rebuilding a stalled main window, and large AI model pack downloads put less pressure on the interface"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.3001-dev",
     "prNumbers": [],
     "builds": [
-      "26.4.3000-dev"
+      "26.4.3000-dev",
+      "26.4.3001-dev"
     ],
     "buildLinks": [
       {
         "version": "26.4.3000-dev",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.3000-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.4.3001-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.4.3001-dev",
         "channel": "dev"
       }
     ]
