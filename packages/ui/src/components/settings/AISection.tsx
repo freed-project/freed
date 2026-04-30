@@ -5,13 +5,15 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { AIPreferences, LocalAIModelId } from "@freed/shared";
+import type { AIPreferences, LocalAIHardwareProfile, LocalAIModelId } from "@freed/shared";
+import { recommendLocalAIModelId } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import type {
   LocalAIModelDownloadProgress,
   LocalAIModelViewState,
 } from "../../context/PlatformContext.js";
 import { SettingsToggle } from "../SettingsToggle.js";
+import { ExternalLinkIcon } from "../icons.js";
 
 type AIProvider = AIPreferences["provider"];
 type CloudAIProvider = Extract<AIProvider, "openai" | "anthropic" | "gemini">;
@@ -82,6 +84,7 @@ const PROVIDER_LABELS = Object.fromEntries(
 
 const CLOUD_PROVIDERS = new Set<AIProvider>(["openai", "anthropic", "gemini"]);
 const NUMBER_FORMAT = new Intl.NumberFormat();
+const LOCAL_MODEL_HEALTH_REFRESH_MS = 5_000;
 
 function isCloudProvider(provider: AIProvider): provider is CloudAIProvider {
   return CLOUD_PROVIDERS.has(provider);
@@ -121,6 +124,14 @@ function formatLocalTime(timestamp?: number): string {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(timestamp));
+}
+
+function formatMemorySummary(profile: LocalAIHardwareProfile | null): string {
+  if (!profile) return "Checking this machine";
+  const total = profile.totalMemoryBytes ? formatBytes(profile.totalMemoryBytes) : "unknown RAM";
+  const available = profile.availableMemoryBytes ? `${formatBytes(profile.availableMemoryBytes)} free` : "free RAM unknown";
+  const graphics = profile.webGPUAvailable ? "WebGPU available" : "WebGPU unavailable";
+  return `${total} RAM, ${available}, ${graphics}`;
 }
 
 function applyDownloadProgress(
@@ -247,14 +258,18 @@ function ProviderSelector({
 
 function LocalModelCard({
   model,
+  recommended,
   busy,
+  onSelect,
   onDownload,
   onPause,
   onRemove,
   onOpenSource,
 }: {
   model: LocalAIModelViewState;
+  recommended: boolean;
   busy: boolean;
+  onSelect: (id: LocalAIModelId) => void;
   onDownload: (id: LocalAIModelId) => void;
   onPause: (id: LocalAIModelId) => void;
   onRemove: (id: LocalAIModelId) => void;
@@ -269,9 +284,17 @@ function LocalModelCard({
   const isUnsupported = model.state.status === "unsupported";
   const needsUpdate = isAvailable && model.state.revision !== model.manifest.revision;
   const actionDisabled = busy || isUnsupported;
+  const selected = model.selected;
 
   return (
-    <div className="rounded-lg border border-[var(--theme-border-subtle)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_82%,transparent)] p-4">
+    <div
+      className={`rounded-lg border p-4 transition-colors ${
+        selected
+          ? "border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_58%,var(--theme-border-subtle))] bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_10%,var(--theme-bg-surface))]"
+          : "border-[var(--theme-border-subtle)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_82%,transparent)]"
+      }`}
+      data-testid={`local-ai-pack-${model.manifest.tier}`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -279,6 +302,16 @@ function LocalModelCard({
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusTone(model.state.status)}`}>
               {statusLabel(model)}
             </span>
+            {selected ? (
+              <span className="rounded-full bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent)] px-2 py-0.5 text-[11px] font-medium text-[var(--theme-accent-secondary)]">
+                Selected
+              </span>
+            ) : null}
+            {recommended ? (
+              <span className="rounded-full bg-[rgb(var(--theme-feedback-success-rgb)/0.12)] px-2 py-0.5 text-[11px] font-medium text-[rgb(var(--theme-feedback-success-rgb))]">
+                Recommended
+              </span>
+            ) : null}
           </div>
           <p className="mt-1 text-xs leading-5 text-[var(--theme-text-muted)]">{model.manifest.description}</p>
         </div>
@@ -290,8 +323,8 @@ function LocalModelCard({
       <div className="mt-3 grid gap-2 text-xs text-[var(--theme-text-muted)] sm:grid-cols-2">
         <p>Download: <span className="text-[var(--theme-text-secondary)]">{formatBytes(model.manifest.estimatedDownloadBytes)}</span></p>
         <p>Storage: <span className="text-[var(--theme-text-secondary)]">{formatBytes(model.state.storageBytes || model.manifest.estimatedStorageBytes)}</span></p>
-        <p>Indexed: <span className="text-[var(--theme-text-secondary)]">{NUMBER_FORMAT.format(model.state.health?.lastIndexedItemCount ?? 0)} items</span></p>
-        <p>Last run: <span className="text-[var(--theme-text-secondary)]">{formatLocalTime(model.state.health?.lastRunAt)}</span></p>
+        <p>Classified: <span className="text-[var(--theme-text-secondary)]">{NUMBER_FORMAT.format(model.state.health?.lastIndexedItemCount ?? 0)} items</span></p>
+        <p>Last scan: <span className="text-[var(--theme-text-secondary)]">{formatLocalTime(model.state.health?.lastRunAt)}</span></p>
       </div>
 
       <p className="mt-2 text-xs leading-5 text-[var(--theme-text-soft)]">{model.manifest.hardwareNote}</p>
@@ -317,6 +350,16 @@ function LocalModelCard({
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
+        {!selected ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => onSelect(model.manifest.id)}
+            className="theme-toolbar-button-ghost rounded-lg px-3 py-1.5 text-xs transition-colors disabled:opacity-40"
+          >
+            Use pack
+          </button>
+        ) : null}
         {isDownloading ? (
           <button
             type="button"
@@ -348,9 +391,11 @@ function LocalModelCard({
         <button
           type="button"
           onClick={() => onOpenSource(model.manifest.sourceUrl)}
-          className="theme-toolbar-button-ghost rounded-lg px-3 py-1.5 text-xs transition-colors"
+          className="ml-auto inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-[var(--theme-text-muted)] transition-colors hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-secondary)]"
+          aria-label={`View ${model.manifest.title} model source`}
         >
-          Source
+          <span>View source</span>
+          <ExternalLinkIcon className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>
@@ -493,6 +538,7 @@ export function AISection() {
   const [optimisticAI, setOptimisticAI] = useState<AIPreferences | null>(null);
   const [showOllamaUrl, setShowOllamaUrl] = useState(false);
   const [localModels, setLocalModels] = useState<LocalAIModelViewState[]>([]);
+  const [hardwareProfile, setHardwareProfile] = useState<LocalAIHardwareProfile | null>(null);
   const [localModelsLoading, setLocalModelsLoading] = useState(false);
   const [busyModelId, setBusyModelId] = useState<LocalAIModelId | null>(null);
   const displayedAI = optimisticAI ?? ai;
@@ -500,6 +546,21 @@ export function AISection() {
   const cloudProvider = isCloudProvider(displayedAI.provider) ? displayedAI.provider : null;
   const requiresKey = cloudProvider !== null;
   const selectedProviderLabel = PROVIDER_LABELS[displayedAI.provider];
+  const recommendedModelId = useMemo(() => recommendLocalAIModelId(hardwareProfile), [hardwareProfile]);
+  const selectedLocalModel = useMemo(
+    () =>
+      localModels.find((model) => model.selected) ??
+      localModels.find((model) => model.manifest.id === recommendedModelId) ??
+      localModels[0],
+    [localModels, recommendedModelId],
+  );
+  const selectedLocalModelReady = selectedLocalModel?.state.status === "available";
+  const integratedSummariesEnabled =
+    displayedAI.provider !== "integrated" ||
+    Boolean(selectedLocalModelReady && selectedLocalModel?.manifest.supportsSummaries);
+  const integratedTopicsEnabled =
+    displayedAI.provider !== "integrated" ||
+    Boolean(selectedLocalModelReady && selectedLocalModel?.manifest.supportsSemanticSearch);
 
   useEffect(() => {
     if (optimisticAI && sameAIPreferences(optimisticAI, ai)) {
@@ -511,10 +572,21 @@ export function AISection() {
     if (!localAIModels) return;
     setLocalModelsLoading(true);
     try {
-      setLocalModels(await localAIModels.listModels());
+      const [models, profile] = await Promise.all([
+        localAIModels.listModels(),
+        localAIModels.getHardwareProfile(),
+      ]);
+      setLocalModels(models);
+      setHardwareProfile(profile);
     } finally {
       setLocalModelsLoading(false);
     }
+  }, [localAIModels]);
+
+  const refreshLocalModelHealth = useCallback(async () => {
+    if (!localAIModels) return;
+    const models = await localAIModels.listModels();
+    setLocalModels(models);
   }, [localAIModels]);
 
   useEffect(() => {
@@ -522,6 +594,14 @@ export function AISection() {
       void refreshLocalModels();
     }
   }, [displayedAI.provider, refreshLocalModels]);
+
+  useEffect(() => {
+    if (displayedAI.provider !== "integrated" || !localAIModels || busyModelId) return;
+    const handle = window.setInterval(() => {
+      void refreshLocalModelHealth();
+    }, LOCAL_MODEL_HEALTH_REFRESH_MS);
+    return () => window.clearInterval(handle);
+  }, [busyModelId, displayedAI.provider, localAIModels, refreshLocalModelHealth]);
 
   const update = useCallback(
     (patch: Partial<AIPreferences>) => {
@@ -555,6 +635,12 @@ export function AISection() {
       .finally(() => setBusyModelId(null));
   }, [localAIModels]);
 
+  const handleSelectLocalModel = useCallback((id: LocalAIModelId) => {
+    if (!localAIModels) return;
+    setBusyModelId(id);
+    void localAIModels.selectModel(id).then(setLocalModels).finally(() => setBusyModelId(null));
+  }, [localAIModels]);
+
   const handlePauseLocalModel = useCallback((id: LocalAIModelId) => {
     if (!localAIModels) return;
     setBusyModelId(id);
@@ -577,9 +663,19 @@ export function AISection() {
 
   const featureDescriptions = useMemo(() => {
     if (displayedAI.provider === "integrated") {
+      const packName = selectedLocalModel?.manifest.title ?? "selected pack";
+      const packReady = selectedLocalModelReady;
       return {
-        summarize: "Uses the installed local AI pack. Nothing leaves this device.",
-        topics: "Uses the installed local AI pack after rules run. Vectors stay device-local.",
+        summarize: !selectedLocalModel?.manifest.supportsSummaries
+          ? `${packName} does not include summaries or extraction.`
+          : packReady
+            ? `Uses ${packName}. Nothing leaves this device.`
+            : `Download ${packName} to use local summaries and extraction.`,
+        topics: !selectedLocalModel?.manifest.supportsSemanticSearch
+          ? `${packName} does not include semantic ranking.`
+          : packReady
+            ? `Uses ${packName} after rules run. Vectors stay device-local.`
+            : `Download ${packName} to use local topics and ranking.`,
       };
     }
     if (displayedAI.provider === "ollama") {
@@ -592,7 +688,7 @@ export function AISection() {
       summarize: `Sends article text to ${selectedProviderLabel} when content is cached. API costs may apply.`,
       topics: `Uses topics returned by ${selectedProviderLabel} to improve ranking.`,
     };
-  }, [displayedAI.provider, selectedProviderLabel]);
+  }, [displayedAI.provider, selectedProviderLabel, selectedLocalModel, selectedLocalModelReady]);
 
   return (
     <div className="space-y-5">
@@ -617,7 +713,8 @@ export function AISection() {
               Integrated AI Download
             </h3>
             <p className="mt-1 text-xs leading-5 text-[var(--theme-text-muted)]">
-              Freed Desktop does not ship model weights. Download the local pack when you want Integrated AI.
+              Freed Desktop does not ship model weights. Choose one local pack for this device.
+              Semantic scans run on startup, after new content arrives, and when local pack state changes.
             </p>
           </div>
           {!localAIModels ? (
@@ -630,11 +727,19 @@ export function AISection() {
             </p>
           ) : (
             <div className="space-y-3">
+              <div className="rounded-lg border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] px-3 py-2 text-xs leading-5 text-[var(--theme-text-muted)]">
+                <span className="font-medium text-[var(--theme-text-secondary)]">
+                  Recommended: {localModels.find((model) => model.manifest.id === recommendedModelId)?.manifest.title ?? "Balanced"}
+                </span>
+                <span className="block">{formatMemorySummary(hardwareProfile)}</span>
+              </div>
               {localModels.map((model) => (
                 <LocalModelCard
                   key={model.manifest.id}
                   model={model}
+                  recommended={model.manifest.id === recommendedModelId}
                   busy={busyModelId === model.manifest.id && model.state.status !== "downloading"}
+                  onSelect={handleSelectLocalModel}
                   onDownload={handleDownloadLocalModel}
                   onPause={handlePauseLocalModel}
                   onRemove={handleRemoveLocalModel}
@@ -720,13 +825,15 @@ export function AISection() {
           <SettingsToggle
             label="Summaries and extraction"
             description={featureDescriptions.summarize}
-            checked={displayedAI.autoSummarize}
+            checked={displayedAI.autoSummarize && integratedSummariesEnabled}
+            disabled={!integratedSummariesEnabled}
             onChange={(value) => update({ autoSummarize: value })}
           />
           <SettingsToggle
             label="Topics and ranking"
             description={featureDescriptions.topics}
-            checked={displayedAI.extractTopics}
+            checked={displayedAI.extractTopics && integratedTopicsEnabled}
+            disabled={!integratedTopicsEnabled}
             onChange={(value) => update({ extractTopics: value })}
           />
         </section>

@@ -12,7 +12,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock as StdRwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
-use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+use sysinfo::{Disks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::menu::{Menu, MenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Listener, Manager};
@@ -732,6 +732,17 @@ struct RuntimeMemoryStats {
     relay_client_count: u64,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AIHardwareProfile {
+    total_memory_bytes: Option<u64>,
+    available_memory_bytes: Option<u64>,
+    available_app_data_bytes: Option<u64>,
+    os: String,
+    arch: String,
+    web_gpu_available: bool,
+}
+
 // ---------------------------------------------------------------------------
 // Capture state — shared UA strings and HTTP client for social scrapers
 // ---------------------------------------------------------------------------
@@ -1391,6 +1402,34 @@ async fn get_runtime_memory_stats(
         webkit_cache_bytes,
         relay_doc_bytes,
         relay_client_count,
+    })
+}
+
+#[tauri::command]
+async fn get_ai_hardware_profile(
+    app: tauri::AppHandle,
+    web_gpu_available: bool,
+) -> Result<AIHardwareProfile, String> {
+    let mut system = System::new();
+    system.refresh_memory();
+
+    let app_data_dir = app.path().app_data_dir().ok();
+    let available_app_data_bytes = app_data_dir.as_ref().and_then(|path| {
+        let disks = Disks::new_with_refreshed_list();
+        disks
+            .iter()
+            .filter(|disk| path.starts_with(disk.mount_point()))
+            .max_by_key(|disk| disk.mount_point().to_string_lossy().len())
+            .map(|disk| disk.available_space())
+    });
+
+    Ok(AIHardwareProfile {
+        total_memory_bytes: Some(system.total_memory()),
+        available_memory_bytes: Some(system.available_memory()),
+        available_app_data_bytes,
+        os: std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
+        web_gpu_available,
     })
 }
 
@@ -4535,6 +4574,7 @@ pub fn run() {
             sha256_file,
             get_sync_client_count,
             get_runtime_memory_stats,
+            get_ai_hardware_profile,
             broadcast_doc,
             reset_pairing_token,
             show_window,
