@@ -2880,6 +2880,7 @@ test("dual-column reader arrow navigation cycles tiles and keeps the selected ti
 
     void store?.getState().updatePreferences({
       display: {
+        animationIntensity: "detailed",
         reading: {
           dualColumnMode: true,
         },
@@ -2975,6 +2976,7 @@ test("dual-column reader toolbar toggles stay aligned with the sidebar and rail"
 
     void store?.getState().updatePreferences({
       display: {
+        animationIntensity: "detailed",
         reading: {
           dualColumnMode: true,
         },
@@ -3265,9 +3267,22 @@ test("desktop hide previews button collapses the compact reader rail", async ({ 
   await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByLabel("Hide Previews")).toBeVisible({ timeout: 5_000 });
 
+  const railWidthBeforeCollapse = await page.getByTestId("compact-feed-panel-rail").evaluate((rail) =>
+    rail.getBoundingClientRect().width,
+  );
+  expect(railWidthBeforeCollapse).toBeGreaterThan(100);
+
   await page.getByLabel("Hide Previews").click();
 
   await expect(page.getByLabel("Show Previews")).toBeVisible({ timeout: 1_000 });
+  await expect.poll(async () =>
+    page.evaluate((initialWidth) => {
+      const rail = document.querySelector('[data-testid="compact-feed-panel-rail"]') as HTMLElement | null;
+      if (!rail) return -1;
+      const width = rail.getBoundingClientRect().width;
+      return width > 0 && width < initialWidth ? width : -1;
+    }, railWidthBeforeCollapse),
+  ).toBeGreaterThan(0);
 
   await expect.poll(async () => {
     return page.evaluate(() => {
@@ -3289,6 +3304,45 @@ test("desktop hide previews button collapses the compact reader rail", async ({ 
   }).toBe(false);
 
   await expect(page.getByTestId("compact-feed-panel-scroll-container")).toBeHidden({ timeout: 5_000 });
+});
+
+test("desktop hide previews skips the compact reader rail transition when animations are none", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(8);
+
+  await page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as
+      | {
+          getState: () => {
+            updatePreferences: (update: unknown) => Promise<void>;
+          };
+        }
+      | undefined;
+
+    void store?.getState().updatePreferences({
+      display: {
+        animationIntensity: "none",
+        reading: {
+          dualColumnMode: true,
+        },
+      },
+    });
+  });
+  await expect.poll(async () =>
+    page.evaluate(() => document.documentElement.dataset.animation),
+  ).toBe("none");
+
+  await page.getByText("Article 0:", { exact: false }).click();
+  const rail = page.getByTestId("compact-feed-panel-rail");
+  await expect(rail).toBeVisible({ timeout: 5_000 });
+  await expect(await rail.evaluate((element) => (element as HTMLElement).style.transition)).toBe("none");
+
+  await page.getByLabel("Hide Previews").click();
+
+  await expect(page.getByLabel("Show Previews")).toBeVisible({ timeout: 1_000 });
+  await expect(rail).toHaveCount(0);
 });
 
 test("forced compact reader toolbar keeps sidebar and overflow controls aligned", async ({ app, page }) => {
