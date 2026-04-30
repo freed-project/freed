@@ -29,6 +29,7 @@ import { ProviderSyncActionButton } from "./ProviderSyncActionButton";
 import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { withProviderSyncing } from "../lib/store";
 import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
+import { socialProviderCopy } from "../lib/social-provider-copy";
 
 // =============================================================================
 // Types
@@ -187,12 +188,13 @@ export function XSettingsSection({
   const xAuth = useAppStore((s) => s.xAuth);
   const setXAuth = useAppStore((s) => s.setXAuth);
   const isLoading = useAppStore((s) => s.isLoading);
-  const storeError = useAppStore((s) => s.error);
   const setError = useAppStore((s) => s.setError);
   const syncing = useAppStore((s) => (s.providerSyncCounts.x ?? 0) > 0);
   const healthSnapshot = useDebugStore((s) => s.health?.providers.x ?? null);
 
   const [lastDiag, setLastDiag] = useState<XSyncDiag | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const copy = socialProviderCopy("x");
 
   // Manual cookie entry (fallback)
   const [showManual, setShowManual] = useState(false);
@@ -214,6 +216,7 @@ export function XSettingsSection({
   const finishLogin = useCallback(
     async (ct0Val: string, authTokenVal: string) => {
       setError(null);
+      setActionError(null);
       const cookies = connectX(ct0Val, authTokenVal);
       if (!cookies) return;
       setXAuth({ isAuthenticated: true, cookies });
@@ -228,10 +231,12 @@ export function XSettingsSection({
   const handleSignIn = async () => {
     await confirm(async () => {
       try {
+        setActionError(null);
         await invoke("open_x_login_window");
         poller.start();
       } catch (err) {
         console.error("Failed to open X login window:", err);
+        setActionError(err instanceof Error ? err.message : "Failed to open X login window");
       }
     });
   };
@@ -246,6 +251,7 @@ export function XSettingsSection({
     await confirm(async () => {
       setFormError("");
       setError(null);
+      setActionError(null);
       const cookies = connectX(ct0, authToken);
       if (!cookies) {
         setFormError("Both ct0 and auth_token are required.");
@@ -264,6 +270,7 @@ export function XSettingsSection({
       const cookies = xAuth.cookies ?? loadStoredCookies();
       if (!cookies) return;
       setError(null);
+      setActionError(null);
       if (healthSnapshot?.pause && healthSnapshot.pause.pausedUntil > Date.now()) {
         await clearProviderPause("x");
       }
@@ -277,11 +284,12 @@ export function XSettingsSection({
     setXAuth({ isAuthenticated: false });
     setLastDiag(null);
     setError(null);
+    setActionError(null);
     setShowManual(false);
   };
 
-  const syncError = storeError && xAuth.isAuthenticated ? storeError : null;
-  const authError = xAuth.lastCaptureError ?? syncError;
+  const syncError = xAuth.isAuthenticated ? xAuth.lastCaptureError ?? null : null;
+  const authError = xAuth.lastCaptureError ?? actionError;
   const needsReconnect = needsProviderReconnect(authError);
   const statusTone = getProviderStatusTone({
     isConnected: xAuth.isAuthenticated,
@@ -300,7 +308,7 @@ export function XSettingsSection({
       if (!lastDiag) return null;
       if (lastDiag.errorStage) return null;
       if (lastDiag.itemsAdded === 0 && lastDiag.tweetsExtracted === 0) {
-        return <p className="text-xs text-[#52525b]">Timeline returned no posts.</p>;
+        return <p className="text-xs text-[#52525b]">{copy.feedReturnedEmpty}</p>;
       }
       if (lastDiag.itemsAdded === 0) {
         return <p className="text-xs text-[#52525b]">Already up to date.</p>;
@@ -353,8 +361,12 @@ export function XSettingsSection({
 
           {needsReconnect && (
             <p className="text-xs text-red-400 leading-relaxed">
-              {formatProviderReconnectMessage("X", authError)}
+              {formatProviderReconnectMessage(copy.label, authError)}
             </p>
+          )}
+
+          {actionError && !needsReconnect && (
+            <p className="text-xs text-red-400 leading-relaxed">{actionError}</p>
           )}
 
           {syncError && !needsReconnect && (
@@ -372,8 +384,7 @@ export function XSettingsSection({
           {lastDiag && <DiagPanel diag={lastDiag} />}
 
           <p className="text-xs text-[#52525b] leading-relaxed">
-            Freed syncs your home timeline every 30 minutes while the app is open.
-            Cookies expire periodically, reconnect when sync stops working.
+            {copy.connectedInfo}
           </p>
         </div>
       </SyncProviderSectionSurface>
@@ -478,7 +489,7 @@ export function XSettingsSection({
         <p className="text-sm text-[#71717a] leading-relaxed">
           {needsReconnect
             ? "Your X session is no longer valid. Sign in again to restore sync."
-            : "Pull your home timeline into Freed. Sign in with your X account to start syncing."}
+            : copy.disconnectedSettings}
         </p>
         <button
           onClick={handleSignIn}
@@ -488,8 +499,11 @@ export function XSettingsSection({
         </button>
         {needsReconnect && authError && (
           <p className="text-xs text-amber-400 leading-relaxed">
-            {formatProviderReconnectMessage("X", authError)}
+            {formatProviderReconnectMessage(copy.label, authError)}
           </p>
+        )}
+        {actionError && !needsReconnect && (
+          <p className="text-xs text-red-400 leading-relaxed">{actionError}</p>
         )}
         <button
           onClick={() => setShowManual(true)}

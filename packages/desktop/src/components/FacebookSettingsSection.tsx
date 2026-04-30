@@ -43,6 +43,7 @@ import { SyncProviderSectionSurface } from "./SyncProviderSectionSurface";
 import { withProviderSyncing } from "../lib/store";
 import { clearProviderPause, resetProviderPauseState } from "../lib/provider-health";
 import { MediaVaultSettingsCard } from "./MediaVaultSettingsCard";
+import { socialProviderCopy } from "../lib/social-provider-copy";
 
 // =============================================================================
 // Diagnostic Panel
@@ -196,8 +197,6 @@ export function FacebookSettingsSection({
   const fbCapture = useAppStore((s) => s.preferences.fbCapture);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const isLoading = useAppStore((s) => s.isLoading);
-  const storeError = useAppStore((s) => s.error);
-  const setError = useAppStore((s) => s.setError);
   const items = useAppStore((s) => s.items);
   const syncing = useAppStore((s) => (s.providerSyncCounts.facebook ?? 0) > 0);
   const healthSnapshot = useDebugStore((s) => s.health?.providers.facebook ?? null);
@@ -206,6 +205,8 @@ export function FacebookSettingsSection({
   const [refreshingGroups, setRefreshingGroups] = useState(false);
   const [lastDiag, setLastDiag] = useState<FbSyncDiag | null>(null);
   const [windowMode, setWindowMode] = useState(() => getFbScraperWindowMode());
+  const [actionError, setActionError] = useState<string | null>(null);
+  const copy = socialProviderCopy("facebook");
   const { confirm, dialog } = useProviderRiskGate("facebook");
 
   const knownGroups = fbCapture?.knownGroups ?? {};
@@ -231,19 +232,19 @@ export function FacebookSettingsSection({
 
   const handleLogin = useCallback(async () => {
     await confirm(async () => {
-      setError(null);
+      setActionError(null);
       try {
         await showFbLogin();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to open login window");
+        setActionError(err instanceof Error ? err.message : "Failed to open login window");
       }
     });
-  }, [confirm, setError]);
+  }, [confirm]);
 
   const handleCheckAuth = useCallback(async () => {
     await confirm(async () => {
       setChecking(true);
-      setError(null);
+      setActionError(null);
       try {
         const loggedIn = await checkFbAuth();
         const newState = { isAuthenticated: loggedIn, lastCheckedAt: Date.now() };
@@ -251,15 +252,15 @@ export function FacebookSettingsSection({
         storeFbAuthState(newState);
 
         if (!loggedIn) {
-          setError("Not logged in. Please log in through the Facebook window first.");
+          setActionError("Not logged in. Please log in through the Facebook window first.");
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Auth check failed");
+        setActionError(err instanceof Error ? err.message : "Auth check failed");
       } finally {
         setChecking(false);
       }
     });
-  }, [confirm, setFbAuth, setError]);
+  }, [confirm, setFbAuth]);
 
   const runSync = useCallback(async () => {
     setLastDiag(null);
@@ -340,15 +341,15 @@ export function FacebookSettingsSection({
 
   const handleRefreshGroups = useCallback(async () => {
     setRefreshingGroups(true);
-    setError(null);
+    setActionError(null);
     try {
       await captureFbGroups();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to refresh Facebook groups");
+      setActionError(err instanceof Error ? err.message : "Failed to refresh Facebook groups");
     } finally {
       setRefreshingGroups(false);
     }
-  }, [setError]);
+  }, []);
 
   const handleDisconnect = useCallback(async () => {
     try {
@@ -359,11 +360,11 @@ export function FacebookSettingsSection({
     await resetProviderPauseState("facebook");
     setFbAuth({ isAuthenticated: false });
     setLastDiag(null);
-    setError(null);
-  }, [setFbAuth, setError]);
+    setActionError(null);
+  }, [setFbAuth]);
 
-  const syncError = storeError && fbAuth.isAuthenticated ? storeError : null;
-  const authError = fbAuth.lastCaptureError ?? syncError;
+  const syncError = fbAuth.isAuthenticated ? fbAuth.lastCaptureError ?? null : null;
+  const authError = fbAuth.lastCaptureError ?? actionError;
   const needsReconnect = needsProviderReconnect(authError);
   const statusTone = getProviderStatusTone({
     isConnected: fbAuth.isAuthenticated,
@@ -385,7 +386,7 @@ export function FacebookSettingsSection({
       if (lastDiag.itemsAdded === 0 && lastDiag.postsExtracted === 0) {
         return (
           <p className="text-xs text-[#52525b]">
-            Feed returned no posts. Facebook may need a moment to load.
+            {copy.feedReturnedEmpty}
           </p>
         );
       }
@@ -451,14 +452,18 @@ export function FacebookSettingsSection({
 
           {needsReconnect && (
             <p className="text-xs text-red-400 leading-relaxed">
-              {formatProviderReconnectMessage("Facebook", authError)}
+              {formatProviderReconnectMessage(copy.label, authError)}
             </p>
+          )}
+
+          {actionError && !needsReconnect && (
+            <p className="text-xs text-red-400 leading-relaxed">{actionError}</p>
           )}
 
           {syncError && !needsReconnect && (
             <p className="text-xs text-red-400 leading-relaxed">
               {syncError.includes("timeout")
-                ? "Scrape timed out. Facebook may be slow to load. Try again."
+                ? copy.timeout
                 : syncError}
             </p>
           )}
@@ -562,8 +567,7 @@ export function FacebookSettingsSection({
           </details>
 
           <p className="text-xs text-[#52525b] leading-relaxed">
-            Freed reads your Facebook feed through a native browser session.
-            Your traffic looks identical to normal browsing.
+            {copy.connectedInfo}
           </p>
         </div>
       </SyncProviderSectionSurface>
@@ -581,7 +585,7 @@ export function FacebookSettingsSection({
         <p className="text-sm text-[#71717a] leading-relaxed">
           {needsReconnect
             ? "Your Facebook session is no longer valid. Sign in again to restore sync."
-            : "Pull your Facebook feed into Freed. Log in through a native browser window. Freed reads your feed the same way you would, so your account stays safe."}
+            : copy.disconnectedSettings}
         </p>
         <div className="flex gap-2">
           <button
@@ -600,8 +604,11 @@ export function FacebookSettingsSection({
         </div>
         {needsReconnect && authError && (
           <p className="text-xs text-amber-400 leading-relaxed">
-            {formatProviderReconnectMessage("Facebook", authError)}
+            {formatProviderReconnectMessage(copy.label, authError)}
           </p>
+        )}
+        {actionError && !needsReconnect && (
+          <p className="text-xs text-red-400 leading-relaxed">{actionError}</p>
         )}
         <ProviderHealthSectionSummary provider="facebook" />
       </div>

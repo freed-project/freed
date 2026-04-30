@@ -13,6 +13,7 @@ import { captureFbFeed } from "../lib/fb-capture";
 import { useSettingsStore } from "@freed/ui/lib/settings-store";
 import { resetProviderPauseState } from "../lib/provider-health";
 import { SampleDataTestingSection } from "@freed/ui/components/SampleDataTestingSection";
+import { socialProviderCopy } from "../lib/social-provider-copy";
 
 const FbIcon = () => (
   <svg className="h-7 w-7 text-[var(--theme-media-facebook)]" viewBox="0 0 24 24" fill="currentColor">
@@ -25,19 +26,22 @@ export function FacebookFeedEmptyState() {
   const setFbAuth = useAppStore((s) => s.setFbAuth);
   const isLoading = useAppStore((s) => s.isLoading);
   const activeFilter = useAppStore((s) => s.activeFilter);
-  const storeError = useAppStore((s) => s.error);
   const setError = useAppStore((s) => s.setError);
   const openSettings = useSettingsStore((s) => s.openTo);
 
   const [syncing, setSyncing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const copy = socialProviderCopy("facebook");
 
   const handleSync = async () => {
     setError(null);
+    setActionError(null);
     setSyncing(true);
     try {
       await captureFbFeed();
     } catch (err) {
       console.error("Facebook sync failed:", err);
+      setActionError(err instanceof Error ? err.message : "Facebook sync failed");
     } finally {
       setSyncing(false);
     }
@@ -52,9 +56,10 @@ export function FacebookFeedEmptyState() {
     await resetProviderPauseState("facebook");
     setFbAuth({ isAuthenticated: false });
     setError(null);
+    setActionError(null);
   };
 
-  const syncError = storeError && fbAuth.isAuthenticated ? storeError : null;
+  const syncError = fbAuth.isAuthenticated ? fbAuth.lastCaptureError ?? actionError : null;
 
   if (activeFilter.platform !== "facebook") return null;
 
@@ -65,7 +70,7 @@ export function FacebookFeedEmptyState() {
           <FbIcon />
         </div>
         <p className="text-lg font-medium mb-2">All caught up!</p>
-        <p className="mb-6 text-sm text-[var(--theme-text-muted)]">Your Facebook feed is up to date.</p>
+        <p className="mb-6 text-sm text-[var(--theme-text-muted)]">{copy.connectedEmptyState}</p>
         <div className="flex gap-3">
           <button
             onClick={handleSync}
@@ -112,7 +117,7 @@ export function FacebookFeedEmptyState() {
       </div>
       <p className="text-lg font-medium mb-2">Connect Facebook</p>
       <p className="mb-6 max-w-xs text-center text-sm text-[var(--theme-text-muted)]">
-        Pull your news feed into Freed. Set it up in Sources settings.
+        {copy.disconnectedEmptyState}
       </p>
       <button
         onClick={() => openSettings("facebook")}
