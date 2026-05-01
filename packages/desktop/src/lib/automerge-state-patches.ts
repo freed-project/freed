@@ -71,6 +71,21 @@ function applyItemContribution(counts: CountState, item: FeedItem, delta: 1 | -1
   }
 }
 
+function countContributionKey(item: FeedItem): string {
+  const userState = item.userState;
+  if (userState.hidden || userState.archived) return "excluded";
+  return [
+    item.platform,
+    item.rssSource?.feedUrl ?? "",
+    userState.readAt ? "read" : "unread",
+    userState.saved ? "saved" : "unsaved",
+  ].join("|");
+}
+
+function countContributionChanged(previous: FeedItem, next: FeedItem): boolean {
+  return countContributionKey(previous) !== countContributionKey(next);
+}
+
 function applyCountState(state: DocState, counts: CountState): DocState {
   return {
     ...state,
@@ -115,7 +130,11 @@ export function applyItemPatchesToState(
     const previous = items[existingIndex];
     if (!previous) continue;
 
-    applyItemContribution(ensureCounts(), previous, -1);
+    const countChanged = countContributionChanged(previous, item);
+    if (countChanged) {
+      applyItemContribution(ensureCounts(), previous, -1);
+    }
+
     if (item.userState.hidden) {
       items.splice(existingIndex, 1);
       itemIndex.delete(item.globalId);
@@ -124,13 +143,15 @@ export function applyItemPatchesToState(
     }
 
     items[existingIndex] = item;
-    applyItemContribution(ensureCounts(), item, 1);
+    if (countChanged) {
+      applyItemContribution(ensureCounts(), item, 1);
+    }
   }
 
-  if (!nextItems || !counts) return { state, itemIndex };
+  if (!nextItems) return { state, itemIndex };
   const nextIndex = indexNeedsRebuild ? createItemIndex(nextItems) : itemIndex;
   return {
-    state: applyCountState({ ...state, items: nextItems }, counts),
+    state: counts ? applyCountState({ ...state, items: nextItems }, counts) : { ...state, items: nextItems },
     itemIndex: nextIndex,
   };
 }
