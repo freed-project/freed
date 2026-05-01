@@ -24,6 +24,11 @@ export interface AISummary {
   sentiment: "positive" | "negative" | "neutral" | "mixed";
 }
 
+interface SummarizeOptions {
+  signal?: AbortSignal;
+  throwOnError?: boolean;
+}
+
 const SYSTEM_PROMPT = `You are a concise article summarizer. Given article text, return ONLY valid JSON with this exact shape:
 {"summary":"2-4 sentence summary","topics":["topic1","topic2"],"sentiment":"positive"|"negative"|"neutral"|"mixed"}
 Do not include markdown, code fences, or any text outside the JSON object.`;
@@ -36,6 +41,7 @@ async function callOpenAICompatible(
   model: string,
   text: string,
   authHeader: string,
+  signal?: AbortSignal,
 ): Promise<string> {
   const resp = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
@@ -52,6 +58,7 @@ async function callOpenAICompatible(
       temperature: 0.3,
       max_tokens: 512,
     }),
+    signal,
   });
 
   if (!resp.ok) {
@@ -67,6 +74,7 @@ async function callAnthropic(
   model: string,
   text: string,
   apiKey: string,
+  signal?: AbortSignal,
 ): Promise<string> {
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -81,6 +89,7 @@ async function callAnthropic(
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: text.slice(0, 8_000) }],
     }),
+    signal,
   });
 
   if (!resp.ok) {
@@ -96,6 +105,7 @@ async function callGemini(
   model: string,
   text: string,
   apiKey: string,
+  signal?: AbortSignal,
 ): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const resp = await fetch(url, {
@@ -106,6 +116,7 @@ async function callGemini(
       contents: [{ parts: [{ text: text.slice(0, 8_000) }] }],
       generationConfig: { temperature: 0.3, maxOutputTokens: 512 },
     }),
+    signal,
   });
 
   if (!resp.ok) {
@@ -159,6 +170,7 @@ export async function summarize(
   text: string,
   prefs: AIPreferences,
   apiKey?: string | null,
+  options: SummarizeOptions = {},
 ): Promise<AISummary | null> {
   if (
     prefs.provider === "none" ||
@@ -176,7 +188,7 @@ export async function summarize(
     switch (prefs.provider) {
       case "ollama": {
         const baseUrl = `${prefs.ollamaUrl ?? "http://localhost:11434"}/v1`;
-        raw = await callOpenAICompatible(baseUrl, model, text, "Bearer ollama");
+        raw = await callOpenAICompatible(baseUrl, model, text, "Bearer ollama", options.signal);
         break;
       }
       case "openai": {
@@ -186,17 +198,18 @@ export async function summarize(
           model,
           text,
           `Bearer ${apiKey}`,
+          options.signal,
         );
         break;
       }
       case "anthropic": {
         if (!apiKey) return null;
-        raw = await callAnthropic(model, text, apiKey);
+        raw = await callAnthropic(model, text, apiKey, options.signal);
         break;
       }
       case "gemini": {
         if (!apiKey) return null;
-        raw = await callGemini(model, text, apiKey);
+        raw = await callGemini(model, text, apiKey, options.signal);
         break;
       }
       default: {
@@ -207,6 +220,9 @@ export async function summarize(
 
     return parseAISummary(raw);
   } catch (err) {
+    if (options.throwOnError) {
+      throw err;
+    }
     console.warn("[ai-summarizer] Failed:", err);
     return null;
   }
