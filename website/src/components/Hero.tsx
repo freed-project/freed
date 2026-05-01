@@ -12,11 +12,15 @@ import {
 } from "react-icons/fa6";
 import HeroAnimation from "./HeroAnimation";
 import { useNewsletter } from "@/context/NewsletterContext";
-import { slowHeroMotion, slowHeroDelay, slowHeroInterval } from "@/lib/motion";
+import { slowHeroMotion, slowHeroDelay } from "@/lib/motion";
 
 const ROTATING_WORDS = ["Feed", "Life", "Mind"];
-const HEADLINE_ROTATION_INTERVAL_MS = 2000;
+const HEADLINE_ROTATION_INTERVAL_MS = 6000;
 const HEADLINE_WORD_TRANSITION_SECONDS = 1 / 6;
+const HEADLINE_LAYOUT_TRANSITION = {
+  duration: 0.35,
+  ease: [0.22, 1, 0.36, 1],
+} as const;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Hero() {
@@ -29,7 +33,7 @@ export default function Hero() {
   useEffect(() => {
     const interval = setInterval(() => {
       setWordIndex((prev) => (prev + 1) % ROTATING_WORDS.length);
-    }, slowHeroInterval(HEADLINE_ROTATION_INTERVAL_MS));
+    }, HEADLINE_ROTATION_INTERVAL_MS);
     return () => clearInterval(interval);
   }, []);
 
@@ -109,26 +113,44 @@ export default function Hero() {
           className="order-2 text-center lg:order-1 lg:pl-10 lg:text-left"
         >
           <h1 className="theme-display-large mb-6 text-4xl font-bold leading-[1.05] sm:mb-12 sm:text-5xl lg:-ml-2 lg:text-7xl">
-            <span className="text-text-primary">Take Back</span>
-            <br />
-            <span className="text-text-primary">Your </span>
-            <span className="relative inline-block">
-              <AnimatePresence mode="wait">
-                <motion.span
-                  key={wordIndex}
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  exit={{ y: -20, opacity: 0 }}
-                  transition={{
-                    duration: slowHeroMotion(HEADLINE_WORD_TRANSITION_SECONDS),
-                    ease: "easeInOut",
-                  }}
-                  className="inline-block gradient-text"
-                >
-                  {ROTATING_WORDS[wordIndex]}
-                </motion.span>
-              </AnimatePresence>
-            </span>
+            <span className="block text-text-primary">Take Back</span>
+            <motion.span
+              layout
+              transition={HEADLINE_LAYOUT_TRANSITION}
+              className="flex flex-wrap items-baseline justify-center gap-x-[0.2em] lg:justify-start"
+            >
+              <motion.span
+                layout="position"
+                transition={HEADLINE_LAYOUT_TRANSITION}
+                className="inline-block text-text-primary"
+              >
+                Your
+              </motion.span>
+              <motion.span
+                layout
+                transition={HEADLINE_LAYOUT_TRANSITION}
+                className="relative inline-grid"
+              >
+                <AnimatePresence initial={false} mode="popLayout">
+                  <motion.span
+                    layout
+                    key={wordIndex}
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: -20, opacity: 0 }}
+                    transition={{
+                      duration: slowHeroMotion(
+                        HEADLINE_WORD_TRANSITION_SECONDS,
+                      ),
+                      ease: "easeInOut",
+                    }}
+                    className="inline-block gradient-text"
+                  >
+                    {ROTATING_WORDS[wordIndex]}
+                  </motion.span>
+                </AnimatePresence>
+              </motion.span>
+            </motion.span>
           </h1>
 
           <p className="mb-2 inline-flex items-center gap-3 text-xl font-medium text-text-primary sm:mb-3 sm:text-2xl">
