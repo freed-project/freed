@@ -114,4 +114,25 @@ describe("Automerge item patch state updates", () => {
     expect(result.state.totalItemCount).toBe(1);
     expect(result.state.totalUnreadCount).toBe(0);
   });
+
+  it("preserves count map identity for count-neutral item patches", () => {
+    const unread = makeItem("rss:unread");
+    const read = makeItem("rss:read", { readAt: 10 });
+    const state = makeState([unread, read]);
+    const index = createItemIndex(state.items);
+
+    const likedUnread = makeItem("rss:unread", { liked: true, likedAt: 40 });
+    const result = applyItemPatchesToState(state, [{ item: likedUnread }], index);
+
+    expect(result.state.items).toEqual([likedUnread, read]);
+    expect(result.state.feedUnreadCounts).toBe(state.feedUnreadCounts);
+    expect(result.state.feedTotalCounts).toBe(state.feedTotalCounts);
+    expect(result.state.unreadCountByPlatform).toBe(state.unreadCountByPlatform);
+    expect(result.state.itemCountByPlatform).toBe(state.itemCountByPlatform);
+    expect(result.state.archivableCountByPlatform).toBe(state.archivableCountByPlatform);
+    expect(result.state.archivableFeedCounts).toBe(state.archivableFeedCounts);
+    expect(result.state.totalUnreadCount).toBe(state.totalUnreadCount);
+    expect(result.state.totalItemCount).toBe(state.totalItemCount);
+    expect(result.state.totalArchivableCount).toBe(state.totalArchivableCount);
+  });
 });
