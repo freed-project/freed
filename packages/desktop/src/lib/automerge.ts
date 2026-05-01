@@ -30,9 +30,9 @@ import type {
   RssFeed,
   UserPreferences,
 } from "@freed/shared";
-import type { DocState, DocStats, FeedItemPatch, WorkerRequest, WorkerResponse } from "./automerge-types";
+import type { DocChangeEvent, DocState, DocStats, FeedItemPatch, WorkerRequest, WorkerResponse } from "./automerge-types";
 import { log } from "./logger.js";
-export type { DocState } from "./automerge-types";
+export type { DocChangeEvent, DocState } from "./automerge-types";
 
 /**
  * Whole-document save, hydrate, and broadcast work can take well over a
@@ -131,7 +131,7 @@ let lastDocStats: DocStats | null = null;
 // Subscriber model
 // ---------------------------------------------------------------------------
 
-type Subscriber = (state: DocState) => void;
+type Subscriber = (state: DocState, event: DocChangeEvent) => void;
 const subscribers = new Set<Subscriber>();
 
 export function subscribe(callback: Subscriber): () => void {
@@ -212,9 +212,9 @@ function applyItemPatches(state: DocState, patches: FeedItemPatch[]): DocState {
   return recomputeCounts({ ...state, items: nextItems });
 }
 
-function publishState(state: DocState): void {
+function publishState(state: DocState, event: DocChangeEvent): void {
   lastDocState = state;
-  for (const sub of subscribers) sub(state);
+  for (const sub of subscribers) sub(state, event);
 }
 
 // ---------------------------------------------------------------------------
@@ -240,13 +240,25 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   if (msg.type === "READY") return;
 
   if (msg.type === "STATE_UPDATE") {
-    publishState(msg.state);
+    publishState(msg.state, {
+      source: "state_update",
+      mutation: msg.mutation,
+      changedItemIds: null,
+      requiresFullScan: true,
+    });
     return;
   }
 
   if (msg.type === "ITEM_PATCH") {
     if (!lastDocState) return;
-    publishState(applyItemPatches(lastDocState, msg.patches));
+    const changedItems = msg.patches.map((patch) => patch.item);
+    publishState(applyItemPatches(lastDocState, msg.patches), {
+      source: "item_patch",
+      mutation: msg.mutation,
+      changedItemIds: msg.changedItemIds,
+      changedItems,
+      requiresFullScan: false,
+    });
     return;
   }
 
