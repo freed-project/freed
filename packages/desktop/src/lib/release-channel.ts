@@ -1,27 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
-import { load, type Store } from "@tauri-apps/plugin-store";
 import type { ReleaseChannel } from "@freed/shared";
 import {
   persistReleaseChannel,
   RELEASE_CHANNEL_STORAGE_KEY,
 } from "@freed/ui/lib/release-channel";
+import { readNativeJsonValue, writeNativeJsonValue } from "./native-json-store";
 
 const DESKTOP_RELEASE_CHANNEL_STORE_FILE = "release-channel.json";
 const DESKTOP_RELEASE_CHANNEL_STORE_KEY = "channel";
 const DESKTOP_INSTALLED_RELEASE_CHANNEL_STORE_KEY = "installedChannel";
-
-let releaseChannelStore: Store | null = null;
-
-async function getReleaseChannelStore(): Promise<Store> {
-  if (!releaseChannelStore) {
-    releaseChannelStore = await load(DESKTOP_RELEASE_CHANNEL_STORE_FILE, {
-      defaults: {},
-      autoSave: true,
-    });
-  }
-
-  return releaseChannelStore;
-}
 
 function normalizeStoredDesktopReleaseChannel(value: unknown): ReleaseChannel | null {
   return value === "dev" || value === "production" ? value : null;
@@ -53,22 +40,37 @@ export async function loadDesktopReleaseChannelState(): Promise<DesktopReleaseCh
   const fallbackChannel = bootstrapDesktopReleaseChannel();
 
   try {
-    const store = await getReleaseChannelStore();
     const storedChannel = normalizeStoredDesktopReleaseChannel(
-      await store.get(DESKTOP_RELEASE_CHANNEL_STORE_KEY),
+      await readNativeJsonValue(
+        DESKTOP_RELEASE_CHANNEL_STORE_FILE,
+        DESKTOP_RELEASE_CHANNEL_STORE_KEY,
+      ),
     );
     const selectedChannel = storedChannel ?? fallbackChannel;
     const storedInstalledChannel = normalizeStoredDesktopReleaseChannel(
-      await store.get(DESKTOP_INSTALLED_RELEASE_CHANNEL_STORE_KEY),
+      await readNativeJsonValue(
+        DESKTOP_RELEASE_CHANNEL_STORE_FILE,
+        DESKTOP_INSTALLED_RELEASE_CHANNEL_STORE_KEY,
+      ),
     );
     const installedChannel = storedInstalledChannel ?? selectedChannel;
     persistReleaseChannel(selectedChannel);
 
     if (!storedChannel) {
-      await store.set(DESKTOP_RELEASE_CHANNEL_STORE_KEY, selectedChannel);
+      await writeNativeJsonValue(
+        DESKTOP_RELEASE_CHANNEL_STORE_FILE,
+        DESKTOP_RELEASE_CHANNEL_STORE_KEY,
+        selectedChannel,
+        "release-channel",
+      );
     }
     if (!storedInstalledChannel) {
-      await store.set(DESKTOP_INSTALLED_RELEASE_CHANNEL_STORE_KEY, installedChannel);
+      await writeNativeJsonValue(
+        DESKTOP_RELEASE_CHANNEL_STORE_FILE,
+        DESKTOP_INSTALLED_RELEASE_CHANNEL_STORE_KEY,
+        installedChannel,
+        "release-channel",
+      );
     }
 
     return { selectedChannel, installedChannel };
@@ -81,8 +83,12 @@ export async function persistDesktopReleaseChannel(channel: ReleaseChannel): Pro
   persistReleaseChannel(channel);
 
   try {
-    const store = await getReleaseChannelStore();
-    await store.set(DESKTOP_RELEASE_CHANNEL_STORE_KEY, channel);
+    await writeNativeJsonValue(
+      DESKTOP_RELEASE_CHANNEL_STORE_FILE,
+      DESKTOP_RELEASE_CHANNEL_STORE_KEY,
+      channel,
+      "release-channel",
+    );
   } catch {
     // localStorage is still updated, so the current install keeps working.
   }
@@ -92,8 +98,12 @@ export async function persistDesktopInstalledReleaseChannel(
   channel: ReleaseChannel,
 ): Promise<void> {
   try {
-    const store = await getReleaseChannelStore();
-    await store.set(DESKTOP_INSTALLED_RELEASE_CHANNEL_STORE_KEY, channel);
+    await writeNativeJsonValue(
+      DESKTOP_RELEASE_CHANNEL_STORE_FILE,
+      DESKTOP_INSTALLED_RELEASE_CHANNEL_STORE_KEY,
+      channel,
+      "release-channel",
+    );
   } catch {
     // The current process can still render the channel from React state.
   }

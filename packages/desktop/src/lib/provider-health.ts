@@ -1,6 +1,4 @@
 import { isTauri } from "@tauri-apps/api/core";
-import { appDataDir } from "@tauri-apps/api/path";
-import { readTextFile, rename, writeTextFile } from "@tauri-apps/plugin-fs";
 import { toast } from "@freed/ui/components/Toast";
 import {
   setProviderHealth,
@@ -20,6 +18,7 @@ import { useAppStore } from "./store";
 import { storeFbAuthState } from "./fb-auth";
 import { storeIgAuthState } from "./instagram-auth";
 import { storeLiAuthState } from "./li-auth";
+import { readNativeJsonFile, writeNativeJsonValue } from "./native-json-store";
 
 const HEALTH_STORE_FILE = "sync-health.json";
 const HEALTH_STORE_KEY = "provider-health";
@@ -110,8 +109,6 @@ interface PersistedHealthState {
 
 let currentState: PersistedHealthState | null = null;
 let initPromise: Promise<void> | null = null;
-let healthStorePathPromise: Promise<string> | null = null;
-let nativePersistQueue: Promise<void> = Promise.resolve();
 
 function defaultDailyBuckets(now = Date.now()): HealthDailyBucket[] {
   return Array.from({ length: DEFAULT_DAILY_BUCKETS }, (_unused, index) => {
@@ -210,21 +207,6 @@ function fallbackWrite(state: PersistedHealthState): void {
   } catch {
     // Ignore mock store persistence failures.
   }
-}
-
-function isMissingHealthFile(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.includes("ENOENT") || message.includes("No such file");
-}
-
-async function getHealthStorePath(): Promise<string> {
-  if (!healthStorePathPromise) {
-    healthStorePathPromise = appDataDir().then((dir) => {
-      const base = dir.endsWith("/") ? dir.slice(0, -1) : dir;
-      return `${base}/${HEALTH_STORE_FILE}`;
-    });
-  }
-  return healthStorePathPromise;
 }
 
 function coerceBuckets<T extends HealthDailyBucket | HealthHourlyBucket>(
@@ -908,14 +890,10 @@ async function readState(): Promise<PersistedHealthState> {
     return fallbackRead() ?? createEmptyState();
   }
   try {
-    const path = await getHealthStorePath();
-    const raw = await readTextFile(path);
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const parsed = await readNativeJsonFile(HEALTH_STORE_FILE);
+    if (!parsed) return createEmptyState();
     return coercePersistedHealthState(parsed[HEALTH_STORE_KEY] ?? parsed);
   } catch (error) {
-    if (isMissingHealthFile(error)) {
-      return createEmptyState();
-    }
     log.error(
       `[provider-health] failed to read health store, falling back: ${
         error instanceof Error ? error.message : String(error)
@@ -926,30 +904,13 @@ async function readState(): Promise<PersistedHealthState> {
 }
 
 async function persistNativeState(state: PersistedHealthState): Promise<void> {
-  const queuedAt = Date.now();
-  const write = nativePersistQueue
-    .catch(() => {
-      // Keep the queue alive after a failed write.
-    })
-    .then(async () => {
-      const queueWaitMs = Date.now() - queuedAt;
-      const startedAt = Date.now();
-      await Promise.resolve();
-      const payload = JSON.stringify({ [HEALTH_STORE_KEY]: state });
-      const path = await getHealthStorePath();
-      const tempPath = `${path}.tmp`;
-      await writeTextFile(tempPath, payload);
-      await rename(tempPath, path);
-      const durationMs = Date.now() - startedAt;
-      if (durationMs >= 750 || queueWaitMs >= 750 || payload.length >= 1_000_000) {
-        log.info(
-          `[provider-health] persisted native health store bytes=${payload.length.toLocaleString()} duration_ms=${durationMs.toLocaleString()} queue_wait_ms=${queueWaitMs.toLocaleString()} rss_feeds=${Object.keys(state.rssFeeds).length.toLocaleString()}`,
-        );
-      }
-    });
-  nativePersistQueue = write;
   try {
-    await write;
+    await writeNativeJsonValue(
+      HEALTH_STORE_FILE,
+      HEALTH_STORE_KEY,
+      state,
+      "provider-health",
+    );
   } catch (error) {
     log.error(
       `[provider-health] failed to persist health file, falling back: ${
