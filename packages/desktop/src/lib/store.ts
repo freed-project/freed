@@ -480,7 +480,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const platformActionsRegistry = buildPlatformActionsRegistry(xCookiesFn);
       outboxTeardown = startOutboxProcessor(
         () => getDocState()?.items ?? null,
-        (cb) => subscribe(() => cb()),
+        (cb) => subscribe((_state, event) => cb(event)),
         platformActionsRegistry,
         async (id, syncedAt) => { await docConfirmLikedSynced(id, syncedAt); },
         async (id, syncedAt) => { await docConfirmSeenSynced(id, syncedAt); },

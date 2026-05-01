@@ -22,6 +22,7 @@
 
 import type { FeedItem, Platform } from "@freed/shared";
 import type { PlatformActions } from "./platform-actions";
+import type { DocChangeEvent } from "./automerge-types";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { scheduleSideEffect } from "./side-effect-scheduler";
 
@@ -56,7 +57,7 @@ export type ConfirmFn = (id: string, syncedAt?: number) => Promise<void>;
  */
 export function startOutboxProcessor(
   getItems: () => FeedItem[] | null,
-  subscribe: (cb: () => void) => () => void,
+  subscribe: (cb: (event: DocChangeEvent) => void) => () => void,
   platformActions: Map<Platform, PlatformActions>,
   confirmLiked: ConfirmFn,
   confirmSeen: ConfirmFn,
@@ -80,6 +81,27 @@ export function startOutboxProcessor(
   let drainTimer: ReturnType<typeof setTimeout> | null = null;
   let isDraining = false;
   let drainRequested = false;
+  let fullScanRequested = true;
+  const pendingChangedItems = new Map<string, FeedItem>();
+
+  function addDrainEvent(event?: DocChangeEvent) {
+    if (!event) {
+      return;
+    }
+
+    if (event.requiresFullScan) {
+      fullScanRequested = true;
+      return;
+    }
+
+    for (const item of event.changedItems) {
+      pendingChangedItems.set(item.globalId, item);
+    }
+  }
+
+  function requeueItem(item: FeedItem) {
+    pendingChangedItems.set(item.globalId, item);
+  }
 
   // ── Core drain logic ────────────────────────────────────────────────────
 
@@ -118,8 +140,22 @@ export function startOutboxProcessor(
     isDraining = true;
     drainRequested = false;
 
-    const items = getItems();
-    if (!items) {
+    let items: FeedItem[];
+    if (fullScanRequested) {
+      const currentItems = getItems();
+      if (!currentItems) {
+        isDraining = false;
+        return;
+      }
+      fullScanRequested = false;
+      pendingChangedItems.clear();
+      items = currentItems;
+    } else {
+      items = Array.from(pendingChangedItems.values());
+      pendingChangedItems.clear();
+    }
+
+    if (items.length === 0) {
       isDraining = false;
       return;
     }
@@ -153,6 +189,8 @@ export function startOutboxProcessor(
             retries.likeRetries = 0;
             maybeDeleteRetries(item.globalId);
             addDebugEvent("error", `[Outbox] like permanently failed for ${item.globalId}`);
+          } else {
+            requeueItem(item);
           }
         }
       } catch (err) {
@@ -162,6 +200,8 @@ export function startOutboxProcessor(
           try { await confirmLiked(item.globalId, -1); } catch { /* already logged */ }
           retries.likeRetries = 0;
           maybeDeleteRetries(item.globalId);
+        } else {
+          requeueItem(item);
         }
       }
     }
@@ -183,6 +223,8 @@ export function startOutboxProcessor(
             try { await confirmSeen(item.globalId, -1); } catch { /* logged below */ }
             retries.seenRetries = 0;
             maybeDeleteRetries(item.globalId);
+          } else {
+            requeueItem(item);
           }
         }
       } catch (err) {
@@ -192,15 +234,15 @@ export function startOutboxProcessor(
           try { await confirmSeen(item.globalId, -1); } catch { /* already logged */ }
           retries.seenRetries = 0;
           maybeDeleteRetries(item.globalId);
+        } else {
+          requeueItem(item);
         }
       }
     }
 
     isDraining = false;
 
-    // If new items arrived during drain, schedule another pass so they
-    // don't sit in the outbox until the next external doc change.
-    if (drainRequested || hasPendingItems(getItems())) {
+    if (drainRequested || fullScanRequested || pendingChangedItems.size > 0) {
       scheduleDrain();
     }
   }
@@ -216,24 +258,8 @@ export function startOutboxProcessor(
     });
   }
 
-  /** Quick check for any items that still need outbox processing. */
-  function hasPendingItems(items: FeedItem[] | null): boolean {
-    if (!items) return false;
-    for (const item of items) {
-      const us = item.userState;
-      if (us.liked && us.likedAt && !us.likedSyncedAt) {
-        const r = retryMap.get(item.globalId);
-        if (!r || r.likeRetries < MAX_RETRIES) return true;
-      }
-      if (us.readAt && !us.seenSyncedAt && item.sourceUrl) {
-        const r = retryMap.get(item.globalId);
-        if (!r || r.seenRetries < MAX_RETRIES) return true;
-      }
-    }
-    return false;
-  }
-
-  function scheduleDrain() {
+  function scheduleDrain(event?: DocChangeEvent) {
+    addDrainEvent(event);
     if (isDraining) {
       drainRequested = true;
       return;

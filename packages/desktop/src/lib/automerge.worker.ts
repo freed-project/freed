@@ -339,7 +339,7 @@ async function saveAndBroadcast(trace?: RequestTrace): Promise<void> {
     binarySize: binary.byteLength,
   };
   send(snapshot);
-  send({ type: "STATE_UPDATE", state });
+  send({ type: "STATE_UPDATE", state, mutation: trace?.opType });
 
   // Request main thread to relay the binary to connected PWA clients.
   // Array.from() (O(binary size)) runs here in the worker, off the main thread.
@@ -435,7 +435,12 @@ async function applyItemPatchChange(
     .filter((item): item is FeedItem => Boolean(item))
     .map((item) => ({ item: cloneFeedItemForPatch(item) }));
   if (patches.length > 0) {
-    send({ type: "ITEM_PATCH", patches });
+    send({
+      type: "ITEM_PATCH",
+      patches,
+      changedItemIds: changedIds,
+      mutation: trace?.opType,
+    });
   }
 }
 

@@ -35,4 +35,12 @@ describe("desktop hot-path contract", () => {
     expect(syncSource).toContain("scheduleSideEffect");
     expect(syncSource).toContain('queue: "sync"');
   });
+
+  it("keeps outbox drains wired to Automerge change metadata", () => {
+    const storeSource = readFileSync(join(LIB_DIR, "store.ts"), "utf8");
+    const outboxSource = readFileSync(join(LIB_DIR, "outbox.ts"), "utf8");
+    expect(storeSource).toContain("subscribe((_state, event) => cb(event))");
+    expect(outboxSource).toContain("DocChangeEvent");
+    expect(outboxSource).toContain("pendingChangedItems");
+  });
 });
