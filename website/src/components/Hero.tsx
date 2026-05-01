@@ -15,6 +15,8 @@ import { useNewsletter } from "@/context/NewsletterContext";
 import { slowHeroMotion, slowHeroDelay, slowHeroInterval } from "@/lib/motion";
 
 const ROTATING_WORDS = ["Feed", "Life", "Mind"];
+const HEADLINE_ROTATION_INTERVAL_MS = 2000;
+const HEADLINE_WORD_TRANSITION_SECONDS = 1 / 6;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Hero() {
@@ -27,7 +29,7 @@ export default function Hero() {
   useEffect(() => {
     const interval = setInterval(() => {
       setWordIndex((prev) => (prev + 1) % ROTATING_WORDS.length);
-    }, slowHeroInterval(6000));
+    }, slowHeroInterval(HEADLINE_ROTATION_INTERVAL_MS));
     return () => clearInterval(interval);
   }, []);
 
@@ -118,7 +120,7 @@ export default function Hero() {
                   animate={{ y: 0, opacity: 1 }}
                   exit={{ y: -20, opacity: 0 }}
                   transition={{
-                    duration: slowHeroMotion(0.5),
+                    duration: slowHeroMotion(HEADLINE_WORD_TRANSITION_SECONDS),
                     ease: "easeInOut",
                   }}
                   className="inline-block gradient-text"
