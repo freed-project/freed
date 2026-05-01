@@ -66,8 +66,9 @@ const WEBKIT_CACHE_TRIM_TARGET_BYTES: u64 = 512 * 1024 * 1024;
 const STARTUP_RECOVERY_STATE_FILE: &str = "startup-recovery.json";
 const RECOVERY_WINDOW_LABEL: &str = "startup-recovery";
 const RECOVERY_WINDOW_ROUTE: &str = "startup-recovery.html";
-const RENDERER_STALE_LOG_AFTER: Duration = Duration::from_secs(150);
-const RENDERER_VISIBLE_RECOVERY_AFTER: Duration = Duration::from_secs(180);
+const RENDERER_HEARTBEAT_WATCHDOG_INTERVAL: Duration = Duration::from_secs(15);
+const RENDERER_STALE_LOG_AFTER: Duration = Duration::from_secs(45);
+const RENDERER_VISIBLE_RECOVERY_AFTER: Duration = Duration::from_secs(75);
 const RENDERER_HIDDEN_RECOVERY_AFTER: Duration = Duration::from_secs(600);
 const MAIN_WINDOW_RELEASE_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const MAIN_WINDOW_RELEASE_POLL_ATTEMPTS: usize = 20;
@@ -278,7 +279,7 @@ fn scrub_webview_before_destroy(window: &tauri::WebviewWindow) {
     let _ = window.navigate("about:blank".parse().unwrap());
 }
 
-fn build_cloaked_scraper_window(
+fn build_hidden_scraper_window(
     app: &tauri::AppHandle,
     label: &str,
     title: &str,
@@ -293,7 +294,6 @@ fn build_cloaked_scraper_window(
         tauri::WebviewUrl::External(url.parse().map_err(|e: url::ParseError| e.to_string())?),
     )
     .user_agent(user_agent)
-    .transparent(true)
     .initialization_script(include_str!("webkit-mask.js"))
     .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
     .title(title)
@@ -304,8 +304,7 @@ fn build_cloaked_scraper_window(
     .always_on_bottom(true)
     .skip_taskbar(true)
     .shadow(false)
-    .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_CLOAK_JS)
-    .visible(true)
+    .visible(false)
     .build()
     .map_err(|e| e.to_string())
 }
@@ -2495,7 +2494,6 @@ async fn fb_scrape_feed(
                 tauri::WebviewUrl::External(fb_feed_url.parse().unwrap()),
             )
             .user_agent(&scraper_user_agent)
-            .transparent(true)
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
             .title("Freed Facebook")
@@ -2514,6 +2512,7 @@ async fn fb_scrape_feed(
                 builder = builder.center().visible(true);
             } else if window_mode == ScraperWindowMode::Cloaked {
                 builder = builder
+                    .transparent(true)
                     .focused(false)
                     .focusable(false)
                     .decorations(false)
@@ -2814,7 +2813,7 @@ async fn fb_scrape_comments(
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "comments scrape complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
-        None => build_cloaked_scraper_window(
+        None => build_hidden_scraper_window(
             &app,
             "fb-scraper",
             "Freed Facebook",
@@ -2940,10 +2939,8 @@ async fn ig_show_login(
                 info!("[IG] login detected, auto-scraping...");
                 tokio::time::sleep(Duration::from_millis(gaussian_ms(4000.0, 800.0))).await;
                 let capture = scrape_app.state::<CaptureState>();
-                // Post-login auto-scrapes default to cloaked mode so they stay
-                // out of the way without reintroducing hidden-window stalls.
-                match ig_scrape_feed(scrape_app.clone(), capture, ScraperWindowMode::Cloaked).await
-                {
+                // Post-login auto-scrapes use hidden mode so they do not compete with the main renderer.
+                match ig_scrape_feed(scrape_app.clone(), capture, ScraperWindowMode::Hidden).await {
                     Ok(()) => info!("[IG] post-login auto-scrape complete"),
                     Err(e) => info!("[IG] post-login auto-scrape error: {}", e),
                 }
@@ -3068,7 +3065,6 @@ async fn ig_scrape_feed(
                 tauri::WebviewUrl::External(ig_feed_url.parse().unwrap()),
             )
             .user_agent(&scraper_user_agent)
-            .transparent(true)
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
             .title("Freed Instagram")
@@ -3091,6 +3087,7 @@ async fn ig_scrape_feed(
                 builder = builder.center().visible(true);
             } else if window_mode == ScraperWindowMode::Cloaked {
                 builder = builder
+                    .transparent(true)
                     .focused(false)
                     .focusable(false)
                     .decorations(false)
@@ -3296,7 +3293,7 @@ async fn ig_scrape_comments(
         WebviewRecycleGuard::new(app.clone(), "ig-scraper", "comments scrape complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
-        None => build_cloaked_scraper_window(
+        None => build_hidden_scraper_window(
             &app,
             "ig-scraper",
             "Freed Instagram",
@@ -3358,7 +3355,7 @@ async fn fb_visit_url(
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "visit complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
-        None => build_cloaked_scraper_window(
+        None => build_hidden_scraper_window(
             &app,
             "fb-scraper",
             "Freed Facebook",
@@ -3367,7 +3364,7 @@ async fn fb_visit_url(
         )?,
     };
 
-    prepare_background_scraper_window(&wv, ScraperWindowMode::Cloaked)?;
+    prepare_background_scraper_window(&wv, ScraperWindowMode::Hidden)?;
 
     wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
         .map_err(|e| e.to_string())?;
@@ -3390,7 +3387,7 @@ async fn ig_visit_url(
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "visit complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
-        None => build_cloaked_scraper_window(
+        None => build_hidden_scraper_window(
             &app,
             "ig-scraper",
             "Freed Instagram",
@@ -3399,7 +3396,7 @@ async fn ig_visit_url(
         )?,
     };
 
-    prepare_background_scraper_window(&wv, ScraperWindowMode::Cloaked)?;
+    prepare_background_scraper_window(&wv, ScraperWindowMode::Hidden)?;
 
     wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
         .map_err(|e| e.to_string())?;
@@ -3428,7 +3425,7 @@ async fn fb_like_post(
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "like complete");
     let wv = match app.get_webview_window("fb-scraper") {
         Some(window) => window,
-        None => build_cloaked_scraper_window(
+        None => build_hidden_scraper_window(
             &app,
             "fb-scraper",
             "Freed Facebook",
@@ -3437,7 +3434,7 @@ async fn fb_like_post(
         )?,
     };
 
-    prepare_background_scraper_window(&wv, ScraperWindowMode::Cloaked)?;
+    prepare_background_scraper_window(&wv, ScraperWindowMode::Hidden)?;
 
     wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
         .map_err(|e| e.to_string())?;
@@ -3478,7 +3475,7 @@ async fn ig_like_post(
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "like complete");
     let wv = match app.get_webview_window("ig-scraper") {
         Some(window) => window,
-        None => build_cloaked_scraper_window(
+        None => build_hidden_scraper_window(
             &app,
             "ig-scraper",
             "Freed Instagram",
@@ -3487,7 +3484,7 @@ async fn ig_like_post(
         )?,
     };
 
-    prepare_background_scraper_window(&wv, ScraperWindowMode::Cloaked)?;
+    prepare_background_scraper_window(&wv, ScraperWindowMode::Hidden)?;
 
     wv.navigate(url.parse().map_err(|e: url::ParseError| e.to_string())?)
         .map_err(|e| e.to_string())?;
@@ -3711,7 +3708,6 @@ async fn li_scrape_feed(
                 tauri::WebviewUrl::External(li_feed_url.parse().unwrap()),
             )
             .user_agent(&scraper_user_agent)
-            .transparent(true)
             .initialization_script(include_str!("webkit-mask.js"))
             .initialization_script(INITIALIZE_BACKGROUND_SCRAPER_MEDIA_GUARD_JS)
             .title("Freed LinkedIn")
@@ -3730,6 +3726,7 @@ async fn li_scrape_feed(
                 builder = builder.center().visible(true);
             } else if window_mode == ScraperWindowMode::Cloaked {
                 builder = builder
+                    .transparent(true)
                     .focused(false)
                     .focusable(false)
                     .decorations(false)
@@ -4274,10 +4271,11 @@ fn recover_main_window(app: &tauri::AppHandle, reason: &str) -> Result<(), Strin
     if outcome.is_ok() {
         close_main_window_recovery_keepalive(app, reason);
     } else if let Err(error) = &outcome {
-        warn!(
-            "[main-window] renderer recovery failed after keepalive opened reason={} error={}",
+        error!(
+            "[main-window] renderer recovery failed; requesting app restart reason={} error={}",
             reason, error
         );
+        app.request_restart();
 
         if let Ok(window) = open_or_focus_recovery_window(app) {
             show_webview_window(&window);
@@ -4714,7 +4712,7 @@ pub fn run() {
             let app_for_renderer_watchdog = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
-                    tokio::time::sleep(Duration::from_secs(30)).await;
+                    tokio::time::sleep(RENDERER_HEARTBEAT_WATCHDOG_INTERVAL).await;
 
                     let is_main_visible = app_for_renderer_watchdog
                         .get_webview_window(MAIN_WINDOW_LABEL)

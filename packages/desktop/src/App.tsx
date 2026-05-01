@@ -102,7 +102,7 @@ import {
 const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 const IS_LOCAL_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1";
 const LOCAL_PREVIEW_LABEL = import.meta.env.VITE_FREED_PREVIEW_LABEL?.trim() || null;
-const RENDERER_HEARTBEAT_INTERVAL_MS = 60 * 1000;
+const RENDERER_HEARTBEAT_INTERVAL_MS = 15 * 1000;
 
 // Register the desktop log transport so addDebugEvent calls from ui/ flow
 // through the native logger in both local preview and release builds.
