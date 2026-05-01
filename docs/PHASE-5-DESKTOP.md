@@ -1,6 +1,6 @@
 # Phase 5: Desktop & Mobile App (Tauri)
 
-> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped)
+> **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, legal consent gate shipped, tri-state sidebar chrome shipped, local snapshot restore shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped)
 > **Dependencies:** Phase 4 (Sync Layer)  
 > **Priority:** 🎯 HIGHEST — Universal liberation tool
 
@@ -35,6 +35,7 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Balanced compact rail inset** — The icon-only desktop sidebar now uses the same outer inset on the bottom edge as it already uses on the top and sides, so the Settings button no longer sits flush against the floor
 - **Live toolbar reopen cue** — During desktop drag preview, once the primary sidebar crosses into the closed state, the toolbar control now swaps immediately from collapse to expand so the reopen affordance stays truthful before mouseup
 - **Animated preview rail toggle:** The desktop reader keeps the compact preview rail mounted through show and hide transitions, while `Animations: None` still snaps instantly
+- **Hot-path side-effect scheduling:** Desktop routes native JSON persistence, encrypted secret store calls, cloud uploads, and outbox drains through typed queues so clicks, scroll callbacks, and document subscriptions do not directly run slow native I/O or large scans
 
 ---
 
@@ -210,6 +211,7 @@ export async function captureDomFeed(
 | 5.32 | Rotating local database snapshots + restore UI                          | Medium     |
 | 5.33 | Public-safe and private bug report bundles                              | Medium     |
 | 5.34 | Native startup recovery window outside the React tree                  | Medium     |
+| 5.35 | Hot-path side-effect scheduling for persistence, sync, and outbox work  | Medium     |
 
 ---
 
@@ -311,6 +313,7 @@ export async function captureDomFeed(
 - [x] Outbox retry bookkeeping now drops completed and terminally failed IDs instead of keeping a session-long retry map for every action it has ever seen
 - [x] Removing RSS feeds now also drops their retained provider-health diagnostics instead of keeping dead feed histories in memory and storage forever
 - [x] Desktop live UI state now caps preserved article text previews and fetches full preserved text on demand for the active reader item, instead of cloning entire article bodies through every feed-state update
+- [x] Desktop native JSON persistence, encrypted secret store calls, cloud uploads, and outbox drains now run through typed side-effect queues with slow-task diagnostics, so common UI actions do not directly wait on native storage or broad outbox scans
 - [x] Desktop reader hydration now uses native fetch and authenticated provider paths on open, caches successful reader content locally, pins saved items by default, hydrates X reply threads with media, hydrates visible Facebook and Instagram post comments, and explains private story replies when the user is online
 - [x] Freed Desktop feed cards now show captured media thumbnails in the full feed, social story tiles, and the compact reader rail, with broken image fallback to the existing text card
 - [x] Desktop persistence now appends Automerge incremental saves to the last snapshot and only compacts back to a fresh snapshot once incremental growth justifies it, instead of full-document reserialization on every mutation

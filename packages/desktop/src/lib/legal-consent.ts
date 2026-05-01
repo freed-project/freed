@@ -9,24 +9,13 @@ import {
   type ProviderRiskId,
 } from "@freed/shared";
 import { isTauri } from "@tauri-apps/api/core";
-import { Store, load } from "@tauri-apps/plugin-store";
 import { log } from "./logger";
+import { readNativeJsonValue, writeNativeJsonValue } from "./native-json-store";
 
 const DESKTOP_BUNDLE_KEY = "legal.bundle.desktop";
 const PROVIDER_PREFIX = "legal.provider";
 const FALLBACK_STORAGE_PREFIX = "freed.legal.";
-
-let legalStore: Store | null = null;
-
-async function getStore(): Promise<Store> {
-  if (!isTauri()) {
-    throw new Error("Native consent store is unavailable outside Freed Desktop");
-  }
-  if (!legalStore) {
-    legalStore = await load("legal.json", { defaults: {}, autoSave: true });
-  }
-  return legalStore;
-}
+const LEGAL_STORE_FILE = "legal.json";
 
 function fallbackStorageKey(key: string): string {
   return `${FALLBACK_STORAGE_PREFIX}${key}`;
@@ -58,8 +47,7 @@ async function readRecord(key: string): Promise<LegalAcceptanceRecord | null> {
     return readFallbackRecord(key);
   }
   try {
-    const store = await getStore();
-    return coerceLegalAcceptanceRecord(await store.get<unknown>(key));
+    return coerceLegalAcceptanceRecord(await readNativeJsonValue(LEGAL_STORE_FILE, key));
   } catch (error) {
     log.error(
       `[legal] failed to read consent store, falling back: ${
@@ -81,8 +69,7 @@ async function writeRecord(
     return record;
   }
   try {
-    const store = await getStore();
-    await store.set(key, record);
+    await writeNativeJsonValue(LEGAL_STORE_FILE, key, record, "legal-consent");
   } catch (error) {
     log.error(
       `[legal] failed to write consent store, falling back: ${

@@ -24,6 +24,7 @@ import { getDocBinary, mergeDoc, subscribe, setRelayClientCount } from "./autome
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { log } from "./logger.js";
 import { recordProviderHealthEvent } from "./provider-health";
+import { scheduleSideEffect } from "./side-effect-scheduler";
 
 const FALLBACK_SYNC_PORT = import.meta.env.VITE_FREED_SYNC_PORT || "8765";
 const RELAY_POLL_TIMEOUT_MS = 5_000;
@@ -888,39 +889,50 @@ export function scheduleCloudUpload(provider: CloudProvider, token?: string): vo
 
   const timer = setTimeout(async () => {
     uploadTimers.delete(provider);
-    const binary = await getDocBinary();
-    const startedAt = Date.now();
-    try {
-      const uploadToken = token ?? await getValidCloudToken(provider);
-      if (!uploadToken) throw new Error("Cloud token missing. Reconnect the provider.");
-      if (provider === "gdrive") {
-        await gdriveUploadSafe(uploadToken, binary);
-      } else {
-        await dropboxUploadSafe(uploadToken, binary);
-      }
-      console.log("[CloudSync/%s] Uploaded (%d bytes)", provider, binary.byteLength);
-      await recordProviderHealthEvent({
-        provider,
-        outcome: "success",
-        stage: "upload",
-        startedAt,
-        finishedAt: Date.now(),
-        bytesMoved: binary.byteLength,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[CloudSync/${provider}] Upload failed:`, err);
-      addDebugEvent("error", `[Cloud/${provider}] upload failed: ${msg}`);
-      await recordProviderHealthEvent({
-        provider,
-        outcome: "error",
-        stage: "upload",
-        reason: msg,
-        startedAt,
-        finishedAt: Date.now(),
-        bytesMoved: binary.byteLength,
-      });
-    }
+    void scheduleSideEffect({
+      queue: "sync",
+      source: `cloud:${provider}`,
+      kind: "upload",
+      timeoutMs: 180_000,
+      slowMs: 2_000,
+      run: async () => {
+        const startedAt = Date.now();
+        let byteLength = 0;
+        try {
+          const binary = await getDocBinary();
+          byteLength = binary.byteLength;
+          const uploadToken = token ?? await getValidCloudToken(provider);
+          if (!uploadToken) throw new Error("Cloud token missing. Reconnect the provider.");
+          if (provider === "gdrive") {
+            await gdriveUploadSafe(uploadToken, binary);
+          } else {
+            await dropboxUploadSafe(uploadToken, binary);
+          }
+          console.log("[CloudSync/%s] Uploaded (%d bytes)", provider, binary.byteLength);
+          await recordProviderHealthEvent({
+            provider,
+            outcome: "success",
+            stage: "upload",
+            startedAt,
+            finishedAt: Date.now(),
+            bytesMoved: byteLength,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`[CloudSync/${provider}] Upload failed:`, err);
+          addDebugEvent("error", `[Cloud/${provider}] upload failed: ${msg}`);
+          await recordProviderHealthEvent({
+            provider,
+            outcome: "error",
+            stage: "upload",
+            reason: msg,
+            startedAt,
+            finishedAt: Date.now(),
+            bytesMoved: byteLength,
+          });
+        }
+      },
+    });
   }, UPLOAD_DEBOUNCE_MS);
 
   uploadTimers.set(provider, timer);

@@ -23,6 +23,7 @@
 import type { FeedItem, Platform } from "@freed/shared";
 import type { PlatformActions } from "./platform-actions";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
+import { scheduleSideEffect } from "./side-effect-scheduler";
 
 // =============================================================================
 // Constants
@@ -30,6 +31,7 @@ import { addDebugEvent } from "@freed/ui/lib/debug-store";
 
 const DEBOUNCE_MS = 5_000;
 const MAX_RETRIES = 3;
+const SCAN_YIELD_EVERY = 500;
 
 // =============================================================================
 // Types
@@ -77,23 +79,20 @@ export function startOutboxProcessor(
 
   let drainTimer: ReturnType<typeof setTimeout> | null = null;
   let isDraining = false;
+  let drainRequested = false;
 
   // ── Core drain logic ────────────────────────────────────────────────────
 
-  async function drain() {
-    if (isDraining) return;
-    isDraining = true;
-
-    const items = getItems();
-    if (!items) {
-      isDraining = false;
-      return;
-    }
-
+  async function collectPendingQueues(items: FeedItem[]) {
     const likeQueue: FeedItem[] = [];
     const seenQueue: FeedItem[] = [];
 
-    for (const item of items) {
+    for (let index = 0; index < items.length; index += 1) {
+      if (index > 0 && index % SCAN_YIELD_EVERY === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      const item = items[index];
       const us = item.userState;
 
       if (us.liked && us.likedAt && !us.likedSyncedAt) {
@@ -110,6 +109,22 @@ export function startOutboxProcessor(
         }
       }
     }
+
+    return { likeQueue, seenQueue };
+  }
+
+  async function drainNow() {
+    if (isDraining) return;
+    isDraining = true;
+    drainRequested = false;
+
+    const items = getItems();
+    if (!items) {
+      isDraining = false;
+      return;
+    }
+
+    const { likeQueue, seenQueue } = await collectPendingQueues(items);
 
     if (likeQueue.length > 0) {
       addDebugEvent("change", `[Outbox] draining ${likeQueue.length} pending like(s)`);
@@ -185,9 +200,20 @@ export function startOutboxProcessor(
 
     // If new items arrived during drain, schedule another pass so they
     // don't sit in the outbox until the next external doc change.
-    if (hasPendingItems(getItems())) {
+    if (drainRequested || hasPendingItems(getItems())) {
       scheduleDrain();
     }
+  }
+
+  async function drain() {
+    await scheduleSideEffect({
+      queue: "outbox",
+      source: "outbox",
+      kind: "drain",
+      timeoutMs: 120_000,
+      slowMs: 1_000,
+      run: drainNow,
+    });
   }
 
   /** Quick check for any items that still need outbox processing. */
@@ -208,6 +234,10 @@ export function startOutboxProcessor(
   }
 
   function scheduleDrain() {
+    if (isDraining) {
+      drainRequested = true;
+      return;
+    }
     if (drainTimer) clearTimeout(drainTimer);
     drainTimer = setTimeout(() => {
       drainTimer = null;
