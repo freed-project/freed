@@ -50,6 +50,44 @@ describe("side-effect scheduler", () => {
     expect(events).toEqual(["first:start", "first:end", "second"]);
   });
 
+  it("waits for a timed out task to settle before starting the next task", async () => {
+    vi.useFakeTimers();
+    const { scheduleSideEffect } = await loadScheduler();
+    const events: string[] = [];
+    let releaseFirst: () => void = () => {};
+
+    const first = scheduleSideEffect({
+      queue: "nativeStore",
+      source: "test",
+      kind: "timeout",
+      timeoutMs: 10,
+      run: async () => {
+        events.push("first:start");
+        await new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        });
+        events.push("first:end");
+      },
+    });
+    const second = scheduleSideEffect({
+      queue: "nativeStore",
+      source: "test",
+      kind: "second",
+      run: async () => {
+        events.push("second");
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(first).rejects.toThrow("timed_out_ms=10");
+    expect(events).toEqual(["first:start"]);
+
+    releaseFirst();
+    await Promise.resolve();
+    await second;
+    expect(events).toEqual(["first:start", "first:end", "second"]);
+  });
+
   it("keeps a queue alive after a failed task", async () => {
     const { scheduleSideEffect } = await loadScheduler();
     const events: string[] = [];
