@@ -364,6 +364,25 @@ function ConnectionTab() {
             </div>
 
             <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Fetcher Active</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {runtimeMemory.contentActive
+                  ? `${(runtimeMemory.contentActiveAgeMs ?? 0).toLocaleString()} ms`
+                  : "No"}
+              </p>
+            </div>
+
+            <div className={DEBUG_CARD_CLASS}>
+              <p className={DEBUG_LABEL_CLASS}>Fetcher Backoff</p>
+              <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
+                {runtimeMemory.contentBackoffLevel.toLocaleString()}
+                {runtimeMemory.contentNextDelayMs !== undefined
+                  ? `, ${(runtimeMemory.contentNextDelayMs).toLocaleString()} ms`
+                  : ""}
+              </p>
+            </div>
+
+            <div className={DEBUG_CARD_CLASS}>
               <p className={DEBUG_LABEL_CLASS}>Renderer Heap</p>
               <p className="font-mono text-sm font-medium text-[var(--theme-text-muted)]">
                 {formatOptionalBytes(runtimeMemory.rendererHeapUsedBytes)}

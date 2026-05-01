@@ -8,9 +8,9 @@ const SAMPLE_ARTICLE_HTML = "<article><p>Expanded article HTML.</p></article>";
 const LONG_TEXT =
   `${"Paragraph with   noisy spacing and plenty of detail. ".repeat(160)}Tail text that should be trimmed away.`;
 
-function makeStubItem(): FeedItem {
+function makeStubItem(globalId = "rss:1"): FeedItem {
   return {
-    globalId: "rss:1",
+    globalId,
     platform: "rss",
     contentType: "article",
     capturedAt: 1,
@@ -150,14 +150,22 @@ async function loadContentFetcherModuleWithAi({
   autoSummarize,
   extractTopics,
   provider = "openai",
+  summarizeImpl,
+  invokeImpl,
 }: {
   autoSummarize: boolean;
   extractTopics: boolean;
   provider?: "integrated" | "openai";
+  summarizeImpl?: () => Promise<{
+    summary: string;
+    topics: string[];
+    sentiment: "positive" | "negative" | "neutral" | "mixed";
+  } | null>;
+  invokeImpl?: () => Promise<string>;
 }) {
   vi.resetModules();
 
-  const mockInvoke = vi.fn(async () => SAMPLE_HTML);
+  const mockInvoke = vi.fn(invokeImpl ?? (async () => SAMPLE_HTML));
   const mockExtractContent = vi.fn(() => ({
     html: SAMPLE_ARTICLE_HTML,
     text: LONG_TEXT,
@@ -181,11 +189,11 @@ async function loadContentFetcherModuleWithAi({
       subscriberRef.current = null;
     };
   });
-  const mockSummarize = vi.fn(async () => ({
+  const mockSummarize = vi.fn(summarizeImpl ?? (async () => ({
     summary: "Short AI summary",
     topics: ["ai", "reading"],
     sentiment: "neutral" as const,
-  }));
+  })));
   const mockGetApiKey = vi.fn(async () => "test-key");
 
   vi.doMock("@tauri-apps/api/core", () => ({ invoke: mockInvoke }));
@@ -257,7 +265,7 @@ describe("content fetcher", () => {
 
     mod.start();
     subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
     expect(mockCacheSet).toHaveBeenCalledWith("rss:1", SAMPLE_ARTICLE_HTML);
@@ -283,7 +291,7 @@ describe("content fetcher", () => {
 
     mod.start();
     subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
     const update = mockDocUpdateFeedItem.mock.calls.at(0)?.at(1) as
@@ -302,7 +310,7 @@ describe("content fetcher", () => {
 
     mod.start();
     subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
     const update = mockDocUpdateFeedItem.mock.calls.at(0)?.at(1) as
@@ -322,13 +330,120 @@ describe("content fetcher", () => {
 
     mod.start();
     subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
-    await vi.advanceTimersByTimeAsync(2_000);
+    await vi.advanceTimersByTimeAsync(0);
     mod.stop();
 
     expect(mockGetApiKey).not.toHaveBeenCalled();
     expect(mockSummarize).toHaveBeenCalledWith(LONG_TEXT, expect.objectContaining({
       provider: "integrated",
-    }), null);
+    }), null, expect.objectContaining({
+      signal: expect.any(AbortSignal),
+      throwOnError: true,
+    }));
+  });
+
+  it("does not overlap jobs while AI summarization is still running", async () => {
+    vi.useFakeTimers();
+    const { mod, subscriberRef, mockSummarize } = await loadContentFetcherModuleWithAi({
+      autoSummarize: true,
+      extractTopics: false,
+      summarizeImpl: () => new Promise<null>(() => undefined),
+    });
+
+    mod.start();
+    subscriberRef.current?.({ items: [makeStubItem("rss:1"), makeStubItem("rss:2")], docItemCount: 2 });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    const status = mod.getStatus();
+    mod.stop();
+
+    expect(mockSummarize).toHaveBeenCalledOnce();
+    expect(status.active).toBe(true);
+    expect(status.pending).toBe(1);
+  });
+
+  it("waits for randomized pacing before starting the next job", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const { mod, subscriberRef } = await loadContentFetcherModule();
+
+    mod.start();
+    subscriberRef.current?.({ items: [makeStubItem("rss:1"), makeStubItem("rss:2")], docItemCount: 2 });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(mod.getStatus()).toEqual(expect.objectContaining({
+      pending: 1,
+      nextDelayMs: 2_500,
+    }));
+
+    await vi.advanceTimersByTimeAsync(2_499);
+    expect(mod.getStatus().pending).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    mod.stop();
+
+    expect(mod.getStatus().pending).toBe(0);
+  });
+
+  it("backs off after fetch timeouts and decays after a successful retry", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    let callCount = 0;
+    const { mod, subscriberRef } = await loadContentFetcherModuleWithAi({
+      autoSummarize: false,
+      extractTopics: false,
+      invokeImpl: () => {
+        callCount += 1;
+        if (callCount === 1) {
+          return new Promise<string>(() => undefined);
+        }
+        return Promise.resolve(SAMPLE_HTML);
+      },
+    });
+
+    mod.start();
+    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(mod.getStatus()).toEqual(expect.objectContaining({
+      backoffLevel: 1,
+      nextDelayMs: 5_000,
+      pending: 1,
+    }));
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    mod.stop();
+
+    expect(mod.getStatus()).toEqual(expect.objectContaining({
+      backoffLevel: 0,
+      pending: 0,
+      completed: 1,
+    }));
+  });
+
+  it("writes extracted content and advances when AI summarization times out", async () => {
+    vi.useFakeTimers();
+    const { mod, subscriberRef, mockDocUpdateFeedItem } = await loadContentFetcherModuleWithAi({
+      autoSummarize: true,
+      extractTopics: true,
+      summarizeImpl: () => new Promise<null>(() => undefined),
+    });
+
+    mod.start();
+    subscriberRef.current?.({ items: [makeStubItem()], docItemCount: 1 });
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(60_000);
+    mod.stop();
+
+    const update = mockDocUpdateFeedItem.mock.calls.at(0)?.at(1) as
+      | { topics?: string[]; preservedContent: { text: string } }
+      | undefined;
+    expect(update?.preservedContent.text).toContain("Paragraph with noisy spacing");
+    expect(update?.preservedContent.text).not.toContain("Short AI summary");
+    expect(update?.topics).toBeUndefined();
+    expect(mod.getStatus().completed).toBe(1);
   });
 
   it("pins existing text posts by writing reader HTML to the local cache", async () => {

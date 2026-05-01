@@ -306,7 +306,7 @@ export async function captureDomFeed(
 - [x] Desktop diagnostics now include Freed-owned WebKit renderer RSS, Automerge binary size, IndexedDB size, WebKit cache size, and adaptive memory guardrails that reclaim scraper windows and network-cache blobs before pausing social capture
 - [x] Native relay broadcasts now reuse shared document buffers and stop writing a full snapshot on every live document push, reducing clone pressure during heavy sync churn
 - [x] Desktop worker state no longer ships the full `allItemIds` list or full Automerge binary back to the main thread on every mutation, and the content fetcher now bounds its failed-item cooldown cache instead of keeping an immortal set of every fetch miss
-- [x] Background fetch now tracks in-flight items so unrelated document updates cannot enqueue duplicate fetch work while a URL is already being processed
+- [x] Background fetch now tracks in-flight items, runs one active worker job at a time, and uses randomized pacing plus capped backoff so slow AI or network work cannot overlap the queue into renderer pressure
 - [x] Background fetch no longer rescans the entire visible feed on every document mutation, it only rescans when the document item count changes, which cuts repeated O(n) churn during read toggles and preference writes
 - [x] Outbox retry bookkeeping now drops completed and terminally failed IDs instead of keeping a session-long retry map for every action it has ever seen
 - [x] Removing RSS feeds now also drops their retained provider-health diagnostics instead of keeping dead feed histories in memory and storage forever
@@ -351,10 +351,11 @@ export async function captureDomFeed(
 > trims only Freed WebKit network-cache blobs before it decides a scrape must
 > pause. Critical memory pressure pauses background content fetching, then
 > offers a restart action instead of letting WebKit conduct the RAM orchestra
-> with a shovel. The background content fetcher now
-> bounds and ages out its failed-item cooldown cache, and it keeps an
-> in-flight set so unrelated state updates cannot queue the same fetch work
-> over and over while a URL is already being processed. It also stopped
+> with a shovel. The background content fetcher now runs one active worker job
+> at a time, randomizes its next fetch delay, backs off after timeouts or AI
+> provider failures, bounds and ages out its failed-item cooldown cache, and it
+> keeps an in-flight set so unrelated state updates cannot queue the same fetch
+> work over and over while a URL is already being processed. It also stopped
 > rescanning the full visible feed on every tiny document mutation and now
 > only rescans when the document item count actually changes. The outbox also
 > prunes completed retry bookkeeping instead of letting that map grow across

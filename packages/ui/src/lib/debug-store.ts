@@ -74,6 +74,10 @@ export interface RuntimeMemorySnapshot {
   contentQueuePending: number;
   contentCompleted: number;
   contentFailed: number;
+  contentActive: boolean;
+  contentActiveAgeMs?: number;
+  contentNextDelayMs?: number;
+  contentBackoffLevel: number;
   rendererHeapUsedBytes?: number;
   rendererHeapTotalBytes?: number;
   rendererHeapLimitBytes?: number;

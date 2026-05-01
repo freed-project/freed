@@ -189,6 +189,10 @@ async function sampleRuntimeMemory(
     contentQueuePending: fetcher.pending,
     contentCompleted: fetcher.completed,
     contentFailed: fetcher.failedCount,
+    contentActive: fetcher.active,
+    contentActiveAgeMs: fetcher.activeAgeMs,
+    contentNextDelayMs: fetcher.nextDelayMs,
+    contentBackoffLevel: fetcher.backoffLevel,
     rendererHeapUsedBytes: renderer?.usedJSHeapSize,
     rendererHeapTotalBytes: renderer?.totalJSHeapSize,
     rendererHeapLimitBytes: renderer?.jsHeapSizeLimit,
@@ -244,7 +248,11 @@ async function sampleRuntimeMemory(
       `relay_clients=${native.relayClientCount.toLocaleString()} ` +
       `fetch_pending=${fetcher.pending.toLocaleString()} ` +
       `fetch_completed=${fetcher.completed.toLocaleString()} ` +
-      `fetch_failed=${fetcher.failedCount.toLocaleString()}` +
+      `fetch_failed=${fetcher.failedCount.toLocaleString()} ` +
+      `fetch_active=${String(fetcher.active)} ` +
+      `fetch_active_age_ms=${(fetcher.activeAgeMs ?? 0).toLocaleString()} ` +
+      `fetch_next_delay_ms=${(fetcher.nextDelayMs ?? 0).toLocaleString()} ` +
+      `fetch_backoff_level=${fetcher.backoffLevel.toLocaleString()}` +
       (renderer
         ? ` renderer_heap=${formatBytesForMemoryLog(renderer.usedJSHeapSize)} ` +
           `renderer_total=${formatBytesForMemoryLog(renderer.totalJSHeapSize)}`
