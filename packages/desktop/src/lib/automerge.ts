@@ -30,7 +30,8 @@ import type {
   RssFeed,
   UserPreferences,
 } from "@freed/shared";
-import type { DocChangeEvent, DocState, DocStats, FeedItemPatch, WorkerRequest, WorkerResponse } from "./automerge-types";
+import type { DocChangeEvent, DocState, DocStats, WorkerRequest, WorkerResponse } from "./automerge-types";
+import { applyItemPatchesToState, createItemIndex, type ItemIndex } from "./automerge-state-patches";
 import { log } from "./logger.js";
 export type { DocChangeEvent, DocState } from "./automerge-types";
 
@@ -126,6 +127,7 @@ async function request(msg: WorkerRequest): Promise<void> {
 // Latest hydrated state - updated on every STATE_UPDATE, exposed as getDocState()
 let lastDocState: DocState | null = null;
 let lastDocStats: DocStats | null = null;
+let lastItemIndexById: ItemIndex = new Map();
 
 // ---------------------------------------------------------------------------
 // Subscriber model
@@ -139,81 +141,11 @@ export function subscribe(callback: Subscriber): () => void {
   return () => subscribers.delete(callback);
 }
 
-function recomputeCounts(state: DocState): DocState {
-  const feedUnreadCounts: Record<string, number> = {};
-  const feedTotalCounts: Record<string, number> = {};
-  const unreadCountByPlatform: Record<string, number> = {};
-  const itemCountByPlatform: Record<string, number> = {};
-  const archivableCountByPlatform: Record<string, number> = {};
-  const archivableFeedCounts: Record<string, number> = {};
-  let totalUnreadCount = 0;
-  let totalItemCount = 0;
-  let totalArchivableCount = 0;
-
-  for (const item of state.items) {
-    if (item.userState.hidden || item.userState.archived) continue;
-    totalItemCount += 1;
-    itemCountByPlatform[item.platform] = (itemCountByPlatform[item.platform] ?? 0) + 1;
-    if (item.rssSource) {
-      const url = item.rssSource.feedUrl;
-      feedTotalCounts[url] = (feedTotalCounts[url] ?? 0) + 1;
-    }
-    if (!item.userState.readAt) {
-      totalUnreadCount += 1;
-      unreadCountByPlatform[item.platform] = (unreadCountByPlatform[item.platform] ?? 0) + 1;
-      if (item.rssSource) {
-        const url = item.rssSource.feedUrl;
-        feedUnreadCounts[url] = (feedUnreadCounts[url] ?? 0) + 1;
-      }
-    } else if (!item.userState.saved) {
-      totalArchivableCount += 1;
-      archivableCountByPlatform[item.platform] = (archivableCountByPlatform[item.platform] ?? 0) + 1;
-      if (item.rssSource) {
-        const url = item.rssSource.feedUrl;
-        archivableFeedCounts[url] = (archivableFeedCounts[url] ?? 0) + 1;
-      }
-    }
-  }
-
-  return {
-    ...state,
-    feedUnreadCounts,
-    feedTotalCounts,
-    totalUnreadCount,
-    unreadCountByPlatform,
-    totalItemCount,
-    itemCountByPlatform,
-    totalArchivableCount,
-    archivableCountByPlatform,
-    archivableFeedCounts,
-  };
-}
-
-function applyItemPatches(state: DocState, patches: FeedItemPatch[]): DocState {
-  if (patches.length === 0) return state;
-  const patchById = new Map(patches.map((patch) => [patch.item.globalId, patch.item]));
-  let changed = false;
-  const nextItems = state.items.map((item) => {
-    const patch = patchById.get(item.globalId);
-    if (!patch) return item;
-    changed = true;
-    patchById.delete(item.globalId);
-    return patch;
-  });
-
-  for (const item of patchById.values()) {
-    if (!item.userState.hidden) {
-      changed = true;
-      nextItems.push(item);
-    }
-  }
-
-  if (!changed) return state;
-  return recomputeCounts({ ...state, items: nextItems });
-}
-
 function publishState(state: DocState, event: DocChangeEvent): void {
   lastDocState = state;
+  if (event.requiresFullScan) {
+    lastItemIndexById = createItemIndex(state.items);
+  }
   for (const sub of subscribers) sub(state, event);
 }
 
@@ -252,7 +184,9 @@ worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
   if (msg.type === "ITEM_PATCH") {
     if (!lastDocState) return;
     const changedItems = msg.patches.map((patch) => patch.item);
-    publishState(applyItemPatches(lastDocState, msg.patches), {
+    const patched = applyItemPatchesToState(lastDocState, msg.patches, lastItemIndexById);
+    lastItemIndexById = patched.itemIndex;
+    publishState(patched.state, {
       source: "item_patch",
       mutation: msg.mutation,
       changedItemIds: msg.changedItemIds,
@@ -389,6 +323,7 @@ function sendInit(): Promise<DocState> {
       const msg = event.data;
       if (msg.type === "STATE_UPDATE" && !initialState) {
         lastDocState = msg.state;
+        lastItemIndexById = createItemIndex(msg.state.items);
         initialState = msg.state;
         tryResolve();
       } else if (msg.type === "ACK" && msg.reqId === reqId) {

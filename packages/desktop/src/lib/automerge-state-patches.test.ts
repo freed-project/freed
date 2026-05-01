@@ -1,0 +1,117 @@
+import { describe, expect, it } from "vitest";
+import { createDefaultPreferences, type FeedItem } from "@freed/shared";
+import type { DocState } from "./automerge-types";
+import { applyItemPatchesToState, createItemIndex } from "./automerge-state-patches";
+
+const FEED_URL = "https://example.com/feed.xml";
+
+function makeItem(globalId: string, userState: Partial<FeedItem["userState"]> = {}): FeedItem {
+  return {
+    globalId,
+    platform: "rss",
+    contentType: "article",
+    capturedAt: 1,
+    publishedAt: 1,
+    author: {
+      id: "author",
+      handle: "author",
+      displayName: "Author",
+    },
+    content: {
+      text: "Article",
+      mediaUrls: [],
+      mediaTypes: [],
+    },
+    rssSource: {
+      feedUrl: FEED_URL,
+      feedTitle: "Example",
+      siteUrl: "https://example.com",
+    },
+    sourceUrl: "https://example.com/article",
+    topics: [],
+    userState: {
+      hidden: false,
+      saved: false,
+      archived: false,
+      tags: [],
+      ...userState,
+    },
+  };
+}
+
+function makeState(items: FeedItem[]): DocState {
+  return {
+    items,
+    searchCorpusVersion: 1,
+    feeds: {},
+    persons: {},
+    accounts: {},
+    friends: {},
+    preferences: createDefaultPreferences(),
+    feedUnreadCounts: { [FEED_URL]: 1 },
+    feedTotalCounts: { [FEED_URL]: 2 },
+    totalUnreadCount: 1,
+    unreadCountByPlatform: { rss: 1 },
+    totalItemCount: 2,
+    itemCountByPlatform: { rss: 2 },
+    totalArchivableCount: 1,
+    archivableCountByPlatform: { rss: 1 },
+    archivableFeedCounts: { [FEED_URL]: 1 },
+    docItemCount: items.length,
+  };
+}
+
+describe("Automerge item patch state updates", () => {
+  it("updates read and archivable counts without rebuilding every count from items", () => {
+    const unread = makeItem("rss:unread");
+    const read = makeItem("rss:read", { readAt: 10 });
+    const state = makeState([unread, read]);
+    const index = createItemIndex(state.items);
+
+    const patchedUnread = makeItem("rss:unread", { readAt: 20 });
+    const result = applyItemPatchesToState(state, [{ item: patchedUnread }], index);
+
+    expect(result.state.items).toEqual([patchedUnread, read]);
+    expect(result.itemIndex.get("rss:unread")).toBe(0);
+    expect(result.itemIndex.get("rss:read")).toBe(1);
+    expect(result.state.totalUnreadCount).toBe(0);
+    expect(result.state.unreadCountByPlatform).toEqual({});
+    expect(result.state.feedUnreadCounts).toEqual({});
+    expect(result.state.totalArchivableCount).toBe(2);
+    expect(result.state.archivableCountByPlatform).toEqual({ rss: 2 });
+    expect(result.state.archivableFeedCounts).toEqual({ [FEED_URL]: 2 });
+  });
+
+  it("removes archived items from aggregate counts while keeping them in the item list", () => {
+    const unread = makeItem("rss:unread");
+    const read = makeItem("rss:read", { readAt: 10 });
+    const state = makeState([unread, read]);
+    const index = createItemIndex(state.items);
+
+    const archivedUnread = makeItem("rss:unread", { archived: true, archivedAt: 30 });
+    const result = applyItemPatchesToState(state, [{ item: archivedUnread }], index);
+
+    expect(result.state.items).toEqual([archivedUnread, read]);
+    expect(result.state.totalItemCount).toBe(1);
+    expect(result.state.itemCountByPlatform).toEqual({ rss: 1 });
+    expect(result.state.feedTotalCounts).toEqual({ [FEED_URL]: 1 });
+    expect(result.state.totalUnreadCount).toBe(0);
+    expect(result.state.feedUnreadCounts).toEqual({});
+  });
+
+  it("drops hidden patched items and rebuilds the affected index", () => {
+    const unread = makeItem("rss:unread");
+    const read = makeItem("rss:read", { readAt: 10 });
+    const state = makeState([unread, read]);
+    const index = createItemIndex(state.items);
+
+    const hiddenUnread = makeItem("rss:unread", { hidden: true });
+    const result = applyItemPatchesToState(state, [{ item: hiddenUnread }], index);
+
+    expect(result.state.items).toEqual([read]);
+    expect(result.itemIndex.has("rss:unread")).toBe(false);
+    expect(result.itemIndex.get("rss:read")).toBe(0);
+    expect(result.state.totalItemCount).toBe(1);
+    expect(result.state.totalUnreadCount).toBe(0);
+  });
+});
