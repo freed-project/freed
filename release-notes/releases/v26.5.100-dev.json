@@ -3,7 +3,7 @@
   "version": "26.5.100-dev",
   "channel": "dev",
   "dayKey": "26.5.1",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-01T17:11:44.090Z",
   "model": "heuristic",
@@ -33,10 +33,20 @@
     ]
   },
   "release": {
-    "deck": "Route desktop hot-path side effects",
+    "deck": "Keeps Freed Desktop responsive during common library actions",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      {
+        "text": "Moved desktop provider health, secure storage, cloud upload, snapshot, and outbox side effects onto typed queues so clicks and scroll callbacks can return quickly."
+      },
+      {
+        "text": "Added Automerge change metadata so read, like, archive, and sync-confirmation patches no longer make the outbox rescan the full feed."
+      },
+      {
+        "text": "Updated desktop item patches incrementally on the main thread, including count-map identity preservation for like and sync-confirmation patches."
+      }
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.100-dev\n\nRoute desktop hot-path side effects\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.100-dev\n\nKeeps Freed Desktop responsive during common library actions\n\n### Fixes\n\n- Moved desktop provider health, secure storage, cloud upload, snapshot, and outbox side effects onto typed queues so clicks and scroll callbacks can return quickly.\n- Added Automerge change metadata so read, like, archive, and sync-confirmation patches no longer make the outbox rescan the full feed.\n- Updated desktop item patches incrementally on the main thread, including count-map identity preservation for like and sync-confirmation patches.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
