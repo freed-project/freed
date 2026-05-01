@@ -1,0 +1,42 @@
+{
+  "tag": "v26.5.100-dev",
+  "version": "26.5.100-dev",
+  "channel": "dev",
+  "dayKey": "26.5.1",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-01T17:11:44.090Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.3006-dev",
+    "previousPublishedDayTag": "v26.4.3006-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.100-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.100-dev"
+    ],
+    "prNumbers": [
+      385,
+      386,
+      387,
+      388
+    ],
+    "commitSubjects": [
+      "perf: preserve count maps for neutral patches (#388)",
+      "perf: update item patch state incrementally (#387)",
+      "perf: avoid outbox scans for item patches (#386)",
+      "refactor: route desktop hot-path side effects (#385)"
+    ]
+  },
+  "release": {
+    "deck": "Route desktop hot-path side effects",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.100-dev\n\nRoute desktop hot-path side effects\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
