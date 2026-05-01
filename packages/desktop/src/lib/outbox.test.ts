@@ -35,6 +35,7 @@ function makeItem(
       mediaUrls: [],
       mediaTypes: [],
     },
+    topics: [],
     sourceUrl: `https://x.com/author/status/${globalId.slice(2)}`,
     userState: {
       hidden: false,
@@ -63,6 +64,16 @@ function makeFullScanEvent(): DocChangeEvent {
     changedItemIds: null,
     requiresFullScan: true,
   };
+}
+
+function requireSubscriber(
+  subscriber: ((event: DocChangeEvent) => void) | null,
+): (event: DocChangeEvent) => void {
+  expect(subscriber).not.toBeNull();
+  if (!subscriber) {
+    throw new Error("outbox processor did not subscribe");
+  }
+  return subscriber;
 }
 
 describe("outbox processor", () => {
@@ -99,13 +110,14 @@ describe("outbox processor", () => {
     );
     await vi.runAllTimersAsync();
     expect(getItems).toHaveBeenCalledTimes(1);
+    const notify = requireSubscriber(subscriber);
 
     getItems.mockImplementation(() => {
       throw new Error("patch drain should not scan all items");
     });
 
     const patchedItem = makeItem("x:target", { liked: true, likedAt: 10 });
-    subscriber?.(makePatchEvent(patchedItem));
+    notify(makePatchEvent(patchedItem));
     await vi.advanceTimersByTimeAsync(5_000);
 
     expect(getItems).toHaveBeenCalledTimes(1);
@@ -144,13 +156,14 @@ describe("outbox processor", () => {
     );
     await vi.runAllTimersAsync();
     expect(getItems).toHaveBeenCalledTimes(1);
+    const notify = requireSubscriber(subscriber);
 
     getItems.mockImplementation(() => {
       throw new Error("patch retry should not scan all items");
     });
 
     const patchedItem = makeItem("x:retry", { liked: true, likedAt: 30 });
-    subscriber?.(makePatchEvent(patchedItem));
+    notify(makePatchEvent(patchedItem));
     await vi.advanceTimersByTimeAsync(5_000);
     await vi.advanceTimersByTimeAsync(5_000);
 
@@ -189,11 +202,12 @@ describe("outbox processor", () => {
     );
     await vi.runAllTimersAsync();
     expect(getItems).toHaveBeenCalledTimes(1);
+    const notify = requireSubscriber(subscriber);
 
     const pendingItem = makeItem("x:full-scan", { liked: true, likedAt: 20 });
     getItems.mockReturnValue([pendingItem]);
 
-    subscriber?.(makeFullScanEvent());
+    notify(makeFullScanEvent());
     await vi.advanceTimersByTimeAsync(5_000);
 
     expect(getItems).toHaveBeenCalledTimes(2);
