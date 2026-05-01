@@ -16,7 +16,7 @@ afterEach(() => {
 describe("ai summarizer", () => {
   it("passes abort signals through to provider fetch calls", async () => {
     const signal = new AbortController().signal;
-    const mockFetch = vi.fn(async () => new Response(JSON.stringify({
+    const mockFetch = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
       choices: [{
         message: {
           content: JSON.stringify({
