@@ -18,11 +18,14 @@ import {
   createEmptyDoc,
   addAccount,
   addAccounts,
+  backfillContentSignals,
+  countContentSignalBackfillItems,
   addFeedItem,
   hasLegacyIdentityGraphData,
   migrateLegacyIdentityGraph,
   addPerson,
   addRssFeed,
+  summarizeDocContentSignals,
   removeRssFeed,
   removeAllFeeds,
   updateRssFeed,
@@ -564,6 +567,28 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
           if (!doc.feedItems[stub.globalId]) addFeedItem(doc, stub);
         }, `Add stub item for ${req.url}`, true);
         ack(req.reqId);
+        break;
+      }
+
+      case "BACKFILL_CONTENT_SIGNALS": {
+        if (!currentDoc) throw new Error("Document not initialized");
+        let summary = summarizeDocContentSignals(currentDoc);
+        const pendingCount = countContentSignalBackfillItems(currentDoc);
+        if (pendingCount > 0) {
+          currentDoc = A.change(currentDoc, "Backfill content signals", (doc) => {
+            summary = backfillContentSignals(doc, req.batchSize);
+          });
+          bumpSearchCorpusVersion();
+          send({
+            type: "DEBUG_EVENT",
+            kind: "change",
+            detail:
+              `[content-signals] backfilled ${summary.updated.toLocaleString()} items, ` +
+              `${summary.remaining.toLocaleString()} remaining`,
+          });
+          await saveAndBroadcast();
+        }
+        send({ reqId: req.reqId, type: "CONTENT_SIGNAL_BACKFILL_RESULT", summary });
         break;
       }
 
