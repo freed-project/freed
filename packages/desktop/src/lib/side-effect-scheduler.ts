@@ -23,6 +23,11 @@ interface QueueState {
   pending: number;
 }
 
+interface TimedRun<T> {
+  result: Promise<T>;
+  settled: Promise<void>;
+}
+
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_SLOW_MS = 750;
 
@@ -50,11 +55,16 @@ function logSlowTask(task: SideEffectTask<unknown>, detail: string): void {
   addDebugEvent("change", message);
 }
 
-async function withTimeout<T>(task: SideEffectTask<T>): Promise<T> {
+function withTimeout<T>(task: SideEffectTask<T>): TimedRun<T> {
   const timeoutMs = task.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   let timeout: ReturnType<typeof setTimeout> | null = null;
   const runPromise = Promise.resolve().then(task.run);
-  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+  const settled = runPromise.then(
+    () => undefined,
+    () => undefined,
+  );
+  const result = new Promise<T>((resolve, reject) => {
+    runPromise.then(resolve, reject);
     timeout = setTimeout(() => {
       reject(
         new Error(
@@ -67,14 +77,12 @@ async function withTimeout<T>(task: SideEffectTask<T>): Promise<T> {
     }, timeoutMs);
   });
 
-  try {
-    return await Promise.race([runPromise, timeoutPromise]);
-  } finally {
-    if (timeout) clearTimeout(timeout);
-    runPromise.catch(() => {
-      // The raced timeout already reported failure to the caller.
-    });
-  }
+  return {
+    result: result.finally(() => {
+      if (timeout) clearTimeout(timeout);
+    }),
+    settled,
+  };
 }
 
 export function scheduleSideEffect<T>(task: SideEffectTask<T>): Promise<T> {
@@ -82,6 +90,7 @@ export function scheduleSideEffect<T>(task: SideEffectTask<T>): Promise<T> {
   const enqueuedAt = performance.now();
   const pendingBeforeStart = state.pending;
   state.pending += 1;
+  let settledRun: Promise<void> = Promise.resolve();
 
   const work = state.tail.catch(() => {
     // Keep this queue alive after failed tasks.
@@ -89,7 +98,9 @@ export function scheduleSideEffect<T>(task: SideEffectTask<T>): Promise<T> {
     state.pending = Math.max(0, state.pending - 1);
     const startedAt = performance.now();
     const waitMs = elapsedMs(enqueuedAt);
-    const result = await withTimeout(task);
+    const timedRun = withTimeout(task);
+    settledRun = timedRun.settled;
+    const result = await timedRun.result;
     const durationMs = elapsedMs(startedAt);
     const slowMs = task.slowMs ?? DEFAULT_SLOW_MS;
     if (waitMs >= slowMs || durationMs >= slowMs || pendingBeforeStart > 0) {
@@ -102,6 +113,9 @@ export function scheduleSideEffect<T>(task: SideEffectTask<T>): Promise<T> {
   });
 
   state.tail = work.then(
+    () => settledRun,
+    () => settledRun,
+  ).then(
     () => undefined,
     () => undefined,
   );
