@@ -3,7 +3,7 @@
   "version": "26.5.101-dev",
   "channel": "dev",
   "dayKey": "26.5.1",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-01T17:23:19.826Z",
   "model": "heuristic",
@@ -42,15 +42,13 @@
     "deck": "Keeps Freed Desktop responsive during common library actions",
     "features": [],
     "fixes": [
-      "Update outbox test fixture types",
-      "Preserve side-effect queue serialization on timeout"
+      "Kept desktop side-effect queues serialized even when a queued task times out, so one slow persistence or sync action cannot let later work overlap out of order.",
+      "Moved provider health, secure storage, cloud upload, snapshots, and outbox side effects through typed queues so UI gestures return quickly.",
+      "Prevented read, like, archive, and sync-confirmation item patches from making the outbox rescan the full feed.",
+      "Updated desktop item patches incrementally on the main thread, including count-map identity preservation for like and sync-confirmation patches.",
+      "Fixed stale outbox test fixtures so release validation covers the new patch-drain path."
     ],
-    "followUps": [
-      "Preserve count maps for neutral patches",
-      "Item patch state incrementally",
-      "Avoid outbox scans for item patches",
-      "Route desktop hot-path side effects"
-    ]
+    "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.101-dev\n\nKeeps Freed Desktop responsive during common library actions\n\n### Fixes\n\n- Update outbox test fixture types\n- Preserve side-effect queue serialization on timeout\n\n### Follow-ups\n\n- Preserve count maps for neutral patches\n- Item patch state incrementally\n- Avoid outbox scans for item patches\n- Route desktop hot-path side effects\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.101-dev\n\nKeeps Freed Desktop responsive during common library actions\n\n### Fixes\n\n- Kept desktop side-effect queues serialized even when a queued task times out, so one slow persistence or sync action cannot let later work overlap out of order.\n- Moved provider health, secure storage, cloud upload, snapshots, and outbox side effects through typed queues so UI gestures return quickly.\n- Prevented read, like, archive, and sync-confirmation item patches from making the outbox rescan the full feed.\n- Updated desktop item patches incrementally on the main thread, including count-map identity preservation for like and sync-confirmation patches.\n- Fixed stale outbox test fixtures so release validation covers the new patch-drain path.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
