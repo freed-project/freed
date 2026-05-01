@@ -1,0 +1,56 @@
+{
+  "tag": "v26.5.101-dev",
+  "version": "26.5.101-dev",
+  "channel": "dev",
+  "dayKey": "26.5.1",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-05-01T17:23:19.826Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.4.3006-dev",
+    "previousPublishedDayTag": "v26.4.3006-dev",
+    "compareRef": "HEAD",
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.5.101-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.5.101-dev"
+    ],
+    "prNumbers": [
+      385,
+      386,
+      387,
+      388,
+      389,
+      391
+    ],
+    "commitSubjects": [
+      "fix: update outbox test fixture types (#391)",
+      "release: approve v26.5.100-dev notes",
+      "release: v26.5.100-dev",
+      "fix: preserve side-effect queue serialization on timeout (#389)",
+      "perf: preserve count maps for neutral patches (#388)",
+      "perf: update item patch state incrementally (#387)",
+      "perf: avoid outbox scans for item patches (#386)",
+      "refactor: route desktop hot-path side effects (#385)"
+    ]
+  },
+  "release": {
+    "deck": "Keeps Freed Desktop responsive during common library actions",
+    "features": [],
+    "fixes": [
+      "Update outbox test fixture types",
+      "Preserve side-effect queue serialization on timeout"
+    ],
+    "followUps": [
+      "Preserve count maps for neutral patches",
+      "Item patch state incrementally",
+      "Avoid outbox scans for item patches",
+      "Route desktop hot-path side effects"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.101-dev\n\nKeeps Freed Desktop responsive during common library actions\n\n### Fixes\n\n- Update outbox test fixture types\n- Preserve side-effect queue serialization on timeout\n\n### Follow-ups\n\n- Preserve count maps for neutral patches\n- Item patch state incrementally\n- Avoid outbox scans for item patches\n- Route desktop hot-path side effects\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
