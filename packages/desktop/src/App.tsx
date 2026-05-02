@@ -199,7 +199,18 @@ function App() {
     }
     // Start background content fetcher -- processes article HTML fetch queue.
     startContentFetcher();
-    startSemanticClassifier();
+    startSemanticClassifier({
+      isEnabled: () => {
+        const prefs = useDesktopStore.getState().preferences.ai;
+        return prefs.provider === "integrated" && prefs.extractTopics;
+      },
+      subscribeToPreferenceChanges: (callback) =>
+        useDesktopStore.subscribe((state, previous) => {
+          if (state.preferences.ai !== previous.preferences.ai) {
+            callback();
+          }
+        }),
+    });
     startMemoryMonitor({
       getAutomergeStats: getCachedDocStats,
       onCriticalPressure: () => {

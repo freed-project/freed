@@ -35,15 +35,15 @@ test("integrated AI settings offer a recommended local pack ladder", async ({ ap
   await expect(localAISettings).toBeVisible({ timeout: 5_000 });
   await expect(localAISettings.getByText("Integrated AI Download")).toBeVisible();
   await expect(localAISettings.getByText(/Choose one local pack/)).toBeVisible();
-  await expect(localAISettings.getByText(/Semantic scans run on startup/)).toBeVisible();
+  await expect(localAISettings.getByText(/Local classification runs only when Topics and ranking is enabled/)).toBeVisible();
   await expect(localAISettings.getByTestId("local-ai-pack-light")).toBeVisible();
   await expect(localAISettings.getByTestId("local-ai-pack-balanced")).toBeVisible();
   await expect(localAISettings.getByTestId("local-ai-pack-pro")).toBeVisible();
   await expect(localAISettings.getByText("Recommended: Balanced")).toBeVisible();
   await expect(localAISettings.getByTestId("local-ai-pack-balanced").getByText("Selected")).toBeVisible();
   await expect(localAISettings.getByTestId("local-ai-pack-balanced").getByText("Recommended", { exact: true })).toBeVisible();
-  await expect(localAISettings.getByTestId("local-ai-pack-balanced").getByText(/Classified:/)).toBeVisible();
-  await expect(localAISettings.getByTestId("local-ai-pack-balanced").getByText(/Last scan:/)).toBeVisible();
+  await expect(localAISettings.getByTestId("local-ai-pack-balanced").getByText("Classified: Off")).toBeVisible();
+  await expect(localAISettings.getByTestId("local-ai-pack-balanced").getByText("Last scan: Not enabled")).toBeVisible();
   await expect(localAISettings.getByText("Not installed")).toHaveCount(3);
   await expect(localAISettings.getByRole("button", { name: "Download" })).toHaveCount(3);
 
@@ -64,8 +64,8 @@ test("integrated AI settings offer a recommended local pack ladder", async ({ ap
 
   await providerSelector.getByRole("button", { name: /Ollama/ }).click();
   await expect(providerSelector.getByRole("button", { name: /Ollama/ })).toHaveAttribute("aria-pressed", "true");
-  await expect(settingsDialog.getByRole("switch", { name: "Summaries and extraction" })).toHaveAttribute("aria-checked", "true");
-  await expect(settingsDialog.getByRole("switch", { name: "Topics and ranking" })).toHaveAttribute("aria-checked", "true");
+  await expect(settingsDialog.getByRole("switch", { name: "Summaries and extraction" })).toHaveAttribute("aria-checked", "false");
+  await expect(settingsDialog.getByRole("switch", { name: "Topics and ranking" })).toHaveAttribute("aria-checked", "false");
 
   await providerSelector.getByRole("button", { name: /Off/ }).click();
   await expect(settingsDialog.getByRole("switch", { name: "Summaries and extraction" })).toHaveCount(0);

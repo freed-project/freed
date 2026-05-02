@@ -33,6 +33,8 @@ export function tauriInitScript(): string {
       get_all_local_ips: () => [],
       get_sync_url: () => 'ws://127.0.0.1:8765',
       sha256_file: () => '',
+      download_local_ai_model_file: (args) => args && args.request ? args.request.expectedSizeBytes || 0 : 0,
+      cancel_local_ai_model_download: () => null,
       get_sync_client_count: () => 0,
       get_runtime_memory_stats: () => ({
         totalPhysicalMemoryBytes: 16 * 1024 * 1024 * 1024,

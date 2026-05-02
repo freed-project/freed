@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
 use std::process::Command;
 use std::sync::{Arc, RwLock as StdRwLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use sysinfo::{Disks, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::menu::{Menu, MenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -72,6 +72,7 @@ const RENDERER_VISIBLE_RECOVERY_AFTER: Duration = Duration::from_secs(75);
 const RENDERER_HIDDEN_RECOVERY_AFTER: Duration = Duration::from_secs(600);
 const MAIN_WINDOW_RELEASE_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const MAIN_WINDOW_RELEASE_POLL_ATTEMPTS: usize = 20;
+const LOCAL_AI_DOWNLOAD_PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 const ENABLE_BACKGROUND_SCRAPER_CLOAK_JS: &str = r#"
     (function() {
         var token = "__freed_background_scraper__";
@@ -436,6 +437,27 @@ struct StartupRecoveryState {
     pending_boot_started_at_ms: Option<u64>,
     last_failed_boot_at_ms: Option<u64>,
     last_successful_boot_at_ms: Option<u64>,
+}
+
+#[derive(Default)]
+struct LocalAIModelDownloadState(StdRwLock<HashSet<String>>);
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalAIModelFileDownloadRequest {
+    download_id: String,
+    url: String,
+    target_path: String,
+    partial_path: String,
+    expected_size_bytes: u64,
+    progress_event: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LocalAIModelFileDownloadProgress {
+    download_id: String,
+    downloaded_bytes: u64,
 }
 
 fn now_unix_ms() -> u64 {
@@ -1349,6 +1371,252 @@ async fn sha256_file(app: tauri::AppHandle, path: String) -> Result<String, Stri
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+fn validate_local_ai_download_url(raw: &str) -> Result<(), String> {
+    let url = url::Url::parse(raw).map_err(|error| format!("invalid model file URL: {error}"))?;
+    if url.scheme() != "https" || url.host_str() != Some("huggingface.co") {
+        return Err("local AI model downloads must use https://huggingface.co".to_string());
+    }
+    Ok(())
+}
+
+fn validate_local_ai_model_path(root: &Path, path: &Path, field: &str) -> Result<(), String> {
+    if !path.is_absolute() {
+        return Err(format!("{field} must be an absolute path"));
+    }
+    if !path.starts_with(root) {
+        return Err(format!(
+            "{field} must stay inside the local AI model directory"
+        ));
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("{field} is missing a parent directory"))?;
+    std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let canonical_root = root.canonicalize().map_err(|error| error.to_string())?;
+    let canonical_parent = parent.canonicalize().map_err(|error| error.to_string())?;
+    if !canonical_parent.starts_with(&canonical_root) {
+        return Err(format!(
+            "{field} must stay inside the local AI model directory"
+        ));
+    }
+    Ok(())
+}
+
+fn local_ai_model_download_cancelled(
+    state: &tauri::State<'_, LocalAIModelDownloadState>,
+    download_id: &str,
+) -> bool {
+    state
+        .0
+        .read()
+        .map(|cancelled| cancelled.contains(download_id))
+        .unwrap_or(false)
+}
+
+fn emit_local_ai_download_progress(
+    app: &tauri::AppHandle,
+    event: &str,
+    download_id: &str,
+    downloaded_bytes: u64,
+) {
+    let _ = app.emit(
+        event,
+        LocalAIModelFileDownloadProgress {
+            download_id: download_id.to_string(),
+            downloaded_bytes,
+        },
+    );
+}
+
+#[tauri::command]
+async fn cancel_local_ai_model_download(
+    state: tauri::State<'_, LocalAIModelDownloadState>,
+    download_id: String,
+) -> Result<(), String> {
+    state
+        .0
+        .write()
+        .map_err(|_| "local AI download state is unavailable".to_string())?
+        .insert(download_id);
+    Ok(())
+}
+
+#[tauri::command]
+async fn download_local_ai_model_file(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, LocalAIModelDownloadState>,
+    request: LocalAIModelFileDownloadRequest,
+) -> Result<u64, String> {
+    validate_local_ai_download_url(&request.url)?;
+
+    let model_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("local-ai-models");
+    std::fs::create_dir_all(&model_root).map_err(|error| error.to_string())?;
+
+    let target = PathBuf::from(&request.target_path);
+    let partial = PathBuf::from(&request.partial_path);
+    validate_local_ai_model_path(&model_root, &target, "targetPath")?;
+    validate_local_ai_model_path(&model_root, &partial, "partialPath")?;
+    if request.partial_path != format!("{}.partial", request.target_path) {
+        return Err("partialPath must match targetPath plus .partial".to_string());
+    }
+
+    {
+        let mut cancelled = state
+            .0
+            .write()
+            .map_err(|_| "local AI download state is unavailable".to_string())?;
+        cancelled.remove(&request.download_id);
+    }
+
+    if let Ok(metadata) = tokio::fs::metadata(&target).await {
+        if metadata.len() == request.expected_size_bytes {
+            emit_local_ai_download_progress(
+                &app,
+                &request.progress_event,
+                &request.download_id,
+                request.expected_size_bytes,
+            );
+            return Ok(request.expected_size_bytes);
+        }
+        tokio::fs::remove_file(&target)
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+
+    let mut existing_partial_bytes = match tokio::fs::metadata(&partial).await {
+        Ok(metadata) => metadata.len(),
+        Err(_) => 0,
+    };
+    if existing_partial_bytes > request.expected_size_bytes {
+        tokio::fs::remove_file(&partial)
+            .await
+            .map_err(|error| error.to_string())?;
+        existing_partial_bytes = 0;
+    }
+
+    let client = reqwest::Client::new();
+    let mut response = {
+        let mut builder = client.get(&request.url);
+        if existing_partial_bytes > 0 {
+            builder = builder.header(
+                reqwest::header::RANGE,
+                format!("bytes={existing_partial_bytes}-"),
+            );
+        }
+        builder.send().await.map_err(|error| error.to_string())?
+    };
+
+    if response.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE && existing_partial_bytes > 0
+    {
+        tokio::fs::remove_file(&partial)
+            .await
+            .map_err(|error| error.to_string())?;
+        existing_partial_bytes = 0;
+        response = client
+            .get(&request.url)
+            .send()
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+
+    let can_append =
+        existing_partial_bytes > 0 && response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+    if existing_partial_bytes > 0 && !can_append {
+        tokio::fs::remove_file(&partial)
+            .await
+            .map_err(|error| error.to_string())?;
+        existing_partial_bytes = 0;
+    }
+
+    if !(response.status().is_success()
+        || response.status() == reqwest::StatusCode::PARTIAL_CONTENT)
+    {
+        return Err(format!(
+            "Download failed for local AI model file: {}",
+            response.status()
+        ));
+    }
+
+    let mut file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .append(can_append)
+        .truncate(!can_append)
+        .open(&partial)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    let mut downloaded_bytes = existing_partial_bytes;
+    let mut last_progress_at = Instant::now()
+        .checked_sub(LOCAL_AI_DOWNLOAD_PROGRESS_INTERVAL)
+        .unwrap_or_else(Instant::now);
+    emit_local_ai_download_progress(
+        &app,
+        &request.progress_event,
+        &request.download_id,
+        downloaded_bytes,
+    );
+
+    while let Some(chunk) = response.chunk().await.map_err(|error| error.to_string())? {
+        if local_ai_model_download_cancelled(&state, &request.download_id) {
+            return Err("download cancelled".to_string());
+        }
+        file.write_all(&chunk)
+            .await
+            .map_err(|error| error.to_string())?;
+        downloaded_bytes = downloaded_bytes.saturating_add(chunk.len() as u64);
+        if last_progress_at.elapsed() >= LOCAL_AI_DOWNLOAD_PROGRESS_INTERVAL {
+            emit_local_ai_download_progress(
+                &app,
+                &request.progress_event,
+                &request.download_id,
+                downloaded_bytes,
+            );
+            last_progress_at = Instant::now();
+        }
+    }
+
+    file.flush().await.map_err(|error| error.to_string())?;
+    drop(file);
+
+    if local_ai_model_download_cancelled(&state, &request.download_id) {
+        return Err("download cancelled".to_string());
+    }
+
+    let actual_size = tokio::fs::metadata(&partial)
+        .await
+        .map_err(|error| error.to_string())?
+        .len();
+    if actual_size != request.expected_size_bytes {
+        return Err(format!(
+            "Expected {} bytes for local AI model file, got {}",
+            request.expected_size_bytes, actual_size
+        ));
+    }
+
+    if tokio::fs::metadata(&target).await.is_ok() {
+        tokio::fs::remove_file(&target)
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+    tokio::fs::rename(&partial, &target)
+        .await
+        .map_err(|error| error.to_string())?;
+
+    emit_local_ai_download_progress(
+        &app,
+        &request.progress_event,
+        &request.download_id,
+        request.expected_size_bytes,
+    );
+
+    Ok(request.expected_size_bytes)
+}
+
 #[tauri::command]
 async fn get_sync_client_count(state: tauri::State<'_, RelayState>) -> Result<usize, String> {
     Ok(*state.client_count.read().await)
@@ -1384,13 +1652,33 @@ fn path_is_under_any_root(path: &Path, roots: &[PathBuf]) -> bool {
     roots.iter().any(|root| path.starts_with(root))
 }
 
+fn push_unique_path(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if !paths.iter().any(|existing| existing == &path) {
+        paths.push(path);
+    }
+}
+
 fn app_storage_roots(app: &tauri::AppHandle) -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Ok(path) = app.path().app_cache_dir() {
-        roots.push(path);
+        push_unique_path(&mut roots, path);
     }
     if let Ok(path) = app.path().app_data_dir() {
-        roots.push(path);
+        push_unique_path(&mut roots, path);
+    }
+    if let Ok(home) = app.path().home_dir() {
+        for app_dir in ["wtf.freed.desktop", "freed-desktop"] {
+            push_unique_path(
+                &mut roots,
+                home.join("Library").join("Caches").join(app_dir),
+            );
+            push_unique_path(
+                &mut roots,
+                home.join("Library")
+                    .join("Application Support")
+                    .join(app_dir),
+            );
+        }
     }
     roots
 }
@@ -1583,7 +1871,7 @@ fn trim_webkit_network_cache(app: &tauri::AppHandle) -> bool {
 }
 
 fn scrape_memory_may_proceed(stats: &RuntimeMemoryStats) -> bool {
-    stats.app_resident_bytes < stats.memory_critical_bytes
+    stats.app_resident_bytes < stats.memory_high_bytes
 }
 
 fn recycle_social_scraper_windows_except(
@@ -1624,6 +1912,20 @@ async fn prepare_social_scrape_memory_internal(
 
     let after = collect_runtime_memory_stats(app, relay_doc_bytes, relay_client_count);
     let may_proceed = scrape_memory_may_proceed(&after);
+    info!(
+        "[memory] scrape preflight provider={} operation={} before_app_rss={} before_webkit_rss={} after_app_rss={} after_webkit_rss={} high_bytes={} critical_bytes={} recycled_scrapers={} cache_trimmed={} may_proceed={}",
+        provider,
+        operation,
+        before.app_resident_bytes,
+        before.webkit_total_resident_bytes,
+        after.app_resident_bytes,
+        after.webkit_total_resident_bytes,
+        after.memory_high_bytes,
+        after.memory_critical_bytes,
+        recycled_scraper_windows,
+        cache_trimmed,
+        may_proceed
+    );
 
     ScrapeMemoryPreparation {
         before,
@@ -4265,6 +4567,34 @@ fn start_main_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, tau
 }
 
 fn recover_main_window(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
+    let app_for_recovery = app.clone();
+    let reason_for_recovery = reason.to_string();
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    app.run_on_main_thread(move || {
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            recover_main_window_on_main_thread(&app_for_recovery, &reason_for_recovery)
+        }))
+        .unwrap_or_else(|_| Err("renderer recovery panicked on main thread".to_string()));
+        let _ = tx.send(outcome);
+    })
+    .map_err(|error| format!("failed to schedule renderer recovery on main thread: {error}"))?;
+
+    match rx.recv_timeout(Duration::from_secs(15)) {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            let message = format!("timed out waiting for main-thread renderer recovery: {error}");
+            error!(
+                "[main-window] {}; requesting app restart reason={}",
+                message, reason
+            );
+            app.request_restart();
+            Err(message)
+        }
+    }
+}
+
+fn recover_main_window_on_main_thread(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
     let _keepalive = open_main_window_recovery_keepalive(app, reason)?;
     let outcome = recover_main_window_with_keepalive(app, reason);
 
@@ -4443,6 +4773,7 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_fs::init())
         .manage(relay_state)
+        .manage(LocalAIModelDownloadState::default())
         .manage(CaptureState::new());
 
     #[cfg(target_os = "macos")]
@@ -4883,6 +5214,8 @@ pub fn run() {
             get_all_local_ips,
             get_sync_url,
             sha256_file,
+            download_local_ai_model_file,
+            cancel_local_ai_model_download,
             get_sync_client_count,
             get_runtime_memory_stats,
             get_ai_hardware_profile,
@@ -4980,12 +5313,34 @@ mod tests {
     }
 
     #[test]
-    fn scrape_memory_blocks_only_when_after_cleanup_is_still_critical() {
+    fn local_ai_download_urls_are_restricted_to_hugging_face() {
+        assert!(validate_local_ai_download_url(
+            "https://huggingface.co/onnx-community/model/resolve/rev/file.onnx"
+        )
+        .is_ok());
+        assert!(validate_local_ai_download_url("http://huggingface.co/model").is_err());
+        assert!(validate_local_ai_download_url("https://example.com/model").is_err());
+    }
+
+    #[test]
+    fn local_ai_model_paths_must_stay_under_model_root() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("local-ai-models");
+        std::fs::create_dir_all(&root).unwrap();
+        let allowed = root.join("integrated-balanced/rev/model.bin");
+        let denied = temp.path().join("other/model.bin");
+
+        assert!(validate_local_ai_model_path(&root, &allowed, "targetPath").is_ok());
+        assert!(validate_local_ai_model_path(&root, &denied, "targetPath").is_err());
+    }
+
+    #[test]
+    fn scrape_memory_blocks_when_after_cleanup_is_still_high() {
         let stats = RuntimeMemoryStats {
             total_physical_memory_bytes: 16 * BYTES_PER_GIB,
             process_resident_bytes: 128,
             process_virtual_bytes: 256,
-            app_resident_bytes: MIN_CRITICAL_MEMORY_BYTES - 1,
+            app_resident_bytes: (MIN_CRITICAL_MEMORY_BYTES * 70 / 100) - 1,
             webkit_resident_bytes: None,
             webkit_virtual_bytes: None,
             webkit_process_id: None,
@@ -5004,7 +5359,7 @@ mod tests {
 
         assert!(scrape_memory_may_proceed(&stats));
         assert!(!scrape_memory_may_proceed(&RuntimeMemoryStats {
-            app_resident_bytes: MIN_CRITICAL_MEMORY_BYTES,
+            app_resident_bytes: MIN_CRITICAL_MEMORY_BYTES * 70 / 100,
             ..stats
         }));
     }

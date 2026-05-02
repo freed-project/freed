@@ -8,6 +8,11 @@ const PROCESS_INTERVAL_MS = 5_000;
 const RETRY_COOLDOWN_MS = 60_000;
 const HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000;
 
+type SemanticClassifierOptions = {
+  isEnabled?: () => boolean;
+  subscribeToPreferenceChanges?: (callback: () => void) => () => void;
+};
+
 let running = false;
 let scheduled = false;
 let processing = false;
@@ -20,14 +25,22 @@ let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let heartbeatHandle: ReturnType<typeof setInterval> | null = null;
 let unsubscribeDoc: (() => void) | null = null;
 let unsubscribeLocalAIModelState: (() => void) | null = null;
+let unsubscribePreferenceChanges: (() => void) | null = null;
 let pending = 0;
+let isEnabled: () => boolean = () => false;
 
 function scheduleBackfill(): void {
+  if (!isEnabled()) {
+    scheduled = false;
+    pending = 0;
+    return;
+  }
   scheduled = true;
   pending = Math.max(pending, 1);
 }
 
 async function recordSemanticHealth(summary: Awaited<ReturnType<typeof docBackfillContentSignals>>): Promise<void> {
+  if (!isEnabled()) return;
   try {
     const models = await localAIModels.listModels();
     const semanticModel =
@@ -47,6 +60,11 @@ async function recordSemanticHealth(summary: Awaited<ReturnType<typeof docBackfi
 
 async function processNextBatch(): Promise<void> {
   if (!running || processing || !scheduled) return;
+  if (!isEnabled()) {
+    scheduled = false;
+    pending = 0;
+    return;
+  }
   const now = Date.now();
   if (lastFailureAt && now - lastFailureAt < RETRY_COOLDOWN_MS) return;
 
@@ -75,11 +93,12 @@ async function processNextBatch(): Promise<void> {
   }
 }
 
-export function start(): void {
+export function start(options: SemanticClassifierOptions = {}): void {
   if (running) return;
+  isEnabled = options.isEnabled ?? (() => false);
   running = true;
-  scheduled = true;
-  pending = 1;
+  scheduled = isEnabled();
+  pending = scheduled ? 1 : 0;
   lastScannedDocItemCount = null;
 
   unsubscribeDoc = subscribe((state) => {
@@ -90,6 +109,9 @@ export function start(): void {
   unsubscribeLocalAIModelState = subscribeToLocalAIModelState(() => {
     scheduleBackfill();
   });
+  unsubscribePreferenceChanges = options.subscribeToPreferenceChanges?.(() => {
+    scheduleBackfill();
+  }) ?? null;
 
   log.info("[semantic-classifier] started");
 
@@ -133,6 +155,11 @@ export function stop(): void {
     unsubscribeLocalAIModelState();
     unsubscribeLocalAIModelState = null;
   }
+  if (unsubscribePreferenceChanges) {
+    unsubscribePreferenceChanges();
+    unsubscribePreferenceChanges = null;
+  }
+  isEnabled = () => false;
 
   log.info("[semantic-classifier] stopped");
 }

@@ -208,6 +208,47 @@ describe("local AI model manager", () => {
     expect(models[0].state.storageBytes).toBe(10);
   });
 
+  it("uses the native model downloader when available", async () => {
+    const { deps, files, requests } = createDeps();
+    const nativeDownloads: Array<{
+      url: string;
+      targetPath: string;
+      partialPath: string;
+      expectedSizeBytes: number;
+    }> = [];
+    deps.downloadModelFile = async (input, onProgress) => {
+      nativeDownloads.push({
+        url: input.url,
+        targetPath: input.targetPath,
+        partialPath: input.partialPath,
+        expectedSizeBytes: input.expectedSizeBytes,
+      });
+      files.set(input.targetPath, TEXT.encode("hello"));
+      onProgress(input.expectedSizeBytes);
+      return input.expectedSizeBytes;
+    };
+    const service = createLocalAIModelService(deps, TEST_MANIFEST);
+
+    const models = await service.downloadModel("integrated-balanced");
+
+    expect(models[0].state.status).toBe("available");
+    expect(requests).toEqual([]);
+    expect(nativeDownloads).toEqual([
+      {
+        url: "https://huggingface.co/test/model/resolve/abc123/model.bin",
+        targetPath: modelPath("model.bin"),
+        partialPath: `${modelPath("model.bin")}.partial`,
+        expectedSizeBytes: 5,
+      },
+      {
+        url: "https://huggingface.co/test/model/resolve/abc123/metadata.json",
+        targetPath: modelPath("metadata.json"),
+        partialPath: `${modelPath("metadata.json")}.partial`,
+        expectedSizeBytes: 5,
+      },
+    ]);
+  });
+
   it("treats Hugging Face etags as metadata, not raw file checksums", async () => {
     const { deps } = createDeps();
     const service = createLocalAIModelService(deps, TEST_MANIFEST);
