@@ -11,7 +11,8 @@
   "pinnedHighlights": [
     "Added ranked friend suggestions built from identity graph data, activity signals, contact overlap, and optional local AI content classifications.",
     "Added the Friends and All content lens to the feed toolbar so the map, feed, and friends views share the same scope control.",
-    "Preserved paused native local AI downloads more reliably across pause and bookkeeping boundaries."
+    "Preserved paused native local AI downloads more reliably across pause and bookkeeping boundaries.",
+    "Fixed the local AI pause regression test typing issue that blocked dev release validation."
   ],
   "editorialNotes": [],
   "updatedAt": "2026-05-02T21:58:37.170Z"

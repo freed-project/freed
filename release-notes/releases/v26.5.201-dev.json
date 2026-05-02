@@ -3,7 +3,7 @@
   "version": "26.5.201-dev",
   "channel": "dev",
   "dayKey": "26.5.2",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-05-02T21:58:37.169Z",
   "model": "heuristic",
@@ -35,15 +35,17 @@
     ]
   },
   "release": {
-    "deck": "AI ranked friend suggestions and a shared friends lens across core views",
+    "deck": "AI ranked friend suggestions and a shared friends lens across core views.",
     "features": [
-      "AI ranked friend suggestions"
+      "Added ranked friend suggestions built from identity graph data, activity signals, contact overlap, and optional local AI content classifications.",
+      "Added suggested-friend review surfaces with reasons, sample evidence counts, dismiss controls, and explicit promote or link actions.",
+      "Added the Friends and All content lens to the feed toolbar so the map, feed, and friends views share the same scope control."
     ],
     "fixes": [
-      "Unblock local AI pause test build",
-      "Preserve paused native local AI downloads"
+      "Preserved paused native local AI downloads more reliably across pause and bookkeeping boundaries.",
+      "Fixed the local AI pause regression test typing issue that blocked dev release validation."
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.5.201-dev\n\nAI ranked friend suggestions and a shared friends lens across core views\n\n### Features\n\n- AI ranked friend suggestions\n\n### Fixes\n\n- Unblock local AI pause test build\n- Preserve paused native local AI downloads\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.5.201-dev\n\nAI ranked friend suggestions and a shared friends lens across core views.\n\n### Highlights\n\n- Added ranked friend suggestions built from identity graph data, activity signals, contact overlap, and optional local AI content classifications.\n- Added suggested-friend review surfaces with reasons, sample evidence counts, dismiss controls, and explicit promote or link actions.\n- Added the Friends and All content lens to the feed toolbar so the map, feed, and friends views share the same scope control.\n- Preserved paused native local AI downloads more reliably across pause and bookkeeping boundaries.\n- Fixed the local AI pause regression test typing issue that blocked dev release validation.\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
