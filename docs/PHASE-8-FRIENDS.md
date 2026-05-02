@@ -1,6 +1,6 @@
 # Phase 8: Friends + Social Graph
 
-> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, server-proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry, the Friends workspace now defaults to `All content`, and the graph surface uses a WebGL-backed Pixi renderer with a bounded D3 Force worker solve, confirmed friend hubs near the center, provisional human identities in the middle field, linked channel satellites around people, unlinked provider islands around the edge, RSS treated as a normal provider island, drag-to-link reassignment, drag-to-pin placement, semantic zoom labels, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map plus Friends surfaces continue to share the unified top toolbar with current, future, and past map windows plus the quieter lower-left timeline scrubber
+> **Status:** In Progress, the canonical identity model now uses `Person` plus attached `Account` records, Google Contacts imports create friend persons by default, server-proxied Google token exchange plus refresh keeps Contacts sync alive after access-token expiry, the Friends workspace now defaults to `All content`, and the graph surface uses a WebGL-backed Pixi renderer with a bounded D3 Force worker solve, confirmed friend hubs near the center, provisional human identities in the middle field, linked channel satellites around people, unlinked provider islands around the edge, RSS treated as a normal provider island, drag-to-link reassignment, drag-to-pin placement, semantic zoom labels, AI-ranked suggestion-only friend candidates from local identity and content signals, a desktop right-rail toggle with a collapsed-state floating selection card, and a mobile `Details` mode in the shared toolbar while the map plus Friends surfaces continue to share the unified top toolbar with current, future, and past map windows plus the quieter lower-left timeline scrubber
 > **Dependencies:** Phase 7 (Facebook + Instagram capture provide most social content)
 
 ---
@@ -181,6 +181,7 @@ Default nudge intervals by care level:
 - `packages/ui/src/components/friends/FriendsView.tsx` — top-level view shell
 - `packages/ui/src/components/friends/FriendGraph.tsx` — Pixi WebGL renderer with semantic zoom labels
 - `packages/ui/src/lib/identity-graph-model.ts` — derived person, channel, and feed graph model
+- `packages/shared/src/friend-suggestions.ts`: pure suggestion-only friend candidate ranking from identity, activity, content signals, and contact overlap
 - `packages/ui/src/lib/identity-graph-layout.ts` — stable radial layout plus spatial index helpers
 - `packages/ui/src/lib/identity-graph-layout.worker.ts` — worker entrypoint for graph layout
 - `packages/ui/src/components/friends/index.ts` — barrel export
@@ -271,6 +272,7 @@ The layout worker now uses bounded D3 Force ticks for the people field, places c
 Dragging a person or channel now pins its graph position unless the channel is dropped onto a person, in which case the existing link flow wins.
 Sample data now defaults to a showcase graph with 250 friends and 1,250 connected social identities, while the stress fixture covers 1,000 friends and 5,000 connected social identities.
 Semantic zoom now promotes provider island labels at low zoom while delaying person and channel labels until the operator zooms in, so the graph reads as geography first and detail second.
+Suggested friends now appear in the Friends `All content` review flow when existing connection people or unlinked human-looking accounts have enough personal content, recent activity, linked-channel evidence, or Google Contacts overlap. Suggestions are ranked evidence only. Promotion and linking still require explicit operator action.
 
 ---
 
@@ -324,6 +326,7 @@ Semantic zoom now promotes provider island labels at low zoom while delaying per
 | 8.40 | Expand showcase and stress sample graph coverage to 250 friends plus 1,250 identities and 1,000 friends plus 5,000 identities | Medium | Done |
 | 8.41 | Add semantic zoom hierarchy so provider island labels dominate low zoom and person labels appear at closer zoom | Medium | Done |
 | 8.42 | Search and filter the primary feed by followed social channel names | Medium | Done |
+| 8.43 | Add AI-ranked suggestion-only friend candidates from identity graph, contact, activity, and content signals | Medium | Done |
 
 ---
 
@@ -381,6 +384,7 @@ Semantic zoom now promotes provider island labels at low zoom while delaying per
 - [x] Dragging a person or channel pins the graph position, while channel drops onto people still link accounts
 - [x] Stress coverage exercises 1,000 friends plus 5,000 connected social identities
 - [x] Primary search can find followed social channels by account name or handle and filter the feed to that exact channel
+- [x] Friends `All content` shows ranked suggested friends from connection people and unlinked human-looking accounts, with reasons, signal counts, sample item ids, dismissal, and explicit promotion only
 - [x] Graph benchmarks cover model build time, worker layout time, scene sync time, pan and zoom sync time, selection and hover sync time, visible label count, and quality mode transitions
 - [x] Desktop browser tests cover mixed-tier graph load, drag-to-link persistence, semantic zoom label growth, and a seeded dense-graph screenshot
 - [x] Generic Instagram story labels are recovered from preserved location URLs or excluded from the map
@@ -396,6 +400,7 @@ Semantic zoom now promotes provider island labels at low zoom while delaying per
 ## Privacy Considerations
 
 - All location data stays local — never synced to cloud
+- Friend suggestions use local identity metadata, content signals, item ids, counts, and optional local Integrated AI enrichment only. They do not send social content or contacts to cloud providers.
 - Nominatim queries go only to `nominatim.openstreetmap.org` (no Freed servers)
 - Device contact import is one-shot; no live OS contacts sync
 - `reachOutLog` syncs across user's own devices via the existing Automerge relay

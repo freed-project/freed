@@ -4963,6 +4963,221 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
   });
 });
 
+test("AI ranked friend suggestions surface and promote connection people", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddPerson: (person: unknown) => Promise<void>;
+      docAddAccount: (account: unknown) => Promise<void>;
+      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
+        setActiveView: (view: string) => void;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddPerson({
+      id: "connection-maya-suggestion",
+      name: "Maya Chen",
+      relationshipStatus: "connection",
+      careLevel: 2,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await automerge.docAddAccount({
+      id: "social:instagram:maya-suggestion",
+      personId: "connection-maya-suggestion",
+      kind: "social",
+      provider: "instagram",
+      externalId: "maya-suggestion",
+      handle: "maya",
+      displayName: "Maya Chen",
+      firstSeenAt: now,
+      lastSeenAt: now,
+      discoveredFrom: "captured_item",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await automerge.docAddFeedItems([
+      {
+        globalId: "instagram:maya-suggestion:1",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now - 60_000,
+        author: { id: "maya-suggestion", handle: "maya", displayName: "Maya Chen" },
+        content: { text: "Garden visit", mediaUrls: [], mediaTypes: [] },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+        contentSignals: {
+          version: 3,
+          method: "rules",
+          inferredAt: now,
+          scores: { life_update: 1, moment: 1 },
+          tags: ["life_update", "moment"],
+        },
+      },
+      {
+        globalId: "instagram:maya-suggestion:2",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now - 120_000,
+        author: { id: "maya-suggestion", handle: "maya", displayName: "Maya Chen" },
+        content: { text: "Moving update", mediaUrls: [], mediaTypes: [] },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+        contentSignals: {
+          version: 3,
+          method: "rules",
+          inferredAt: now,
+          scores: { life_update: 1, place: 1 },
+          tags: ["life_update", "place"],
+        },
+      },
+      {
+        globalId: "instagram:maya-suggestion:3",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now - 180_000,
+        author: { id: "maya-suggestion", handle: "maya", displayName: "Maya Chen" },
+        content: { text: "Asked for help", mediaUrls: [], mediaTypes: [] },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+        contentSignals: {
+          version: 3,
+          method: "rules",
+          inferredAt: now,
+          scores: { request: 1, discussion: 1 },
+          tags: ["request", "discussion"],
+        },
+      },
+    ]);
+
+    await store.getState().updatePreferences({ display: { friendsMode: "all_content" } });
+    store.getState().setActiveView("friends");
+  });
+
+  const suggestions = page.getByTestId("friend-candidate-suggestions");
+  await expect(suggestions).toBeVisible({ timeout: 10_000 });
+  await suggestions.getByText("Maya Chen").click();
+
+  const detail = page.getByTestId("friend-candidate-detail");
+  await expect(detail).toContainText("Personal updates");
+  await expect(detail).toContainText("Evidence ...");
+  await detail.getByRole("button", { name: "Promote to friend" }).click();
+
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+        getState: () => { persons: Record<string, { relationshipStatus: string; careLevel: number }> };
+      };
+      return store.getState().persons["connection-maya-suggestion"];
+    }),
+  ).toMatchObject({
+    relationshipStatus: "friend",
+    careLevel: 3,
+  });
+});
+
+test("AI ranked friend suggestion dismiss hides the candidate without deleting the account", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddAccount: (account: unknown) => Promise<void>;
+      docAddFeedItems: (items: unknown[]) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
+        setActiveView: (view: string) => void;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddAccount({
+      id: "social:instagram:ida-suggestion",
+      kind: "social",
+      provider: "instagram",
+      externalId: "ida-suggestion",
+      handle: "ida",
+      displayName: "Ida Wells",
+      firstSeenAt: now,
+      lastSeenAt: now,
+      discoveredFrom: "captured_item",
+      createdAt: now,
+      updatedAt: now,
+    });
+    await automerge.docAddFeedItems([
+      {
+        globalId: "instagram:ida-suggestion:1",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now - 60_000,
+        author: { id: "ida-suggestion", handle: "ida", displayName: "Ida Wells" },
+        content: { text: "Travel day", mediaUrls: [], mediaTypes: [] },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+        contentSignals: {
+          version: 3,
+          method: "rules",
+          inferredAt: now,
+          scores: { life_update: 1, moment: 1 },
+          tags: ["life_update", "moment"],
+        },
+      },
+      {
+        globalId: "instagram:ida-suggestion:2",
+        platform: "instagram",
+        contentType: "post",
+        capturedAt: now,
+        publishedAt: now - 120_000,
+        author: { id: "ida-suggestion", handle: "ida", displayName: "Ida Wells" },
+        content: { text: "Recommendation thread", mediaUrls: [], mediaTypes: [] },
+        userState: { hidden: false, saved: false, archived: false, tags: [] },
+        topics: [],
+        contentSignals: {
+          version: 3,
+          method: "rules",
+          inferredAt: now,
+          scores: { recommendation: 1, discussion: 1, place: 1 },
+          tags: ["recommendation", "discussion", "place"],
+        },
+      },
+    ]);
+
+    await store.getState().updatePreferences({ display: { friendsMode: "all_content" } });
+    store.getState().setActiveView("friends");
+  });
+
+  const row = page.getByTestId("friend-candidate-suggestion").filter({ hasText: "Ida Wells" });
+  await expect(row).toBeVisible({ timeout: 10_000 });
+  await row.getByRole("button", { name: "Dismiss" }).click();
+  await expect(row).toBeHidden({ timeout: 10_000 });
+
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+        getState: () => { accounts: Record<string, unknown> };
+      };
+      return Boolean(store.getState().accounts["social:instagram:ida-suggestion"]);
+    }),
+  ).toBe(true);
+});
+
 test("dragging a channel onto a person re-links it and the graph state survives reload", async ({ app, page }) => {
   test.setTimeout(45_000);
   await page.setViewportSize({ width: 1440, height: 900 });

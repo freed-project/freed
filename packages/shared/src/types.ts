@@ -261,6 +261,43 @@ export interface AIPreferences {
   extractTopics: boolean;
 }
 
+export type FriendCandidateSuggestionKind = "connection_person" | "unlinked_account";
+
+export type FriendCandidateConfidence = "high" | "medium";
+
+export type FriendCandidateReasonCode =
+  | "personal_updates"
+  | "life_events"
+  | "direct_requests"
+  | "places_and_moments"
+  | "multi_channel_identity"
+  | "recent_activity"
+  | "contact_overlap";
+
+export interface FriendCandidateReason {
+  code: FriendCandidateReasonCode;
+  label: string;
+  score: number;
+}
+
+export interface FriendCandidateSuggestion {
+  id: string;
+  kind: FriendCandidateSuggestionKind;
+  personId?: string;
+  accountIds: string[];
+  displayName: string;
+  score: number;
+  confidence: FriendCandidateConfidence;
+  reasons: FriendCandidateReason[];
+  signalCounts: Partial<Record<ContentSignal, number>>;
+  lastActivityAt?: number;
+  sampleItemIds: string[];
+}
+
+export interface FriendSuggestionPreferences {
+  dismissedSuggestionIds: string[];
+}
+
 export type LocalAIModelId =
   | "integrated-light"
   | "integrated-balanced"
@@ -739,6 +776,8 @@ export interface UserPreferences {
   display: DisplayPreferences;
   xCapture: XCapturePreferences;
   fbCapture: FacebookCapturePreferences;
+  /** Review-only friend candidate preferences. Suggestions never auto-promote. */
+  friendSuggestions: FriendSuggestionPreferences;
   /** AI summarization + topic extraction preferences (no API keys here) */
   ai: AIPreferences;
 }
@@ -948,6 +987,9 @@ export function createDefaultPreferences(): UserPreferences {
       knownGroups: {},
       excludedGroupIds: {},
     },
+    friendSuggestions: {
+      dismissedSuggestionIds: [],
+    },
     ai: {
       provider: "none",
       model: "",
@@ -975,6 +1017,7 @@ export function mergeDefaultPreferences(
   const sync = preferences.sync as Partial<SyncPreferences> | undefined;
   const xCapture = preferences.xCapture as Partial<XCapturePreferences> | undefined;
   const fbCapture = preferences.fbCapture as Partial<FacebookCapturePreferences> | undefined;
+  const friendSuggestions = preferences.friendSuggestions as Partial<FriendSuggestionPreferences> | undefined;
   const ai = preferences.ai as Partial<AIPreferences> | undefined;
 
   return {
@@ -1039,6 +1082,13 @@ export function mergeDefaultPreferences(
         ...defaults.fbCapture.excludedGroupIds,
         ...(fbCapture?.excludedGroupIds ?? {}),
       },
+    },
+    friendSuggestions: {
+      ...defaults.friendSuggestions,
+      ...friendSuggestions,
+      dismissedSuggestionIds: [
+        ...(friendSuggestions?.dismissedSuggestionIds ?? defaults.friendSuggestions.dismissedSuggestionIds),
+      ],
     },
     ai: {
       ...defaults.ai,
