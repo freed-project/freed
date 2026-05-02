@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo, cloneElement, isValidElement, type ReactNode } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo, cloneElement, isValidElement, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 import {
   countAuthorsWithRecentLocationUpdates,
@@ -50,10 +50,150 @@ function fmt(n: number): string {
 }
 
 const FEEDS_PAGE_SIZE = 10;
+const SOURCE_ACTION_SLOT_WITH_COUNTS_CLASS = "ml-1.5 w-16";
 const RESIZE_HANDLE_HIT_AREA_WIDTH_PX = 16;
 const COMPACT_READER_RAIL_VISUAL_GAP_WIDTH_PX = 8;
 const MOBILE_SIDEBAR_WIDTH_PX = DEFAULT_PRIMARY_SIDEBAR_WIDTH_PX + 50;
 const MOBILE_SIDEBAR_VIEWPORT_MARGIN_PX = 24;
+
+function MoreIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20">
+      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
+    </svg>
+  );
+}
+
+interface SidebarNavRowProps {
+  active: boolean;
+  actionSlotClass?: string;
+  afterLabel?: ReactNode;
+  count?: ReactNode;
+  countTestId?: string;
+  countTextClass: string;
+  depth?: 0 | 1;
+  icon: ReactNode;
+  label: ReactNode;
+  labelClass: string;
+  menu?: ReactNode;
+  menuOpen?: boolean;
+  onClick: () => void;
+  primaryAsDiv?: boolean;
+  primaryClassName?: string;
+  rowGapClass: string;
+  rowLeadingPaddingClass: string;
+  rowTextClass: string;
+  rowTrailingPaddingClass: string;
+  rowVerticalPaddingClass: string;
+  testId?: string;
+}
+
+function SidebarNavRow({
+  active,
+  actionSlotClass = SOURCE_ACTION_SLOT_WITH_COUNTS_CLASS,
+  afterLabel,
+  count,
+  countTestId,
+  countTextClass,
+  depth = 0,
+  icon,
+  label,
+  labelClass,
+  menu,
+  menuOpen = false,
+  onClick,
+  primaryAsDiv = false,
+  primaryClassName = "",
+  rowGapClass,
+  rowLeadingPaddingClass,
+  rowTextClass,
+  rowTrailingPaddingClass,
+  rowVerticalPaddingClass,
+  testId,
+}: SidebarNavRowProps) {
+  const hasTrailingSlot = count || menu;
+  const rowToneClass = active
+    ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
+    : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]";
+  const primaryToneClass = active
+    ? "text-[color:var(--theme-text-primary)]"
+    : "text-[color:var(--theme-text-secondary)] group-hover/sidebar-row:text-[color:var(--theme-text-primary)]";
+  const primaryClass = `
+    flex min-w-0 flex-1 cursor-pointer items-center ${rowGapClass} ${rowLeadingPaddingClass} ${rowVerticalPaddingClass}
+    text-left ${rowTextClass} transition-all ${primaryToneClass} ${primaryClassName}
+  `;
+  const countVisibilityClass = menu
+    ? menuOpen
+      ? "pointer-events-none translate-x-1 opacity-0"
+      : "opacity-100 group-hover/sidebar-row:pointer-events-none group-hover/sidebar-row:translate-x-1 group-hover/sidebar-row:opacity-0"
+    : "opacity-100";
+  const handlePrimaryKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onClick();
+    }
+  };
+  const content = (
+    <>
+      <span data-sidebar-icon-slot="true">{icon}</span>
+      <span className={labelClass}>{label}</span>
+      {afterLabel}
+    </>
+  );
+
+  return (
+    <div
+      data-sidebar-row="true"
+      data-sidebar-depth={depth}
+      className={`group/sidebar-row flex items-stretch gap-0 rounded-lg border transition-all ${rowToneClass}`}
+    >
+      {primaryAsDiv ? (
+        <div
+          onClick={onClick}
+          onKeyDown={handlePrimaryKeyDown}
+          data-testid={testId}
+          role="button"
+          tabIndex={0}
+          className={`${primaryClass} outline-none`}
+        >
+          {content}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onClick}
+          data-testid={testId}
+          className={primaryClass}
+        >
+          {content}
+        </button>
+      )}
+      {hasTrailingSlot ? (
+        <div
+          onClick={onClick}
+          data-sidebar-trailing-slot="true"
+          className={`flex shrink-0 cursor-pointer items-stretch ${rowTrailingPaddingClass}`}
+        >
+          <div
+            data-sidebar-action-slot="true"
+            className={`relative self-stretch shrink-0 ${actionSlotClass}`}
+          >
+            {count ? (
+              <span
+                data-testid={countTestId}
+                data-sidebar-count-slot="true"
+                className={`absolute inset-y-0 right-0 flex items-center gap-0.5 ${countTextClass} leading-none tabular-nums transition-all duration-200 ease-in-out ${countVisibilityClass}`}
+              >
+                {count}
+              </span>
+            ) : null}
+            {menu}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function scoreFeedMatch(feed: RssFeed, queryTerms: string[]): number {
   if (queryTerms.length === 0) return 0;
@@ -672,12 +812,12 @@ export function Sidebar({
         ? "pl-2"
         : "pl-2.5";
   const rowTrailingPaddingClass = isMobileDevice
-    ? "pr-2"
+    ? "pr-3"
     : compactRail
-      ? "pr-1"
+      ? "pr-1.5"
       : narrowLabeledSidebar
-        ? "pr-0"
-        : "pr-0.5";
+        ? "pr-1.5"
+        : "pr-2.5";
   const rowGapClass = isMobileDevice ? "gap-3.5" : narrowLabeledSidebar ? "gap-2" : "gap-3";
   const rowTextClass = isMobileDevice ? "text-base" : "text-sm";
   const rowVerticalPaddingClass = isMobileDevice ? "py-3" : "py-1.5";
@@ -906,23 +1046,20 @@ export function Sidebar({
     source.id === "facebook" ||
     source.id === "instagram" ||
     source.id === "linkedin";
-  const isSocialSource = (source: SourceNavigationItem) =>
-    source.id === "x" ||
-    source.id === "facebook" ||
-    source.id === "instagram" ||
-    source.id === "linkedin";
-  const providerRowShellClass = rowCountsVisible ? "-mx-1.5 px-1.5" : "";
-  const providerRowLeadingPaddingClass = (source: SourceNavigationItem) =>
-    rowCountsVisible && isSocialSource(source) ? "pl-1" : rowLeadingPaddingClass;
   const sourceMenuTriggerBaseClass = rowCountsVisible
     ? "absolute right-0 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)]"
     : "absolute top-[-1px] bottom-[-1px] right-0 flex items-center justify-center rounded-md px-1 transition-all duration-200 ease-in-out hover:text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-bg-muted)]";
   const sourceActionSlotClass = (source: SourceNavigationItem) => {
-    if (rowCountsVisible) return "ml-1.5 w-[54px]";
+    if (rowCountsVisible) return SOURCE_ACTION_SLOT_WITH_COUNTS_CLASS;
     if (!sourceMenusVisible || !canShowSourceMenu(source)) return "ml-0 w-0";
     return openMenuSourceKey === sourceKey(source)
       ? "ml-0 w-[26px]"
-      : "ml-0 w-0 group-hover/source:w-[26px]";
+      : "ml-0 w-0 group-hover/sidebar-row:w-[26px]";
+  };
+  const feedActionSlotClass = (menuOpen: boolean) => {
+    if (rowCountsVisible) return SOURCE_ACTION_SLOT_WITH_COUNTS_CLASS;
+    if (!sourceMenusVisible) return "ml-0 w-0";
+    return menuOpen ? "ml-0 w-[26px]" : "ml-0 w-0 group-hover/sidebar-row:w-[26px]";
   };
 
   const selectedMenuSource = openMenuSourceKey
@@ -1083,6 +1220,89 @@ export function Sidebar({
     : undefined;
   const sidebarLabelClass = `min-w-0 flex-1 truncate whitespace-nowrap ${narrowLabeledSidebar ? "pr-0" : "pr-0.5"}`;
   const sidebarFeedLabelClass = `${sidebarLabelClass} text-xs`;
+  const renderSimpleCount = (count: number, active = false) => (
+    <span className={active ? "text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"}>
+      {fmt(count)}
+    </span>
+  );
+  const renderSourceCount = (unread: number, total: number) => (
+    <>
+      <span className={unread > 0 ? "font-medium text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"}>
+        {fmt(unread)}
+      </span>
+      <span className="text-[var(--theme-text-soft)]">/</span>
+      <span className="text-[var(--theme-text-soft)]">{fmt(total)}</span>
+    </>
+  );
+  const renderSourceMenu = (source: SourceNavigationItem) => {
+    if (!sourceMenusVisible || !canShowSourceMenu(source)) return null;
+
+    const key = sourceKey(source);
+
+    return (
+      <button
+        aria-label={`Options for ${source.label}`}
+        data-testid={`source-menu-trigger-${key}`}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (openMenuSourceKey === key) {
+            setOpenMenuSourceKey(null);
+            setSourceMenuAnchorRect(null);
+            setSourceMenuAnchorElement(null);
+          } else {
+            setOpenMenuFeedUrl(null);
+            setMenuAnchorRect(null);
+            setMenuAnchorElement(null);
+            setOpenMenuSourceKey(key);
+            setSourceMenuAnchorRect(e.currentTarget.getBoundingClientRect());
+            setSourceMenuAnchorElement(e.currentTarget);
+          }
+        }}
+        className={`${sourceMenuTriggerBaseClass} ${
+          openMenuSourceKey === key
+            ? "translate-x-0 bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-primary)] opacity-100"
+            : "pointer-events-none translate-x-[-4px] text-[color:var(--theme-text-muted)] opacity-0 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:translate-x-0 group-hover/sidebar-row:opacity-100"
+        }`}
+      >
+        <MoreIcon />
+      </button>
+    );
+  };
+  const renderFeedMenu = (feed: RssFeed, menuOpen: boolean) => (
+    <button
+      aria-label={`Options for ${feed.title}`}
+      onMouseDown={(e) => {
+        e.stopPropagation();
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (menuOpen) {
+          setOpenMenuFeedUrl(null);
+          setMenuAnchorRect(null);
+          setMenuAnchorElement(null);
+        } else {
+          setOpenMenuSourceKey(null);
+          setSourceMenuAnchorRect(null);
+          setSourceMenuAnchorElement(null);
+          setOpenMenuFeedUrl(feed.url);
+          setMenuAnchorRect(e.currentTarget.getBoundingClientRect());
+          setMenuAnchorElement(e.currentTarget);
+        }
+      }}
+      className={`absolute right-0 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md transition-all duration-200 ease-in-out hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] ${
+        menuOpen
+          ? "translate-x-0 bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-primary)] opacity-100"
+          : sourceMenusVisible
+            ? "pointer-events-none translate-x-[-4px] text-[color:var(--theme-text-muted)] opacity-0 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:translate-x-0 group-hover/sidebar-row:opacity-100"
+            : "pointer-events-none opacity-0"
+      }`}
+    >
+      <MoreIcon />
+    </button>
+  );
 
   const sidebarBody = (
     <nav
@@ -1114,57 +1334,27 @@ export function Sidebar({
                   })}
                 </li>
               ) : (
-                <li
-                  key={source.id ?? "all"}
-                  className={`order-1 group/source flex items-stretch gap-0 rounded-lg border transition-all ${
-                    isTopSourceActive(source)
-                      ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
-                      : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-                  }`}
-                >
-                  <button
-                    onClick={() => handleSourceClick(source)}
-                    data-testid={`source-row-${sourceKey(source)}`}
-                    className={`
-                      flex-1 cursor-pointer flex items-center ${rowGapClass} ${rowLeadingPaddingClass} ${rowVerticalPaddingClass} min-w-0
-                      text-left ${rowTextClass} transition-all
-                      ${
-                        isTopSourceActive(source)
-                          ? "text-[var(--theme-text-primary)]"
-                          : "text-[var(--theme-text-secondary)] group-hover/source:text-[var(--theme-text-primary)]"
-                      }
-                    `}
-                    >
-                    {renderSidebarRowIcon(
+                <li key={source.id ?? "all"} className="order-1">
+                  <SidebarNavRow
+                    active={isTopSourceActive(source)}
+                    count={rowCountsVisible && sourceTotalCount(source) > 0 ? renderSourceCount(sourceUnreadCount(source), sourceTotalCount(source)) : null}
+                    countTestId={`source-counts-${sourceKey(source)}`}
+                    countTextClass={countTextClass}
+                    icon={renderSidebarRowIcon(
                       source.icon,
                       getSourceBadge(source),
                       labeledSourceIconSizeClass(source.id),
                     )}
-                    <span className={sidebarLabelClass}>{source.label}</span>
-                  </button>
-                  <div
+                    label={source.label}
+                    labelClass={sidebarLabelClass}
                     onClick={() => handleSourceClick(source)}
-                    className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
-                  >
-                    <div className={`relative h-6 shrink-0 ${rowCountsVisible ? "ml-0.5 w-[54px]" : "ml-0 w-0"}`}>
-                      {rowCountsVisible && sourceTotalCount(source) > 0 && (
-                        <span
-                          data-testid={`source-counts-${sourceKey(source)}`}
-                          className={`absolute inset-y-0 right-0 flex items-center gap-0.5 ${countTextClass} leading-none tabular-nums transition-all duration-200 ease-in-out ${
-                            openMenuSourceKey === sourceKey(source)
-                              ? "pointer-events-none translate-x-1 opacity-0"
-                              : "opacity-100 group-hover/source:pointer-events-none group-hover/source:translate-x-1 group-hover/source:opacity-0"
-                          }`}
-                        >
-                          <span className={sourceUnreadCount(source) > 0 ? "font-medium text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"}>
-                            {fmt(sourceUnreadCount(source))}
-                          </span>
-                          <span className="text-[var(--theme-text-soft)]">/</span>
-                          <span className="text-[var(--theme-text-soft)]">{fmt(sourceTotalCount(source))}</span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                    rowGapClass={rowGapClass}
+                    rowLeadingPaddingClass={rowLeadingPaddingClass}
+                    rowTextClass={rowTextClass}
+                    rowTrailingPaddingClass={rowTrailingPaddingClass}
+                    rowVerticalPaddingClass={rowVerticalPaddingClass}
+                    testId={`source-row-${sourceKey(source)}`}
+                  />
                 </li>
               )
             ))}
@@ -1178,24 +1368,21 @@ export function Sidebar({
                   icon: <BookmarkIcon />,
                 })
               ) : (
-                <button
+                <SidebarNavRow
+                  active={isFeedView && !!activeFilter.savedOnly}
+                  count={rowCountsVisible && savedCount > 0 ? renderSimpleCount(savedCount) : null}
+                  countTextClass={countTextClass}
+                  icon={renderSidebarRowIcon(<BookmarkIcon />)}
+                  label="Saved"
+                  labelClass={sidebarLabelClass}
                   onClick={() => showFeed({ savedOnly: true })}
-                  className={`
-                    w-full cursor-pointer flex items-center ${rowGapClass} ${rowPaddingClass} ${rowVerticalPaddingClass} rounded-lg
-                    text-left ${rowTextClass} transition-all border
-                    ${
-                      isFeedView && activeFilter.savedOnly
-                        ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
-                        : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-                    }
-                  `}
-                >
-                  {renderSidebarRowIcon(<BookmarkIcon />)}
-                  <span className={sidebarLabelClass}>Saved</span>
-                  {rowCountsVisible && savedCount > 0 && (
-                    <span className={`${countTextClass} tabular-nums text-[color:var(--theme-text-soft)]`}>{fmt(savedCount)}</span>
-                  )}
-                </button>
+                  rowGapClass={rowGapClass}
+                  rowLeadingPaddingClass={rowLeadingPaddingClass}
+                  rowTextClass={rowTextClass}
+                  rowTrailingPaddingClass={rowTrailingPaddingClass}
+                  rowVerticalPaddingClass={rowVerticalPaddingClass}
+                  testId="source-row-saved"
+                />
               )}
             </li>
             <li className="order-5">
@@ -1208,24 +1395,21 @@ export function Sidebar({
                   icon: <ArchiveIcon />,
                 })
               ) : (
-                <button
+                <SidebarNavRow
+                  active={isFeedView && !!activeFilter.archivedOnly}
+                  count={rowCountsVisible && archivedCount > 0 ? renderSimpleCount(archivedCount) : null}
+                  countTextClass={countTextClass}
+                  icon={renderSidebarRowIcon(<ArchiveIcon />)}
+                  label="Archived"
+                  labelClass={sidebarLabelClass}
                   onClick={() => showFeed({ archivedOnly: true })}
-                  className={`
-                    w-full cursor-pointer flex items-center ${rowGapClass} ${rowPaddingClass} ${rowVerticalPaddingClass} rounded-lg
-                    text-left ${rowTextClass} transition-all border
-                    ${
-                      isFeedView && activeFilter.archivedOnly
-                        ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
-                        : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
-                    }
-                  `}
-                >
-                  {renderSidebarRowIcon(<ArchiveIcon />)}
-                  <span className={sidebarLabelClass}>Archived</span>
-                  {rowCountsVisible && archivedCount > 0 && (
-                    <span className={`${countTextClass} tabular-nums text-[color:var(--theme-text-soft)]`}>{fmt(archivedCount)}</span>
-                  )}
-                </button>
+                  rowGapClass={rowGapClass}
+                  rowLeadingPaddingClass={rowLeadingPaddingClass}
+                  rowTextClass={rowTextClass}
+                  rowTrailingPaddingClass={rowTrailingPaddingClass}
+                  rowVerticalPaddingClass={rowVerticalPaddingClass}
+                  testId="source-row-archived"
+                />
               )}
             </li>
             <li className="order-2">
@@ -1245,41 +1429,35 @@ export function Sidebar({
                   badge: pendingFriendsBadge,
                 })
               ) : (
-                <button
+                <SidebarNavRow
+                  active={activeView === "friends"}
+                  count={rowCountsVisible && (pendingMatchCount > 0 || friendCount > 0) ? (
+                    <>
+                      {pendingMatchCount > 0 ? (
+                        <span className="rounded-full bg-[rgb(var(--theme-accent-secondary-rgb)/0.22)] px-1.5 py-0.5 font-medium text-[var(--theme-text-primary)]">
+                          {fmt(pendingMatchCount)}
+                        </span>
+                      ) : null}
+                      {friendCount > 0 ? renderSimpleCount(friendCount, activeView === "friends") : null}
+                    </>
+                  ) : null}
+                  countTextClass={countTextClass}
+                  icon={renderSidebarRowIcon(<UsersIcon />, pendingFriendsBadge)}
+                  label="Friends"
+                  labelClass={sidebarLabelClass}
                   onClick={() => {
                     setActiveView("friends");
                     setSelectedFriend(null);
                     setSelectedItem(null);
                     onMobileClose();
                   }}
-                  data-testid="source-row-friends"
-                  className={`
-                    w-full cursor-pointer flex items-center ${rowGapClass} ${rowPaddingClass} ${rowVerticalPaddingClass} rounded-lg
-                    text-left ${rowTextClass} transition-all border
-                    ${
-                      activeView === "friends"
-                        ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
-                        : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-                    }
-                  `}
-                >
-                  {renderSidebarRowIcon(<UsersIcon />, pendingFriendsBadge)}
-                  <span className={sidebarLabelClass}>Friends</span>
-                  {rowCountsVisible && pendingMatchCount > 0 && (
-                    <span className={`shrink-0 rounded-full bg-[rgb(var(--theme-accent-secondary-rgb)/0.22)] px-1.5 py-0.5 ${countTextClass} font-medium tabular-nums text-[var(--theme-text-primary)]`}>
-                      {fmt(pendingMatchCount)}
-                    </span>
-                  )}
-                  {rowCountsVisible && friendCount > 0 && (
-                    <span
-                      className={`shrink-0 ${countTextClass} tabular-nums ${
-                        activeView === "friends" ? "text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"
-                      }`}
-                    >
-                      {fmt(friendCount)}
-                    </span>
-                  )}
-                </button>
+                  rowGapClass={rowGapClass}
+                  rowLeadingPaddingClass={rowLeadingPaddingClass}
+                  rowTextClass={rowTextClass}
+                  rowTrailingPaddingClass={rowTrailingPaddingClass}
+                  rowVerticalPaddingClass={rowVerticalPaddingClass}
+                  testId="source-row-friends"
+                />
               )}
             </li>
             <li className="order-3">
@@ -1299,7 +1477,13 @@ export function Sidebar({
                   testId: "source-row-map",
                 })
               ) : (
-                <button
+                <SidebarNavRow
+                  active={activeView === "map"}
+                  count={rowCountsVisible && mapCount > 0 ? renderSimpleCount(mapCount, activeView === "map") : null}
+                  countTextClass={countTextClass}
+                  icon={renderSidebarRowIcon(<MapPinIcon />)}
+                  label="Map"
+                  labelClass={sidebarLabelClass}
                   onClick={() => {
                     setActiveView("map");
                     setSelectedFriend(null);
@@ -1307,29 +1491,13 @@ export function Sidebar({
                     setSearchQuery("");
                     onMobileClose();
                   }}
-                  data-testid="source-row-map"
-                  className={`
-                    w-full cursor-pointer flex items-center ${rowGapClass} ${rowPaddingClass} ${rowVerticalPaddingClass} rounded-lg
-                    text-left ${rowTextClass} transition-all border
-                    ${
-                      activeView === "map"
-                        ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
-                        : "border-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
-                    }
-                  `}
-                >
-                  {renderSidebarRowIcon(<MapPinIcon />)}
-                  <span className={sidebarLabelClass}>Map</span>
-                  {rowCountsVisible && mapCount > 0 && (
-                    <span
-                      className={`shrink-0 ${countTextClass} tabular-nums ${
-                        activeView === "map" ? "text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"
-                      }`}
-                    >
-                      {fmt(mapCount)}
-                    </span>
-                  )}
-                </button>
+                  rowGapClass={rowGapClass}
+                  rowLeadingPaddingClass={rowLeadingPaddingClass}
+                  rowTextClass={rowTextClass}
+                  rowTrailingPaddingClass={rowTrailingPaddingClass}
+                  rowVerticalPaddingClass={rowVerticalPaddingClass}
+                  testId="source-row-map"
+                />
               )}
             </li>
             {providerSourceItems.map((source) => {
@@ -1362,141 +1530,57 @@ export function Sidebar({
                   return (
                     <li key={sourceKey(source)} className={sourceOrderClass(source)}>
                       <div className="space-y-1">
-                        <div
-                          className={`group/source rounded-lg border transition-all ${providerRowShellClass} ${
-                            isTopSourceActive(source)
-                              ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
-                              : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
-                          }`}
-                        >
-                          <div className="flex items-stretch gap-2">
-                          <div
-                            onClick={() => handleSourceClick(source)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                handleSourceClick(source);
-                              }
-                            }}
-                            data-testid={`source-row-${sourceKey(source)}`}
-                            role="button"
-                            tabIndex={0}
-                            className={`
-                              flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 ${providerRowLeadingPaddingClass(source)} ${rowVerticalPaddingClass} outline-none
-                              ${
-                                isTopSourceActive(source)
-                                  ? "text-[color:var(--theme-text-primary)]"
-                                  : "text-[color:var(--theme-text-secondary)] group-hover/source:text-[color:var(--theme-text-primary)]"
-                              }
-                            `}
-                          >
-                            <div
-                              className={`
-                                flex min-w-0 max-w-full flex-1 items-center ${rowGapClass} text-left ${rowTextClass} transition-all
-                                ${
-                                  isTopSourceActive(source)
-                                    ? "text-[color:var(--theme-text-primary)]"
-                                    : "text-[color:var(--theme-text-secondary)] group-hover/source:text-[color:var(--theme-text-primary)]"
-                                }
-                              `}
+                        <SidebarNavRow
+                          active={isTopSourceActive(source)}
+                          actionSlotClass={sourceActionSlotClass(source)}
+                          afterLabel={rssAccordionVisible ? (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setRssFeedsOpen((value) => !value);
+                              }}
+                              className="shrink-0 rounded p-1 text-[color:var(--theme-text-soft)] transition-colors hover:text-[color:var(--theme-text-secondary)]"
+                              aria-label={rssFeedsOpen ? "Collapse feeds" : "Expand feeds"}
+                              aria-expanded={rssFeedsOpen}
                             >
-                              {renderSidebarRowIcon(
-                                source.icon,
-                                getSourceBadge(source, sourceStatus),
-                                labeledSourceIconSizeClass(source.id),
-                              )}
-                              <div className="flex min-w-0 flex-1 items-center gap-1">
-                                <span className="min-w-0 truncate whitespace-nowrap pr-0.5">
-                                  {source.label}
-                                </span>
-                                {rssAccordionVisible ? (
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      setRssFeedsOpen((value) => !value);
-                                    }}
-                                    className="shrink-0 rounded p-1 text-[color:var(--theme-text-soft)] transition-colors hover:text-[color:var(--theme-text-secondary)]"
-                                    aria-label={rssFeedsOpen ? "Collapse feeds" : "Expand feeds"}
-                                    aria-expanded={rssFeedsOpen}
-                                  >
-                                    <svg
-                                      className={`h-3 w-3 transition-transform ${rssFeedsOpen ? "rotate-90" : ""}`}
-                                      fill="none"
-                                      viewBox="0 0 24 24"
-                                      stroke="currentColor"
-                                    >
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                    </svg>
-                                  </button>
-                                ) : null}
-                              </div>
-                            </div>
-                          </div>
-                          <div
-                            onClick={() => handleSourceClick(source)}
-                            className={`shrink-0 flex cursor-pointer items-stretch ${rowTrailingPaddingClass}`}
-                          >
-                          <div className={`relative self-stretch shrink-0 ${sourceActionSlotClass(source)}`}>
-                              {rowCountsVisible && sourceTotalCount(source) > 0 && (
-                                <span
-                                  data-testid={`source-counts-${sourceKey(source)}`}
-                                  className={`absolute inset-y-0 right-0 flex items-center gap-0.5 ${countTextClass} leading-none tabular-nums transition-all duration-200 ease-in-out ${
-                                    openMenuSourceKey === sourceKey(source)
-                                      ? "pointer-events-none translate-x-1 opacity-0"
-                                      : "opacity-100 group-hover/source:pointer-events-none group-hover/source:translate-x-1 group-hover/source:opacity-0"
-                                  }`}
-                                >
-                                  <span className={sourceUnreadCount(source) > 0 ? "font-medium text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"}>
-                                    {fmt(sourceUnreadCount(source))}
-                                  </span>
-                                  <span className="text-[var(--theme-text-soft)]">/</span>
-                                  <span className="text-[var(--theme-text-soft)]">{fmt(sourceTotalCount(source))}</span>
-                                </span>
-                              )}
-                              {sourceMenusVisible && canShowSourceMenu(source) ? (
-                                <button
-                                  aria-label={`Options for ${source.label}`}
-                                  data-testid={`source-menu-trigger-${sourceKey(source)}`}
-                                  onMouseDown={(e) => {
-                                    e.stopPropagation();
-                                  }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (openMenuSourceKey === sourceKey(source)) {
-                                      setOpenMenuSourceKey(null);
-                                      setSourceMenuAnchorRect(null);
-                                      setSourceMenuAnchorElement(null);
-                                    } else {
-                                      setOpenMenuFeedUrl(null);
-                                      setMenuAnchorRect(null);
-                                      setMenuAnchorElement(null);
-                                      setOpenMenuSourceKey(sourceKey(source));
-                                      setSourceMenuAnchorRect(e.currentTarget.getBoundingClientRect());
-                                      setSourceMenuAnchorElement(e.currentTarget);
-                                    }
-                                  }}
-                                  className={`${sourceMenuTriggerBaseClass} ${
-                                    openMenuSourceKey === sourceKey(source)
-                                      ? "translate-x-0 bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-primary)] opacity-100"
-                                      : "pointer-events-none translate-x-[-4px] text-[color:var(--theme-text-muted)] opacity-0 group-hover/source:pointer-events-auto group-hover/source:translate-x-0 group-hover/source:opacity-100"
-                                  }`}
-                                >
-                                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                                    <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
-                                  </svg>
-                                </button>
-                              ) : null}
-                            </div>
-                          </div>
-                          </div>
-                        </div>
+                              <svg
+                                className={`h-3 w-3 transition-transform ${rssFeedsOpen ? "rotate-90" : ""}`}
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                          ) : null}
+                          count={rowCountsVisible && sourceTotalCount(source) > 0 ? renderSourceCount(sourceUnreadCount(source), sourceTotalCount(source)) : null}
+                          countTestId={`source-counts-${sourceKey(source)}`}
+                          countTextClass={countTextClass}
+                          icon={renderSidebarRowIcon(
+                            source.icon,
+                            getSourceBadge(source, sourceStatus),
+                            labeledSourceIconSizeClass(source.id),
+                          )}
+                          label={source.label}
+                          labelClass={sidebarLabelClass}
+                          menu={renderSourceMenu(source)}
+                          menuOpen={openMenuSourceKey === sourceKey(source)}
+                          onClick={() => handleSourceClick(source)}
+                          primaryAsDiv
+                          rowGapClass={rowGapClass}
+                          rowLeadingPaddingClass={rowLeadingPaddingClass}
+                          rowTextClass={rowTextClass}
+                          rowTrailingPaddingClass={rowTrailingPaddingClass}
+                          rowVerticalPaddingClass={rowVerticalPaddingClass}
+                          testId={`source-row-${sourceKey(source)}`}
+                        />
 
                         {rssAccordionVisible && rssFeedsOpen && (
                           <div className="space-y-2">
                             {visibleFeedList.length > 0 ? (
                               <>
-                                <div className={narrowLabeledSidebar ? "pl-2" : "pl-6"}>
+                                <div className="pl-4">
                                   <ul className="space-y-0.5">
                                   {pagedFeeds.map((feed) => {
                                     const unread = feedUnreadCounts[feed.url] ?? 0;
@@ -1505,72 +1589,36 @@ export function Sidebar({
                                     const menuOpen = openMenuFeedUrl === feed.url;
 
                                     return (
-                                      <li
-                                        key={feed.url}
-                                        className={`group/feed flex items-stretch gap-2 rounded-lg border transition-all ${
-                                          isActive
-                                            ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
-                                            : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
-                                        }`}
-                                      >
-                                        <button
-                                          onClick={() => handleFeedClick(feed.url)}
-                                          className={`flex-1 cursor-pointer flex items-center gap-2 ${rowLeadingPaddingClass} ${feedRowVerticalPaddingClass} min-w-0 text-left ${isMobileDevice ? "text-sm" : ""}`}
-                                        >
-                                          {feed.imageUrl ? (
+                                      <li key={feed.url}>
+                                        <SidebarNavRow
+                                          active={isActive}
+                                          actionSlotClass={feedActionSlotClass(menuOpen)}
+                                          count={rowCountsVisible && total > 0 ? renderSourceCount(unread, total) : null}
+                                          countTextClass={countTextClass}
+                                          depth={1}
+                                          icon={feed.imageUrl ? (
                                             <img
                                               src={feed.imageUrl}
                                               alt=""
                                               loading="lazy"
                                               decoding="async"
-                                              className="w-4 h-4 rounded-sm shrink-0 object-cover"
+                                              className="h-4 w-4 shrink-0 rounded-sm object-cover"
                                             />
                                           ) : (
-                                            <RssIcon className="w-4 h-4 shrink-0 text-[color:var(--theme-text-soft)]" />
+                                            <RssIcon className="h-4 w-4 shrink-0 text-[color:var(--theme-text-soft)]" />
                                           )}
-                                          <span className={sidebarFeedLabelClass}>{feed.title}</span>
-                                        </button>
-
-                                        <div
+                                          label={feed.title}
+                                          labelClass={sidebarFeedLabelClass}
+                                          menu={renderFeedMenu(feed, menuOpen)}
+                                          menuOpen={menuOpen}
                                           onClick={() => handleFeedClick(feed.url)}
-                                          className={`shrink-0 flex cursor-pointer items-center ${rowTrailingPaddingClass}`}
-                                        >
-                                          {rowCountsVisible && total > 0 && (
-                                            <span className={`${menuOpen ? "hidden" : "flex group-hover/feed:hidden"} items-center gap-0.5 ${countTextClass} tabular-nums`}>
-                                              <span className={unread > 0 ? "font-medium text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"}>
-                                                {fmt(unread)}
-                                              </span>
-                                              <span className="text-[var(--theme-text-soft)]">/</span>
-                                              <span className="text-[var(--theme-text-soft)]">{fmt(total)}</span>
-                                            </span>
-                                          )}
-                                          <button
-                                            aria-label={`Options for ${feed.title}`}
-                                            onMouseDown={(e) => {
-                                              e.stopPropagation();
-                                            }}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              if (menuOpen) {
-                                                setOpenMenuFeedUrl(null);
-                                                setMenuAnchorRect(null);
-                                                setMenuAnchorElement(null);
-                                              } else {
-                                                setOpenMenuSourceKey(null);
-                                                setSourceMenuAnchorRect(null);
-                                                setSourceMenuAnchorElement(null);
-                                                setOpenMenuFeedUrl(feed.url);
-                                                setMenuAnchorRect(e.currentTarget.getBoundingClientRect());
-                                                setMenuAnchorElement(e.currentTarget);
-                                              }
-                                            }}
-                                            className={`${menuOpen ? "flex bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-primary)]" : sourceMenusVisible ? "hidden group-hover/feed:flex text-[color:var(--theme-text-muted)]" : "hidden"} items-center rounded-md p-1 transition-colors hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]`}
-                                          >
-                                            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                                              <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
-                                            </svg>
-                                          </button>
-                                        </div>
+                                          primaryClassName={isMobileDevice ? "text-sm" : ""}
+                                          rowGapClass="gap-2"
+                                          rowLeadingPaddingClass={rowLeadingPaddingClass}
+                                          rowTextClass={rowTextClass}
+                                          rowTrailingPaddingClass={rowTrailingPaddingClass}
+                                          rowVerticalPaddingClass={feedRowVerticalPaddingClass}
+                                        />
                                       </li>
                                     );
                                   })}
@@ -1618,90 +1666,30 @@ export function Sidebar({
                 }
 
                 return (
-                  <li
-                    key={source.id ?? "all"}
-                    className={`${sourceOrderClass(source)} group/source flex items-stretch gap-0 rounded-lg border transition-all ${providerRowShellClass} ${
-                      isTopSourceActive(source)
-                        ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
-                        : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
-                    }`}
-                  >
-                    <button
-                      onClick={() => handleSourceClick(source)}
-                      data-testid={`source-row-${sourceKey(source)}`}
-                      className={`
-                        flex-1 cursor-pointer flex items-center ${rowGapClass} ${providerRowLeadingPaddingClass(source)} ${rowVerticalPaddingClass} min-w-0
-                        text-left ${rowTextClass} transition-all
-                        ${
-                          isTopSourceActive(source)
-                            ? "text-[color:var(--theme-text-primary)]"
-                            : "text-[color:var(--theme-text-secondary)] group-hover/source:text-[color:var(--theme-text-primary)]"
-                        }
-                      `}
-                    >
-                      {renderSidebarRowIcon(
+                  <li key={source.id ?? "all"} className={sourceOrderClass(source)}>
+                    <SidebarNavRow
+                      active={isTopSourceActive(source)}
+                      actionSlotClass={sourceActionSlotClass(source)}
+                      count={rowCountsVisible && sourceTotalCount(source) > 0 ? renderSourceCount(sourceUnreadCount(source), sourceTotalCount(source)) : null}
+                      countTestId={`source-counts-${sourceKey(source)}`}
+                      countTextClass={countTextClass}
+                      icon={renderSidebarRowIcon(
                         source.icon,
                         getSourceBadge(source, sourceStatus),
                         labeledSourceIconSizeClass(source.id),
                       )}
-                      <span className={sidebarLabelClass}>{source.label}</span>
-                    </button>
-                    <div
+                      label={source.label}
+                      labelClass={sidebarLabelClass}
+                      menu={renderSourceMenu(source)}
+                      menuOpen={openMenuSourceKey === sourceKey(source)}
                       onClick={() => handleSourceClick(source)}
-                      className={`shrink-0 flex cursor-pointer items-stretch ${rowTrailingPaddingClass}`}
-                    >
-                      <div className={`relative self-stretch shrink-0 ${sourceActionSlotClass(source)}`}>
-                        {rowCountsVisible && sourceTotalCount(source) > 0 && (
-                          <span
-                            data-testid={`source-counts-${sourceKey(source)}`}
-                            className={`absolute inset-y-0 right-0 flex items-center gap-0.5 ${countTextClass} leading-none tabular-nums transition-all duration-200 ease-in-out ${
-                              openMenuSourceKey === sourceKey(source)
-                                ? "pointer-events-none translate-x-1 opacity-0"
-                                : "opacity-100 group-hover/source:pointer-events-none group-hover/source:translate-x-1 group-hover/source:opacity-0"
-                            }`}
-                          >
-                            <span className={sourceUnreadCount(source) > 0 ? "font-medium text-[var(--theme-accent-secondary)]" : "text-[var(--theme-text-soft)]"}>
-                              {fmt(sourceUnreadCount(source))}
-                            </span>
-                            <span className="text-[var(--theme-text-soft)]">/</span>
-                            <span className="text-[var(--theme-text-soft)]">{fmt(sourceTotalCount(source))}</span>
-                          </span>
-                        )}
-                        {sourceMenusVisible && canShowSourceMenu(source) ? (
-                          <button
-                            aria-label={`Options for ${source.label}`}
-                            data-testid={`source-menu-trigger-${sourceKey(source)}`}
-                            onMouseDown={(e) => {
-                              e.stopPropagation();
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (openMenuSourceKey === sourceKey(source)) {
-                                setOpenMenuSourceKey(null);
-                                setSourceMenuAnchorRect(null);
-                                setSourceMenuAnchorElement(null);
-                              } else {
-                                setOpenMenuFeedUrl(null);
-                                setMenuAnchorRect(null);
-                                setMenuAnchorElement(null);
-                                setOpenMenuSourceKey(sourceKey(source));
-                                setSourceMenuAnchorRect(e.currentTarget.getBoundingClientRect());
-                                setSourceMenuAnchorElement(e.currentTarget);
-                              }
-                            }}
-                            className={`${sourceMenuTriggerBaseClass} ${
-                              openMenuSourceKey === sourceKey(source)
-                                ? "translate-x-0 bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-primary)] opacity-100"
-                                : "pointer-events-none translate-x-[-4px] text-[color:var(--theme-text-muted)] opacity-0 group-hover/source:pointer-events-auto group-hover/source:translate-x-0 group-hover/source:opacity-100"
-                            }`}
-                          >
-                            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                              <path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4zm0 6a2 2 0 110-4 2 2 0 010 4z" />
-                            </svg>
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
+                      rowGapClass={rowGapClass}
+                      rowLeadingPaddingClass={rowLeadingPaddingClass}
+                      rowTextClass={rowTextClass}
+                      rowTrailingPaddingClass={rowTrailingPaddingClass}
+                      rowVerticalPaddingClass={rowVerticalPaddingClass}
+                      testId={`source-row-${sourceKey(source)}`}
+                    />
                   </li>
                 );
               })}
@@ -1759,18 +1747,24 @@ export function Sidebar({
                 ),
               })
             ) : (
-              <button
-                onClick={openSettings}
-                className={`w-full cursor-pointer flex items-center ${rowGapClass} ${rowPaddingClass} ${rowVerticalPaddingClass} rounded-lg text-left ${rowTextClass} text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)] transition-all`}
-              >
-                <span className="w-5 text-center">
-                  <svg className="w-4 h-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <SidebarNavRow
+                active={false}
+                countTextClass={countTextClass}
+                icon={renderSidebarRowIcon(
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </span>
-                <span className={sidebarLabelClass}>Settings</span>
-              </button>
+                  </svg>,
+                )}
+                label="Settings"
+                labelClass={sidebarLabelClass}
+                onClick={openSettings}
+                rowGapClass={rowGapClass}
+                rowLeadingPaddingClass={rowLeadingPaddingClass}
+                rowTextClass={rowTextClass}
+                rowTrailingPaddingClass={rowTrailingPaddingClass}
+                rowVerticalPaddingClass={rowVerticalPaddingClass}
+              />
             )}
             </div>
           ) : null}

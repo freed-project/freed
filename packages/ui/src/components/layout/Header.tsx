@@ -7,6 +7,7 @@ import {
   useCallback,
   type CSSProperties,
   type ButtonHTMLAttributes,
+  type ChangeEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -47,6 +48,12 @@ import {
   usePlatform,
 } from "../../context/PlatformContext.js";
 import { getFilterLabel, getRetentionLabel } from "../../lib/feed-view-labels.js";
+import {
+  FEED_CARD_DENSITY_LABELS,
+  FEED_CARD_DENSITY_OPTIONS,
+  useFeedCardDensity,
+  type FeedCardDensity,
+} from "../../lib/feed-card-density.js";
 import {
   COMPACT_PRIMARY_SIDEBAR_WIDTH_PX,
   PRIMARY_SIDEBAR_GAP_WIDTH_PX,
@@ -192,6 +199,56 @@ function ToolbarOverflowIcon({ className = "h-5 w-5" }: { className?: string }) 
   );
 }
 
+function FeedCardDensitySlider({
+  value,
+  onChange,
+  style,
+}: {
+  value: FeedCardDensity;
+  onChange: (value: FeedCardDensity) => void;
+  style?: CSSProperties;
+}) {
+  const valueIndex = Math.max(0, FEED_CARD_DENSITY_OPTIONS.indexOf(value));
+  const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const next = FEED_CARD_DENSITY_OPTIONS[Number(event.target.value)] ?? "comfortable";
+    onChange(next);
+  };
+
+  return (
+    <Tooltip label={FEED_CARD_DENSITY_LABELS[value]}>
+      <div
+        data-testid="feed-card-density-control"
+        className="theme-toolbar-density-control"
+        style={style}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <span className="theme-toolbar-density-icon theme-toolbar-density-icon-compact" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </span>
+        <input
+          data-testid="feed-card-density-slider"
+          className="theme-toolbar-density-slider"
+          type="range"
+          min={0}
+          max={2}
+          step={1}
+          value={valueIndex}
+          onChange={handleChange}
+          aria-label="Card density"
+          aria-valuetext={FEED_CARD_DENSITY_LABELS[value]}
+        />
+        <span className="theme-toolbar-density-icon theme-toolbar-density-icon-expansive" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </span>
+      </div>
+    </Tooltip>
+  );
+}
+
 function joinTitleParts(parts: readonly string[]): string {
   if (parts.length <= 1) return parts[0] ?? "";
   if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
@@ -300,6 +357,7 @@ export function Header({
   const setFilter = useAppStore((s) => s.setFilter);
   const display = useAppStore((s) => s.preferences.display);
   const activeSearchQuery = searchQuery.trim();
+  const [feedCardDensity, setFeedCardDensity] = useFeedCardDensity();
 
   const { filteredItems, isSearching, resultCount } = useSearchResults(
     items,
@@ -386,6 +444,11 @@ export function Header({
     );
   const showInlineFeedSignalFilter =
     showFeedSignalFilter && !showCollapsedToolbarFilterMenu;
+  const showFeedCardDensityControl =
+    activeView === "feed" &&
+    !selectedItem &&
+    !isMobile &&
+    !isBelowLargeToolbar;
   const showInlineReaderBookmark =
     !!selectedItem && !isBelowReaderBookmarkToolbar;
   const collapsedReaderTitlePaddingClass = selectedItem?.sourceUrl
@@ -1719,6 +1782,16 @@ export function Header({
                       onChange={handleSocialContentFilterChange}
                       compact
                       getButtonProps={getToolbarControlProps}
+                    />
+                  ) : null}
+                </ToolbarAnimatedSlot>
+
+                <ToolbarAnimatedSlot visible={showFeedCardDensityControl} width="7.25rem" className="hidden xl:flex">
+                  {showFeedCardDensityControl ? (
+                    <FeedCardDensitySlider
+                      value={feedCardDensity}
+                      onChange={setFeedCardDensity}
+                      style={headerDragRegion ? toolbarControlStyle : undefined}
                     />
                   ) : null}
                 </ToolbarAnimatedSlot>
