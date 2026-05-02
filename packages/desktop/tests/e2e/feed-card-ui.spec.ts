@@ -4,8 +4,10 @@ const FACEBOOK_TITLE = "Card UI Overhaul Facebook Item";
 const RSS_TITLE = "Card UI Overhaul RSS Item";
 const STORY_TITLE = "Story thumbnail proof";
 const BROKEN_TITLE = "Broken thumbnail fallback proof";
+const X_LIKE_TITLE = "X liked post retention proof";
 const FACEBOOK_URL = "https://example.com/facebook/card-ui-overhaul";
 const RSS_URL = "https://example.com/rss/card-ui-overhaul";
+const X_LIKE_URL = "https://x.com/coindesk/status/2049705418436600244";
 const FACEBOOK_MEDIA_URL = "/freed.svg?feed-card";
 const STORY_MEDIA_URL = "/freed.svg?story-tile";
 const BROKEN_MEDIA_URL = "/freed.svg?fallback";
@@ -170,6 +172,59 @@ async function injectCardUiItems(page: import("@playwright/test").Page): Promise
   );
 }
 
+async function injectXLikeRetentionItem(page: import("@playwright/test").Page): Promise<void> {
+  await page.evaluate(
+    async ({ title, sourceUrl }) => {
+      const now = Date.now();
+      const w = window as Record<string, unknown>;
+      const automerge = w.__FREED_AUTOMERGE__ as {
+        docBatchImportItems: (items: unknown[]) => Promise<unknown>;
+      };
+
+      await automerge.docBatchImportItems([
+        {
+          globalId: "x:2049705418436600244",
+          platform: "x",
+          contentType: "post",
+          capturedAt: now - 30_000,
+          publishedAt: now - 60_000,
+          author: {
+            id: "coindesk",
+            handle: "CoinDesk",
+            displayName: "CoinDesk",
+          },
+          content: {
+            text: "ICYMI: The U.S. Senate releases CLARITY Act compromise text.",
+            mediaUrls: [],
+            mediaTypes: [],
+            linkPreview: {
+              url: sourceUrl,
+              title,
+              description: "A seeded X post used to prove like actions stay in Unified Feed.",
+            },
+          },
+          engagement: {
+            likes: 385,
+            comments: 56,
+          },
+          userState: {
+            hidden: false,
+            saved: false,
+            archived: false,
+            tags: [],
+          },
+          topics: ["testing"],
+          sourceUrl,
+        },
+      ]);
+    },
+    {
+      title: X_LIKE_TITLE,
+      sourceUrl: X_LIKE_URL,
+    },
+  );
+}
+
 async function setShowEngagementCounts(
   page: import("@playwright/test").Page,
   show: boolean,
@@ -286,6 +341,71 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
 
   const openReaderButton = app.page.getByRole("button", { name: "Open", exact: true }).first();
   await expect(openReaderButton).toBeVisible();
+});
+
+test("liking an X post keeps it in the unified feed", async ({ app, ipc }) => {
+  await app.goto();
+  await app.waitForReady();
+  await ipc.setHandler("x_api_request", () => "{}");
+  await injectXLikeRetentionItem(app.page);
+  await setShowEngagementCounts(app.page, true);
+
+  await app.page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => {
+        setXAuth: (auth: unknown) => void;
+      };
+    };
+    store.getState().setXAuth({
+      isAuthenticated: true,
+      cookies: {
+        ct0: "test-csrf",
+        authToken: "test-auth",
+      },
+    });
+  });
+
+  const xCard = app.page.locator('[data-feed-item-id="x:2049705418436600244"]');
+  await expect(xCard).toBeVisible();
+  await expect(xCard).toContainText(X_LIKE_TITLE);
+  await xCard.hover();
+
+  await xCard.getByRole("button", { name: "Like", exact: true }).click();
+
+  await expect(xCard).toBeVisible();
+  await expect(xCard).toContainText(X_LIKE_TITLE);
+  await expect(xCard.getByRole("button", { name: /Liked/ })).toBeVisible();
+  await expect(xCard.getByRole("button", { name: "Liked on X" })).toBeVisible({
+    timeout: 8_000,
+  });
+  await expect(xCard).toBeVisible();
+  await expect(xCard).toContainText(X_LIKE_TITLE);
+
+  const userState = await app.page.evaluate(() => {
+    const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+      getState: () => {
+        items: Array<{
+          globalId: string;
+          userState: {
+            archived: boolean;
+            hidden: boolean;
+            liked?: boolean;
+            likedAt?: number;
+            likedSyncedAt?: number;
+          };
+        }>;
+      };
+    };
+    return store.getState().items.find((item) => item.globalId === "x:2049705418436600244")?.userState;
+  });
+
+  expect(userState).toMatchObject({
+    archived: false,
+    hidden: false,
+    liked: true,
+  });
+  expect(userState?.likedAt).toEqual(expect.any(Number));
+  expect(userState?.likedSyncedAt).toEqual(expect.any(Number));
 });
 
 test("story cards participate in feed layout transitions", async ({ app }) => {
