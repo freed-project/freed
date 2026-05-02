@@ -389,7 +389,9 @@ describe("local AI model manager", () => {
     const sizeStarted = new Promise<void>((resolve) => {
       markSizeStarted = resolve;
     });
-    let releaseSize: (() => void) | null = null;
+    let releaseSize: () => void = () => {
+      throw new Error("releaseSize resolver was not initialized");
+    };
     const allowSizeToFinish = new Promise<void>((resolve) => {
       releaseSize = resolve;
     });
@@ -416,7 +418,7 @@ describe("local AI model manager", () => {
     const pending = service.downloadModel("integrated-balanced");
     await sizeStarted;
     await service.pauseDownload("integrated-balanced");
-    releaseSize?.();
+    releaseSize();
     const paused = await pending;
 
     expect(paused[0].state.status).toBe("paused");
