@@ -346,7 +346,10 @@ export function Header({
   const [isBelowReaderBookmarkToolbar, setIsBelowReaderBookmarkToolbar] = useState(
     () => typeof window !== "undefined" && window.innerWidth < READER_BOOKMARK_INLINE_MIN_WIDTH_PX,
   );
-  const showWorkspaceIdentityControls = activeView === "friends" || activeView === "map";
+  const showWorkspaceIdentityControls =
+    activeView === "friends" ||
+    activeView === "map" ||
+    (activeView === "feed" && !selectedItem);
   const showMapTimeControls = activeView === "map";
   const showFeedBulkActions = activeView === "feed";
   const showFeedSignalFilter = activeView === "feed" && !selectedItem;
@@ -882,6 +885,45 @@ export function Header({
     isMobile && activeView === "friends" && friendsMobileSurface === "details"
       ? "details"
       : effectiveFriendsMode;
+  const identityToolbarDataTestId =
+    activeView === "map"
+      ? "map-toolbar-scope"
+      : activeView === "feed"
+        ? "feed-toolbar-lens"
+        : "friends-toolbar-lens";
+  const mobileIdentityToolbarDataTestId =
+    activeView === "map"
+      ? "mobile-map-toolbar-scope"
+      : activeView === "feed"
+        ? "mobile-feed-toolbar-lens"
+        : "mobile-friends-toolbar-lens";
+  const identityToolbarOptions =
+    activeView === "friends" && isMobile
+      ? [
+          { value: "friends", label: "Friends" },
+          { value: "all_content", label: "All content" },
+          { value: "details", label: "Details" },
+        ]
+      : [
+          { value: "friends", label: "Friends" },
+          { value: "all_content", label: "All content" },
+        ];
+  const identityToolbarValue = activeView === "map" ? effectiveMapMode : friendsToolbarValue;
+  const handleToolbarIdentityModeChange = useCallback((mode: FriendsToolbarMode) => {
+    if (activeView === "map") {
+      handleIdentityModeChange("mapMode", mode as MapMode);
+      return;
+    }
+    if (activeView === "friends") {
+      handleFriendsToolbarModeChange(mode);
+      return;
+    }
+    handleIdentityModeChange("friendsMode", mode as MapMode);
+  }, [
+    activeView,
+    handleFriendsToolbarModeChange,
+    handleIdentityModeChange,
+  ]);
   const canManuallyDragToolbarControls = !!(headerDragRegion && startWindowDrag);
   const macosTrafficLightInsetStyle = headerDragRegion
     ? ({ paddingLeft: `${MACOS_TRAFFIC_LIGHT_INSET}px` } as CSSProperties)
@@ -1597,27 +1639,10 @@ export function Header({
                 >
                   {showInlineWorkspaceIdentityControls ? (
                     <ToolbarToggleGroup
-                      dataTestId={activeView === "map" ? "map-toolbar-scope" : "friends-toolbar-lens"}
-                      options={
-                        activeView === "friends" && isMobile
-                          ? [
-                              { value: "friends", label: "Friends" },
-                              { value: "all_content", label: "All content" },
-                              { value: "details", label: "Details" },
-                            ]
-                          : [
-                              { value: "friends", label: "Friends" },
-                              { value: "all_content", label: "All content" },
-                            ]
-                      }
-                      value={activeView === "map" ? effectiveMapMode : friendsToolbarValue}
-                      onChange={(mode) => {
-                        if (activeView === "map") {
-                          handleIdentityModeChange("mapMode", mode as MapMode);
-                          return;
-                        }
-                        handleFriendsToolbarModeChange(mode as FriendsToolbarMode);
-                      }}
+                      dataTestId={identityToolbarDataTestId}
+                      options={identityToolbarOptions}
+                      value={identityToolbarValue}
+                      onChange={(mode) => handleToolbarIdentityModeChange(mode as FriendsToolbarMode)}
                       compact={activeView === "friends" && isMobile}
                       getButtonProps={getToolbarControlProps}
                     />
@@ -1869,27 +1894,10 @@ export function Header({
                 View
               </p>
               <ToolbarToggleGroup
-                dataTestId={activeView === "map" ? "mobile-map-toolbar-scope" : "mobile-friends-toolbar-lens"}
-                options={
-                  activeView === "friends"
-                    ? [
-                        { value: "friends", label: "Friends" },
-                        { value: "all_content", label: "All content" },
-                        { value: "details", label: "Details" },
-                      ]
-                    : [
-                        { value: "friends", label: "Friends" },
-                        { value: "all_content", label: "All content" },
-                      ]
-                }
-                value={activeView === "map" ? effectiveMapMode : friendsToolbarValue}
-                onChange={(mode) => {
-                  if (activeView === "map") {
-                    handleIdentityModeChange("mapMode", mode as MapMode);
-                    return;
-                  }
-                  handleFriendsToolbarModeChange(mode as FriendsToolbarMode);
-                }}
+                dataTestId={mobileIdentityToolbarDataTestId}
+                options={identityToolbarOptions}
+                value={identityToolbarValue}
+                onChange={(mode) => handleToolbarIdentityModeChange(mode as FriendsToolbarMode)}
                 compact
                 fullWidth
               />
