@@ -4001,6 +4001,26 @@ test("map defaults to All content when only unlinked author locations exist", as
   await expect(page.locator('.freed-map-marker[aria-label="Ghost Noise"]')).toHaveCount(0);
 });
 
+test("explicit Friends map mode hides unlinked author locations", async ({ app, page }) => {
+  await app.goto();
+  await app.waitForReady();
+  await app.seedAllContentLocationsWithoutFriends();
+  await dismissCloudSyncNudgeIfPresent(page);
+
+  await page.getByRole("button", { name: /^Map/ }).click();
+  await expect(page.locator('.freed-map-marker[aria-label="Nora Quinn"]')).toBeVisible({
+    timeout: 10_000,
+  });
+
+  const friendsButton = page
+    .getByTestId("map-toolbar-scope")
+    .getByRole("button", { name: "Friends", exact: true });
+  await friendsButton.click();
+  await expect(friendsButton).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
+  await expect(page.locator('.freed-map-marker[aria-label="Nora Quinn"]')).toHaveCount(0);
+  await expect(page.getByText("0 friends on the map")).toBeVisible({ timeout: 10_000 });
+});
+
 test("friends and map move identity controls into the header and hide feed bulk actions", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();

@@ -317,10 +317,13 @@ export function Header({
   );
 
   const scopeLabel = useMemo(() => getFilterLabel(activeFilter, feeds, accounts), [accounts, activeFilter, feeds]);
-  const friendCount = useMemo(() => Object.keys(friends).length, [friends]);
+  const friendCount = useMemo(
+    () => Object.values(persons).filter((person) => person.relationshipStatus === "friend").length,
+    [persons],
+  );
   const mappedFriendCount = useMemo(
-    () => countFriendsWithRecentLocationUpdates(items, friends),
-    [friends, items],
+    () => countFriendsWithRecentLocationUpdates(items, persons, accounts),
+    [accounts, items, persons],
   );
   const mappedAllContentCount = useMemo(
     () => countAuthorsWithRecentLocationUpdates(items),

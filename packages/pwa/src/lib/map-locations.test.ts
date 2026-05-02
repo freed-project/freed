@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   extractLocationFromItem,
+  countFriendsWithRecentLocationUpdates,
   filterResolvedLocationsByTime,
   getDefaultMapMode,
   getLatestAuthorLocationMarkers,
   getLatestFriendLocationMarkers,
   getLastSeenLocationForFriend,
   groupResolvedLocations,
+  resolveMapMode,
   type FeedItem,
   type Friend,
   type LocationMarkerSummary,
@@ -287,6 +289,62 @@ describe("location grouping", () => {
     expect(getDefaultMapMode(0, 4)).toBe("all_content");
     expect(getDefaultMapMode(2, 4)).toBe("friends");
     expect(getDefaultMapMode(0, 0)).toBe("friends");
+  });
+
+  it("honors an explicit Friends map mode even when only all-content markers exist", () => {
+    expect(resolveMapMode("friends", 0, 4)).toBe("friends");
+    expect(resolveMapMode("all_content", 2, 0)).toBe("all_content");
+    expect(resolveMapMode(undefined, 0, 4)).toBe("all_content");
+  });
+
+  it("counts only confirmed friends as mapped friends", () => {
+    const friend = makeFriend({ id: "friend-ada" });
+    const connection = makeFriend({
+      id: "person-joe",
+      name: "Joe Jarvis",
+      relationshipStatus: "connection",
+      sources: [
+        {
+          platform: "instagram",
+          authorId: "joe-ig",
+          handle: "joe",
+        },
+      ],
+    });
+    const now = Date.now();
+
+    const count = countFriendsWithRecentLocationUpdates(
+      [
+        makeItem({
+          globalId: "ig:ada:paris",
+          publishedAt: now - 60_000,
+          location: {
+            name: "Paris",
+            coordinates: { lat: 48.8566, lng: 2.3522 },
+            source: "geo_tag",
+          },
+        }),
+        makeItem({
+          globalId: "ig:joe:puerto-rico",
+          publishedAt: now - 30_000,
+          author: { id: "joe-ig", handle: "joe", displayName: "Joe Jarvis" },
+          location: {
+            name: "Puerto Rico",
+            coordinates: { lat: 18.2208, lng: -66.5901 },
+            source: "geo_tag",
+          },
+        }),
+      ],
+      {
+        [friend.id]: friend,
+        [connection.id]: connection,
+      },
+      undefined,
+      7 * 24 * 60 * 60 * 1000,
+      now,
+    );
+
+    expect(count).toBe(1);
   });
 
   it("keeps future time windows out of the current map until they start", () => {
