@@ -719,8 +719,14 @@ export function createLocalAIModelService(
         }));
       }
 
+      if (controller.signal.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
       const dir = await modelDir(model);
       const storageBytes = await deps.size(dir).catch(() => completedBytes);
+      if (controller.signal.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
       await updateModelState(id, (current) => ({
         ...current,
         status: "available",
