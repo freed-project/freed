@@ -17,7 +17,14 @@ import {
   useRef,
   useState,
 } from "react";
-import type { Account, FeedItem, MapMode, Person, RssFeed } from "@freed/shared";
+import type {
+  Account,
+  FeedItem,
+  FriendCandidateConfidence,
+  MapMode,
+  Person,
+  RssFeed,
+} from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
 import {
   buildSpatialIndex,
@@ -62,6 +69,8 @@ interface FriendGraphProps {
   onLinkAccountToPerson?: (accountId: string, personId: string) => Promise<void> | void;
   onPinPersonPosition?: (personId: string, x: number, y: number) => Promise<void> | void;
   onPinAccountPosition?: (accountId: string, x: number, y: number) => Promise<void> | void;
+  friendSuggestionStrengthByPerson?: Map<string, FriendCandidateConfidence>;
+  friendSuggestionStrengthByAccount?: Map<string, FriendCandidateConfidence>;
   themeId?: ThemeId;
 }
 
@@ -403,7 +412,7 @@ function kindColor(node: IdentityGraphLayoutNode, palette: GraphThemePalette) {
   if (node.kind === "connection_person") {
     return {
       fill: palette.connectionFill,
-      stroke: palette.connectionStroke,
+      stroke: node.friendSuggestionConfidence ? palette.highlight : palette.connectionStroke,
       text: palette.connectionText,
     };
   }
@@ -416,7 +425,7 @@ function kindColor(node: IdentityGraphLayoutNode, palette: GraphThemePalette) {
   }
   return {
     fill: providerColor(node.provider, palette),
-    stroke: palette.channelStroke,
+    stroke: node.friendSuggestionConfidence ? palette.highlight : palette.channelStroke,
     text: palette.labelText,
   };
 }
@@ -621,6 +630,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
     onLinkAccountToPerson,
     onPinPersonPosition,
     onPinAccountPosition,
+    friendSuggestionStrengthByPerson,
+    friendSuggestionStrengthByAccount,
     themeId,
   },
   ref,
@@ -690,8 +701,18 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         feeds,
         feedItems,
         mode: mode as IdentityGraphMode,
+        friendSuggestionStrengthByPerson,
+        friendSuggestionStrengthByAccount,
       }),
-    [accounts, feedItems, feeds, mode, persons],
+    [
+      accounts,
+      feedItems,
+      feeds,
+      friendSuggestionStrengthByAccount,
+      friendSuggestionStrengthByPerson,
+      mode,
+      persons,
+    ],
   );
   const modelSignature = useMemo(
     () => createIdentityGraphModelSignature(model),
@@ -905,6 +926,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(funct
         if (accountDrag?.dropTargetPersonId && node.personId === accountDrag.dropTargetPersonId) {
           display.highlightRing.lineStyle(4, graphPalette.highlight, 0.8);
           display.highlightRing.drawCircle(0, 0, node.radius + 6);
+        } else if (node.friendSuggestionConfidence) {
+          display.highlightRing.lineStyle(
+            node.friendSuggestionConfidence === "high" ? 2.2 : 1.6,
+            graphPalette.highlight,
+            node.friendSuggestionConfidence === "high" ? 0.48 : 0.34,
+          );
+          display.highlightRing.drawCircle(0, 0, node.radius + 5);
         }
       }
 

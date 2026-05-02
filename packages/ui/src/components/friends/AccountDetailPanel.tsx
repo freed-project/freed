@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import type { Account, FeedItem, Person } from "@freed/shared";
+import type { Account, FeedItem, FriendCandidateSuggestion, Person } from "@freed/shared";
 import { ChannelAvatar } from "../ChannelAvatar.js";
 import { SearchField } from "../SearchField.js";
 import type { AccountLinkSuggestion } from "../../lib/account-link-suggestions.js";
@@ -10,10 +10,12 @@ interface AccountDetailPanelProps {
   account: Account;
   linkedPerson?: Person | null;
   suggestions: AccountLinkSuggestion[];
+  friendSuggestion?: FriendCandidateSuggestion | null;
   persons: Person[];
   feedItems: FeedItem[];
   onBack: () => void;
   onPromoteToFriend: () => void;
+  onDismissFriendSuggestion?: (suggestionId: string) => void;
   onLinkToPerson: (personId: string) => void;
   onOpenPerson: (personId: string) => void;
 }
@@ -25,14 +27,31 @@ function itemSnippet(item: FeedItem): string {
   return "No text preview";
 }
 
+function evidenceIdLabel(itemId: string): string {
+  return `...${itemId.slice(-8)}`;
+}
+
+function signalCountLabel(suggestion: FriendCandidateSuggestion): string {
+  const entries = Object.entries(suggestion.signalCounts)
+    .filter(([, count]) => (count ?? 0) > 0)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .slice(0, 4);
+  if (entries.length === 0) return "No classified signals yet";
+  return entries
+    .map(([signal, count]) => `${signal.replace(/_/g, " ")} ${Number(count).toLocaleString()}`)
+    .join(", ");
+}
+
 export function AccountDetailPanel({
   account,
   linkedPerson = null,
   suggestions,
+  friendSuggestion = null,
   persons,
   feedItems,
   onBack,
   onPromoteToFriend,
+  onDismissFriendSuggestion,
   onLinkToPerson,
   onOpenPerson,
 }: AccountDetailPanelProps) {
@@ -150,6 +169,48 @@ export function AccountDetailPanel({
 
       {!confirmedLinkedPerson ? (
         <>
+          {friendSuggestion ? (
+            <div className="theme-dialog-divider border-b px-4 py-4" data-testid="friend-candidate-detail">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
+                    Suggested friend
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">
+                    Score {friendSuggestion.score.toLocaleString()}, {friendSuggestion.confidence} confidence
+                  </p>
+                </div>
+                {onDismissFriendSuggestion ? (
+                  <button
+                    type="button"
+                    onClick={() => onDismissFriendSuggestion(friendSuggestion.id)}
+                    className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
+                  >
+                    Dismiss
+                  </button>
+                ) : null}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {friendSuggestion.reasons.map((reason) => (
+                  <span
+                    key={reason.code}
+                    className="theme-chip rounded-full px-2 py-0.5 text-[11px]"
+                  >
+                    {reason.label}
+                  </span>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-[color:var(--theme-text-muted)]">
+                {signalCountLabel(friendSuggestion)}
+              </p>
+              {friendSuggestion.sampleItemIds.length > 0 ? (
+                <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
+                  Evidence {friendSuggestion.sampleItemIds.map(evidenceIdLabel).join(", ")}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           {suggestions.length > 0 ? (
             <div className="theme-dialog-divider border-b px-4 py-4">
               <div className="flex items-center justify-between gap-3">

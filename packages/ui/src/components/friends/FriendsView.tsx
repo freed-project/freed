@@ -4,12 +4,14 @@ import type {
   DeviceContact,
   FeedItem,
   Friend,
+  FriendCandidateSuggestion,
+  FriendCandidateConfidence,
   FriendSource,
   Person,
   ReachOutLog,
 } from "@freed/shared";
 import { formatDistanceToNow } from "date-fns";
-import { friendFromPerson, isInReconnectZone } from "@freed/shared";
+import { buildFriendCandidateSuggestions, friendFromPerson, isInReconnectZone } from "@freed/shared";
 import { useAppStore } from "../../context/PlatformContext.js";
 import { useContactSyncContext } from "../../context/ContactSyncContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
@@ -172,6 +174,140 @@ function CompactDetailCard({
   );
 }
 
+function evidenceIdLabel(itemId: string): string {
+  return `...${itemId.slice(-8)}`;
+}
+
+function friendSuggestionSignalLabel(suggestion: FriendCandidateSuggestion): string {
+  const entries = Object.entries(suggestion.signalCounts)
+    .filter(([, count]) => (count ?? 0) > 0)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .slice(0, 4);
+  if (entries.length === 0) return "No classified signals yet";
+  return entries
+    .map(([signal, count]) => `${signal.replace(/_/g, " ")} ${Number(count).toLocaleString()}`)
+    .join(", ");
+}
+
+function FriendSuggestionEvidence({
+  suggestion,
+  onPromote,
+  onDismiss,
+}: {
+  suggestion: FriendCandidateSuggestion;
+  onPromote?: () => void;
+  onDismiss: (suggestionId: string) => void;
+}) {
+  return (
+    <div className="theme-dialog-divider border-b px-4 py-4" data-testid="friend-candidate-detail">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
+            Suggested friend
+          </p>
+          <p className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">
+            Score {suggestion.score.toLocaleString()}, {suggestion.confidence} confidence
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onDismiss(suggestion.id)}
+            className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
+          >
+            Dismiss
+          </button>
+          {onPromote ? (
+            <button
+              type="button"
+              onClick={onPromote}
+              className="btn-primary rounded-lg px-3 py-1.5 text-xs"
+            >
+              Promote to friend
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {suggestion.reasons.map((reason) => (
+          <span
+            key={reason.code}
+            className="theme-chip rounded-full px-2 py-0.5 text-[11px]"
+          >
+            {reason.label}
+          </span>
+        ))}
+      </div>
+      <p className="mt-3 text-xs text-[color:var(--theme-text-muted)]">
+        {friendSuggestionSignalLabel(suggestion)}
+      </p>
+      {suggestion.sampleItemIds.length > 0 ? (
+        <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
+          Evidence {suggestion.sampleItemIds.map(evidenceIdLabel).join(", ")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function FriendCandidateRow({
+  suggestion,
+  selected,
+  onSelect,
+  onDismiss,
+}: {
+  suggestion: FriendCandidateSuggestion;
+  selected: boolean;
+  onSelect: () => void;
+  onDismiss: (suggestionId: string) => void;
+}) {
+  const lastActivity = suggestion.lastActivityAt
+    ? formatDistanceToNow(suggestion.lastActivityAt, { addSuffix: true })
+    : "No recent posts";
+  return (
+    <div
+      data-testid="friend-candidate-suggestion"
+      className={`theme-card-soft rounded-2xl px-3 py-3 transition-colors ${
+        selected
+          ? "border-[color:var(--theme-border-strong)] bg-[color:var(--theme-bg-card-hover)]"
+          : ""
+      }`}
+    >
+      <button type="button" onClick={onSelect} className="w-full text-left">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-[color:var(--theme-text-primary)]">
+              {suggestion.displayName}
+            </p>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+              Score {suggestion.score.toLocaleString()}, {lastActivity}
+            </p>
+          </div>
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
+            suggestion.confidence === "high"
+              ? "bg-[color:rgb(var(--theme-feedback-success-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-success-rgb))]"
+              : "bg-[color:rgb(var(--theme-feedback-warning-rgb)/0.18)] text-[color:rgb(var(--theme-feedback-warning-rgb))]"
+          }`}>
+            {suggestion.confidence}
+          </span>
+        </div>
+        <p className="mt-2 line-clamp-1 text-xs text-[color:var(--theme-text-muted)]">
+          {suggestion.reasons.map((reason) => reason.label).join(", ")}
+        </p>
+      </button>
+      <div className="mt-3 flex justify-end">
+        <button
+          type="button"
+          onClick={() => onDismiss(suggestion.id)}
+          className="btn-secondary rounded-lg px-3 py-1.5 text-xs"
+        >
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function sourceKey(platform: string, authorId: string): string {
   return `${platform}:${authorId}`;
 }
@@ -285,6 +421,7 @@ export function FriendsView({
   const setActiveView = useAppStore((s) => s.setActiveView);
   const pendingMatchCount = useAppStore((s) => s.pendingMatchCount);
   const display = useAppStore((s) => s.preferences.display);
+  const friendSuggestionPreferences = useAppStore((s) => s.preferences.friendSuggestions);
   const savedSidebarWidth = Math.min(
     MAX_SIDEBAR_WIDTH,
     display.friendsSidebarWidth ?? DEFAULT_SIDEBAR_WIDTH,
@@ -306,7 +443,7 @@ export function FriendsView({
   const pendingPersistedSidebarWidth = useRef<number | null>(null);
   const isMobile = useIsMobile();
 
-  const { openReview } = useContactSyncContext();
+  const contactSync = useContactSyncContext();
 
   const feedItems = useMemo(() => {
     const map: Record<string, FeedItem> = {};
@@ -363,6 +500,56 @@ export function FriendsView({
     () => buildSuggestionsByPerson(persons, accounts),
     [accounts, persons],
   );
+  const friendCandidateSuggestions = useMemo(
+    () =>
+      buildFriendCandidateSuggestions({
+        persons: allPersons,
+        accounts,
+        feedItems: items,
+        contactSuggestions: contactSync.syncState.pendingSuggestions,
+        preferences: friendSuggestionPreferences,
+        limit: 10,
+      }),
+    [accounts, allPersons, contactSync.syncState.pendingSuggestions, friendSuggestionPreferences, items],
+  );
+  const friendCandidateByPerson = useMemo(() => {
+    const next = new Map<string, FriendCandidateSuggestion>();
+    for (const suggestion of friendCandidateSuggestions) {
+      if (suggestion.personId && !next.has(suggestion.personId)) {
+        next.set(suggestion.personId, suggestion);
+      }
+    }
+    return next;
+  }, [friendCandidateSuggestions]);
+  const friendCandidateByAccount = useMemo(() => {
+    const next = new Map<string, FriendCandidateSuggestion>();
+    for (const suggestion of friendCandidateSuggestions) {
+      for (const accountId of suggestion.accountIds) {
+        if (!next.has(accountId)) {
+          next.set(accountId, suggestion);
+        }
+      }
+    }
+    return next;
+  }, [friendCandidateSuggestions]);
+  const friendSuggestionStrengthByPerson = useMemo(() => {
+    const next = new Map<string, FriendCandidateConfidence>();
+    for (const suggestion of friendCandidateSuggestions) {
+      if (suggestion.personId) {
+        next.set(suggestion.personId, suggestion.confidence);
+      }
+    }
+    return next;
+  }, [friendCandidateSuggestions]);
+  const friendSuggestionStrengthByAccount = useMemo(() => {
+    const next = new Map<string, FriendCandidateConfidence>();
+    for (const suggestion of friendCandidateSuggestions) {
+      for (const accountId of suggestion.accountIds) {
+        next.set(accountId, suggestion.confidence);
+      }
+    }
+    return next;
+  }, [friendCandidateSuggestions]);
 
   const overviewEntries = useMemo(
     () => buildFriendOverviewEntries(friendsById, feedItems),
@@ -390,6 +577,12 @@ export function FriendsView({
     () => (selectedPerson ? suggestionsByPerson.get(selectedPerson.id) ?? [] : []),
     [selectedPerson, suggestionsByPerson],
   );
+  const selectedPersonFriendSuggestion = selectedPerson
+    ? friendCandidateByPerson.get(selectedPerson.id) ?? null
+    : null;
+  const selectedAccountFriendSuggestion = selectedAccount
+    ? friendCandidateByAccount.get(selectedAccount.id) ?? null
+    : null;
   const selectedOverviewEntry = useMemo(
     () =>
       selectedPerson
@@ -613,14 +806,48 @@ export function FriendsView({
     setEditorState({ kind: "new", draft: friendDraftFromAccount(selectedAccount) });
   }, [selectedAccount]);
 
+  const handlePromoteSelectedPerson = useCallback(async () => {
+    if (!selectedPerson || selectedPerson.relationshipStatus === "friend") return;
+    await updatePerson(selectedPerson.id, {
+      relationshipStatus: "friend",
+      careLevel: 3,
+      updatedAt: Date.now(),
+    });
+    setSelectedPerson(selectedPerson.id);
+  }, [selectedPerson, setSelectedPerson, updatePerson]);
+
+  const handleDismissFriendSuggestion = useCallback((suggestionId: string) => {
+    const current = friendSuggestionPreferences?.dismissedSuggestionIds ?? [];
+    if (current.includes(suggestionId)) return;
+    void updatePreferences({
+      friendSuggestions: {
+        dismissedSuggestionIds: [...current, suggestionId],
+      },
+    } as Parameters<typeof updatePreferences>[0]);
+  }, [friendSuggestionPreferences, updatePreferences]);
+
+  const handleSelectFriendCandidate = useCallback((suggestion: FriendCandidateSuggestion) => {
+    if (suggestion.personId) {
+      const person = persons[suggestion.personId];
+      if (person) {
+        handleSelectPerson(person, true);
+        return;
+      }
+    }
+    const account = suggestion.accountIds.map((accountId) => accounts[accountId]).find(Boolean);
+    if (account) {
+      handleSelectAccount(account, true);
+    }
+  }, [accounts, handleSelectAccount, handleSelectPerson, persons]);
+
   const handleOpenSyncModal = useCallback(async () => {
     setOpeningSyncModal(true);
     try {
-      await openReview();
+      await contactSync.openReview();
     } finally {
       setOpeningSyncModal(false);
     }
-  }, [openReview]);
+  }, [contactSync]);
 
   const toggleFilter = useCallback((filter: FriendOverviewFilter) => {
     setActiveFilters((current) => {
@@ -782,6 +1009,35 @@ export function FriendsView({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        {effectiveMode === "all_content" && friendCandidateSuggestions.length > 0 ? (
+          <div className="mb-5" data-testid="friend-candidate-suggestions">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
+                  Suggested friends
+                </p>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                  {friendCandidateSuggestions.length.toLocaleString()} candidate{friendCandidateSuggestions.length === 1 ? "" : "s"} from content and identity signals
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {friendCandidateSuggestions.map((suggestion) => (
+                <FriendCandidateRow
+                  key={suggestion.id}
+                  suggestion={suggestion}
+                  selected={
+                    (suggestion.personId !== undefined && suggestion.personId === selectedPerson?.id) ||
+                    (selectedAccount?.id !== undefined && suggestion.accountIds.includes(selectedAccount.id))
+                  }
+                  onSelect={() => handleSelectFriendCandidate(suggestion)}
+                  onDismiss={handleDismissFriendSuggestion}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {filteredOverviewEntries.length === 0 ? (
           <div className="theme-panel-muted rounded-xl px-4 py-6 text-center">
             <p className="text-sm font-medium text-[color:var(--theme-text-primary)]">No friends match those filters</p>
@@ -835,6 +1091,18 @@ export function FriendsView({
           </button>
         )}
       </div>
+
+      {selectedPersonFriendSuggestion ? (
+        <FriendSuggestionEvidence
+          suggestion={selectedPersonFriendSuggestion}
+          onPromote={
+            selectedPerson?.relationshipStatus === "connection"
+              ? () => void handlePromoteSelectedPerson()
+              : undefined
+          }
+          onDismiss={handleDismissFriendSuggestion}
+        />
+      ) : null}
 
       {selectedPerson && selectedPersonSuggestions.length > 0 ? (
         <div className="theme-dialog-divider border-b px-4 py-4">
@@ -905,10 +1173,12 @@ export function FriendsView({
         account={selectedAccount}
         linkedPerson={linkedPerson}
         suggestions={selectedAccountSuggestions}
+        friendSuggestion={selectedAccountFriendSuggestion}
         persons={allPersons}
         feedItems={selectedAccountFeedItems}
         onBack={handleClearSelection}
         onPromoteToFriend={handlePromoteSelectedAccount}
+        onDismissFriendSuggestion={handleDismissFriendSuggestion}
         onLinkToPerson={(personId) => void handleLinkAccountToPerson(selectedAccount.id, personId)}
         onOpenPerson={(personId) => {
           const person = persons[personId];
@@ -1163,6 +1433,8 @@ export function FriendsView({
                 onLinkAccountToPerson={handleLinkAccountToPerson}
                 onPinPersonPosition={handlePinPersonPosition}
                 onPinAccountPosition={handlePinAccountPosition}
+                friendSuggestionStrengthByPerson={friendSuggestionStrengthByPerson}
+                friendSuggestionStrengthByAccount={friendSuggestionStrengthByAccount}
                 themeId={themeId}
               />
             )}
