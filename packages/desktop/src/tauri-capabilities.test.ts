@@ -27,4 +27,13 @@ describe("desktop Tauri capabilities", () => {
     expect(capability.permissions).toContain("fs:allow-appdata-write-recursive");
     expect(capability.permissions).toContain("fs:allow-appdata-meta-recursive");
   });
+
+  it("grants recovery windows the permissions needed to update or open fallback downloads", () => {
+    const capability = readDefaultDesktopCapability();
+
+    expect(capability.windows).toContain("startup-recovery");
+    expect(capability.permissions).toContain("shell:allow-open");
+    expect(capability.permissions).toContain("updater:default");
+    expect(capability.permissions).toContain("process:default");
+  });
 });
