@@ -376,6 +376,53 @@ describe("local AI model manager", () => {
     expect(paused[0].state.downloadedBytes).toBe(1_048_576);
   });
 
+  it("keeps a native download paused if pause lands during final bookkeeping", async () => {
+    const nativeManifest: readonly LocalAIModelManifestEntry[] = [
+      {
+        ...TEST_MANIFEST[0],
+        estimatedDownloadBytes: 5,
+        estimatedStorageBytes: 5,
+        files: [{ path: "model.bin", sizeBytes: 5, sha1: HELLO_SHA1 }],
+      },
+    ];
+    let markSizeStarted: (() => void) | null = null;
+    const sizeStarted = new Promise<void>((resolve) => {
+      markSizeStarted = resolve;
+    });
+    let releaseSize: (() => void) | null = null;
+    const allowSizeToFinish = new Promise<void>((resolve) => {
+      releaseSize = resolve;
+    });
+    const { deps, files } = createDeps();
+    deps.downloadModelFile = async (input) => {
+      files.set(input.targetPath, TEXT.encode("hello"));
+      return input.expectedSizeBytes;
+    };
+    deps.size = async (path) => {
+      if (path === "/app/local-ai-models/integrated-balanced/abc123") {
+        markSizeStarted?.();
+        await allowSizeToFinish;
+      }
+      const file = files.get(path);
+      if (file) return file.byteLength;
+      const prefix = path.endsWith("/") ? path : `${path}/`;
+      return Array.from(files.entries()).reduce(
+        (sum, [key, value]) => sum + (key.startsWith(prefix) ? value.byteLength : 0),
+        0,
+      );
+    };
+    const service = createLocalAIModelService(deps, nativeManifest);
+
+    const pending = service.downloadModel("integrated-balanced");
+    await sizeStarted;
+    await service.pauseDownload("integrated-balanced");
+    releaseSize?.();
+    const paused = await pending;
+
+    expect(paused[0].state.status).toBe("paused");
+    expect(paused[0].state.downloadedBytes).toBe(5);
+  });
+
   it("removes downloaded model files and resets state", async () => {
     const { deps, files } = createDeps();
     const service = createLocalAIModelService(deps, TEST_MANIFEST);
