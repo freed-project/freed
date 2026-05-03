@@ -473,6 +473,11 @@ export function SearchJumpField({
           setSelectedPerson(null);
           setActiveView("map");
         },
+        navigateToStoryWall: () => {
+          setSelectedItem(null);
+          setSelectedPerson(null);
+          setActiveView("storyWall");
+        },
         applyFeedSearch: (nextQuery: string) =>
           applyFeedSearch(
             {

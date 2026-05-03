@@ -200,8 +200,8 @@ interface AppState {
   setSearchQuery: (query: string) => void;
 
   // View navigation
-  activeView: "feed" | "friends" | "map";
-  setActiveView: (view: "feed" | "friends" | "map") => void;
+  activeView: "feed" | "friends" | "map" | "storyWall";
+  setActiveView: (view: "feed" | "friends" | "map" | "storyWall") => void;
   pendingMatchCount: number;
   setPendingMatchCount: (count: number) => void;
 }

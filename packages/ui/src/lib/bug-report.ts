@@ -410,7 +410,7 @@ export function summarizeStateForReport(input: {
     feeds: Record<string, unknown>;
     friends: Record<string, unknown>;
     totalUnreadCount: number;
-    activeView: "feed" | "friends" | "map";
+    activeView: "feed" | "friends" | "map" | "storyWall";
     isInitialized: boolean;
     isLoading: boolean;
     isSyncing: boolean;

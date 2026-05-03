@@ -4,7 +4,7 @@
   "version": "26.5.300",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node ../../node_modules/vite/bin/vite.js",
     "build": "tsc -b && node -e \"process.env.VERCEL||require('child_process').execSync('vite build',{stdio:'inherit',shell:true})\"",
     "preview": "vite preview",
     "tauri": "node ./scripts/tauri-cli.mjs",

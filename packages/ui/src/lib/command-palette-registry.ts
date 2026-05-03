@@ -28,7 +28,7 @@ interface SocialChannelDestination {
 
 interface BuildCommandPaletteActionsOptions {
   query: string;
-  activeView: "feed" | "friends" | "map";
+  activeView: "feed" | "friends" | "map" | "storyWall";
   activeFilter: FilterOptions;
   settingsSections: readonly SectionMeta[];
   topSources: readonly SourceDestination[];
@@ -45,6 +45,7 @@ interface BuildCommandPaletteActionsOptions {
   navigateToFeed: (filter: FilterOptions) => void;
   navigateToFriends: () => void;
   navigateToMap: () => void;
+  navigateToStoryWall?: () => void;
   applyFeedSearch: (query: string) => void;
   openAddFeedDialog?: (() => void) | null;
   openSavedContentDialog?: (() => void) | null;
@@ -119,6 +120,7 @@ export function buildCommandPaletteActions({
   navigateToFeed,
   navigateToFriends,
   navigateToMap,
+  navigateToStoryWall,
   applyFeedSearch,
   openAddFeedDialog,
   openSavedContentDialog,
@@ -177,6 +179,15 @@ export function buildCommandPaletteActions({
       keywords: ["locations", "places", "travel"],
       run: navigateToMap,
     },
+    ...(navigateToStoryWall
+      ? [{
+      id: "go-story-wall",
+      title: "Story Wall",
+      section: "Go to",
+      keywords: ["stories", "memories", "year", "publish"],
+      run: navigateToStoryWall,
+    }]
+      : []),
     ...(openAddFeedDialog
       ? [{
       id: "create-add-rss",

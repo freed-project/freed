@@ -113,6 +113,19 @@ export function MapPinIcon({ className = "w-4 h-4", style }: IconProps) {
   );
 }
 
+export function StoryWallIcon({ className = "w-4 h-4", style }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden="true">
+      <rect x="4" y="4" width="6" height="7" rx="1.5" />
+      <rect x="14" y="4" width="6" height="5" rx="1.5" />
+      <rect x="14" y="13" width="6" height="7" rx="1.5" />
+      <rect x="4" y="15" width="6" height="5" rx="1.5" />
+      <path d="M10 18h4" />
+      <path d="M12 11v4" />
+    </svg>
+  );
+}
+
 /** App sidebar toggle, action is to expand the left sidebar. */
 export function SidebarExpandIcon({ className = "w-4 h-4", style }: IconProps) {
   return (

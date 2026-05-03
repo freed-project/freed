@@ -167,9 +167,9 @@ export interface BaseAppState {
   setSearchQuery: (query: string) => void;
 
   /** The currently active top-level view. */
-  activeView: "feed" | "friends" | "map";
+  activeView: "feed" | "friends" | "map" | "storyWall";
   /** Switch the top-level view. */
-  setActiveView: (view: "feed" | "friends" | "map") => void;
+  setActiveView: (view: "feed" | "friends" | "map" | "storyWall") => void;
   /** Number of unreviewed Google Contacts match suggestions. */
   pendingMatchCount: number;
   /** Update the pending match count (set by useContactSync). */

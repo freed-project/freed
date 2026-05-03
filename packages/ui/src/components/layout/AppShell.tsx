@@ -32,6 +32,7 @@ import {
   resolveAnimationIntensity,
 } from "../../lib/animation-preferences.js";
 import { MapView } from "../map/MapView.js";
+import { StoryWallView } from "../story-wall/StoryWallView.js";
 import { BackgroundAtmosphere } from "./BackgroundAtmosphere.js";
 import {
   AUXILIARY_DRAWER_GAP_WIDTH_PX,
@@ -67,7 +68,7 @@ export function AppShell({ children }: AppShellProps) {
   const animationIntensity = useAppStore((s) =>
     resolveAnimationIntensity(s.preferences.display.animationIntensity),
   );
-  const showAtmosphere = activeView !== "friends" && activeView !== "map";
+  const showAtmosphere = activeView !== "friends" && activeView !== "map" && activeView !== "storyWall";
   const settingsOpen = useSettingsStore((s) => s.open);
   const requestSearchPalette = useCommandSurfaceStore((s) => s.requestSearchPalette);
   const addFeedOpen = useCommandSurfaceStore((s) => s.addFeedOpen);
@@ -391,6 +392,8 @@ export function AppShell({ children }: AppShellProps) {
               )
               : activeView === "map"
                 ? <MapView />
+                : activeView === "storyWall"
+                  ? <StoryWallView />
                 : children}
           </main>
 

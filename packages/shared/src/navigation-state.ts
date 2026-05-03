@@ -85,7 +85,9 @@ export function canonicalizeNavigationState(
 ): NavigationState {
   const knownItemIds = options.knownItemIds ?? null;
   const activeView: NavigationView =
-    state.activeView === "friends" || state.activeView === "map" ? state.activeView : "feed";
+    state.activeView === "friends" || state.activeView === "map" || state.activeView === "storyWall"
+      ? state.activeView
+      : "feed";
 
   if (activeView !== "feed") {
     return {
@@ -119,6 +121,7 @@ export function parseNavigationState(input: string | NavigationPathLike): Naviga
   let activeView: NavigationView = "feed";
   if (parsed.pathname === "/friends") activeView = "friends";
   else if (parsed.pathname === "/map") activeView = "map";
+  else if (parsed.pathname === "/story-wall") activeView = "storyWall";
 
   if (activeView !== "feed") {
     return {
@@ -173,6 +176,8 @@ export function serializeNavigationState(state: NavigationState): string {
       ? "/friends"
       : canonical.activeView === "map"
         ? "/map"
+        : canonical.activeView === "storyWall"
+          ? "/story-wall"
         : "/";
 
   if (canonical.activeView !== "feed") return pathname;

@@ -1,7 +1,7 @@
 import { socialAccountForAuthor, type Account, type LocationMarkerSummary } from "@freed/shared";
 
 interface MapNavigationActions {
-  setActiveView: (view: "feed" | "friends" | "map") => void;
+  setActiveView: (view: "feed" | "friends" | "map" | "storyWall") => void;
   setSelectedPerson: (id: string | null) => void;
   setSelectedAccount: (id: string | null) => void;
   setSelectedItem: (id: string | null) => void;
