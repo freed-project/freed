@@ -345,9 +345,12 @@ test("narrow desktop toolbar exposes card density slider in overflow", async ({ 
 
   const overflowMenu = page.getByTestId("toolbar-overflow-menu");
   const densitySection = overflowMenu.getByTestId("toolbar-overflow-density-section");
+  const actionsSection = overflowMenu.getByTestId("toolbar-overflow-actions-section");
   const densityControl = overflowMenu.getByTestId("feed-card-density-control");
   const slider = overflowMenu.getByTestId("feed-card-density-slider");
   await expect(slider).toBeVisible();
+  await expect(densitySection.getByText("Card density", { exact: true })).toBeVisible();
+  await expect(actionsSection.getByText("Actions", { exact: true })).toBeVisible();
 
   const menuGeometry = await densitySection.evaluate((section) => {
     const control = section.querySelector('[data-testid="feed-card-density-control"]') as HTMLElement | null;

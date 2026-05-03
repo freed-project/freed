@@ -1936,29 +1936,36 @@ export function Header({
               />
             </div>
           ) : null}
-          {toolbarOverflowActions.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                action.onClick();
-                if (action.id !== "delete-archived" || action.danger) {
-                  setToolbarOverflowMenuOpen(false);
-                }
-              }}
-              className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--theme-bg-muted)] ${
-                action.danger
-                  ? "text-red-400"
-                  : action.active
-                    ? "text-[var(--theme-text-primary)]"
-                    : "text-[var(--theme-text-secondary)]"
-              }`}
-            >
-              <span className="shrink-0 text-current">{action.icon}</span>
-              <span className="min-w-0 flex-1 truncate">{action.label}</span>
-            </button>
-          ))}
+          {toolbarOverflowActions.length > 0 ? (
+            <div data-testid="toolbar-overflow-actions-section" className="pt-2">
+              <p className="px-4 pb-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                Actions
+              </p>
+              {toolbarOverflowActions.map((action) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    action.onClick();
+                    if (action.id !== "delete-archived" || action.danger) {
+                      setToolbarOverflowMenuOpen(false);
+                    }
+                  }}
+                  className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-[var(--theme-bg-muted)] ${
+                    action.danger
+                      ? "text-red-400"
+                      : action.active
+                        ? "text-[var(--theme-text-primary)]"
+                        : "text-[var(--theme-text-secondary)]"
+                  }`}
+                >
+                  <span className="shrink-0 text-current">{action.icon}</span>
+                  <span className="min-w-0 flex-1 truncate">{action.label}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
