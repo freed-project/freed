@@ -29,6 +29,10 @@ import { secureStorage } from "./secure-storage.js";
 import { addDebugEvent } from "@freed/ui/lib/debug-store";
 import { log } from "./logger.js";
 import { toSyncedPreservedText } from "./preserved-text.js";
+import {
+  isBackgroundRuntimeDeferredError,
+  runBackgroundJob,
+} from "./background-runtime-coordinator.js";
 
 const FETCH_TIMEOUT_MS = 30_000;
 const AI_SUMMARY_TIMEOUT_MS = 60_000;
@@ -203,7 +207,7 @@ function maybeScanVisibleItems(items: FeedItem[], docItemCount: number): void {
   enqueue(items);
 }
 
-type ProcessOutcome = "success" | "backoff" | "idle";
+type ProcessOutcome = "success" | "backoff" | "deferred" | "idle";
 
 function randomDelayForBackoff(level: number): number {
   const multiplier = 2 ** Math.min(level, MAX_BACKOFF_LEVEL);
@@ -273,12 +277,22 @@ async function runWorkerOnce(): Promise<void> {
 
   let outcome: ProcessOutcome = "idle";
   try {
-    outcome = await processNext();
+    outcome = await runBackgroundJob({
+      kind: "content-fetch",
+      source: "content-fetcher",
+      timeoutMs: 180_000,
+      run: processNext,
+    });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    log.error(`[content-fetcher] unexpected error in processNext: ${msg}`);
-    addDebugEvent("error", `[Fetcher] unexpected error in processNext: ${msg}`);
-    outcome = "backoff";
+    if (isBackgroundRuntimeDeferredError(err)) {
+      log.info(`[content-fetcher] deferred by background runtime reason=${err.reason}`);
+      outcome = "deferred";
+    } else {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error(`[content-fetcher] unexpected error in processNext: ${msg}`);
+      addDebugEvent("error", `[Fetcher] unexpected error in processNext: ${msg}`);
+      outcome = "backoff";
+    }
   } finally {
     activeStartedAt = null;
   }
@@ -292,7 +306,8 @@ async function runWorkerOnce(): Promise<void> {
   notifyStatus();
 
   if (running && queue.length > 0) {
-    scheduleWorker(randomDelayForBackoff(backoffLevel));
+    const delayBackoffLevel = outcome === "deferred" ? Math.max(1, backoffLevel) : backoffLevel;
+    scheduleWorker(randomDelayForBackoff(delayBackoffLevel));
   }
 }
 

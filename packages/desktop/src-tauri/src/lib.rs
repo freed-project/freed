@@ -64,12 +64,17 @@ const MAX_CRITICAL_MEMORY_BYTES: u64 = 8 * BYTES_PER_GIB;
 const WEBKIT_CACHE_TRIM_AT_BYTES: u64 = 768 * 1024 * 1024;
 const WEBKIT_CACHE_TRIM_TARGET_BYTES: u64 = 512 * 1024 * 1024;
 const STARTUP_RECOVERY_STATE_FILE: &str = "startup-recovery.json";
+const RUNTIME_HEALTH_FILE: &str = "runtime-health.jsonl";
 const RECOVERY_WINDOW_LABEL: &str = "startup-recovery";
 const RECOVERY_WINDOW_ROUTE: &str = "startup-recovery.html";
 const RENDERER_HEARTBEAT_WATCHDOG_INTERVAL: Duration = Duration::from_secs(15);
 const RENDERER_STALE_LOG_AFTER: Duration = Duration::from_secs(45);
 const RENDERER_VISIBLE_RECOVERY_AFTER: Duration = Duration::from_secs(75);
 const RENDERER_HIDDEN_RECOVERY_AFTER: Duration = Duration::from_secs(600);
+const BACKGROUND_REQUIRED_HEALTHY_HEARTBEATS: u64 = 2;
+const BACKGROUND_RECOVERY_COOLDOWN: Duration = Duration::from_secs(120);
+const BACKGROUND_JOB_MAX_HELD: Duration = Duration::from_secs(120);
+const FORCE_EXIT_AFTER_RESTART_REQUEST: Duration = Duration::from_secs(8);
 const MAIN_WINDOW_RELEASE_POLL_INTERVAL: Duration = Duration::from_millis(50);
 const MAIN_WINDOW_RELEASE_POLL_ATTEMPTS: usize = 20;
 const LOCAL_AI_DOWNLOAD_PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
@@ -541,6 +546,41 @@ fn save_startup_recovery_state(data_dir: &Path, state: &StartupRecoveryState) {
     }
 }
 
+fn runtime_health_path(data_dir: &Path) -> PathBuf {
+    data_dir.join(RUNTIME_HEALTH_FILE)
+}
+
+fn append_runtime_health(app: &tauri::AppHandle, mut payload: serde_json::Value) {
+    let Ok(data_dir) = app.path().app_data_dir() else {
+        return;
+    };
+    std::fs::create_dir_all(&data_dir).ok();
+
+    if let serde_json::Value::Object(fields) = &mut payload {
+        fields.insert("tsMs".to_string(), serde_json::json!(now_unix_ms()));
+    }
+
+    let Ok(line) = serde_json::to_string(&payload) else {
+        return;
+    };
+    let path = runtime_health_path(&data_dir);
+    match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        Ok(mut file) => {
+            use std::io::Write;
+            let _ = writeln!(file, "{}", line);
+        }
+        Err(error) => warn!(
+            "[runtime-health] failed to open {}: {}",
+            path.display(),
+            error
+        ),
+    }
+}
+
 fn reconcile_startup_recovery_state(data_dir: &Path) -> StartupRecoveryState {
     let mut state = load_startup_recovery_state(data_dir);
 
@@ -555,6 +595,14 @@ fn reconcile_startup_recovery_state(data_dir: &Path) -> StartupRecoveryState {
     }
 
     state
+}
+
+fn mark_startup_failed(data_dir: &Path) {
+    let mut state = load_startup_recovery_state(data_dir);
+    state.pending_boot_started_at_ms = None;
+    state.consecutive_failed_boots = state.consecutive_failed_boots.saturating_add(1);
+    state.last_failed_boot_at_ms = Some(now_unix_ms());
+    save_startup_recovery_state(data_dir, &state);
 }
 
 fn mark_startup_pending(data_dir: &Path) {
@@ -830,6 +878,132 @@ struct WebkitMemoryStats {
     largest_process_id: Option<u32>,
 }
 
+#[derive(Debug, Clone)]
+struct ActiveBackgroundJob {
+    operation: &'static str,
+    started_at: Instant,
+}
+
+#[derive(Debug)]
+struct BackgroundRuntimeState {
+    healthy_heartbeats: u64,
+    renderer_stale: bool,
+    cooldown_until: Option<Instant>,
+    active_job: Option<ActiveBackgroundJob>,
+    last_recovery_reason: Option<String>,
+}
+
+impl BackgroundRuntimeState {
+    fn new() -> Self {
+        Self {
+            healthy_heartbeats: 0,
+            renderer_stale: true,
+            cooldown_until: None,
+            active_job: None,
+            last_recovery_reason: None,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct BackgroundRuntimeCoordinator {
+    state: StdRwLock<BackgroundRuntimeState>,
+}
+
+impl BackgroundRuntimeCoordinator {
+    fn new() -> Self {
+        Self {
+            state: StdRwLock::new(BackgroundRuntimeState::new()),
+        }
+    }
+
+    fn note_renderer_heartbeat(&self) {
+        let mut state = self.state.write().unwrap();
+        state.healthy_heartbeats = state.healthy_heartbeats.saturating_add(1);
+        if state.healthy_heartbeats >= BACKGROUND_REQUIRED_HEALTHY_HEARTBEATS {
+            state.renderer_stale = false;
+        }
+    }
+
+    fn note_renderer_stale(&self, reason: &str) {
+        let mut state = self.state.write().unwrap();
+        state.renderer_stale = true;
+        state.cooldown_until = Some(Instant::now() + BACKGROUND_RECOVERY_COOLDOWN);
+        state.last_recovery_reason = Some(reason.to_string());
+    }
+
+    fn note_renderer_recovery_attempt(&self, reason: &str) {
+        let mut state = self.state.write().unwrap();
+        state.healthy_heartbeats = 0;
+        state.renderer_stale = true;
+        state.cooldown_until = Some(Instant::now() + BACKGROUND_RECOVERY_COOLDOWN);
+        state.last_recovery_reason = Some(reason.to_string());
+    }
+
+    fn begin_job(&self, operation: &'static str) -> Result<(), String> {
+        let now = Instant::now();
+        let mut state = self.state.write().unwrap();
+
+        if state.healthy_heartbeats < BACKGROUND_REQUIRED_HEALTHY_HEARTBEATS {
+            return Err(format!(
+                "background work is waiting for {} healthy renderer heartbeats",
+                BACKGROUND_REQUIRED_HEALTHY_HEARTBEATS
+            ));
+        }
+
+        if state.renderer_stale {
+            return Err("background work is paused while the renderer is stale".to_string());
+        }
+
+        if let Some(cooldown_until) = state.cooldown_until {
+            if cooldown_until > now {
+                let wait_ms = cooldown_until.duration_since(now).as_millis();
+                return Err(format!(
+                    "background work is cooling down for {} ms after renderer recovery",
+                    wait_ms
+                ));
+            }
+            state.cooldown_until = None;
+        }
+
+        if let Some(active) = &state.active_job {
+            return Err(format!(
+                "background job {} is already active",
+                active.operation
+            ));
+        }
+
+        state.active_job = Some(ActiveBackgroundJob {
+            operation,
+            started_at: now,
+        });
+        Ok(())
+    }
+
+    fn finish_job(&self, operation: &'static str) -> Option<u128> {
+        let mut state = self.state.write().unwrap();
+        let Some(active) = state.active_job.take() else {
+            return None;
+        };
+        if active.operation != operation {
+            warn!(
+                "[background-runtime] finishing op={} while active_op={}",
+                operation, active.operation
+            );
+        }
+        Some(active.started_at.elapsed().as_millis())
+    }
+
+    fn active_job_for_health(&self) -> (Option<&'static str>, Option<u128>) {
+        let state = self.state.read().unwrap();
+        state
+            .active_job
+            .as_ref()
+            .map(|job| (Some(job.operation), Some(job.started_at.elapsed().as_millis())))
+            .unwrap_or((None, None))
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Capture state — shared UA strings and HTTP client for social scrapers
 // ---------------------------------------------------------------------------
@@ -841,6 +1015,7 @@ struct CaptureState {
     ig_user_agent: std::sync::Mutex<String>,
     li_user_agent: std::sync::Mutex<String>,
     scraper_session: Arc<tokio::sync::Mutex<()>>,
+    background_runtime: Arc<BackgroundRuntimeCoordinator>,
     x_client: rquest::Client,
 }
 
@@ -859,6 +1034,7 @@ impl CaptureState {
             ig_user_agent: std::sync::Mutex::new(String::new()),
             li_user_agent: std::sync::Mutex::new(String::new()),
             scraper_session: Arc::new(tokio::sync::Mutex::new(())),
+            background_runtime: Arc::new(BackgroundRuntimeCoordinator::new()),
             x_client,
         }
     }
@@ -866,12 +1042,25 @@ impl CaptureState {
 
 struct ActiveScraperSession {
     _guard: tokio::sync::OwnedMutexGuard<()>,
+    background_runtime: Arc<BackgroundRuntimeCoordinator>,
     operation: &'static str,
     acquired_at: std::time::Instant,
 }
 
 impl Drop for ActiveScraperSession {
     fn drop(&mut self) {
+        let runtime_held_ms = self
+            .background_runtime
+            .finish_job(self.operation)
+            .unwrap_or_else(|| self.acquired_at.elapsed().as_millis());
+        if runtime_held_ms > BACKGROUND_JOB_MAX_HELD.as_millis() {
+            warn!(
+                "[background-runtime] scraper op={} exceeded max_held_ms={} held_ms={}",
+                self.operation,
+                BACKGROUND_JOB_MAX_HELD.as_millis(),
+                runtime_held_ms
+            );
+        }
         info!(
             "[scraper] released session op={} held_ms={}",
             self.operation,
@@ -1047,32 +1236,36 @@ fn truncate_for_log(value: &str, max_chars: usize) -> String {
 async fn acquire_background_scraper_session(
     capture: &CaptureState,
     operation: &'static str,
-) -> ActiveScraperSession {
+) -> Result<ActiveScraperSession, String> {
     let session = capture.scraper_session.clone();
 
     match session.clone().try_lock_owned() {
         Ok(guard) => {
+            capture.background_runtime.begin_job(operation)?;
             info!("[scraper] acquired session op={} wait_ms=0", operation);
-            ActiveScraperSession {
+            Ok(ActiveScraperSession {
                 _guard: guard,
+                background_runtime: capture.background_runtime.clone(),
                 operation,
                 acquired_at: std::time::Instant::now(),
-            }
+            })
         }
         Err(_) => {
             info!("[scraper] waiting for active session op={}", operation);
             let wait_started = std::time::Instant::now();
             let guard = session.lock_owned().await;
+            capture.background_runtime.begin_job(operation)?;
             info!(
                 "[scraper] acquired session op={} wait_ms={}",
                 operation,
                 wait_started.elapsed().as_millis()
             );
-            ActiveScraperSession {
+            Ok(ActiveScraperSession {
                 _guard: guard,
+                background_runtime: capture.background_runtime.clone(),
                 operation,
                 acquired_at: std::time::Instant::now(),
-            }
+            })
         }
     }
 }
@@ -1926,6 +2119,23 @@ async fn prepare_social_scrape_memory_internal(
         cache_trimmed,
         may_proceed
     );
+    append_runtime_health(
+        app,
+        serde_json::json!({
+            "event": "scrape_memory_preflight",
+            "provider": provider,
+            "operation": operation,
+            "beforeAppResidentBytes": before.app_resident_bytes,
+            "beforeWebkitResidentBytes": before.webkit_total_resident_bytes,
+            "afterAppResidentBytes": after.app_resident_bytes,
+            "afterWebkitResidentBytes": after.webkit_total_resident_bytes,
+            "memoryHighBytes": after.memory_high_bytes,
+            "memoryCriticalBytes": after.memory_critical_bytes,
+            "recycledScraperWindows": recycled_scraper_windows,
+            "cacheTrimmed": cache_trimmed,
+            "mayProceed": may_proceed
+        }),
+    );
 
     ScrapeMemoryPreparation {
         before,
@@ -1973,6 +2183,27 @@ async fn get_runtime_memory_stats(
         relay_doc_bytes,
         relay_client_count,
     ))
+}
+
+#[tauri::command]
+async fn get_recent_runtime_health(
+    app: tauri::AppHandle,
+    limit: Option<usize>,
+) -> Result<Vec<String>, String> {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let path = runtime_health_path(&data_dir);
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.to_string()),
+    };
+    let limit = limit.unwrap_or(120).clamp(1, 1_000);
+    let lines: Vec<String> = raw.lines().map(|line| line.to_string()).collect();
+    let start = lines.len().saturating_sub(limit);
+    Ok(lines[start..].to_vec())
 }
 
 #[tauri::command]
@@ -2485,7 +2716,7 @@ async fn fb_check_auth(
     use tauri::WebviewWindowBuilder;
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "fb_check_auth").await;
+    let _scraper_session = acquire_background_scraper_session(&capture, "fb_check_auth").await?;
     ensure_social_scrape_memory(&app, "Facebook", "auth check", Some("fb-scraper")).await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "auth check");
     let wv = match app.get_webview_window("fb-scraper") {
@@ -2776,7 +3007,7 @@ async fn fb_scrape_feed(
 
     let fb_feed_url = "https://www.facebook.com/";
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_feed").await;
+    let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_feed").await?;
     ensure_social_scrape_memory(&app, "Facebook", "feed scrape", None).await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "feed scrape complete");
@@ -3006,7 +3237,7 @@ async fn fb_scrape_groups(
 
     let fb_groups_url = "https://www.facebook.com/groups/?category=joined";
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_groups").await;
+    let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_groups").await?;
     ensure_social_scrape_memory(&app, "Facebook", "groups scrape", None).await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "groups scrape complete");
@@ -3110,7 +3341,7 @@ async fn fb_scrape_comments(
     window_mode: ScraperWindowMode,
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_comments").await;
+    let _scraper_session = acquire_background_scraper_session(&capture, "fb_scrape_comments").await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "fb-scraper", "comments scrape complete");
     let wv = match app.get_webview_window("fb-scraper") {
@@ -3278,7 +3509,7 @@ async fn ig_check_auth(
     use tauri::WebviewWindowBuilder;
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "ig_check_auth").await;
+    let _scraper_session = acquire_background_scraper_session(&capture, "ig_check_auth").await?;
     ensure_social_scrape_memory(&app, "Instagram", "auth check", Some("ig-scraper")).await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "auth check");
     let wv = match app.get_webview_window("ig-scraper") {
@@ -3340,7 +3571,7 @@ async fn ig_scrape_feed(
 
     let ig_feed_url = "https://www.instagram.com/?variant=following";
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_feed").await;
+    let _scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_feed").await?;
     ensure_social_scrape_memory(&app, "Instagram", "feed scrape", None).await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "ig-scraper", "feed scrape complete");
@@ -3590,7 +3821,7 @@ async fn ig_scrape_comments(
     window_mode: ScraperWindowMode,
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_comments").await;
+    let _scraper_session = acquire_background_scraper_session(&capture, "ig_scrape_comments").await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "ig-scraper", "comments scrape complete");
     let wv = match app.get_webview_window("ig-scraper") {
@@ -3652,7 +3883,7 @@ async fn fb_visit_url(
     url: String,
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "fb_visit_url").await;
+    let _scraper_session = acquire_background_scraper_session(&capture, "fb_visit_url").await?;
     ensure_social_scrape_memory(&app, "Facebook", "visit", None).await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "visit complete");
     let wv = match app.get_webview_window("fb-scraper") {
@@ -3684,7 +3915,7 @@ async fn ig_visit_url(
     url: String,
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "ig_visit_url").await;
+    let _scraper_session = acquire_background_scraper_session(&capture, "ig_visit_url").await?;
     ensure_social_scrape_memory(&app, "Instagram", "visit", None).await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "visit complete");
     let wv = match app.get_webview_window("ig-scraper") {
@@ -3722,7 +3953,7 @@ async fn fb_like_post(
     url: String,
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.fb_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "fb_like_post").await;
+    let _scraper_session = acquire_background_scraper_session(&capture, "fb_like_post").await?;
     ensure_social_scrape_memory(&app, "Facebook", "like", None).await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "fb-scraper", "like complete");
     let wv = match app.get_webview_window("fb-scraper") {
@@ -3772,7 +4003,7 @@ async fn ig_like_post(
     url: String,
 ) -> Result<(), String> {
     let scraper_user_agent = stored_or_default_user_agent(&capture.ig_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "ig_like_post").await;
+    let _scraper_session = acquire_background_scraper_session(&capture, "ig_like_post").await?;
     ensure_social_scrape_memory(&app, "Instagram", "like", None).await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "ig-scraper", "like complete");
     let wv = match app.get_webview_window("ig-scraper") {
@@ -3916,7 +4147,7 @@ async fn li_check_auth(
     use tauri::WebviewWindowBuilder;
 
     let scraper_user_agent = stored_or_default_user_agent(&capture.li_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "li_check_auth").await;
+    let _scraper_session = acquire_background_scraper_session(&capture, "li_check_auth").await?;
     ensure_social_scrape_memory(&app, "LinkedIn", "auth check", Some("li-scraper")).await?;
     let _recycle_guard = WebviewRecycleGuard::new(app.clone(), "li-scraper", "auth check");
     let wv = match app.get_webview_window("li-scraper") {
@@ -3990,7 +4221,7 @@ async fn li_scrape_feed(
 
     let li_feed_url = "https://www.linkedin.com/feed/";
     let scraper_user_agent = stored_or_default_user_agent(&capture.li_user_agent);
-    let _scraper_session = acquire_background_scraper_session(&capture, "li_scrape_feed").await;
+    let _scraper_session = acquire_background_scraper_session(&capture, "li_scrape_feed").await?;
     ensure_social_scrape_memory(&app, "LinkedIn", "feed scrape", None).await?;
     let _recycle_guard =
         WebviewRecycleGuard::new(app.clone(), "li-scraper", "feed scrape complete");
@@ -4588,10 +4819,36 @@ fn recover_main_window(app: &tauri::AppHandle, reason: &str) -> Result<(), Strin
                 "[main-window] {}; requesting app restart reason={}",
                 message, reason
             );
-            app.request_restart();
+            request_restart_after_recovery_failure(app, reason, &message);
             Err(message)
         }
     }
+}
+
+fn request_restart_after_recovery_failure(app: &tauri::AppHandle, reason: &str, error: &str) {
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        mark_startup_failed(&data_dir);
+    }
+    append_runtime_health(
+        app,
+        serde_json::json!({
+            "event": "renderer_recovery_restart_requested",
+            "reason": reason,
+            "error": error
+        }),
+    );
+    app.request_restart();
+
+    let app_for_exit = app.clone();
+    let reason_for_exit = reason.to_string();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(FORCE_EXIT_AFTER_RESTART_REQUEST).await;
+        warn!(
+            "[main-window] forcing old process exit after restart request reason={}",
+            reason_for_exit
+        );
+        app_for_exit.exit(0);
+    });
 }
 
 fn recover_main_window_on_main_thread(app: &tauri::AppHandle, reason: &str) -> Result<(), String> {
@@ -4605,7 +4862,7 @@ fn recover_main_window_on_main_thread(app: &tauri::AppHandle, reason: &str) -> R
             "[main-window] renderer recovery failed; requesting app restart reason={} error={}",
             reason, error
         );
-        app.request_restart();
+        request_restart_after_recovery_failure(app, reason, error);
 
         if let Ok(window) = open_or_focus_recovery_window(app) {
             show_webview_window(&window);
@@ -4987,6 +5244,10 @@ pub fn run() {
             let renderer_health_for_listener = renderer_health.clone();
             let app_for_renderer = app.handle().clone();
             let app_for_renderer_listener = app_for_renderer.clone();
+            let background_runtime_for_listener = app
+                .state::<CaptureState>()
+                .background_runtime
+                .clone();
             app_for_renderer.listen("renderer-heartbeat", move |event| {
                 let payload = match serde_json::from_str::<RendererHeartbeatPayload>(event.payload()) {
                     Ok(payload) => payload,
@@ -5004,8 +5265,25 @@ pub fn run() {
                 let mut health = renderer_health_for_listener.write().unwrap();
                 let (first_heartbeat, gap_ms, recovered) =
                     health.note_heartbeat(&payload, now);
+                background_runtime_for_listener.note_renderer_heartbeat();
 
                 let href = truncate_for_log(&payload.href, 120);
+                let (active_job, active_job_age_ms) =
+                    background_runtime_for_listener.active_job_for_health();
+                append_runtime_health(
+                    &app_for_renderer_listener,
+                    serde_json::json!({
+                        "event": "renderer_heartbeat",
+                        "seq": payload.seq,
+                        "reason": payload.reason.clone(),
+                        "visibility": payload.visibility.clone(),
+                        "href": href.clone(),
+                        "gapMs": gap_ms,
+                        "recovered": recovered,
+                        "activeBackgroundJob": active_job,
+                        "activeBackgroundJobAgeMs": active_job_age_ms
+                    }),
+                );
                 if recovered {
                     warn!(
                         "[main-window] renderer heartbeat recovered seq={} gap_ms={} reason={} visibility={} href={} ts={}",
@@ -5041,6 +5319,10 @@ pub fn run() {
 
             let renderer_health_for_watchdog = renderer_health.clone();
             let app_for_renderer_watchdog = app.handle().clone();
+            let background_runtime_for_watchdog = app
+                .state::<CaptureState>()
+                .background_runtime
+                .clone();
             tauri::async_runtime::spawn(async move {
                 loop {
                     tokio::time::sleep(RENDERER_HEARTBEAT_WATCHDOG_INTERVAL).await;
@@ -5094,10 +5376,42 @@ pub fn run() {
                                 webkit_details
                             );
                             health.stale_logged = true;
+                            background_runtime_for_watchdog
+                                .note_renderer_stale("renderer heartbeat stale");
+                            let (active_job, active_job_age_ms) =
+                                background_runtime_for_watchdog.active_job_for_health();
+                            append_runtime_health(
+                                &app_for_renderer_watchdog,
+                                serde_json::json!({
+                                    "event": "renderer_heartbeat_stale",
+                                    "ageMs": age.as_millis(),
+                                    "thresholdMs": recovery_threshold.as_millis(),
+                                    "visible": is_main_visible,
+                                    "lastSeq": health.last_seq,
+                                    "lastReason": health.last_reason.clone(),
+                                    "lastVisibility": health.last_visibility.clone(),
+                                    "href": truncate_for_log(&health.last_href, 120),
+                                    "nativeResidentBytes": native_rss,
+                                    "activeBackgroundJob": active_job,
+                                    "activeBackgroundJobAgeMs": active_job_age_ms
+                                }),
+                            );
                         }
 
                         if should_recover {
                             let attempt = health.note_recovery_attempt(std::time::Instant::now());
+                            background_runtime_for_watchdog
+                                .note_renderer_recovery_attempt("renderer heartbeat stale");
+                            append_runtime_health(
+                                &app_for_renderer_watchdog,
+                                serde_json::json!({
+                                    "event": "renderer_recovery_attempt",
+                                    "attempt": attempt,
+                                    "ageMs": age.as_millis(),
+                                    "thresholdMs": recovery_threshold.as_millis(),
+                                    "visible": is_main_visible
+                                }),
+                            );
                             warn!(
                                 "[main-window] recovering stale renderer attempt={} age_ms={} threshold_ms={} visible={}",
                                 attempt,
@@ -5218,6 +5532,7 @@ pub fn run() {
             cancel_local_ai_model_download,
             get_sync_client_count,
             get_runtime_memory_stats,
+            get_recent_runtime_health,
             get_ai_hardware_profile,
             prepare_social_scrape_memory,
             broadcast_doc,
@@ -5285,6 +5600,50 @@ mod tests {
                 MAX_CRITICAL_MEMORY_BYTES
             )
         );
+    }
+
+    #[test]
+    fn background_runtime_requires_stable_renderer_before_jobs() {
+        let runtime = BackgroundRuntimeCoordinator::new();
+        assert!(runtime.begin_job("fb_scrape_feed").is_err());
+
+        runtime.note_renderer_heartbeat();
+        assert!(runtime.begin_job("fb_scrape_feed").is_err());
+
+        runtime.note_renderer_heartbeat();
+        assert!(runtime.begin_job("fb_scrape_feed").is_ok());
+        assert!(runtime.begin_job("ig_scrape_feed").is_err());
+        assert!(runtime.finish_job("fb_scrape_feed").is_some());
+    }
+
+    #[test]
+    fn background_runtime_blocks_during_recovery_cooldown() {
+        let runtime = BackgroundRuntimeCoordinator::new();
+        runtime.note_renderer_heartbeat();
+        runtime.note_renderer_heartbeat();
+        assert!(runtime.begin_job("fb_scrape_feed").is_ok());
+        let _ = runtime.finish_job("fb_scrape_feed");
+
+        runtime.note_renderer_stale("test stale renderer");
+        let err = runtime.begin_job("ig_scrape_feed").unwrap_err();
+        assert!(err.contains("renderer is stale") || err.contains("cooling down"));
+
+        runtime.note_renderer_heartbeat();
+        runtime.note_renderer_heartbeat();
+        let err = runtime.begin_job("ig_scrape_feed").unwrap_err();
+        assert!(err.contains("cooling down"));
+    }
+
+    #[test]
+    fn mark_startup_failed_forces_recovery_on_next_launch() {
+        let temp = tempfile::tempdir().unwrap();
+        mark_startup_success(temp.path());
+        mark_startup_failed(temp.path());
+        let state = load_startup_recovery_state(temp.path());
+
+        assert!(startup_requires_recovery(&state));
+        assert_eq!(state.consecutive_failed_boots, 1);
+        assert!(state.last_failed_boot_at_ms.is_some());
     }
 
     #[test]

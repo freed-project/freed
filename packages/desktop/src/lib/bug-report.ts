@@ -45,6 +45,14 @@ async function getRecentLogs(limit: number): Promise<string[]> {
   }
 }
 
+async function getRecentRuntimeHealth(limit: number): Promise<string[]> {
+  try {
+    return await invoke<string[]>("get_recent_runtime_health", { limit });
+  } catch {
+    return [];
+  }
+}
+
 async function getSnapshotNames(): Promise<string[]> {
   try {
     return await invoke<string[]>("list_snapshots");
@@ -87,7 +95,8 @@ function collectPublicEvents(events: BugReportEvent[], tier: ReportPrivacyTier):
 }
 
 function sanitizeLogLines(lines: string[], tier: ReportPrivacyTier): string[] {
-  const filtered = lines.slice(-(tier === "private" ? 200 : 80));
+  const safeLines = Array.isArray(lines) ? lines : [];
+  const filtered = safeLines.slice(-(tier === "private" ? 200 : 80));
   return filtered.map((line) => redactSensitiveText(line));
 }
 
@@ -129,6 +138,9 @@ async function buildDesktopBundle(input: {
   const logLines = includedArtifacts.some((artifact) => artifact === "expanded-logs")
     ? sanitizeLogLines(await getRecentLogs(240), "private")
     : sanitizeLogLines(await getRecentLogs(100), "public-safe");
+  const runtimeHealthLines = includedArtifacts.includes("diagnostic-events")
+    ? sanitizeLogLines(await getRecentRuntimeHealth(120), input.privacyTier)
+    : [];
   const snapshotNames =
     input.privacyTier === "private" && includedArtifacts.includes("snapshot-metadata")
       ? (await getSnapshotNames()).map((name) => redactSensitiveText(name))
@@ -175,6 +187,7 @@ async function buildDesktopBundle(input: {
   if (includedArtifacts.includes("diagnostic-events")) {
     diagnostics.reportEvents = reportEvents;
     diagnostics.debugEvents = debugEvents;
+    diagnostics.runtimeHealthLineCount = runtimeHealthLines.length;
   }
   if (includedArtifacts.includes("crash-context")) {
     diagnostics.fatalError = fatalError;
@@ -199,6 +212,7 @@ async function buildDesktopBundle(input: {
   if (includedArtifacts.includes("diagnostic-events")) {
     addJson(zip, "diagnostics/report-events.json", reportEvents);
     addJson(zip, "diagnostics/debug-events.json", debugEvents);
+    zip.file("diagnostics/runtime-health.jsonl", runtimeHealthLines.join("\n"));
   }
   if (includedArtifacts.includes("state-summary")) {
     addJson(zip, "diagnostics/state-summary.json", stateSummary);
