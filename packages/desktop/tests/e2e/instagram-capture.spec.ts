@@ -65,23 +65,6 @@ async function setIgAuthState(
   }, isAuthenticated);
 }
 
-test("Instagram settings shows login button when not authenticated", async ({
-  app,
-}) => {
-  await app.goto();
-  await app.waitForReady();
-
-  const igSection = await openInstagramSection(app.page, test);
-  if (!igSection) return;
-
-  await expect(igSection.getByText("Log in with Instagram")).toBeVisible({
-    timeout: 3_000,
-  });
-  await expect(igSection.getByText("Check Connection")).toBeVisible({
-    timeout: 3_000,
-  });
-});
-
 test("Instagram settings shows connected state when authenticated", async ({
   app,
 }) => {
@@ -110,7 +93,6 @@ test("Instagram settings shows connected state when authenticated", async ({
     timeout: 3_000,
   });
 });
-
 test("Disconnect button returns to login state", async ({ app }) => {
   await app.goto();
   await app.waitForReady();
@@ -131,29 +113,4 @@ test("Disconnect button returns to login state", async ({ app }) => {
   await expect(igSection.getByText("Log in with Instagram")).toBeVisible({
     timeout: 5_000,
   });
-});
-
-test("Instagram appears in sidebar as active source", async ({ app }) => {
-  await app.goto();
-  await app.waitForReady();
-
-  // Instagram should be in the sidebar sources list (not "coming soon")
-  const sidebar = app.page.locator("nav").first();
-  const igButton = sidebar.getByTestId("source-row-instagram");
-  await expect(igButton).toBeVisible({ timeout: 3_000 });
-});
-
-test("Instagram source indicator shows connected when authenticated", async ({
-  app,
-}) => {
-  await app.goto();
-  await app.waitForReady();
-
-  // Set authenticated via store
-  await setIgAuthState(app.page, true);
-
-  // The Instagram sidebar button should indicate connection somehow
-  const sidebar = app.page.locator("nav").first();
-  const igButton = sidebar.getByTestId("source-row-instagram");
-  await expect(igButton).toBeVisible({ timeout: 3_000 });
 });

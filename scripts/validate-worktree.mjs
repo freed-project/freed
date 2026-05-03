@@ -286,6 +286,9 @@ export function buildValidationPlan(mode, changedFiles) {
       npmCommand("pwa unit tests", ["run", "test:unit", "--workspace=packages/pwa"]),
       npmCommand("desktop unit tests", ["run", "test:unit", "--workspace=packages/desktop"]),
       npmCommand("desktop e2e smoke", ["run", "test:e2e:smoke", "--workspace=packages/desktop"]),
+      npmCommand("desktop e2e regression", ["run", "test:e2e:regression", "--workspace=packages/desktop"]),
+      npmCommand("desktop e2e perf", ["run", "test:e2e:perf", "--workspace=packages/desktop"]),
+      npmCommand("desktop e2e visual", ["run", "test:e2e:visual", "--workspace=packages/desktop"]),
     ];
   }
 
@@ -296,9 +299,6 @@ export function buildValidationPlan(mode, changedFiles) {
         "--test",
         path.join("scripts", "release-notes-shared.test.mjs"),
       ]),
-      npmCommand("desktop e2e full", ["run", "test:e2e:full", "--workspace=packages/desktop"]),
-      npmCommand("desktop e2e perf", ["run", "test:e2e:perf", "--workspace=packages/desktop"]),
-      npmCommand("desktop e2e visual", ["run", "test:e2e:visual", "--workspace=packages/desktop"]),
       npmCommand("website production build", ["run", "build", "--workspace=website"]),
       npmCommand("pwa production build", ["run", "build", "--workspace=packages/pwa"]),
       npmCommand("desktop production build", ["run", "build", "--workspace=packages/desktop"]),
