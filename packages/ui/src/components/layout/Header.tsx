@@ -217,7 +217,10 @@ function FeedCardDensitySlider({
   };
 
   return (
-    <Tooltip label={FEED_CARD_DENSITY_LABELS[value]}>
+    <Tooltip
+      label={FEED_CARD_DENSITY_LABELS[value]}
+      className={fullWidth ? "w-full" : undefined}
+    >
       <div
         data-testid="feed-card-density-control"
         className="theme-toolbar-density-control"
@@ -1918,7 +1921,10 @@ export function Header({
           }}
         >
           {showOverflowFeedCardDensityControl ? (
-            <div className={`${toolbarOverflowActions.length > 0 ? "border-b border-[var(--theme-border-subtle)]" : ""} px-4 pb-3 pt-2`}>
+            <div
+              data-testid="toolbar-overflow-density-section"
+              className={`${toolbarOverflowActions.length > 0 ? "border-b border-[var(--theme-border-subtle)]" : ""} px-4 pb-3 pt-2`}
+            >
               <p className="mb-2 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
                 Card density
               </p>

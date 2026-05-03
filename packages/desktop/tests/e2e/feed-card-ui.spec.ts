@@ -344,15 +344,14 @@ test("narrow desktop toolbar exposes card density slider in overflow", async ({ 
   await overflowButton.click();
 
   const overflowMenu = page.getByTestId("toolbar-overflow-menu");
+  const densitySection = overflowMenu.getByTestId("toolbar-overflow-density-section");
   const densityControl = overflowMenu.getByTestId("feed-card-density-control");
   const slider = overflowMenu.getByTestId("feed-card-density-slider");
   await expect(slider).toBeVisible();
 
-  const menuGeometry = await overflowMenu.evaluate((menu) => {
-    const control = menu.querySelector('[data-testid="feed-card-density-control"]') as HTMLElement | null;
+  const menuGeometry = await densitySection.evaluate((section) => {
+    const control = section.querySelector('[data-testid="feed-card-density-control"]') as HTMLElement | null;
     if (!control) throw new Error("Density control is missing");
-    const section = control.parentElement as HTMLElement | null;
-    if (!section) throw new Error("Density section is missing");
     const controlRect = control.getBoundingClientRect();
     const sectionRect = section.getBoundingClientRect();
     const sectionStyle = window.getComputedStyle(section);
