@@ -3566,6 +3566,17 @@ test("narrow feed filter menu labels collapsed sections", async ({ app, page }) 
   await expect(filterMenu.getByText("Connections", { exact: true })).toBeVisible();
   await expect(filterMenu.getByText("Classification", { exact: true })).toBeVisible();
   await expect(filterMenu.getByText("View", { exact: true })).toHaveCount(0);
+  const headingLefts = await filterMenu.evaluate((menu) => {
+    const headings = ["Format", "Connections", "Classification"];
+    return headings.map((heading) => {
+      const element = Array.from(menu.querySelectorAll("p")).find((candidate) =>
+        candidate.textContent?.trim() === heading
+      );
+      if (!element) throw new Error(`Missing ${heading} heading`);
+      return Math.round(element.getBoundingClientRect().left);
+    });
+  });
+  expect(Math.max(...headingLefts) - Math.min(...headingLefts)).toBeLessThanOrEqual(1);
   await expect(filterMenu.getByText("All visible items.", { exact: true })).toBeVisible();
   await expect(filterMenu.getByText("Essays, guides, and references.", { exact: true })).toBeVisible();
 

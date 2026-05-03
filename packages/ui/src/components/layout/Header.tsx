@@ -2053,9 +2053,11 @@ export function Header({
 
           {showFeedSignalFilter ? (
             <div>
-              <p className="px-7 pb-1 pt-3 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
-                Classification
-              </p>
+              <div className="px-3 pt-3">
+                <p className="px-1 pb-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                  Classification
+                </p>
+              </div>
               {[everythingSignalPreset, ...selectableFeedSignalPresets].map((preset) => {
                 const selected = preset.mode === "all"
                   ? allFeedSignalsSelected
