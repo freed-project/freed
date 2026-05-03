@@ -44,6 +44,8 @@ interface FeedItemProps {
    * ratio (capped at 288px). Defaults to 288 if omitted.
    */
   storyHeight?: number;
+  /** Fixed primary-feed card height. Used by desktop virtualization. */
+  fixedHeight?: number;
 }
 
 function feedCardTransitionName(globalId: string): string {
@@ -157,6 +159,7 @@ export const FeedItem = memo(function FeedItem({
   onLike,
   onOpenCommentUrl,
   storyHeight = 288,
+  fixedHeight,
 }: FeedItemProps) {
   const { feedMediaPreviews = "inline" } = usePlatform();
   const sharedTransitionStyle = {
@@ -176,6 +179,7 @@ export const FeedItem = memo(function FeedItem({
   const [swipeX, setSwipeX] = useState(0);
   const [mediaFailed, setMediaFailed] = useState(false);
   const showInlineMedia = feedMediaPreviews === "inline";
+  const showFixedMedia = showInlineMedia && firstMediaUrl && !mediaFailed;
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const swipeLocked = useRef<"horizontal" | "vertical" | null>(null);
@@ -441,6 +445,238 @@ export const FeedItem = memo(function FeedItem({
 
   const likeStatus = likeState(item);
   const likeLabel = getLikeLabel(item, likeStatus);
+  const visibleTags = fixedHeight
+    ? item.userState.tags.slice(0, showFixedMedia ? 2 : 4)
+    : item.userState.tags;
+
+  if (fixedHeight) {
+    return (
+      <div className="relative overflow-hidden rounded-[var(--feed-card-radius)]" style={sharedTransitionStyle}>
+        {enableSwipe && swipeX < 0 && (
+          <div
+            className="absolute inset-y-0 right-0 flex items-center justify-end pr-5 rounded-[var(--feed-card-radius)] transition-colors"
+            style={{
+              width: `${Math.abs(swipeX) + 16}px`,
+              backgroundColor: pastThreshold
+                ? "rgb(var(--theme-feedback-success-rgb) / 0.25)"
+                : "rgb(var(--theme-feedback-success-rgb) / 0.12)",
+            }}
+            aria-hidden
+          >
+            <TrashIcon
+              className="h-5 w-5 text-[rgb(var(--theme-feedback-success-rgb))] transition-transform"
+              style={{ transform: `scale(${0.7 + swipeProgress * 0.3})`, opacity: swipeProgress } as React.CSSProperties}
+            />
+          </div>
+        )}
+
+        <article
+          data-feed-item-id={item.globalId}
+          data-focused={focused ? "true" : "false"}
+          className={`feed-card group cursor-pointer active:scale-[0.99] transition-transform ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${readVisualClass}`}
+          style={{
+            height: fixedHeight,
+            transform: swipeX !== 0 ? `translateX(${swipeX}px)` : undefined,
+            transition: swipeX === 0 ? "transform 0.25s ease" : undefined,
+            willChange: swipeX !== 0 ? "transform" : undefined,
+          }}
+          onClick={handleActivateClick}
+          onMouseEnter={onMouseEnter}
+          onTouchStart={enableSwipe ? handleTouchStart : undefined}
+          onTouchMove={enableSwipe ? handleTouchMove : undefined}
+          onTouchEnd={enableSwipe ? handleTouchEnd : undefined}
+          role="button"
+          tabIndex={0}
+          onKeyDown={handleActivateKeyDown}
+        >
+          <div className={`flex h-full min-h-0 gap-4 ${showFixedMedia ? "items-stretch" : "items-start"}`}>
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div className="mb-3 flex items-start gap-3">
+                <ChannelAvatar
+                  name={item.author.displayName}
+                  avatarUrl={item.author.avatarUrl}
+                  size={40}
+                  className="text-lg ring-1 ring-white/10"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate font-medium">{item.author.displayName}</span>
+                    <span className="truncate text-sm text-[var(--theme-text-muted)]">@{item.author.handle}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-[var(--theme-text-muted)]">
+                    <span>{platformIcon}</span>
+                    <span>{timeAgo}</span>
+                    {item.preservedContent?.readingTime && (
+                      <>
+                        <span>•</span>
+                        <span>{item.preservedContent.readingTime} min</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex shrink-0 items-center gap-1">
+                  {onLike && (
+                    <div className="relative group/reactions">
+                      {hasReactionPalette && (
+                        <div className="pointer-events-none absolute right-0 bottom-full mb-2 flex translate-y-1 rounded-xl border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-1 opacity-0 shadow-lg shadow-black/30 transition-all group-hover/reactions:pointer-events-auto group-hover/reactions:translate-y-0 group-hover/reactions:opacity-100 group-focus-within/reactions:pointer-events-auto group-focus-within/reactions:translate-y-0 group-focus-within/reactions:opacity-100">
+                          {reactions.map((reaction) => (
+                            <Tooltip key={reaction.label} label={reaction.label} side="top">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onLike(e as unknown as React.MouseEvent); }}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg text-base transition-transform hover:scale-110 hover:bg-white/10"
+                                aria-label={reaction.label}
+                              >
+                                <span aria-hidden="true">{reaction.emoji}</span>
+                              </button>
+                            </Tooltip>
+                          ))}
+                        </div>
+                      )}
+
+                      <Tooltip label={likeLabel} side="top">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onLike(e); }}
+                          aria-label={likeLabel}
+                          className={`flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition-colors ${
+                            likeStatus !== "none" ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                          } ${
+                            likeStatus === "synced"
+                              ? "text-red-400"
+                              : likeStatus === "noted"
+                              ? "text-amber-400"
+                              : likeStatus === "failed"
+                              ? "text-orange-400"
+                              : "text-[var(--theme-text-soft)] hover:text-red-400"
+                          }`}
+                        >
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={likeStatus !== "none" ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                          </svg>
+                          {showEngagement && likeCount !== null && <span>{likeCount}</span>}
+                          {likeStatus === "noted" && (
+                            <svg className="w-2.5 h-2.5 animate-spin opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                          )}
+                          {likeStatus === "failed" && (
+                            <svg className="w-2.5 h-2.5 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                          )}
+                        </button>
+                      </Tooltip>
+                    </div>
+                  )}
+
+                  {onOpenCommentUrl && item.sourceUrl && (
+                    <Tooltip label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`} side="top">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
+                        aria-label={`Comment on ${PLATFORM_LABELS[item.platform] ?? item.platform}`}
+                        className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                        {showEngagement && commentCount !== null && <span>{commentCount}</span>}
+                      </button>
+                    </Tooltip>
+                  )}
+
+                  {onSave && (
+                    <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"} side="top">
+                      <button
+                        onClick={onSave}
+                        aria-label={item.userState.saved ? "Remove bookmark" : "Bookmark"}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          item.userState.saved
+                            ? "text-[var(--theme-accent-secondary)]"
+                            : "text-[var(--theme-text-soft)] hover:text-[var(--theme-accent-secondary)] opacity-0 group-hover:opacity-100"
+                        }`}
+                      >
+                        <svg className="w-4 h-4" fill={item.userState.saved ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                        </svg>
+                      </button>
+                    </Tooltip>
+                  )}
+
+                  {onArchive && !item.userState.saved && (
+                    <Tooltip label="Archive" side="top">
+                      <button
+                        onClick={onArchive}
+                        aria-label="Archive"
+                        className="p-1.5 rounded-lg transition-colors text-[var(--theme-text-soft)] hover:text-[rgb(var(--theme-feedback-success-rgb))] opacity-0 group-hover:opacity-100"
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                      </button>
+                    </Tooltip>
+                  )}
+
+                  {onOpenCommentUrl && item.sourceUrl && (
+                    <Tooltip label="Open" side="top">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onOpenCommentUrl(item.sourceUrl!); }}
+                        aria-label="Open"
+                        className="p-1.5 rounded-lg text-[var(--theme-text-soft)] hover:text-[var(--theme-text-secondary)] transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <ExternalLinkIcon className="w-4 h-4" />
+                      </button>
+                    </Tooltip>
+                  )}
+                </div>
+              </div>
+
+              {item.content.linkPreview?.title && (
+                <h3 className="mb-1.5 line-clamp-2 text-lg font-semibold leading-snug">
+                  {item.content.linkPreview.title}
+                </h3>
+              )}
+
+              {item.content.text && (
+                <p className={`min-h-0 leading-relaxed text-[var(--theme-text-secondary)] ${showFixedMedia ? "line-clamp-3" : "line-clamp-4"}`}>
+                  {item.content.text}
+                </p>
+              )}
+
+              {(semanticLabel || visibleTags.length > 0) && (
+                <div className="mt-auto flex flex-wrap gap-2 overflow-hidden pt-3">
+                  {semanticLabel && (
+                    <span className="theme-accent-tag rounded-full px-2.5 py-1 text-xs">
+                      {semanticLabel}
+                    </span>
+                  )}
+                  {visibleTags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="theme-accent-tag rounded-full px-2.5 py-1 text-xs"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {showFixedMedia && (
+              <div className="h-full w-[42%] min-w-[190px] max-w-[260px] shrink-0 overflow-hidden rounded-xl ring-1 ring-white/5">
+                <img
+                  src={firstMediaUrl}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  onError={() => setMediaFailed(true)}
+                  className="h-full w-full bg-white/5 object-cover"
+                />
+              </div>
+            )}
+          </div>
+        </article>
+      </div>
+    );
+  }
 
   return (
     <div className="relative overflow-hidden rounded-[var(--feed-card-radius)]" style={sharedTransitionStyle}>
@@ -651,9 +887,9 @@ export const FeedItem = memo(function FeedItem({
           </div>
         )}
 
-        {item.userState.tags.length > 0 && (
+        {visibleTags.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
-            {item.userState.tags.map((tag) => (
+            {visibleTags.map((tag) => (
               <span
                 key={tag}
                 className="theme-accent-tag rounded-full px-2.5 py-1 text-xs"

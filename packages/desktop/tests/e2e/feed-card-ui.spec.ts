@@ -239,7 +239,7 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(facebookCard).toContainText("45");
   await expect(facebookCard).toHaveClass(/grayscale/);
   await expect(facebookCard.locator('button[aria-label="Archive"]').first()).toBeVisible();
-  const facebookImage = facebookCard.locator("img").first();
+  const facebookImage = facebookCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`).first();
   await expect(facebookImage).toBeVisible();
   await expect(facebookImage).toHaveAttribute("src", /\/freed\.svg\?feed-card$/);
 
@@ -280,7 +280,7 @@ test("feed card overhaul actions and reader open flow work", async ({ app }) => 
   await expect(readerHeading).toBeVisible();
   await expect(app.page.getByLabel("Archive").first()).toBeVisible();
   const compactRailCard = app.page.locator('[data-testid="compact-feed-panel-scroll-container"] [data-feed-item-id="test-facebook-card-ui-overhaul"]');
-  const compactRailImage = compactRailCard.locator("img").first();
+  const compactRailImage = compactRailCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`).first();
   await expect(compactRailImage).toBeVisible();
   await expect(compactRailImage).toHaveAttribute("src", /\/freed\.svg\?feed-card$/);
 
