@@ -19,8 +19,8 @@ export const FEED_CARD_DENSITY_LABELS: Record<FeedCardDensity, string> = {
 };
 
 export const DESKTOP_FEED_CARD_HEIGHT_BY_DENSITY: Record<FeedCardDensity, number> = {
-  compact: 172,
-  comfortable: 220,
+  compact: 136,
+  comfortable: 204,
   expansive: 300,
 };
 

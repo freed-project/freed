@@ -3,8 +3,8 @@ import { test, expect } from "./fixtures/app";
 const DELAYED_MEDIA_URL = "/delayed-feed-image.svg";
 const BROKEN_MEDIA_URL = "/broken-feed-image.svg";
 const DESKTOP_CARD_HEIGHT_BY_DENSITY = {
-  compact: 172,
-  comfortable: 220,
+  compact: 136,
+  comfortable: 204,
   expansive: 300,
 } as const;
 type DesktopCardDensity = keyof typeof DESKTOP_CARD_HEIGHT_BY_DENSITY;
