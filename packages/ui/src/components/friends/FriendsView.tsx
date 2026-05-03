@@ -801,10 +801,20 @@ export function FriendsView({
     [updateAccount],
   );
 
-  const handlePromoteSelectedAccount = useCallback(() => {
+  const handlePromoteSelectedAccount = useCallback(async () => {
     if (!selectedAccount) return;
+    const linkedPerson = selectedAccount.personId ? persons[selectedAccount.personId] ?? null : null;
+    if (linkedPerson && linkedPerson.relationshipStatus !== "friend") {
+      await updatePerson(linkedPerson.id, {
+        relationshipStatus: "friend",
+        careLevel: 3,
+        updatedAt: Date.now(),
+      });
+      setSelectedPerson(linkedPerson.id);
+      return;
+    }
     setEditorState({ kind: "new", draft: friendDraftFromAccount(selectedAccount) });
-  }, [selectedAccount]);
+  }, [persons, selectedAccount, setSelectedPerson, updatePerson]);
 
   const handlePromoteSelectedPerson = useCallback(async () => {
     if (!selectedPerson || selectedPerson.relationshipStatus === "friend") return;

@@ -5088,6 +5088,86 @@ test("AI ranked friend suggestions surface and promote connection people", async
   });
 });
 
+test("account detail promote upgrades a linked connection instead of opening a duplicate draft", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await app.goto();
+  await app.waitForReady();
+
+  await page.evaluate(async () => {
+    const w = window as Record<string, unknown>;
+    const automerge = w.__FREED_AUTOMERGE__ as {
+      docAddPersons: (persons: unknown[]) => Promise<void>;
+      docAddAccount: (account: unknown) => Promise<void>;
+    };
+    const store = w.__FREED_STORE__ as {
+      getState: () => {
+        updatePreferences: (patch: { display: { friendsMode: "all_content" } }) => Promise<void>;
+        setActiveView: (view: string) => void;
+        setSelectedAccount: (accountId: string | null) => void;
+      };
+    };
+
+    const now = Date.now();
+    await automerge.docAddPersons([
+      {
+        id: "connection-linked-account",
+        name: "Linked Maya",
+        relationshipStatus: "connection",
+        careLevel: 2,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+    await automerge.docAddAccount({
+      id: "social:instagram:linked-maya",
+      personId: "connection-linked-account",
+      kind: "social",
+      provider: "instagram",
+      externalId: "linked-maya",
+      handle: "linkedmaya",
+      displayName: "Linked Maya",
+      firstSeenAt: now,
+      lastSeenAt: now,
+      discoveredFrom: "captured_item",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await store.getState().updatePreferences({ display: { friendsMode: "all_content" } });
+    store.getState().setActiveView("friends");
+    store.getState().setSelectedAccount("social:instagram:linked-maya");
+  });
+
+  const promoteButton = page.getByRole("button", { name: "Promote to friend", exact: true });
+  await expect(promoteButton).toBeVisible({ timeout: 10_000 });
+  await promoteButton.click();
+
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const store = (window as Record<string, unknown>).__FREED_STORE__ as {
+        getState: () => {
+          selectedPersonId: string | null;
+          selectedAccountId: string | null;
+          persons: Record<string, { relationshipStatus: string; careLevel: number }>;
+        };
+      };
+      const state = store.getState();
+      return {
+        selectedPersonId: state.selectedPersonId,
+        selectedAccountId: state.selectedAccountId,
+        person: state.persons["connection-linked-account"],
+      };
+    }),
+  ).toMatchObject({
+    selectedPersonId: "connection-linked-account",
+    selectedAccountId: null,
+    person: {
+      relationshipStatus: "friend",
+      careLevel: 3,
+    },
+  });
+});
+
 test("AI ranked friend suggestion dismiss hides the candidate without deleting the account", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
