@@ -97,6 +97,7 @@ const READER_LAYOUT_CONTROL_BUTTON_SIZE_PX = 32;
 const READER_LAYOUT_CONTROL_ICON_SIZE_PX = 20;
 const READER_LAYOUT_CONTROL_BUTTON_GAP_PX = 0;
 const LAYOUT_CONTROL_SAFE_GAP_PX = 8;
+const MENU_VIEWPORT_MARGIN_PX = 8;
 const CLOSED_SIDEBAR_TOGGLE_LEFT_PX = 12;
 const DEFAULT_LAYOUT_CONTROL_SAFE_LEFT_PX = 180;
 const DEFAULT_LAYOUT_CONTROL_RESERVED_WIDTH_PX = 280;
@@ -1421,6 +1422,27 @@ export function Header({
     handleWindowToolbarPointerMove,
   ]);
 
+  const toolbarOverflowMenuTop = toolbarOverflowMenuPosition?.top ?? 60;
+  const signalFilterMenuTop = signalFilterMenuPosition?.top ?? 60;
+  const toolbarOverflowMenuStyle = {
+    top: toolbarOverflowMenuTop,
+    right: toolbarOverflowMenuPosition?.right ?? 8,
+    ["--theme-menu-top" as string]: `${toolbarOverflowMenuTop}px`,
+    ["--theme-menu-viewport-margin" as string]: `${MENU_VIEWPORT_MARGIN_PX}px`,
+    ...(headerDragRegion ? noDrag : {}),
+  } as CSSProperties;
+  const signalFilterMenuStyle = {
+    top: signalFilterMenuTop,
+    right: signalFilterMenuPosition?.right ?? 8,
+    ["--theme-menu-top" as string]: `${signalFilterMenuTop}px`,
+    ["--theme-menu-viewport-margin" as string]: `${MENU_VIEWPORT_MARGIN_PX}px`,
+    ...(headerDragRegion ? noDrag : {}),
+  } as CSSProperties;
+  const newMenuStyle = {
+    ["--theme-menu-max-height" as string]: "calc(100dvh - 2rem)",
+    ...(headerDragRegion ? noDrag : {}),
+  } as CSSProperties;
+
   return (
     <>
       <header
@@ -1913,12 +1935,8 @@ export function Header({
           ref={toolbarOverflowMenuRef}
           data-testid="toolbar-overflow-menu"
           role="menu"
-          className="theme-dialog-shell fixed z-[300] w-[16rem] max-w-[calc(100vw-1rem)] overflow-hidden py-1.5 shadow-2xl shadow-black/35"
-          style={{
-            top: toolbarOverflowMenuPosition?.top ?? 60,
-            right: toolbarOverflowMenuPosition?.right ?? 8,
-            ...(headerDragRegion ? noDrag : {}),
-          }}
+          className="theme-dialog-shell theme-menu-shell fixed z-[300] w-[16rem] max-w-[calc(100vw-1rem)] py-1.5 shadow-2xl shadow-black/35"
+          style={toolbarOverflowMenuStyle}
         >
           {showOverflowFeedCardDensityControl ? (
             <div
@@ -1974,12 +1992,8 @@ export function Header({
           ref={signalFilterMenuRef}
           data-testid="feed-signal-filter-menu"
           role="menu"
-          className="theme-dialog-shell fixed z-[300] w-[20rem] max-w-[calc(100vw-1rem)] overflow-hidden py-2 shadow-2xl shadow-black/35"
-          style={{
-            top: signalFilterMenuPosition?.top ?? 60,
-            right: signalFilterMenuPosition?.right ?? 8,
-            ...(headerDragRegion ? noDrag : {}),
-          }}
+          className="theme-dialog-shell theme-menu-shell fixed z-[300] w-[20rem] max-w-[calc(100vw-1rem)] py-2 shadow-2xl shadow-black/35"
+          style={signalFilterMenuStyle}
         >
           {showCollapsedToolbarFilterMenu && showSocialContentControls ? (
             <div className={`${showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 pb-3 pt-1`}>
@@ -2056,7 +2070,7 @@ export function Header({
                     role="menuitemcheckbox"
                     aria-checked={selected}
                     onClick={() => handleFeedSignalModeChange(preset.mode)}
-                    className={`flex w-full items-start gap-4 py-3.5 pl-7 pr-6 text-left transition-colors hover:bg-[var(--theme-bg-muted)] ${
+                    className={`flex w-full items-start gap-3 py-2.5 pl-7 pr-6 text-left transition-colors hover:bg-[var(--theme-bg-muted)] ${
                       selected ? "text-[var(--theme-text-primary)]" : "text-[var(--theme-text-secondary)]"
                     }`}
                   >
@@ -2075,7 +2089,7 @@ export function Header({
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm font-medium">{preset.label}</span>
-                      <span className="block text-xs leading-5 text-[var(--theme-text-muted)]">
+                      <span className="block text-xs leading-4 text-[var(--theme-text-muted)]">
                         {preset.description}
                       </span>
                     </span>
@@ -2097,7 +2111,10 @@ export function Header({
           style={headerDragRegion ? noDrag : undefined}
         >
           {dropdownOpen && (
-            <div className="theme-floating-panel absolute bottom-[calc(100%+0.875rem)] right-0 flex min-w-[12rem] flex-col overflow-hidden py-1 shadow-2xl shadow-black/40">
+            <div
+              className="theme-floating-panel theme-menu-shell absolute bottom-[calc(100%+0.875rem)] right-0 flex min-w-[12rem] flex-col py-1 shadow-2xl shadow-black/40"
+              style={newMenuStyle}
+            >
               {canAddRss && (
                 <button
                   onClick={() => {

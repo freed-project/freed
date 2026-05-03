@@ -3552,7 +3552,7 @@ test("narrow feed toolbar moves bulk actions into the overflow menu", async ({ a
 });
 
 test("narrow feed filter menu labels collapsed sections", async ({ app, page }) => {
-  await page.setViewportSize({ width: 1024, height: 700 });
+  await page.setViewportSize({ width: 1024, height: 500 });
   await app.goto();
   await app.waitForReady();
   await app.injectRssItems(4);
@@ -3566,6 +3566,43 @@ test("narrow feed filter menu labels collapsed sections", async ({ app, page }) 
   await expect(filterMenu.getByText("Connections", { exact: true })).toBeVisible();
   await expect(filterMenu.getByText("Classification", { exact: true })).toBeVisible();
   await expect(filterMenu.getByText("View", { exact: true })).toHaveCount(0);
+  await expect(filterMenu.getByText("All visible items.", { exact: true })).toBeVisible();
+  await expect(filterMenu.getByText("Essays, guides, and references.", { exact: true })).toBeVisible();
+
+  const inspiringOption = filterMenu.getByRole("menuitemcheckbox", { name: /Inspiring/ });
+  const inspiringCircle = inspiringOption.locator(".feed-signal-checkbox");
+  const checkedCircleWidth = await inspiringCircle.evaluate((element) =>
+    Math.round(element.getBoundingClientRect().width),
+  );
+  await inspiringOption.click();
+  await expect(inspiringOption).toHaveAttribute("aria-checked", "false");
+  await expect.poll(async () => (
+    inspiringCircle.evaluate((element) => Math.round(element.getBoundingClientRect().width))
+  )).toBeLessThan(checkedCircleWidth);
+
+  const scrollMetrics = await filterMenu.evaluate((menu) => {
+    menu.scrollTop = menu.scrollHeight;
+    const menuRect = menu.getBoundingClientRect();
+    const newsItem = Array.from(menu.querySelectorAll('[role="menuitemcheckbox"]'))
+      .find((item) => item.textContent?.includes("News")) as HTMLElement | undefined;
+    const newsRect = newsItem?.getBoundingClientRect();
+    const style = window.getComputedStyle(menu);
+    return {
+      clientHeight: menu.clientHeight,
+      menuBottom: Math.round(menuRect.bottom),
+      newsBottom: newsRect ? Math.round(newsRect.bottom) : null,
+      overflowY: style.overflowY,
+      scrollHeight: menu.scrollHeight,
+      scrollTop: menu.scrollTop,
+      viewportHeight: window.innerHeight,
+    };
+  });
+  expect(scrollMetrics.overflowY).toBe("auto");
+  expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight);
+  expect(scrollMetrics.scrollTop).toBeGreaterThan(0);
+  expect(scrollMetrics.menuBottom).toBeLessThanOrEqual(scrollMetrics.viewportHeight);
+  expect(scrollMetrics.newsBottom).not.toBeNull();
+  expect(scrollMetrics.newsBottom ?? 0).toBeLessThanOrEqual(scrollMetrics.viewportHeight);
 });
 
 test("feed toolbar bulk action counts follow the active filter", async ({ app, page }) => {

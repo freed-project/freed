@@ -682,8 +682,10 @@ export function SearchJumpField({
       setPalettePosition({
         left: Math.min(anchorRect.right + gap, maxLeft),
         top,
+        ["--theme-menu-top" as string]: `${top}px`,
+        ["--theme-menu-viewport-margin" as string]: `${viewportPadding}px`,
         visibility: "visible",
-      });
+      } as CSSProperties);
     };
 
     const handlePointerDown = (event: MouseEvent) => {
@@ -946,7 +948,7 @@ export function SearchJumpField({
         <div
           ref={triggerPaletteRef}
           data-testid={usesFloatingTrigger ? "compact-sidebar-search-palette" : "sidebar-search-command-palette"}
-          className="theme-dialog-shell fixed z-[320] w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-[var(--card-radius)] border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-2 shadow-2xl shadow-black/50"
+          className="theme-dialog-shell theme-menu-shell fixed z-[320] w-[min(20rem,calc(100vw-1.5rem))] rounded-[var(--card-radius)] border border-[var(--theme-border-subtle)] bg-[var(--theme-bg-elevated)] p-2 shadow-2xl shadow-black/50"
           style={palettePosition}
         >
           {renderActionSurface(usesFloatingTrigger)}
