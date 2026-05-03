@@ -3551,6 +3551,23 @@ test("narrow feed toolbar moves bulk actions into the overflow menu", async ({ a
   await expect(overflowMenu.getByRole("menuitem", { name: /Archive .* read items/ })).toBeVisible();
 });
 
+test("narrow feed filter menu labels collapsed sections", async ({ app, page }) => {
+  await page.setViewportSize({ width: 1024, height: 700 });
+  await app.goto();
+  await app.waitForReady();
+  await app.injectRssItems(4);
+
+  const filterButton = page.getByTestId("mobile-toolbar-filter-button");
+  await expect(filterButton).toBeVisible({ timeout: 5_000 });
+  await filterButton.click();
+
+  const filterMenu = page.getByTestId("feed-signal-filter-menu");
+  await expect(filterMenu.getByText("Format", { exact: true })).toBeVisible();
+  await expect(filterMenu.getByText("Connections", { exact: true })).toBeVisible();
+  await expect(filterMenu.getByText("Classification", { exact: true })).toBeVisible();
+  await expect(filterMenu.getByText("View", { exact: true })).toHaveCount(0);
+});
+
 test("feed toolbar bulk action counts follow the active filter", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();

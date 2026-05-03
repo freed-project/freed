@@ -1976,6 +1976,9 @@ export function Header({
         >
           {showCollapsedToolbarFilterMenu && showSocialContentControls ? (
             <div className={`${showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 pb-3 pt-1`}>
+              <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                Format
+              </p>
               <ToolbarToggleGroup
                 dataTestId="mobile-social-content-toolbar-filter"
                 options={[
@@ -1994,7 +1997,7 @@ export function Header({
           {showCollapsedToolbarFilterMenu && showWorkspaceIdentityControls ? (
             <div className={`${showMapTimeControls || showFeedSignalFilter ? "border-b border-[var(--theme-border-subtle)]" : ""} px-3 py-3`}>
               <p className="mb-2 px-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
-                View
+                Connections
               </p>
               <ToolbarToggleGroup
                 dataTestId={mobileIdentityToolbarDataTestId}
@@ -2027,49 +2030,56 @@ export function Header({
             </div>
           ) : null}
 
-          {showFeedSignalFilter ? [everythingSignalPreset, ...selectableFeedSignalPresets].map((preset) => {
-            const selected = preset.mode === "all"
-              ? allFeedSignalsSelected
-              : allFeedSignalsSelected || activeFeedSignalModeSet.has(preset.mode);
-            const feedbackKey = signalFilterFeedback?.mode === preset.mode
-              ? signalFilterFeedback.tick
-              : 0;
-            return (
-              <button
-                key={preset.mode}
-                type="button"
-                role="menuitemcheckbox"
-                aria-checked={selected}
-                onClick={() => handleFeedSignalModeChange(preset.mode)}
-                className={`flex w-full items-start gap-4 py-3.5 pl-7 pr-6 text-left transition-colors hover:bg-[var(--theme-bg-muted)] ${
-                  selected ? "text-[var(--theme-text-primary)]" : "text-[var(--theme-text-secondary)]"
-                }`}
-              >
-                <span
-                  key={`${preset.mode}-${selected ? "checked" : "empty"}-${feedbackKey}`}
-                  className={`feed-signal-checkbox mt-0.5 ${selected ? "feed-signal-checkbox-checked" : ""} ${
-                    feedbackKey ? "feed-signal-checkbox-feedback" : ""
-                  }`}
-                  aria-hidden="true"
-                >
-                  {selected ? (
-                    <svg className="feed-signal-check-icon h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  ) : null}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium">{preset.label}</span>
-                  <span className="block text-xs leading-5 text-[var(--theme-text-muted)]">
-                    {preset.description}
-                  </span>
-                </span>
-                <span className="mt-0.5 shrink-0 text-xs tabular-nums text-[var(--theme-text-muted)]">
-                  {feedSignalCounts[preset.mode].toLocaleString()}
-                </span>
-              </button>
-            );
-          }) : null}
+          {showFeedSignalFilter ? (
+            <div>
+              <p className="px-7 pb-1 pt-3 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-[var(--theme-text-muted)]">
+                Classification
+              </p>
+              {[everythingSignalPreset, ...selectableFeedSignalPresets].map((preset) => {
+                const selected = preset.mode === "all"
+                  ? allFeedSignalsSelected
+                  : allFeedSignalsSelected || activeFeedSignalModeSet.has(preset.mode);
+                const feedbackKey = signalFilterFeedback?.mode === preset.mode
+                  ? signalFilterFeedback.tick
+                  : 0;
+                return (
+                  <button
+                    key={preset.mode}
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={selected}
+                    onClick={() => handleFeedSignalModeChange(preset.mode)}
+                    className={`flex w-full items-start gap-4 py-3.5 pl-7 pr-6 text-left transition-colors hover:bg-[var(--theme-bg-muted)] ${
+                      selected ? "text-[var(--theme-text-primary)]" : "text-[var(--theme-text-secondary)]"
+                    }`}
+                  >
+                    <span
+                      key={`${preset.mode}-${selected ? "checked" : "empty"}-${feedbackKey}`}
+                      className={`feed-signal-checkbox mt-0.5 ${selected ? "feed-signal-checkbox-checked" : ""} ${
+                        feedbackKey ? "feed-signal-checkbox-feedback" : ""
+                      }`}
+                      aria-hidden="true"
+                    >
+                      {selected ? (
+                        <svg className="feed-signal-check-icon h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : null}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium">{preset.label}</span>
+                      <span className="block text-xs leading-5 text-[var(--theme-text-muted)]">
+                        {preset.description}
+                      </span>
+                    </span>
+                    <span className="mt-0.5 shrink-0 text-xs tabular-nums text-[var(--theme-text-muted)]">
+                      {feedSignalCounts[preset.mode].toLocaleString()}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
