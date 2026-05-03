@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent,
 import { formatDistanceToNow } from "date-fns";
 import { PLATFORM_LABELS, type FeedItem as FeedItemType } from "@freed/shared";
 import { usePlatform } from "../../context/PlatformContext.js";
+import type { FeedCardDensity } from "../../lib/feed-card-density.js";
 import { ChannelAvatar } from "../ChannelAvatar.js";
 import { Tooltip } from "../Tooltip.js";
 import {
@@ -38,6 +39,8 @@ interface FeedItemProps {
   onLike?: (e: React.MouseEvent) => void;
   /** Opens comment URL in the browser. Pass the URL handler for your platform. */
   onOpenCommentUrl?: (url: string) => void;
+  /** Vertical density for full feed cards. Compact thumbnail cards ignore it. */
+  density?: FeedCardDensity;
   /**
    * Explicit pixel height for story tiles. FeedList computes this from the
    * current container width so each tile fills its column at a 3:4 portrait
@@ -156,6 +159,7 @@ export const FeedItem = memo(function FeedItem({
   onArchive,
   onLike,
   onOpenCommentUrl,
+  density = "comfortable",
   storyHeight = 288,
 }: FeedItemProps) {
   const { feedMediaPreviews = "inline" } = usePlatform();
@@ -176,6 +180,53 @@ export const FeedItem = memo(function FeedItem({
   const [swipeX, setSwipeX] = useState(0);
   const [mediaFailed, setMediaFailed] = useState(false);
   const showInlineMedia = feedMediaPreviews === "inline";
+  const fullCardDensity = {
+    compact: {
+      article: "p-3",
+      padding: "12px",
+      headerGap: "gap-2 mb-2",
+      avatarSize: 32,
+      author: "text-sm",
+      meta: "text-[11px]",
+      title: "mb-1 line-clamp-1 text-base leading-snug",
+      body: "mb-2 line-clamp-2 text-sm leading-relaxed",
+      chipWrap: "mb-2 gap-1.5",
+      chip: "px-2 py-0.5 text-[11px]",
+      mediaWrap: "mt-2 rounded-lg",
+      media: "h-36 sm:h-40",
+      tagWrap: "mt-2 gap-1.5",
+    },
+    comfortable: {
+      article: "",
+      padding: undefined,
+      headerGap: "gap-3 mb-3",
+      avatarSize: 40,
+      author: "",
+      meta: "text-xs",
+      title: "mb-1.5 line-clamp-2 text-lg leading-snug",
+      body: "mb-3 line-clamp-3 leading-relaxed",
+      chipWrap: "mb-3 gap-2",
+      chip: "px-2.5 py-1 text-xs",
+      mediaWrap: "mt-3 rounded-xl",
+      media: "h-48 sm:h-56",
+      tagWrap: "mt-3 gap-2",
+    },
+    expansive: {
+      article: "p-5",
+      padding: "20px",
+      headerGap: "gap-3.5 mb-4",
+      avatarSize: 44,
+      author: "text-[17px]",
+      meta: "text-sm",
+      title: "mb-2 line-clamp-3 text-xl leading-snug",
+      body: "mb-4 line-clamp-5 text-[15px] leading-7",
+      chipWrap: "mb-4 gap-2",
+      chip: "px-3 py-1.5 text-xs",
+      mediaWrap: "mt-4 rounded-xl",
+      media: "h-64 sm:h-72",
+      tagWrap: "mt-4 gap-2",
+    },
+  }[density];
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const swipeLocked = useRef<"horizontal" | "vertical" | null>(null);
@@ -465,8 +516,10 @@ export const FeedItem = memo(function FeedItem({
       <article
         data-feed-item-id={item.globalId}
         data-focused={focused ? "true" : "false"}
-        className={`feed-card group cursor-pointer active:scale-[0.99] transition-transform ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${readVisualClass}`}
+        data-feed-card-density={density}
+        className={`feed-card group cursor-pointer active:scale-[0.99] transition-transform ${fullCardDensity.article} ${focused ? "ring-2 ring-[color:rgb(var(--theme-accent-secondary-rgb)/0.6)] ring-inset" : ""} ${readVisualClass}`}
         style={{
+          padding: fullCardDensity.padding,
           transform: swipeX !== 0 ? `translateX(${swipeX}px)` : undefined,
           transition: swipeX === 0 ? "transform 0.25s ease" : undefined,
           willChange: swipeX !== 0 ? "transform" : undefined,
@@ -480,19 +533,19 @@ export const FeedItem = memo(function FeedItem({
         tabIndex={0}
         onKeyDown={handleActivateKeyDown}
       >
-        <div className="flex items-center gap-3 mb-3">
+        <div className={`flex items-center ${fullCardDensity.headerGap}`}>
           <ChannelAvatar
             name={item.author.displayName}
             avatarUrl={item.author.avatarUrl}
-            size={40}
+            size={fullCardDensity.avatarSize}
             className="text-lg ring-1 ring-white/10"
           />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium truncate">{item.author.displayName}</span>
+              <span className={`font-medium truncate ${fullCardDensity.author}`}>{item.author.displayName}</span>
               <span className="text-[var(--theme-text-muted)] text-sm">@{item.author.handle}</span>
             </div>
-            <div className="flex items-center gap-2 text-xs text-[var(--theme-text-muted)]">
+            <div className={`flex items-center gap-2 ${fullCardDensity.meta} text-[var(--theme-text-muted)]`}>
               <span>{platformIcon}</span>
               <span>{timeAgo}</span>
               {item.preservedContent?.readingTime && (
@@ -619,44 +672,44 @@ export const FeedItem = memo(function FeedItem({
         </div>
 
         {item.content.linkPreview?.title && (
-          <h3 className="font-semibold mb-1.5 line-clamp-2 leading-snug text-lg">
+          <h3 className={`font-semibold ${fullCardDensity.title}`}>
             {item.content.linkPreview.title}
           </h3>
         )}
 
         {item.content.text && (
-          <p className="mb-3 leading-relaxed line-clamp-3 text-[var(--theme-text-secondary)]">
+          <p className={`${fullCardDensity.body} text-[var(--theme-text-secondary)]`}>
             {item.content.text}
           </p>
         )}
 
         {semanticLabel && (
-          <div className="mb-3 flex flex-wrap gap-2">
-            <span className="theme-accent-tag rounded-full px-2.5 py-1 text-xs">
+          <div className={`flex flex-wrap ${fullCardDensity.chipWrap}`}>
+            <span className={`theme-accent-tag rounded-full ${fullCardDensity.chip}`}>
               {semanticLabel}
             </span>
           </div>
         )}
 
         {showInlineMedia && firstMediaUrl && !mediaFailed && (
-          <div className="mt-3 rounded-xl overflow-hidden ring-1 ring-white/5">
+          <div className={`${fullCardDensity.mediaWrap} overflow-hidden ring-1 ring-white/5`}>
             <img
               src={firstMediaUrl}
               alt=""
               loading="lazy"
               decoding="async"
               onError={() => setMediaFailed(true)}
-              className="w-full h-48 sm:h-56 object-cover bg-white/5"
+              className={`w-full ${fullCardDensity.media} object-cover bg-white/5`}
             />
           </div>
         )}
 
         {item.userState.tags.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-2">
+          <div className={`flex flex-wrap ${fullCardDensity.tagWrap}`}>
             {item.userState.tags.map((tag) => (
               <span
                 key={tag}
-                className="theme-accent-tag rounded-full px-2.5 py-1 text-xs"
+                className={`theme-accent-tag rounded-full ${fullCardDensity.chip}`}
               >
                 {tag}
               </span>

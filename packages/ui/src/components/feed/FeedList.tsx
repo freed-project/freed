@@ -6,6 +6,7 @@ import { useReadOnScrollTracker } from "./useReadOnScrollTracker.js";
 import type { FeedItem as FeedItemType } from "@freed/shared";
 import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
+import { useFeedCardDensity, type FeedCardDensity } from "../../lib/feed-card-density.js";
 
 // ── Story grouping ────────────────────────────────────────────────────────────
 
@@ -13,9 +14,18 @@ const FEED_CARD_GAP = 8;
 const DESKTOP_FEED_CARD_HORIZONTAL_GUTTER = 0;
 const TILE_GAP = FEED_CARD_GAP;
 const MIN_TILE_W = 80; // minimum tile width before a column wraps
-const MAX_TILE_H = 288;
 // Tailwind max-w-2xl = 42rem = 672px.
 const MAX_CONTENT_W = 672;
+const ITEM_ROW_ESTIMATE_BY_DENSITY: Record<FeedCardDensity, number> = {
+  compact: 172,
+  comfortable: 220,
+  expansive: 300,
+};
+const MAX_TILE_H_BY_DENSITY: Record<FeedCardDensity, number> = {
+  compact: 220,
+  comfortable: 288,
+  expansive: 340,
+};
 
 /**
  * Height-to-width ratio for story tiles based on column count.
@@ -121,6 +131,7 @@ interface FeedItemRowProps {
   focused: boolean;
   showEngagement: boolean;
   showReadInGrayscale: boolean;
+  density: FeedCardDensity;
   onItemClick?: (item: FeedItemType) => void;
   onFocusChange?: (index: number) => void;
   onItemSave?: (item: FeedItemType) => void;
@@ -135,6 +146,7 @@ const FeedItemRow = memo(function FeedItemRow({
   focused,
   showEngagement,
   showReadInGrayscale,
+  density,
   onItemClick,
   onFocusChange,
   onItemSave,
@@ -164,6 +176,7 @@ const FeedItemRow = memo(function FeedItemRow({
       focused={focused}
       showEngagement={showEngagement}
       showReadInGrayscale={showReadInGrayscale}
+      density={density}
       onMouseEnter={handleMouseEnter}
       onSave={onItemSave ? handleSave : undefined}
       onArchive={onItemArchive ? handleArchive : undefined}
@@ -182,6 +195,7 @@ interface StoryGroupRowProps {
   tileHeight: number;
   showEngagement: boolean;
   showReadInGrayscale: boolean;
+  density: FeedCardDensity;
   onItemClick?: (item: FeedItemType) => void;
   onItemSave?: (item: FeedItemType) => void;
   onItemArchive?: (item: FeedItemType) => void;
@@ -193,6 +207,7 @@ const StoryGroupRow = memo(function StoryGroupRow({
   tileHeight,
   showEngagement,
   showReadInGrayscale,
+  density,
   onItemClick,
   onItemSave,
   onItemArchive,
@@ -210,6 +225,7 @@ const StoryGroupRow = memo(function StoryGroupRow({
           focused={false}
           showEngagement={showEngagement}
           showReadInGrayscale={showReadInGrayscale}
+          density={density}
           storyHeight={tileHeight}
           onSave={onItemSave ? (e) => { e.stopPropagation(); onItemSave(item); } : undefined}
           onArchive={onItemArchive ? (e) => { e.stopPropagation(); onItemArchive(item); } : undefined}
@@ -270,6 +286,7 @@ export function FeedList({
   const showReadInGrayscale = useAppStore(
     (s) => s.preferences.display.reading.showReadInGrayscale,
   );
+  const [cardDensity] = useFeedCardDensity();
 
   // Track scroll container width so story group rows are sized correctly.
   // 600 is a safe non-zero starting guess; the ResizeObserver corrects it
@@ -324,14 +341,14 @@ export function FeedList({
   const estimateRowSize = useCallback(
     (index: number) => {
       const row = rows[index];
-      if (!row || row.type !== "stories") return 220;
+      if (!row || row.type !== "stories") return ITEM_ROW_ESTIMATE_BY_DENSITY[cardDensity];
       const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - feedCardHorizontalGutter * 2, 0);
       const nc = row.numCols;
       const tileWidth = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
-      const tileHeight = Math.min(tileWidth * storyHeightRatio(nc), MAX_TILE_H);
+      const tileHeight = Math.min(tileWidth * storyHeightRatio(nc), MAX_TILE_H_BY_DENSITY[cardDensity]);
       return Math.round(tileHeight + FEED_CARD_GAP + (index === 0 ? FEED_CARD_GAP : 0));
     },
-    [rows, containerWidth, feedCardHorizontalGutter],
+    [cardDensity, rows, containerWidth, feedCardHorizontalGutter],
   );
 
   const listKey = useMemo(
@@ -383,6 +400,11 @@ export function FeedList({
       if (isMobile) processReadOnScroll(instance, "window");
     },
   });
+
+  useEffect(() => {
+    elementVirtualizer.measure();
+    windowVirtualizer.measure();
+  }, [cardDensity]);
 
   useLayoutEffect(() => {
     if (isMobile || focusMoveDirection === 0 || focusedIndex < 0) return;
@@ -563,7 +585,7 @@ export function FeedList({
                     const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - feedCardHorizontalGutter * 2, 0);
                     const nc = row.numCols;
                     const tw = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
-                    const th = Math.round(Math.min(tw * storyHeightRatio(nc), MAX_TILE_H));
+                    const th = Math.round(Math.min(tw * storyHeightRatio(nc), MAX_TILE_H_BY_DENSITY[cardDensity]));
                     return (
                       <StoryGroupRow
                         storyItems={row.items}
@@ -572,6 +594,7 @@ export function FeedList({
                         tileHeight={th}
                         showEngagement={showEngagementCounts}
                         showReadInGrayscale={showReadInGrayscale}
+                        density={cardDensity}
                         onItemClick={onItemClick}
                         onItemSave={onItemSave}
                         onItemArchive={onItemArchive}
@@ -584,6 +607,7 @@ export function FeedList({
                       focused={itemIndexToRowIndex.get(focusedIndex) === virtualItem.index}
                       showEngagement={showEngagementCounts}
                       showReadInGrayscale={showReadInGrayscale}
+                      density={cardDensity}
                       onItemClick={onItemClick}
                       onFocusChange={onFocusChange}
                       onItemSave={onItemSave}
@@ -640,7 +664,7 @@ export function FeedList({
                   const inner = Math.max(Math.min(containerWidth, MAX_CONTENT_W) - feedCardHorizontalGutter * 2, 0);
                   const nc = row.numCols;
                   const tw = nc > 1 ? (inner - (nc - 1) * TILE_GAP) / nc : inner;
-                  const th = Math.round(Math.min(tw * storyHeightRatio(nc), MAX_TILE_H));
+                  const th = Math.round(Math.min(tw * storyHeightRatio(nc), MAX_TILE_H_BY_DENSITY[cardDensity]));
                   return (
                     <StoryGroupRow
                       storyItems={row.items}
@@ -649,6 +673,7 @@ export function FeedList({
                       tileHeight={th}
                       showEngagement={showEngagementCounts}
                       showReadInGrayscale={showReadInGrayscale}
+                      density={cardDensity}
                       onItemClick={onItemClick}
                       onItemSave={onItemSave}
                       onItemArchive={onItemArchive}
@@ -661,6 +686,7 @@ export function FeedList({
                     focused={itemIndexToRowIndex.get(focusedIndex) === virtualItem.index}
                     showEngagement={showEngagementCounts}
                     showReadInGrayscale={showReadInGrayscale}
+                    density={cardDensity}
                     onItemClick={onItemClick}
                     onFocusChange={onFocusChange}
                     onItemSave={onItemSave}

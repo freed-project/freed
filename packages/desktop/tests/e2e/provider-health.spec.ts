@@ -2105,7 +2105,7 @@ test("source rows swap counts for an actions menu on hover", async ({ app, page 
   await expect(page.getByText("X / Twitter").first()).toBeVisible();
 });
 
-test("full detail provider rows expand highlights without moving counts", async ({ app, page }) => {
+test("full detail sidebar rows share highlight, count, and depth geometry", async ({ app, page }) => {
   await seedAcceptedDesktopConsent(page);
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -2141,57 +2141,156 @@ test("full detail provider rows expand highlights without moving counts", async 
         cookies: { ct0: "ct0", authToken: "token" },
       },
       unreadCountByPlatform: {
-        x: 45,
+        x: 825,
+        facebook: 29,
       },
       itemCountByPlatform: {
-        x: 350,
+        facebook: 83,
+        x: 945,
+        rss: 4900,
+      },
+      totalUnreadCount: 91,
+      totalItemCount: 172,
+      feeds: {
+        "https://adeona.cs.washington.edu/feed.xml": {
+          url: "https://adeona.cs.washington.edu/feed.xml",
+          title: "adeona.cs.washington.edu",
+          enabled: true,
+          trackUnread: true,
+        },
       },
     });
   });
 
   const sidebar = getDesktopSidebar(page);
-  await expect(sidebar.getByTestId("source-counts-x")).toContainText("45/350");
+  await expect(sidebar.getByTestId("source-counts-x")).toContainText("825/945");
+  await expect(sidebar.getByTestId("source-counts-all")).toContainText("91/172");
+  await sidebar.getByLabel("Expand feeds").click();
+  await expect(sidebar.getByText("adeona.cs.washington.edu")).toBeVisible();
 
   const layout = await page.evaluate(() => {
     const sidebarElement = document.querySelector('[data-testid="app-sidebar"]');
+    const sidebarBody = sidebarElement?.querySelector('[data-testid="app-sidebar-body"]') as HTMLElement | null;
+    const allRow = sidebarElement?.querySelector('[data-testid="source-row-all"]') as HTMLElement | null;
+    const archivedRow = sidebarElement?.querySelector('[data-testid="source-row-archived"]') as HTMLElement | null;
+    const facebookRow = sidebarElement?.querySelector('[data-testid="source-row-facebook"]') as HTMLElement | null;
     const sourceRow = sidebarElement?.querySelector('[data-testid="source-row-x"]') as HTMLElement | null;
-    const savedRow = Array.from(sidebarElement?.querySelectorAll("button") ?? []).find((button) =>
-      button.textContent?.trim().startsWith("Saved")
+    const rssRow = sidebarElement?.querySelector('[data-testid="source-row-rss"]') as HTMLElement | null;
+    const feedRow = Array.from(sidebarElement?.querySelectorAll("button") ?? []).find((button) =>
+      button.textContent?.includes("adeona.cs.washington.edu")
     ) as HTMLElement | undefined;
-    const rowShell = sourceRow?.parentElement as HTMLElement | null;
-    const sourceIcon = sourceRow?.querySelector("span.relative") as HTMLElement | null;
-    const savedIcon = savedRow?.querySelector("span.relative") as HTMLElement | null;
-    const count = sidebarElement?.querySelector('[data-testid="source-counts-x"]') as HTMLElement | null;
-    const actionSlot = rowShell?.querySelector(".relative.self-stretch.shrink-0") as HTMLElement | null;
+    const allShell = allRow?.closest('[data-sidebar-row="true"]') as HTMLElement | null;
+    const archivedShell = archivedRow?.closest('[data-sidebar-row="true"]') as HTMLElement | null;
+    const facebookShell = facebookRow?.closest('[data-sidebar-row="true"]') as HTMLElement | null;
+    const sourceShell = sourceRow?.closest('[data-sidebar-row="true"]') as HTMLElement | null;
+    const rssShell = rssRow?.closest('[data-sidebar-row="true"]') as HTMLElement | null;
+    const feedShell = feedRow?.closest('[data-sidebar-row="true"]') as HTMLElement | null;
+    const allIcon = allShell?.querySelector('[data-sidebar-icon-slot="true"]') as HTMLElement | null;
+    const archivedIcon = archivedShell?.querySelector('[data-sidebar-icon-slot="true"]') as HTMLElement | null;
+    const facebookIcon = facebookShell?.querySelector('[data-sidebar-icon-slot="true"]') as HTMLElement | null;
+    const rssIcon = rssShell?.querySelector('[data-sidebar-icon-slot="true"]') as HTMLElement | null;
+    const feedIcon = feedShell?.querySelector('[data-sidebar-icon-slot="true"]') as HTMLElement | null;
+    const allCount = sidebarElement?.querySelector('[data-testid="source-counts-all"]') as HTMLElement | null;
+    const facebookCount = sidebarElement?.querySelector('[data-testid="source-counts-facebook"]') as HTMLElement | null;
+    const sourceCount = sidebarElement?.querySelector('[data-testid="source-counts-x"]') as HTMLElement | null;
+    const rssCount = sidebarElement?.querySelector('[data-testid="source-counts-rss"]') as HTMLElement | null;
+    const actionSlot = sourceShell?.querySelector('[data-sidebar-action-slot="true"]') as HTMLElement | null;
     const trigger = sidebarElement?.querySelector('[data-testid="source-menu-trigger-x"]') as HTMLElement | null;
 
-    if (!sourceRow || !savedRow || !rowShell || !sourceIcon || !savedIcon || !count || !actionSlot || !trigger) {
+    if (
+      !sidebarBody ||
+      !allRow ||
+      !archivedRow ||
+      !facebookRow ||
+      !sourceRow ||
+      !rssRow ||
+      !feedRow ||
+      !allShell ||
+      !archivedShell ||
+      !facebookShell ||
+      !sourceShell ||
+      !rssShell ||
+      !feedShell ||
+      !allIcon ||
+      !archivedIcon ||
+      !facebookIcon ||
+      !rssIcon ||
+      !feedIcon ||
+      !allCount ||
+      !facebookCount ||
+      !sourceCount ||
+      !rssCount ||
+      !actionSlot ||
+      !trigger
+    ) {
       return null;
     }
 
-    const rowRect = rowShell.getBoundingClientRect();
-    const sourceRowRect = sourceRow.getBoundingClientRect();
-    const sourceIconRect = sourceIcon.getBoundingClientRect();
-    const savedIconRect = savedIcon.getBoundingClientRect();
-    const countRect = count.getBoundingClientRect();
+    const allShellRect = allShell.getBoundingClientRect();
+    const archivedShellRect = archivedShell.getBoundingClientRect();
+    const facebookShellRect = facebookShell.getBoundingClientRect();
+    const rssShellRect = rssShell.getBoundingClientRect();
+    const feedShellRect = feedShell.getBoundingClientRect();
+    const allIconRect = allIcon.getBoundingClientRect();
+    const archivedIconRect = archivedIcon.getBoundingClientRect();
+    const facebookIconRect = facebookIcon.getBoundingClientRect();
+    const rssIconRect = rssIcon.getBoundingClientRect();
+    const feedIconRect = feedIcon.getBoundingClientRect();
+    const allCountRect = allCount.getBoundingClientRect();
+    const facebookCountRect = facebookCount.getBoundingClientRect();
+    const sourceCountRect = sourceCount.getBoundingClientRect();
+    const rssCountRect = rssCount.getBoundingClientRect();
     const actionSlotRect = actionSlot.getBoundingClientRect();
     const triggerRect = trigger.getBoundingClientRect();
 
     return {
-      highlightLeftPad: sourceRowRect.left - rowRect.left,
-      highlightRightPad: rowRect.right - countRect.right,
-      countSlotRightDelta: Math.abs(actionSlotRect.right - countRect.right),
-      socialIconShiftLeft: savedIconRect.left - sourceIconRect.left,
+      bodyPaddingLeft: Number.parseFloat(window.getComputedStyle(sidebarBody).paddingLeft),
+      allToArchivedLeftDelta: Math.abs(allShellRect.left - archivedShellRect.left),
+      allToArchivedRightDelta: Math.abs(allShellRect.right - archivedShellRect.right),
+      allToFacebookLeftDelta: Math.abs(allShellRect.left - facebookShellRect.left),
+      allToFacebookRightDelta: Math.abs(allShellRect.right - facebookShellRect.right),
+      allToRssLeftDelta: Math.abs(allShellRect.left - rssShellRect.left),
+      allToRssRightDelta: Math.abs(allShellRect.right - rssShellRect.right),
+      countRightPad: allShellRect.right - allCountRect.right,
+      allToFacebookCountRightDelta: Math.abs(allCountRect.right - facebookCountRect.right),
+      allToSourceCountRightDelta: Math.abs(allCountRect.right - sourceCountRect.right),
+      allToRssCountRightDelta: Math.abs(allCountRect.right - rssCountRect.right),
+      countSlotRightDelta: Math.abs(actionSlotRect.right - sourceCountRect.right),
+      actionSlotWidth: actionSlotRect.width,
+      countWidth: sourceCountRect.width,
+      feedIconIndent: feedIconRect.left - rssIconRect.left,
+      archivedIconShift: Math.abs(archivedIconRect.left - allIconRect.left),
+      facebookIconShift: Math.abs(facebookIconRect.left - allIconRect.left),
+      rssIconShift: Math.abs(rssIconRect.left - allIconRect.left),
+      feedDepth: feedShell.dataset.sidebarDepth,
+      feedInsetFromParent: feedShellRect.left - rssShellRect.left,
       triggerWidth: triggerRect.width,
       triggerHeight: triggerRect.height,
     };
   });
 
   expect(layout).not.toBeNull();
-  expect(layout!.highlightLeftPad).toBeGreaterThanOrEqual(5);
-  expect(layout!.highlightRightPad).toBeGreaterThanOrEqual(7);
+  expect(layout!.bodyPaddingLeft).toBe(12);
+  expect(layout!.allToArchivedLeftDelta).toBeLessThanOrEqual(1);
+  expect(layout!.allToArchivedRightDelta).toBeLessThanOrEqual(1);
+  expect(layout!.allToFacebookLeftDelta).toBeLessThanOrEqual(1);
+  expect(layout!.allToFacebookRightDelta).toBeLessThanOrEqual(1);
+  expect(layout!.allToRssLeftDelta).toBeLessThanOrEqual(1);
+  expect(layout!.allToRssRightDelta).toBeLessThanOrEqual(1);
+  expect(layout!.countRightPad).toBeGreaterThanOrEqual(9);
+  expect(layout!.allToFacebookCountRightDelta).toBeLessThanOrEqual(1);
+  expect(layout!.allToSourceCountRightDelta).toBeLessThanOrEqual(1);
+  expect(layout!.allToRssCountRightDelta).toBeLessThanOrEqual(1);
   expect(layout!.countSlotRightDelta).toBeLessThanOrEqual(1);
-  expect(layout!.socialIconShiftLeft).toBeGreaterThanOrEqual(1);
+  expect(layout!.actionSlotWidth).toBeGreaterThanOrEqual(63);
+  expect(layout!.countWidth).toBeLessThanOrEqual(layout!.actionSlotWidth);
+  expect(layout!.archivedIconShift).toBeLessThanOrEqual(1);
+  expect(layout!.facebookIconShift).toBeLessThanOrEqual(1);
+  expect(layout!.rssIconShift).toBeLessThanOrEqual(1);
+  expect(layout!.feedDepth).toBe("1");
+  expect(layout!.feedInsetFromParent).toBeGreaterThanOrEqual(15);
+  expect(layout!.feedIconIndent).toBeGreaterThanOrEqual(15);
+  expect(layout!.feedIconIndent).toBeLessThanOrEqual(17);
   expect(Math.abs(layout!.triggerWidth - layout!.triggerHeight)).toBeLessThanOrEqual(1);
 });
 
